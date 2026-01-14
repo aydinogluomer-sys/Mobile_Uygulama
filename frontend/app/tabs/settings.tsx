@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
   helpText: {
     fontSize: 11,
     color: '#6b7280',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontFamily: 'monospace',
     backgroundColor: '#0f0f0f',
     padding: 12,
     borderRadius: 8,
