@@ -216,8 +216,8 @@ class CoreHabitTester:
         response = self.make_request("POST", "/webhooks", json=webhook_data)
         if response and response.status_code == 200:
             webhook = response.json()
-            self.test_data["webhook_id"] = webhook["id"]
-            self.log_result("Create Webhook", True, f"Created webhook with ID: {webhook['id']}")
+            self.test_data["webhook_id"] = webhook["_id"]
+            self.log_result("Create Webhook", True, f"Created webhook with ID: {webhook['_id']}")
         else:
             self.log_result("Create Webhook", False, f"Status: {response.status_code if response else 'No response'}")
             return
