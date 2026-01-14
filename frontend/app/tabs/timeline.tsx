@@ -23,6 +23,8 @@ export default function TimelineScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showADHDSplitter, setShowADHDSplitter] = useState(false);
 
   useEffect(() => {
     loadData();
