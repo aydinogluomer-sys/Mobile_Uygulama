@@ -112,8 +112,8 @@ class CoreHabitTester:
         response = self.make_request("POST", "/completions", json=completion_data)
         if response and response.status_code == 200:
             completion = response.json()
-            self.test_data["completion_id"] = completion["id"]
-            self.log_result("Create Completion", True, f"Created completion with ID: {completion['id']}")
+            self.test_data["completion_id"] = completion["_id"]
+            self.log_result("Create Completion", True, f"Created completion with ID: {completion['_id']}")
         else:
             self.log_result("Create Completion", False, f"Status: {response.status_code if response else 'No response'}")
             return
