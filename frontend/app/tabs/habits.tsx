@@ -7,15 +7,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Modal,
-  TextInput,
-  Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../../store/useStore';
 import { habitAPI, completionAPI } from '../../utils/api';
 import { Habit } from '../../types';
+import HabitOnboarding from '../../components/HabitOnboarding';
 
 const CATEGORIES = [
   { id: 'health', label: 'Sağlık', icon: 'fitness-outline', color: '#10b981' },
