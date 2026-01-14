@@ -106,6 +106,10 @@ export default function TimelineScreen() {
         key={task._id}
         style={styles.taskCard}
         onPress={() => toggleTaskComplete(task)}
+        onLongPress={() => {
+          setSelectedTask(task);
+          setShowADHDSplitter(true);
+        }}
       >
         <View style={styles.taskLeft}>
           <View style={[
@@ -129,7 +133,20 @@ export default function TimelineScreen() {
             )}
           </View>
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+        <View style={styles.taskRight}>
+          {!task.is_subtask && (
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedTask(task);
+                setShowADHDSplitter(true);
+              }}
+              style={styles.adhdButton}
+            >
+              <Ionicons name="flash" size={16} color="#f59e0b" />
+            </TouchableOpacity>
+          )}
+          <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+        </View>
       </TouchableOpacity>
     );
   };
