@@ -263,8 +263,8 @@ class CoreHabitTester:
         response = self.make_request("POST", "/bad-habits", json=bad_habit_data)
         if response and response.status_code == 200:
             bad_habit = response.json()
-            self.test_data["bad_habit_id"] = bad_habit["id"]
-            self.log_result("Create Bad Habit", True, f"Created bad habit with ID: {bad_habit['id']}")
+            self.test_data["bad_habit_id"] = bad_habit["_id"]
+            self.log_result("Create Bad Habit", True, f"Created bad habit with ID: {bad_habit['_id']}")
         else:
             self.log_result("Create Bad Habit", False, f"Status: {response.status_code if response else 'No response'}")
             return
