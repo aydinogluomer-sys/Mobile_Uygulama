@@ -251,6 +251,12 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Bad Habits Tracker */}
+      <BadHabitsTracker
+        visible={showBadHabitsTracker}
+        onClose={() => setShowBadHabitsTracker(false)}
+      />
     </SafeAreaView>
   );
 }
