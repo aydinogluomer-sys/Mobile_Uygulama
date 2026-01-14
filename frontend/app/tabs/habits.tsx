@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,16 +26,11 @@ const CATEGORIES = [
 ];
 
 export default function HabitsScreen() {
-  const { habits, setHabits, addHabit } = useStore();
+  const { habits, setHabits } = useStore();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newHabit, setNewHabit] = useState({
-    name: '',
-    description: '',
-    category: 'general',
-    color: '#6366f1',
-  });
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [queueStatus, setQueueStatus] = useState<any>(null);
 
   useEffect(() => {
     loadHabits();
@@ -43,8 +39,12 @@ export default function HabitsScreen() {
   const loadHabits = async () => {
     try {
       setLoading(true);
-      const data = await habitAPI.getAll();
-      setHabits(data);
+      const [habitsData, queueData] = await Promise.all([
+        habitAPI.getAll(),
+        habitAPI.getQueueStatus(),
+      ]);
+      setHabits(habitsData);
+      setQueueStatus(queueData);
     } catch (error) {
       console.error('Alışkanlıklar yüklenirken hata:', error);
     } finally {
@@ -61,28 +61,75 @@ export default function HabitsScreen() {
   const handleComplete = async (habit: Habit) => {
     try {
       if (!habit._id) return;
-      await completionAPI.create({
-        habit_id: habit._id,
-      });
+      await completionAPI.create({ habit_id: habit._id });
       await loadHabits();
+      
+      // Check if habit reached 80%
+      const updatedHabit = await habitAPI.getById(habit._id);
+      if (updatedHabit.strength_score >= 80 && queueStatus?.queued_count > 0) {
+        Alert.alert(
+          '🎉 Tebrikler!',
+          `'${habit.name}' alışkanlığın %${Math.round(updatedHabit.strength_score)} gücünde! Artık yeni bir alışkanlık ekleyebilirsin.`,
+          [{ text: 'Harika!' }]
+        );
+      }
     } catch (error) {
       console.error('Alışkanlık tamamlanırken hata:', error);
     }
   };
 
-  const handleAddHabit = async () => {
+  const handleActivate = async (habitId: string) => {
     try {
-      if (!newHabit.name.trim()) return;
+      const result = await habitAPI.activate(habitId);
+      if (result.status === 'blocked') {
+        Alert.alert(
+          'İrade Limitine Ulaştın',
+          result.message,
+          [
+            { text: 'Tamam', style: 'cancel' },
+            {
+              text: 'Sıraya Al',
+              onPress: async () => {
+                if (result.suggested_habit_id) {
+                  await habitAPI.pause(result.suggested_habit_id);
+                  await habitAPI.activate(habitId);
+                  await loadHabits();
+                }
+              },
+            },
+          ]
+        );
+      } else {
+        await loadHabits();
+      }
+    } catch (error: any) {
+      Alert.alert('Hata', error.response?.data?.detail || 'Bir hata oluştu');
+    }
+  };
+
+  const handlePause = async (habitId: string) => {
+    try {
+      await habitAPI.pause(habitId);
+      await loadHabits();
+    } catch (error) {
+      console.error('Alışkanlık duraklatılırken hata:', error);
+    }
+  };
+
+  const handleAddHabit = async (habitData: any) => {
+    try {
+      await habitAPI.create(habitData);
+      setShowOnboarding(false);
+      await loadHabits();
       
-      const created = await habitAPI.create(newHabit);
-      addHabit(created);
-      setShowAddModal(false);
-      setNewHabit({
-        name: '',
-        description: '',
-        category: 'general',
-        color: '#6366f1',
-      });
+      // Show info if queued
+      if (queueStatus?.active_count >= 3) {
+        Alert.alert(
+          '📋 Kuyruğa Alındı',
+          'İraden sınırlı bir kaynak! Analizimize göre bu alışkanlığı şimdilik kuyruğa aldık. Aktif alışkanlıklarından biri %80\'e ulaştığında otomatik aktifleşecek.',
+          [{ text: 'Anladım' }]
+        );
+      }
     } catch (error) {
       console.error('Alışkanlık eklenirken hata:', error);
     }
@@ -94,27 +141,47 @@ export default function HabitsScreen() {
     return '#6b7280';
   };
 
-  const renderHabitCard = (habit: Habit) => {
+  const getPriorityBadge = (priority: string) => {
+    const badges: any = {
+      urgent_important: { icon: '🔥', color: '#ef4444', label: 'Kritik' },
+      important_not_urgent: { icon: '⭐', color: '#6366f1', label: 'Önemli' },
+      urgent_not_important: { icon: '⚡', color: '#f59e0b', label: 'Hızlı' },
+      neither: { icon: '📋', color: '#6b7280', label: 'Sonra' },
+    };
+    return badges[priority] || badges.neither;
+  };
+
+  const renderHabitCard = (habit: Habit, isQueued: boolean = false) => {
     const category = CATEGORIES.find(c => c.id === habit.category) || CATEGORIES[4];
+    const priorityBadge = getPriorityBadge(habit.priority);
     
     return (
-      <View key={habit._id} style={styles.habitCard}>
+      <View key={habit._id} style={[styles.habitCard, isQueued && styles.habitCardQueued]}>
         <View style={styles.habitHeader}>
           <View style={styles.habitLeft}>
             <View style={[styles.iconContainer, { backgroundColor: category.color + '20' }]}>
               <Ionicons name={category.icon as any} size={24} color={category.color} />
             </View>
             <View style={styles.habitInfo}>
-              <Text style={styles.habitName}>{habit.name}</Text>
+              <View style={styles.habitNameRow}>
+                <Text style={styles.habitName}>{habit.name}</Text>
+                <View style={[styles.priorityBadge, { backgroundColor: priorityBadge.color + '20' }]}>
+                  <Text style={styles.priorityIcon}>{priorityBadge.icon}</Text>
+                </View>
+              </View>
               <Text style={styles.habitCategory}>{category.label}</Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.completeButton}
-            onPress={() => handleComplete(habit)}
-          >
-            <Ionicons name="checkmark-circle" size={32} color="#6366f1" />
-          </TouchableOpacity>
+          
+          {!isQueued ? (
+            <TouchableOpacity style={styles.completeButton} onPress={() => handleComplete(habit)}>
+              <Ionicons name="checkmark-circle" size={32} color="#6366f1" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.activateButton} onPress={() => handleActivate(habit._id!)}>
+              <Ionicons name="play-circle" size={28} color="#10b981" />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.habitStats}>
@@ -129,12 +196,11 @@ export default function HabitsScreen() {
             <Text style={styles.statLabel}>Güç</Text>
           </View>
           <View style={styles.statBox}>
-            <Text style={styles.statValue}>{habit.streak_best}</Text>
-            <Text style={styles.statLabel}>Rekor</Text>
+            <Text style={styles.statValue}>{habit.focus_score?.toFixed(1) || '0.0'}</Text>
+            <Text style={styles.statLabel}>Odak</Text>
           </View>
         </View>
 
-        {/* Strength Bar */}
         <View style={styles.strengthBar}>
           <View 
             style={[
@@ -146,6 +212,16 @@ export default function HabitsScreen() {
             ]}
           />
         </View>
+
+        {!isQueued && (
+          <TouchableOpacity 
+            style={styles.pauseButton}
+            onPress={() => handlePause(habit._id!)}
+          >
+            <Ionicons name="pause" size={16} color="#9ca3af" />
+            <Text style={styles.pauseButtonText}>Sıraya Al</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -158,134 +234,104 @@ export default function HabitsScreen() {
     );
   }
 
+  const activeHabits = habits.filter(h => h.status === 'active');
+  const queuedHabits = habits.filter(h => h.status === 'queued');
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Willpower Status */}
+      {queueStatus && (
+        <View style={styles.statusBar}>
+          <View style={styles.statusLeft}>
+            <Ionicons name="flash" size={20} color="#f59e0b" />
+            <Text style={styles.statusText}>
+              İrade Yükü: {queueStatus.willpower_load}/15
+            </Text>
+          </View>
+          <Text style={styles.statusSlots}>{activeHabits.length}/3 Aktif</Text>
+        </View>
+      )}
+
       <ScrollView
         style={styles.scrollView}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#6366f1"
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366f1" />
         }
       >
-        <View style={styles.content}>
-          <Text style={styles.title}>Alışkanlıklarım</Text>
-          <Text style={styles.subtitle}>{habits.length} aktif alışkanlık</Text>
-
-          {habits.length === 0 ? (
+        {/* Active Habits */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="rocket" size={20} color="#10b981" />
+            <Text style={styles.sectionTitle}>Aktif Odak</Text>
+          </View>
+          {activeHabits.length === 0 ? (
             <View style={styles.emptyState}>
-              <Ionicons name="trophy-outline" size={64} color="#374151" />
-              <Text style={styles.emptyText}>Henüz alışkanlık yok</Text>
-              <Text style={styles.emptySubtext}>Yeni bir alışkanlık ekleyerek başlayın!</Text>
+              <Text style={styles.emptyText}>Henüz aktif alışkanlık yok</Text>
             </View>
           ) : (
-            habits.map(renderHabitCard)
+            activeHabits.map(habit => renderHabitCard(habit, false))
           )}
         </View>
+
+        {/* Queued Habits */}
+        {queuedHabits.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="hourglass" size={20} color="#9ca3af" />
+              <Text style={styles.sectionTitle}>Bekleme Odası</Text>
+            </View>
+            <Text style={styles.queueInfo}>
+              {queueStatus?.recommendation}
+            </Text>
+            {queuedHabits.map(habit => renderHabitCard(habit, true))}
+          </View>
+        )}
       </ScrollView>
 
       {/* Add Button */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => setShowAddModal(true)}
-      >
+      <TouchableOpacity style={styles.fab} onPress={() => setShowOnboarding(true)}>
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
-      {/* Add Habit Modal */}
-      <Modal
-        visible={showAddModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowAddModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Yeni Alışkanlık</Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <Ionicons name="close" size={28} color="#9ca3af" />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Alışkanlık adı"
-              placeholderTextColor="#6b7280"
-              value={newHabit.name}
-              onChangeText={(text) => setNewHabit({ ...newHabit, name: text })}
-            />
-
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Açıklama (opsiyonel)"
-              placeholderTextColor="#6b7280"
-              value={newHabit.description}
-              onChangeText={(text) => setNewHabit({ ...newHabit, description: text })}
-              multiline
-              numberOfLines={3}
-            />
-
-            <Text style={styles.label}>Kategori</Text>
-            <View style={styles.categoryGrid}>
-              {CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat.id}
-                  style={[
-                    styles.categoryItem,
-                    newHabit.category === cat.id && styles.categoryItemSelected,
-                    { borderColor: cat.color }
-                  ]}
-                  onPress={() => setNewHabit({ ...newHabit, category: cat.id, color: cat.color })}
-                >
-                  <Ionicons name={cat.icon as any} size={24} color={cat.color} />
-                  <Text style={styles.categoryLabel}>{cat.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={handleAddHabit}
-            >
-              <Text style={styles.addButtonText}>Alışkanlık Ekle</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* Onboarding Modal */}
+      <HabitOnboarding
+        visible={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+        onSubmit={handleAddHabit}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0c0c0c',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  container: { flex: 1, backgroundColor: '#0c0c0c' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0c0c0c' },
+  statusBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0c0c0c',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
     padding: 16,
+    backgroundColor: '#1a1a1a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
+  statusLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  statusText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  statusSlots: { fontSize: 14, color: '#6366f1', fontWeight: '600' },
+  scrollView: { flex: 1 },
+  section: { padding: 16 },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
   },
-  subtitle: {
-    fontSize: 16,
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
+  queueInfo: {
+    fontSize: 13,
     color: '#9ca3af',
-    marginBottom: 24,
+    marginBottom: 16,
+    fontStyle: 'italic',
   },
   habitCard: {
     backgroundColor: '#1a1a1a',
@@ -295,17 +341,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2a2a2a',
   },
+  habitCardQueued: { opacity: 0.7 },
   habitHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
   },
-  habitLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
+  habitLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   iconContainer: {
     width: 48,
     height: 48,
@@ -314,66 +357,49 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  habitInfo: {
-    flex: 1,
-  },
-  habitName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
+  habitInfo: { flex: 1 },
+  habitNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 4,
   },
-  habitCategory: {
-    fontSize: 13,
-    color: '#9ca3af',
+  habitName: { fontSize: 18, fontWeight: '600', color: '#fff', flex: 1 },
+  habitCategory: { fontSize: 13, color: '#9ca3af' },
+  priorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  completeButton: {
-    padding: 4,
-  },
+  priorityIcon: { fontSize: 14 },
+  completeButton: { padding: 4 },
+  activateButton: { padding: 4 },
   habitStats: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginBottom: 16,
   },
-  statBox: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#6366f1',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginTop: 4,
-  },
+  statBox: { alignItems: 'center' },
+  statValue: { fontSize: 24, fontWeight: 'bold', color: '#6366f1' },
+  statLabel: { fontSize: 12, color: '#9ca3af', marginTop: 4 },
   strengthBar: {
     height: 6,
     backgroundColor: '#2a2a2a',
     borderRadius: 3,
     overflow: 'hidden',
+    marginBottom: 12,
   },
-  strengthFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  emptyState: {
+  strengthFill: { height: '100%', borderRadius: 3 },
+  pauseButton: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 80,
+    gap: 6,
+    paddingVertical: 8,
   },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 8,
-  },
+  pauseButtonText: { fontSize: 13, color: '#9ca3af' },
+  emptyState: { alignItems: 'center', paddingVertical: 40 },
+  emptyText: { fontSize: 16, color: '#6b7280' },
   fab: {
     position: 'absolute',
     right: 16,
@@ -389,82 +415,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#1a1a1a',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    minHeight: '70%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  input: {
-    backgroundColor: '#0f0f0f',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: '#fff',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 12,
-  },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 24,
-  },
-  categoryItem: {
-    width: '30%',
-    aspectRatio: 1,
-    backgroundColor: '#0f0f0f',
-    borderRadius: 12,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoryItemSelected: {
-    borderWidth: 3,
-  },
-  categoryLabel: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginTop: 8,
-  },
-  addButton: {
-    backgroundColor: '#6366f1',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  addButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
   },
 });
