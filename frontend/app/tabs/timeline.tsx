@@ -218,6 +218,23 @@ export default function TimelineScreen() {
       >
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
+
+      {/* ADHD Task Splitter Modal */}
+      {selectedTask && (
+        <ADHDTaskSplitter
+          task={selectedTask}
+          visible={showADHDSplitter}
+          onClose={() => {
+            setShowADHDSplitter(false);
+            setSelectedTask(null);
+          }}
+          onSplit={async (subtasks) => {
+            setShowADHDSplitter(false);
+            setSelectedTask(null);
+            await loadData();
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
