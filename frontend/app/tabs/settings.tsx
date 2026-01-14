@@ -111,6 +111,19 @@ export default function SettingsScreen() {
             )}
           </View>
 
+          {/* Tracking */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Takip</Text>
+            
+            {renderSettingItem(
+              'ban',
+              'Bıraktığım Alışkanlıklar',
+              'Tasarruf ve ilerlemenizi görün',
+              () => setShowBadHabitsTracker(true),
+              '#ef4444'
+            )}
+          </View>
+
           {/* Integrations */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Entegrasyonlar</Text>
