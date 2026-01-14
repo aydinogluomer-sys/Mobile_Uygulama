@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { webhookAPI, exportAPI } from '../../utils/api';
 import { Webhook } from '../../types';
+import BadHabitsTracker from '../../components/BadHabitsTracker';
 
 export default function SettingsScreen() {
   const [showWebhookModal, setShowWebhookModal] = useState(false);
