@@ -528,4 +528,47 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     lineHeight: 16,
   },
+  exportContainer: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  exportTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  exportSubtitle: {
+    fontSize: 13,
+    color: '#9ca3af',
+    marginBottom: 16,
+  },
+  exportButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  exportButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#0f0f0f',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderWidth: 2,
+    borderColor: '#2a2a2a',
+  },
+  exportButtonLoading: {
+    opacity: 0.6,
+  },
+  exportButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
 });
