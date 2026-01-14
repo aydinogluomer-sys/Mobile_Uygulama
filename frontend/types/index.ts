@@ -12,6 +12,14 @@ export interface Habit {
   icon: string;
   created_at: string;
   is_active: boolean;
+  
+  // Habit Sequencing
+  impact: number;  // 1-5
+  difficulty: number;  // 1-5
+  priority: string;  // urgent_important, important_not_urgent, etc.
+  status: string;  // active, queued, paused
+  focus_score: number;
+  activated_at?: string;
 }
 
 export interface Task {
