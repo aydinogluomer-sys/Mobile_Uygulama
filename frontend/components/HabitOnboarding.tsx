@@ -113,7 +113,7 @@ export default function HabitOnboarding({
 
       <Text style={styles.label}>Kategori</Text>
       <View style={styles.categoryGrid}>
-        {CATEGORIES.map((cat) => (
+        {categories.map((cat) => (
           <TouchableOpacity
             key={cat.id}
             style={[
@@ -127,7 +127,77 @@ export default function HabitOnboarding({
             <Text style={styles.categoryLabel}>{cat.label}</Text>
           </TouchableOpacity>
         ))}
+        
+        {/* Kategori Ekle Butonu */}
+        <TouchableOpacity
+          style={styles.addCategoryButton}
+          onPress={() => setShowCategoryModal(true)}
+        >
+          <Ionicons name="add-circle-outline" size={28} color="#6366f1" />
+          <Text style={styles.addCategoryText}>Kategori Ekle</Text>
+        </TouchableOpacity>
       </View>
+
+      {/* Kategori Ekleme Modal */}
+      <Modal
+        visible={showCategoryModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowCategoryModal(false)}
+      >
+        <View style={styles.categoryModalOverlay}>
+          <View style={styles.categoryModalContent}>
+            <Text style={styles.categoryModalTitle}>Yeni Kategori</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Kategori adı"
+              placeholderTextColor="#6b7280"
+              value={newCategoryName}
+              onChangeText={setNewCategoryName}
+            />
+
+            <Text style={styles.label}>Renk Seç</Text>
+            <View style={styles.colorGrid}>
+              {CATEGORY_COLORS.map((color) => (
+                <TouchableOpacity
+                  key={color}
+                  style={[
+                    styles.colorItem,
+                    { backgroundColor: color },
+                    newCategoryColor === color && styles.colorItemSelected
+                  ]}
+                  onPress={() => setNewCategoryColor(color)}
+                >
+                  {newCategoryColor === color && (
+                    <Ionicons name="checkmark" size={20} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.categoryModalButtons}>
+              <TouchableOpacity
+                style={styles.categoryModalCancel}
+                onPress={() => {
+                  setShowCategoryModal(false);
+                  setNewCategoryName('');
+                  setNewCategoryColor('#6366f1');
+                }}
+              >
+                <Text style={styles.categoryModalCancelText}>İptal</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.categoryModalAdd}
+                onPress={handleAddCategory}
+              >
+                <Text style={styles.categoryModalAddText}>Ekle</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 
