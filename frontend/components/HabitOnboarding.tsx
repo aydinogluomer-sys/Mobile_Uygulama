@@ -24,11 +24,15 @@ const PRIORITIES = [
   { id: 'neither', label: 'Ne Acil Ne Önemli', icon: '📋', color: '#6b7280', description: 'Sonra yapılabilir' },
 ];
 
-const CATEGORIES = [
+const INITIAL_CATEGORIES = [
   { id: 'health', label: 'Sağlık', icon: 'fitness-outline', color: '#10b981' },
   { id: 'work', label: 'İş', icon: 'briefcase-outline', color: '#3b82f6' },
   { id: 'learning', label: 'Öğrenme', icon: 'book-outline', color: '#8b5cf6' },
   { id: 'personal', label: 'Kişisel', icon: 'person-outline', color: '#f59e0b' },
+];
+
+const CATEGORY_COLORS = [
+  '#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#84cc16'
 ];
 
 export default function HabitOnboarding({
