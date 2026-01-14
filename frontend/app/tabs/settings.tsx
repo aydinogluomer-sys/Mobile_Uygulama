@@ -10,6 +10,8 @@ import {
   Alert,
   Share,
   Platform,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +24,7 @@ export default function SettingsScreen() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [showBadHabitsTracker, setShowBadHabitsTracker] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
 
   const loadWebhooks = async () => {
     try {
