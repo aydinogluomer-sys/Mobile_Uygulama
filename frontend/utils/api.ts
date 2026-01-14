@@ -35,6 +35,22 @@ export const habitAPI = {
   delete: async (id: string): Promise<void> => {
     await api.delete(`/habits/${id}`);
   },
+  
+  // Habit Sequencing
+  activate: async (id: string): Promise<any> => {
+    const response = await api.post(`/habits/${id}/activate`);
+    return response.data;
+  },
+  
+  pause: async (id: string): Promise<any> => {
+    const response = await api.post(`/habits/${id}/pause`);
+    return response.data;
+  },
+  
+  getQueueStatus: async (): Promise<any> => {
+    const response = await api.get('/habits/queue/status');
+    return response.data;
+  },
 };
 
 // ==================== COMPLETIONS ====================
