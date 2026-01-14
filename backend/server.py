@@ -647,6 +647,119 @@ async def export_all_data():
         "webhooks": [serialize_doc(w) for w in webhooks]
     }
 
+# ==================== DATA EXPORT ENDPOINTS ====================
+
+@api_router.get("/data/export/excel")
+async def export_excel():
+    """
+    Export all data to Excel format with flat table structure
+    """
+    try:
+        # Fetch all data
+        habits = await db.habits.find({"is_active": True}).to_list(1000)
+        completions = await db.completions.find().to_list(10000)
+        
+        # Create flat table
+        rows = []
+        for completion in completions:
+            # Find related habit
+            habit = next((h for h in habits if str(h["_id"]) == completion["habit_id"]), None)
+            if not habit:
+                continue
+            
+            # Calculate willpower load at that time (simplified - just the habit's difficulty)
+            row = {
+                "Tarih": completion["completed_at"].strftime("%Y-%m-%d"),
+                "Aliskanlik_Adi": habit.get("name", ""),
+                "Kategori": habit.get("category", ""),
+                "Focus_Score": habit.get("focus_score", 0),
+                "Zorluk_Derecesi": habit.get("difficulty", 0),
+                "Etki_Seviyesi": habit.get("impact", 0),
+                "Irade_Yuku": habit.get("difficulty", 0),
+                "Tamamlanma_Durumu": 1,
+                "XP_Kazanilan": habit.get("strength_score", 0),
+            }
+            rows.append(row)
+        
+        # Create DataFrame
+        df = pd.DataFrame(rows)
+        
+        # Sort by date
+        if not df.empty:
+            df = df.sort_values("Tarih")
+        
+        # Create Excel file in memory
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='CoreHabit_Data', index=False)
+        
+        output.seek(0)
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename=corehabit_data_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+            }
+        )
+    except Exception as e:
+        logger.error(f"Excel export error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+@api_router.get("/data/export/csv")
+async def export_csv():
+    """
+    Export all data to CSV format with flat table structure
+    """
+    try:
+        # Fetch all data
+        habits = await db.habits.find({"is_active": True}).to_list(1000)
+        completions = await db.completions.find().to_list(10000)
+        
+        # Create flat table
+        rows = []
+        for completion in completions:
+            # Find related habit
+            habit = next((h for h in habits if str(h["_id"]) == completion["habit_id"]), None)
+            if not habit:
+                continue
+            
+            row = {
+                "Tarih": completion["completed_at"].strftime("%Y-%m-%d"),
+                "Aliskanlik_Adi": habit.get("name", ""),
+                "Kategori": habit.get("category", ""),
+                "Focus_Score": habit.get("focus_score", 0),
+                "Zorluk_Derecesi": habit.get("difficulty", 0),
+                "Etki_Seviyesi": habit.get("impact", 0),
+                "Irade_Yuku": habit.get("difficulty", 0),
+                "Tamamlanma_Durumu": 1,
+                "XP_Kazanilan": habit.get("strength_score", 0),
+            }
+            rows.append(row)
+        
+        # Create DataFrame
+        df = pd.DataFrame(rows)
+        
+        # Sort by date
+        if not df.empty:
+            df = df.sort_values("Tarih")
+        
+        # Create CSV in memory with UTF-8 BOM for Excel compatibility
+        output = BytesIO()
+        df.to_csv(output, index=False, encoding='utf-8-sig')
+        output.seek(0)
+        
+        return StreamingResponse(
+            output,
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename=corehabit_data_{datetime.utcnow().strftime('%Y%m%d')}.csv"
+            }
+        )
+    except Exception as e:
+        logger.error(f"CSV export error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
 # ==================== STATS ENDPOINT ====================
 
 @api_router.get("/stats")
