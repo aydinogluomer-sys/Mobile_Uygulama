@@ -152,8 +152,8 @@ class CoreHabitTester:
         response = self.make_request("POST", "/tasks", json=task_data)
         if response and response.status_code == 200:
             task = response.json()
-            self.test_data["task_id"] = task["id"]
-            self.log_result("Create Task", True, f"Created task with ID: {task['id']}")
+            self.test_data["task_id"] = task["_id"]
+            self.log_result("Create Task", True, f"Created task with ID: {task['_id']}")
         else:
             self.log_result("Create Task", False, f"Status: {response.status_code if response else 'No response'}")
             return
