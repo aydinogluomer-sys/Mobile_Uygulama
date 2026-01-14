@@ -57,19 +57,41 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleExportData = async () => {
+  const handleExportData = async (format: 'json' | 'excel' | 'csv') => {
     try {
-      const data = await exportAPI.exportAll();
-      const jsonString = JSON.stringify(data, null, 2);
+      setExportingFormat(format);
       
-      // Share the data
-      await Share.share({
-        message: jsonString,
-        title: 'CoreHabit Veri Yedeği',
-      });
+      if (format === 'json') {
+        const data = await exportAPI.exportAll();
+        const jsonString = JSON.stringify(data, null, 2);
+        await Share.share({
+          message: jsonString,
+          title: 'CoreHabit Veri Yedeği',
+        });
+      } else {
+        // For Excel and CSV, open download URL
+        const baseURL = process.env.EXPO_PUBLIC_BACKEND_URL;
+        const endpoint = format === 'excel' ? '/api/data/export/excel' : '/api/data/export/csv';
+        const url = `${baseURL}${endpoint}`;
+        
+        // On web, it will download automatically
+        // On mobile, open in browser
+        const supported = await Linking.canOpenURL(url);
+        if (supported) {
+          await Linking.openURL(url);
+          Alert.alert(
+            'Başarılı',
+            `${format.toUpperCase()} dosyanız hazırlanıyor. İndirmeler klasörünüze kaydedilecek.`
+          );
+        } else {
+          Alert.alert('Hata', 'URL açılamadı');
+        }
+      }
     } catch (error) {
       Alert.alert('Hata', 'Veriler dışa aktarılırken bir hata oluştu');
       console.error('Export hatası:', error);
+    } finally {
+      setExportingFormat(null);
     }
   };
 
