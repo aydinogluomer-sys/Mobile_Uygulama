@@ -47,6 +47,14 @@ class Habit(BaseModel):
     icon: str = "✓"
     created_at: datetime = Field(default_factory=datetime.utcnow)
     is_active: bool = True
+    
+    # Habit Sequencing Fields
+    impact: int = 3  # 1-5: Life-changing impact
+    difficulty: int = 3  # 1-5: Willpower requirement
+    priority: str = "important_not_urgent"  # eisenhower matrix
+    status: str = "queued"  # active, queued, paused
+    focus_score: float = 0.0  # Calculated priority score
+    activated_at: Optional[datetime] = None
 
     class Config:
         populate_by_name = True
