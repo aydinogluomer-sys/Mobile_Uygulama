@@ -21,6 +21,7 @@ export default function SettingsScreen() {
   const [showWebhookModal, setShowWebhookModal] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [showBadHabitsTracker, setShowBadHabitsTracker] = useState(false);
 
   const loadWebhooks = async () => {
     try {
