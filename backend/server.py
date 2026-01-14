@@ -232,12 +232,24 @@ async def trigger_webhooks(event_type: str, data: Dict[str, Any]):
 
 @api_router.post("/habits", response_model=Habit)
 async def create_habit(habit: HabitCreate):
+    # Calculate focus score
+    focus_score = calculate_focus_score(habit.impact, habit.difficulty, habit.priority)
+    
+    # Check active habits count
+    active_count = await db.habits.count_documents({"is_active": True, "status": "active"})
+    
+    # Determine initial status (max 3 active)
+    initial_status = "active" if active_count < 3 else "queued"
+    
     habit_dict = habit.dict()
     habit_dict["created_at"] = datetime.utcnow()
     habit_dict["strength_score"] = 0.0
     habit_dict["streak_current"] = 0
     habit_dict["streak_best"] = 0
     habit_dict["is_active"] = True
+    habit_dict["status"] = initial_status
+    habit_dict["focus_score"] = focus_score
+    habit_dict["activated_at"] = datetime.utcnow() if initial_status == "active" else None
     
     result = await db.habits.insert_one(habit_dict)
     habit_dict["_id"] = str(result.inserted_id)
