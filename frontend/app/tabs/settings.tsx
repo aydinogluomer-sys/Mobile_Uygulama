@@ -127,13 +127,59 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Veri ve Gizlilik</Text>
             
-            {renderSettingItem(
-              'cloud-upload-outline',
-              'Verileri Dışa Aktar',
-              'Tüm verilerinizi JSON formatında indirin',
-              handleExportData,
-              '#10b981'
-            )}
+            <View style={styles.exportContainer}>
+              <Text style={styles.exportTitle}>Verilerinizi İndirin</Text>
+              <Text style={styles.exportSubtitle}>
+                Power BI, Excel veya diğer analiz araçlarında kullanabilirsiniz
+              </Text>
+              
+              <View style={styles.exportButtons}>
+                <TouchableOpacity
+                  style={[styles.exportButton, exportingFormat === 'json' && styles.exportButtonLoading]}
+                  onPress={() => handleExportData('json')}
+                  disabled={exportingFormat !== null}
+                >
+                  {exportingFormat === 'json' ? (
+                    <ActivityIndicator size="small" color="#6366f1" />
+                  ) : (
+                    <>
+                      <Ionicons name="code-outline" size={20} color="#6366f1" />
+                      <Text style={styles.exportButtonText}>JSON</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.exportButton, exportingFormat === 'excel' && styles.exportButtonLoading]}
+                  onPress={() => handleExportData('excel')}
+                  disabled={exportingFormat !== null}
+                >
+                  {exportingFormat === 'excel' ? (
+                    <ActivityIndicator size="small" color="#10b981" />
+                  ) : (
+                    <>
+                      <Ionicons name="document-outline" size={20} color="#10b981" />
+                      <Text style={styles.exportButtonText}>Excel</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.exportButton, exportingFormat === 'csv' && styles.exportButtonLoading]}
+                  onPress={() => handleExportData('csv')}
+                  disabled={exportingFormat !== null}
+                >
+                  {exportingFormat === 'csv' ? (
+                    <ActivityIndicator size="small" color="#f59e0b" />
+                  ) : (
+                    <>
+                      <Ionicons name="list-outline" size={20} color="#f59e0b" />
+                      <Text style={styles.exportButtonText}>CSV</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
 
           {/* Tracking */}
