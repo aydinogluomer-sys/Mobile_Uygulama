@@ -135,6 +135,13 @@ export default function HabitsScreen() {
     }
   };
 
+  const getWillpowerColor = (load: number) => {
+    if (load <= 5) return '#10b981'; // Yeşil
+    if (load <= 9) return '#84cc16'; // Açık yeşil
+    if (load <= 11) return '#f59e0b'; // Sarı
+    return '#ef4444'; // Kırmızı
+  };
+
   const getStrengthColor = (score: number) => {
     if (score >= 80) return '#10b981';
     if (score >= 50) return '#f59e0b';
