@@ -67,6 +67,11 @@ class HabitCreate(BaseModel):
     target_days: List[int] = [0, 1, 2, 3, 4, 5, 6]
     color: str = "#6366f1"
     icon: str = "✓"
+    
+    # Habit Sequencing Fields
+    impact: int = 3  # 1-5
+    difficulty: int = 3  # 1-5
+    priority: str = "important_not_urgent"  # urgent_important, important_not_urgent, urgent_not_important, neither
 
 class Task(BaseModel):
     id: Optional[str] = Field(default=None, alias="_id")
