@@ -164,6 +164,11 @@ export default function HabitsScreen() {
     
     return (
       <View key={habit._id} style={[styles.habitCard, isQueued && styles.habitCardQueued]}>
+        {isQueued && habit.focus_score && (
+          <View style={styles.focusScoreBadge}>
+            <Text style={styles.focusScoreBadgeText}>{habit.focus_score.toFixed(1)}</Text>
+          </View>
+        )}
         <View style={styles.habitHeader}>
           <View style={styles.habitLeft}>
             <View style={[styles.iconContainer, { backgroundColor: category.color + '20' }]}>
