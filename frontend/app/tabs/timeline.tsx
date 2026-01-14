@@ -381,6 +381,14 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 4,
   },
+  taskRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  adhdButton: {
+    padding: 4,
+  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
