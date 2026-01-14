@@ -16,6 +16,7 @@ import { tr } from 'date-fns/locale';
 import { useStore } from '../../store/useStore';
 import { taskAPI, statsAPI } from '../../utils/api';
 import { Task } from '../../types';
+import ADHDTaskSplitter from '../../components/ADHDTaskSplitter';
 
 export default function TimelineScreen() {
   const { tasks, setTasks, selectedDate, setSelectedDate, stats, setStats } = useStore();
