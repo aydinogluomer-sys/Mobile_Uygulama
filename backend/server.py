@@ -287,7 +287,99 @@ async def delete_habit(habit_id: str):
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Habit not found")
+    
+    # Manage queue after deletion
+    await manage_habit_queue()
+    
     return {"status": "deleted"}
+
+# ==================== HABIT SEQUENCING ENDPOINTS ====================
+
+@api_router.post("/habits/{habit_id}/activate")
+async def activate_habit(habit_id: str):
+    """
+    Manually activate a queued habit (with validation)
+    """
+    habit = await db.habits.find_one({"_id": ObjectId(habit_id)})
+    if not habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+    
+    # Check if already active
+    if habit.get("status") == "active":
+        return {"message": "Habit is already active", "status": "active"}
+    
+    # Check active count
+    active_count = await db.habits.count_documents({"is_active": True, "status": "active"})
+    
+    if active_count >= 3:
+        # Check if any active habit is ready to be retired (>= 80% strength)
+        active_habits = await db.habits.find({
+            "is_active": True,
+            "status": "active",
+            "strength_score": {"$gte": 80}
+        }).to_list(10)
+        
+        if not active_habits:
+            raise HTTPException(
+                status_code=400,
+                detail="Maximum 3 active habits. Complete one to 80% first, or pause one."
+            )
+        
+        # Suggest retiring the strongest habit
+        strongest = max(active_habits, key=lambda h: h["strength_score"])
+        return {
+            "status": "blocked",
+            "message": f"'{strongest['name']}' is at {strongest['strength_score']}% strength. Consider moving it to queued.",
+            "suggested_habit_id": str(strongest["_id"])
+        }
+    
+    # Activate the habit
+    await db.habits.update_one(
+        {"_id": ObjectId(habit_id)},
+        {"$set": {"status": "active", "activated_at": datetime.utcnow()}}
+    )
+    
+    return {"status": "activated", "message": "Habit activated successfully"}
+
+@api_router.post("/habits/{habit_id}/pause")
+async def pause_habit(habit_id: str):
+    """
+    Move habit back to queue
+    """
+    result = await db.habits.update_one(
+        {"_id": ObjectId(habit_id)},
+        {"$set": {"status": "queued"}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Habit not found")
+    
+    # Try to activate next queued habit
+    await manage_habit_queue()
+    
+    return {"status": "paused"}
+
+@api_router.get("/habits/queue/status")
+async def get_queue_status():
+    """
+    Get habit queue analysis
+    """
+    all_habits = await db.habits.find({"is_active": True}).sort("focus_score", -1).to_list(100)
+    
+    active_habits = [serialize_doc(h) for h in all_habits if h.get("status") == "active"]
+    queued_habits = [serialize_doc(h) for h in all_habits if h.get("status") == "queued"]
+    
+    # Calculate willpower load
+    active_difficulty = sum(h.get("difficulty", 0) for h in active_habits)
+    
+    return {
+        "active_count": len(active_habits),
+        "queued_count": len(queued_habits),
+        "active_habits": active_habits,
+        "queued_habits": queued_habits,
+        "willpower_load": active_difficulty,
+        "can_add_more": len(active_habits) < 3,
+        "recommendation": "Focus on your active habits before adding more." if len(active_habits) >= 3 else "You can add up to {} more habits.".format(3 - len(active_habits))
+    }
 
 # ==================== COMPLETION ENDPOINTS ====================
 
