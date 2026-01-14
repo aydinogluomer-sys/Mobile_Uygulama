@@ -42,6 +42,10 @@ export default function HabitOnboarding({
   initialData,
 }: HabitOnboardingProps) {
   const [step, setStep] = useState(1);
+  const [categories, setCategories] = useState(INITIAL_CATEGORIES);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryColor, setNewCategoryColor] = useState('#6366f1');
   const [habitData, setHabitData] = useState({
     name: initialData?.name || '',
     description: initialData?.description || '',
@@ -51,6 +55,23 @@ export default function HabitOnboarding({
     difficulty: initialData?.difficulty || 3,
     priority: initialData?.priority || 'important_not_urgent',
   });
+
+  const handleAddCategory = () => {
+    if (!newCategoryName.trim()) return;
+    
+    const newCategory = {
+      id: newCategoryName.toLowerCase().replace(/\s+/g, '_'),
+      label: newCategoryName,
+      icon: 'star-outline' as any,
+      color: newCategoryColor,
+    };
+    
+    setCategories([...categories, newCategory]);
+    setHabitData({ ...habitData, category: newCategory.id, color: newCategory.color });
+    setShowCategoryModal(false);
+    setNewCategoryName('');
+    setNewCategoryColor('#6366f1');
+  };
 
   const handleSubmit = () => {
     onSubmit(habitData);
