@@ -152,6 +152,46 @@ class BadHabitCreate(BaseModel):
 
 # ==================== HELPER FUNCTIONS ====================
 
+def calculate_focus_score(impact: int, difficulty: int, priority: str) -> float:
+    """
+    Priority Engine: Calculate focus score for habit sequencing
+    Formula: (Impact * 1.5) - (Difficulty * 1.0) + (Priority Bonus)
+    """
+    priority_bonuses = {
+        "urgent_important": 3.0,  # 🔥 Critical
+        "important_not_urgent": 2.0,  # ⭐ High Priority  
+        "urgent_not_important": 1.0,  # ⚡ Quick Win
+        "neither": 0.0  # 📋 Later
+    }
+    
+    base_score = (impact * 1.5) - (difficulty * 1.0)
+    priority_bonus = priority_bonuses.get(priority, 0.0)
+    focus_score = base_score + priority_bonus
+    
+    return round(focus_score, 2)
+
+async def manage_habit_queue(user_id: str = "default"):
+    """
+    Automatically manage habit activation queue
+    Max 3 active habits at a time
+    """
+    # Get all habits sorted by focus score
+    all_habits = await db.habits.find({"is_active": True}).sort("focus_score", -1).to_list(100)
+    
+    active_habits = [h for h in all_habits if h.get("status") == "active"]
+    queued_habits = [h for h in all_habits if h.get("status") == "queued"]
+    
+    # If less than 3 active, activate top queued habits
+    if len(active_habits) < 3 and queued_habits:
+        slots_available = 3 - len(active_habits)
+        habits_to_activate = queued_habits[:slots_available]
+        
+        for habit in habits_to_activate:
+            await db.habits.update_one(
+                {"_id": habit["_id"]},
+                {"$set": {"status": "active", "activated_at": datetime.utcnow()}}
+            )
+
 def calculate_habit_strength(completions_count: int, total_expected: int) -> float:
     """
     Loop-inspired algorithm: Progressive strength score
