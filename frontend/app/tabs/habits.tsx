@@ -253,10 +253,10 @@ export default function HabitsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Willpower Status */}
       {queueStatus && (
-        <View style={styles.statusBar}>
+        <View style={[styles.statusBar, { backgroundColor: getWillpowerColor(queueStatus.willpower_load) + '20' }]}>
           <View style={styles.statusLeft}>
-            <Ionicons name="flash" size={20} color="#f59e0b" />
-            <Text style={styles.statusText}>
+            <Ionicons name="flash" size={20} color={getWillpowerColor(queueStatus.willpower_load)} />
+            <Text style={[styles.statusText, { color: getWillpowerColor(queueStatus.willpower_load) }]}>
               İrade Yükü: {queueStatus.willpower_load}/15
             </Text>
           </View>
