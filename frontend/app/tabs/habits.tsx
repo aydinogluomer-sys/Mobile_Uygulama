@@ -345,6 +345,16 @@ export default function HabitsScreen() {
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
+      {/* XP Animation */}
+      {xpAnimation?.show && (
+        <Animatable.View animation="fadeInUp" style={styles.xpAnimationContainer}>
+          <Text style={styles.xpAnimationText}>+{xpAnimation.xp} XP</Text>
+          {xpAnimation.levelUp && (
+            <Text style={styles.levelUpText}>🎉 LEVEL UP!</Text>
+          )}
+        </Animatable.View>
+      )}
+
       {/* Onboarding Modal */}
       <HabitOnboarding
         visible={showOnboarding}
