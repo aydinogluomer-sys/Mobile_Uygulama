@@ -180,6 +180,17 @@ class Achievement(BaseModel):
     requirement_value: int
     unlocked: bool = False
 
+class ChatMessage(BaseModel):
+    id: Optional[str] = Field(default=None, alias="_id")
+    user_id: str = "default"
+    message: str
+    response: str
+    context: dict  # user habits, willpower load, etc.
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+
 # ==================== HELPER FUNCTIONS ====================
 
 def calculate_xp_reward(focus_score: float, streak: int) -> int:
