@@ -33,6 +33,7 @@ export default function HabitsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [queueStatus, setQueueStatus] = useState<any>(null);
+  const [xpAnimation, setXPAnimation] = useState<{show: boolean, xp: number, levelUp: boolean} | null>(null);
 
   useEffect(() => {
     loadHabits();
