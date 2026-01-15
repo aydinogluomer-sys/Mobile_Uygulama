@@ -148,6 +148,19 @@ export const statsAPI = {
   },
 };
 
+// ==================== USER PROFILE & GAMIFICATION ====================
+export const profileAPI = {
+  getProfile: async (): Promise<any> => {
+    const response = await api.get('/user/profile');
+    return response.data;
+  },
+  
+  getAchievements: async (): Promise<any[]> => {
+    const response = await api.get('/achievements');
+    return response.data;
+  },
+};
+
 // ==================== EXPORT ====================
 export const exportAPI = {
   exportAll: async (): Promise<any> => {
