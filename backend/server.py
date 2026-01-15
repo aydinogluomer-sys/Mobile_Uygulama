@@ -566,13 +566,64 @@ async def create_completion(completion: CompletionCreate):
         }}
     )
     
+    # Calculate XP reward
+    xp_earned = calculate_xp_reward(habit.get("focus_score", 3.0), new_streak)
+    
+    # Update user profile with XP
+    profile = await get_or_create_user_profile()
+    new_total_xp = profile.get("total_xp", 0) + xp_earned
+    new_total_completions = profile.get("total_completions", 0) + 1
+    new_streak_record = max(profile.get("streak_record", 0), new_streak)
+    
+    # Calculate new level
+    level_info = calculate_level_from_xp(new_total_xp)
+    old_level = profile.get("level", 1)
+    new_level = level_info["level"]
+    level_up = new_level > old_level
+    
+    # Check achievements
+    habits_list = await db.habits.find({"is_active": True}).to_list(100)
+    completions_list = await db.completions.find().to_list(1000)
+    new_achievements = check_achievements(
+        {**profile, "total_completions": new_total_completions, "streak_record": new_streak_record, "level": new_level},
+        habits_list,
+        completions_list
+    )
+    
+    updated_achievements = list(set(profile.get("achievements", []) + new_achievements))
+    
+    await db.user_profiles.update_one(
+        {"user_id": "default"},
+        {"$set": {
+            "total_xp": new_total_xp,
+            "level": new_level,
+            "current_level_xp": level_info["current_level_xp"],
+            "next_level_xp": level_info["next_level_xp"],
+            "willpower_rank": get_willpower_rank(new_level),
+            "total_completions": new_total_completions,
+            "streak_record": new_streak_record,
+            "achievements": updated_achievements,
+            "updated_at": datetime.utcnow()
+        }},
+        upsert=True
+    )
+    
     # Trigger webhooks
     await trigger_webhooks("habit_completed", {
         "habit_id": completion.habit_id,
         "habit_name": habit["name"],
         "strength_score": new_strength,
-        "streak": new_streak
+        "streak": new_streak,
+        "xp_earned": xp_earned,
+        "level": new_level,
+        "level_up": level_up
     })
+    
+    # Return with gamification data
+    completion_dict["xp_earned"] = xp_earned
+    completion_dict["level_up"] = level_up
+    completion_dict["new_level"] = new_level
+    completion_dict["new_achievements"] = new_achievements
     
     return Completion(**completion_dict)
 
