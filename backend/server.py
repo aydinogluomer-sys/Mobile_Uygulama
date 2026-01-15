@@ -181,6 +181,118 @@ class Achievement(BaseModel):
 
 # ==================== HELPER FUNCTIONS ====================
 
+def calculate_xp_reward(focus_score: float, streak: int) -> int:
+    """
+    XP Formula: (Focus Score * 10) + Streak Bonus
+    Streak Bonus: Every 7 days = +50 XP
+    """
+    base_xp = int(focus_score * 10)
+    streak_bonus = (streak // 7) * 50  # Every week of streak = +50 XP
+    total_xp = base_xp + streak_bonus
+    return max(10, total_xp)  # Minimum 10 XP
+
+def calculate_level_from_xp(total_xp: int) -> dict:
+    """
+    Logarithmic level progression
+    Level 1: 0-100 XP
+    Level 2: 100-250 XP
+    Level 3: 250-450 XP
+    Formula: XP_needed = 100 * (level ^ 1.5)
+    """
+    level = 1
+    xp_for_next = 100
+    cumulative_xp = 0
+    
+    while total_xp >= cumulative_xp + xp_for_next:
+        cumulative_xp += xp_for_next
+        level += 1
+        xp_for_next = int(100 * (level ** 1.5))
+    
+    current_level_xp = total_xp - cumulative_xp
+    next_level_xp = xp_for_next
+    
+    return {
+        "level": level,
+        "current_level_xp": current_level_xp,
+        "next_level_xp": next_level_xp,
+        "progress_percent": round((current_level_xp / next_level_xp) * 100, 1)
+    }
+
+def get_willpower_rank(level: int) -> str:
+    """
+    Determine rank based on level
+    """
+    if level >= 50:
+        return "Efsane"  # Legend
+    elif level >= 30:
+        return "Master"
+    elif level >= 15:
+        return "Uzman"  # Expert
+    elif level >= 5:
+        return "Disiplinli"  # Disciplined
+    else:
+        return "Acemi"  # Beginner
+
+def check_achievements(profile: dict, habits: list, completions: list) -> List[str]:
+    """
+    Check and unlock achievements
+    """
+    unlocked = []
+    
+    achievements_list = [
+        {"id": "first_habit", "name": "İlk Adım", "type": "completions", "value": 1},
+        {"id": "week_streak", "name": "Haftalık Zincir", "type": "streak", "value": 7},
+        {"id": "focus_master", "name": "Kritik Odakçı", "type": "focus_score", "value": 7},
+        {"id": "hundred_completions", "name": "Yüzlük", "type": "completions", "value": 100},
+        {"id": "level_10", "name": "Disiplin Ustası", "type": "level", "value": 10},
+        {"id": "three_active", "name": "Çoklu Görev", "type": "active_habits", "value": 3},
+    ]
+    
+    for ach in achievements_list:
+        if ach["id"] in profile.get("achievements", []):
+            continue  # Already unlocked
+        
+        if ach["type"] == "completions" and profile.get("total_completions", 0) >= ach["value"]:
+            unlocked.append(ach["id"])
+        elif ach["type"] == "streak" and profile.get("streak_record", 0) >= ach["value"]:
+            unlocked.append(ach["id"])
+        elif ach["type"] == "level" and profile.get("level", 1) >= ach["value"]:
+            unlocked.append(ach["id"])
+        elif ach["type"] == "focus_score":
+            high_focus_habits = [h for h in habits if h.get("focus_score", 0) >= ach["value"]]
+            if len(high_focus_habits) >= 1:
+                unlocked.append(ach["id"])
+        elif ach["type"] == "active_habits":
+            active_habits = [h for h in habits if h.get("status") == "active"]
+            if len(active_habits) >= ach["value"]:
+                unlocked.append(ach["id"])
+    
+    return unlocked
+
+async def get_or_create_user_profile(user_id: str = "default") -> dict:
+    """
+    Get user profile or create if not exists
+    """
+    profile = await db.user_profiles.find_one({"user_id": user_id})
+    
+    if not profile:
+        profile = {
+            "user_id": user_id,
+            "level": 1,
+            "total_xp": 0,
+            "current_level_xp": 0,
+            "next_level_xp": 100,
+            "willpower_rank": "Acemi",
+            "achievements": [],
+            "streak_record": 0,
+            "total_completions": 0,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
+        await db.user_profiles.insert_one(profile)
+    
+    return profile
+
 def calculate_focus_score(impact: int, difficulty: int, priority: str) -> float:
     """
     Priority Engine: Calculate focus score for habit sequencing
