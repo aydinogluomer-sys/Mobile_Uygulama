@@ -12,10 +12,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Animatable from 'react-native-animatable';
 import { useStore } from '../../store/useStore';
 import { habitAPI, completionAPI } from '../../utils/api';
 import { Habit } from '../../types';
 import HabitOnboarding from '../../components/HabitOnboarding';
+import XPDisplay from '../../components/XPDisplay';
 
 const CATEGORIES = [
   { id: 'health', label: 'Sağlık', icon: 'fitness-outline', color: '#10b981' },
