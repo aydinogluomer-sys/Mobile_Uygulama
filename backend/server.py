@@ -921,6 +921,63 @@ async def get_stats():
         "today_completions": today_completions
     }
 
+# ==================== USER PROFILE & GAMIFICATION ====================
+
+@api_router.get("/user/profile")
+async def get_user_profile(user_id: str = "default"):
+    """
+    Get user profile with XP, level, rank, and achievements
+    """
+    profile = await get_or_create_user_profile(user_id)
+    
+    # Calculate level info
+    level_info = calculate_level_from_xp(profile.get("total_xp", 0))
+    
+    # Update profile with calculated values
+    await db.user_profiles.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "level": level_info["level"],
+            "current_level_xp": level_info["current_level_xp"],
+            "next_level_xp": level_info["next_level_xp"],
+            "willpower_rank": get_willpower_rank(level_info["level"]),
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    profile["level"] = level_info["level"]
+    profile["current_level_xp"] = level_info["current_level_xp"]
+    profile["next_level_xp"] = level_info["next_level_xp"]
+    profile["progress_percent"] = level_info["progress_percent"]
+    profile["willpower_rank"] = get_willpower_rank(level_info["level"])
+    
+    return serialize_doc(profile)
+
+@api_router.get("/achievements")
+async def get_achievements(user_id: str = "default"):
+    """
+    Get all achievements with unlock status
+    """
+    profile = await get_or_create_user_profile(user_id)
+    habits = await db.habits.find({"is_active": True}).to_list(100)
+    completions = await db.completions.find().to_list(1000)
+    
+    achievements_list = [
+        {"id": "first_habit", "name": "İlk Adım", "description": "İlk alışkanlığını tamamla", "icon": "✓", "requirement": "1 tamamlama"},
+        {"id": "week_streak", "name": "Haftalık Zincir", "description": "7 gün üst üste devam et", "icon": "🔥", "requirement": "7 günlük seri"},
+        {"id": "focus_master", "name": "Kritik Odakçı", "description": "Yüksek odaklı alışkanlık oluştur", "icon": "🎯", "requirement": "Focus Score ≥ 7"},
+        {"id": "hundred_completions", "name": "Yüzlük", "description": "100 tamamlama yap", "icon": "💯", "requirement": "100 tamamlama"},
+        {"id": "level_10", "name": "Disiplin Ustası", "description": "10. seviyeye ulaş", "icon": "👑", "requirement": "Level 10"},
+        {"id": "three_active", "name": "Çoklu Görev", "description": "3 alışkanlığı aynı anda yönet", "icon": "⚡", "requirement": "3 aktif alışkanlık"},
+    ]
+    
+    unlocked_ids = profile.get("achievements", [])
+    
+    for ach in achievements_list:
+        ach["unlocked"] = ach["id"] in unlocked_ids
+    
+    return achievements_list
+
 # Include the router in the main app
 app.include_router(api_router)
 
