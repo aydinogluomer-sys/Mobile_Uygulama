@@ -153,6 +153,32 @@ class BadHabitCreate(BaseModel):
     cost_per_day: float = 0.0
     time_wasted_per_day: int = 0
 
+class UserProfile(BaseModel):
+    id: Optional[str] = Field(default=None, alias="_id")
+    user_id: str = "default"  # For multi-user support later
+    level: int = 1
+    total_xp: int = 0
+    current_level_xp: int = 0
+    next_level_xp: int = 100
+    willpower_rank: str = "Acemi"  # Acemi, Disiplinli, Uzman, Master, Efsane
+    achievements: List[str] = []  # List of achievement IDs
+    streak_record: int = 0
+    total_completions: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        populate_by_name = True
+
+class Achievement(BaseModel):
+    id: str
+    name: str
+    description: str
+    icon: str
+    requirement_type: str  # streak, completions, focus_score, level
+    requirement_value: int
+    unlocked: bool = False
+
 # ==================== HELPER FUNCTIONS ====================
 
 def calculate_focus_score(impact: int, difficulty: int, priority: str) -> float:
