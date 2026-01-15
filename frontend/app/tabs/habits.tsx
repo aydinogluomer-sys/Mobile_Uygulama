@@ -64,7 +64,41 @@ export default function HabitsScreen() {
   const handleComplete = async (habit: Habit) => {
     try {
       if (!habit._id) return;
-      await completionAPI.create({ habit_id: habit._id });
+      const result: any = await completionAPI.create({ habit_id: habit._id });
+      
+      // Show XP animation
+      if (result.xp_earned) {
+        setXPAnimation({
+          show: true,
+          xp: result.xp_earned,
+          levelUp: result.level_up || false
+        });
+        
+        setTimeout(() => setXPAnimation(null), 3000);
+      }
+      
+      // Show level up alert
+      if (result.level_up) {
+        setTimeout(() => {
+          Alert.alert(
+            '🎉 Seviye Atladın!',
+            `Tebrikler! Artık Seviye ${result.new_level} oldun!`,
+            [{ text: 'Harika!' }]
+          );
+        }, 1500);
+      }
+      
+      // Show new achievements
+      if (result.new_achievements && result.new_achievements.length > 0) {
+        setTimeout(() => {
+          Alert.alert(
+            '🏆 Yeni Rozet!',
+            `${result.new_achievements.length} yeni rozet kazandın!`,
+            [{ text: 'Gör', onPress: () => {/* Navigate to achievements */ }}]
+          );
+        }, result.level_up ? 3000 : 1500);
+      }
+      
       await loadHabits();
       
       // Check if habit reached 80%
