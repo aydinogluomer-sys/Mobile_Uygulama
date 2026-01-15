@@ -75,3 +75,26 @@ export interface Stats {
   total_completions: number;
   today_completions: number;
 }
+
+export interface UserProfile {
+  _id?: string;
+  user_id: string;
+  level: number;
+  total_xp: number;
+  current_level_xp: number;
+  next_level_xp: number;
+  progress_percent: number;
+  willpower_rank: string;
+  achievements: string[];
+  streak_record: number;
+  total_completions: number;
+}
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  requirement: string;
+  unlocked: boolean;
+}
