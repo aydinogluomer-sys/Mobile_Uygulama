@@ -288,6 +288,9 @@ export default function HabitsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* XP Display */}
+      <XPDisplay />
+
       {/* Willpower Status */}
       {queueStatus && (
         <View style={[styles.statusBar, { backgroundColor: getWillpowerColor(queueStatus.willpower_load) + '20' }]}>
