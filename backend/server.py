@@ -55,9 +55,10 @@ class Habit(BaseModel):
     impact: int = 3  # 1-5: Life-changing impact
     difficulty: int = 3  # 1-5: Willpower requirement
     priority: str = "important_not_urgent"  # eisenhower matrix
-    status: str = "queued"  # active, queued, paused
+    status: str = "queued"  # active, queued, paused, mastered
     focus_score: float = 0.0  # Calculated priority score
     activated_at: Optional[datetime] = None
+    mastered_at: Optional[datetime] = None  # When reached 80%+
 
     class Config:
         populate_by_name = True
