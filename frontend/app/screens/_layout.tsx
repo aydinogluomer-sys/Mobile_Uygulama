@@ -35,8 +35,11 @@ export default function ScreensLayout() {
       <Stack.Screen name="projects" options={{ title: 'Projeler' }} />
       <Stack.Screen name="notes" options={{ title: 'Notlar' }} />
       <Stack.Screen name="journal" options={{ title: 'Journal' }} />
+      <Stack.Screen name="journal-archive" options={{ title: 'Günlük Arşivi' }} />
+      <Stack.Screen name="journal-reader" options={{ title: 'Defter' }} />
+      <Stack.Screen name="journal-insights" options={{ title: 'AI İçgörüleri' }} />
       <Stack.Screen name="weekly-review" options={{ title: 'Haftalık Rapor' }} />
-      <Stack.Screen name="monthly-review" options={{ title: 'Aylık Özet', ...seasonalHeader }} />
+      <Stack.Screen name="monthly-review" options={{ title: 'Aylık Rapor' }} />
       <Stack.Screen name="reading-list" options={{ title: 'Okuma Listesi' }} />
       <Stack.Screen name="integrations" options={{ title: 'Entegrasyonlar' }} />
       <Stack.Screen name="eisenhower" options={{ title: 'Eisenhower Matrisi' }} />
@@ -48,6 +51,8 @@ export default function ScreensLayout() {
       <Stack.Screen name="paywall" options={{ title: 'Üyelik & Krediler' }} />
       <Stack.Screen name="credit-history" options={{ title: 'Kredi Geçmişi' }} />
       <Stack.Screen name="okr" options={{ title: 'OKR' }} />
+      <Stack.Screen name="leaderboard" options={{ title: 'Sıralama' }} />
+      <Stack.Screen name="profile" options={{ title: 'Profilim' }} />
     </Stack>
   );
 }
