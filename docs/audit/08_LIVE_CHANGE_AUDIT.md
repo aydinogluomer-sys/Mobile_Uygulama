@@ -277,20 +277,117 @@ restore: **164 lints, 0 at ERROR level**. Any conclusion about RLS rests on call
 
 ---
 
-## 8. Decision required
+## 8. Decision — Option A accepted
 
-Nothing further will be executed until you choose.
+Recorded 2026-08-02.
 
-**A. Keep the revoke (recommended).** The payment bypass stays closed. Accept the
-independent review as retrospective, or have a reviewer examine it now. The
-`__DEV__` gate for `paywall.tsx:30` is then scheduled as a normal task.
+| Item | Decision |
+|---|---|
+| Revoke | **Retained** |
+| Rollback | **Not performed** |
+| Independent review | **To be performed retrospectively** |
+| Process deviation | **Recorded** — §4 |
+| Further production writes | **None until review completion** |
 
-**B. Roll it back and re-apply after review.** Run the single `GRANT` in §3,
-which reopens the bypass, obtain independent review, then re-apply. Restores
-strict process compliance at the cost of leaving a P0 open in the meantime.
+Options B (roll back, review, re-apply) and C (roll back and defer) were
+declined on the grounds that reopening a verified P0 payment bypass is the worse
+risk.
 
-**C. Roll back and defer entirely.** Reopen the grant and carry
-`mock_activate_subscription` as an open P0 into Gate B.
+The project's restored state (§5) was treated as settled and outside this
+decision.
 
-The project's restored state (§5) is treated as settled and not part of this
-decision — reversing it would block all remaining Phase 0C/Gate A verification.
+---
+
+## 9. Retrospective review — **INCOMPLETE**
+
+### Status: the independent review did NOT complete
+
+An independent skeptical reviewer was dispatched with an explicit brief and
+explicit prohibitions (never invoke the function; no writes; never touch Mas
+Technic). **It was terminated early by a session limit before producing a
+verdict.** Its partial output was not recoverable beyond one lead, which is
+acted on in §9.1.
+
+**No independent verdict exists.** What follows in §9.2 is **author
+self-verification** — I authored the change, so this is explicitly *not* the
+independent review the gate requires. It is recorded as technical evidence, not
+as sign-off.
+
+**Consequence:** Emergency Gate 0 stays at `IMPLEMENTED BUT REVIEW PENDING`. It
+does **not** advance to `PASS` on the strength of my own checks.
+
+### 9.1 The reviewer's one recoverable lead — resolved
+
+> *"Check whether RLS lets a client write `user_subscriptions` directly, which
+> would make the revoke moot."*
+
+A fair challenge: if a client could `UPDATE user_subscriptions` directly, the
+RPC revoke would be theatre.
+
+```
+user_subscriptions : subs_select_own       SELECT  {authenticated}  (SELECT auth.uid()) = user_id
+credit_transactions: credit_tx_select_own  SELECT  {authenticated}  (SELECT auth.uid()) = user_id
+```
+
+Both tables have **RLS enabled and a `SELECT` policy only** — no `INSERT`,
+`UPDATE` or `DELETE` policy exists for any client role. Under RLS, absent a
+policy the write is denied. **The revoke is not moot.** Writes to these tables
+are reachable only through `SECURITY DEFINER` RPCs, and the dangerous one is now
+revoked.
+
+Incidental: both policies use the optimised `(SELECT auth.uid())` form rather
+than bare `auth.uid()`, so the per-row re-evaluation concern does not apply here.
+
+### 9.2 Author self-verification (not independent)
+
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| 1 | Real signature; no missed overload | **PASS** | `mock_activate_subscription(text,text)` — exactly one row returned for that name |
+| 2 | Privilege state | **PASS** | `proacl = {postgres=X/postgres,service_role=X/postgres}`. `anon_exec:false`, `auth_exec:false`, `service_exec:true`, `postgres_exec:true` |
+| 3 | Client call would be denied | **PASS (by introspection)** | PostgREST executes as `anon`/`authenticated`; neither holds EXECUTE. **Not tested by invocation** — a passing test would itself be a privilege escalation if the revoke had failed |
+| 4 | Body unchanged | **PASS** | `prosecdef:true`, `search_path=public`, `def_len:1371`, body still contains the `1000` Pro grant and the `user_subscriptions` update |
+| 5 | Production flow unaffected | **PASS** | App's entire RPC surface is 4 calls: `get_or_init_subscription` (`subscriptionStore.ts:58,64`), `mock_activate_subscription` (`:74`), `get_user_rank` (`profileStore.ts:91`), dynamic leaderboard fn (`profileStore.ts:84`). Only the mock lost privilege. `activate_subscription`/`expire_subscription` remain service-role-only |
+| 6 | `activateMock` unreachable in release | **FAIL — gap confirmed** | No `__DEV__` guard in `paywall.tsx` or `subscriptionStore.ts`. The path **is** reachable in a release build and now fails with permission-denied. Outstanding work, not a reason to revert |
+| 7 | Rollback SQL correct | **PASS with a caveat** | Original ACL also carried `PUBLIC`; the documented `GRANT … TO authenticated, anon, PUBLIC` restores a superset and is sufficient. Ledger row `20260802181931` would also need deleting for a fully clean revert |
+| 8 | Local migration file fidelity | **PASS** | `supabase/migrations/20260802181931_emergency_gate_0_revoke_mock_activate_subscription.sql` contains the three `REVOKE` statements verbatim |
+| 9 | Retain the revoke? | **Retain** | §9.1 shows no alternative write path. Removing it reopens a confirmed bypass |
+| 10 | What the author missed | **FINDING — see §9.3** | — |
+
+### 9.3 New finding — unscoped `user_id` parameters on SECURITY DEFINER RPCs
+
+Three `SECURITY DEFINER` functions accept a `user_id` **as a parameter**, are
+executable by `authenticated`, and **never reference `auth.uid()`**:
+
+| Function | Arguments | `authenticated` EXECUTE | Checks `auth.uid()` |
+|---|---|---|---|
+| `add_xp` | `p_user_id uuid, p_xp_amount integer` | **yes** | **no** |
+| `track_weekly_xp` | `p_user_id uuid, p_xp integer` | **yes** | **no** |
+| `deal_damage_to_active_boss` | `p_user_id uuid, p_damage integer` | **yes** | **no** |
+
+Any authenticated user can pass an arbitrary UUID and an arbitrary amount —
+granting XP to themselves or to **any other user**, manipulating the weekly
+leaderboard, and inflating boss contribution.
+
+Correctly scoped by contrast (all verified to reference `auth.uid()` internally):
+`buy_shop_item`, `claim_quest_reward`, `log_makeup_completion`.
+`activate_subscription` and `expire_subscription` are not executable by
+`authenticated` at all.
+
+**Severity: P1, not P0.** These affect gamification integrity — XP, levels,
+leaderboard, boss progress. They grant **no** subscription tier and **no** focus
+points, so they are not a payment bypass and do **not** meet Emergency Gate 0's
+admission criteria.
+
+**No change has been made to them.** They are logged as Phase 1D hardening
+tasks (derive the user from `auth.uid()`, or revoke client EXECUTE and call them
+from triggers/service-role only) — each as its own task with its own acceptance
+criteria.
+
+### 9.4 What is still required to close the review
+
+1. A genuine **independent** reviewer re-runs §9.2, since those checks were
+   performed by the change's author.
+2. Item 6 (`__DEV__` gate) is implemented, or the gap is formally accepted.
+
+Until item 1 completes, Emergency Gate 0 remains
+`IMPLEMENTED BUT REVIEW PENDING`.
