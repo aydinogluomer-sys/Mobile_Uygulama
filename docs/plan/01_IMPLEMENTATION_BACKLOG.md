@@ -5,6 +5,61 @@
 
 ---
 
+## Emergency Gate 0 status of SEC-1D-001..003
+
+Client `EXECUTE` on all three functions was revoked in migration
+**`20260802205850_emergency_gate_0_revoke_client_exec_xp_functions`** after an
+independent pre-change review returned PASS WITH FINDINGS.
+
+Post-change ACL for all three: `{postgres=X/postgres,service_role=X/postgres}` —
+`anon` and `authenticated` both `false`. **Function bodies were not touched.**
+
+**What that closed:** unauthenticated and cross-user invocation.
+**What it did NOT close — do not report otherwise:**
+
+> The `profiles` UPDATE policy is `USING (id = auth.uid())` with
+> **`with_check = NULL`**. An authenticated user can `PATCH
+> /rest/v1/profiles?id=eq.<self>` and set `total_xp`, `level`, `coins` and
+> `willpower_rank` to any value, with no function call involved. **Self-inflation
+> remains fully open.** Tracked as SEC-1D-005.
+
+The tasks below therefore remain open: the revoke is a containment measure, not
+the fix.
+
+---
+
+## SEC-1D-005 · Close self-inflation via the `profiles` UPDATE policy
+
+| | |
+|---|---|
+| Priority | **P1** |
+| MUST/SHOULD | MUST |
+| Phase | 1D |
+| Agent | Supabase & Security |
+| Size | S |
+
+Found by independent review while verifying the Emergency Gate 0 revoke.
+
+`profiles` policy `"Users can update own profile"`: `UPDATE … USING (id = auth.uid())`
+with `with_check = NULL`. `USING` gates *which rows* may be updated; without a
+`WITH CHECK` there is no constraint on *what the new row may contain*. A user can
+therefore rewrite their own gamification columns directly over PostgREST.
+
+**Proposed fix:** add `WITH CHECK (id = auth.uid())` and, separately, prevent
+clients from writing gamification-owned columns at all — either a column-level
+`REVOKE UPDATE (total_xp, level, coins, willpower_rank, current_level_xp)` from
+`anon, authenticated`, or move those columns to a table with no client write path.
+
+**Test (Layer 2):** authenticated PATCH of own `total_xp` → rejected; PATCH of own
+`display_name` → still succeeds; trigger-driven XP award → still succeeds.
+
+**Rollback:** drop the `WITH CHECK` / restore the column grants.
+
+**Acceptance:** a user cannot alter their own XP, level or coins by any direct
+table write; legitimate profile edits still work.
+
+---
+
 ## SEC-1D-001 · Constrain `add_xp` to the calling user
 
 | | |
@@ -64,18 +119,28 @@ END IF;
 
 ### Can the `user_id` parameter be removed?
 
-**No — not safely.** `add_xp` is called by five `SECURITY DEFINER` trigger
-functions: `fn_habit_log_award`, `trigger_damage_on_habit_log`,
-`process_habit_xp`, `trigger_xp_habit_completion`, `trigger_xp_task_completion`.
-Inside a trigger, `auth.uid()` is available but the row's owner is the correct
-subject, so the parameter must stay for those paths.
+**No — not safely.** Inside a trigger the row's owner is the correct subject, so
+the parameter must stay for those paths.
 
-**Verified refinement of the reviewer's caution:** all five callers are
-`prosecdef = true`, so they execute as the function owner (`postgres`), which
-retains EXECUTE. Revoking client EXECUTE would therefore **not** break the
-trigger pipeline. A revoke is a viable belt-and-braces addition *on top of* the
-guard — but the guard must land first, because the guard alone is sufficient and
-a revoke alone would leave trigger paths unguarded against a future caller.
+**Caller inventory — corrected by independent pre-change review.** An earlier
+draft of this task claimed "five `SECURITY DEFINER` trigger functions". That was
+stale: five functions *reference* `add_xp`, but **only two are attached to a
+trigger**.
+
+| Caller | `SECURITY DEFINER` | Owner | Attached to a trigger? |
+|---|---|---|---|
+| `fn_habit_log_award` | yes | postgres | **yes** — `habit_logs.trg_habit_log_award` |
+| `trigger_damage_on_habit_log` | yes | postgres | **yes** — `habit_logs.on_habit_completed_damage_boss` |
+| `process_habit_xp` | yes | postgres | **no — orphaned** |
+| `trigger_xp_habit_completion` | yes | postgres | **no — orphaned** |
+| `trigger_xp_task_completion` | yes | postgres | **no — orphaned** |
+
+**Task-completion XP is not a database pipeline at all** — there is no trigger on
+any tasks table. Anyone reading the schema would reasonably assume otherwise. A
+later phase must not "repair" a pipeline that was never wired.
+
+Because both live callers are `SECURITY DEFINER` owned by `postgres`, the client
+EXECUTE revoke applied in migration `20260802205850` did **not** break them.
 
 ### Migration
 
@@ -210,6 +275,16 @@ Three changes, all required:
 1. Ownership guard (as SEC-1D-001).
 2. **Bound `p_damage`** — clamp to a per-call maximum derived from game rules, and reject non-positive values.
 3. Pin `SET search_path = public`.
+
+### Additional case found by independent review — negative damage
+
+`p_damage` is not only unbounded upward. A **negative** value evaluates
+`v_new_hp := current_hp - (-N)`, which **heals the boss**, and writes a negative
+`total_damage` into `boss_contributors`, corrupting the contribution
+leaderboard. The positivity check is therefore not optional polish — it is a
+second distinct defect. The real signature is
+`deal_damage_to_active_boss(p_user_id uuid, p_damage integer DEFAULT 10)`; the
+`DEFAULT` is not part of the identity argument list.
 
 ### Can the `user_id` parameter be removed?
 

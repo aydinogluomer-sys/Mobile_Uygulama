@@ -1,0 +1,46 @@
+-- Emergency Gate 0 - P0 unauthenticated cross-user write.
+--
+-- add_xp, track_weekly_xp and deal_damage_to_active_boss are SECURITY DEFINER
+-- owned by postgres (rolbypassrls=true), accept a caller-supplied p_user_id,
+-- and contain no auth.uid() check. EXECUTE was reachable by PUBLIC (hence anon),
+-- and the anon key ships inside the mobile bundle. An unauthenticated caller
+-- could rewrite ANY user's total_xp/level/willpower_rank, write arbitrary
+-- weekly_xp leaderboard rows, and end the global boss event (p_damage is
+-- unbounded and also accepts negatives, which heals the boss and corrupts
+-- boss_contributors).
+--
+-- This migration removes CLIENT EXECUTE ONLY. Function bodies are unchanged.
+-- Body hardening (auth.uid() guard, damage bounds, idempotency, rate limiting,
+-- audit log) is tracked separately as SEC-1D-001..003 and is NOT done here.
+--
+-- Verified safe by independent pre-change review:
+--   * exactly one overload each; identity args are (uuid, integer) for all three
+--   * no frontend .rpc() call and no edge function invokes any of them
+--   * the only attached callers are triggers on habit_logs
+--     (trg_habit_log_award -> fn_habit_log_award,
+--      on_habit_completed_damage_boss -> trigger_damage_on_habit_log),
+--     both SECURITY DEFINER owned by postgres, which retains EXECUTE
+--   * therefore the habit XP / weekly XP / boss damage pipeline is unaffected
+--
+-- NOTE: anon holds no explicit grant on add_xp or deal_damage_to_active_boss
+-- (its access is via PUBLIC), so "no privileges could be revoked for anon"
+-- warnings are expected and are not failures.
+--
+-- PRE-CHANGE ACLs, captured verbatim:
+--   add_xp                     {=X/postgres,postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+--   deal_damage_to_active_boss {=X/postgres,postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+--   track_weekly_xp            {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+--
+-- EXACT ROLLBACK (restores the ACLs above precisely - note add_xp and
+-- deal_damage_to_active_boss must NOT be granted to anon explicitly):
+--   GRANT EXECUTE ON FUNCTION public.add_xp(uuid, integer) TO PUBLIC, authenticated;
+--   GRANT EXECUTE ON FUNCTION public.deal_damage_to_active_boss(uuid, integer) TO PUBLIC, authenticated;
+--   GRANT EXECUTE ON FUNCTION public.track_weekly_xp(uuid, integer) TO PUBLIC, anon, authenticated;
+--
+-- SCOPE LIMIT: this does NOT close self-inflation. The profiles UPDATE policy
+-- uses USING (id = auth.uid()) with with_check = NULL, so an authenticated user
+-- can PATCH their own total_xp/level/coins directly. Tracked separately.
+
+REVOKE EXECUTE ON FUNCTION public.add_xp(uuid, integer) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.track_weekly_xp(uuid, integer) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.deal_damage_to_active_boss(uuid, integer) FROM PUBLIC, anon, authenticated;
