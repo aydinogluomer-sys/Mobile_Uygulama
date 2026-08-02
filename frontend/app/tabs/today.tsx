@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -40,6 +40,9 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 export default function TodayScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const pagePadding = width < 480 ? space.lg : width < 900 ? space.xl : space.h;
+  const isWide = width >= 1180;
   const today = new Date().toISOString().split('T')[0];
   const now = new Date();
 
@@ -62,11 +65,11 @@ export default function TodayScreen() {
   const overdueList = overdue();
   const pendingTasks = tasks.filter((t) => !t.completed && t.status === 'pending').slice(0, 5);
 
-  async function load() {
+  const load = useCallback(async () => {
     await Promise.all([fetchHabits(), fetchLogsForDate(today), fetchTasks(), fetchToday(), fetchPlans()]);
-  }
+  }, [fetchHabits, fetchLogsForDate, fetchPlans, fetchTasks, fetchToday, today]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   async function onRefresh() {
     setRefreshing(true);
@@ -93,28 +96,28 @@ export default function TodayScreen() {
     {
       eyebrow: 'Açık görev',
       value: String(todayTasks.length + overdueList.length),
-      sub: `${overdueList.length} gecikmiş · ${todayTasks.length} bugün`,
+      sub: overdueList.length > 0 ? `${overdueList.length} gecikmiş · ${todayTasks.length} bugün` : `${todayTasks.length} görev bugün`,
       tone: overdueList.length > 0 ? 'bad' : 'mute',
       onPress: () => router.push('/tabs/tasks' as any),
     },
     {
       eyebrow: 'Odak · bugün',
       value: sessionsCompleted > 0 ? String(sessionsCompleted) : '—',
-      sub: sessionsCompleted > 0 ? 'odak seansı tamamlandı' : 'henüz odak oturumu yok',
+      sub: sessionsCompleted > 0 ? 'odak seansı tamamlandı' : 'ilk seansını başlat',
       tone: sessionsCompleted > 0 ? 'accent' : 'mute',
       onPress: () => router.push('/tabs/focus' as any),
     },
     {
       eyebrow: 'Alışkanlık',
       value: `${Math.round(habitPct * 100)}%`,
-      sub: activeHabits.length === 0 ? 'aktif alışkanlık yok' : `${remainingHabits} kaldı`,
+      sub: activeHabits.length === 0 ? 'ilk ritüelini oluştur' : remainingHabits === 0 ? 'günlük seri tamam' : `${remainingHabits} adım kaldı`,
       tone: activeHabits.length > 0 && remainingHabits === 0 ? 'ok' : 'mute',
       onPress: () => router.push('/tabs/timeline' as any),
     },
     {
       eyebrow: 'Telafi',
       value: plannedRecovery > 0 ? String(plannedRecovery) : '—',
-      sub: plannedRecovery > 0 ? 'planlı telafi var' : 'telafi planı yok',
+      sub: plannedRecovery > 0 ? 'planlı telafi var' : 'denge korunuyor',
       tone: plannedRecovery > 0 ? 'warn' : 'mute',
       onPress: () => router.push('/screens/recovery' as any),
     },
@@ -155,13 +158,21 @@ export default function TodayScreen() {
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <ScrollView
         style={s.scroll}
-        contentContainerStyle={s.content}
+        contentContainerStyle={[s.content, { paddingHorizontal: pagePadding }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
-        {/* Günlük hızlı erişim — sağ üst */}
-        <View style={s.topActions}>
-          <TouchableOpacity onPress={() => router.push('/screens/journal' as any)} activeOpacity={0.7}>
+        <View style={s.masthead}>
+          <View>
+            <Text style={s.productLabel}>ATLAS / GÜNLÜK PUSULA</Text>
+            <Text style={s.productHint}>Ritmini gör, sıradaki doğru adımı seç.</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push('/screens/journal' as any)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Günlüğü aç"
+          >
             <IconCircle icon="journal-outline" color={colors.accent} size={40} />
           </TouchableOpacity>
         </View>
@@ -172,149 +183,154 @@ export default function TodayScreen() {
           narrative={narrative}
           ctas={[
             { label: 'Odağa geç', icon: 'timer-outline', variant: 'primary', onPress: () => router.push('/tabs/focus' as any) },
-            { label: 'Haftalık rapor', icon: 'book-outline', variant: 'secondary', onPress: () => router.push('/screens/weekly-review' as any) },
-            { label: 'Aylık rapor', icon: 'calendar-number-outline', variant: 'secondary', onPress: () => router.push('/screens/monthly-review' as any) },
-            { label: 'Telafiye bak', icon: 'moon-outline', variant: 'ghost', onPress: () => router.push('/screens/recovery' as any) },
+            { label: 'Haftayı değerlendir', icon: 'book-outline', variant: 'secondary', onPress: () => router.push('/screens/weekly-review' as any) },
+            { label: 'Denge planı', icon: 'moon-outline', variant: 'ghost', onPress: () => router.push('/screens/recovery' as any) },
           ]}
         />
 
         {/* Sakin metrik ızgarası */}
         <MetricGrid metrics={metrics} />
 
-        {/* Sırada — yaklaşan görev şeridi */}
-        <NextUpStrip items={nextUpItems} onPress={() => router.push('/tabs/tasks' as any)} />
-
-        {/* XP / rütbe özeti → profil */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => router.push('/screens/profile' as any)}
-          style={{ marginTop: space.lg, marginBottom: space.md }}
-        >
-          <XPDisplay />
-        </TouchableOpacity>
-
-        {/* Alışkanlık tamamlama — ring kartı */}
-        <Card padding="lg" style={{ marginBottom: space.md }} onPress={() => router.push('/tabs/timeline' as any)}>
-          <View style={s.ringCard}>
-            <ProgressRing progress={habitPct} size={76} stroke={8} color={colors.success}>
-              <Text style={s.ringPct}>{Math.round(habitPct * 100)}%</Text>
-            </ProgressRing>
-            <View style={{ flex: 1 }}>
-              <Text style={s.ringTitle}>Bugünün Alışkanlıkları</Text>
-              <Text style={s.ringSub}>
-                {activeHabits.length === 0
-                  ? 'Henüz aktif alışkanlık yok'
-                  : `${completedHabits.length}/${activeHabits.length} tamamlandı`}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textGhost} />
-          </View>
-        </Card>
-
-        {/* İrade bandı */}
-        {wp && (
-          <Card padding="lg" style={{ marginTop: space.md }} onPress={() => router.push('/tabs/timeline' as any)}>
-            <View style={s.wpHead}>
-              <Text style={s.wpHeadText}>İrade Puanı</Text>
-              <Text style={s.wpHeadHint}>günlük bütçe</Text>
-            </View>
-            <WillpowerBand wp={wp} />
-          </Card>
-        )}
-
-        {/* Bugünün alışkanlıkları — tamamlanabilir kartlar */}
-        {activeHabits.length > 0 && (
-          <View style={s.section}>
-            <SectionHeader
-              title="BUGÜNÜN ALIŞKANLIKLARI"
-              variant="overline"
-              actionLabel="Tümü →"
-              onAction={() => router.push('/tabs/timeline' as any)}
-            />
-            <View style={{ gap: space.sm }}>
-              {activeHabits.map((h) => {
-                const log = getLogForHabit(h.id);
-                const done = log?.state === 'done' || log?.state === 'partial';
-                const col = h.color ?? colors.primary;
-                return (
-                  <TouchableOpacity
-                    key={h.id}
-                    activeOpacity={0.75}
-                    style={[s.habitRow, done && { borderColor: hexA(colors.success, 0.4), backgroundColor: hexA(colors.success, 0.06) }]}
-                    onPress={() => onHabitTap(h)}
-                  >
-                    <View style={[
-                      s.habitCheck,
-                      { borderColor: done ? colors.success : colors.borderStrong },
-                      done && { backgroundColor: colors.success },
-                    ]}>
-                      {done
-                        ? <Ionicons name="checkmark" size={16} color={colors.white} />
-                        : <Ionicons name={(h.icon ?? 'ellipse-outline') as any} size={15} color={col} />}
-                    </View>
-                    <Text style={[s.habitName, done && s.habitNameDone]} numberOfLines={1}>{h.name}</Text>
-                    {h.tracking_type === 'numeric' && (
-                      <Ionicons name="create-outline" size={16} color={colors.textGhost} />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {/* Yaklaşan görevler */}
-        <View style={s.section}>
-          <SectionHeader
-            title="YAKLAŞAN GÖREVLER"
-            variant="overline"
-            actionLabel="Tümü →"
-            onAction={() => router.push('/tabs/tasks' as any)}
-          />
-          <View style={{ marginBottom: space.sm }}>
-            <InlineComposer
-              placeholder="Bugüne hızlı görev ekle…"
-              onSubmit={async (t) => { await addTask({ title: t, priority: 'none', list_type: 'inbox', due_date: today }); }}
-            />
-          </View>
-          {pendingTasks.length === 0 ? (
-            <Card padding="lg">
-              <EmptyState
-                variant="editorial"
-                icon="checkmark-circle-outline"
-                title="Bugünün açık işi kalmadı."
-                hint="İstersen sıradaki odak bloğunu planla veya haftalık raporu kapat."
-                ctaLabel="Görev Ekle"
-                onCta={() => router.push('/tabs/tasks' as any)}
-                color={colors.success}
-                compact
-              />
-            </Card>
-          ) : (
-            <View style={{ gap: space.sm }}>
-              {pendingTasks.map((t) => (
-                <Card key={t.id} padding="md" onPress={() => { haptic.light(); toggleDone(t.id); }}>
-                  <View style={s.taskRow}>
-                    <View style={[s.taskDot, { borderColor: PRIORITY_COLOR[t.priority] }]} />
-                    <Text style={s.taskTitle} numberOfLines={1}>{t.title}</Text>
-                    {t.due_date && (
-                      <Text style={[s.taskDate, t.due_date < today && { color: colors.error }]}>
-                        {t.due_date === today ? 'Bugün' : t.due_date}
-                      </Text>
-                    )}
-                  </View>
+        <View style={[s.dashboardBody, isWide && s.dashboardBodyWide]}>
+          <View style={s.mainColumn}>
+            <View style={s.mainSection}>
+              <View style={s.sectionIntro}>
+                <View>
+                  <Text style={s.sectionEyebrow}>BUGÜN · {pendingTasks.length}</Text>
+                  <Text style={s.sectionTitle}>Masadakiler</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => router.push('/tabs/tasks' as any)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Tüm görevleri aç"
+                >
+                  <Text style={s.sectionAction}>Tümü →</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ marginBottom: space.sm }}>
+                <InlineComposer
+                  placeholder="Bugün için hızlı bir adım ekle…"
+                  onSubmit={async (t) => { await addTask({ title: t, priority: 'none', list_type: 'inbox', due_date: today }); }}
+                />
+              </View>
+              {pendingTasks.length === 0 ? (
+                <Card padding="lg">
+                  <EmptyState
+                    variant="editorial"
+                    icon="checkmark-circle-outline"
+                    title="Bugünün açık döngüsü kalmadı."
+                    hint="Bir sonraki odak bloğunu planlayabilir veya günü kısa bir notla kapatabilirsin."
+                    ctaLabel="Yeni adım ekle"
+                    onCta={() => router.push('/tabs/tasks' as any)}
+                    color={colors.success}
+                    compact
+                  />
                 </Card>
-              ))}
+              ) : (
+                <View style={{ gap: space.sm }}>
+                  {pendingTasks.map((t) => (
+                    <Card key={t.id} padding="md" onPress={() => { haptic.light(); toggleDone(t.id); }}>
+                      <View style={s.taskRow}>
+                        <View style={[s.taskDot, { borderColor: PRIORITY_COLOR[t.priority] }]} />
+                        <Text style={s.taskTitle} numberOfLines={1}>{t.title}</Text>
+                        {t.due_date && (
+                          <Text style={[s.taskDate, t.due_date < today && { color: colors.error }]}>
+                            {t.due_date === today ? 'Bugün' : t.due_date}
+                          </Text>
+                        )}
+                      </View>
+                    </Card>
+                  ))}
+                </View>
+              )}
             </View>
-          )}
-        </View>
 
-        {/* Telafi rail kartı */}
-        <RecoveryRailCard
-          plans={recoveryPlans}
-          today={today}
-          onOpen={() => router.push('/screens/recovery' as any)}
-        />
+            <NextUpStrip items={nextUpItems} onPress={() => router.push('/tabs/tasks' as any)} />
+          </View>
+
+          <View style={[s.railColumn, isWide && s.railColumnWide]}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => router.push('/screens/profile' as any)}
+              accessibilityRole="button"
+              accessibilityLabel="Profil ve deneyim puanını aç"
+            >
+              <XPDisplay />
+            </TouchableOpacity>
+
+            <Card padding="lg" onPress={() => router.push('/tabs/timeline' as any)}>
+              <View style={s.ringCard}>
+                <ProgressRing progress={habitPct} size={64} stroke={7} color={colors.success}>
+                  <Text style={s.ringPct}>{Math.round(habitPct * 100)}%</Text>
+                </ProgressRing>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.ringTitle}>Bugünün ritüelleri</Text>
+                  <Text style={s.ringSub}>
+                    {activeHabits.length === 0
+                      ? 'Henüz aktif bir ritüel yok'
+                      : remainingHabits === 0 ? 'Günlük seri tamamlandı' : `${completedHabits.length}/${activeHabits.length} tamamlandı`}
+                  </Text>
+                </View>
+              </View>
+            </Card>
+
+            {wp && (
+              <Card padding="lg" onPress={() => router.push('/tabs/timeline' as any)}>
+                <View style={s.wpHead}>
+                  <Text style={s.wpHeadText}>İrade dengesi</Text>
+                  <Text style={s.wpHeadHint}>günlük bütçe</Text>
+                </View>
+                <WillpowerBand wp={wp} />
+              </Card>
+            )}
+
+            {activeHabits.length > 0 && (
+              <Card padding="lg">
+                <SectionHeader
+                  title="RİTÜELLER · BUGÜN"
+                  variant="overline"
+                  actionLabel="Tümü →"
+                  onAction={() => router.push('/tabs/timeline' as any)}
+                />
+                <View style={{ gap: space.sm }}>
+                  {activeHabits.slice(0, isWide ? 4 : activeHabits.length).map((h) => {
+                    const log = getLogForHabit(h.id);
+                    const done = log?.state === 'done' || log?.state === 'partial';
+                    const col = h.color ?? colors.primary;
+                    return (
+                      <TouchableOpacity
+                        key={h.id}
+                        activeOpacity={0.75}
+                        style={[s.habitRow, done && { borderColor: hexA(colors.success, 0.4), backgroundColor: hexA(colors.success, 0.06) }]}
+                        onPress={() => onHabitTap(h)}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: done }}
+                        accessibilityLabel={`${h.name}${h.tracking_type === 'numeric' ? ', değer gir' : ''}`}
+                      >
+                        <View style={[
+                          s.habitCheck,
+                          { borderColor: done ? colors.success : colors.borderStrong },
+                          done && { backgroundColor: colors.success },
+                        ]}>
+                          {done
+                            ? <Ionicons name="checkmark" size={14} color={colors.white} />
+                            : <Ionicons name={(h.icon ?? 'ellipse-outline') as any} size={14} color={col} />}
+                        </View>
+                        <Text style={[s.habitName, done && s.habitNameDone]} numberOfLines={1}>{h.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </Card>
+            )}
+
+            <RecoveryRailCard
+              plans={recoveryPlans}
+              today={today}
+              onOpen={() => router.push('/screens/recovery' as any)}
+            />
+          </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -323,9 +339,26 @@ export default function TodayScreen() {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
-  content: { padding: space.xl, paddingBottom: space.hh },
+  content: { width: '100%', maxWidth: 1240, alignSelf: 'center', paddingVertical: space.xl, paddingBottom: 96 },
 
-  topActions: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: space.sm },
+  masthead: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingBottom: space.lg, marginBottom: space.xl,
+    borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
+  },
+  productLabel: { ...font.overline, color: colors.primaryBright, marginBottom: 5 },
+  productHint: { ...font.bodySm, color: colors.textFaint },
+
+  dashboardBody: { marginTop: space.hh, gap: space.h },
+  dashboardBodyWide: { flexDirection: 'row', alignItems: 'flex-start', gap: space.hh },
+  mainColumn: { flex: 1, minWidth: 0 },
+  railColumn: { gap: space.lg },
+  railColumnWide: { width: 320 },
+  mainSection: { marginTop: 0 },
+  sectionIntro: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: space.md, marginBottom: space.md },
+  sectionEyebrow: { ...font.overline, color: colors.textFaint, marginBottom: 6 },
+  sectionTitle: { ...font.title, color: colors.text },
+  sectionAction: { ...font.bodySm, color: colors.primaryBright, fontWeight: '700' },
 
   ringCard: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
   ringPct: { ...font.metric, fontSize: 18, color: colors.success },
@@ -335,8 +368,6 @@ const s = StyleSheet.create({
   wpHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.md },
   wpHeadText: { ...font.h3, color: colors.text },
   wpHeadHint: { ...font.caption, color: colors.textFaint },
-
-  section: { marginTop: space.xxl },
 
   habitRow: {
     flexDirection: 'row', alignItems: 'center', gap: space.md,

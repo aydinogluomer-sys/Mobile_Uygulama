@@ -1,17 +1,22 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useHeaderHeight } from '@react-navigation/elements';
+import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import MonthBackground from '../../components/MonthBackground';
+import SeasonalMotionPreview from '../../components/seasonalMotion/SeasonalMotionPreview';
+import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
+import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
 import GlassPanel from '../../components/ui/GlassPanel';
 import { colors, hexA } from '../../lib/tokens';
 
 const DAYS_SHORT = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
 const MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const MONTH_TAGLINES = MONTH_TAGLINES_TR;
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
@@ -24,26 +29,60 @@ function getFirstDayOfMonth(year: number, month: number) {
 
 export default function CalendarScreen() {
   const headerHeight = useHeaderHeight();
+  const isFocused = useIsFocused();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selected, setSelected] = useState(today.toISOString().split('T')[0]);
+  const [showMotionPreview, setShowMotionPreview] = useState(false);
 
   const { tasks, fetchTasks } = useTaskStore();
   const { habits, fetchHabits } = useHabitStore();
   const { fetchLogsForDate, logs } = useLogStore();
 
+  // Defter sayfası animasyonu: girişte "açılma", ay değişiminde yön bazlı "sayfa çevirme".
+  const reduceMotion = useReducedMotion();
+  const pageAnim = useRef(new Animated.Value(1)).current;
+  const [flipDir, setFlipDir] = useState(0); // -1 önceki, 0 açılış, +1 sonraki
+
+  function animatePage(dir: number) {
+    setFlipDir(dir);
+    if (reduceMotion) { pageAnim.setValue(1); return; } // erişilebilirlik: animasyon yok
+    pageAnim.setValue(0);
+    Animated.timing(pageAnim, {
+      toValue: 1,
+      duration: dir === 0 ? 480 : 430,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }
+
   useEffect(() => { fetchTasks(); fetchHabits(); }, []);
   useEffect(() => { if (selected) fetchLogsForDate(selected); }, [selected]);
+  // Ekran odağa gelince defter "açılır"
+  useEffect(() => { if (isFocused) animatePage(0); }, [isFocused]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function prevMonth() {
     if (month === 0) { setYear(y => y - 1); setMonth(11); }
     else setMonth(m => m - 1);
+    animatePage(-1);
   }
   function nextMonth() {
     if (month === 11) { setYear(y => y + 1); setMonth(0); }
     else setMonth(m => m + 1);
+    animatePage(1);
   }
+
+  // Sayfa-çevirme stili (native driver: rotateY + translateX + opacity; sol cilt menteşesi)
+  const pageStyle = {
+    opacity: pageAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }),
+    transformOrigin: 'left center' as const,
+    transform: [
+      { perspective: 900 },
+      { rotateY: pageAnim.interpolate({ inputRange: [0, 1], outputRange: [`${(flipDir === 0 ? 10 : flipDir * 16)}deg`, '0deg'] }) },
+      { translateX: pageAnim.interpolate({ inputRange: [0, 1], outputRange: [flipDir * 26, 0] }) },
+    ],
+  };
 
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
@@ -63,23 +102,30 @@ export default function CalendarScreen() {
 
   return (
     <View style={s.root}>
-      {/* Görünen aya göre değişen, tam-ekran mevsimsel arka plan (crossfade'li) */}
-      <MonthBackground month={month} />
+      {/* Görünen aya göre değişen, tam-ekran mevsimsel arka plan (crossfade'li + ambient hareket) */}
+      <MonthBackground month={month} active={isFocused} />
 
       <SafeAreaView style={s.safe} edges={['bottom']}>
         <ScrollView contentContainerStyle={[s.content, { paddingTop: headerHeight + 8 }]}>
-          {/* Takvim paneli — ay navigasyonu + gün başlıkları + ızgara, cam üzerinde */}
-          <GlassPanel style={s.panel}>
-            <View style={s.monthNav}>
-              <TouchableOpacity style={s.navBtn} onPress={prevMonth}>
-                <Ionicons name="chevron-back" size={20} color={colors.textDim} />
+          {/* Defter sayfası — giriş "açılma" + ay değişiminde sayfa çevirme animasyonu */}
+          <Animated.View style={pageStyle}>
+          {/* Ajanda kapak başlığı — cam YOK; mevsim sahnesi + hareketi burada açıkça görünür */}
+          <View style={s.hero}>
+            <View style={s.heroNavRow}>
+              <TouchableOpacity style={s.heroArrow} onPress={prevMonth}>
+                <Ionicons name="chevron-back" size={22} color={colors.white} />
               </TouchableOpacity>
-              <Text style={s.monthTitle}>{MONTHS[month]} {year}</Text>
-              <TouchableOpacity style={s.navBtn} onPress={nextMonth}>
-                <Ionicons name="chevron-forward" size={20} color={colors.textDim} />
+              <Text style={s.heroMonth}>{MONTHS[month]}</Text>
+              <TouchableOpacity style={s.heroArrow} onPress={nextMonth}>
+                <Ionicons name="chevron-forward" size={22} color={colors.white} />
               </TouchableOpacity>
             </View>
+            <Text style={s.heroYear}>{year}</Text>
+            <Text style={s.heroTagline}>{MONTH_TAGLINES[month]}</Text>
+          </View>
 
+          {/* Takvim paneli — gün başlıkları + ızgara, cam üzerinde */}
+          <GlassPanel style={s.panel}>
             <View style={s.weekRow}>
               {DAYS_SHORT.map((d) => (
                 <Text key={d} style={s.dayHeader}>{d}</Text>
@@ -110,6 +156,7 @@ export default function CalendarScreen() {
               })}
             </View>
           </GlassPanel>
+          </Animated.View>
 
           {/* Seçili gün görevleri */}
           <GlassPanel style={s.panel}>
@@ -144,6 +191,16 @@ export default function CalendarScreen() {
           </GlassPanel>
         </ScrollView>
       </SafeAreaView>
+
+      {/* DEV: mevsimsel hareket önizleme (yalnızca geliştirme) */}
+      {__DEV__ && (
+        <>
+          <TouchableOpacity style={s.devBtn} onPress={() => setShowMotionPreview(true)}>
+            <Ionicons name="sparkles-outline" size={16} color={colors.white} />
+          </TouchableOpacity>
+          <SeasonalMotionPreview visible={showMotionPreview} onClose={() => setShowMotionPreview(false)} />
+        </>
+      )}
     </View>
   );
 }
@@ -156,9 +213,26 @@ const s = StyleSheet.create({
   panel: { marginBottom: 16 },
   panelLast: { marginBottom: 0 },
 
-  monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  navBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: hexA(colors.surface, 0.85), alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
-  monthTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
+  // Ajanda kapak başlığı (cam yok → mevsim sahnesi/hareket görünür)
+  hero: { minHeight: 156, alignItems: 'center', justifyContent: 'center', paddingVertical: 22, marginBottom: 6 },
+  heroNavRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16 },
+  heroArrow: {
+    width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: hexA(colors.bgSunk, 0.32), borderWidth: 1, borderColor: hexA(colors.white, 0.15),
+  },
+  heroMonth: {
+    fontSize: 40, fontWeight: '800', color: colors.white, letterSpacing: 0.5,
+    minWidth: 172, textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 10, textShadowOffset: { width: 0, height: 2 },
+  },
+  heroYear: {
+    fontSize: 15, fontWeight: '600', color: hexA(colors.white, 0.82), marginTop: 4, letterSpacing: 3,
+    textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6,
+  },
+  heroTagline: {
+    fontSize: 13, color: hexA(colors.white, 0.85), marginTop: 8, fontStyle: 'italic', textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6,
+  },
 
   weekRow: { flexDirection: 'row', marginBottom: 8 },
   dayHeader: { flex: 1, textAlign: 'center', fontSize: 11, color: colors.textDim, fontWeight: '600' },
@@ -182,4 +256,10 @@ const s = StyleSheet.create({
   },
   priorityDot: { width: 8, height: 8, borderRadius: 4 },
   itemText: { fontSize: 14, color: colors.text, flex: 1 },
+
+  devBtn: {
+    position: 'absolute', right: 14, bottom: 24, width: 40, height: 40, borderRadius: 20,
+    backgroundColor: hexA(colors.bgSunk, 0.8), borderWidth: 1, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
 });

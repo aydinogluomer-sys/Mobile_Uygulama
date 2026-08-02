@@ -1,383 +1,626 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  ActivityIndicator,
-  Dimensions,
-  TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, ActivityIndicator,
+  Dimensions, TouchableOpacity, Modal, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { format, subDays, startOfYear } from 'date-fns';
-import { tr } from 'date-fns/locale';
-import { completionAPI, statsAPI } from '../../utils/api';
-import { HeatmapData, Stats } from '../../types';
+import { useRouter } from 'expo-router';
+import { format, subDays, getDaysInMonth } from 'date-fns';
+import Svg, { Rect, Text as SvgText } from 'react-native-svg';
+import { supabase } from '../../lib/supabase';
+import { useHabitStore } from '../../store/habitStore';
+import { useTaskStore } from '../../store/taskStore';
+import { LIFE_AREAS, AreaKey } from '../../store/lifeAreasStore';
+import AreaRadar from '../../components/AreaRadar';
+import HabitListView from '../../components/HabitListView';
+import { colors, space, radius, font, hexA, fontFamily } from '../../lib/tokens';
+import { haptic } from '../../lib/haptics';
+import {
+  Card, StatTile, SectionHeader, ProgressBar, ProgressRing, IconCircle, EmptyState, Button,
+} from '../../components/ui';
 
 const { width } = Dimensions.get('window');
-const CELL_SIZE = (width - 48) / 53; // 52 weeks + padding
-const CELL_GAP = 3;
+const CELL_SIZE = Math.floor((width - 48) / 53);
+const CELL_GAP = 2;
+
+const MONTHS_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+
+type HeatmapData = Record<string, number>;
+
+const CHART_WIDTH = width - 64;
+const BAR_COUNT = 14;
+const BAR_GAP = 3;
+const BAR_W = Math.floor((CHART_WIDTH - BAR_GAP * (BAR_COUNT - 1)) / BAR_COUNT);
+const CHART_H = 80;
+
+function TrendChart({ data }: { data: number[] }) {
+  const max = Math.max(...data, 1);
+  return (
+    <Svg width={CHART_WIDTH} height={CHART_H + 20}>
+      {data.map((val, i) => {
+        const barH = Math.max(4, Math.round((val / max) * CHART_H));
+        const x = i * (BAR_W + BAR_GAP);
+        const y = CHART_H - barH;
+        const isToday = i === BAR_COUNT - 1;
+        return (
+          <Rect
+            key={i}
+            x={x} y={y}
+            width={BAR_W} height={barH}
+            rx={3}
+            fill={isToday ? colors.primary : hexA(colors.primary, 0.28)}
+          />
+        );
+      })}
+      {/* Day labels — every 7 days */}
+      {[0, 6, 13].map((i) => {
+        const date = subDays(new Date(), BAR_COUNT - 1 - i);
+        const label = format(date, 'dd/MM');
+        const x = i * (BAR_W + BAR_GAP) + BAR_W / 2;
+        return (
+          <SvgText key={i} x={x} y={CHART_H + 14} textAnchor="middle" fill={colors.textFaint} fontSize={9}>
+            {label}
+          </SvgText>
+        );
+      })}
+    </Svg>
+  );
+}
 
 export default function StatsScreen() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [heatmapData, setHeatmapData] = useState<HeatmapData>({});
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [heatmap, setHeatmap] = useState<HeatmapData>({});
+  const [trend14, setTrend14] = useState<number[]>(Array(14).fill(0));
+  const [areaComp30, setAreaComp30] = useState<Record<string, number>>({});
+  const [view, setView] = useState<'ozet' | 'liste'>('ozet');
+  const [categorizing, setCategorizing] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<{ date: string; count: number; ratio: number } | null>(null);
+  const [totalCompletions, setTotalCompletions] = useState(0);
+  const [todayCompletions, setTodayCompletions] = useState(0);
+  const [monthCompletions, setMonthCompletions] = useState(0);
 
-  useEffect(() => {
-    loadData();
+  const { habits, fetchHabits, updateHabit } = useHabitStore();
+  const { tasks, fetchTasks } = useTaskStore();
+
+  const now = new Date();
+  const todayStr = format(now, 'yyyy-MM-dd');
+  const monthPrefix = format(now, 'yyyy-MM');
+  const monthName = MONTHS_TR[now.getMonth()];
+  const daysInCurrentMonth = getDaysInMonth(now);
+  const dayOfMonth = now.getDate();
+  const monthProgress = Math.min(Math.round((dayOfMonth / daysInCurrentMonth) * 100), 100);
+
+  const activeHabits = habits.filter((h) => h.status === 'active');
+  const waitingHabits = habits.filter((h) => h.status === 'waiting');
+  const ideaHabits = habits.filter((h) => h.status === 'idea');
+  const completedHabits = habits.filter((h) => h.status === 'completed');
+  // Alışkanlık hattı (Kanban dağılımı) — yığılı oran + lejant
+  const statusPipe = [
+    { key: 'active', label: 'Aktif Odak', color: colors.success, count: activeHabits.length },
+    { key: 'waiting', label: 'Bekleme', color: colors.warning, count: waitingHabits.length },
+    { key: 'idea', label: 'Fikir', color: colors.textFaint, count: ideaHabits.length },
+    { key: 'completed', label: 'Tamamlanan', color: colors.teal, count: completedHabits.length },
+  ];
+
+  // Yaşam alanı dağılımı (mevcut tüm alışkanlıklar) + aktiflerin tamamlama oranı
+  const liveHabits = habits.filter((h) => h.status !== 'archived');
+  const uncategorized = liveHabits.filter((h) => !h.life_area);
+  const areaStats = LIFE_AREAS.map((a) => {
+    const inArea = liveHabits.filter((h) => h.life_area === a.key);
+    const activeInArea = inArea.filter((h) => h.status === 'active');
+    const completions = activeInArea.reduce((sum, h) => sum + (areaComp30[h.id] ?? 0), 0);
+    const possible = activeInArea.length * 30;
+    const rate = possible > 0 ? Math.min(100, Math.round((completions / possible) * 100)) : 0;
+    return { key: a.key, label: a.label, color: a.color, count: inArea.length, activeCount: activeInArea.length, rate };
+  });
+  const maxAreaCount = Math.max(1, ...areaStats.map((a) => a.count));
+  // Radar: alan başına alışkanlık sayısı (denge / hangi alanda var-yok)
+  const areaValues = areaStats.reduce((acc, a) => {
+    acc[a.key] = Math.min(10, a.count);
+    return acc;
+  }, {} as Record<AreaKey, number>);
+  const anyAreaHabits = areaStats.some((a) => a.count > 0);
+
+  // Seri (streak): gün → tamamlama sayısı haritasından. ≥1 tamamlama = o gün "yapıldı".
+  const { current: currentStreak, longest: longestStreak } = (() => {
+    let current = 0;
+    let cursor = new Date(now);
+    // Gün bitmeden bugün boşsa seri kırılmasın → dünden başla
+    if (!((heatmap[format(cursor, 'yyyy-MM-dd')] ?? 0) > 0)) cursor = subDays(cursor, 1);
+    while ((heatmap[format(cursor, 'yyyy-MM-dd')] ?? 0) > 0) { current++; cursor = subDays(cursor, 1); }
+    let longest = 0, run = 0;
+    for (let i = 0; i < 365; i++) {
+      const k = format(subDays(now, 364 - i), 'yyyy-MM-dd');
+      if ((heatmap[k] ?? 0) > 0) { run++; if (run > longest) longest = run; } else { run = 0; }
+    }
+    return { current, longest };
+  })();
+
+  const todayRatio = activeHabits.length > 0 ? Math.min(1, todayCompletions / activeHabits.length) : 0;
+  const noData = habits.length === 0 && totalCompletions === 0;
+
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
+
+      // Son 365 gün heatmap + toplam/bugün/bu ay sayıları tek sorguda
+      const since = format(subDays(now, 364), 'yyyy-MM-dd');
+      const { data } = await supabase
+        .from('habit_logs')
+        .select('completed_at, state')
+        .eq('user_id', user.id)
+        .in('state', ['done', 'partial'])
+        .gte('completed_at', since);
+
+      if (data) {
+        const map: HeatmapData = {};
+        let total = 0;
+        let today = 0;
+        let month = 0;
+
+        data.forEach((row) => {
+          map[row.completed_at] = (map[row.completed_at] ?? 0) + 1;
+          total++;
+          if (row.completed_at === todayStr) today++;
+          if (row.completed_at?.startsWith(monthPrefix)) month++;
+        });
+
+        setHeatmap(map);
+        setTotalCompletions(total);
+        setTodayCompletions(today);
+        setMonthCompletions(month);
+
+        // 14 günlük trend dizisi
+        const arr = Array.from({ length: 14 }, (_, i) => {
+          const d = format(subDays(now, 13 - i), 'yyyy-MM-dd');
+          return map[d] ?? 0;
+        });
+        setTrend14(arr);
+      }
+
+      // Son 30 gün — alan performansı için habit_id bazlı tamamlamalar
+      const since30 = format(subDays(now, 29), 'yyyy-MM-dd');
+      const { data: logs30 } = await supabase
+        .from('habit_logs')
+        .select('habit_id')
+        .eq('user_id', user.id)
+        .in('state', ['done', 'partial'])
+        .gte('completed_at', since30);
+      if (logs30) {
+        const cmap: Record<string, number> = {};
+        logs30.forEach((r: any) => { if (r.habit_id) cmap[r.habit_id] = (cmap[r.habit_id] ?? 0) + 1; });
+        setAreaComp30(cmap);
+      }
+
+      await Promise.all([fetchHabits(), fetchTasks()]);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const [heatmap, statsData] = await Promise.all([
-        completionAPI.getHeatmap(),
-        statsAPI.get(),
-      ]);
-      setHeatmapData(heatmap);
-      setStats(statsData);
-    } catch (error) {
-      console.error('İstatistikler yüklenirken hata:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => { loadData(); }, []);
 
-  const getIntensityColor = (count: number) => {
-    if (count === 0) return '#1a1a1a';
-    if (count === 1) return '#0e4429';
-    if (count === 2) return '#006d32';
-    if (count === 3) return '#26a641';
-    return '#39d353';
-  };
+  const onRefresh = useCallback(async () => {
+    haptic.light();
+    setRefreshing(true);
+    await loadData(true);
+    setRefreshing(false);
+  }, [loadData]);
 
-  const renderHeatmap = () => {
-    const today = new Date();
-    const startDate = subDays(today, 364); // Last 365 days
+  const avgPerDay = dayOfMonth > 0 ? (monthCompletions / dayOfMonth).toFixed(1) : '0';
+
+  // Günlük tamamlama oranına (0-1) göre yeşil tonu; 0 → gri
+  function ratioColor(ratio: number) {
+    if (ratio <= 0) return colors.surfaceAlt;
+    if (ratio <= 0.2) return '#4A2A1B';
+    if (ratio <= 0.4) return '#6E331C';
+    if (ratio <= 0.6) return '#934628';
+    if (ratio <= 0.8) return '#B85C38';
+    return '#D97757';
+  }
+
+  function renderHeatmap() {
     const weeks: Date[][] = [];
-    
-    // Group days by week
     let currentWeek: Date[] = [];
     for (let i = 0; i < 365; i++) {
-      const date = subDays(today, 364 - i);
-      const dayOfWeek = date.getDay();
-      
-      if (dayOfWeek === 0 && currentWeek.length > 0) {
+      const date = subDays(now, 364 - i);
+      if (date.getDay() === 0 && currentWeek.length > 0) {
         weeks.push(currentWeek);
         currentWeek = [];
       }
       currentWeek.push(date);
     }
-    if (currentWeek.length > 0) {
-      weeks.push(currentWeek);
-    }
+    if (currentWeek.length > 0) weeks.push(currentWeek);
+
+    const D = Math.max(1, activeHabits.length);
+    const PITCH = CELL_SIZE + CELL_GAP;
+    // Ay başlangıç sütunları
+    let lastMonth = -1;
+    const monthStarts: { label: string; col: number }[] = [];
+    weeks.forEach((week, wi) => {
+      const m = week[0].getMonth();
+      if (m !== lastMonth) { lastMonth = m; monthStarts.push({ label: MONTHS_TR[m].slice(0, 3), col: wi }); }
+    });
 
     return (
-      <View style={styles.heatmapContainer}>
-        <Text style={styles.heatmapTitle}>Yıllık Aktivite</Text>
-        <Text style={styles.heatmapSubtitle}>Son 365 gününüz</Text>
-        
+      <View style={s.heatmapCard}>
+        <Text style={s.cardTitle}>Yıllık Aktivite</Text>
+        <Text style={s.cardSub}>Son 365 gün · günlük tamamlama oranı (yapılan / aktif alışkanlık)</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.heatmap}>
-            {weeks.map((week, weekIndex) => (
-              <View key={weekIndex} style={styles.heatmapWeek}>
-                {week.map((day, dayIndex) => {
-                  const dateKey = format(day, 'yyyy-MM-dd');
-                  const count = heatmapData[dateKey] || 0;
-                  
-                  return (
-                    <View
-                      key={dayIndex}
-                      style={[
-                        styles.heatmapCell,
-                        {
-                          backgroundColor: getIntensityColor(count),
-                          width: CELL_SIZE,
-                          height: CELL_SIZE,
-                          marginBottom: CELL_GAP,
-                        },
-                      ]}
-                    />
-                  );
-                })}
-              </View>
-            ))}
+          <View>
+            {/* Ay etiketleri */}
+            <View style={{ height: 14, width: weeks.length * PITCH, marginBottom: 2 }}>
+              {monthStarts.map((ms) => (
+                <Text key={ms.col} style={[s.monthLabel, { left: ms.col * PITCH }]}>{ms.label}</Text>
+              ))}
+            </View>
+            {/* Grid */}
+            <View style={s.heatmap}>
+              {weeks.map((week, wi) => (
+                <View key={wi} style={s.heatmapWeek}>
+                  {week.map((day, di) => {
+                    const key = format(day, 'yyyy-MM-dd');
+                    const count = heatmap[key] ?? 0;
+                    const ratio = Math.min(1, count / D);
+                    const sel = selectedDay?.date === key;
+                    return (
+                      <TouchableOpacity
+                        key={di}
+                        activeOpacity={0.7}
+                        onPress={() => { haptic.select(); setSelectedDay({ date: key, count, ratio }); }}
+                        style={[s.heatmapCell, {
+                          backgroundColor: ratioColor(ratio),
+                          width: CELL_SIZE, height: CELL_SIZE, marginBottom: CELL_GAP,
+                          borderWidth: sel ? 1.5 : 0, borderColor: '#fff',
+                        }]}
+                      />
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
           </View>
         </ScrollView>
 
-        <View style={styles.heatmapLegend}>
-          <Text style={styles.legendText}>Az</Text>
-          <View style={styles.legendColors}>
-            <View style={[styles.legendCell, { backgroundColor: '#1a1a1a' }]} />
-            <View style={[styles.legendCell, { backgroundColor: '#0e4429' }]} />
-            <View style={[styles.legendCell, { backgroundColor: '#006d32' }]} />
-            <View style={[styles.legendCell, { backgroundColor: '#26a641' }]} />
-            <View style={[styles.legendCell, { backgroundColor: '#39d353' }]} />
+        {/* Seçili gün detayı */}
+        {selectedDay && (
+          <View style={s.heatDetail}>
+            <View style={[s.heatDetailDot, { backgroundColor: ratioColor(selectedDay.ratio) }]} />
+            <Text style={s.heatDetailText}>
+              {format(new Date(selectedDay.date), 'dd.MM.yyyy')} · %{Math.round(selectedDay.ratio * 100)} ({selectedDay.count}/{D} alışkanlık)
+            </Text>
           </View>
-          <Text style={styles.legendText}>Çok</Text>
-        </View>
-      </View>
-    );
-  };
+        )}
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <View style={s.legend}>
+          <Text style={s.legendText}>0%</Text>
+          {[colors.surfaceAlt, '#4A2A1B', '#6E331C', '#934628', '#B85C38', '#D97757'].map((c) => (
+            <View key={c} style={[s.legendCell, { backgroundColor: c }]} />
+          ))}
+          <Text style={s.legendText}>100%</Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.content}>
-          <Text style={styles.title}>İstatistikler</Text>
-          <Text style={styles.subtitle}>İlerlemenizi takip edin</Text>
+    <SafeAreaView style={s.safe} edges={['bottom']}>
+      {/* Görünüm sekmesi */}
+      <View style={s.viewToggle}>
+        {(['ozet', 'liste'] as const).map((v) => {
+          const sel = view === v;
+          return (
+            <TouchableOpacity key={v} style={[s.vtBtn, sel && s.vtBtnSel]} onPress={() => { haptic.select(); setView(v); }}>
+              <Ionicons name={v === 'ozet' ? 'bar-chart-outline' : 'list-outline'} size={15} color={sel ? colors.white : colors.textDim} />
+              <Text style={[s.vtText, sel && s.vtTextSel]}>{v === 'ozet' ? 'Özet' : 'Liste'}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
-          {/* Stats Cards */}
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: '#6366f120' }]}>
-                <Ionicons name="trophy" size={24} color="#6366f1" />
-              </View>
-              <Text style={styles.statValue}>{stats?.total_habits || 0}</Text>
-              <Text style={styles.statLabel}>Alışkanlık</Text>
-            </View>
+      {view === 'liste' ? (
+        <HabitListView />
+      ) : loading ? (
+        <View style={s.loading}><ActivityIndicator size="large" color={colors.primary} /></View>
+      ) : noData ? (
+        <View style={s.emptyWrap}>
+          <EmptyState
+            icon="bar-chart-outline"
+            title="Henüz veri yok"
+            hint="İlk alışkanlığını ekle ve birkaç gün takip et — özetin burada canlanacak."
+            ctaLabel="Alışkanlık Ekle"
+            onCta={() => router.push('/tabs/timeline' as any)}
+          />
+        </View>
+      ) : (
+        <>
+      <ScrollView
+        contentContainerStyle={s.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      >
 
-            <View style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: '#10b98120' }]}>
-                <Ionicons name="checkmark-done" size={24} color="#10b981" />
+        {/* Hero — bugünün tamamlama halkası + seri */}
+        <Card padding="lg" style={s.hero}>
+          <ProgressRing progress={todayRatio} size={84} stroke={9} color={colors.success}>
+            <Text style={s.heroRingPct}>{Math.round(todayRatio * 100)}%</Text>
+          </ProgressRing>
+          <View style={{ flex: 1 }}>
+            <Text style={s.heroTitle}>Bugünün Durumu</Text>
+            <Text style={s.heroSub}>
+              {activeHabits.length === 0 ? 'Henüz aktif alışkanlık yok' : `${todayCompletions}/${activeHabits.length} alışkanlık tamamlandı`}
+            </Text>
+            <View style={s.streakRow}>
+              <View style={s.streakItem}>
+                <Ionicons name="flame" size={16} color={colors.warning} />
+                <Text style={s.streakVal}>{currentStreak}</Text>
+                <Text style={s.streakLabel}>gün seri</Text>
               </View>
-              <Text style={styles.statValue}>{stats?.total_completions || 0}</Text>
-              <Text style={styles.statLabel}>Tamamlama</Text>
-            </View>
-
-            <View style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: '#f59e0b20' }]}>
-                <Ionicons name="flash" size={24} color="#f59e0b" />
+              <View style={s.streakDivider} />
+              <View style={s.streakItem}>
+                <Ionicons name="trophy-outline" size={14} color={colors.primaryBright} />
+                <Text style={s.streakVal}>{longestStreak}</Text>
+                <Text style={s.streakLabel}>en uzun</Text>
               </View>
-              <Text style={styles.statValue}>{stats?.today_completions || 0}</Text>
-              <Text style={styles.statLabel}>Bugün</Text>
-            </View>
-
-            <View style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: '#8b5cf620' }]}>
-                <Ionicons name="list" size={24} color="#8b5cf6" />
-              </View>
-              <Text style={styles.statValue}>{stats?.active_tasks || 0}</Text>
-              <Text style={styles.statLabel}>Aktif Görev</Text>
             </View>
           </View>
+        </Card>
 
-          {/* Heatmap */}
-          {renderHeatmap()}
-
-          {/* Quick Stats */}
-          <View style={styles.quickStats}>
-            <Text style={styles.sectionTitle}>Hızlı İstatistikler</Text>
-            
-            <View style={styles.quickStatItem}>
-              <View style={styles.quickStatLeft}>
-                <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                <Text style={styles.quickStatLabel}>Tamamlanan Görevler</Text>
+        {/* Alışkanlık hattı — yığılı oran + lejant (4 büyük kart yerine) */}
+        <Card padding="lg" style={{ marginBottom: space.lg }}>
+          <SectionHeader title="Alışkanlık Hattı" variant="overline" count={habits.length} />
+          <View style={s.pipelineBar}>
+            {statusPipe.every((p) => p.count === 0) ? (
+              <View style={{ flex: 1, backgroundColor: colors.surfaceAlt }} />
+            ) : (
+              statusPipe.map((p) => p.count > 0 && (
+                <View key={p.key} style={{ flex: p.count, backgroundColor: p.color }} />
+              ))
+            )}
+          </View>
+          <View style={s.pipelineLegend}>
+            {statusPipe.map((p) => (
+              <View key={p.key} style={s.pipeItem}>
+                <View style={[s.pipeDot, { backgroundColor: p.color }]} />
+                <Text style={s.pipeLabel}>{p.label}</Text>
+                <Text style={s.pipeCount}>{p.count}</Text>
               </View>
-              <Text style={styles.quickStatValue}>{stats?.completed_tasks || 0}</Text>
-            </View>
+            ))}
+          </View>
+        </Card>
 
-            <View style={styles.quickStatItem}>
-              <View style={styles.quickStatLeft}>
-                <Ionicons name="time" size={20} color="#f59e0b" />
-                <Text style={styles.quickStatLabel}>Bekleyen Görevler</Text>
-              </View>
-              <Text style={styles.quickStatValue}>{stats?.active_tasks || 0}</Text>
-            </View>
+        {/* Tamamlama metrikleri — tekrarsız (Bugün hero'da, Bu Ay aşağıda) */}
+        <View style={s.statRow}>
+          <StatTile value={habits.length} label="Toplam Alışkanlık" accent={colors.primaryBright} />
+          <StatTile value={totalCompletions} label="Toplam Tamamlama" accent={colors.success} />
+          <StatTile value={avgPerDay} label="Günlük Ort." accent={colors.warning} />
+        </View>
 
-            <View style={styles.quickStatItem}>
-              <View style={styles.quickStatLeft}>
-                <Ionicons name="trending-up" size={20} color="#6366f1" />
-                <Text style={styles.quickStatLabel}>Toplam Tamamlama</Text>
+        {/* 14-Günlük Trend */}
+        <View style={s.trendCard}>
+          <Text style={s.cardTitle}>14 Günlük Trend</Text>
+          <Text style={s.cardSub}>Günlük alışkanlık tamamlamaları</Text>
+          <TrendChart data={trend14} />
+        </View>
+
+        {/* Heatmap — motivasyon öğesi yukarı taşındı */}
+        {renderHeatmap()}
+
+        {/* Yaşam Alanları */}
+        <View style={s.areaCard}>
+          <Text style={s.cardTitle}>Yaşam Alanları</Text>
+          <Text style={s.cardSub}>Alanlara göre alışkanlık dağılımın · aktiflerin son 30g tamamlaması</Text>
+          {anyAreaHabits ? (
+            <>
+              <View style={s.areaRadarWrap}>
+                <AreaRadar values={areaValues} size={Math.min(280, width - 80)} />
               </View>
-              <Text style={styles.quickStatValue}>{stats?.total_completions || 0}</Text>
+              {areaStats.map((a) => (
+                <View key={a.key} style={[s.areaRow, a.count === 0 && { opacity: 0.4 }]}>
+                  <View style={[s.areaDot, { backgroundColor: a.color }]} />
+                  <Text style={s.areaLabel}>{a.label}</Text>
+                  <Text style={s.areaCount}>{a.count > 0 ? `${a.count} alışkanlık` : 'yok'}</Text>
+                  <ProgressBar progress={a.count / maxAreaCount} color={a.color} height={6} style={{ flex: 1 }} />
+                  <Text style={[s.areaPct, { color: a.activeCount > 0 ? a.color : colors.textGhost }]}>
+                    {a.activeCount > 0 ? `%${a.rate}` : '—'}
+                  </Text>
+                </View>
+              ))}
+            </>
+          ) : (
+            <EmptyState
+              icon="compass-outline"
+              title="Henüz kategorilenmemiş"
+              hint="Mevcut alışkanlıklarına yaşam alanı ata → buradaki dengeni gör."
+              compact
+            />
+          )}
+          {uncategorized.length > 0 && (
+            <Button
+              label={`${uncategorized.length} kategorisiz — Kategori Ata`}
+              icon="pricetags-outline"
+              variant="tonal"
+              size="sm"
+              onPress={() => { haptic.select(); setCategorizing(true); }}
+              style={{ marginTop: space.md }}
+            />
+          )}
+        </View>
+
+        {/* Bu Ay */}
+        <View style={s.monthCard}>
+          <View style={s.monthHeader}>
+            <Ionicons name="calendar-number-outline" size={18} color={colors.primary} />
+            <Text style={s.cardTitle}>Bu Ay — {monthName} {now.getFullYear()}</Text>
+          </View>
+          <View style={s.monthStats}>
+            <View style={s.monthStat}>
+              <Text style={s.monthStatVal}>{monthCompletions}</Text>
+              <Text style={s.monthStatLabel}>Tamamlama</Text>
             </View>
+            <View style={s.monthDivider} />
+            <View style={s.monthStat}>
+              <Text style={s.monthStatVal}>{avgPerDay}</Text>
+              <Text style={s.monthStatLabel}>Günlük Ort.</Text>
+            </View>
+            <View style={s.monthDivider} />
+            <View style={s.monthStat}>
+              <Text style={s.monthStatVal}>{dayOfMonth}/{daysInCurrentMonth}</Text>
+              <Text style={s.monthStatLabel}>Gün Geçti</Text>
+            </View>
+          </View>
+          <ProgressBar progress={monthProgress / 100} color={colors.primary} height={5} style={{ marginBottom: 6 }} />
+          <Text style={s.monthBarLabel}>Ay ilerlemesi %{monthProgress}</Text>
+        </View>
+
+      </ScrollView>
+        </>
+      )}
+
+      {/* Kategori atama modalı */}
+      <Modal visible={categorizing} animationType="slide" transparent onRequestClose={() => setCategorizing(false)}>
+        <View style={s.catOverlay}>
+          <View style={s.catSheet}>
+            <View style={s.catHead}>
+              <Text style={s.catTitle}>Kategori Ata</Text>
+              <TouchableOpacity onPress={() => setCategorizing(false)}>
+                <Ionicons name="close" size={22} color={colors.textDim} />
+              </TouchableOpacity>
+            </View>
+            <Text style={s.catSub}>Her alışkanlık için bir yaşam alanı seç</Text>
+            {uncategorized.length === 0 ? (
+              <View style={s.catDone}>
+                <Ionicons name="checkmark-circle" size={32} color={colors.success} />
+                <Text style={s.catDoneText}>Tüm alışkanlıklar kategorilendi 🎉</Text>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 420 }}>
+                {uncategorized.map((h) => (
+                  <View key={h.id} style={s.catRow}>
+                    <View style={s.catRowHead}>
+                      <Ionicons name={(h.icon ?? 'star-outline') as any} size={16} color={h.color ?? colors.primary} />
+                      <Text style={s.catRowName} numberOfLines={1}>{h.name}</Text>
+                    </View>
+                    <View style={s.catChips}>
+                      {LIFE_AREAS.map((a) => (
+                        <TouchableOpacity
+                          key={a.key}
+                          style={[s.catChip, { borderColor: a.color + '50' }]}
+                          onPress={() => { haptic.success(); updateHabit(h.id, { life_area: a.key }); }}
+                        >
+                          <View style={[s.areaDot, { backgroundColor: a.color }]} />
+                          <Text style={s.catChipText}>{a.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
           </View>
         </View>
-      </ScrollView>
-
-      <TouchableOpacity style={styles.refreshButton} onPress={loadData}>
-        <Ionicons name="refresh" size={20} color="#fff" />
-        <Text style={styles.refreshText}>Yenile</Text>
-      </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0c0c0c',
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
+
+  viewToggle: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  vtBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: colors.surface, borderRadius: radius.md, paddingVertical: 9,
+    borderWidth: 1, borderColor: colors.border,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0c0c0c',
+  vtBtnSel: { backgroundColor: colors.primary, borderColor: colors.primary },
+  vtText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
+  vtTextSel: { color: colors.white },
+  loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
+  emptyWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: space.xl },
+  content: { padding: 16, paddingBottom: 80 },
+
+  hero: { flexDirection: 'row', alignItems: 'center', gap: space.lg, marginBottom: space.lg },
+  heroRingPct: { fontSize: 19, fontWeight: '800', color: colors.success },
+  heroTitle: { ...font.h3, color: colors.text, marginBottom: 3 },
+  heroSub: { ...font.bodySm, color: colors.textFaint, marginBottom: space.md },
+  streakRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  streakItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  streakVal: { fontSize: 16, fontWeight: '800', color: colors.text },
+  streakLabel: { fontSize: 11, color: colors.textFaint },
+  streakDivider: { width: 1, height: 18, backgroundColor: colors.border },
+
+  pipelineBar: { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', gap: 2, marginBottom: space.md, marginTop: 2 },
+  pipelineLegend: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.sm },
+  pipeItem: { width: '50%', flexDirection: 'row', alignItems: 'center', gap: 6 },
+  pipeDot: { width: 9, height: 9, borderRadius: 5 },
+  pipeLabel: { flex: 1, fontSize: 13, color: colors.textDim },
+  pipeCount: { fontSize: 14, fontWeight: '800', color: colors.text, marginRight: space.md },
+
+  statRow: { flexDirection: 'row', gap: space.md, marginBottom: space.lg },
+
+  monthCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
+  monthHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  monthStats: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  monthStat: { flex: 1, alignItems: 'center' },
+  monthStatVal: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: 2 },
+  monthStatLabel: { fontSize: 11, color: colors.textFaint },
+  monthDivider: { width: 1, height: 32, backgroundColor: '#2a2a2a' },
+  monthBarBg: { height: 5, backgroundColor: '#2a2a2a', borderRadius: 3, marginBottom: 6 },
+  monthBarFill: { height: 5, backgroundColor: colors.primary, borderRadius: 3 },
+  monthBarLabel: { fontSize: 11, color: colors.textFaint },
+
+  trendCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
+
+  areaCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
+  areaRadarWrap: { alignItems: 'center', marginVertical: 10 },
+  areaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
+  areaDot: { width: 10, height: 10, borderRadius: 5 },
+  areaLabel: { fontSize: 13, color: '#e5e7eb', width: 60 },
+  areaCount: { fontSize: 10, color: colors.textFaint, width: 64 },
+  areaBarBg: { flex: 1, height: 6, backgroundColor: '#2a2a2a', borderRadius: 3, overflow: 'hidden' },
+  areaBarFill: { height: '100%', borderRadius: 3 },
+  areaPct: { fontSize: 12, fontWeight: '700', width: 40, textAlign: 'right' },
+  areaEmpty: { alignItems: 'center', paddingVertical: 24, gap: 6 },
+  areaEmptyText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
+  areaEmptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
+  catBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: 12, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: hexA(colors.primary, 0.1), borderWidth: 1, borderColor: hexA(colors.primary, 0.25),
   },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#9ca3af',
-    marginBottom: 24,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 24,
-  },
-  statCard: {
-    width: '48%',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-    alignItems: 'center',
-  },
-  statIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  statValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 13,
-    color: '#9ca3af',
-  },
-  heatmapContainer: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  heatmapTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  heatmapSubtitle: {
-    fontSize: 14,
-    color: '#9ca3af',
-    marginBottom: 16,
-  },
-  heatmap: {
-    flexDirection: 'row',
-    gap: CELL_GAP,
-  },
-  heatmapWeek: {
-    flexDirection: 'column',
-  },
-  heatmapCell: {
-    borderRadius: 2,
-  },
-  heatmapLegend: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    gap: 8,
-  },
-  legendText: {
-    fontSize: 12,
-    color: '#9ca3af',
-  },
-  legendColors: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  legendCell: {
-    width: 12,
-    height: 12,
-    borderRadius: 2,
-  },
-  quickStats: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 16,
-  },
-  quickStatItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2a2a2a',
-  },
-  quickStatLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  quickStatLabel: {
-    fontSize: 15,
-    color: '#d1d5db',
-  },
-  quickStatValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  refreshButton: {
-    position: 'absolute',
-    bottom: 90,
-    right: 16,
-    backgroundColor: '#6366f1',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  refreshText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
+  catBtnText: { fontSize: 13, color: colors.primary, fontWeight: '600' },
+
+  catOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
+  catSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32, maxHeight: '85%' },
+  catHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  catTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
+  catSub: { fontSize: 12, color: colors.textFaint, marginTop: 2, marginBottom: 14 },
+  catDone: { alignItems: 'center', paddingVertical: 30, gap: 8 },
+  catDoneText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
+  catRow: { backgroundColor: colors.bgElevated, borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: colors.border },
+  catRowHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  catRowName: { flex: 1, fontSize: 14, color: colors.text, fontWeight: '600' },
+  catChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.surface, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 6, borderWidth: 1 },
+  catChipText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
+  heatmapCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
+  cardTitle: { fontFamily: fontFamily.serif, fontSize: 18, fontWeight: '400', letterSpacing: -0.3, color: colors.text, marginBottom: 2 },
+  cardSub: { fontSize: 12, color: colors.textDim, marginBottom: 14 },
+  heatmap: { flexDirection: 'row', gap: CELL_GAP },
+  heatmapWeek: { flexDirection: 'column' },
+  heatmapCell: { borderRadius: 2 },
+  monthLabel: { position: 'absolute', top: 0, fontSize: 9, color: colors.textFaint },
+  heatDetail: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
+  heatDetailDot: { width: 11, height: 11, borderRadius: 2 },
+  heatDetailText: { fontSize: 12, color: '#e5e7eb', fontWeight: '600' },
+  legend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 },
+  legendText: { fontSize: 11, color: colors.textDim },
+  legendCell: { width: 11, height: 11, borderRadius: 2 },
+
 });

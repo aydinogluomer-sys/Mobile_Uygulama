@@ -5,13 +5,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { colors, space, radius, font, shadow, fontFamily } from '../../lib/tokens';
 import { Button } from '../../components/ui';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
+import { useNotionSessionStore } from '../../store/notionSessionStore';
 
 export default function LoginScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -30,6 +32,20 @@ export default function LoginScreen() {
     if (error) setError(error.message);
   }
 
+  async function handleNotionLogin() {
+    setError('');
+    try {
+      setLoading(true);
+      const ok = await useNotionSessionStore.getState().login();
+      if (!ok) throw new Error(useNotionSessionStore.getState().error ?? 'Notion bağlantısı kurulamadı');
+      router.replace('/tabs/today');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -46,6 +62,14 @@ export default function LoginScreen() {
 
           {/* Form */}
           <View style={s.form}>
+            <Button label="Notion ile Giriş" onPress={handleNotionLogin} loading={loading} size="lg" style={{ marginBottom: space.xs }} />
+
+            <View style={s.dividerRow}>
+              <View style={s.dividerLine} />
+              <Text style={s.dividerText}>veya e-posta ile</Text>
+              <View style={s.dividerLine} />
+            </View>
+
             <FloatingLabelInput
               label="E-posta"
               icon="mail-outline"
@@ -69,6 +93,12 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               )}
             />
+
+            <Link href="/(auth)/forgot-password" asChild>
+              <TouchableOpacity style={s.forgotBtn} disabled={loading}>
+                <Text style={s.forgotText}>Şifremi unuttum</Text>
+              </TouchableOpacity>
+            </Link>
 
             {!!error && (
               <View style={s.errorRow}>
@@ -107,7 +137,12 @@ const s = StyleSheet.create({
   tagline: { ...font.body, color: colors.textDim, textAlign: 'center' },
 
   form: { gap: space.md },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: space.xs },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  dividerText: { color: colors.textFaint, fontSize: 12 },
 
+  forgotBtn: { alignSelf: 'flex-end', marginTop: -4 },
+  forgotText: { color: colors.primaryBright, fontSize: 13, fontWeight: '600' },
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
   errorText: { color: colors.error, fontSize: 13, flex: 1 },
 

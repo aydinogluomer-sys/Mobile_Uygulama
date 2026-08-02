@@ -1,0 +1,258 @@
+import { useEffect, useState } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal,
+  ActivityIndicator, Alert, Platform,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useOKRStore, krProgress, objectiveProgress, type KeyResult, type OKR } from '../../store/okrStore';
+
+const now = new Date();
+const CUR_Q = Math.floor(now.getMonth() / 3) + 1;
+const CUR_Y = now.getFullYear();
+
+export default function OKRScreen() {
+  const { okrs, loading, loadOKRs, addObjective, addKeyResult, updateKRValue, removeObjective, removeKR } = useOKRStore();
+
+  const [objModal, setObjModal] = useState(false);
+  const [objText, setObjText] = useState('');
+  const [objYear, setObjYear] = useState(CUR_Y);
+  const [objQuarter, setObjQuarter] = useState(CUR_Q);
+
+  const [krFor, setKrFor] = useState<string | null>(null);
+  const [krTitle, setKrTitle] = useState('');
+  const [krTarget, setKrTarget] = useState('');
+  const [krUnit, setKrUnit] = useState('');
+
+  const [editKr, setEditKr] = useState<KeyResult | null>(null);
+  const [editVal, setEditVal] = useState('');
+
+  useEffect(() => { loadOKRs(); }, []);
+
+  async function submitObjective() {
+    if (!objText.trim()) return;
+    await addObjective(objText, objYear, objQuarter);
+    setObjText(''); setObjModal(false);
+  }
+  async function submitKR() {
+    const t = parseFloat(krTarget);
+    if (!krFor || !krTitle.trim() || !(t > 0)) return;
+    await addKeyResult(krFor, krTitle, t, krUnit || null);
+    setKrTitle(''); setKrTarget(''); setKrUnit(''); setKrFor(null);
+  }
+  async function submitEdit() {
+    if (!editKr) return;
+    const v = parseFloat(editVal);
+    if (!isNaN(v)) await updateKRValue(editKr.id, v);
+    setEditKr(null); setEditVal('');
+  }
+  function confirmRemoveObj(o: OKR) {
+    Alert.alert('Objective Sil', `"${o.objective}" ve anahtar sonuçları silinecek.`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      { text: 'Sil', style: 'destructive', onPress: () => removeObjective(o.id) },
+    ]);
+  }
+
+  if (loading && okrs.length === 0) {
+    return <View style={s.center}><ActivityIndicator size="large" color="#D97757" /></View>;
+  }
+
+  return (
+    <SafeAreaView style={s.safe} edges={['bottom']}>
+      <ScrollView contentContainerStyle={s.content}>
+        {okrs.length === 0 ? (
+          <View style={s.empty}>
+            <Ionicons name="flag-outline" size={48} color="#56544B" />
+            <Text style={s.emptyText}>Henüz hedef yok</Text>
+            <Text style={s.emptyHint}>+ ile bir Objective ekle, altına Key Results bağla</Text>
+          </View>
+        ) : (
+          okrs.map((o) => {
+            const prog = objectiveProgress(o);
+            return (
+              <View key={o.id} style={s.objCard}>
+                <View style={s.objHead}>
+                  <View style={s.qBadge}><Text style={s.qBadgeText}>{o.year} Ç{o.quarter}</Text></View>
+                  <TouchableOpacity onPress={() => confirmRemoveObj(o)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="trash-outline" size={16} color="#C76A6A" />
+                  </TouchableOpacity>
+                </View>
+                <Text style={s.objText}>{o.objective}</Text>
+
+                <View style={s.objProgRow}>
+                  <View style={s.objBarBg}>
+                    <View style={[s.objBarFill, { width: `${prog}%` as any }]} />
+                  </View>
+                  <Text style={s.objProgVal}>{prog}%</Text>
+                </View>
+
+                {o.key_results.map((k) => {
+                  const p = krProgress(k);
+                  return (
+                    <TouchableOpacity
+                      key={k.id}
+                      style={s.krRow}
+                      onPress={() => { setEditKr(k); setEditVal(String(k.current_value)); }}
+                      onLongPress={() => removeKR(k.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.krTitle}>{k.title}</Text>
+                        <View style={s.krBarBg}>
+                          <View style={[s.krBarFill, { width: `${p}%` as any }]} />
+                        </View>
+                      </View>
+                      <View style={s.krRight}>
+                        <Text style={s.krVal}>{k.current_value}/{k.target_value}{k.unit ? ` ${k.unit}` : ''}</Text>
+                        <Text style={s.krPct}>{p}%</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                <TouchableOpacity style={s.addKrBtn} onPress={() => setKrFor(o.id)}>
+                  <Ionicons name="add" size={15} color="#D97757" />
+                  <Text style={s.addKrText}>Key Result ekle</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })
+        )}
+        <Text style={s.tip}>İpucu: bir KR'ye dokun → değeri güncelle · uzun bas → sil</Text>
+      </ScrollView>
+
+      <TouchableOpacity style={s.fab} onPress={() => { setObjYear(CUR_Y); setObjQuarter(CUR_Q); setObjModal(true); }}>
+        <Ionicons name="add" size={28} color="#fff" />
+      </TouchableOpacity>
+
+      {/* Objective modal */}
+      <Modal visible={objModal} animationType="slide" transparent onRequestClose={() => setObjModal(false)}>
+        <View style={s.overlay}>
+          <View style={s.sheet}>
+            <Text style={s.sheetTitle}>Yeni Objective</Text>
+            <TextInput style={s.input} placeholder="Hedefin ne? (örn. Sağlığımı iyileştir)" placeholderTextColor="#56544B" value={objText} onChangeText={setObjText} multiline />
+            <Text style={s.label}>Yıl</Text>
+            <View style={s.row}>
+              {[CUR_Y - 1, CUR_Y, CUR_Y + 1].map((y) => (
+                <TouchableOpacity key={y} style={[s.chip, objYear === y && s.chipSel]} onPress={() => setObjYear(y)}>
+                  <Text style={[s.chipText, objYear === y && s.chipTextSel]}>{y}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={s.label}>Çeyrek</Text>
+            <View style={s.row}>
+              {[1, 2, 3, 4].map((q) => (
+                <TouchableOpacity key={q} style={[s.chip, objQuarter === q && s.chipSel]} onPress={() => setObjQuarter(q)}>
+                  <Text style={[s.chipText, objQuarter === q && s.chipTextSel]}>Ç{q}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={s.actions}>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setObjModal(false)}><Text style={s.cancelText}>Vazgeç</Text></TouchableOpacity>
+              <TouchableOpacity style={[s.okBtn, !objText.trim() && s.okBtnDisabled]} onPress={submitObjective} disabled={!objText.trim()}>
+                <Text style={s.okText}>Ekle</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Key Result modal */}
+      <Modal visible={krFor !== null} animationType="slide" transparent onRequestClose={() => setKrFor(null)}>
+        <View style={s.overlay}>
+          <View style={s.sheet}>
+            <Text style={s.sheetTitle}>Yeni Key Result</Text>
+            <TextInput style={s.input} placeholder="Ölçülebilir sonuç (örn. Haftada 3 antrenman)" placeholderTextColor="#56544B" value={krTitle} onChangeText={setKrTitle} />
+            <View style={s.row}>
+              <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="Hedef (örn. 12)" placeholderTextColor="#56544B" keyboardType="numeric" value={krTarget} onChangeText={setKrTarget} />
+              <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="Birim (ops.)" placeholderTextColor="#56544B" value={krUnit} onChangeText={setKrUnit} />
+            </View>
+            <View style={s.actions}>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setKrFor(null)}><Text style={s.cancelText}>Vazgeç</Text></TouchableOpacity>
+              <TouchableOpacity style={[s.okBtn, !(krTitle.trim() && parseFloat(krTarget) > 0) && s.okBtnDisabled]} onPress={submitKR} disabled={!(krTitle.trim() && parseFloat(krTarget) > 0)}>
+                <Text style={s.okText}>Ekle</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* KR değer güncelle modal */}
+      <Modal visible={editKr !== null} animationType="fade" transparent onRequestClose={() => setEditKr(null)}>
+        <View style={s.overlayCenter}>
+          <View style={s.editSheet}>
+            <Text style={s.sheetTitle}>İlerlemeyi Güncelle</Text>
+            <Text style={s.editSub} numberOfLines={2}>{editKr?.title}</Text>
+            <TextInput style={[s.input, { textAlign: 'center', fontSize: 22 }]} keyboardType="numeric" value={editVal} onChangeText={setEditVal} autoFocus
+              placeholder="0" placeholderTextColor="#56544B" />
+            <Text style={s.editTarget}>Hedef: {editKr?.target_value}{editKr?.unit ? ` ${editKr.unit}` : ''}</Text>
+            <View style={s.actions}>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setEditKr(null)}><Text style={s.cancelText}>Vazgeç</Text></TouchableOpacity>
+              <TouchableOpacity style={s.okBtn} onPress={submitEdit}><Text style={s.okText}>Kaydet</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#15140F' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#15140F' },
+  content: { padding: 16, paddingBottom: 90 },
+
+  empty: { alignItems: 'center', paddingTop: 70, gap: 8 },
+  emptyText: { fontSize: 17, color: '#BFBBAE', fontWeight: '600' },
+  emptyHint: { fontSize: 13, color: '#827E72', textAlign: 'center' },
+  tip: { fontSize: 11, color: '#56544B', textAlign: 'center', marginTop: 8 },
+
+  objCard: { backgroundColor: '#1D1C17', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#383528', marginBottom: 14 },
+  objHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  qBadge: { backgroundColor: '#D9775720', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  qBadgeText: { fontSize: 11, color: '#D97757', fontWeight: '700' },
+  objText: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 12 },
+  objProgRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  objBarBg: { flex: 1, height: 8, backgroundColor: '#383528', borderRadius: 4, overflow: 'hidden' },
+  objBarFill: { height: '100%', backgroundColor: '#D97757', borderRadius: 4 },
+  objProgVal: { fontSize: 13, fontWeight: '800', color: '#D97757', width: 42, textAlign: 'right' },
+
+  krRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#28261F' },
+  krTitle: { fontSize: 14, color: '#EDEAE0', marginBottom: 6 },
+  krBarBg: { height: 5, backgroundColor: '#383528', borderRadius: 3, overflow: 'hidden' },
+  krBarFill: { height: '100%', backgroundColor: '#87A678', borderRadius: 3 },
+  krRight: { alignItems: 'flex-end', minWidth: 70 },
+  krVal: { fontSize: 12, color: '#BFBBAE' },
+  krPct: { fontSize: 13, fontWeight: '700', color: '#87A678', marginTop: 2 },
+
+  addKrBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12, alignSelf: 'flex-start' },
+  addKrText: { fontSize: 13, color: '#D97757', fontWeight: '600' },
+
+  fab: {
+    position: 'absolute', right: 16, bottom: Platform.OS === 'ios' ? 34 : 24,
+    width: 56, height: 56, borderRadius: 28, backgroundColor: '#D97757',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
+  },
+
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
+  overlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 24 },
+  sheet: { backgroundColor: '#1D1C17', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 24 },
+  editSheet: { backgroundColor: '#1D1C17', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: '#383528' },
+  sheetTitle: { fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 14 },
+  editSub: { fontSize: 13, color: '#BFBBAE', marginBottom: 14 },
+  editTarget: { fontSize: 12, color: '#827E72', textAlign: 'center', marginTop: 4, marginBottom: 4 },
+  label: { fontSize: 13, fontWeight: '600', color: '#BFBBAE', marginBottom: 8, marginTop: 4 },
+  input: { backgroundColor: '#1D1C17', borderRadius: 12, padding: 14, fontSize: 15, color: '#fff', borderWidth: 1, borderColor: '#383528', marginBottom: 14 },
+  row: { flexDirection: 'row', gap: 10, marginBottom: 6 },
+  chip: { flex: 1, alignItems: 'center', backgroundColor: '#1D1C17', borderRadius: 10, paddingVertical: 10, borderWidth: 1, borderColor: '#383528' },
+  chipSel: { backgroundColor: '#D9775720', borderColor: '#D97757' },
+  chipText: { fontSize: 13, color: '#BFBBAE', fontWeight: '600' },
+  chipTextSel: { color: '#D97757' },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: '#383528', alignItems: 'center' },
+  cancelText: { fontSize: 15, fontWeight: '600', color: '#EDEAE0' },
+  okBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: '#D97757', alignItems: 'center' },
+  okBtnDisabled: { opacity: 0.4 },
+  okText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+});
