@@ -133,40 +133,41 @@ and — per §3 — is a size optimisation, not a security requirement.
 
 ---
 
-## 6. HUMAN DEPENDENCY 1 — service-role key for an unrelated project
+## 6. FOREIGN SECRET — service-role key belonging to a separate project
 
 `backend/.env.local:4` holds `SUPABASE_SERVICE_ROLE_KEY` for
-**`zdqiujpeewtyhtcqhdcj` ("Mas Technic Site")** — not this application's project.
-A service-role key bypasses all Row Level Security and grants full administrative
-access to that database.
+**`zdqiujpeewtyhtcqhdcj` ("Mas Technic Site")** — a **separate, unrelated
+project**, not a second environment of Mobile_Uygulama.
 
-**No autonomous action has been taken and none will be.** Per the approved plan,
-without explicit approval I will not revoke the key, not delete the file, and not
-change anything in that external project.
+**Rotation is out of scope for this engagement.** This work does not rotate the
+key, does not invalidate it, and performs no operation of any kind on Mas
+Technic. That decision belongs to Mas Technic's owner and is made outside this
+repository. The finding reported here is narrower and entirely local:
+**a foreign project's full-admin credential is sitting inside the
+Mobile_Uygulama repository tree.**
 
-### Impact assessment
+### Facts
 
 | Question | Answer |
 |---|---|
 | Is it committed? | **No.** Untracked, ignored by `*.env.*`, absent from all 611 history blobs. |
-| Is it exposed? | Only to whoever has filesystem access to this machine. |
-| Does this app use it? | **No.** No file in `frontend/` or `supabase/` reads it. It is used, if at all, by `backend/supabase/functions/*`, which target the wrong project anyway. |
-| What breaks if it is rotated? | Anything in "Mas Technic Site" authenticating with it — outside this repository, so the blast radius **cannot be determined from here**. |
+| Is it exposed by this repo? | No — but anyone with filesystem access to this working tree can read it. |
+| Does Mobile_Uygulama use it? | **No.** No file in `frontend/` or `supabase/` reads it. |
+| Blast radius if compromised | Confined to "Mas Technic Site", which is outside this repository and **cannot be assessed from here**. |
 
-### Proposed options — your decision
+### Proposal — separation only
 
-1. **Relocate, do not rotate.** Move the file outside the repository tree (e.g.
-   a machine-local secrets directory) and point any consumer at the new path.
-   Lowest risk; the key stays valid. **Recommended** if "Mas Technic Site" is live.
-2. **Rotate and relocate.** Issue a new service-role key in the Supabase
-   dashboard for `zdqiujpeewtyhtcqhdcj`, update every consumer of the old key,
-   then delete the local copy. Correct if the key may have been shared or if
-   provenance is uncertain — but every consumer must be inventoried first, and
-   that inventory does not exist in this repository.
-3. **Delete outright.** Only safe once confirmed nothing depends on it.
+1. **Relocate out of the repository tree.** Move `backend/.env.local` to a
+   machine-local secrets location outside `Mobile_Uygulama/`, and point any Mas
+   Technic tooling at the new path. This removes the foreign credential from this
+   project without touching the key itself. **Recommended.**
+2. Hand the file to whoever owns Mas Technic, and let them decide independently
+   whether rotation is warranted.
 
-**Blocking question:** is `zdqiujpeewtyhtcqhdcj` ("Mas Technic Site") a live
-production project, and who else holds this key?
+Executed in Phase 2C, on your approval. Nothing is deleted unilaterally.
+
+The same applies to `backend/supabase/functions/.env.local` (duplicate Notion
+OAuth client id/secret) — ownership unresolved, classified in doc 07 §2b.
 
 ---
 
@@ -214,7 +215,7 @@ attempt it.
 |---|---|---|---|
 | 1 | 268 source files never committed; app existed only in the working tree | **P0** | **Resolved** — Phase 0A |
 | 2 | 13,534 `.metro-cache` files tracked; matched no ignore rule | **P1** | **Resolved** — Phase 0A |
-| 3 | Service-role key for an unrelated project in the tree | **P1** | **Blocked** — §6 |
+| 3 | Foreign project's service-role key present in the tree (rotation out of scope) | **P1** | **Proposal pending approval** — §6 |
 | 4 | Real passwords + JWTs in the agent permission allowlist | **P1** | **Blocked** — §7 |
 | 5 | `obsidian-api` committed as a broken gitlink | P2 | **Resolved** — `e291f21` |
 | 6 | `supabase/.temp/` CLI scratch state tracked | P3 | **Resolved** — Phase 0A |

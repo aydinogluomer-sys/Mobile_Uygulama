@@ -3,39 +3,57 @@
 **Status:** `Verified` — live database captured 2026-08-02
 **Phase:** 0C (canonical declaration + live capture)
 
-> **This document is the single place where the canonical Supabase project and
-> canonical edge-function tree are declared.** Phase 1D applies security fixes on
-> the declared tree; Phase 2C physically retires the other. Neither re-opens the
-> decision.
+> **The canonical structure is a given, not a decision made here.** Mobile_Uygulama's
+> canonical project is `kbcuolhjjnmhjaarxxmu` and its canonical directory is root
+> `/supabase`. This document records that baseline and classifies the foreign
+> material found inside the repository. Phase 1D re-implements what is proven to
+> belong here; Phase 2C separates the rest with approval.
 
 ---
 
-## 1. Supabase project connection matrix
+## 1. Canonical baseline
 
-| Signal | Value | Project |
-|---|---|---|
-| `frontend/.env` → `EXPO_PUBLIC_SUPABASE_URL` | `kbcuolhjjnmhjaarxxmu.supabase.co` | **App** |
-| `supabase/.temp/linked-project.json` | `kbcuolhjjnmhjaarxxmu` — "Alışkanlık Uygulaması" | **App** |
-| `backend/supabase/.temp/linked-project.json` | `zdqiujpeewtyhtcqhdcj` — "Mas Technic Site" | **Wrong** |
-| `backend/supabase/.temp/project-ref` | `zdqiujpeewtyhtcqhdcj` | **Wrong** |
-| `backend/.env.local:3-4` | `SUPABASE_URL` + service-role key for `zdqiujpeewtyhtcqhdcj` | **Wrong** |
-| `implementation.md:534` webhook URL | `kbcuolhjjnmhjaarxxmu.supabase.co/functions/v1/subscription-webhook` | **App** |
-| `supabase/config.toml` / `backend/supabase/config.toml` | **absent in both trees** | — |
+| | Value |
+|---|---|
+| Canonical Supabase project | **`kbcuolhjjnmhjaarxxmu`** |
+| Project name | **Alışkanlık Uygulaması** |
+| Canonical directory | **root `/supabase`** |
+| Canonical function tree | **`supabase/functions/`** |
+| Canonical migrations | **`supabase/migrations/`** |
 
-Both projects sit in org `jiabjxuhjspbiythhexg` (`aydinogluomer@gmail.com's Org`),
-plan **free**.
-
-### DECLARATION 1 — canonical project
-
-> **`kbcuolhjjnmhjaarxxmu` ("Alışkanlık Uygulaması") is the canonical Supabase
-> project.** Every client call resolves against `EXPO_PUBLIC_SUPABASE_URL`, which
-> points there. `zdqiujpeewtyhtcqhdcj` ("Mas Technic Site") is unrelated to this
-> product and must never receive a deployment from this repository.
+Corroborated by `frontend/.env` → `EXPO_PUBLIC_SUPABASE_URL`, by
+`supabase/.temp/linked-project.json`, and by `implementation.md:534`.
 
 The project was `INACTIVE` (paused) at audit start and was restored during
 Phase 0C. During restore `list_tables` briefly returned `{"tables":[]}`; a direct
 query returned `FATAL: 57P03: the database system is starting up`, confirming
 that empty result was **a restore artifact, not data loss**.
+
+## 1a. Foreign Mas Technic artifacts found inside this repository
+
+`zdqiujpeewtyhtcqhdcj` ("Mas Technic Site") is a **separate, unrelated project**.
+It is not a second environment for Mobile_Uygulama and not an alternative
+backend. The following files inside this repository belong to it or point at it:
+
+| Artifact | Evidence | Disposition |
+|---|---|---|
+| `backend/supabase/.temp/linked-project.json` | `{"ref":"zdqiujpeewtyhtcqhdcj","name":"Mas Technic Site"}` | Separation proposal — Phase 2C |
+| `backend/supabase/.temp/project-ref` | `zdqiujpeewtyhtcqhdcj` | Separation proposal — Phase 2C |
+| `backend/.env.local:3-4` | `SUPABASE_URL` + **service-role key** for `zdqiujpeewtyhtcqhdcj` | **Foreign secret.** Report + relocation proposal only. **No rotation** — that belongs to Mas Technic's owner |
+| `backend/supabase/functions/.env.local` | duplicate Notion OAuth client id/secret | Ownership unresolved — §2b |
+
+### Operations performed against Mas Technic: none
+
+No resume, no deploy, no migration, no key rotation, no database change and no
+edge-function change was performed on `zdqiujpeewtyhtcqhdcj`. Every live call in
+Phase 0C — `restore_project`, `get_project`, `list_edge_functions`,
+`get_edge_function`, `execute_sql`, `apply_migration`, `get_advisors` — targeted
+`kbcuolhjjnmhjaarxxmu` only. The sole read of Mas Technic data was reading its
+`linked-project.json` from local disk.
+
+## 1b. Files requiring ownership classification
+
+Everything under `backend/supabase/functions/` — classified in §2b below.
 
 ---
 
@@ -87,25 +105,73 @@ Against the `supabase/` version, `summarize` and `insights` would be **charged
 Deployed version 11 must therefore be the `backend/` lineage. **The file in
 `supabase/functions/generate-routine/` does not match production.**
 
-### DECLARATION 2 — canonical edge-function tree
+## 2b. Ownership classification of `backend/supabase/functions/`
 
-> **`supabase/functions/` is the canonical tree**, because it is the only one
-> linked to the canonical project and it holds `spotify-auth` and
-> `subscription-webhook`.
->
-> It is currently **incomplete**. Before it can be deployed as the source of
-> truth it must absorb, from `backend/supabase/functions/`:
-> 1. `generate-routine` — the 4-mode version (replacing the stale 2-mode file)
-> 2. `notion-sync` — exists only there
-> 3. `google-auth` — exists only there **and is not deployed at all**
->
-> `notion-auth` requires a deliberate choice between the 136-line version and the
-> 341-line version that also provisions Notion databases; the deployed v1 must be
-> diffed against both before either is overwritten. Assigned to Phase 1D.
->
-> **`backend/supabase/` is non-canonical.** It is retired in Phase 2C, only after
-> the three functions above are ported. Until then, no `supabase functions
-> deploy` runs from that directory.
+Read-only classification. **No file was moved, deleted or deployed.** Presence in
+`backend/supabase/` is not by itself evidence of ownership; each file was tested
+against two questions — does Mobile_Uygulama code call it, and does its data
+model match the canonical live schema?
+
+| File | Called by Mobile_Uygulama? | Schema compatible with canonical? | Classification |
+|---|---|---|---|
+| `notion-sync/index.ts` | **Yes** — `notionStore.ts:212` | **Partially — habits path broken** | **Mobile_Uygulama, misplaced, incompatible → re-implement** |
+| `generate-routine/index.ts` | **Yes** — 4 modes sent, this is the only 4-mode version | Uses RPCs that exist (`get_or_init_subscription`, `spend_focus_points`) | **Mobile_Uygulama, misplaced → re-implement** |
+| `google-auth/index.ts` | **Yes** — `googleCalendarStore.ts:34,62,78,109` | **No — target table does not exist** | **Mobile_Uygulama, misplaced, never provisioned → re-implement** |
+| `notion-auth/index.ts` (341 ln) | Endpoint yes, this version no | **No — writes `parent_page_id`, which does not exist** | **Legacy / superseded** |
+
+### Evidence — `notion-sync`
+
+The deployed v1 on the canonical project was retrieved with `get_edge_function`
+and is **substantively the same file** as `backend/supabase/functions/notion-sync/index.ts`.
+It reads:
+
+```ts
+supabase.from('habit_logs').select('habit_id, state, xp, value, target_value').eq('date', syncDate)
+```
+
+Canonical live `habit_logs` columns are:
+`id, habit_id, user_id, completed_at, is_completed, current_streak, notes, mood_rating, created_at, photo_url, voice_note_url, caption, value, is_makeup, state, xp`.
+
+- `date` — **does not exist** (canonical name is `completed_at`)
+- `target_value` — **does not exist** on `habit_logs` (it is a `habits` concept)
+
+The tasks path, by contrast, is fully compatible: `tasks` has
+`title, status, priority, due_date, completed, user_id` — all present.
+
+**Confirmed production defect:** Notion sync returns `success: true` with
+`synced_habits: 0` while silently syncing no habits at all. Tasks sync works.
+Severity **P1**. It is owned by Mobile_Uygulama and must be **rewritten against
+the real schema**, not copied.
+
+### Evidence — `google-auth`
+
+- `googleCalendarStore.ts` calls `${SUPABASE_FUNCTIONS_URL}/google-auth` for `status` (`:34`), `url` (`:62`), `callback` (`:78`), `disconnect` (`:109`).
+- **Not present** in the canonical project's deployed function list.
+- Its target table `google_calendar_integrations` — **does not exist** in the canonical database, despite being defined in canonical `supabase/migrations/002_integrations.sql:19-29`. That migration was never applied.
+
+So the *intent* is Mobile_Uygulama's — the migration lives in the canonical tree
+and the canonical client calls it — but the feature was **never provisioned**.
+Every Google Calendar operation currently returns 404. Severity **P1**.
+
+Re-implementation must create the table via a canonical migration and write the
+function fresh under `supabase/functions/`, with no Mas Technic project
+reference, connection or secret carried over.
+
+### Evidence — `notion-auth` (341-line version)
+
+Writes `parent_page_id` at `:207`. Canonical live `notion_integrations` columns
+are `id, user_id, access_token, workspace_id, workspace_name, workspace_icon,
+bot_id, habits_database_id, tasks_database_id, habits_url, tasks_url,
+created_at, updated_at` — **no `parent_page_id`**. This version cannot be the
+deployed one and is incompatible with the canonical schema.
+Classification: **legacy / superseded**. Separation proposal only; no deletion
+without approval.
+
+### Consequences
+
+- `supabase/functions/` is canonical but **incomplete and partly stale**: its `generate-routine` supports 2 modes while the app sends 4, so that file does not match production either.
+- **Nothing is copied forward.** Phase 1D re-implements `notion-sync`, `generate-routine` and `google-auth` under `supabase/functions/` against the verified live schema, decoupled from all Mas Technic references.
+- **No `supabase functions deploy` runs from `backend/supabase/`, ever.**
 
 ---
 
@@ -307,11 +373,13 @@ expectations) rather than a blind dump.
 
 | Criterion | Status |
 |---|---|
-| Connection matrix built | **Met** — §1 |
-| Canonical project declared | **Met** — DECLARATION 1 |
-| Canonical function tree declared | **Met** — DECLARATION 2 |
+| Canonical baseline recorded (project + directory) | **Met** — §1 |
+| Foreign Mas Technic artifacts identified | **Met** — §1a |
+| Files requiring ownership classification listed | **Met** — §1b, classified in §2b |
+| Every `backend/supabase/` file classified | **Met** — §2b, with call-site and schema evidence for each |
 | Live RLS documented per table | **Met** — §3, all 48 tables |
 | Unique constraints confirmed | **Met** — §4 |
 | RPC `prosecdef` / `proconfig` captured | **Met** — §6 |
 | Emergency Gate 0 resolved | **Met** — PASS, applied and verified (§7) |
-| No deploy before declaration | **Met** — no `db push`, `migration up` or `functions deploy` was run |
+| No operation performed against Mas Technic | **Met** — §1a; every live call targeted `kbcuolhjjnmhjaarxxmu` |
+| Nothing moved, deleted or deployed | **Met** — classification is read-only; no `db push`, `migration up` or `functions deploy` was run from any directory |
