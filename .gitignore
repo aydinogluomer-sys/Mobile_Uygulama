@@ -101,3 +101,7 @@ Client Secret.txt
 # which have historically captured real credentials in command strings.
 .claude/settings.local.json
 **/settings.local.json
+
+# Vendored upstream clone of obsidianmd/obsidian-api (has its own .git).
+# Re-clone with: git clone https://github.com/obsidianmd/obsidian-api.git
+obsidian-api/
