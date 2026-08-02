@@ -96,3 +96,8 @@ Client ID.txt
 Client Secret.txt
 *client*secret*
 *secret*.txt
+
+# Agent tooling local state - contains machine-local permission allowlists
+# which have historically captured real credentials in command strings.
+.claude/settings.local.json
+**/settings.local.json
