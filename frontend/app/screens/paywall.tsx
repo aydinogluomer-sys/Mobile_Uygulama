@@ -25,6 +25,16 @@ export default function PaywallScreen() {
   const summary = creditsSummary(focusPoints);
 
   async function handleActivate(t: Exclude<Tier, 'free'>) {
+    // Test activation is a development affordance only. In a release build the
+    // underlying RPC is revoked server-side, so we say so plainly instead of
+    // firing a call that can only fail.
+    if (!__DEV__) {
+      Alert.alert(
+        'Satın alma henüz kullanılamıyor',
+        'Uygulama içi satın alma entegrasyonu (App Store / Google Play) henüz tamamlanmadı. Bu sürümde abonelik satın alınamaz.',
+      );
+      return;
+    }
     const usablePeriod: BillingPeriod = TIERS[t].prices?.[period] != null ? period : 'monthly';
     setActivating(t);
     const ok = await activateMock(t, usablePeriod);
@@ -35,7 +45,10 @@ export default function PaywallScreen() {
         `${TIERS[t].name} aktifleştirildi ve ${TIERS[t].grant} Focus Point yüklendi.\n\nNot: Bu test aktivasyonudur; gerçek ödeme entegrasyonu (App Store / Play) eklendiğinde gerçek satın alma ile değişecek.`,
       );
     } else {
-      Alert.alert('Hata', 'Aktivasyon başarısız. Giriş yapmış olduğundan emin ol.');
+      Alert.alert(
+        'Test aktivasyonu başarısız',
+        'mock_activate_subscription çağrısı reddedildi. Bu bir oturum sorunu değildir; fonksiyonun EXECUTE yetkisi sunucuda kaldırılmış olabilir.',
+      );
     }
   }
 

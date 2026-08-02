@@ -70,7 +70,15 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
 
   canAfford: (cost) => get().focusPoints >= cost,
 
+  // DEV-ONLY. mock_activate_subscription grants a paid tier with no payment
+  // check, so its EXECUTE grant was revoked from anon/authenticated in
+  // migration 20260802181931. Calling it from a release build can only fail
+  // with "permission denied", so the call is compiled out entirely rather
+  // than left to fail at runtime with a misleading error.
+  // Real activation must go through the RevenueCat webhook ->
+  // activate_subscription (service-role only).
   activateMock: async (tier, period) => {
+    if (!__DEV__) return false;
     const { data, error } = await supabase.rpc('mock_activate_subscription', {
       p_tier: tier,
       p_period: period,
