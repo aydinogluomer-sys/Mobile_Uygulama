@@ -77,7 +77,22 @@ agenthub/agents/youtube/db
 .cache/
 
 # Mobile development
-android-sdk/ -e 
+android-sdk/
+
+# Metro / build caches (generated - never commit)
+.metro-cache/
+**/.metro-cache/
+
+# Supabase CLI scratch state (generated - never commit)
+supabase/.temp/
+backend/supabase/.temp/
+
 # Environment files
 *.env
 *.env.*
+
+# Secrets / credential handoff files (asla commit'lenmemeli)
+Client ID.txt
+Client Secret.txt
+*client*secret*
+*secret*.txt
