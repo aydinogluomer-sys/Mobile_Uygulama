@@ -1,0 +1,153 @@
+import { create } from 'zustand';
+import { supabase } from '../lib/supabase';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+
+export type SpotifyConnection = {
+  displayName: string;
+  product: string | null; // 'premium' | 'free' | null
+};
+
+export type NowPlaying = {
+  isPlaying: boolean;
+  name: string;
+  artists: string;
+  albumArt: string | null;
+  uri: string | null;
+};
+
+type SpotifyStatus = 'idle' | 'connecting' | 'success' | 'error';
+
+type SpotifyStore = {
+  connection: SpotifyConnection | null;
+  status: SpotifyStatus;
+  error: string | null;
+  nowPlaying: NowPlaying | null;
+  busy: boolean;
+
+  fetchStatus: () => Promise<void>;
+  connect: () => Promise<boolean>;
+  disconnect: () => Promise<void>;
+  fetchNowPlaying: () => Promise<void>;
+  play: () => Promise<void>;
+  pause: () => Promise<void>;
+  next: () => Promise<void>;
+  previous: () => Promise<void>;
+  playContext: (uri: string) => Promise<string | null>; // hata anahtarı döner, null=başarı
+};
+
+const FN_URL = process.env.EXPO_PUBLIC_SUPABASE_URL + '/functions/v1/spotify-auth';
+const REDIRECT_URI = Linking.createURL('spotify-callback');
+
+async function callFn(action: string, body?: Record<string, unknown>): Promise<any> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Oturum açmanız gerekiyor');
+  const res = await fetch(`${FN_URL}?action=${action}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+  return res.json().catch(() => ({}));
+}
+
+export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
+  connection: null,
+  status: 'idle',
+  error: null,
+  nowPlaying: null,
+  busy: false,
+
+  fetchStatus: async () => {
+    try {
+      const data = await callFn('status');
+      if (data?.connected) {
+        set({
+          connection: { displayName: data.display_name ?? 'Spotify', product: data.product ?? null },
+          status: 'success',
+          error: null,
+        });
+      } else {
+        set({ connection: null, status: 'idle', error: null });
+      }
+    } catch {
+      set({ connection: null, status: 'idle' });
+    }
+  },
+
+  connect: async () => {
+    set({ status: 'connecting', error: null });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Oturum açmanız gerekiyor');
+
+      const urlRes = await fetch(
+        `${FN_URL}?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: '{}' }
+      );
+      const { url: oauthUrl, error } = await urlRes.json();
+      if (!oauthUrl) throw new Error(error ?? 'OAuth URL alınamadı');
+
+      const result = await WebBrowser.openAuthSessionAsync(oauthUrl, REDIRECT_URI);
+      if (result.type !== 'success' || !result.url) { set({ status: 'idle' }); return false; }
+
+      const parsed = Linking.parse(result.url);
+      const code = parsed.queryParams?.code as string;
+      if (!code) throw new Error('Yetkilendirme kodu alınamadı');
+
+      const data = await callFn('callback', { code, redirect_uri: REDIRECT_URI });
+      if (!data?.success) throw new Error(data?.error ?? 'Bağlantı kurulamadı');
+
+      set({
+        connection: { displayName: data.display_name ?? 'Spotify', product: data.product ?? null },
+        status: 'success',
+        error: null,
+      });
+      return true;
+    } catch (e) {
+      set({ status: 'error', error: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
+  },
+
+  disconnect: async () => {
+    try { await callFn('disconnect'); } catch { /* yoksay */ }
+    set({ connection: null, status: 'idle', error: null, nowPlaying: null });
+  },
+
+  fetchNowPlaying: async () => {
+    if (!get().connection) return;
+    try {
+      const d = await callFn('now-playing');
+      if (d?.track) {
+        set({ nowPlaying: {
+          isPlaying: !!d.is_playing,
+          name: d.track.name,
+          artists: d.track.artists,
+          albumArt: d.track.album_art ?? null,
+          uri: d.track.uri ?? null,
+        } });
+      } else {
+        set({ nowPlaying: { isPlaying: false, name: '', artists: '', albumArt: null, uri: null } });
+      }
+    } catch { /* yoksay */ }
+  },
+
+  play: async () => { set({ busy: true }); try { await callFn('play'); } finally { set({ busy: false }); } await get().fetchNowPlaying(); },
+  pause: async () => { set({ busy: true }); try { await callFn('pause'); } finally { set({ busy: false }); } await get().fetchNowPlaying(); },
+  next: async () => { set({ busy: true }); try { await callFn('next'); } finally { set({ busy: false }); } setTimeout(() => get().fetchNowPlaying(), 400); },
+  previous: async () => { set({ busy: true }); try { await callFn('previous'); } finally { set({ busy: false }); } setTimeout(() => get().fetchNowPlaying(), 400); },
+
+  playContext: async (uri) => {
+    set({ busy: true });
+    try {
+      const r = await callFn('play-context', { context_uri: uri });
+      if (r?.ok) { setTimeout(() => get().fetchNowPlaying(), 500); return null; }
+      return r?.error ?? 'error';
+    } finally {
+      set({ busy: false });
+    }
+  },
+}));

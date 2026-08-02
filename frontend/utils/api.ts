@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { Habit, Task, Completion, Webhook, BadHabit, HeatmapData, Stats } from '../types';
 
-const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL + '/api';
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+const API_URL = `${BACKEND_URL}/api`;
 
 const api = axios.create({
   baseURL: API_URL,
