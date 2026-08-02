@@ -15,48 +15,120 @@ Post-change ACL for all three: `{postgres=X/postgres,service_role=X/postgres}` �
 `anon` and `authenticated` both `false`. **Function bodies were not touched.**
 
 **What that closed:** unauthenticated and cross-user invocation.
-**What it did NOT close — do not report otherwise:**
-
-> The `profiles` UPDATE policy is `USING (id = auth.uid())` with
-> **`with_check = NULL`**. An authenticated user can `PATCH
-> /rest/v1/profiles?id=eq.<self>` and set `total_xp`, `level`, `coins` and
-> `willpower_rank` to any value, with no function call involved. **Self-inflation
-> remains fully open.** Tracked as SEC-1D-005.
+**What it did NOT close:** self-inflation. Tracked as SEC-1D-005 below.
 
 The tasks below therefore remain open: the revoke is a containment measure, not
 the fix.
 
 ---
 
-## SEC-1D-005 · Close self-inflation via the `profiles` UPDATE policy
+## SEC-1D-005 · Prevent clients writing server-managed `profiles` columns
 
 | | |
 |---|---|
 | Priority | **P1** |
-| MUST/SHOULD | MUST |
-| Phase | 1D |
+| Class | **Self-inflation / domain integrity — NOT cross-user write** |
+| Phase | **1** |
 | Agent | Supabase & Security |
-| Size | S |
 
-Found by independent review while verifying the Emergency Gate 0 revoke.
+### Correction to an earlier, technically wrong statement
 
-`profiles` policy `"Users can update own profile"`: `UPDATE … USING (id = auth.uid())`
-with `with_check = NULL`. `USING` gates *which rows* may be updated; without a
-`WITH CHECK` there is no constraint on *what the new row may contain*. A user can
-therefore rewrite their own gamification columns directly over PostgREST.
+An earlier draft of this task claimed the policy was unsafe *because*
+`with_check` is NULL. **That is incorrect PostgreSQL semantics and is withdrawn.**
 
-**Proposed fix:** add `WITH CHECK (id = auth.uid())` and, separately, prevent
-clients from writing gamification-owned columns at all — either a column-level
-`REVOKE UPDATE (total_xp, level, coins, willpower_rank, current_level_xp)` from
-`anon, authenticated`, or move those columns to a table with no client write path.
+For an `UPDATE` policy, when `WITH CHECK` is omitted, **the `USING` expression is
+applied to the new row as well**. So `USING (id = auth.uid())` already prevents a
+user from re-assigning their row to another `id`. There is no missing row-level
+constraint.
 
-**Test (Layer 2):** authenticated PATCH of own `total_xp` → rejected; PATCH of own
-`display_name` → still succeeds; trigger-driven XP award → still succeeds.
+### The actual finding
 
-**Rollback:** drop the `WITH CHECK` / restore the column grants.
+```
+policy "Users can update own profile"  UPDATE  USING (id = (SELECT auth.uid()))
+```
 
-**Acceptance:** a user cannot alter their own XP, level or coins by any direct
-table write; legitimate profile edits still work.
+1. The policy correctly limits the user to **their own row**.
+2. **It does not limit which columns of that row may change** — RLS operates on rows, not columns.
+3. `authenticated` holds a table-level `UPDATE` grant **and** column-level `UPDATE` on *every* column of `profiles`, including the server-managed ones.
+
+Therefore an authenticated user can `PATCH /rest/v1/profiles?id=eq.<self>` and
+set `total_xp`, `current_level_xp`, `level`, `coins`, `willpower_rank`,
+`skill_points`, `makeup_credits` and `streak_record` to any value.
+
+**This is not a cross-user write.** A user can only affect their own row. It is a
+**self-inflation / domain-integrity** defect: XP, level, rank, coins and the
+leaderboard become client-authored. **P1, carried into Phase 1.**
+
+### Column classification (17 columns, live)
+
+| Class | Columns | Client `UPDATE` grant today |
+|---|---|---|
+| **User-editable** | `username`, `push_token`, `ai_persona` | should keep |
+| **Server-managed** | `total_xp`, `current_level_xp`, `coins`, `skill_points`, `makeup_credits`, `last_credit_reset`, `streak_record` | **must remove** |
+| **Derived** (computed by `add_xp` / `get_rank_for_level` from `total_xp`) | `level`, `next_level_xp`, `willpower_rank` | **must remove** |
+| **Identity / immutable** | `id`, `created_at`, `email` | **must remove** (`id`/`created_at`); `email` needs a decision |
+| **Unknown — classify before acting** | `last_ai_context` | written by AI features? confirm owner |
+
+### Frontend write surface — the whole of it
+
+`store/profileStore.ts` is the only file that writes `profiles`:
+
+- `:46` `.insert({ id: user.id, email: user.email })` — bootstrap
+- `:73` `.update({ username: trimmed || null })` — the only mutation
+
+**The app writes exactly three columns: `id`, `email`, `username`.** Every other
+grant is unused by the product and exists only as attack surface. That makes the
+fix low-risk: removing the other column grants cannot break any current feature.
+
+### Sub-tasks — each 1–5 files, independently reversible
+
+**SEC-1D-005a · Grant and policy design** *(no code)*
+Decide per column: keep client `UPDATE`, revoke it, or route through an RPC.
+Resolve `email` (auth-owned — should it be client-writable at all?) and
+`last_ai_context`. Decide whether `INSERT` stays client-side or moves into the
+existing `handle_new_user` trigger. Output: a written decision table.
+*Acceptance:* every one of the 17 columns has a recorded decision and rationale.
+
+**SEC-1D-005b · Column-level grant migration** *(1 migration)*
+`REVOKE UPDATE (…server-managed + derived + identity…) ON public.profiles FROM anon, authenticated;`
+Keep `UPDATE (username, push_token, ai_persona)`. Also revoke the unused
+`anon` table grants (`UPDATE`/`INSERT`/`DELETE`/`TRUNCATE`) — `anon` has no
+`SELECT` and no policy, so nothing legitimate uses them.
+*Acceptance:* `has_column_privilege('authenticated','profiles','total_xp','UPDATE')` = false; `…,'username','UPDATE')` = true.
+
+**SEC-1D-005c · Safe profile-update path** *(1–2 files)*
+Only if 005a concludes the client needs to write more than the remaining
+columns: a `SECURITY DEFINER` RPC accepting only user-editable fields and
+deriving the user from `auth.uid()`. Otherwise mark **not required** and close.
+*Acceptance:* no client write path reaches a server-managed column.
+
+**SEC-1D-005d · Frontend adaptation** *(1 file — `store/profileStore.ts`)*
+Expected to be **near-zero work**: the app already writes only `username` on
+update. Confirm the `:46` insert still succeeds under the new grants (it writes
+`id` and `email`, both of which 005a may restrict) and adapt if needed.
+*Acceptance:* `tsc` clean; profile rename works; first-login bootstrap works.
+
+**SEC-1D-005e · RLS and integration tests** *(Layer 2)*
+1. authenticated PATCH own `username` → succeeds
+2. authenticated PATCH own `total_xp` → **rejected**
+3. authenticated PATCH own `coins`/`level`/`willpower_rank` → **rejected**
+4. authenticated PATCH *another* user's row → rejected (already true; regression guard)
+5. habit completion → trigger still awards XP and level still advances
+6. `anon` → no access at all
+*Acceptance:* all six pass against a real local Postgres, not a client mock.
+
+**SEC-1D-005f · Rollback**
+`GRANT UPDATE (<exact prior column list>) ON public.profiles TO anon, authenticated;`
+Capture the pre-change column grants verbatim in the migration header before
+applying, exactly as was done for the two Emergency Gate 0 migrations.
+*Acceptance:* rollback restores the captured grant set byte-for-byte.
+
+### Why this is Phase 1, not Emergency Gate 0
+
+It is not a cross-user or unauthenticated write. A user can only inflate their
+own numbers, and no payment, credit or subscription value is reachable. It fails
+the "actively exploitable against other users or against payment" bar, so it goes
+through the normal gate.
 
 ---
 

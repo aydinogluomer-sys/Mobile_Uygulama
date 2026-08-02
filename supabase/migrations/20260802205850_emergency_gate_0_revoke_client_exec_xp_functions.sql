@@ -38,8 +38,12 @@
 --   GRANT EXECUTE ON FUNCTION public.track_weekly_xp(uuid, integer) TO PUBLIC, anon, authenticated;
 --
 -- SCOPE LIMIT: this does NOT close self-inflation. The profiles UPDATE policy
--- uses USING (id = auth.uid()) with with_check = NULL, so an authenticated user
--- can PATCH their own total_xp/level/coins directly. Tracked separately.
+-- USING (id = auth.uid()) correctly restricts the user to their own ROW (when
+-- WITH CHECK is omitted, USING also applies to the new row - so there is no
+-- missing row constraint). What it does not do is restrict WHICH COLUMNS of
+-- that row may change, and authenticated holds column-level UPDATE on every
+-- profiles column. An authenticated user can therefore still set their own
+-- total_xp/level/coins. Self-inflation, not cross-user write. See SEC-1D-005.
 
 REVOKE EXECUTE ON FUNCTION public.add_xp(uuid, integer) FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.track_weekly_xp(uuid, integer) FROM PUBLIC, anon, authenticated;
