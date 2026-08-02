@@ -44,12 +44,18 @@ backend. The following files inside this repository belong to it or point at it:
 
 ### Operations performed against Mas Technic: none
 
-No resume, no deploy, no migration, no key rotation, no database change and no
-edge-function change was performed on `zdqiujpeewtyhtcqhdcj`. Every live call in
-Phase 0C — `restore_project`, `get_project`, `list_edge_functions`,
-`get_edge_function`, `execute_sql`, `apply_migration`, `get_advisors` — targeted
-`kbcuolhjjnmhjaarxxmu` only. The sole read of Mas Technic data was reading its
-`linked-project.json` from local disk.
+**This statement is scoped strictly to `zdqiujpeewtyhtcqhdcj` and must not be
+read as a claim that nothing changed anywhere.** Two live changes *were* made to
+the canonical project — a `restore_project` and one `apply_migration`. See
+**`docs/audit/08_LIVE_CHANGE_AUDIT.md`** for the full call log, the exact SQL,
+the affected objects and the rollback.
+
+For Mas Technic specifically: **zero** tool calls of any kind. No resume, no
+deploy, no migration, no key rotation, no database change, no edge-function
+change. Every live call — `restore_project`, `get_project`,
+`list_edge_functions`, `get_edge_function`, `execute_sql`, `apply_migration`,
+`get_advisors`, `list_migrations` — targeted `kbcuolhjjnmhjaarxxmu`. The sole
+read of Mas Technic data was its `linked-project.json` from local disk.
 
 ## 1b. Files requiring ownership classification
 
