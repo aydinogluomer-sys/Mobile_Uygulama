@@ -1,141 +1,65 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { profileAPI } from '../utils/api';
+import { Ionicons } from '@expo/vector-icons';
+import { useProfileStore } from '../store/profileStore';
+import { rankMeta } from '../lib/ranks';
 
-interface XPDisplayProps {
-  onProfileLoad?: (profile: any) => void;
-}
+/**
+ * Kullanıcının XP/level/rütbe özeti. Supabase `profiles` tablosundan beslenir
+ * (XP, alışkanlık tamamlamada server-side trigger'larla kazanılır).
+ */
+export default function XPDisplay() {
+  const { profile, fetchProfile } = useProfileStore();
 
-export default function XPDisplay({ onProfileLoad }: XPDisplayProps) {
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  useEffect(() => { fetchProfile(); }, []);
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
+  if (!profile) return null;
 
-  const loadProfile = async () => {
-    try {
-      const data = await profileAPI.getProfile();
-      setProfile(data);
-      if (onProfileLoad) onProfileLoad(data);
-    } catch (error) {
-      console.error('Profile yüklenirken hata:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading || !profile) {
-    return null;
-  }
-
-  const getRankColor = (rank: string) => {
-    const colors: any = {
-      'Acemi': '#9ca3af',
-      'Disiplinli': '#3b82f6',
-      'Uzman': '#8b5cf6',
-      'Master': '#f59e0b',
-      'Efsane': '#ef4444',
-    };
-    return colors[rank] || '#6366f1';
-  };
-
-  const progressPercent = (profile.current_level_xp / profile.next_level_xp) * 100;
+  const tier = rankMeta(profile.willpower_rank, profile.level);
+  const next = profile.next_level_xp || 100;
+  const pct = Math.max(0, Math.min(100, Math.round((profile.current_level_xp / next) * 100)));
 
   return (
-    <View style={styles.container}>
-      <View style={styles.levelBadge}>
-        <Text style={styles.levelLabel}>LVL</Text>
-        <Text style={styles.levelNumber}>{profile.level}</Text>
+    <View style={s.container}>
+      <View style={[s.levelBadge, { backgroundColor: tier.color }]}>
+        <Text style={s.levelLabel}>LVL</Text>
+        <Text style={s.levelNumber}>{profile.level}</Text>
       </View>
 
-      <View style={styles.xpInfo}>
-        <View style={styles.rankContainer}>
-          <Text style={[styles.rankText, { color: getRankColor(profile.willpower_rank) }]}>
-            {profile.willpower_rank}
-          </Text>
+      <View style={s.info}>
+        <View style={s.rankRow}>
+          <Ionicons name={tier.icon} size={13} color={tier.color} />
+          <Text style={[s.rankText, { color: tier.color }]}>{tier.name}</Text>
+          <Text style={s.totalXp}>· {profile.total_xp} XP</Text>
         </View>
-        
-        <View style={styles.progressBarContainer}>
-          <View style={styles.progressBarBg}>
-            <View 
-              style={[
-                styles.progressBarFill, 
-                { 
-                  width: `${progressPercent}%`,
-                  backgroundColor: getRankColor(profile.willpower_rank)
-                }
-              ]} 
-            />
-          </View>
-          <Text style={styles.xpText}>
-            {profile.current_level_xp}/{profile.next_level_xp} XP
-          </Text>
+
+        <View style={s.barBg}>
+          <View style={[s.barFill, { width: `${pct}%`, backgroundColor: tier.color }]} />
         </View>
+        <Text style={s.xpText}>{profile.current_level_xp}/{next} XP</Text>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#0f0f0f',
-    borderBottomWidth: 1,
-    borderBottomColor: '#2a2a2a',
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingVertical: 12,
+    backgroundColor: '#1D1C17', borderRadius: 16,
+    borderWidth: 1, borderColor: '#383528',
   },
   levelBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#6366f1',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#818cf8',
+    width: 48, height: 48, borderRadius: 24,
+    alignItems: 'center', justifyContent: 'center',
   },
-  levelLabel: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: '#fff',
-    opacity: 0.8,
-  },
-  levelNumber: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  xpInfo: {
-    flex: 1,
-  },
-  rankContainer: {
-    marginBottom: 4,
-  },
-  rankText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  progressBarContainer: {
-    gap: 4,
-  },
-  progressBarBg: {
-    height: 8,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  xpText: {
-    fontSize: 11,
-    color: '#9ca3af',
-    fontWeight: '600',
-  },
+  levelLabel: { fontSize: 9, fontWeight: '800', color: '#fff', opacity: 0.85 },
+  levelNumber: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  info: { flex: 1, gap: 5 },
+  rankRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  rankText: { fontSize: 13, fontWeight: '700' },
+  totalXp: { fontSize: 12, color: '#827E72', fontWeight: '600' },
+  barBg: { height: 8, backgroundColor: '#383528', borderRadius: 4, overflow: 'hidden' },
+  barFill: { height: '100%', borderRadius: 4 },
+  xpText: { fontSize: 11, color: '#BFBBAE', fontWeight: '600' },
 });

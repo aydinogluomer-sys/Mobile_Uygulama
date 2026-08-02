@@ -96,17 +96,17 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
           </TouchableOpacity>
           <Text style={styles.title}>Bıraktığım Alışkanlıklar</Text>
           <TouchableOpacity onPress={() => setShowAddModal(true)}>
-            <Ionicons name="add-circle" size={28} color="#6366f1" />
+            <Ionicons name="add-circle" size={28} color="#D97757" />
           </TouchableOpacity>
         </View>
 
         {loading ? (
-          <ActivityIndicator size="large" color="#6366f1" style={styles.loader} />
+          <ActivityIndicator size="large" color="#D97757" style={styles.loader} />
         ) : (
           <ScrollView style={styles.content}>
             {badHabits.length === 0 ? (
               <View style={styles.emptyState}>
-                <Ionicons name="ribbon-outline" size={64} color="#374151" />
+                <Ionicons name="ribbon-outline" size={64} color="#56544B" />
                 <Text style={styles.emptyText}>Henüz bıraktığınız alışkanlık yok</Text>
                 <Text style={styles.emptySubtext}>Bıraktığınız kötü alışkanlıkları ekleyin!</Text>
               </View>
@@ -118,7 +118,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                   onPress={() => viewSavings(habit)}
                 >
                   <View style={styles.habitIcon}>
-                    <Ionicons name="ban" size={24} color="#ef4444" />
+                    <Ionicons name="ban" size={24} color="#C76A6A" />
                   </View>
                   <View style={styles.habitInfo}>
                     <Text style={styles.habitName}>{habit.name}</Text>
@@ -126,7 +126,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                       Bırakma tarihi: {format(new Date(habit.quit_date), 'dd MMM yyyy', { locale: tr })}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+                  <Ionicons name="chevron-forward" size={20} color="#827E72" />
                 </TouchableOpacity>
               ))
             )}
@@ -147,7 +147,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
               <TextInput
                 style={styles.input}
                 placeholder="Alışkanlık adı (örn: Sigara)"
-                placeholderTextColor="#6b7280"
+                placeholderTextColor="#827E72"
                 value={newHabit.name}
                 onChangeText={(text) => setNewHabit({ ...newHabit, name: text })}
               />
@@ -155,7 +155,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
               <TextInput
                 style={[styles.input, styles.textArea]}
                 placeholder="Açıklama"
-                placeholderTextColor="#6b7280"
+                placeholderTextColor="#827E72"
                 value={newHabit.description}
                 onChangeText={(text) => setNewHabit({ ...newHabit, description: text })}
                 multiline
@@ -164,7 +164,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
               <TextInput
                 style={styles.input}
                 placeholder="Günlük maliyet (₺)"
-                placeholderTextColor="#6b7280"
+                placeholderTextColor="#827E72"
                 value={newHabit.cost_per_day}
                 onChangeText={(text) => setNewHabit({ ...newHabit, cost_per_day: text })}
                 keyboardType="numeric"
@@ -173,7 +173,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
               <TextInput
                 style={styles.input}
                 placeholder="Günlük kaybedilen zaman (dakika)"
-                placeholderTextColor="#6b7280"
+                placeholderTextColor="#827E72"
                 value={newHabit.time_wasted_per_day}
                 onChangeText={(text) => setNewHabit({ ...newHabit, time_wasted_per_day: text })}
                 keyboardType="numeric"
@@ -211,26 +211,26 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
             <View style={styles.modalOverlay}>
               <View style={styles.savingsContent}>
                 <View style={styles.savingsHeader}>
-                  <Ionicons name="trophy" size={48} color="#10b981" />
+                  <Ionicons name="trophy" size={48} color="#87A678" />
                   <Text style={styles.savingsTitle}>{selectedHabit.name}</Text>
                   <Text style={styles.savingsSubtitle}>Tasarruf Raporu</Text>
                 </View>
 
                 <View style={styles.savingsStats}>
                   <View style={styles.savingsStatCard}>
-                    <Ionicons name="calendar" size={32} color="#6366f1" />
+                    <Ionicons name="calendar" size={32} color="#D97757" />
                     <Text style={styles.savingsStatValue}>{savings.days_since_quit}</Text>
                     <Text style={styles.savingsStatLabel}>Gün</Text>
                   </View>
 
                   <View style={styles.savingsStatCard}>
-                    <Ionicons name="cash" size={32} color="#10b981" />
+                    <Ionicons name="cash" size={32} color="#87A678" />
                     <Text style={styles.savingsStatValue}>₺{savings.money_saved}</Text>
                     <Text style={styles.savingsStatLabel}>Tasarruf</Text>
                   </View>
 
                   <View style={styles.savingsStatCard}>
-                    <Ionicons name="time" size={32} color="#f59e0b" />
+                    <Ionicons name="time" size={32} color="#D4A84A" />
                     <Text style={styles.savingsStatValue}>{savings.time_saved_hours}sa</Text>
                     <Text style={styles.savingsStatLabel}>Zaman</Text>
                   </View>
@@ -257,7 +257,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0c0c0c',
+    backgroundColor: '#15140F',
   },
   header: {
     flexDirection: 'row',
@@ -265,9 +265,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     paddingTop: 50,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#1D1C17',
     borderBottomWidth: 1,
-    borderBottomColor: '#1f1f1f',
+    borderBottomColor: '#28261F',
   },
   title: {
     fontSize: 20,
@@ -294,24 +294,24 @@ const styles = StyleSheet.create({
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#6b7280',
+    color: '#827E72',
     marginTop: 8,
   },
   habitCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#1D1C17',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: '#383528',
   },
   habitIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#ef444420',
+    backgroundColor: '#C76A6A20',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
   },
   habitDate: {
     fontSize: 13,
-    color: '#9ca3af',
+    color: '#BFBBAE',
   },
   modalOverlay: {
     flex: 1,
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalContent: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#1D1C17',
     borderRadius: 16,
     padding: 24,
     width: '100%',
@@ -349,14 +349,14 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   input: {
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#1D1C17',
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
     color: '#fff',
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: '#383528',
   },
   textArea: {
     height: 80,
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelButton: {
-    backgroundColor: '#374151',
+    backgroundColor: '#56544B',
   },
   cancelButtonText: {
     fontSize: 16,
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   saveButton: {
-    backgroundColor: '#6366f1',
+    backgroundColor: '#D97757',
   },
   saveButtonText: {
     fontSize: 16,
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   savingsContent: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#1D1C17',
     borderRadius: 16,
     padding: 24,
     width: '100%',
@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
   },
   savingsSubtitle: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: '#BFBBAE',
     marginTop: 4,
   },
   savingsStats: {
@@ -417,12 +417,12 @@ const styles = StyleSheet.create({
   },
   savingsStatCard: {
     flex: 1,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#1D1C17',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: '#383528',
   },
   savingsStatValue: {
     fontSize: 20,
@@ -432,11 +432,11 @@ const styles = StyleSheet.create({
   },
   savingsStatLabel: {
     fontSize: 12,
-    color: '#9ca3af',
+    color: '#BFBBAE',
     marginTop: 4,
   },
   closeButton: {
-    backgroundColor: '#6366f1',
+    backgroundColor: '#D97757',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',

@@ -9,8 +9,8 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Task } from '../types';
-import { taskAPI } from '../utils/api';
+import { supabase } from '../lib/supabase';
+import { Task } from '../store/taskStore';
 
 interface ADHDTaskSplitterProps {
   task: Task;
@@ -18,6 +18,12 @@ interface ADHDTaskSplitterProps {
   onClose: () => void;
   onSplit: (subtasks: Task[]) => void;
 }
+
+const SPLIT_LABELS: Record<number, string[]> = {
+  15: ['Başlangıç', 'Devam', 'Bitiş'],
+  25: ['1. Pomodoro', '2. Pomodoro', '3. Pomodoro'],
+  45: ['Hazırlık & Araştırma', 'Ana Çalışma', 'Gözden Geçirme'],
+};
 
 export default function ADHDTaskSplitter({
   task,
@@ -31,11 +37,27 @@ export default function ADHDTaskSplitter({
   const handleSplit = async (minutes: number) => {
     try {
       setLoading(true);
-      if (!task._id) return;
-      
-      const result = await taskAPI.split(task._id, minutes);
-      setSubtasks(result.subtasks);
-      onSplit(result.subtasks);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const labels = SPLIT_LABELS[minutes] ?? ['Parça 1', 'Parça 2', 'Parça 3'];
+      const rows = labels.map((label, i) => ({
+        user_id: user.id,
+        title: `${task.title} — ${label}`,
+        description: `${minutes} dk blok (${i + 1}/${labels.length})`,
+        status: 'pending' as const,
+        priority: task.priority,
+        due_date: task.due_date ?? null,
+        project_id: task.project_id ?? null,
+        list_type: task.list_type,
+        completed: false,
+      }));
+
+      const { data, error } = await supabase.from('tasks').insert(rows).select();
+      if (error) throw error;
+
+      setSubtasks(data as Task[]);
+      onSplit(data as Task[]);
     } catch (error) {
       console.error('Görev bölünürken hata:', error);
     } finally {
@@ -43,22 +65,27 @@ export default function ADHDTaskSplitter({
     }
   };
 
+  const handleClose = () => {
+    setSubtasks([]);
+    onClose();
+  };
+
   return (
     <Modal
       visible={visible}
       animationType="slide"
       transparent={true}
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       <View style={styles.overlay}>
         <View style={styles.content}>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <Ionicons name="flash" size={24} color="#f59e0b" />
+              <Ionicons name="flash" size={24} color="#D4A84A" />
               <Text style={styles.title}>ADHD Modu</Text>
             </View>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={28} color="#9ca3af" />
+            <TouchableOpacity onPress={handleClose}>
+              <Ionicons name="close" size={28} color="#BFBBAE" />
             </TouchableOpacity>
           </View>
 
@@ -76,13 +103,13 @@ export default function ADHDTaskSplitter({
           {subtasks.length === 0 ? (
             <View style={styles.options}>
               <Text style={styles.optionsTitle}>Odaklanma süresi seçin:</Text>
-              
+
               <TouchableOpacity
                 style={styles.optionButton}
                 onPress={() => handleSplit(15)}
                 disabled={loading}
               >
-                <Ionicons name="timer-outline" size={24} color="#10b981" />
+                <Ionicons name="timer-outline" size={24} color="#87A678" />
                 <View style={styles.optionText}>
                   <Text style={styles.optionTitle}>Kısa Sprint</Text>
                   <Text style={styles.optionSubtitle}>15 dakikalık bloklara böl</Text>
@@ -94,7 +121,7 @@ export default function ADHDTaskSplitter({
                 onPress={() => handleSplit(25)}
                 disabled={loading}
               >
-                <Ionicons name="time-outline" size={24} color="#6366f1" />
+                <Ionicons name="time-outline" size={24} color="#D97757" />
                 <View style={styles.optionText}>
                   <Text style={styles.optionTitle}>Pomodoro</Text>
                   <Text style={styles.optionSubtitle}>25 dakikalık bloklara böl</Text>
@@ -114,7 +141,7 @@ export default function ADHDTaskSplitter({
               </TouchableOpacity>
 
               {loading && (
-                <ActivityIndicator size="large" color="#6366f1" style={styles.loader} />
+                <ActivityIndicator size="large" color="#D97757" style={styles.loader} />
               )}
             </View>
           ) : (
@@ -122,7 +149,7 @@ export default function ADHDTaskSplitter({
               <Text style={styles.subtasksTitle}>Görev başarıyla bölündü! 🎯</Text>
               <ScrollView style={styles.subtasksList}>
                 {subtasks.map((subtask, index) => (
-                  <View key={index} style={styles.subtaskCard}>
+                  <View key={subtask.id} style={styles.subtaskCard}>
                     <View style={styles.subtaskNumber}>
                       <Text style={styles.subtaskNumberText}>{index + 1}</Text>
                     </View>
@@ -130,7 +157,7 @@ export default function ADHDTaskSplitter({
                   </View>
                 ))}
               </ScrollView>
-              <TouchableOpacity style={styles.doneButton} onPress={onClose}>
+              <TouchableOpacity style={styles.doneButton} onPress={handleClose}>
                 <Text style={styles.doneButtonText}>Tamam</Text>
               </TouchableOpacity>
             </View>
@@ -148,7 +175,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   content: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#1D1C17',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -172,17 +199,17 @@ const styles = StyleSheet.create({
   },
   description: {
     fontSize: 15,
-    color: '#9ca3af',
+    color: '#BFBBAE',
     marginBottom: 20,
     lineHeight: 22,
   },
   taskCard: {
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#1D1C17',
     borderRadius: 12,
     padding: 16,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: '#383528',
   },
   taskTitle: {
     fontSize: 16,
@@ -192,7 +219,7 @@ const styles = StyleSheet.create({
   },
   taskDescription: {
     fontSize: 14,
-    color: '#9ca3af',
+    color: '#BFBBAE',
   },
   options: {
     gap: 12,
@@ -206,12 +233,12 @@ const styles = StyleSheet.create({
   optionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#1D1C17',
     borderRadius: 12,
     padding: 16,
     gap: 16,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: '#383528',
   },
   optionText: {
     flex: 1,
@@ -224,7 +251,7 @@ const styles = StyleSheet.create({
   },
   optionSubtitle: {
     fontSize: 13,
-    color: '#9ca3af',
+    color: '#BFBBAE',
   },
   loader: {
     marginTop: 20,
@@ -235,7 +262,7 @@ const styles = StyleSheet.create({
   subtasksTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#10b981',
+    color: '#87A678',
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -245,19 +272,19 @@ const styles = StyleSheet.create({
   subtaskCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#1D1C17',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     gap: 12,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: '#383528',
   },
   subtaskNumber: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#6366f1',
+    backgroundColor: '#D97757',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -272,7 +299,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   doneButton: {
-    backgroundColor: '#6366f1',
+    backgroundColor: '#D97757',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
