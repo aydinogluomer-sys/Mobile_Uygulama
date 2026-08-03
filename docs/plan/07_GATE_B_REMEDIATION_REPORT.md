@@ -1,7 +1,18 @@
 # 07 — Gate B Remediation Report
 
-**Status:** remediation complete · **awaiting fresh independent review**
+**Status:** ⚠ **SUPERSEDED — historical record of remediation ROUND 1 only**
 **Trigger:** Gate B `FAIL` (`06_GATE_B_REVIEW_OUTCOME.md`)
+
+> **Do not cite this document for current state.** Round 1 was reviewed and
+> returned `FAIL`; rounds 2 and 4 followed. Figures and status claims below were
+> true of round 1 and several are **now known to have been wrong even then** —
+> the round-2 reviewer found six double-owned files while §7 here asserts zero.
+>
+> **Current state lives in:** `08_CANONICAL_METRICS.md` (counts) ·
+> `11_GATE_B_REMEDIATION_ROUND_2.md` (round 2) ·
+> `12_GATE_B_TARGETED_REMEDIATION.md` (round 4) · `04_AGENT_TASK_GRAPH.md`
+> (ownership). Every count below is retained **only** as a record of what was
+> claimed at the time.
 
 ---
 
@@ -76,9 +87,9 @@ entry task**, not a Gate B blocker.
 
 | Property | Value | How verified |
 |---|---|---|
-| Tasks | **42** (1 DONE, 41 open) | index rows, `SEC-1D-005a–f` expanded |
+| Tasks *(round-1 figure; now **49**/48 — see `plan/08`)* | 42 (1 DONE, 41 open) | index rows, `SEC-1D-005a–f` expanded |
 | XL tasks | **0** — largest is M | size field on every header line |
-| Open tasks with all 13 fields | **41 / 41** | field-presence scan per H2 block |
+| Open tasks with all 13 fields *(round-1 figure; now **48/48**)* | 41 / 41 | field-presence scan per H2 block |
 | Duplicate headings | **0** | heading-id frequency count |
 | Index ↔ heading mismatches | **0** | set difference both directions |
 | Unresolved cross-references | **0** | `1B-006` documented as a pointer, not indexed |
@@ -131,11 +142,11 @@ blocked until Phase 8A.** No production dependency is cleared.
 
 | Check | Result |
 |---|---|
-| Two agents owning one file | **0** — `1C-004` split resolved the only case |
-| Phase 1 files without an owner | **named explicitly** in `04 §6` |
-| Reviewer owning a production file | **0** — stated as a rule |
-| Edit vs review ownership separated | **yes** |
-| Concurrent edits to one file | **0** — `1C-002`/`1C-003` serialised |
+| Two agents owning one file | ❌ **claimed 0 — actually 6.** The round-2 reviewer found `willpower.test.sql`, `recovery.test.sql` and four `__tests__` files double-owned. Fixed at round 2 |
+| Phase 1 files without an owner | named explicitly in `04 §7` *(section renumbered)* |
+| Reviewer owning a production file | **0** — correct then and now |
+| Edit vs review ownership separated | **yes** — correct then and now |
+| Concurrent edits to one file | ❌ **claimed 0 — actually 3 unserialised** (`1D-005/006/007` on `notion-auth`). Fixed at round 4 |
 
 Two agents (Expo Architecture, Open-Source Research) activated with **one named
 task each**, resolving deadlocks where Phase 1 needed work only they could
@@ -189,14 +200,14 @@ before `1D-000` closes.
 |---|---|
 | Gate B `PASS` | **pending fresh independent review** |
 | Schema strategy chosen | **awaiting H-01** |
-| Backlog: 42 tasks, all 13 fields, 0 XL | **met** |
-| Canonical metrics, single source | **met** |
+| Backlog: 42 tasks, all 13 fields, 0 XL *(round-1 figure; now **49** rows / 48 open)* | superseded — see `plan/12` |
+| Canonical metrics, single source | ❌ **WRONG when written** — seven stale assertions survived. Fixed across rounds 2 and 4 |
 | Dependency graph, no cycles | **met** |
-| Ownership map, no overlaps | **met** |
+| Ownership map, no overlaps | ❌ **WRONG when written** — the round-2 reviewer found **six** double-owned files. Fixed at round 2; verified 0 at round 4 |
 | Rollback strategy per task | **met** |
 | Test strategy, two layers | **met** |
 | Licence clearance for 1E | **met (conditional)** |
-| Risk register incl. R-19 | **met** |
+| Risk register incl. R-19 | ❌ **WRONG when written** — R-19 was referenced but absent from `plan/05`. Added at round 2 |
 | Docker available for Layer 2 | **awaiting H-13** |
 | Test-first rule accepted | **met** — `09 §5` |
 

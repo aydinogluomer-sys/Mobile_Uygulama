@@ -156,8 +156,18 @@ Work that cannot proceed without a person.
 | **H-10** | Google Cloud OAuth app for Calendar (feature never provisioned) | 2A/2C | **user** |
 | **H-11** | Confirm ownership of `last_ai_context` column | SEC-1D-005a | **user** |
 | **H-12** | Approve Phase 2 start after the Phase 1 report | Phase 2 | **user** |
+| **H-13** | **Docker is not running on this machine** — required by `supabase start` for every Layer 2 test | **`1E-L2`, `1E-L2a`, `1E-L2b`** | **user** |
+| **H-14** | **Separate explicit approval for `1A-004`** (live ledger cutover), distinct from H-01 | `1A-004` — *not executed in Phase 1* | **user** |
 
-**H-01 is the only one blocking Phase 1.** The rest block later phases.
+**Three block Phase 1, not one:**
+
+| # | Blocks | Effect if unresolved |
+|---|---|---|
+| **H-01** | `1A-002` and everything DB-side | The Schema stream idles. The Habit Domain, Expo Architecture, Repository Audit and Open-Source Research lanes still run — 14 of 32 failing criteria close without it |
+| **H-13** | the entire Layer 2 test lane | `1E-L2`/`L2a`/`L2b` cannot run at all. **Phase 1 cannot reach Gate C without Layer 2**, since no RLS, RPC-atomicity or constraint claim may rest on a Layer 1 test |
+| **H-14** | `1A-004` only | No effect on Phase 1 — `1A-004` is deliberately **not executed** in Phase 1. Listed so the live cutover is never treated as implied by H-01 |
+
+The rest block later phases.
 
 ---
 
@@ -173,7 +183,7 @@ Work that cannot proceed without a person.
 
 Stated so it can be checked rather than assumed:
 
-- **21 failures are predicted, not observed.** If they do not reproduce as failing tests in 1E-L1, the diagnoses are wrong and Phase 1 must re-plan. This is risk R-01 and the single largest uncertainty in the plan.
+- **23 failures are predicted, not observed.** If they do not reproduce as failing tests in `1E-L1a`/`1E-L1b`, the diagnoses are wrong and Phase 1 must re-plan. This is risk R-01 and the single largest uncertainty in the plan.
 - **Parity percentages carry an evidence grade.** Screen-level `[S]` rows were not read line by line. The totals are directionally sound, not precise to the point.
 - **Performance targets have no baseline.** Every number in `qa/03` is provisional until a device measurement exists.
 - **Licences are recalled, not read.** 15/15 permissive is a claim until each `LICENSE` is read at its pinned commit.

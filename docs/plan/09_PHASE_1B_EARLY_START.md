@@ -73,8 +73,11 @@ the difference matters.
 |---|---|---|
 | 1B-007 remaining store files | Habit Domain | 11 further `toISOString()` sites |
 | **1B-008** `frontend/app/**` | **Expo Architecture** | 10 sites; **without this, `today.tsx` still shows the wrong day at 00:30 even after 1B "passes"** |
-| DEMO-001 seeder gate | Habit Domain | independent |
-| 1D-000, 1D-005/006/007/009 | S&S / Repo Audit | independent of schema |
+| **DEMO-001A** seeder library guard | Habit Domain | independent |
+| **DEMO-001B** seeder UI removal | **Expo Architecture** | independent; lands with or before DEMO-001A |
+| 1D-000, 1D-009 | Supabase & Security | independent of schema |
+| 1D-005 → 1D-006 → 1D-007 | Supabase & Security | independent of schema; **serialised**, shared files |
+| OPS-1E-001 npm scripts | Repository Audit | independent |
 | 1E-000 licence clearance | Open-Source Research | independent |
 
 ---

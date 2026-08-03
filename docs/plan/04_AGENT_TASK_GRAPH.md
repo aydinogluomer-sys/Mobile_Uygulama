@@ -41,7 +41,7 @@ Regenerated from every task's `scope` and `agent` field in `plan/01`:
 
 | Check | Result |
 |---|---|
-| Distinct files across all Phase 1 tasks | **69** |
+| Distinct files across all Phase 1 tasks | **70** |
 | **Files with two different agents as edit owner** | **0** |
 | **`never touches` violations** | **0** |
 | Test files with an owner other than QA & Test | **0** |
@@ -53,7 +53,7 @@ Regenerated from every task's `scope` and `agent` field in `plan/01`:
 | File | Tasks | Serialisation |
 |---|---|---|
 | `frontend/store/willpowerStore.ts` | `1C-003` → `1C-002` | encoded in `depends_on`, not prose |
-| `supabase/functions/generate-routine/index.ts` | `1D-000` → `1D-001` → `1D-002`; `1D-003` → `1D-004` | `1D-000` gates all of them (**R-19**) |
+| `supabase/functions/generate-routine/index.ts` | `1D-000` → `1D-001` → `1D-002` → `1D-003` → `1D-004` | single chain; `1D-000` gates all (**R-19**) |
 | `supabase/functions/notion-auth/index.ts` | `1D-005` → `1D-006` → `1D-007` | chained in `depends_on` |
 | `supabase/functions/spotify-auth/index.ts` | `1D-005` → `1D-006` | chained in `depends_on` |
 
@@ -127,10 +127,11 @@ This is the **only** assignment table in this document. No summary elsewhere res
 ```
 Supabase & Security ── 1A-001 → 1A-002 → 1A-003 ─┬→ 1C-001, 1C-004, 1C-005
                                                   ├→ SEC-1D-001..005
-                                                  └→ 1D-001,003,008
-                       1D-000 ────────────────────→ 1D-001 → 1D-002
-                                                    1D-003 → 1D-004
-                       1D-005 → 1D-006 → 1D-007   (no schema dependency)
+                                                  └→ 1D-008
+                       1D-000 ──→ 1D-001 → 1D-002 → 1D-003 → 1D-004
+                                   (all also need 1A-002; R-19 gate.
+                                    One file, one chain — no parallel edits)
+                       1D-005 → 1D-006 → 1D-007   (serialised: shared files)
                        1D-009                      (no dependency)
 
 Habit Domain        ── 1B-001 →┬→ 1B-002

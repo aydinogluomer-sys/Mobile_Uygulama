@@ -82,8 +82,9 @@ first remediation pass reported 36 — also wrong, in two independent ways: it
 miscounted its own index rows (37, not 36) *and* it left `SEC-1D-005a–f` as one
 collapsed row standing for six tasks. A duplicate `OPS-0B-001` heading and a
 `SEC-1D-005e` block missing its `goal` were found in the same recount. All four
-defects are fixed in `plan/01`; the verified figure is **42 rows · 1 DONE ·
-41 open · 41 fully specified**.
+defects are fixed in `plan/01`; the figure verified at that time was **42 rows · 1 DONE · 41 open**.
+**That value is itself now superseded — see §1: the current figure is 49 rows ·
+1 DONE · 48 open · 48 fully specified.**
 
 This is recorded rather than quietly corrected because it is the second
 counting error in the same document, found by the same method — recounting from

@@ -52,26 +52,46 @@ while 1B is 14 failing tests that can be written today.
 | **1A-002** reconciliation migration | 1A-001 + user decision | 1E-L2, 1C, 1D | after decision |
 | **1A-003** `supabase db reset` verification | 1A-002 | 1E-L2 | — |
 | **1B-001** `lib/date.ts` | Gate B PASS | 1B-002..004 | **immediately, parallel to 1A** |
-| **1B-002** purge UTC/local mixing (8 sites) | 1B-001 | 1E-L1 date tests | — |
+| **1B-002** purge UTC/local mixing (5 store/lib sites) | 1B-001 | 1E-L1a date tests | — |
 | **1B-003** `isDueOn` + `frequency_config.count` | Gate B PASS | 1B-004 | immediately |
 | **1B-004** metrics: `target_direction`, `miss`/`skip`, `isDueOn` wiring | 1B-003 | — | — |
 | **1B-005** habit-log error handling + upsert | Gate B PASS | — | immediately |
 | **1C-001** atomic willpower debit RPC | 1A-002 | 1C-002 | after 1A-002 |
-| **1C-002** activation TOCTOU + refund guard | 1C-001 | — | — |
-| **1C-003** midnight rollover | 1B-001 | — | after 1B-001 |
+| **1C-002** activation TOCTOU + refund guard | 1C-001, **1C-003** | — | — |
+| **1C-003** midnight rollover | 1B-001 | **1C-002** | after 1B-001 |
 | **1C-004** telafi → `habit_log` + XP | 1A-002 | — | after 1A-002 |
 | **1C-005** `recovery_plans` unique constraint | 1A-002 | — | after 1A-002 |
-| **1D-001..004** generate-routine hardening | 1A-002 | — | after 1A-002 |
-| **1D-005..007** OAuth `state`, redirect allowlist, Notion callback | Gate B PASS | — | immediately |
+| **1D-000** reconcile generate-routine with live v11 | Gate B PASS | **1D-001..004** | immediately |
+| **1D-001** rate limit | 1A-002, **1D-000** | 1D-002 | after 1A-002 **and 1D-000** (R-19) |
+| **1D-002** cooldown | 1D-001 | 1D-003 | — |
+| **1D-003** atomic credit debit | 1A-002, **1D-000**, **1D-002** | 1D-004 | — |
+| **1D-004** fail-closed credits | 1D-003 | — | — |
+
+> All five edit `generate-routine/index.ts`. They form **one chain**, not two
+> branches — `1D-001`/`1D-003` and `1D-002`/`1D-004` were previously unordered
+> relative to each other, which would have permitted concurrent edits to one file.
+| **1D-005** OAuth `state` verification | Gate B PASS | **1D-006** | immediately |
+| **1D-006** redirect-URI allowlist | **1D-005** | **1D-007** | after 1D-005 |
+| **1D-007** Notion callback auth | **1D-006** | — | after 1D-006 |
 | **1D-008** webhook idempotency | 1A-002 | — | after 1A-002 |
 | **1D-009** wrong-project deploy guard | Gate B PASS | — | immediately |
 | **1D-010** `__DEV__` paywall guard | — | — | **DONE** (`42b64a0`) |
-| **1E-L1** jest-expo + unit tests | 1B-001 | Gate C | after 1B-001 |
-| **1E-L2** pgTAP + database tests | 1A-003 | Gate C | after 1A-003 |
+| **1E-000** licence clearance | Gate B PASS | 1E-L1, 1E-L2 | immediately |
+| **OPS-1E-001** npm test/typecheck scripts | Gate B PASS | 1E-L1 | immediately |
+| **1E-L1** jest-expo harness | **1E-000, OPS-1E-001** | 1E-L1a, 1E-L1b | after both |
+| **1E-L1a / 1E-L1b** L1 tests | 1E-L1 | Gate C | after 1E-L1 |
+| **1E-L2** pgTAP harness | 1A-003, **1E-000**, **H-13 Docker** | 1E-L2a, 1E-L2b | after all three |
+| **1E-L2a / 1E-L2b** L2 tests | 1E-L2 | Gate C | after 1E-L2 |
 | **SEC-1D-001..003** XP function body hardening | 1A-002 | — | after 1A-002 |
 | **SEC-1D-004** money-table grants | 1A-002 | — | after 1A-002 |
 | **SEC-1D-005a..f** profiles column grants | 1A-002 | — | after 1A-002 |
-| **OPS-0B-001** relocate foreign env | **user approval** | — | blocked on user |
+| **1A-004** live ledger cutover | 1A-003, **H-01**, **H-14 approval** | — | **not executed in Phase 1** |
+| **1B-007** remaining store date sites | 1B-001 | — | after 1B-001 |
+| **1B-008** `app/**` date sites (Expo Arch) | 1B-001 | — | after 1B-001 |
+| **1C-006** recovery store client | 1C-004, 1C-005 | — | after both |
+| **DEMO-001A** seeder library guard | Gate B PASS | — | immediately |
+| **DEMO-001B** seeder UI removal (Expo Arch) | Gate B PASS | — | **lands with or before DEMO-001A** |
+| **OPS-0B-001** relocate foreign env | **H-03 user approval** | — | blocked on user |
 
 ---
 
@@ -159,14 +179,19 @@ schema decision, so H-01 is on the critical path.
 Assuming the §3 decision arrives promptly:
 
 ```
-day 1   1B-001 (date module)        ║  1A-001 (three-way diff)
-day 1   1B-003 (isDueOn)            ║
-day 2   1B-002, 1B-004, 1B-005      ║  ── decision ──
-day 2   1D-005..007, 1D-009         ║  1A-002 (baseline migration)
-day 3   1E-L1 (unit tests green)    ║  1A-003 (db reset verified)
-day 4                               ║  1C-001..005, 1D-001..004, SEC-1D-*
-day 5   1E-L2 (database tests green)
+day 1   1B-001, 1B-003              ║  1A-001 (three-way diff)
+day 1   1E-000, OPS-1E-001          ║  1D-000 (reconcile generate-routine)
+day 1   DEMO-001B → DEMO-001A       ║  1D-005 (OAuth state)
+day 2   1B-002, 1B-004, 1B-005      ║  ── H-01 decision ──
+day 2   1B-007, 1B-008              ║  1A-002 (baseline migration)
+day 2   1E-L1 (harness)             ║  1D-006 → 1D-007, 1D-009
+day 3   1E-L1a, 1E-L1b (L1 green)   ║  1A-003 (db reset verified)
+day 4   1C-003 → 1C-002             ║  1C-001,004,005; 1D-008; SEC-1D-*;
+                                     ║  1D-001→002→003→004 (one chain)
+day 5   1C-006                      ║
+day 5   1E-L2 → 1E-L2a, 1E-L2b      ║  (needs H-13 Docker)
         Gate C
+        1A-004 cutover — NOT in Phase 1 (needs H-01 + H-14)
 ```
 
 The left column needs no database and no decision. **If the schema decision

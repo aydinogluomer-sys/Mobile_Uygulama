@@ -49,10 +49,48 @@ acceptance_criteria · validation · risk · rollback · size`.
 - Baseline header records: generation date, source project ref, and that it is a squash rather than a history
 - **Not applied to live** in this task
 
-**validation** `supabase db reset` on a local stack completes without error; `supabase db diff --linked` reports no differences.
+**acceptance_criteria — security posture (B1)**
 
-**risk** HIGH — an omission produces a schema that looks right and is not.
-**rollback** Delete the new file; restore `001`/`002` from `archive/`. Nothing live changed.
+> These are criteria of **this** task, not a cross-reference. `plan/10 §Step 2`
+> describes the same rule; if the two ever disagree, **this block governs**.
+
+- **The baseline may not weaken the live security posture.** Every `SECURITY DEFINER` function and every privilege grant it emits must leave the resulting database no more permissive than live is today.
+- **`mock_activate_subscription`, `add_xp`, `track_weekly_xp` and `deal_damage_to_active_boss` must not have `EXECUTE` reopened to `PUBLIC`, `anon` or `authenticated`.** These are the two Emergency Gate 0 P0s.
+- **FAIL condition, absolute:** if the baseline SQL contains a `GRANT EXECUTE ... TO PUBLIC|anon|authenticated` targeting any of those four functions, **the task fails**. It is not a review comment to be waived.
+- Security-critical function, policy and grant generation must be **separately reviewed** for blanket `CREATE OR REPLACE`, uncontrolled `GRANT`, posture-hiding `IF NOT EXISTS`, and equivalent **PUSH-UNSAFE** patterns. A generated dump emits these by default, so the default output is not acceptable without this review.
+- Baseline header carries `-- PUSH-UNSAFE: apply only via 'migration repair', never 'db push'`.
+- **The security outcome of the two Emergency Gate 0 migrations is preserved**, demonstrated by schema hash **and** privilege introspection — not by the migrations merely being present as files.
+
+**validation**
+```bash
+# 1. structural: baseline must not re-grant the four P0 functions
+grep -nEi "grant +execute.*(mock_activate_subscription|add_xp|track_weekly_xp|deal_damage_to_active_boss).*(public|anon|authenticated)" \
+  supabase/migrations/*_baseline_schema.sql        # expect: no match
+
+# 2. PUSH-UNSAFE pattern review gate
+grep -nEi "if not exists|create or replace|drop .*if exists" \
+  supabase/migrations/*_baseline_schema.sql        # each hit reviewed and justified in writing
+
+# 3. local reset, then privilege introspection on the LOCAL stack
+supabase db reset
+psql -c "SELECT p.proname,
+                has_function_privilege('anon',          p.oid, 'EXECUTE') AS anon_exec,
+                has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth_exec
+         FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+         WHERE n.nspname='public' AND p.proname IN
+           ('mock_activate_subscription','add_xp','track_weekly_xp','deal_damage_to_active_boss');"
+# expect: anon_exec=false AND auth_exec=false for all four
+```
+- `supabase db reset` completes without error · `supabase db diff --linked` reports no differences
+- **pgTAP regression tests `AC-S01..S07` (`1E-L2b`) pass against the freshly reset local database** — the same assertions that protect live, run against the baseline's output
+- **Never call any of the four functions to test them.** Privilege is introspected via `has_function_privilege`; a call would itself be the exploit
+
+**risk** **HIGH — two distinct failure modes.**
+1. An omission produces a schema that looks right and is not.
+2. **P0 re-grant.** The baseline must create these four functions *with their original permissive grants* so the two Emergency Gate 0 migrations still have something to revoke (`plan/10 §Step 3`). That means **the permissive `GRANT` text is in the file by design**. If the baseline is authored idempotently, or applied out of order, or pushed directly with `db push`, those grants land **without** the revokes that follow — silently reopening a payment bypass and an unauthenticated cross-user write. The ordering is load-bearing, not cosmetic.
+
+**rollback** Delete the new file; restore `001`/`002` from `archive/`. Nothing live changed by this task.
+**If a P0 re-grant is ever observed on live**, rollback is not "revert the baseline" — it is to **re-apply the two Emergency Gate 0 revokes immediately** (`20260802181931`, `20260802205850`), then investigate. Closing the exploit comes first; root-causing comes second.
 
 ---
 
@@ -392,6 +430,11 @@ double-counted.
 ## 1D-001 · Rate limit `generate-routine`
 `P1` · **MUST** · Supabase & Security · depends_on: 1A-002, **1D-000** · **S**
 
+> **R-19 gate.** This task edits and redeploys `generate-routine/index.ts`. The
+> committed file supports 2 modes; the app sends 4; deployed is v11. **`1D-000`
+> must land first** or this deploy silently breaks two working AI modes. The gate
+> is encoded in `depends_on` above — it is not merely a register entry.
+
 **scope** (2 files): `supabase/functions/generate-routine/index.ts` · `supabase/migrations/<ts>_ai_rate_limit.sql`
 
 **goal** Bound AI spend per user.
@@ -410,7 +453,15 @@ double-counted.
 **risk** LOW. **rollback** `git revert`.
 
 ## 1D-003 · Atomic credit debit
-`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **M**
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002, **1D-000**, **1D-002** · **M**
+
+> **Serialised (round 4).** Five tasks edit `generate-routine/index.ts`:
+> `1D-000` → `1D-001` → `1D-002` → `1D-003` → `1D-004`. `1D-001`/`1D-003` and
+> `1D-002`/`1D-004` were previously unordered relative to each other — both
+> reachable from `1D-000` but not from one another, so two agents could have
+> edited the file concurrently. `1D-002` is added here to close the chain.
+>
+> **B3.** This task edits `supabase/functions/generate-routine/index.ts`. **`1D-000` must land first** — the committed file supports 2 modes while the deployed function is v11 and the app sends 4, so redeploying without reconciling would silently break two working AI modes. This is risk **R-19**, and the gate is encoded here in `depends_on`, not only in the register.
 **scope** (2 files): `supabase/migrations/<ts>_spend_focus_points_atomic.sql` · `supabase/functions/generate-routine/index.ts`
 **goal** Close the TOCTOU between balance read (`:59`) and debit (`:110`).
 **acceptance_criteria** Balance check and debit are one statement · concurrent calls cannot overspend · returns the new balance.
@@ -427,6 +478,8 @@ double-counted.
 
 ## 1D-005 · Verify OAuth `state`
 `P1` · **MUST** · Supabase & Security · depends_on: Gate B PASS · **M**
+
+> **Head of the OAuth chain (B2).** `1D-005` → `1D-006` → `1D-007` all edit `notion-auth/index.ts`; `1D-005` and `1D-006` also edit `spotify-auth/index.ts`. Serialised so the three never edit concurrently.
 **scope** (3 files): `supabase/functions/notion-auth/index.ts` · `supabase/functions/spotify-auth/index.ts` · `supabase/migrations/<ts>_oauth_state.sql`
 **goal** Close the account-linking CSRF — `state` is minted in every flow and never checked.
 **acceptance_criteria** `state` is persisted server-side with the user and a TTL · callback rejects a missing/unknown/expired/foreign `state` · single-use.
@@ -434,7 +487,9 @@ double-counted.
 **risk** MEDIUM — breaks in-flight OAuth sessions on deploy. **rollback** `git revert` + `DROP TABLE`.
 
 ## 1D-006 · Redirect-URI allowlist
-`P1` · **MUST** · Supabase & Security · depends_on: Gate B PASS · **S**
+`P1` · **MUST** · Supabase & Security · depends_on: **1D-005** · **S**
+
+> **Serialised (B2).** Shares `notion-auth/index.ts` and `spotify-auth/index.ts` with `1D-005` and `1D-007`. Chain: `1D-005` → `1D-006` → `1D-007`.
 **scope** (2 files): `supabase/functions/notion-auth/index.ts` · `supabase/functions/spotify-auth/index.ts`
 **goal** Stop caller-controlled `redirect_uri` being embedded in the authorize URL.
 **acceptance_criteria** A fixed allowlist is checked before use · non-allowlisted values are rejected with 400 · the app's real scheme is on the list.
@@ -442,7 +497,9 @@ double-counted.
 **risk** MEDIUM — a missing entry breaks a live flow. **rollback** `git revert`.
 
 ## 1D-007 · Require an authenticated user in the Notion callback
-`P1` · **MUST** · Supabase & Security · depends_on: Gate B PASS · **S**
+`P1` · **MUST** · Supabase & Security · depends_on: **1D-006** · **S**
+
+> **Serialised (B2).** Shares `notion-auth/index.ts` with `1D-005` and `1D-006`. Chain: `1D-005` → `1D-006` → `1D-007`. Last in the chain, so it sees the `state` check and the allowlist already in place.
 **scope** (1 file): `supabase/functions/notion-auth/index.ts`
 **goal** The callback currently proceeds with `user = null` and still creates pages in a third-party workspace.
 **acceptance_criteria** Callback returns 401 without a valid user · no third-party side effect occurs before authentication · `verify_jwt` reviewed and recorded.
@@ -799,16 +856,52 @@ double-counted.
 
 **goal** `seedDemoData()` writes fabricated rows into the caller's real account with no environment check anywhere in the module. Hiding the button is not sufficient — any code path reaching the function must also be refused, or the guard is cosmetic.
 
-**Tables written — eight, not seven**
+**Tables affected — classified by write path**
 
-| Table | Written by |
-|---|---|
-| `projects`, `tasks`, `habits`, `habit_logs`, `focus_tasks`, `recovery_plans`, `journal_entries` | direct inserts in `demoSeed.ts` |
-| **`willpower_state`** | **indirect** — `demoSeed.ts:596` calls `useWillpowerStore.getState().spend(3)`, which **UPDATEs** `willpower_state` ([willpowerStore.ts:65-75](frontend/store/willpowerStore.ts#L65-L75)); `fetchToday()` also upserts it |
+> **Corrected at round 4.** `demoSeed.ts` contains **zero** `supabase.from(...)`
+> calls — verified: the only direct Supabase call in the file is
+> `supabase.auth.getUser()` at `:46`. Every write routes through a store. The
+> earlier "direct inserts in `demoSeed.ts`" attribution was wrong, and the
+> single flat table list hid a second layer of effects entirely.
 
-> **Found by the round-2 reviewer.** The previous revision listed seven tables and
-> missed `willpower_state` — the one table Phase 1C exists to make correct. Seeded
-> pollution therefore lands directly on 1C's evidence.
+**A · Direct writes** — a store function called by `demoSeed.ts` writes the row
+
+| Table | Store call | Line in `demoSeed.ts` |
+|---|---|---|
+| `projects` | `addProject` | `:384` |
+| `habits` | `addHabit` | `:464` |
+| `habit_logs` | `logHabit` | `:479`, `:492`, `:507` |
+| `tasks` | `addTask` | `:557` |
+| `focus_tasks` | `addFocusTask` | `:566` |
+| `recovery_plans` | `addPlan` | `:578` |
+| `journal_entries` | `saveEntry` | `:615` |
+| **`willpower_state`** | `spend(3)` → **UPDATE** ([willpowerStore.ts:65-75](frontend/store/willpowerStore.ts#L65-L75)); `fetchToday()` also upserts | `:596`, `:370` |
+
+**B · Indirect trigger side effects** — no seeder code writes these; they change because a row in group A was written
+
+`habit_logs` carries three triggers (`docs/audit/07 §5`), so **every seeded log
+fires all three**:
+
+| Trigger | Timing | Function | Tables it can change |
+|---|---|---|---|
+| `trg_habit_log_set_xp` | BEFORE | `fn_habit_log_set_xp` | rewrites `habit_logs.xp` itself — server-authoritative |
+| `trg_habit_log_award` | AFTER | `fn_habit_log_award` | **`profiles`** (XP, level, coins), and `habits.streak_current` |
+| `on_habit_completed_damage_boss` | AFTER | `trigger_damage_on_habit_log` | **`global_bosses`**, **`boss_contributors`** |
+
+**Confirmed indirect targets: `profiles`, `habits.streak_current`, `global_bosses`, `boss_contributors`.**
+
+> `weekly_xp` is a **suspected** further target — whether `fn_habit_log_award`
+> also calls `track_weekly_xp` was not confirmed from source. It is listed as
+> unconfirmed rather than asserted, and `1A-001`'s three-way diff must resolve it.
+
+**Why the distinction matters:** group B is invisible to any detection method
+built on seeder literals, because the seeder never names those tables. A user
+who seeded and then reports wrong XP, a wrong level, or a wrong boss-contribution
+ranking has pollution in tables the seeder does not appear to touch.
+
+**Do not add a group-B table to group A.** They need different detection and
+different reasoning, and conflating them is what produced the original
+seven-table undercount.
 
 **Collision risk with real user data**
 - `habit_logs` rows pollute XP, streaks, completion percentages and the leaderboard — the exact metrics Phase 1B exists to fix
@@ -825,11 +918,32 @@ double-counted.
 - Read-only audit plan written to `13_DEMO_DATA_AUDIT.md` — **this task deletes no data**
 
 **Read-only detection plan for already-seeded data** (documented, **not executed**)
-- Enumerate the literal project/habit/task names `demoSeed.ts` inserts
-- **INSERT-detectable (7 tables):** rows matching those literals whose `created_at` clusters within one second
-- **`willpower_state` is UPDATE-only and has no literals and no `created_at`** — the clustering heuristic cannot see it. Detect it instead by correlation: a `willpower_state` row whose `state_date` matches a detected seed cluster and whose `used`/`active_count` exceed what that user's real `habit_logs` explain. **Flag as suspected, never as confirmed**
-- Report counts per user; **propose** cleanup as a separate, separately-approved task
-- **Cleanup is not part of this task.** Deleting user rows on a heuristic is a data-loss risk, and the `willpower_state` half is a suspicion rather than a match
+
+> **This plan contains no DELETE, no UPDATE and no automated cleanup of any
+> kind.** It produces a report. Nothing in it may be turned into a remediation
+> script without a separate, separately-approved task.
+
+**Tier 1 — literal match (group A, 7 INSERT-written tables)**
+- Enumerate the literal project/habit/task/journal names `demoSeed.ts` inserts
+- Per user: rows in those 7 tables matching a literal **and** whose `created_at` clusters within one second
+- These are **matches** — high confidence
+
+**Tier 2 — correlation (group A, `willpower_state`)**
+- `willpower_state` is **UPDATE-only**, has no seeder literals and no `created_at`, so Tier 1 cannot see it
+- Correlate instead: a row whose `state_date` falls in a Tier-1 cluster **and** whose `used`/`active_count` exceed what that user's genuine `habit_logs` explain
+- **Suspected, never confirmed**
+
+**Tier 3 — inferred (group B, trigger side effects)**
+- `profiles`, `habits.streak_current`, `global_bosses`, `boss_contributors` are changed by triggers, not by the seeder. There is **no marker of any kind** distinguishing trigger-derived pollution from genuine progress
+- Report only: "user X has N Tier-1 seeded `habit_logs`; their `profiles` XP/level/coins, streaks and boss contributions are therefore **derived from polluted input** and cannot be treated as evidence"
+- **No attempt to compute a corrected value.** XP is a trigger-derived aggregate over history; recomputing it is a migration, not an audit
+- **Inferred, never a match**
+
+**Output:** a per-user report with counts at each tier and its confidence label.
+Cleanup — if ever wanted — is a **separate task requiring its own approval**,
+because Tier 2 is a suspicion and Tier 3 cannot be attributed at row level at
+all. Deleting or "correcting" a user's XP on that basis would destroy real
+progress.
 
 **validation** Unit test: with seeding disallowed, `seedDemoData()` rejects and **zero** Supabase calls are issued (assert on a mocked client, including no `spend`) · `npx tsc --noEmit` clean.
 **risk** LOW to implement. The real risk is the audit plan being turned into an automated delete — explicitly forbidden above.
@@ -847,6 +961,13 @@ double-counted.
 **goal** `settings.tsx:339` renders a tappable row wired to `handleSeedDemoData`. `grep -n "__DEV__" frontend/app/tabs/settings.tsx` exits 1 — there is no guard anywhere in the file. In a release build the row is visible and functional.
 
 **Access point (verified):** `:30` imports `seedDemoData` · `:134` defines `handleSeedDemoData` · `:137` calls it · `:339` renders the row.
+
+**What this row can write** — full classification in `DEMO-001A`:
+- **Direct (8 tables):** `projects`, `habits`, `habit_logs`, `tasks`, `focus_tasks`, `recovery_plans`, `journal_entries`, `willpower_state`
+- **Indirect trigger side effects:** `profiles`, `habits.streak_current`, `global_bosses`, `boss_contributors` — written by the three `habit_logs` triggers, not by any seeder code
+
+This is why removing the row is `MUST` and not cosmetic: one tap writes across
+twelve tables, four of which nothing in the seeder names.
 
 **acceptance_criteria**
 - The row is **not rendered** when seeding is disallowed — not disabled, not hidden behind an alert. It does not exist in the tree
@@ -891,11 +1012,11 @@ Agent, size and dependency below are read from each block's header line.
 | 1D-000 | 1D | Supabase & Security | M | 2 | Gate B PASS |
 | 1D-001 | 1D | Supabase & Security | S | 2 | 1A-002, **1D-000** |
 | 1D-002 | 1D | Supabase & Security | S | 1 | 1D-001 |
-| 1D-003 | 1D | Supabase & Security | M | 2 | 1A-002, **1D-000** |
+| 1D-003 | 1D | Supabase & Security | M | 2 | 1A-002, **1D-000**, **1D-002** |
 | 1D-004 | 1D | Supabase & Security | S | 1 | 1D-003 |
 | 1D-005 | 1D | Supabase & Security | M | 3 | Gate B PASS |
-| 1D-006 | 1D | Supabase & Security | S | 2 | Gate B PASS |
-| 1D-007 | 1D | Supabase & Security | S | 1 | Gate B PASS |
+| 1D-006 | 1D | Supabase & Security | S | 2 | **1D-005** |
+| 1D-007 | 1D | Supabase & Security | S | 1 | **1D-006** |
 | 1D-008 | 1D | Supabase & Security | M | 2 | 1A-002 |
 | 1D-009 | 1D | Supabase & Security | XS | 2 | Gate B PASS |
 | ~~1D-010~~ | 1D | — | — | — | **DONE `42b64a0`** |
