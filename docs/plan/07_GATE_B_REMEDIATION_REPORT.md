@@ -20,7 +20,7 @@
 
 | # | Action | Status | Where |
 |---|---|---|---|
-| **C1** | Acceptance criteria for the 19 unspecified tasks | **DONE** | `01` — all 41 open tasks carry 13 fields inline |
+| **C1** | Acceptance criteria for the 19 unspecified tasks | **DONE** | `01` — round-1 figure was 41 open tasks; **superseded, now 48** |
 | **C2** | Task-ID → AC-ID map | **DONE** | each task's `validation` names its AC ids; `09 §2` maps all 14 failing L1 |
 | **C3** | Correct "20 of 32" → 14 and re-argue | **DONE** | `08` §2, `09` (full rebuild) |
 | **C4** | Recount doc 06; propagate | **DONE** | `08` §1 — 62 cases, 23 predicted |

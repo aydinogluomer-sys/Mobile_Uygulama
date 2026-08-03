@@ -139,11 +139,11 @@ Habit Domain        ── 1B-001 →┬→ 1B-002
                                └→ 1C-003 → 1C-002
                        1B-003 → 1B-004
                        1B-005              (no dependency)
-                       DEMO-001A           (no dependency)
+                       DEMO-001A           (no dependency) ──┐
                        1C-006              (waits on 1C-004, 1C-005)
 
 Expo Architecture   ── 1B-008              (waits on 1B-001)
-                       DEMO-001B           (lands with or before DEMO-001A)
+                       DEMO-001B ◄────────────────────────────┘ (source guard first)
 
 QA & Test           ── (waits 1E-000 + OPS-1E-001) → 1E-L1 →┬→ 1E-L1a
                                                              └→ 1E-L1b

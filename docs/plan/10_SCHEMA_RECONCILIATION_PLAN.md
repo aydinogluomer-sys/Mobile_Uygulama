@@ -81,21 +81,44 @@ Binding requirements on the generated file:
 | Header carries **`-- PUSH-UNSAFE: apply only via 'migration repair', never 'db push'`** | the warning travels with the file |
 | `1D-009`'s guard is **not** sufficient protection | it checks the project ref, not which migration is being applied |
 
-**Verification (part of `1A-002`'s acceptance criteria):**
-`grep -icE "if not exists|or replace|drop .*if exists" <baseline>` returns **0**.
+**Verification:** `grep -icE "if not exists|create or replace" <baseline>` returns
+**0**, and a second application of the baseline returns **non-zero**.
 
-### Step 3 — Preserve the Emergency Gate 0 migrations
-**`20260802181931` and `20260802205850` are NOT folded into the baseline.** They
-remain separate files, ordered *after* it.
+> **`1A-002`'s task block is authoritative for all of this.** These requirements
+> are restated there as acceptance criteria with runnable commands. Where this
+> document and that block differ, **the block governs** — the failure mode across
+> rounds 1–4 was a rule living only in a planning document while the task that
+> executes it never carried it.
 
-Reason: they are the only two migrations whose intent is security-critical and
-independently reviewed. Folding them into a squash would erase the record that a
-payment bypass and an unauthenticated cross-user write were found and closed —
-and would make the regression tests (`AC-S01..S07`) look unmotivated.
+### Step 3 — Preserve the Emergency Gate 0 migrations as history
 
-Consequence: the baseline must create the four functions **with their original
-permissive grants**, so the two revokes still have something to revoke. Verified
-by running all three in order on a clean local database.
+**`20260802181931` and `20260802205850` are NOT folded into the baseline, and are
+NOT deleted.** They remain separate files, ordered *after* it.
+
+> ## The governing principle (H-01 decision (a))
+>
+> **Baseline establishes the secure post-revoke posture. Emergency migrations
+> preserve historical ledger continuity and regression evidence; they are not
+> relied upon to make a fresh database secure.**
+
+| Property | Requirement |
+|---|---|
+| **Retained** | Yes — never deleted, never squashed into the baseline |
+| **Why retained** | They match live ledger entries, so removing them would break ledger continuity; and they are the record that a payment bypass and an unauthenticated cross-user write were found, reviewed and closed |
+| **Effect on a fresh database** | **Security no-op.** The baseline already produced the secure ACL, so these migrations find nothing left to revoke |
+| **Must not error** | `REVOKE` on a privilege that was never granted is a **no-op in PostgreSQL**, not an error. They run cleanly against an already-secure database |
+| **Load-bearing for security?** | **No.** Baseline security must not depend on them running, or on migration ordering |
+
+**This reverses the previous revision.** It formerly required the baseline to
+reproduce the *pre-revoke* ACLs so these two migrations would still have
+something to revoke. That made the secure end-state a consequence of migration
+ordering — fragile, and self-contradictory with the baseline's own FAIL
+condition. Under decision (a), security is a **property of the baseline file
+itself**, directly testable by privilege introspection immediately after
+`db reset` and **before** either of these migrations is applied.
+
+**Verified by `1A-002`** (validation 5) and permanently by **`1E-L2b`**, which
+asserts `AC-S01..S07` against the freshly reset database.
 
 ### Step 4 — Archive the superseded files
 `001_initial_schema.sql` and `002_integrations.sql` → `supabase/migrations/archive/`
@@ -112,7 +135,8 @@ Then verify:
 - **schema hash matches**
 - the app's four RPCs exist and are callable
 - RLS is enabled on all 48 tables
-- post-reset, `mock_activate_subscription`, `add_xp`, `track_weekly_xp`, `deal_damage_to_active_boss` are **not** executable by `anon`/`authenticated` — proving the Emergency Gate 0 migrations still apply on a fresh database
+- **post-reset, and BEFORE either Emergency Gate 0 migration is applied**, the four P0 functions are **not** executable by `PUBLIC`, `anon` or `authenticated`, and **are** executable by `service_role` — proving the **baseline alone** produced the secure posture (H-01 decision (a))
+- re-running the baseline against the now-populated local database **returns non-zero**
 
 ### Step 6 — Cutover (documented; **not executed in Phase 1A**)
 

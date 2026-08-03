@@ -35,62 +35,110 @@ acceptance_criteria · validation · risk · rollback · size`.
 
 ---
 
-## 1A-002 · Write the squashed baseline migration
+## 1A-002 · Write the squashed baseline migration *(post-revoke posture)*
 `P1` · **MUST** · Supabase & Security · depends_on: 1A-001, **H-01 user decision** · **M**
 
 **scope** (2 files): `supabase/migrations/<ts>_baseline_schema.sql` · `supabase/migrations/README.md`
 
-**goal** One migration that reproduces the current live schema from empty, so `db reset` yields a database the app runs against.
+**goal** One migration that reproduces the live schema **and its current, secure privilege posture** from empty, so `db reset` yields a database the app runs against and which is safe on the first statement — not safe only after two later migrations happen to run.
+
+> **H-01 decision (a): POST-REVOKE BASELINE.** The baseline reproduces the
+> **effective schema and privilege posture as it is now**, not the historically
+> insecure intermediate state.
+>
+> A previous revision of this block required the baseline to reproduce the
+> pre-revoke ACLs. **That requirement is deleted in full** — it contradicted the
+> FAIL condition below, and it was unnecessary: `REVOKE` on a privilege that was
+> never granted is a no-op in PostgreSQL, so the Emergency Gate 0 migrations run
+> cleanly against an already-secure database. **No sentence in this task permits
+> a client-role grant on the four functions, under any condition.**
 
 **acceptance_criteria**
-- Baseline creates every live table, column, constraint, index, RPC, trigger and policy identified in 1A-001
-- The two Emergency Gate 0 migrations (`20260802181931`, `20260802205850`) are **preserved as separate files after the baseline**, not folded into it
+
+Three groups, all binding: **schema**, **security posture**, **non-idempotency**.
+
+*Group 1 — schema*
+- Baseline creates every live table, column, constraint, index, RPC, trigger and policy identified in `1A-001`
 - `001_initial_schema.sql` and `002_integrations.sql` moved to `supabase/migrations/archive/` with a README explaining they predate the drift
-- Baseline header records: generation date, source project ref, and that it is a squash rather than a history
+- Baseline header records: generation date · source project ref · that it is a **squash, not a history** · the schema hash it was generated from
 - **Not applied to live** in this task
 
-**acceptance_criteria — security posture (B1)**
+*Group 2 — security posture (post-revoke contract)*
 
-> These are criteria of **this** task, not a cross-reference. `plan/10 §Step 2`
-> describes the same rule; if the two ever disagree, **this block governs**.
+> These are criteria of **this** task, not a cross-reference. Where `plan/10`
+> describes the same rule, **this block governs**.
 
-- **The baseline may not weaken the live security posture.** Every `SECURITY DEFINER` function and every privilege grant it emits must leave the resulting database no more permissive than live is today.
-- **`mock_activate_subscription`, `add_xp`, `track_weekly_xp` and `deal_damage_to_active_boss` must not have `EXECUTE` reopened to `PUBLIC`, `anon` or `authenticated`.** These are the two Emergency Gate 0 P0s.
-- **FAIL condition, absolute:** if the baseline SQL contains a `GRANT EXECUTE ... TO PUBLIC|anon|authenticated` targeting any of those four functions, **the task fails**. It is not a review comment to be waived.
-- Security-critical function, policy and grant generation must be **separately reviewed** for blanket `CREATE OR REPLACE`, uncontrolled `GRANT`, posture-hiding `IF NOT EXISTS`, and equivalent **PUSH-UNSAFE** patterns. A generated dump emits these by default, so the default output is not acceptable without this review.
-- Baseline header carries `-- PUSH-UNSAFE: apply only via 'migration repair', never 'db push'`.
-- **The security outcome of the two Emergency Gate 0 migrations is preserved**, demonstrated by schema hash **and** privilege introspection — not by the migrations merely being present as files.
+The baseline must create these four functions with a **directly secure**
+privilege posture on a fresh database:
+
+- `public.mock_activate_subscription(text, text)`
+- `public.add_xp(uuid, integer)`
+- `public.track_weekly_xp(uuid, integer)`
+- `public.deal_damage_to_active_boss(uuid, integer)`
+
+**Required state after a fresh `supabase db reset`, for each of the four:**
+
+| Role | `EXECUTE` |
+|---|---|
+| `PUBLIC` | **false** |
+| `anon` | **false** |
+| `authenticated` | **false** |
+| `service_role` | **true** |
+| `postgres` | **true** |
+
+- **`CREATE FUNCTION` grants `EXECUTE` to `PUBLIC` by default.** Therefore the baseline must issue the necessary `REVOKE` statements **immediately after each of these four function definitions, inside the same transaction** — never in a later migration, never at the end of the file.
+- **The secure ACL is the baseline's own output contract.** It does **not** depend on the Emergency Gate 0 migrations running afterwards, and does not depend on migration ordering at all.
+- **FAIL condition, absolute:** if the baseline SQL contains an explicit `GRANT EXECUTE ... TO PUBLIC|anon|authenticated` targeting any of the four, **the task fails**. Not waivable, not a review comment.
+- The baseline may not leave any other object more permissive than live is today.
+
+*Group 3 — non-idempotency and PUSH-UNSAFE contract*
+
+The baseline is a **bootstrap for an empty local database only**. It must not
+attempt to look push-safe:
+
+- **A second application against an existing schema must return non-zero.** Succeeding twice is a defect, not a convenience
+- **Blanket `IF NOT EXISTS` is forbidden**
+- **Blanket `CREATE OR REPLACE` is forbidden**
+- Any pattern that silently mutates an existing object, or hides the privilege posture, is forbidden
+- Baseline header carries `-- PUSH-UNSAFE: empty-database bootstrap only. Never 'db push', never 'apply_migration' against live.`
+- **Applying it to the live project via `db push` or `apply_migration` is prohibited.** Live registration is `1A-004`'s ledger-only `migration repair`
 
 **validation**
 ```bash
-# 1. structural: baseline must not re-grant the four P0 functions
-grep -nEi "grant +execute.*(mock_activate_subscription|add_xp|track_weekly_xp|deal_damage_to_active_boss).*(public|anon|authenticated)" \
-  supabase/migrations/*_baseline_schema.sql        # expect: no match
+# 1. no client GRANT on the four P0 functions  -> absolute FAIL if matched
+grep -nEi "grant +execute.*(mock_activate_subscription|add_xp|track_weekly_xp|deal_damage_to_active_boss).*(public|anon|authenticated)"   supabase/migrations/*_baseline_schema.sql          # expect: NO MATCH
 
-# 2. PUSH-UNSAFE pattern review gate
-grep -nEi "if not exists|create or replace|drop .*if exists" \
-  supabase/migrations/*_baseline_schema.sql        # each hit reviewed and justified in writing
+# 2. non-idempotency: blanket forms are forbidden outright
+grep -nEi "if not exists|create or replace"   supabase/migrations/*_baseline_schema.sql          # expect: NO MATCH
 
-# 3. local reset, then privilege introspection on the LOCAL stack
-supabase db reset
+# 3. first application on an EMPTY local stack -> PASS
+supabase db reset                                     # expect: exit 0
+
+# 4. second application against the now-existing schema -> MUST fail
+psql -f supabase/migrations/*_baseline_schema.sql; echo "exit=$?"
+                                                      # expect: exit != 0
+
+# 5. privilege introspection on the LOCAL stack after reset
 psql -c "SELECT p.proname,
-                has_function_privilege('anon',          p.oid, 'EXECUTE') AS anon_exec,
-                has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth_exec
+                has_function_privilege('public',        p.oid,'EXECUTE') AS public_exec,
+                has_function_privilege('anon',          p.oid,'EXECUTE') AS anon_exec,
+                has_function_privilege('authenticated', p.oid,'EXECUTE') AS auth_exec,
+                has_function_privilege('service_role',  p.oid,'EXECUTE') AS svc_exec
          FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
          WHERE n.nspname='public' AND p.proname IN
            ('mock_activate_subscription','add_xp','track_weekly_xp','deal_damage_to_active_boss');"
-# expect: anon_exec=false AND auth_exec=false for all four
+# expect: public_exec=f, anon_exec=f, auth_exec=f, svc_exec=t  for all four
 ```
-- `supabase db reset` completes without error · `supabase db diff --linked` reports no differences
-- **pgTAP regression tests `AC-S01..S07` (`1E-L2b`) pass against the freshly reset local database** — the same assertions that protect live, run against the baseline's output
+- **Schema-hash match** between the reset local database and the live capture from `1A-001`
+- **pgTAP security regression tests `AC-S01..S07` (`1E-L2b`) pass against the freshly reset database** — before any Emergency Gate 0 migration is applied, proving the baseline alone is secure
 - **Never call any of the four functions to test them.** Privilege is introspected via `has_function_privilege`; a call would itself be the exploit
 
-**risk** **HIGH — two distinct failure modes.**
-1. An omission produces a schema that looks right and is not.
-2. **P0 re-grant.** The baseline must create these four functions *with their original permissive grants* so the two Emergency Gate 0 migrations still have something to revoke (`plan/10 §Step 3`). That means **the permissive `GRANT` text is in the file by design**. If the baseline is authored idempotently, or applied out of order, or pushed directly with `db push`, those grants land **without** the revokes that follow — silently reopening a payment bypass and an unauthenticated cross-user write. The ordering is load-bearing, not cosmetic.
+**risk** **HIGH — two failure modes.**
+1. An omission produces a schema that looks right and is not. Mitigated by the `1A-001` diff and the schema-hash comparison.
+2. **P0 re-grant.** If the baseline emitted the four functions without the immediate `REVOKE`s, a fresh database would leave a payment bypass and an unauthenticated cross-user write open from the first statement. Under the post-revoke contract this is a **single-file property that is directly testable** (validation 5) rather than a fragile consequence of migration ordering — which is precisely why (a) was chosen over (b).
 
 **rollback** Delete the new file; restore `001`/`002` from `archive/`. Nothing live changed by this task.
-**If a P0 re-grant is ever observed on live**, rollback is not "revert the baseline" — it is to **re-apply the two Emergency Gate 0 revokes immediately** (`20260802181931`, `20260802205850`), then investigate. Closing the exploit comes first; root-causing comes second.
+**If a P0 re-grant is ever observed on live**, rollback is not "revert the baseline" — **re-apply the two Emergency Gate 0 revokes immediately** (`20260802181931`, `20260802205850`), then investigate. Closing the exploit comes first.
 
 ---
 
@@ -842,12 +890,18 @@ double-counted.
 
 # Cross-phase
 
-> **Split at round 2 (B3).** `DEMO-001` was one task owned by Habit Domain with
-> `frontend/app/tabs/settings.tsx` in scope — a path Habit Domain is forbidden to
-> touch, and which `plan/04` simultaneously declared unowned in Phase 1. It is now
-> two tasks, each with its own owner, criteria, validation, risk and rollback.
-> **`DEMO-001B` must land before or with `DEMO-001A`** so no window exists where
-> the library refuses but the button still invites the tap.
+> **Split at round 2 (B3), serialised at round 5.** `DEMO-001` was one task owned
+> by Habit Domain with `frontend/app/tabs/settings.tsx` in scope — a path Habit
+> Domain is forbidden to touch. It is now two tasks, each with its own owner,
+> criteria, validation, risk and rollback.
+>
+> **Order: `DEMO-001A` → `DEMO-001B`, encoded in `depends_on`.**
+> The **source-level guard lands first**. Removing the UI row alone is not
+> sufficient — any other caller of `seedDemoData()` would still write. Securing
+> the library first means the window between the two tasks is *safe but
+> cosmetically inconsistent* (a visible button that refuses), rather than
+> *invisible but still exploitable*. Round 4 had this stated in prose only, in
+> the reverse order, and encoded in no `depends_on`.
 
 ## DEMO-001A · Gate the seeder at the library
 `P1` · **MUST** · Habit Domain · depends_on: Gate B PASS · **S**
@@ -882,17 +936,26 @@ double-counted.
 `habit_logs` carries three triggers (`docs/audit/07 §5`), so **every seeded log
 fires all three**:
 
-| Trigger | Timing | Function | Tables it can change |
+| Trigger | Timing | Function | Tables it changes |
 |---|---|---|---|
 | `trg_habit_log_set_xp` | BEFORE | `fn_habit_log_set_xp` | rewrites `habit_logs.xp` itself — server-authoritative |
-| `trg_habit_log_award` | AFTER | `fn_habit_log_award` | **`profiles`** (XP, level, coins), and `habits.streak_current` |
-| `on_habit_completed_damage_boss` | AFTER | `trigger_damage_on_habit_log` | **`global_bosses`**, **`boss_contributors`** |
+| `trg_habit_log_award` | AFTER | `fn_habit_log_award` | `habits.streak_current`, **`habits.streak_best`**; calls `add_xp()` → **`profiles`**; calls **`track_weekly_xp()`** → **`weekly_xp`** |
+| `on_habit_completed_damage_boss` | AFTER | `trigger_damage_on_habit_log` | calls `deal_damage_to_active_boss()` → **`global_bosses`**, **`boss_contributors`** — **only when `is_completed = true`** |
 
-**Confirmed indirect targets: `profiles`, `habits.streak_current`, `global_bosses`, `boss_contributors`.**
+**Confirmed indirect targets — six:**
+`profiles` · **`weekly_xp`** · `habits.streak_current` · **`habits.streak_best`** · `global_bosses` · `boss_contributors`
 
-> `weekly_xp` is a **suspected** further target — whether `fn_habit_log_award`
-> also calls `track_weekly_xp` was not confirmed from source. It is listed as
-> unconfirmed rather than asserted, and `1A-001`'s three-way diff must resolve it.
+> **Corrected at round 5, from the function bodies.** `weekly_xp` was previously
+> listed as *suspected*; `fn_habit_log_award` calls `track_weekly_xp(...)`
+> directly, so it is **confirmed**. `habits.streak_best` was missed entirely.
+>
+> **`weekly_xp` is the most consequential of the six: it backs the leaderboard.**
+> It is the only affected table whose pollution is visible to **other users**,
+> not just to the seeding user.
+>
+> The boss path is conditional on `is_completed = true`. `logStore.ts:60,78` sets
+> `is_completed: isDone`, and `demoSeed.ts:479,507` seed two `state:'done'` logs
+> — **so the boss path does fire.**
 
 **Why the distinction matters:** group B is invisible to any detection method
 built on seeder literals, because the seeder never names those tables. A user
@@ -934,7 +997,8 @@ seven-table undercount.
 - **Suspected, never confirmed**
 
 **Tier 3 — inferred (group B, trigger side effects)**
-- `profiles`, `habits.streak_current`, `global_bosses`, `boss_contributors` are changed by triggers, not by the seeder. There is **no marker of any kind** distinguishing trigger-derived pollution from genuine progress
+- `profiles`, **`weekly_xp`**, `habits.streak_current`, **`habits.streak_best`**, `global_bosses`, `boss_contributors` are changed by triggers, not by the seeder. There is **no marker of any kind** distinguishing trigger-derived pollution from genuine progress
+- **`weekly_xp` backs the leaderboard, so this tier is not private to the seeding user** — a seeded account can outrank real ones. Report it explicitly rather than folding it in with the rest
 - Report only: "user X has N Tier-1 seeded `habit_logs`; their `profiles` XP/level/coins, streaks and boss contributions are therefore **derived from polluted input** and cannot be treated as evidence"
 - **No attempt to compute a corrected value.** XP is a trigger-derived aggregate over history; recomputing it is a migration, not an audit
 - **Inferred, never a match**
@@ -950,7 +1014,7 @@ progress.
 **rollback** `git revert` — restores the current unsafe behaviour, so revert only with cause.
 
 ## DEMO-001B · Remove the seeder from the production UI
-`P1` · **MUST** · **Expo Architecture** · depends_on: Gate B PASS · **XS**
+`P1` · **MUST** · **Expo Architecture** · depends_on: **DEMO-001A** · **XS**
 
 **scope** (1 file): `frontend/app/tabs/settings.tsx`
 
@@ -964,10 +1028,16 @@ progress.
 
 **What this row can write** — full classification in `DEMO-001A`:
 - **Direct (8 tables):** `projects`, `habits`, `habit_logs`, `tasks`, `focus_tasks`, `recovery_plans`, `journal_entries`, `willpower_state`
-- **Indirect trigger side effects:** `profiles`, `habits.streak_current`, `global_bosses`, `boss_contributors` — written by the three `habit_logs` triggers, not by any seeder code
+- **Indirect trigger side effects (6):** `profiles`, `weekly_xp`, `habits.streak_current`, `habits.streak_best`, `global_bosses`, `boss_contributors` — written by the three `habit_logs` triggers, not by any seeder code
 
-This is why removing the row is `MUST` and not cosmetic: one tap writes across
-twelve tables, four of which nothing in the seeder names.
+**13 distinct tables** are affected (`habits` appears in both lists — directly
+via `addHabit`, and again via the streak columns the trigger updates).
+**Five are named nowhere in the seeder**, and one of them — `weekly_xp` — backs
+the leaderboard, so the damage is visible to other users. That is why removing
+the row is `MUST` and not cosmetic.
+
+> **Depends on `DEMO-001A`.** The library guard lands first; this task then
+> removes the now-refusing button.
 
 **acceptance_criteria**
 - The row is **not rendered** when seeding is disallowed — not disabled, not hidden behind an alert. It does not exist in the tree
@@ -1039,7 +1109,7 @@ Agent, size and dependency below are read from each block's header line.
 | 1E-L2a | 1E | QA & Test | M | 2 | 1E-L2, 1C-001, 1C-004 |
 | 1E-L2b | 1E | QA & Test | M | 3 | 1E-L2 |
 | DEMO-001A | 1 | Habit Domain | S | 2 | Gate B PASS |
-| DEMO-001B | 1 | Expo Architecture | XS | 1 | **DEMO-001B lands with or before DEMO-001A** |
+| DEMO-001B | 1 | Expo Architecture | XS | 1 | **DEMO-001A** |
 | OPS-0B-001 | 2C | Supabase & Security | XS | 2 | **H-03** |
 
 **49 rows · 1 DONE (`1D-010`, closed in `42b64a0`) · 48 open · 48 fully

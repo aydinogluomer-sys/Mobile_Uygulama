@@ -89,8 +89,8 @@ while 1B is 14 failing tests that can be written today.
 | **1B-007** remaining store date sites | 1B-001 | — | after 1B-001 |
 | **1B-008** `app/**` date sites (Expo Arch) | 1B-001 | — | after 1B-001 |
 | **1C-006** recovery store client | 1C-004, 1C-005 | — | after both |
-| **DEMO-001A** seeder library guard | Gate B PASS | — | immediately |
-| **DEMO-001B** seeder UI removal (Expo Arch) | Gate B PASS | — | **lands with or before DEMO-001A** |
+| **DEMO-001A** seeder library guard | Gate B PASS | **DEMO-001B** | immediately |
+| **DEMO-001B** seeder UI removal (Expo Arch) | **DEMO-001A** | — | after DEMO-001A — source guard lands first |
 | **OPS-0B-001** relocate foreign env | **H-03 user approval** | — | blocked on user |
 
 ---
@@ -181,7 +181,7 @@ Assuming the §3 decision arrives promptly:
 ```
 day 1   1B-001, 1B-003              ║  1A-001 (three-way diff)
 day 1   1E-000, OPS-1E-001          ║  1D-000 (reconcile generate-routine)
-day 1   DEMO-001B → DEMO-001A       ║  1D-005 (OAuth state)
+day 1   DEMO-001A → DEMO-001B       ║  1D-005 (OAuth state)
 day 2   1B-002, 1B-004, 1B-005      ║  ── H-01 decision ──
 day 2   1B-007, 1B-008              ║  1A-002 (baseline migration)
 day 2   1E-L1 (harness)             ║  1D-006 → 1D-007, 1D-009
