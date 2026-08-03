@@ -30,6 +30,8 @@
 ### Three rules that follow from the table
 
 1. **Test files are always QA & Test's.** A domain or security task never edits a test. It carries a `test_contract` naming the QA task that owns the file and specifying what must be asserted. This is what resolved the six conflicts.
+
+   **One named exception: `supabase/tests/baseline_privileges.test.sql`, owned by Supabase & Security in `1A-002B`.** It asserts the baseline's *own output contract*, is authored with the baseline, and must run **before** the QA test lane exists — `1E-L2b` depends transitively on `1A-002B`, so requiring a QA-owned file here would recreate the acceptance cycle round 8 removed. `1E-L2b` remains the **permanent regression owner** of the same properties. The exception is named here so it is not a silent bypass; **no other test file may be owned outside QA & Test.**
 2. **Repository Audit may not edit a production or Supabase-config file.** `supabase/config.toml` is Supabase & Security's; `frontend/package.json` is Repository Audit's.
 3. **The Skeptical Reviewer is never an edit owner.** Review ownership and edit ownership are different things; the reviewer produces a verdict, never a diff.
 
@@ -41,7 +43,7 @@ Regenerated from every task's `scope` and `agent` field in `plan/01`:
 
 | Check | Result |
 |---|---|
-| Distinct files across all Phase 1 tasks | **73** |
+| Distinct files across all Phase 1 tasks | **75** |
 | **Files with two different agents as edit owner** | **0** |
 | **`never touches` violations** | **0** |
 | Test files with an owner other than QA & Test | **0** |
@@ -66,7 +68,8 @@ This is the **only** assignment table in this document. No summary elsewhere res
 | Task | Agent | Files | Reviewer |
 |---|---|---|---|
 | 1A-001 three-way diff | Supabase & Security | `docs/audit/10_…md` | Skeptical Reviewer |
-| 1A-002 baseline migration | Supabase & Security | `migrations/20260801000000_baseline_schema.sql` · `migrations/README.md` | Skeptical Reviewer |
+| 1A-002A baseline authoring | Supabase & Security | `migrations/20260801000000_baseline_schema.sql` · `migrations/README.md` · 3 `archive/` paths | Skeptical Reviewer |
+| **1A-002B baseline-only validation** | Supabase & Security | `supabase/tests/baseline_privileges.test.sql` *(named ownership exception)* · `docs/audit/13_…md` | Skeptical Reviewer |
 | 1A-003 reset verification | Supabase & Security | `docs/audit/11_…md` | Skeptical Reviewer |
 | **1A-004 live ledger cutover** *(not executed in Phase 1)* | Supabase & Security | `docs/audit/12_LEDGER_CUTOVER_RECORD.md` | Skeptical Reviewer |
 | 1B-001 date module | Habit Domain | `frontend/lib/date.ts` | Skeptical Reviewer |

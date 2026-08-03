@@ -58,11 +58,30 @@ FORBIDDEN = {
 # exactly the H-01 divergence that round-6 B2 was about).
 HUMAN_TOKENS = ["H-01", "H-13", "H-14", "H-03", "Gate B PASS"]
 
+# The single named exception to "all test files belong to QA & Test"
+# (docs/plan/04_AGENT_TASK_GRAPH.md section 1). Any other non-QA test file FAILS.
+TEST_OWNERSHIP_EXCEPTIONS = {"supabase/tests/baseline_privileges.test.sql"}
+
+# Criteria below are tracked across every block whose id starts with this
+# prefix, so splitting a task does not read as deleting its criteria.
+TRACKED_PREFIX = "1A-002"
+
+# A validation block that builds its own database with plain createdb is not a
+# valid Supabase environment: no auth schema, no anon/authenticated/service_role
+# roles, no platform extensions. has_function_privilege('anon', ...) would raise
+# "role does not exist", so the defining assertion could not even run.
+PLAIN_DB_MARKERS = ["createdb", "dropdb"]
+SUPABASE_BOOTSTRAP_MARKERS = ["supabase db reset", "supabase start"]
+
 # Criteria whose DELETION from 1A-002 is a regression (round-8 item 1E).
 # Each is (label, [alternative marker phrases]) — matched case-insensitively.
 CRITICAL_1A002 = [
     ("baseline-alone secure posture",   ["baseline's own output contract", "baseline alone"]),
-    ("before-Emergency validation",     ["before either emergency", "before any emergency"]),
+    # Round 8 strengthened this: the Emergency migrations are not merely applied
+    # later, they are ABSENT from the migration set during Stage A.
+    ("baseline-alone posture proof",    ["before either emergency", "before any emergency",
+                                         "absent from the migration set",
+                                         "neither emergency migration is present"]),
     ("preserved Emergency files",       ["not deleted", "not folded"]),
     ("migration ordering invariant",    ["sorts before", "ordering invariant"]),
     ("second application non-zero",     ["second application", "-ne 0"]),
@@ -152,6 +171,24 @@ def parse_backlog(repo: str):
 # --------------------------------------------------------------------------- #
 # checks
 # --------------------------------------------------------------------------- #
+def tracked_blocks(tasks):
+    """Every task under TRACKED_PREFIX (1A-002, or 1A-002A + 1A-002B after the
+    round-8 split). Checks must not hardcode a single task id: a split would
+    silently disable them."""
+    return {tid: task for tid, task in tasks.items() if tid.startswith(TRACKED_PREFIX)}
+
+
+def tracked_body(tasks):
+    return " ".join(task["body"] for task in tracked_blocks(tasks).values())
+
+
+def tracked_files(tasks):
+    out = []
+    for task in tracked_blocks(tasks).values():
+        out.extend(task["files"])
+    return out
+
+
 def check_fields(tasks, report):
     """1B: assert all 13 fields individually, not a 6-field proxy."""
     print("\n[1] MANDATORY FIELDS (all %d, parsed individually)" % len(ALL_13))
@@ -255,6 +292,10 @@ def check_ownership(tasks, owners, report):
                     violations += 1
                 continue
             if is_test_path(path):
+                if path in TEST_OWNERSHIP_EXCEPTIONS:
+                    report.note("%s: %s owns %s — NAMED exception (plan/04 section 1)"
+                                % (task_id, task["agent"], path))
+                    continue
                 report.fail("%s: %s owns test file %s" % (task_id, task["agent"], path))
                 violations += 1
                 continue
@@ -304,13 +345,13 @@ def check_sizes_and_cycles(tasks, report):
 def check_migration_ordering(repo, tasks, report):
     """1A: derive every version from REAL sources. No hardcoded comparison."""
     print("\n[6] MIGRATION ORDERING (derived from disk + 1A-002 scope)")
-    block = tasks.get("1A-002", {})
-    body = block.get("body", "")
+    ids = sorted(tracked_blocks(tasks))
+    body = tracked_body(tasks)
 
-    # baseline filename parsed from the 1A-002 scope line
-    baseline_files = [f for f in block.get("files", []) if "baseline_schema" in f]
+    # baseline filename parsed from the tracked scope lines
+    baseline_files = [f for f in tracked_files(tasks) if "baseline_schema" in f]
     if not baseline_files:
-        report.fail("1A-002 scope names no baseline_schema file")
+        report.fail("%s scope names no baseline_schema file" % (ids or TRACKED_PREFIX))
         return
     baseline_name = os.path.basename(baseline_files[0])
     m = re.match(r"^(\d+)_", baseline_name)
@@ -321,7 +362,7 @@ def check_migration_ordering(repo, tasks, report):
     if "<ts>" in baseline_name or "<" in baseline_name:
         report.fail("baseline filename is still a placeholder: %s" % baseline_name)
         return
-    report.ok("baseline version parsed from 1A-002 scope: %s (%s)" % (baseline_version, baseline_name))
+    report.ok("baseline version parsed from %s scope: %s (%s)" % (ids, baseline_version, baseline_name))
 
     # emergency + active migrations parsed from disk
     mig_dir = os.path.join(repo, MIGRATIONS_DIR)
@@ -361,18 +402,18 @@ def check_migration_ordering(repo, tasks, report):
 
     # the block must state the invariant, not merely be consistent with it
     if re.search(r"sorts?\s+before|ordering invariant", body, re.I):
-        report.ok("1A-002 states the ordering invariant in its criteria")
+        report.ok("%s states the ordering invariant in its criteria" % ids)
     else:
-        report.fail("1A-002 does not state the ordering invariant")
+        report.fail("%s does not state the ordering invariant" % ids)
 
 
 def check_bash_executability(tasks, report):
     """1D: does the validation block actually run, or pass vacuously?"""
     print("\n[7] 1A-002 VALIDATION BLOCK EXECUTABILITY")
-    body = tasks.get("1A-002", {}).get("body", "")
+    body = tracked_body(tasks)
     fences = re.findall(r"```bash\n(.*?)```", body, re.S)
     if not fences:
-        report.fail("1A-002 has no ```bash validation block")
+        report.fail("%s has no ```bash validation block" % sorted(tracked_blocks(tasks)))
         return
     script = "\n".join(fences)
 
@@ -422,10 +463,12 @@ def check_bash_executability(tasks, report):
 def check_two_stage_validation(tasks, report):
     """Item 2: baseline-alone posture must be proven separately from full reset."""
     print("\n[8] TWO-STAGE VALIDATION (baseline-alone vs full chain)")
-    body = tasks.get("1A-002", {}).get("body", "").lower()
+    body = tracked_body(tasks).lower()
     stage_a = any(k in body for k in ["stage a", "baseline alone", "baseline-alone"])
     before = any(k in body for k in ["before either emergency", "before any emergency",
-                                     "without applying the emergency"])
+                                     "without applying the emergency",
+                                     "absent from the migration set",
+                                     "neither emergency migration is present"])
     stage_b = any(k in body for k in ["stage b", "full migration chain", "full chain"])
     for label, ok in [("Stage A (baseline alone) present", stage_a),
                       ("privilege assertion BEFORE Emergency migrations", before),
@@ -451,12 +494,22 @@ def check_deletion_regression(repo, tasks, baseline_rev, report):
         report.note("cannot read %s:%s — regression check skipped" % (baseline_rev, BACKLOG))
         return
 
-    prev_block = ""
-    for block in split_blocks(prev.stdout):
-        if block["head"].startswith("1A-002"):
-            prev_block = "\n".join(block["body"]).lower()
-            break
-    now_block = tasks.get("1A-002", {}).get("body", "").lower()
+    # A task may be SPLIT between revisions (1A-002 -> 1A-002A + 1A-002B).
+    # Compare the union of every block whose id starts with the tracked prefix,
+    # so a split is not misreported as seven deletions.
+    prev_block = " ".join(
+        "\n".join(b["body"]) for b in split_blocks(prev.stdout)
+        if b["head"].startswith(TRACKED_PREFIX)
+    ).lower()
+    now_block = " ".join(
+        task["body"] for tid, task in tasks.items() if tid.startswith(TRACKED_PREFIX)
+    ).lower()
+    prev_ids = sorted(b["head"].split(" ")[0] for b in split_blocks(prev.stdout)
+                      if b["head"].startswith(TRACKED_PREFIX))
+    now_ids = sorted(tid for tid in tasks if tid.startswith(TRACKED_PREFIX))
+    if prev_ids != now_ids:
+        report.note("tracked blocks changed: %s -> %s (split/merge; criteria "
+                    "compared as a union)" % (prev_ids, now_ids))
 
     regressions = 0
     for label, markers in CRITICAL_1A002:
@@ -473,8 +526,78 @@ def check_deletion_regression(repo, tasks, baseline_rev, report):
     return regressions
 
 
+def check_supabase_bootstrap(tasks, report):
+    """Round-8: a validation block must not build its environment with plain
+    createdb. It must use a Supabase-bootstrapped stack."""
+    print("\n[10] SUPABASE-BOOTSTRAPPED VALIDATION ENVIRONMENT")
+    offenders = 0
+    for task_id, task in sorted(tasks.items()):
+        for fence in re.findall(r"```bash\n(.*?)```", task["body"], re.S):
+            plain = [m for m in PLAIN_DB_MARKERS if re.search(r"^\s*%s\b" % m, fence, re.M)]
+            if plain:
+                report.fail("%s validation builds its environment with %s — a plain "
+                            "PostgreSQL database has no auth schema and no "
+                            "anon/authenticated/service_role roles, so "
+                            "has_function_privilege('anon', ...) would error"
+                            % (task_id, plain))
+                offenders += 1
+            if "has_function_privilege" in fence or "pg_roles" in fence:
+                if not any(m in task["body"] for m in SUPABASE_BOOTSTRAP_MARKERS):
+                    report.fail("%s introspects privileges but never establishes a "
+                                "Supabase-bootstrapped stack" % task_id)
+                    offenders += 1
+    if not offenders:
+        report.ok("no validation block uses a plain createdb environment")
+    return offenders
+
+
+def check_artefact_cycles(tasks, report):
+    """Round-8: task -> required artefact -> artefact's owner task -> dependency
+    path back to the task. A task cannot require a file produced by something
+    that depends on it: the file will not exist when it is needed."""
+    print("\n[11] ACCEPTANCE-ARTEFACT CYCLES")
+    producer = {}
+    for task_id, task in tasks.items():
+        for path in task["files"]:
+            producer.setdefault(path, task_id)
+
+    def reaches(a, b, seen=None):
+        seen = seen or set()
+        if a == b:
+            return True
+        if a in seen:
+            return False
+        seen.add(a)
+        return any(reaches(d, b, seen) for d in tasks.get(a, {}).get("deps", ()))
+
+    cycles = 0
+    for task_id, task in sorted(tasks.items()):
+        # artefacts REQUIRED by this task's executable validation, not merely mentioned
+        required = set()
+        for fence in re.findall(r"```bash\n(.*?)```", task["body"], re.S):
+            required |= set(re.findall(r"[\w./$\{\}\-]*?(supabase/tests/[\w.\-]+\.sql)", fence))
+        for artefact in sorted(required):
+            owner = producer.get(artefact)
+            if owner is None:
+                report.fail("%s requires %s, which NO task produces" % (task_id, artefact))
+                cycles += 1
+                continue
+            if owner == task_id:
+                continue                      # produced by the task itself: fine
+            if reaches(owner, task_id):
+                report.fail("ACCEPTANCE CYCLE: %s requires %s, produced by %s, "
+                            "which transitively depends on %s — the file will not "
+                            "exist when %s runs" % (task_id, artefact, owner, task_id, task_id))
+                cycles += 1
+            else:
+                report.ok("%s requires %s (produced by %s, no cycle)" % (task_id, artefact, owner))
+    if not cycles:
+        report.ok("0 acceptance-artefact cycles")
+    return cycles
+
+
 def check_stale(repo, report):
-    print("\n[10] ACTIVE STALE ASSERTIONS (every .md under docs/, no whitelist)")
+    print("\n[12] ACTIVE STALE ASSERTIONS (every .md under docs/, no whitelist)")
     stale = {
         "58": ["case", "e2e"], "21": ["predict", "defect", "failur"],
         "18": ["blocked", "device"], "20": ["l1", "layer", "failing"],
@@ -529,7 +652,7 @@ def check_stale(repo, report):
 
 def check_h01(repo, report):
     """Item 11 of round 6, re-verified: H-01 must not read as an open decision."""
-    print("\n[11] H-01 CLOSURE")
+    print("\n[13] H-01 CLOSURE")
     open_markers = [
         "awaits h-01", "decision required — h-01", "only after h-01",
         "waits on h-01", "needs h-01", "h-01 + ", "h-01 is on the critical path",
@@ -598,6 +721,8 @@ def main() -> int:
     check_bash_executability(tasks, report)
     check_two_stage_validation(tasks, report)
     check_deletion_regression(repo, tasks, args.baseline_rev, report)
+    check_supabase_bootstrap(tasks, report)
+    artefact_cycles = check_artefact_cycles(tasks, report)
     candidates = check_stale(repo, report)
     h01 = check_h01(repo, report)
 
@@ -611,6 +736,7 @@ def main() -> int:
     print("  ownership conflicts ......... %d" % conflicts)
     print("  never-touches violations .... %d" % violations)
     print("  XL tasks .................... %d" % sizes["XL"])
+    print("  acceptance-artefact cycles .. %d" % artefact_cycles)
     print("  H-01 open-decision sites .... %d" % h01)
     print("  stale candidates ............ %d" % candidates)
     print("  FAILURES .................... %s" % (len(report.failures) or "NONE"))

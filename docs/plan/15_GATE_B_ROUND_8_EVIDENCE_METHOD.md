@@ -115,6 +115,12 @@ false pass, and an explicit `status=$?` / `test "$status" -ne 0`.
 
 ## 6. Verifier result at this commit
 
+> ⚠ **Superseded by the round-8 execution correction.** The counts below were
+> true at commit `5bf56ce`. `1A-002` has since been split into `1A-002A` +
+> `1A-002B`, giving **50 rows · 49 open · 75 files**, and two further checks were
+> added. Current state: `16_GATE_B_ROUND_8_EXECUTION_CORRECTION.md` and
+> `08_CANONICAL_METRICS.md`.
+
 ```
 [1] all 48 open tasks carry all 13 fields
 [2] block and index agree for all 48 tasks, human tokens included
