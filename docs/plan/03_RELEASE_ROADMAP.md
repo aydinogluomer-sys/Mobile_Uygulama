@@ -46,7 +46,7 @@ the phase** — it is not carried forward as a footnote.
 
 **Entry:** Phase 2 `PASS` · approval
 
-**Exit:** all MUST-level REF items complete · UI-only remainders listed separately · functional parity recomputed · deferred REF items justified in the Registry · **no hardcoded demo values introduced** (the codebase currently has none — that property must survive)
+**Exit:** all MUST-level REF items complete · UI-only remainders listed separately · functional parity recomputed · deferred REF items justified in the Registry · **no hardcoded demo values introduced** (see `06_GATE_B_REVIEW_OUTCOME.md` §F3 — the ungated `demoSeed` path must be closed first; the earlier claim that the codebase has none was wrong)
 
 ---
 

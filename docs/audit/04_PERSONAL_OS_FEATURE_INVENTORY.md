@@ -13,7 +13,7 @@ rules applied:
 
 1. **One requirement = one user-visible capability**, not one DOM element. A card, its hover state and its empty state are one requirement.
 2. **Desktop-only affordances are marked `N/A-MOBILE`** and excluded from parity denominators — keyboard shortcut chords, hover reveals, the 248px sidebar, mac traffic lights, the `Cmd+K` pill.
-3. **Prototype scaffolding is excluded entirely** — `seedDemoData()`, `localStorage` persistence, the `migrateV1` path, and the hardcoded demo numbers (`−4s 12d`, `31%`, `6.4 / 10`). These are prototype fixtures, not product requirements. The mobile app deliberately rejected them (`awwwards-loop/reports/iteration-02.md`).
+3. **Prototype scaffolding is excluded entirely** — `seedDemoData()`, `localStorage` persistence, the `migrateV1` path, and the hardcoded demo numbers (`−4s 12d`, `31%`, `6.4 / 10`). These are prototype fixtures, not product requirements. The mobile app rejected the hardcoded *display values* (`awwwards-loop/reports/iteration-02.md`). **Correction (Gate B review):** it did **not** reject seeding — `frontend/lib/demoSeed.ts` is reachable from an ungated Settings row and writes fabricated rows to the real account. See `docs/plan/06_GATE_B_REVIEW_OUTCOME.md` §F3.
 4. **A requirement is recorded even if the reference implements it only visually** — parity scoring in doc 05 then separates UI from functional.
 
 **Counts:** 118 requirements total · **97 in scope for mobile parity** ·

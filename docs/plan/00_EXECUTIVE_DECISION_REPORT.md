@@ -13,8 +13,16 @@ than its documentation claimed. Both facts are now evidenced.**
 Seven screens work end to end against Supabase. TypeScript is clean under
 `strict` with zero suppressions. RLS is enabled on all 48 live tables with no
 ERROR-level advisors. XP is server-authoritative and cannot be forged by a
-client. There are no fake metrics anywhere in the UI — a prior design pass
-explicitly rejected the reference prototype's hardcoded figures.
+client. No hardcoded metric *values* from the reference prototype were copied
+into the UI.
+
+> **Corrected at Gate B review.** An earlier version of this paragraph claimed
+> "there are no fake metrics anywhere in the UI". That was wrong.
+> `frontend/lib/demoSeed.ts` is reachable from a live, ungated Settings row
+> (`settings.tsx:339`) and writes fabricated projects, tasks, habits, habit logs,
+> recovery plans and journal entries into the user's real account — polluting the
+> very XP, streak and leaderboard metrics Phase 1B exists to fix. See
+> `06_GATE_B_REVIEW_OUTCOME.md` §F3.
 
 Against that: **two live P0 exploits existed** — one allowing any signed-up user
 to grant themselves a paid tier with 1000 credits, one allowing an

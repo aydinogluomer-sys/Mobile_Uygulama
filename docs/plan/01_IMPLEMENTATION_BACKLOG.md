@@ -1,6 +1,6 @@
 # 01 — Implementation Backlog
 
-**Status:** **FINAL for Phase 1** (promoted from `DRAFT/SEEDED` at Gate B)
+**Status:** **NOT FINAL — reverted at Gate B review.** 19 of 31 tasks lack acceptance criteria, validation and rollback; the cross-reference claiming otherwise does not resolve. See `06_GATE_B_REVIEW_OUTCOME.md` §F2 and §6 (C1, C2).
 **Rule:** no XL tasks · 1–5 files per task · every task independently reversible.
 
 Phase 2+ tasks are enumerated in `03_RELEASE_ROADMAP.md` and are decomposed to
@@ -529,8 +529,10 @@ owner's decision, made outside this work.
 
 ## Deferred to Phase 1A — do not act on now
 
-The live database has **20 migrations**; the repository has **3**. Nineteen live
-migrations have no repo counterpart.
+The live database has **21** migrations; the repository has **4** files, of which
+**2** match a ledger entry. Nineteen live migrations have no repo counterpart.
+(Corrected at Gate B review — this paragraph previously said 20/3 and then
+contradicted itself.)
 
 **These are deliberately NOT reconstructed by guesswork.** Writing 19 speculative
 migration files would create a schema that merely looks authoritative while
