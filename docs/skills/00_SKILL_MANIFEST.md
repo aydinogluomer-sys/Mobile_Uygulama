@@ -1,15 +1,26 @@
 # 00 — Skill Manifest
 
-**Status:** 10 skills created · **1 validated on a real task** · 0 applied project-wide
+**Status: 10/10 `Validated on one task` · 0/10 `Applied project-wide`**
 **Location:** `.claude/skills/<name>/` — each with `SKILL.md`, `references/`, `checklists/`, `templates/`
 
 ---
 
 ## Status vocabulary
 
-Creating a skill does not mean the work is done. Every skill carries exactly one:
+Every skill carries **exactly one** current status. `Created` is a historical
+state only — once a skill has been exercised it is no longer `Created`, and
+reporting both would double-count.
 
-`Created` · `Validated on one task` · `Applied partially` · `Applied project-wide` · `Deprecated` · `Not yet applied`
+`Created` → `Validated on one task` → `Applied partially` → `Applied project-wide`
+(or `Deprecated` / `Not yet applied`)
+
+| Current status | Count |
+|---|---|
+| `Validated on one task` | **10** |
+| `Applied partially` | 0 |
+| `Applied project-wide` | **0** |
+| `Deprecated` | 0 |
+| `Not yet applied` | 0 |
 
 ---
 
