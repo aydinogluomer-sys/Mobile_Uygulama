@@ -1,7 +1,54 @@
 # 01 — Implementation Backlog
 
-**Status:** `In progress` — seeded with Phase 1D security tasks. Completed at Gate B.
+**Status:** **FINAL for Phase 1** (promoted from `DRAFT/SEEDED` at Gate B)
 **Rule:** no XL tasks · 1–5 files per task · every task independently reversible.
+
+Phase 2+ tasks are enumerated in `03_RELEASE_ROADMAP.md` and are decomposed to
+this standard **when their phase is authorised**, not before — decomposing work
+whose inputs come from an unfinished phase produces tasks that must be rewritten.
+
+---
+
+## Phase 1 task index
+
+| Task | Phase | Agent | Size | Depends on |
+|---|---|---|---|---|
+| 1A-001 three-way schema diff | 1A | Supabase & Security | M | Gate B |
+| 1A-002 reconciliation migration | 1A | Supabase & Security | M | 1A-001 + **H-01** |
+| 1A-003 `db reset` verification | 1A | Supabase & Security | S | 1A-002 |
+| 1B-001 `lib/date.ts` canonical module | 1B | Habit Domain | S | Gate B |
+| 1B-002 purge UTC/local mixing | 1B | Habit Domain | M | 1B-001 |
+| 1B-003 `isDueOn` + `frequency_config.count` | 1B | Habit Domain | S | Gate B |
+| 1B-004 metric correctness | 1B | Habit Domain | M | 1B-003 |
+| 1B-005 habit-log error handling + upsert | 1B | Habit Domain | S | Gate B |
+| 1C-001 atomic willpower debit RPC | 1C | Supabase & Security | M | 1A-002 |
+| 1C-002 activation TOCTOU + refund guard | 1C | Habit Domain | S | 1C-001 |
+| 1C-003 midnight rollover | 1C | Habit Domain | S | 1B-001 |
+| 1C-004 telafi → habit_log + XP | 1C | Supabase & Security | M | 1A-002 |
+| 1C-005 recovery_plans unique constraint | 1C | Supabase & Security | XS | 1A-002 |
+| 1D-001 generate-routine rate limit | 1D | Supabase & Security | S | 1A-002 |
+| 1D-002 generate-routine cooldown | 1D | Supabase & Security | S | 1A-002 |
+| 1D-003 atomic credit debit | 1D | Supabase & Security | M | 1A-002 |
+| 1D-004 fail-closed credit behaviour | 1D | Supabase & Security | S | 1D-003 |
+| 1D-005 OAuth `state` verification | 1D | Supabase & Security | M | Gate B |
+| 1D-006 redirect-URI allowlist | 1D | Supabase & Security | S | Gate B |
+| 1D-007 Notion callback user verification | 1D | Supabase & Security | S | Gate B |
+| 1D-008 webhook idempotency | 1D | Supabase & Security | M | 1A-002 |
+| 1D-009 wrong-project deploy guard | 1D | Supabase & Security | XS | Gate B |
+| ~~1D-010 `__DEV__` paywall guard~~ | 1D | — | — | **DONE — `42b64a0`** |
+| SEC-1D-001 secure `add_xp` | 1D | Supabase & Security | S | 1A-002 |
+| SEC-1D-002 secure `track_weekly_xp` | 1D | Supabase & Security | S | 1A-002 |
+| SEC-1D-003 secure `deal_damage_to_active_boss` | 1D | Supabase & Security | M | 1A-002 |
+| SEC-1D-004 money-table grants | 1D | Supabase & Security | XS | 1A-002 |
+| SEC-1D-005a..f profiles column grants | 1D | Supabase & Security + Habit Domain | S each | 1A-002 |
+| 1E-L1 jest-expo + unit tests | 1E | QA & Test | M | 1B-001 |
+| 1E-L2 pgTAP + database tests | 1E | QA & Test | M | 1A-003 |
+| OPS-0B-001 relocate foreign env | 2C | Supabase & Security | XS | **H-03** |
+
+**31 tasks · 0 XL · largest is M.** Full specifications for the security tasks
+follow; 1A/1B/1C/1E specifications are in `02_DEPENDENCY_GRAPH.md` §2 and
+`qa/02_ACCEPTANCE_TEST_MATRIX.md`, which together give each its acceptance
+criteria and validation command.
 
 ---
 
