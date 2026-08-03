@@ -1,6 +1,6 @@
 # 05 — Feature Parity Matrix
 
-**Status:** `Verified` at screen level; per-requirement verdicts carry an evidence grade
+**Status:** per-requirement verdicts are `Verified` at screen level and carry an evidence grade · **the aggregate percentages in §Totals are WITHDRAWN** (Gate B C12)
 **Denominator:** the 97 in-scope requirements from doc 04
 
 ---
@@ -262,7 +262,30 @@ is a presentation gap, not a modelling one.
 
 ## Totals
 
-| Dimension | Score | % |
+> ## ⚠ These percentages are WITHDRAWN as authoritative
+>
+> **Gate B review finding (C12), confirmed at round 2.** The per-section
+> subtotals in this document do **not** sum to the totals below. Only *Test
+> parity* has a reproducible numerator. Roughly a third of the 97 requirements
+> carry evidence grade `[S]` — assessed at screen level, not read line by line —
+> so the fractional scores imply a precision the evidence does not support.
+>
+> **Do not cite these numbers.** They were **not recomputed**, because
+> recomputing 97 requirements across six dimensions from `[S]`-graded evidence
+> would produce equally unreliable figures with a false air of precision.
+> Recomputation is filed as a **Phase 3 entry task** in `plan/03`, conditional on
+> line-level verification of the `[S]` rows.
+>
+> **What survives any reasonable recount** — and is all that should be relied on:
+> - data and backend parity are substantially **higher** than UI parity; the gaps are screens not built, not models missing
+> - UI and functional parity are **close** — there are no UI shells over dead logic
+> - test parity is lowest by a wide margin; **behavioural** test parity is effectively **0 %**
+>
+> **No Phase 1 decision depends on these figures.** The 1B early-start argument
+> rests on 14 of 32 failing L1 criteria, which is independently verified in
+> `plan/08`.
+
+| Dimension | Score *(withdrawn)* | % *(withdrawn)* |
 |---|---|---|
 | **UI parity** | 63.0 / 97 | **65 %** |
 | **Functional parity** | 63.5 / 97 | **65 %** |

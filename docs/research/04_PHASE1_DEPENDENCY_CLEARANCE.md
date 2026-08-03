@@ -1,7 +1,7 @@
 # 04 — Phase 1 Dependency Clearance
 
-**Status:** Gate B remediation **C6** — resolves the 1E licence deadlock
-**Agent:** Open-Source Research — **activated for this clearance only**
+**Status:** Gate B remediation **C6**, made **executable** at round 2
+**Agent:** Open-Source Research — activated for this clearance only
 **Scope:** exactly three dev/test dependencies. Nothing else is cleared here.
 
 ---
@@ -12,114 +12,114 @@
 introduces only `jest-expo`, `supabase/cli` and `pgTAP` — all of which must pass
 the gate first." Those two clauses contradict each other:
 
-- 1E-L1 requires `jest-expo`; 1E-L2 requires `pgTAP` and `supabase/cli`
+- `1E-L1` requires `jest-expo`; `1E-L2` requires `pgTAP` and `supabase/cli`
 - Both are **Phase 1 exit criteria**
 - The adoption gate was unsatisfied for all 15 candidates
 - The only agent permitted to clear it was **inactive until Phase 8**
 
-**1E was therefore blocked by a gate nobody was scheduled to open.**
-
-Resolution: this document clears **only these three**, as `1E-000`, an entry
-dependency of Phase 1E. The remaining 12 candidates stay blocked until Phase 8A.
-
----
-
-## Clearance
-
-### 1 · `jest-expo`
-
-| Field | Value |
-|---|---|
-| Pinned version | `~54.0.x` — must match the installed Expo SDK major (54) |
-| Source | `expo/expo` monorepo, `packages/jest-expo` |
-| Licence | **MIT** |
-| Licence source of record | `LICENSE` at the repository root of `expo/expo` |
-| **Verification state** | ⚠️ **read from published packaging, not yet at a pinned commit** |
-| Compatibility | Expo SDK 54 · RN 0.81 · React 19.1 — the preset is versioned against the SDK, so pinning to the SDK major is the compatibility guarantee |
-| Ships in app bundle? | **No** — `devDependencies` only |
-| Attribution obligation | **None** — not redistributed |
-| Adoption decision | **Use as dependency (dev)** |
-| Owner | QA & Test |
-| Gate B state | **Cleared, conditional on §Verification below** |
-
-### 2 · `supabase/cli`
-
-| Field | Value |
-|---|---|
-| Pinned version | latest stable at adoption; must support Postgres 17 (project runs 17.6.1) |
-| Source | `supabase/cli` |
-| Licence | **Apache-2.0** |
-| **Verification state** | ⚠️ **not yet read at a pinned commit** |
-| Compatibility | Postgres 17 · `db reset`, `db diff`, `test db`, `migration repair` are all required by 1A-002/003 and 1E-L2 |
-| Ships in app bundle? | **No** — local and CI tool |
-| Attribution obligation | Apache-2.0 requires licence text + NOTICE **on redistribution**. Not redistributed → **no in-app attribution required** |
-| Adoption decision | **Use as dependency (dev/CI)** |
-| Owner | Supabase & Security |
-| Gate B state | **Cleared, conditional** |
-
-### 3 · `pgTAP`
-
-| Field | Value |
-|---|---|
-| Pinned version | version bundled with the Supabase local stack / `theory/pgtap` release matching Postgres 17 |
-| Source | `theory/pgtap` |
-| Licence | **PostgreSQL Licence** (permissive, BSD/MIT-equivalent) |
-| **Verification state** | ⚠️ **not yet read at a pinned commit** |
-| Compatibility | Postgres 17 supported; installed as an extension in the local stack only |
-| Ships in app bundle? | **No** — test-only extension, never installed on production |
-| Attribution obligation | Copyright notice must travel with **copied source**. If pgTAP helper functions are copied into `supabase/tests/`, retain the notice in those files |
-| Adoption decision | **Use as dependency (test)** |
-| Owner | QA & Test |
-| Gate B state | **Cleared, conditional** |
+**1E was blocked by a gate nobody was scheduled to open.** This document clears
+only these three, as `1E-000`, an entry dependency of Phase 1E. The remaining 12
+candidates stay blocked until Phase 8A.
 
 ---
 
-## The condition — stated plainly
+## What changed at round 2
 
-All three are marked **conditional** because none has been read at a pinned
-commit. The adoption gate (`research/02 §Gate rule`) requires exactly that, and
-this document does not pretend otherwise.
+The round-2 reviewer accepted the deadlock as genuinely resolved but flagged that
+"**conditional clearance**" was left undefined — no pinned version, no command,
+no owner, no statement of what would turn it into a PASS. A condition that cannot
+be discharged is not a condition; it is an unverified assumption with a label.
 
-**Discharging the condition is a 10-minute task at the start of 1E-000:**
-
-```bash
-npm view jest-expo@~54 license
-npm view supabase license
-# and for pgTAP, read LICENSE at the release tag actually installed
-```
-
-Record the version and the licence string returned. `1E-000`'s acceptance
-criteria require a SHA or version-pinned record and explicitly forbid an entry
-that says "recalled".
-
-**Why this is nonetheless safe to clear conditionally:**
-
-1. All three are **dev/test-only** and never enter the app bundle — the failure mode of a mistaken licence read is an internal tooling problem, not a distribution violation.
-2. All three are permissive by well-established convention; the risk of discovering GPL here is negligible.
-3. The alternative — blocking Phase 1E behind a Phase 8 gate — was the deadlock itself.
-
-**No production dependency is cleared by this document.** The other 12 candidates
-in `research/01` remain blocked pending Phase 8A.
+**Every entry below now carries eight executable fields.** The clearance is
+`PENDING` until `1E-000` runs the stated commands and records the results. Gate B
+does **not** depend on these tools being installed — it depends on the procedure
+being unambiguous, which it now is.
 
 ---
 
-## Transitive exposure — explicitly out of scope here
+## 1 · `jest-expo`
 
-A permissive direct licence says nothing about a package's own tree. Adding
-`jest-expo` pulls a substantial transitive graph.
+| Field | Value |
+|---|---|
+| **Exact pinned version** | `jest-expo@~54.0.0` — must match the installed Expo SDK major (**54**). Resolve to a concrete patch at install and record it |
+| **Official licence source** | `LICENSE` at the root of `github.com/expo/expo` (the monorepo containing `packages/jest-expo`), read **at the tag matching the resolved version** |
+| Expected licence | **MIT** |
+| **Compatibility source** | `package.json` `peerDependencies` of the resolved version, plus the Expo SDK 54 release notes. Required: RN 0.81 · React 19.1 · Node 18+ |
+| **Approval owner** | Open-Source Research proposes · **QA & Test accepts** (it is QA's tool) |
+| **Install task** | `OPS-1E-001` (Repository Audit) adds it to `devDependencies`. Open-Source Research does **not** edit `package.json` |
+| **Validation command** | `npm view jest-expo@~54 version license` → records version + licence string; `npx jest --version` succeeds after install |
+| **Rollback** | `npm uninstall jest-expo` and revert `package.json`/lockfile. Nothing else consumes it; no production code imports it |
+| **Condition to PASS** | Resolved version recorded **and** licence string returns `MIT` **and** it appears only under `devDependencies` |
 
-**Not assessed.** It remains a Phase 6E task (full-tree licence scan before store
-submission). It does not block Phase 1 because nothing here ships.
+## 2 · `supabase/cli`
+
+| Field | Value |
+|---|---|
+| **Exact pinned version** | Latest stable supporting **Postgres 17** (the project runs 17.6.1). Pin the exact version string at install; do not float |
+| **Official licence source** | `LICENSE` at the root of `github.com/supabase/cli`, read at the pinned release tag |
+| Expected licence | **Apache-2.0** |
+| **Compatibility source** | The CLI release notes for Postgres 17 support. Required subcommands: `db reset`, `db diff`, `test db`, `migration repair` — all used by `1A-002`, `1A-003` and `1E-L2` |
+| **Approval owner** | Open-Source Research proposes · **Supabase & Security accepts** |
+| **Install task** | Machine-level tool, not a repo dependency. Installed by the operator; version recorded in `1E-000`'s output |
+| **Validation command** | `supabase --version` matches the pin · `supabase test db --help` exits 0 · **`docker info` succeeds** (H-13) |
+| **Rollback** | Uninstall the CLI. No repository artefact changes, so nothing to revert in git |
+| **Condition to PASS** | Version recorded · licence confirmed Apache-2.0 · the four subcommands present · **not** added to `package.json` |
+
+> Apache-2.0 requires licence text and NOTICE **on redistribution**. This is a
+> local and CI tool that is never redistributed, so **no in-app attribution
+> obligation arises**. Recorded explicitly so it is not re-litigated later.
+
+## 3 · `pgTAP`
+
+| Field | Value |
+|---|---|
+| **Exact pinned version** | The version bundled with the pinned Supabase local stack. If installed separately, the `theory/pgtap` release tag compatible with Postgres 17 |
+| **Official licence source** | `LICENSE` in `github.com/theory/pgtap` at that release tag |
+| Expected licence | **PostgreSQL Licence** (permissive, BSD/MIT-equivalent) |
+| **Compatibility source** | pgTAP release notes for Postgres 17 |
+| **Approval owner** | Open-Source Research proposes · **QA & Test accepts** |
+| **Install task** | `1E-L2` enables the extension **on the local stack only** — `CREATE EXTENSION IF NOT EXISTS pgtap;` inside the test setup |
+| **Validation command** | `supabase test db` executes a trivial `SELECT plan(1); SELECT pass('ok'); SELECT * FROM finish();` and reports green |
+| **Rollback** | `DROP EXTENSION pgtap;` on the local stack. **Never installed on the live project**, so there is nothing to roll back there |
+| **Condition to PASS** | Release tag recorded · licence confirmed · extension present **only** on local · confirmed absent from the live extension list |
+
+> **Never install pgTAP on the live project.** It is a test-only extension. If
+> pgTAP helper source is ever copied into `supabase/tests/`, the copyright notice
+> travels with the copied file.
 
 ---
 
 ## Summary
 
-| Dependency | Licence | Ships? | Decision | Gate B |
-|---|---|---|---|---|
-| `jest-expo` | MIT | no | Use as dependency (dev) | **Cleared, conditional** |
-| `supabase/cli` | Apache-2.0 | no | Use as dependency (dev/CI) | **Cleared, conditional** |
-| `pgTAP` | PostgreSQL Licence | no | Use as dependency (test) | **Cleared, conditional** |
+| Dependency | Licence expected | Ships in bundle? | Install task | Accepting owner | State |
+|---|---|---|---|---|---|
+| `jest-expo` | MIT | **no** — devDependency | `OPS-1E-001` | QA & Test | **PENDING `1E-000`** |
+| `supabase/cli` | Apache-2.0 | **no** — machine tool | operator | Supabase & Security | **PENDING `1E-000`** |
+| `pgTAP` | PostgreSQL | **no** — local test extension | `1E-L2` | QA & Test | **PENDING `1E-000`** |
 
-**1E is no longer blocked.** Its entry dependency is `1E-000`, which discharges
-the condition above before any test code is written.
+**No production dependency is cleared by this document.** The other 12 candidates
+in `research/01` remain blocked pending Phase 8A.
+
+### What `PENDING` means, precisely
+
+It is **not** a soft PASS. `1E-000` is a `MUST` task and a hard `depends_on` of
+`1E-L1` and `1E-L2`: **no test code may be written until all three rows above
+read PASS.** Each becomes PASS only when its stated validation command has been
+run and its resolved version and licence string recorded — `1E-000`'s acceptance
+criteria forbid an entry that says "recalled" or "expected".
+
+If any of the three returns a non-permissive licence, `1E-000` **fails** and the
+tool is not adopted; Phase 1E is re-planned around a replacement. That outcome is
+unlikely — all three are permissive by long-established convention — but the
+procedure does not assume it.
+
+---
+
+## Transitive exposure — explicitly out of scope
+
+A permissive direct licence says nothing about a package's own dependency tree,
+and `jest-expo` pulls a substantial one.
+
+**Not assessed here.** Full-tree licence scanning is a **Phase 6E** task, before
+store submission. It does not block Phase 1 because nothing in this document
+ships in the app bundle. Recorded as risk **R-23**.

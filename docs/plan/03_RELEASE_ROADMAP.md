@@ -44,7 +44,36 @@ the phase** — it is not carried forward as a footnote.
 
 ## Phase 3 — Reference Feature Parity
 
-**Entry:** Phase 2 `PASS` · approval
+**Entry:** Phase 2 `PASS` · approval · **`3-ENTRY-001` complete** (below)
+
+### `3-ENTRY-001` · Recompute the feature parity totals — **Phase 3 entry task**
+
+> **Filed at Gate B remediation round 2 (M9).** Round 1 said this "is filed as a
+> Phase 3 entry task"; the round-2 reviewer checked and found **no such task
+> existed**. It exists now.
+
+The aggregate percentages in `audit/05 §Totals` are **withdrawn as
+authoritative**: the per-section subtotals do not sum to the stated totals, and
+only *Test parity* has a reproducible numerator. They were deliberately not
+recomputed at Gate B, because ~⅓ of the 97 requirements carry evidence grade
+`[S]` — screen-level, not read line by line — so a recount would produce equally
+unreliable numbers with a false air of precision.
+
+| Field | Value |
+|---|---|
+| **Owner** | Product & Feature Parity |
+| **Precondition** | Every `[S]`-graded requirement re-verified at **line level**. Without this the recount is not worth doing |
+| **Acceptance** | Each of the six dimensions has a numerator traceable to per-requirement verdicts · subtotals sum to totals · every requirement carries evidence grade `[C]` or `[D]`, not `[S]` · the withdrawal notice in `audit/05` is replaced by the verified figures |
+| **Validation** | Sum of per-section subtotals equals each stated total, checked by script |
+| **Risk** | MEDIUM — a second unreconciled recount would be worse than the current honest withdrawal |
+| **Rollback** | Retain the withdrawal notice; publish nothing |
+
+**Phase 3 cannot report a parity improvement without a verified baseline**, which
+is why this gates entry rather than sitting inside the phase.
+
+---
+
+**Entry (original):** Phase 2 `PASS` · approval
 
 **Exit:** all MUST-level REF items complete · UI-only remainders listed separately · functional parity recomputed · deferred REF items justified in the Registry · **no hardcoded demo values introduced** (see `06_GATE_B_REVIEW_OUTCOME.md` §F3 — the ungated `demoSeed` path must be closed first; the earlier claim that the codebase has none was wrong)
 
@@ -117,8 +146,8 @@ requirement.
 ## What is deliberately NOT time-estimated
 
 No phase carries a duration. Every honest input to an estimate is missing: no
-device run, no performance baseline, no CI, and 21 defects that are predicted
+device run, no performance baseline, no CI, and 23 defects that are predicted
 rather than observed. **Phase 1 will produce the first real velocity signal** —
-its 20 Layer-1 acceptance criteria are precisely scoped and their completion
+its 14 Layer-1 acceptance criteria are precisely scoped and their completion
 gives a defensible basis for estimating the rest. Estimating before that would
 be a number with no evidence behind it.

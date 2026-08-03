@@ -1,8 +1,8 @@
 # 01 — Implementation Backlog
 
-**Status:** **FINAL for Phase 1** (rewritten at Gate B remediation, C1)
-**Tasks:** 31 · 1 DONE · 30 open · **0 XL** · largest **L**
-**Metrics source:** `08_CANONICAL_METRICS.md` — no count is restated here
+**Status:** **FINAL for Phase 1** (rewritten at Gate B remediation C1; ownership rebuilt at round 2)
+**Task counts:** see `08_CANONICAL_METRICS.md` — **not restated here**
+**Ownership rule:** every file in this backlog has **exactly one edit owner**. See `04_AGENT_TASK_GRAPH.md` §1.
 
 Every task below carries all 13 mandatory fields inline. **No cross-references
 to other documents for acceptance criteria.** Field order: `id · title ·
@@ -76,12 +76,42 @@ acceptance_criteria · validation · risk · rollback · size`.
 
 ---
 
+## 1A-004 · Live ledger cutover *(specified; **not executed in Phase 1**)*
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-003, **H-01**, **separate explicit approval** · **S**
+
+> **Added at round 2 (item 10).** `plan/10` described the backup, cutover and
+> post-cutover verification as procedure with no owning task. Every step of that
+> plan now maps to a task ID; this is the one that covers the live steps. It is
+> specified so it is reviewable in advance — **it does not run in Phase 1.**
+
+**scope** (1 file): `docs/audit/12_LEDGER_CUTOVER_RECORD.md` (new)
+
+**goal** Register the baseline against the 21-row live ledger **without executing any schema DDL against live**, and prove afterwards that the two Emergency Gate 0 revokes are still in force.
+
+**acceptance_criteria**
+- **Verified backup taken first** — `supabase db dump --linked -f backup_<date>.sql`, restorability confirmed, non-negotiable
+- `1A-003` fully green, including the schema-hash match
+- Independent review of the baseline completed **before** this task starts
+- **Explicit user approval recorded**, separate from H-01
+- Cutover is `supabase migration repair --status applied <baseline-version>` — **ledger only; no DDL executes**
+- `supabase db diff --linked` afterwards reports **no differences**
+- **Post-cutover privilege re-assertion**: `mock_activate_subscription`, `add_xp`, `track_weekly_xp` and `deal_damage_to_active_boss` are still **not** executable by `anon` or `authenticated`, checked via `has_function_privilege`. **Never call the functions** — privilege is introspected, not exercised
+- Every command run is recorded verbatim in the cutover record, as `docs/audit/08` does
+
+**validation** `db diff --linked` empty · the four `has_function_privilege` checks all return false for both roles · ledger row count is 22.
+**risk** **HIGH** — the only task in Phase 1A that touches the live project. Mitigated by: no DDL, verified backup, prior review, and a ledger-only operation that is reversible in one command.
+**rollback** `supabase migration repair --status reverted <baseline-version>` — ledger bookkeeping only, **no DDL runs, so no data is at risk**. Catastrophic fallback: restore from the backup taken in the first criterion.
+
+---
+
 # Phase 1B — Dates, scheduling and metrics
 
 ## 1B-001 · Create the canonical date module
 `P1` · **MUST** · Habit Domain · depends_on: Gate B PASS · **S**
 
-**scope** (2 files): `frontend/lib/date.ts` (new) · `frontend/__tests__/lib/date.test.ts` (new)
+**scope** (1 file): `frontend/lib/date.ts` (new)
+
+**test_contract** → `1E-L1a` owns `frontend/__tests__/lib/date.test.ts`. This task defines the behaviour to be asserted; it does **not** edit the test file.
 
 **goal** One module that is the only place a calendar date is derived.
 
@@ -91,9 +121,9 @@ acceptance_criteria · validation · risk · rollback · size`.
 - `todayLocal()` returns the device's local calendar date at **00:30** and at **23:30** under `TZ=Europe/Istanbul`
 - No function uses `toISOString()` to derive a calendar date
 
-**validation** `TZ=Europe/Istanbul npx jest lib/date` — green.
+**validation** `TZ=Europe/Istanbul npx jest lib/date` — green (test authored by `1E-L1a`).
 **risk** LOW — additive, nothing consumes it yet.
-**rollback** Delete both files.
+**rollback** Delete `frontend/lib/date.ts`.
 
 ---
 
@@ -102,7 +132,7 @@ acceptance_criteria · validation · risk · rollback · size`.
 
 **scope** (5 files): `frontend/store/taskStore.ts` · `frontend/store/deepWorkStore.ts` · `frontend/store/lifeAreasStore.ts` · `frontend/lib/focusReport.ts` · `frontend/lib/journalStats.ts`
 
-> Store-layer sites only. `frontend/lib/demoSeed.ts` is **1B-006**; the four further store files are **1B-007**; the 10 sites in `frontend/app/**` are **1B-008**. Split because `app/**` has a different owner.
+> Store-layer sites only. `frontend/lib/demoSeed.ts` is **DEMO-001A**; the four further store files are **1B-007**; the 5 highest-impact sites in `frontend/app/**` are **1B-008** (Expo Architecture), and the remaining 5 are **1B-009**, deferred to Phase 2A. Split because `app/**` has a different owner.
 
 **goal** Eliminate UTC/local mixing in the five highest-impact modules.
 
@@ -123,7 +153,9 @@ acceptance_criteria · validation · risk · rollback · size`.
 ## 1B-003 · Implement `frequency_config.count` in `isDueOn`
 `P1` · **MUST** · Habit Domain · depends_on: Gate B PASS · **S**
 
-**scope** (2 files): `frontend/lib/habitSchedule.ts` · `frontend/__tests__/lib/habitSchedule.test.ts` (new)
+**scope** (1 file): `frontend/lib/habitSchedule.ts`
+
+**test_contract** → `1E-L1a` owns `frontend/__tests__/lib/habitSchedule.test.ts`.
 
 **goal** Make "X times per week" habits actually become due.
 
@@ -142,7 +174,9 @@ acceptance_criteria · validation · risk · rollback · size`.
 ## 1B-004 · Correct the metric formulas
 `P1` · **MUST** · Habit Domain · depends_on: 1B-003 · **M**
 
-**scope** (2 files): `frontend/lib/reportMetrics.ts` · `frontend/__tests__/lib/reportMetrics.test.ts` (new)
+**scope** (1 file): `frontend/lib/reportMetrics.ts`
+
+**test_contract** → `1E-L1b` owns `frontend/__tests__/lib/reportMetrics.test.ts`.
 
 **goal** Make completion percentages reflect what the user actually did.
 
@@ -162,7 +196,9 @@ acceptance_criteria · validation · risk · rollback · size`.
 ## 1B-005 · Surface habit-log write errors
 `P1` · **MUST** · Habit Domain · depends_on: Gate B PASS · **S**
 
-**scope** (2 files): `frontend/store/logStore.ts` · `frontend/__tests__/store/logStore.test.ts` (new)
+**scope** (1 file): `frontend/store/logStore.ts`
+
+**test_contract** → `1E-L1b` owns `frontend/__tests__/store/logStore.test.ts`.
 
 **goal** Stop swallowing the unique-constraint violation so a failed toggle is visible.
 
@@ -179,8 +215,11 @@ acceptance_criteria · validation · risk · rollback · size`.
 
 ---
 
-## 1B-006 · Gate the demo-data seeder — see **DEMO-001** below
-Cross-listed for sequencing only. Full specification is `DEMO-001`.
+## 1B-006 · Gate the demo-data seeder — see **DEMO-001A / DEMO-001B** below
+Cross-listing for sequencing only, **not a task**. The specification lives in
+`DEMO-001A` (library guard, Habit Domain) and `DEMO-001B` (UI removal, Expo
+Architecture). Deliberately absent from the task index so it cannot be
+double-counted.
 
 ---
 
@@ -226,7 +265,9 @@ Cross-listed for sequencing only. Full specification is `DEMO-001`.
 ## 1C-001 · Atomic willpower debit RPC
 `P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **M**
 
-**scope** (2 files): `supabase/migrations/<ts>_willpower_atomic_debit.sql` · `supabase/tests/willpower.test.sql`
+**scope** (1 file): `supabase/migrations/<ts>_willpower_atomic_debit.sql`
+
+**test_contract** → `1E-L2a` owns `supabase/tests/willpower.test.sql`. This task specifies the concurrency assertion; QA & Test authors it.
 
 **goal** Replace the client read-modify-write with a single atomic statement.
 
@@ -244,9 +285,15 @@ Cross-listed for sequencing only. Full specification is `DEMO-001`.
 ---
 
 ## 1C-002 · Close the activation TOCTOU and refund exploit
-`P1` · **MUST** · Habit Domain · depends_on: 1C-001 · **S**
+`P1` · **MUST** · Habit Domain · depends_on: 1C-001, **1C-003** · **S**
 
 **scope** (2 files): `frontend/store/willpowerStore.ts` · `frontend/store/habitStore.ts`
+
+> **Serialised against `1C-003` (round 2).** Both tasks edit
+> `frontend/store/willpowerStore.ts`. Same agent, so this is not a cross-agent
+> conflict — but they must not run concurrently. The ordering is now encoded in
+> `depends_on` rather than stated only in prose, so the dependency graph enforces
+> it: **`1C-003` → `1C-002`.**
 
 **goal** Make activation atomic and stop pausing an unactivated habit from refunding budget.
 
@@ -283,9 +330,11 @@ Cross-listed for sequencing only. Full specification is `DEMO-001`.
 ## 1C-004 · Link telafi completion to a real habit log
 `P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **M**
 
-**scope** (2 files): `supabase/migrations/<ts>_recovery_completion_writes_log.sql` · `supabase/tests/recovery.test.sql`
+**scope** (1 file): `supabase/migrations/<ts>_recovery_completion_writes_log.sql`
 
-> **Ownership note (Gate B remediation C7):** the client half — `frontend/store/recoveryStore.ts` — is **1C-006**, owned by Habit Domain. Supabase & Security does not edit `frontend/**`.
+**test_contract** → `1E-L2a` owns `supabase/tests/recovery.test.sql`.
+
+> **Ownership note (C7, re-confirmed round 2):** this task is **migration-only**. The client half — `frontend/store/recoveryStore.ts` — is **1C-006**, owned by Habit Domain. Supabase & Security does not edit `frontend/**`. Every assignment table in `plan/04` states this identically.
 
 **goal** Make completing a makeup actually move the metrics.
 
@@ -409,12 +458,28 @@ Cross-listed for sequencing only. Full specification is `DEMO-001`.
 **risk** MEDIUM. **rollback** `git revert` + `DROP CONSTRAINT`.
 
 ## 1D-009 · Wrong-project deploy guard
-`P1` · **MUST** · Repository Audit · depends_on: Gate B PASS · **XS**
-**scope** (2 files): `supabase/config.toml` (new) · `.github/workflows/guard.yml` or a `predeploy` script
-**goal** Make it impossible to deploy this repo against `zdqiujpeewtyhtcqhdcj`.
-**acceptance_criteria** Canonical `project_id` pinned in config · a pre-deploy check aborts on any other ref · documented.
-**validation** a deploy attempt with a foreign ref aborts.
-**risk** LOW. **rollback** delete the guard.
+`P1` · **MUST** · **Supabase & Security** · depends_on: Gate B PASS · **XS**
+
+> **Owner corrected at round 2 (B3).** This task was assigned to Repository
+> Audit, whose stated prohibition is `supabase/**`. `supabase/config.toml` is a
+> Supabase configuration file, so the task moves to **Supabase & Security** —
+> the single owner of that tree. This owner is now identical in `plan/01`,
+> `plan/04 §3` and `plan/04 §6`.
+
+**scope** (2 files): `supabase/config.toml` (new) · `supabase/predeploy_guard.sh` (new)
+
+**goal** Make it impossible to deploy this repo against `zdqiujpeewtyhtcqhdcj` ("Mas Technic Site"). Today `backend/supabase/.temp/linked-project.json` points at that foreign project, and nothing prevents a deploy from picking it up.
+
+**acceptance_criteria**
+- Canonical `project_id = "kbcuolhjjnmhjaarxxmu"` pinned in `supabase/config.toml`
+- The guard reads the ref the CLI would actually use and **aborts non-zero** on any other value
+- The guard aborts on an **absent** ref too — fail-closed, never fail-open
+- `zdqiujpeewtyhtcqhdcj` is named explicitly as a denied ref, so the failure message is unambiguous
+- **The guard performs no operation against any project** — it compares strings and exits. It never connects to Mas Technic to "verify" anything
+
+**validation** Run the guard with the ref forced to a foreign value → non-zero exit; with it absent → non-zero; with the canonical ref → zero. No network call in any case.
+**risk** LOW. A guard that fails open is worse than none, so the absent-ref case is a required assertion.
+**rollback** Delete both files.
 
 ## 1D-000 · Reconcile `supabase/functions/generate-routine` with production
 `P1` · **MUST** · Supabase & Security · depends_on: Gate B PASS · **M**
@@ -442,7 +507,9 @@ Cross-listed for sequencing only. Full specification is `DEMO-001`.
 ## SEC-1D-001 · Constrain `add_xp` to the calling user
 `P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **S**
 
-**scope** (2 files): `supabase/migrations/<ts>_secure_add_xp.sql` · `supabase/tests/xp_security.test.sql`
+**scope** (1 file): `supabase/migrations/<ts>_secure_add_xp.sql`
+
+**test_contract** → `1E-L2b` owns `supabase/tests/xp_security.test.sql`.
 
 **signature (verified live):** `add_xp(p_user_id uuid, p_xp_amount integer)` · `SECURITY DEFINER` · `search_path=public` · client EXECUTE already revoked by `20260802205850`
 
@@ -461,7 +528,9 @@ Cross-listed for sequencing only. Full specification is `DEMO-001`.
 ## SEC-1D-002 · Constrain `track_weekly_xp` and pin `search_path`
 `P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **S**
 
-**scope** (2 files): `supabase/migrations/<ts>_secure_track_weekly_xp.sql` · `supabase/tests/xp_security.test.sql`
+**scope** (1 file): `supabase/migrations/<ts>_secure_track_weekly_xp.sql`
+
+**test_contract** → `1E-L2b` owns `supabase/tests/xp_security.test.sql`. Shared with `SEC-1D-001`; one file, one owner, both contracts asserted in it.
 
 **signature (verified live):** `track_weekly_xp(p_user_id uuid, p_xp integer)` · `SECURITY DEFINER` · **`search_path` NOT pinned**
 
@@ -475,7 +544,9 @@ Cross-listed for sequencing only. Full specification is `DEMO-001`.
 ## SEC-1D-003 · Constrain and bound `deal_damage_to_active_boss`
 `P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **M**
 
-**scope** (2 files): `supabase/migrations/<ts>_secure_boss_damage.sql` · `supabase/tests/boss_security.test.sql`
+**scope** (1 file): `supabase/migrations/<ts>_secure_boss_damage.sql`
+
+**test_contract** → `1E-L2b` owns `supabase/tests/boss_security.test.sql`.
 
 **signature (verified live):** `deal_damage_to_active_boss(p_user_id uuid, p_damage integer DEFAULT 10)` · `SECURITY DEFINER` · `search_path` NOT pinned
 
@@ -584,61 +655,209 @@ Cross-listed for sequencing only. Full specification is `DEMO-001`.
 **validation** document exists; each entry has a SHA; no entry says "recalled".
 **risk** LOW. **rollback** N/A — documentation.
 
-## 1E-L1 · jest-expo and unit tests
-`P1` · **MUST** · QA & Test · depends_on: 1B-001, **1E-000** · **M**
-**scope** (5 files): `frontend/jest.config.js` · `frontend/package.json` · `frontend/__tests__/lib/*.test.ts` · `frontend/__tests__/store/*.test.ts` · `frontend/jest.setup.js`
-**goal** An executing unit suite covering the pure domain layer.
-**acceptance_criteria** `npm test` and `npm run typecheck` exist and run · `TZ=Europe/Istanbul` pinned in config · all **14 failing L1 criteria** covered by a test that failed before its fix · no test asserts on UI copy · does not read `.env`.
-**validation** `npm test` green; 14 previously-failing criteria now pass.
-**risk** LOW. **rollback** delete config and tests.
+> **Restructured at round 2 (B1).** `1E-L1` and `1E-L2` previously claimed
+> `__tests__/**` and `supabase/tests/**` by glob while six of those same files
+> also sat in the scope of a domain or security task. Six files had two edit
+> owners. The rule is now absolute: **every test file has exactly one edit
+> owner, and that owner is always QA & Test.** Domain and security tasks carry a
+> `test_contract` naming the QA task that owns their test, and specify what must
+> be asserted — they never edit it. `1E-L1`/`1E-L2` are split so no scope
+> exceeds 5 files and no glob can silently re-absorb another task's file.
 
-## 1E-L2 · pgTAP and database tests
-`P1` · **MUST** · QA & Test · depends_on: 1A-003, **1E-000** · **M**
-**scope** (5 files): `supabase/tests/rls.test.sql` · `security_regression.test.sql` · `willpower.test.sql` · `recovery.test.sql` · `constraints.test.sql`
-**goal** Prove the properties a client mock cannot.
-**acceptance_criteria** `supabase test db` runs in one command · covers the **17 failing L2 criteria** · **AC-S01..S07 exist as permanent regression tests** for the two Emergency Gate 0 migrations · no RLS or RPC claim rests on a Layer 1 test.
+## 1E-L1 · jest-expo harness
+`P1` · **MUST** · QA & Test · depends_on: **1E-000**, OPS-1E-001 · **S**
+
+**scope** (2 files): `frontend/jest.config.js` (new) · `frontend/jest.setup.js` (new)
+
+**goal** A runnable jest-expo harness. Config only — this task authors no test.
+
+**acceptance_criteria** `jest-expo` preset pinned to the SDK 54 major · **`TZ=Europe/Istanbul` pinned in config**, so a test cannot pass by accident of machine timezone · `frontend/__tests__/` is the roots entry · the harness does **not** read `.env` · running it with zero test files exits 0, not "no tests found" as an error.
+**validation** `npm test` exits 0 on an empty suite.
+**risk** LOW — additive; nothing imports it.
+**rollback** Delete both files.
+
+## 1E-L1a · L1 tests — date and scheduling
+`P1` · **MUST** · QA & Test · depends_on: 1E-L1 · **M**
+
+**scope** (2 files): `frontend/__tests__/lib/date.test.ts` (new) · `frontend/__tests__/lib/habitSchedule.test.ts` (new)
+
+**goal** Convert the date and scheduling half of the failing L1 criteria into executing tests. Sole edit owner of both files.
+
+**test contracts consumed:** `1B-001` (date module), `1B-003` (`frequency_config.count`).
+
+**acceptance_criteria**
+- Covers **AC-D01, D03, D04, D05, D06, D07, D08** and **AC-H03** — 8 of the 14 failing L1 criteria
+- **Every test is written against unmodified code and observed to fail first**, for the diagnosed reason
+- 00:30 and 23:30 cases run under `TZ=Europe/Istanbul`
+- Clock is injected, never `Date.now()` read ambiently
+- No test asserts on Turkish UI copy
+
+**validation** `TZ=Europe/Istanbul npm test -- lib/date lib/habitSchedule` — 8 criteria pass after their fixes land, and each is recorded as having failed before.
+**risk** MEDIUM — if a test does not fail first, the diagnosis was wrong and 1B must re-plan. That is R-01 and a finding, not a nuisance.
+**rollback** Delete both files.
+
+## 1E-L1b · L1 tests — metrics and log store
+`P1` · **MUST** · QA & Test · depends_on: 1E-L1 · **M**
+
+**scope** (2 files): `frontend/__tests__/lib/reportMetrics.test.ts` (new) · `frontend/__tests__/store/logStore.test.ts` (new)
+
+**goal** Convert the metric-correctness half of the failing L1 criteria into executing tests. Sole edit owner of both files.
+
+**test contracts consumed:** `1B-004` (metric formulas), `1B-005` (log error handling).
+
+**acceptance_criteria**
+- Covers **AC-H04, H05, H06, H07, H08, H09** — 6 of the 14 failing L1 criteria
+- Plus the **L1 half of AC-I02**: the store surfaces the error. The L2 half — that Postgres actually rejected the duplicate — is `1E-L2a`, never asserted here
+- Every test observed to fail first
+- `at_most` direction covered at, above and below the limit
+
+**validation** `npm test -- lib/reportMetrics store/logStore` — 6 criteria pass; AC-I02's L1 half passes.
+**risk** MEDIUM — same first-fail rule as `1E-L1a`.
+**rollback** Delete both files.
+
+## 1E-L2 · pgTAP harness and baseline database tests
+`P1` · **MUST** · QA & Test · depends_on: 1A-003, **1E-000**, **H-13 Docker** · **M**
+
+**scope** (2 files): `supabase/tests/rls.test.sql` (new) · `supabase/tests/constraints.test.sql` (new)
+
+**goal** A runnable pgTAP suite proving tenant isolation and the constraints the client relies on.
+
+**acceptance_criteria** `supabase test db` runs in one command · RLS asserted on all 48 tables — a cross-tenant read **returns zero rows** under a second user's JWT · `UNIQUE (habit_id, completed_at)` asserted directly · `willpower_state` PK asserted · no assertion depends on a client mock.
 **validation** `supabase test db` green.
-**risk** LOW. **rollback** delete the test files.
+**risk** LOW to write. **Blocked by H-13** — Docker is not running on this machine.
+**rollback** Delete both files.
+
+## 1E-L2a · L2 tests — willpower and recovery concurrency
+`P1` · **MUST** · QA & Test · depends_on: 1E-L2, 1C-001, 1C-004 · **M**
+
+**scope** (2 files): `supabase/tests/willpower.test.sql` (new) · `supabase/tests/recovery.test.sql` (new)
+
+**goal** Prove the concurrency and linkage properties no client mock can prove. Sole edit owner of both files.
+
+**test contracts consumed:** `1C-001` (atomic debit), `1C-004` (telafi → habit log), `1C-005` (recovery uniqueness).
+
+**acceptance_criteria**
+- **AC-I03**: two concurrent debits of 4 against a budget of 15 leave `used = 12` — asserted with two real sessions, not sequential calls
+- A debit that would exceed the budget fails atomically and leaves `used` unchanged
+- Completing a makeup writes exactly one `habit_logs` row; completing twice still writes one
+- The recovery-plan unique constraint rejects a duplicate `(habit_id, source_date)`
+
+**validation** `supabase test db` green; AC-I03 and the recovery criteria pass.
+**risk** MEDIUM — concurrency tests that do not genuinely run in parallel prove nothing. The test must use two sessions.
+**rollback** Delete both files.
+
+## 1E-L2b · L2 tests — security regression
+`P0` · **MUST** · QA & Test · depends_on: 1E-L2 · **M**
+
+**scope** (3 files): `supabase/tests/security_regression.test.sql` (new) · `supabase/tests/xp_security.test.sql` (new) · `supabase/tests/boss_security.test.sql` (new)
+
+**goal** Make the two Emergency Gate 0 fixes permanent. Today nothing would detect a re-grant. Sole edit owner of all three files.
+
+**test contracts consumed:** `SEC-1D-001`, `SEC-1D-002`, `SEC-1D-003`, `SEC-1D-004`.
+
+**acceptance_criteria**
+- **AC-S01..S07 exist as permanent regression tests** — `mock_activate_subscription`, `add_xp`, `track_weekly_xp` and `deal_damage_to_active_boss` are **not executable by `anon` or `authenticated`**, asserted via `has_function_privilege`
+- **Never invoke any of these functions to test them** — a call would itself be the exploit. Privilege is asserted, not exercised
+- After `SEC-1D-001..003`: each body derives the user from `auth.uid()` and ignores a caller-supplied `user_id`
+- `deal_damage_to_active_boss` rejects negative and unbounded damage
+- The money tables reject a direct client write
+
+**validation** `supabase test db` green; each assertion fails if the corresponding revoke or body change is reverted — verified by reverting one locally.
+**risk** MEDIUM — a regression test that passes against the *unfixed* code is worthless. Each must be shown to fail on a deliberately reverted local database.
+**rollback** Delete all three files.
+
+## OPS-1E-001 · Add `test` and `typecheck` npm scripts
+`P1` · **MUST** · Repository Audit · depends_on: Gate B PASS · **XS**
+
+**scope** (1 file): `frontend/package.json`
+
+> **Ownership (round 2, B1).** `package.json` is Repository Audit's file. `1E-L1`
+> previously listed it, which would have made QA & Test its second editor. QA &
+> Test specifies the scripts; Repository Audit applies them. One file, one owner.
+
+**goal** `npm test` and `npm run typecheck` do not exist. Without them the harness has no entry point and CI has nothing to call.
+
+**acceptance_criteria** `"test": "jest"` and `"typecheck": "tsc --noEmit"` present · `jest-expo` and `jest` added to `devDependencies` at the versions pinned by `1E-000` · **no production dependency added** · `npx tsc --noEmit` still clean.
+**validation** `npm run typecheck` exits 0; `npm test` reaches the harness.
+**risk** LOW. **rollback** `git revert`.
 
 ---
 
 # Cross-phase
 
-## DEMO-001 · Gate the demo-data seeder
+> **Split at round 2 (B3).** `DEMO-001` was one task owned by Habit Domain with
+> `frontend/app/tabs/settings.tsx` in scope — a path Habit Domain is forbidden to
+> touch, and which `plan/04` simultaneously declared unowned in Phase 1. It is now
+> two tasks, each with its own owner, criteria, validation, risk and rollback.
+> **`DEMO-001B` must land before or with `DEMO-001A`** so no window exists where
+> the library refuses but the button still invites the tap.
+
+## DEMO-001A · Gate the seeder at the library
 `P1` · **MUST** · Habit Domain · depends_on: Gate B PASS · **S**
 
-> **Added at Gate B remediation (C5).** Found by the Gate B reviewer; missed by the Gate A audit, which asserted the opposite.
+**scope** (2 files): `frontend/lib/demoSeed.ts` · `docs/audit/13_DEMO_DATA_AUDIT.md` (new)
 
-**scope** (3 files): `frontend/app/tabs/settings.tsx` · `frontend/lib/demoSeed.ts` · `docs/audit/13_DEMO_DATA_AUDIT.md`
+**goal** `seedDemoData()` writes fabricated rows into the caller's real account with no environment check anywhere in the module. Hiding the button is not sufficient — any code path reaching the function must also be refused, or the guard is cosmetic.
 
-**goal** `settings.tsx:339` renders a tappable row calling `handleSeedDemoData` → `seedDemoData()`. There is **no `__DEV__` guard anywhere in that file**. In a release build a user can write fabricated data into their real account.
+**Tables written — eight, not seven**
 
-**Access point:** `settings.tsx:30` imports `seedDemoData`; `:134` defines `handleSeedDemoData`; `:137` calls it; `:339` renders the row.
+| Table | Written by |
+|---|---|
+| `projects`, `tasks`, `habits`, `habit_logs`, `focus_tasks`, `recovery_plans`, `journal_entries` | direct inserts in `demoSeed.ts` |
+| **`willpower_state`** | **indirect** — `demoSeed.ts:596` calls `useWillpowerStore.getState().spend(3)`, which **UPDATEs** `willpower_state` ([willpowerStore.ts:65-75](frontend/store/willpowerStore.ts#L65-L75)); `fetchToday()` also upserts it |
 
-**Tables written by `demoSeed.ts`:** `projects`, `tasks`, `habits`, `habit_logs`, `focus_tasks`, `recovery_plans`, `journal_entries`.
+> **Found by the round-2 reviewer.** The previous revision listed seven tables and
+> missed `willpower_state` — the one table Phase 1C exists to make correct. Seeded
+> pollution therefore lands directly on 1C's evidence.
 
 **Collision risk with real user data**
-- `habit_logs` rows pollute XP, streaks, completion percentages and the leaderboard — the exact metrics Phase 1B exists to make correct
+- `habit_logs` rows pollute XP, streaks, completion percentages and the leaderboard — the exact metrics Phase 1B exists to fix
+- `willpower_state` pollution corrupts the budget 1C-001 and 1C-003 are being written against
 - Seeded rows are indistinguishable from real ones: no `is_demo` flag, no marker column
-- `demoSeed.ts:21` uses `toISOString().slice(0,10)`, so seeded dates are also UTC-skewed
-- If a user seeds and then reports a metric bug, the data is unusable as evidence
+- `demoSeed.ts:22` uses `toISOString().slice(0,10)`, so seeded dates are also UTC-skewed
+- If a user seeds and then reports a metric bug, their data is unusable as evidence
 
 **acceptance_criteria**
-- `handleSeedDemoData` and its UI row are unreachable when `!__DEV__` — the button is not rendered, not merely disabled
-- `seedDemoData()` returns early with an explicit error when `!__DEV__`, so a code path that bypasses the UI still cannot seed
-- Prefer an explicit `EXPO_PUBLIC_DEMO_ENV` flag over bare `__DEV__` if the team wants seeding in a staging build; decide and document
-- A release build contains no reachable path to `seedDemoData`
-- Read-only audit plan written (below) — **no data is deleted by this task**
+- `seedDemoData()` **returns early with an explicit error** when seeding is not permitted — before any write, including the `spend(3)` call
+- The gate is a single named predicate (e.g. `isSeedingAllowed()`) used by both this task and `DEMO-001B`, so the library and the UI cannot disagree
+- **Decision recorded**: bare `__DEV__`, or an explicit `EXPO_PUBLIC_DEMO_ENV` flag if seeding is wanted in a staging build. Document which and why — do not leave both described
+- The refusal is observable (returns an error), not a silent no-op
+- Read-only audit plan written to `13_DEMO_DATA_AUDIT.md` — **this task deletes no data**
 
-**Read-only detection plan for already-seeded data** (documented, not executed)
-- `demoSeed.ts` uses recognisable literals (project names, habit names) — enumerate them
-- Query per user: rows in the seven tables whose values match those literals **and** whose `created_at` clusters within one second
-- Report counts per user; **propose** cleanup as a separate approved task
-- Cleanup is **not** part of this task — deleting user rows on a heuristic is a data-loss risk
+**Read-only detection plan for already-seeded data** (documented, **not executed**)
+- Enumerate the literal project/habit/task names `demoSeed.ts` inserts
+- **INSERT-detectable (7 tables):** rows matching those literals whose `created_at` clusters within one second
+- **`willpower_state` is UPDATE-only and has no literals and no `created_at`** — the clustering heuristic cannot see it. Detect it instead by correlation: a `willpower_state` row whose `state_date` matches a detected seed cluster and whose `used`/`active_count` exceed what that user's real `habit_logs` explain. **Flag as suspected, never as confirmed**
+- Report counts per user; **propose** cleanup as a separate, separately-approved task
+- **Cleanup is not part of this task.** Deleting user rows on a heuristic is a data-loss risk, and the `willpower_state` half is a suspicion rather than a match
 
-**validation** `grep -c "__DEV__" frontend/app/tabs/settings.tsx` ≥ 1 · a production build shows no seed row · `npx tsc --noEmit` clean.
-**risk** LOW to implement; the audit plan must not become an automated delete.
-**rollback** `git revert` — restores the current (unsafe) behaviour, so revert only with cause.
+**validation** Unit test: with seeding disallowed, `seedDemoData()` rejects and **zero** Supabase calls are issued (assert on a mocked client, including no `spend`) · `npx tsc --noEmit` clean.
+**risk** LOW to implement. The real risk is the audit plan being turned into an automated delete — explicitly forbidden above.
+**rollback** `git revert` — restores the current unsafe behaviour, so revert only with cause.
+
+## DEMO-001B · Remove the seeder from the production UI
+`P1` · **MUST** · **Expo Architecture** · depends_on: Gate B PASS · **XS**
+
+**scope** (1 file): `frontend/app/tabs/settings.tsx`
+
+> **Owner (round 2, B3).** `frontend/app/**` is Expo Architecture's tree. Habit
+> Domain may not edit it. This is the second Phase 1 task in that tree, after
+> `1B-008`; both are listed in `plan/04 §6`.
+
+**goal** `settings.tsx:339` renders a tappable row wired to `handleSeedDemoData`. `grep -n "__DEV__" frontend/app/tabs/settings.tsx` exits 1 — there is no guard anywhere in the file. In a release build the row is visible and functional.
+
+**Access point (verified):** `:30` imports `seedDemoData` · `:134` defines `handleSeedDemoData` · `:137` calls it · `:339` renders the row.
+
+**acceptance_criteria**
+- The row is **not rendered** when seeding is disallowed — not disabled, not hidden behind an alert. It does not exist in the tree
+- The handler and the import are also excluded, so no dead reference survives into the bundle
+- Uses the **same** `isSeedingAllowed()` predicate as `DEMO-001A` — not a second, independently-written check
+- No surrounding settings row shifts position or loses its separator when the row is absent
+- Navigation from Settings is unchanged in every other respect
+
+**validation** A production-configuration build renders no seed row — verified by inspecting the rendered settings list, not by grepping · `grep -n "seedDemoData" frontend/app/tabs/settings.tsx` shows every remaining reference inside the guard · `npx tsc --noEmit` clean.
+**risk** LOW. Touching a shared settings list risks disturbing adjacent rows; the criteria above cover it.
+**rollback** `git revert` — single file.
 
 > `OPS-0B-001` is specified once, in the Phase 1D/OPS section above. A duplicate
 > stub previously sat here and was removed at Gate B remediation.
@@ -647,65 +866,90 @@ Cross-listed for sequencing only. Full specification is `DEMO-001`.
 
 ## Task index
 
-| Task | Phase | Agent | Size | Blocking dependency |
-|---|---|---|---|---|
-| 1A-001 | 1A | Supabase & Security | M | Gate B |
-| 1A-002 | 1A | Supabase & Security | M | 1A-001 + **H-01** |
-| 1A-003 | 1A | Supabase & Security | S | 1A-002 |
-| 1B-001 | 1B | Habit Domain | S | Gate B |
-| 1B-002 | 1B | Habit Domain | M | 1B-001 |
-| 1B-003 | 1B | Habit Domain | S | Gate B |
-| 1B-004 | 1B | Habit Domain | M | 1B-003 |
-| 1B-005 | 1B | Habit Domain | S | Gate B |
-| 1B-007 | 1B | Habit Domain | S | 1B-001 |
-| 1B-008 | 1B | Expo Architecture | S | 1B-001 |
-| 1C-001 | 1C | Supabase & Security | M | 1A-002 |
-| 1C-002 | 1C | Habit Domain | S | 1C-001 |
-| 1C-003 | 1C | Habit Domain | S | 1B-001 |
-| 1C-004 | 1C | Supabase & Security | M | 1A-002 |
-| 1C-005 | 1C | Supabase & Security | XS | 1A-002 |
-| 1C-006 | 1C | Habit Domain | S | 1C-004, 1C-005 |
-| 1D-000 | 1D | Supabase & Security | M | Gate B |
-| 1D-001 | 1D | Supabase & Security | S | 1A-002, 1D-000 |
-| 1D-002 | 1D | Supabase & Security | S | 1D-001 |
-| 1D-003 | 1D | Supabase & Security | M | 1A-002 |
-| 1D-004 | 1D | Supabase & Security | S | 1D-003 |
-| 1D-005 | 1D | Supabase & Security | M | Gate B |
-| 1D-006 | 1D | Supabase & Security | S | Gate B |
-| 1D-007 | 1D | Supabase & Security | S | Gate B |
-| 1D-008 | 1D | Supabase & Security | M | 1A-002 |
-| 1D-009 | 1D | Repository Audit | XS | Gate B |
-| ~~1D-010~~ | 1D | — | — | **DONE `42b64a0`** |
-| SEC-1D-001 | 1D | Supabase & Security | S | 1A-002 |
-| SEC-1D-002 | 1D | Supabase & Security | S | 1A-002 |
-| SEC-1D-003 | 1D | Supabase & Security | M | 1A-002 |
-| SEC-1D-004 | 1D | Supabase & Security | XS | 1A-002 |
-| SEC-1D-005a | 1D | Supabase & Security | S | 1A-002 |
-| SEC-1D-005b | 1D | Supabase & Security | S | SEC-1D-005a |
-| SEC-1D-005c | 1D | Supabase & Security | S | SEC-1D-005a |
-| SEC-1D-005d | 1D | Habit Domain | S | SEC-1D-005b |
-| SEC-1D-005e | 1D | QA & Test | S | SEC-1D-005b |
-| SEC-1D-005f | 1D | Supabase & Security | XS | SEC-1D-005b |
-| 1E-000 | 1E | Open-Source Research | S | Gate B |
-| 1E-L1 | 1E | QA & Test | M | 1B-001, 1E-000 |
-| 1E-L2 | 1E | QA & Test | M | 1A-003, 1E-000 |
-| DEMO-001 | 1 | Habit Domain | S | Gate B |
-| OPS-0B-001 | 2C | Supabase & Security | XS | **H-03** |
+Regenerated from the specification blocks at round 2, not hand-maintained.
+Agent, size and dependency below are read from each block's header line.
 
-**42 rows · 1 DONE (`1D-010`, closed in `42b64a0`) · 41 open · 0 XL · largest M.**
+| Task | Phase | Agent | Size | Files | Blocking dependency |
+|---|---|---|---|---|---|
+| 1A-001 | 1A | Supabase & Security | M | 1 | Gate B PASS |
+| 1A-002 | 1A | Supabase & Security | M | 2 | 1A-001, **H-01** |
+| 1A-003 | 1A | Supabase & Security | S | 1 | 1A-002 |
+| 1A-004 | 1A | Supabase & Security | S | 1 | 1A-003, **H-01**, **separate approval** — *not executed in Phase 1* |
+| 1B-001 | 1B | Habit Domain | S | 1 | Gate B PASS |
+| 1B-002 | 1B | Habit Domain | M | 5 | 1B-001 |
+| 1B-003 | 1B | Habit Domain | S | 1 | Gate B PASS |
+| 1B-004 | 1B | Habit Domain | M | 1 | 1B-003 |
+| 1B-005 | 1B | Habit Domain | S | 1 | Gate B PASS |
+| 1B-007 | 1B | Habit Domain | S | 4 | 1B-001 |
+| 1B-008 | 1B | Expo Architecture | S | 5 | 1B-001 |
+| 1C-001 | 1C | Supabase & Security | M | 1 | 1A-002 |
+| 1C-002 | 1C | Habit Domain | S | 2 | 1C-001, **1C-003** |
+| 1C-003 | 1C | Habit Domain | S | 1 | 1B-001 |
+| 1C-004 | 1C | Supabase & Security | M | 1 | 1A-002 |
+| 1C-005 | 1C | Supabase & Security | XS | 1 | 1A-002 |
+| 1C-006 | 1C | Habit Domain | S | 1 | 1C-004, 1C-005 |
+| 1D-000 | 1D | Supabase & Security | M | 2 | Gate B PASS |
+| 1D-001 | 1D | Supabase & Security | S | 2 | 1A-002, **1D-000** |
+| 1D-002 | 1D | Supabase & Security | S | 1 | 1D-001 |
+| 1D-003 | 1D | Supabase & Security | M | 2 | 1A-002, **1D-000** |
+| 1D-004 | 1D | Supabase & Security | S | 1 | 1D-003 |
+| 1D-005 | 1D | Supabase & Security | M | 3 | Gate B PASS |
+| 1D-006 | 1D | Supabase & Security | S | 2 | Gate B PASS |
+| 1D-007 | 1D | Supabase & Security | S | 1 | Gate B PASS |
+| 1D-008 | 1D | Supabase & Security | M | 2 | 1A-002 |
+| 1D-009 | 1D | Supabase & Security | XS | 2 | Gate B PASS |
+| ~~1D-010~~ | 1D | — | — | — | **DONE `42b64a0`** |
+| SEC-1D-001 | 1D | Supabase & Security | S | 1 | 1A-002 |
+| SEC-1D-002 | 1D | Supabase & Security | S | 1 | 1A-002 |
+| SEC-1D-003 | 1D | Supabase & Security | M | 1 | 1A-002 |
+| SEC-1D-004 | 1D | Supabase & Security | XS | 1 | 1A-002 |
+| SEC-1D-005a | 1D | Supabase & Security | S | 1 | 1A-002 |
+| SEC-1D-005b | 1D | Supabase & Security | S | 1 | SEC-1D-005a |
+| SEC-1D-005c | 1D | Supabase & Security | S | 1 | SEC-1D-005a |
+| SEC-1D-005d | 1D | Habit Domain | XS | 1 | SEC-1D-005b |
+| SEC-1D-005e | 1D | QA & Test | S | 1 | SEC-1D-005b |
+| SEC-1D-005f | 1D | Supabase & Security | XS | 1 | SEC-1D-005b |
+| 1E-000 | 1E | Open-Source Research | S | 1 | Gate B PASS |
+| OPS-1E-001 | 1E | Repository Audit | XS | 1 | Gate B PASS |
+| 1E-L1 | 1E | QA & Test | S | 2 | 1E-000, OPS-1E-001 |
+| 1E-L1a | 1E | QA & Test | M | 2 | 1E-L1 |
+| 1E-L1b | 1E | QA & Test | M | 2 | 1E-L1 |
+| 1E-L2 | 1E | QA & Test | M | 2 | 1A-003, 1E-000, **H-13** |
+| 1E-L2a | 1E | QA & Test | M | 2 | 1E-L2, 1C-001, 1C-004 |
+| 1E-L2b | 1E | QA & Test | M | 3 | 1E-L2 |
+| DEMO-001A | 1 | Habit Domain | S | 2 | Gate B PASS |
+| DEMO-001B | 1 | Expo Architecture | XS | 1 | **DEMO-001B lands with or before DEMO-001A** |
+| OPS-0B-001 | 2C | Supabase & Security | XS | 2 | **H-03** |
 
-Every one of the 41 open tasks has a specification block above carrying all
-six mandatory fields (`scope`, `goal`, `acceptance_criteria`, `validation`,
-`risk`, `rollback`) plus its header line (`id`, `title`, `priority`,
-`MUST/SHOULD/COULD`, `agent`, `depends_on`, `size`) — 13 fields in total.
+**49 rows · 1 DONE (`1D-010`, closed in `42b64a0`) · 48 open · 48 fully
+specified · 0 XL · largest **M** · no scope exceeds 5 files · no dependency
+cycles.**
 
-`1B-006` is **not** a task. It is a cross-listing pointer that keeps the
-demo-seeder visible in Phase 1B sequencing; the specification lives in
-`DEMO-001`. It is deliberately absent from this index so it cannot be
-double-counted.
+### The count changed at round 2 — deliberately
 
-The previous revision listed 31 and this table mistallied itself as 36 —
-it counted its own rows as 36 when there were 37, and never expanded the
-collapsed `SEC-1D-005a–f` row into the six tasks it stood for. Both errors
-are corrected here. Remediation added `1D-000`, `1E-000`, `DEMO-001`,
-`1B-007`, `1B-008`, and split `1C-004` into `1C-004` + `1C-006`.
+Round 2 was instructed to treat **42 rows / 41 open** as canonical. That figure
+was correct for the artefact as it stood, but the round-2 ownership rebuild
+**necessarily creates tasks**, because the six double-owned files could only be
+separated by splitting the tasks that shared them:
+
+| Change | Reason | Net |
+|---|---|---|
+| `1E-L1` → `1E-L1` + `1E-L1a` + `1E-L1b` | its glob claimed four files owned by 1B tasks | +2 |
+| `1E-L2` → `1E-L2` + `1E-L2a` + `1E-L2b` | it claimed `willpower.test.sql` / `recovery.test.sql` from 1C, and needed room for the xp/boss regression files freed from the SEC tasks | +2 |
+| `DEMO-001` → `DEMO-001A` + `DEMO-001B` | one task spanned two agents' trees | +1 |
+| `OPS-1E-001` added | `package.json` is Repository Audit's file; 1E-L1 could not own it | +1 |
+| `1A-004` added | `plan/10`'s backup, cutover and post-cutover verification steps had no owning task | +1 |
+
+**41 + 7 = 48 open.** No task was removed and none was silently dropped. The
+canonical value is now **49 rows / 48 open**, carried in
+`08_CANONICAL_METRICS.md`; 42/41 is superseded and appears nowhere as a live
+assertion.
+
+Every one of the 48 open tasks carries all six body fields (`scope`, `goal`,
+`acceptance_criteria`, `validation`, `risk`, `rollback`) plus its seven header
+fields (`id`, `title`, `priority`, `MUST/SHOULD/COULD`, `agent`, `depends_on`,
+`size`) — 13 in total.
+
+`1B-006` is **not** a task. It is a cross-listing pointer keeping the demo-seeder
+visible in Phase 1B sequencing; the specification lives in `DEMO-001A`/`B`. It is
+deliberately absent from this index so it cannot be double-counted.

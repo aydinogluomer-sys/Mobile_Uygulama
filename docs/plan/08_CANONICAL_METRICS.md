@@ -32,12 +32,17 @@
 | **Repo migration files** | **4** | `ls supabase/migrations \| wc -l` |
 | — matching a ledger entry | **2** | the two Emergency Gate 0 migrations |
 | — **history gap** | **19** | 21 − 2 |
-| **Backlog tasks** | **42** | task index rows, `SEC-1D-005a–f` expanded |
+| **Backlog tasks** | **49** | task index rows (round 2) |
 | — DONE | **1** | 1D-010, commit `42b64a0` |
-| — **open** | **41** | 42 − 1 |
-| — fully specified | **41** | every open task has all 13 fields |
-| — XL | **0** | largest is M |
-| — cross-listing pointers | **1** | `1B-006` → `DEMO-001`; **not** a task, not indexed |
+| — **open** | **48** | 49 − 1 |
+| — fully specified | **48** | every open task has all 13 fields |
+| — XL | **0** | largest is M (S=24, M=16, XS=8) |
+| — scope > 5 files | **0** | scope field |
+| — dependency cycles | **0** | DFS over every `depends_on` |
+| — cross-listing pointers | **1** | `1B-006` → `DEMO-001A`/`B`; **not** a task, not indexed |
+| **Files with two edit owners** | **0** | ownership matrix regenerated from scope fields |
+| **`never touches` violations** | **0** | same |
+| Distinct Phase 1 files | **70** | same |
 | **Live tables** | **48** | `pg_tables where schemaname='public'` |
 | — with RLS enabled | **48** | `rowsecurity = true` |
 | — ERROR-level advisors | **0** | `get_advisors(security)` |
@@ -63,7 +68,14 @@ corrected everywhere.
 | **Failing L1 criteria** | **20** | **14** | plan/00 §2.3 & §4, plan/02 §1/§4/§7, plan/03, qa/02 §Summary |
 | Live migrations | 20 *(in plan/01)* | **21** | plan/01 |
 | Repo migrations | 3 *(in plan/01)* | **4** | plan/01 |
-| Backlog tasks | 31, then 36 | **42** | plan/01, plan/00 |
+| Backlog tasks | 31, then 36, then 42 | **49** | plan/01, plan/00 |
+
+**Why 42 → 49 at round 2.** Not a counting error this time — a deliberate
+structural change. The round-2 ownership rebuild could only separate the six
+double-owned files by splitting the tasks that shared them: `1E-L1` → 3 tasks,
+`1E-L2` → 3 tasks, `DEMO-001` → 2 tasks, plus `OPS-1E-001` (`package.json`
+belongs to Repository Audit) and `1A-004` (`plan/10`'s live-cutover steps had no
+owning task). **41 + 7 = 48 open, 49 rows.** No task was removed.
 
 **The backlog count was wrong twice.** The pre-remediation figure was 31. The
 first remediation pass reported 36 — also wrong, in two independent ways: it

@@ -40,7 +40,7 @@
 - **1B (dates + metrics)** blocks nothing structurally. It is pure TypeScript and can start immediately, in parallel, by a different agent.
 
 That parallelism matters: 1A involves a decision (§3) that may need discussion,
-while 1B is 20 failing tests that can be written today.
+while 1B is 14 failing tests that can be written today.
 
 ---
 

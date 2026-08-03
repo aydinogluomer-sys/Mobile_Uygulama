@@ -189,5 +189,5 @@ unauthenticated XP grant closed.
 
 Phase 1E Layer 1 converts the 23 predicted failures into executing tests — most
 need no device, only `TZ=Europe/Istanbul` and the pure modules. Phase 6A covers
-the 18 device-blocked cases. **No case here should be marked passing until it has
+the 15 device-blocked cases. **No case here should be marked passing until it has
 actually run.**

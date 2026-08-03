@@ -194,7 +194,7 @@ service-role key is **out of scope** and belongs to that project's owner.
 
 Three limits are real and are not dismissed:
 
-1. **Device and rendered evidence are absent.** 21 failures are *predicted* from demonstrably broken code paths, not observed. That distinction is preserved everywhere and must survive into Phase 1.
+1. **Device and rendered evidence are absent.** 23 failures are *predicted* from demonstrably broken code paths, not observed. That distinction is preserved everywhere and must survive into Phase 1.
 2. **The licence gate is unsatisfied for all 15 repositories.** Nothing may be adopted yet.
 3. **`plan/01_IMPLEMENTATION_BACKLOG.md` is DRAFT/SEEDED**, not final. It carries the four Emergency Gate 0 follow-ups plus SEC-1D-005 and OPS-0B-001; the full backlog is a Gate B output.
 

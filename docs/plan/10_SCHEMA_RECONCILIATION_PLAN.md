@@ -59,6 +59,31 @@ hash** — a sorted digest over `information_schema` — as the comparison basel
 Header records: generation date · source project ref · that it is a squash, not
 a history · the schema hash it was generated from.
 
+#### The baseline MUST be non-idempotent — and is push-unsafe until repaired
+
+> **Added at round 2 (M10).** The plan's stated protection against an accidental
+> live apply was "applying the baseline to live would attempt to re-create them
+> and fail." **That only holds if the baseline is authored non-idempotently**,
+> and Step 2 did not say so. A generated schema dump normally emits
+> `CREATE TABLE IF NOT EXISTS`, `CREATE OR REPLACE FUNCTION` and bare `GRANT`.
+> Under those constructs an accidental `supabase db push` would **not** fail —
+> it would succeed and **re-grant `EXECUTE` on `mock_activate_subscription`,
+> `add_xp`, `track_weekly_xp` and `deal_damage_to_active_boss` to `anon` and
+> `authenticated`, reopening both Emergency Gate 0 P0s.**
+
+Binding requirements on the generated file:
+
+| Requirement | Why |
+|---|---|
+| **No `IF NOT EXISTS`** on any `CREATE TABLE` / `CREATE INDEX` / `CREATE TYPE` | so an accidental apply against a populated live database aborts on the first object |
+| **No `CREATE OR REPLACE`** on functions — plain `CREATE FUNCTION` | `OR REPLACE` silently overwrites a hardened body with the permissive original |
+| **No `DROP … IF EXISTS`** preamble | a "clean slate" preamble would drop live objects |
+| Header carries **`-- PUSH-UNSAFE: apply only via 'migration repair', never 'db push'`** | the warning travels with the file |
+| `1D-009`'s guard is **not** sufficient protection | it checks the project ref, not which migration is being applied |
+
+**Verification (part of `1A-002`'s acceptance criteria):**
+`grep -icE "if not exists|or replace|drop .*if exists" <baseline>` returns **0**.
+
 ### Step 3 — Preserve the Emergency Gate 0 migrations
 **`20260802181931` and `20260802205850` are NOT folded into the baseline.** They
 remain separate files, ordered *after* it.
@@ -149,7 +174,35 @@ this repository; Phase 6B makes it enforced.**
 
 ---
 
-## 6. Decision required — H-01
+## 6. Step → task traceability
+
+**Every step below has an owning backlog task.** No step in this plan is
+unowned; nothing is left as prose that someone is expected to notice.
+
+| # | Step | Task ID | Agent | Executed in Phase 1? |
+|---|---|---|---|---|
+| 1 | Capture live schema (read-only) + **schema hash** | **`1A-001`** | Supabase & Security | yes — read-only |
+| 2 | Author the baseline (**non-idempotent**, push-unsafe) | **`1A-002`** | Supabase & Security | yes — file only, not applied |
+| 3 | **Preserve the two Emergency Gate 0 migrations** outside the squash | **`1A-002`** (acceptance criterion) | Supabase & Security | yes |
+| 4 | Archive `001`/`002` to `migrations/archive/` | **`1A-002`** (acceptance criterion) | Supabase & Security | yes |
+| 5 | Local `db reset` validation | **`1A-003`** | Supabase & Security | yes — local only |
+| 6 | **Schema-hash comparison** local vs live | **`1A-003`** (acceptance criterion) | Supabase & Security | yes |
+| 7 | Post-reset revoke assertion — the 4 functions are **not** client-executable on a fresh DB | **`1E-L2b`** | QA & Test | yes — permanent regression test |
+| 8 | **Backup before cutover** (`supabase db dump --linked`) | **`1A-004`** | Supabase & Security | **no — needs H-01 + explicit approval** |
+| 9 | **Cutover** (`migration repair --status applied`) | **`1A-004`** | Supabase & Security | **no — separate authorised action** |
+| 10 | Post-cutover `db diff --linked` shows no differences | **`1A-004`** | Supabase & Security | **no** |
+| 11 | **Post-cutover revoke re-assertion** — prove the two P0s are still closed on live | **`1A-004`** | Supabase & Security | **no** |
+| 12 | Rollback, Steps 1–5 (local) | **`1A-002`** / **`1A-003`** rollback fields | Supabase & Security | n/a |
+| 13 | Rollback, Step 9 (`repair --status reverted`) | **`1A-004`** rollback field | Supabase & Security | n/a |
+
+**`1A-004` is specified in the backlog but does not run in Phase 1.** It is
+gated on H-01 *and* a separate explicit approval, and it is the only task in
+this plan that touches the live project. Steps 1–7 are the whole of Phase 1A's
+executable content, and none of them changes anything live.
+
+---
+
+## 7. Decision required — H-01
 
 **Option A (squashed baseline) or Option B (incremental reconstruction)?**
 
