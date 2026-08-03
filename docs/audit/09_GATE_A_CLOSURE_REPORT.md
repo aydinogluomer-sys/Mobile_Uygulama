@@ -12,6 +12,12 @@ Gate A's denominator is **19**, not 24. The five `docs/plan/` artefacts
 (`00`, `02`, `03`, `04`, `05`) are **Gate B** outputs. Counting them here created
 a dependency cycle in which Gate A could never close while Gate B waited on Gate A.
 
+> **Counting note.** `docs/` now holds **20** files. This closure report is the
+> **gate decision record**, not one of the 19 deliverables it certifies — a
+> document cannot be part of the set it audits. Deliverables 19 · gate record 1 ·
+> files on disk 20. Gate B adds 5, giving a project total of **24 deliverables +
+> gate records**.
+
 | # | Document | Status |
 |---|---|---|
 | 1 | `audit/00_REPOSITORY_BASELINE.md` | `Verified` |
