@@ -1,6 +1,13 @@
 # 11 — Gate B Remediation, Round 2
 
-**Status:** remediation complete · **awaiting a third independent review**
+**Status:** ⚠ **SUPERSEDED in part — historical record of ROUND 2**
+
+> Rounds 3, 4 and 5 followed. Two claims below were **false when written** and are
+> annotated inline (M7, M10). Current state: `08_CANONICAL_METRICS.md` (counts),
+> `12_GATE_B_TARGETED_REMEDIATION.md` (round 4), and
+> `13_GATE_B_POST_REVOKE_BASELINE_DECISION.md` (round 5, H-01 decision) — the
+> last of which governs anything touching the baseline.
+
 **Trigger:** Gate B re-review returned `FAIL` — 3 BLOCKER, 7 MAJOR, 8 MINOR
 **Constraint:** documentation only. No production code, no live migration, no SQL write, no Edge Function deploy, no `demoSeed` code change, no operation on `zdqiujpeewtyhtcqhdcj`.
 
@@ -56,7 +63,7 @@ no second table or summary that can disagree. `1C-004` is migration-only in
 | **M7** | `plan/02`/`plan/04 §5` never received the new gating edges; `1D-001..004` was scheduled with no `1D-000` — R-19's exact trigger | `plan/04 §6` execution map rebuilt with `1D-000` gating `1D-001`/`1D-003`, `1E-000` + `OPS-1E-001` gating the 1E lane, and `1C-003 → 1C-002`. Encoded in `depends_on`, so the graph enforces it |
 | **M8** | `DEMO-001` listed 7 tables; `demoSeed.ts:596` also writes **`willpower_state`** via `spend(3)` | Table list corrected to **8**. The detection plan now has an **UPDATE-aware** method for `willpower_state`, which has no literals and no `created_at` and is invisible to the clustering heuristic. Flagged as *suspected*, never confirmed. `demoSeed.ts:21`→`:22` corrected |
 | **M9** | C12 parity withdrawal never annotated in `audit/05`; the "Phase 3 entry task" was never filed | Both closed — see §3 |
-| **M10** | `plan/10` Step 2 never constrained baseline generation; an idempotent dump would re-grant the two revoked P0 privileges on an accidental `db push` | Step 2 now **binds the baseline to be non-idempotent** (no `IF NOT EXISTS`, no `CREATE OR REPLACE`, no `DROP IF EXISTS`), marks it **push-unsafe** in its header, and adds a `grep` assertion to `1A-002`. `1A-004` re-asserts the revokes **after** cutover |
+| **M10** | `plan/10` Step 2 never constrained baseline generation; an idempotent dump would re-grant the two revoked P0 privileges on an accidental `db push` | Step 2 binds the baseline to be non-idempotent and marks it push-unsafe. ❌ **"adds a `grep` assertion to `1A-002`" was FALSE when written** — the round-4 reviewer confirmed `1A-002` contained no such criterion. Genuinely added to the task block at **round 5** |
 
 ### Minor findings also fixed
 

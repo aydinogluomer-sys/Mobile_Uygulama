@@ -2,6 +2,17 @@
 
 **Scope:** narrow and mechanical. No new architecture, no backlog rewrite, no production code, no live system change.
 **Trigger:** Gate B round-3 review `FAIL` — 3 BLOCKER, 8 MAJOR, 6 MINOR.
+
+> ## ⚠ §1 (B1) is SUPERSEDED by round 5
+>
+> The round-4 review found the B1 fix described below made `1A-002`
+> **self-contradictory** and left the non-idempotency requirement absent from the
+> task block. The user then decided **H-01 = (a) post-revoke baseline**.
+>
+> **`13_GATE_B_POST_REVOKE_BASELINE_DECISION.md` and the current `1A-002` block
+> govern.** §1 below is retained only as the record of what round 4 attempted.
+> §2 (serialisation) and §3 remain accurate; §4 and §5 carry inline corrections.
+
 **Method change:** after every fix, the **actual task block** was re-read and the required terms located inside it. Not the report that claims the fix.
 
 > **Why the method changed.** Rounds 1–3 each wrote a fix into the document that
@@ -31,11 +42,16 @@ PUSH-UNSAFE pattern grep · `supabase db reset` then `has_function_privilege`
 for `anon` and `authenticated` on all four · pgTAP `AC-S01..S07` (`1E-L2b`)
 against the freshly reset database · explicit "never call the functions".
 
-**Risk/rollback:** the P0 re-grant vector is named in the block's `risk` field —
-the baseline must carry the *permissive* grants so the revokes have something to
-revoke, so ordering is load-bearing. Rollback states that an observed live
-re-grant is closed by **re-applying the two revoke migrations first**, then
-investigating.
+**Risk/rollback:** the P0 re-grant vector is named in the block's `risk` field.
+
+> ⚠ **This clause is superseded.** Round 4 required the baseline to carry the
+> permissive grants "so the revokes have something to revoke", making ordering
+> load-bearing. Under decision (a) that requirement is **deleted**: the baseline
+> produces the secure ACL directly, and `REVOKE` on a never-granted privilege is
+> a no-op, so the premise was wrong as well as self-contradictory.
+
+Rollback states that an observed live re-grant is closed by **re-applying the two
+revoke migrations first**, then investigating. That part still stands.
 
 ### Task-block evidence
 
@@ -138,7 +154,7 @@ longer describes a mitigation that exists only in the register.
 | Migrations | **21** live · **4** repo · **2** matched |
 | Files with two edit owners | **0** |
 | Unserialised shared-file pairs | **0** |
-| Active stale assertions | **0** |
+| Active stale assertions | ❌ claimed **0**; round-4 review found `plan/09:75` still stale. Fixed at round 5 |
 
 **Fixed this round:** `plan/00:176` (21→23) · `plan/04:44` (69→70) ·
 `plan/08 §2` (42/41 marked superseded) · `plan/07` marked **SUPERSEDED** with
@@ -176,9 +192,13 @@ Supabase call in the file is `supabase.auth.getUser()` at `:46`. The previous
 | `trg_habit_log_award` (AFTER) | **`profiles`** (XP, level, coins), `habits.streak_current` |
 | `on_habit_completed_damage_boss` (AFTER) | **`global_bosses`**, **`boss_contributors`** |
 
-`weekly_xp` is listed as **suspected, not confirmed** — whether
-`fn_habit_log_award` also calls `track_weekly_xp` was not verified from source.
-`1A-001` must resolve it.
+> ⚠ **Corrected at round 5.** Round 4 listed `weekly_xp` as *suspected*. It is
+> **CONFIRMED** — `fn_habit_log_award` calls `track_weekly_xp(...)` directly.
+> `habits.streak_best` was missed entirely. The confirmed indirect set is **six**,
+> not four: `profiles` · `weekly_xp` · `habits.streak_current` ·
+> `habits.streak_best` · `global_bosses` · `boss_contributors`.
+> **`weekly_xp` backs the leaderboard** — the only affected table whose pollution
+> is visible to other users. See `plan/13 §7` and the `DEMO-001A` block.
 
 **No group-B table appears in the direct list.** Twelve tables are affected in
 total; four of them are never named by any seeder code.
@@ -189,7 +209,7 @@ total; four of them are never named by any seeder code.
 |---|---|---|
 | 1 | 7 INSERT-written tables, literal + `created_at` cluster | **match** |
 | 2 | `willpower_state` — UPDATE-only, no literals, no `created_at`; correlated against `state_date` and unexplained `used` | **suspected** |
-| 3 | `profiles`, `streak_current`, `global_bosses`, `boss_contributors` — reported as *derived from polluted input*, with **no corrected value computed** | **inferred** |
+| 3 | `profiles`, **`weekly_xp`**, `streak_current`, **`streak_best`**, `global_bosses`, `boss_contributors` — reported as *derived from polluted input*, with **no corrected value computed** | **inferred** |
 
 **The plan contains no DELETE, no UPDATE and no automated cleanup.** It produces
 a report. Cleanup would require its own approved task, because Tier 2 is a
