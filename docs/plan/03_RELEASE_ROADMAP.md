@@ -15,7 +15,7 @@ the phase** — it is not carried forward as a footnote.
 
 ## Phase 1 — Data Integrity, Domain Correctness, Backend Security
 
-**Entry:** Gate B `PASS` · schema reconciliation strategy chosen (doc 02 §3) · agent ownership map agreed
+**Entry:** Gate B `PASS` · **schema reconciliation strategy CHOSEN — H-01 closed: Option A, post-revoke posture (`13_GATE_B_POST_REVOKE_BASELINE_DECISION.md`)** · agent ownership map agreed
 
 | Sub-phase | Exit criteria |
 |---|---|

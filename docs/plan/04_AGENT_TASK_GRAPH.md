@@ -66,8 +66,9 @@ This is the **only** assignment table in this document. No summary elsewhere res
 | Task | Agent | Files | Reviewer |
 |---|---|---|---|
 | 1A-001 three-way diff | Supabase & Security | `docs/audit/10_…md` | Skeptical Reviewer |
-| 1A-002 baseline migration | Supabase & Security | `migrations/<ts>_baseline_schema.sql` · `migrations/README.md` | Skeptical Reviewer |
+| 1A-002 baseline migration | Supabase & Security | `migrations/20260801000000_baseline_schema.sql` · `migrations/README.md` | Skeptical Reviewer |
 | 1A-003 reset verification | Supabase & Security | `docs/audit/11_…md` | Skeptical Reviewer |
+| **1A-004 live ledger cutover** *(not executed in Phase 1)* | Supabase & Security | `docs/audit/12_LEDGER_CUTOVER_RECORD.md` | Skeptical Reviewer |
 | 1B-001 date module | Habit Domain | `frontend/lib/date.ts` | Skeptical Reviewer |
 | 1B-002 purge UTC/local | Habit Domain | 5 store/lib files | Skeptical Reviewer |
 | 1B-003 `isDueOn` count | Habit Domain | `frontend/lib/habitSchedule.ts` | Skeptical Reviewer |
@@ -155,7 +156,7 @@ Open-Source Research ─ 1E-000              (no dependency)
 Skeptical Reviewer  ── continuous, read-only, on every diff
 ```
 
-**Five agents are productive from day one.** Nothing in the Habit Domain, Expo Architecture, Repository Audit or Open-Source Research lanes depends on the H-01 schema decision.
+**Five agents are productive from day one.** H-01 is answered, so the Schema lane is unblocked too; the remaining human blocker is **H-13** (Docker), which gates only the Layer 2 test lane.
 
 ---
 

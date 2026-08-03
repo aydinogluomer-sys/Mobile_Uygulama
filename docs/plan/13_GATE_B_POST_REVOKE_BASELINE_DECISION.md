@@ -3,6 +3,10 @@
 **Decision owner:** user · **Decision: (a) POST-REVOKE SQUASHED BASELINE**
 **Scope of round 5:** targeted Gate B remediation. No production code, no live DB, no Edge Function.
 
+> **Round-6 corrections applied to this document:** the ordering invariant (§4),
+> the 12/4 table arithmetic (§7), and the withdrawn "0 active stale assertions"
+> claim (§8). The decision itself stands unchanged.
+
 ---
 
 ## 1. The decision
@@ -73,9 +77,26 @@ The baseline must create these four functions with a directly secure posture:
 |---|---|
 | Retained as files | **yes** — they match live ledger entries |
 | Effect on a fresh database | **security no-op** — the baseline already produced the secure ACL |
-| Must error? | **no** — `REVOKE` on a never-granted privilege is a no-op |
+| Must error? | **no — but only if the baseline runs first.** `REVOKE` on a never-granted *privilege* is a no-op; `REVOKE` on a **nonexistent function** is an `ERROR`. See the ordering invariant below |
 | Load-bearing for security? | **no** |
 | Why keep them | ledger continuity, and the record that two P0s were found, reviewed and closed |
+
+> ## ⚠ Ordering invariant — added at round 6 (B1)
+>
+> The "security no-op" property **depends entirely on the baseline running first**.
+> The baseline version is fixed at **`20260801000000`**, giving:
+>
+> **`20260801000000` < `20260802181931` < `20260802205850`**
+>
+> Had the baseline kept a natural current timestamp (`20260803…`), both Emergency
+> migrations would have run **before** the functions existed, and
+> `REVOKE EXECUTE ON FUNCTION public.mock_activate_subscription(text, text)` would
+> have **errored**, aborting `supabase db reset`. This invariant now lives in the
+> `1A-002` task block (Group 1a), not only here.
+>
+> **Verified with Supabase CLI 2.109.1**, read-only: `migration squash --version
+> 20260801000000 --local` reports the file *"is already the earliest migration"*,
+> while `--version notatimestamp` returns `invalid version number`.
 
 ---
 
@@ -134,9 +155,11 @@ Verified from the actual trigger function bodies.
 is visible to *other* users. It is now named in group B and in Tier 3 of the
 detection plan.
 
-Direct and indirect lists are kept strictly separate. **13 distinct tables** are
-affected (`habits` appears in both — directly via `addHabit`, and again via the
-streak columns a trigger updates); **five are named nowhere in the seeder**.
+Direct and indirect lists are kept strictly separate. **12 distinct tables** are
+affected: the six indirect entries resolve to five distinct tables (`streak_current`
+and `streak_best` are both `habits`), and `habits` is already in the direct list —
+so 8 + {`profiles`, `weekly_xp`, `global_bosses`, `boss_contributors`} = **12**.
+**Four are named nowhere in the seeder.**
 
 The detection plan remains three tiers by confidence with **no DELETE, no UPDATE,
 no automated cleanup**, and computes no "corrected" value for trigger-derived data.
@@ -171,7 +194,9 @@ task ID alphabet ......... 48 ids; DEMO ids seen: ['DEMO-001A', 'DEMO-001B']
 FAILURES: NONE
 ```
 
-**Stale adjudication — 0 active.** The 23 candidates are: correct values
+**Stale adjudication at round 5 — claimed 0 active.** ❌ The round-6 review found **14** genuinely active, chiefly the H-01 status contradictions and this document's own claims. All 14 are closed at round 6; see `14_GATE_B_ROUND_6_REMEDIATION.md`. Original round-5 text follows:
+
+ The 23 candidates are: correct values
 (`plan/00:80` and `plan/02:199` "the other 18" — 32−14=18; `research/03:126`
 "21 live migrations, 4 repo files, 2 matching"), a commit hash (`42b64a0`),
 transition arithmetic (`41 + 7 = 48`), and explicit correction records in

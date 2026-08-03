@@ -36,9 +36,11 @@ acceptance_criteria · validation · risk · rollback · size`.
 ---
 
 ## 1A-002 · Write the squashed baseline migration *(post-revoke posture)*
-`P1` · **MUST** · Supabase & Security · depends_on: 1A-001, **H-01 user decision** · **M**
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-001 · **M**
 
-**scope** (2 files): `supabase/migrations/<ts>_baseline_schema.sql` · `supabase/migrations/README.md`
+> **H-01 is answered** (Option A, post-revoke posture), so it is no longer a dependency of this task. `1A-001` is the only remaining prerequisite.
+
+**scope** (2 files): `supabase/migrations/20260801000000_baseline_schema.sql` · `supabase/migrations/README.md`
 
 **goal** One migration that reproduces the live schema **and its current, secure privilege posture** from empty, so `db reset` yields a database the app runs against and which is safe on the first statement — not safe only after two later migrations happen to run.
 
@@ -59,9 +61,49 @@ Three groups, all binding: **schema**, **security posture**, **non-idempotency**
 
 *Group 1 — schema*
 - Baseline creates every live table, column, constraint, index, RPC, trigger and policy identified in `1A-001`
-- `001_initial_schema.sql` and `002_integrations.sql` moved to `supabase/migrations/archive/` with a README explaining they predate the drift
 - Baseline header records: generation date · source project ref · that it is a **squash, not a history** · the schema hash it was generated from
 - **Not applied to live** in this task
+
+*Group 1a — migration ordering (B1)*
+
+> **The blocker this closes.** The filename previously carried an unconstrained
+> timestamp placeholder. `supabase migration new` stamps the current time, which
+> today is `20260803…` — **after** both Emergency migrations. They would then run
+> **first**, against a database where the four functions do not yet exist, and
+> `REVOKE EXECUTE ON FUNCTION public.mock_activate_subscription(text, text)` on a
+> **nonexistent** function is an `ERROR`, not a no-op. `supabase db reset` would
+> abort before reaching the baseline.
+>
+> `REVOKE` on a *never-granted privilege* is a no-op; `REVOKE` on a *nonexistent
+> object* is an error. Only the first was previously accounted for.
+
+- **Baseline version is fixed at `20260801000000`.** Not a placeholder, not "current timestamp".
+- **Ordering invariant, binding:**
+  `20260801000000` **<** `20260802181931` **<** `20260802205850`
+- Both Emergency Gate 0 migrations **remain separate files and sort after the baseline**
+- `001_initial_schema.sql` and `002_integrations.sql` are moved to `supabase/migrations/archive/` with a README explaining they predate the drift — **they must not remain in the active migration root**, where their `001`/`002` versions would sort before the baseline
+- **Fresh-reset order is exactly:** ① `20260801000000_baseline_schema.sql` → ② `20260802181931` (mock subscription revoke) → ③ `20260802205850` (XP function revoke)
+- If a different version is ever chosen, **the same exact filename must appear in every document** — no document may carry a placeholder
+
+> **Version format verified, not assumed.** Supabase CLI **2.109.1**, read-only probe
+> in a scratch directory: `supabase migration squash --version 20260801000000 --local`
+> returns *"`supabase\migrations60801000000_baseline_schema.sql` is already the
+> **earliest migration**"* — the CLI parsed the version and confirmed it sorts before
+> both Emergency migrations. By contrast `--version notatimestamp` returns
+> **`invalid version number`**, proving the CLI does validate the format and does
+> accept this one.
+
+*Group 1b — Emergency Gate 0 migrations are preserved (M1)*
+
+> Restored to this block at round 6. `plan/10 §6` attributes this criterion to
+> `1A-002`; the round-5 rewrite deleted it, so the rule existed only in the
+> describing document. **This block now carries it.**
+
+- `20260802181931_emergency_gate_0_revoke_mock_activate_subscription.sql` and `20260802205850_emergency_gate_0_revoke_client_exec_xp_functions.sql` are **not deleted**
+- They are **not folded into the squash**
+- They **sort after** the baseline (Group 1a)
+- They are retained for **live-ledger continuity and audit evidence** — both match live ledger entries
+- They are **not load-bearing for fresh-database security**: the baseline alone produces the secure posture. On a fresh reset they run as a **clean historical no-op**, because the functions exist by then and their privileges are already revoked
 
 *Group 2 — security posture (post-revoke contract)*
 
@@ -104,34 +146,69 @@ attempt to look push-safe:
 - **Applying it to the live project via `db push` or `apply_migration` is prohibited.** Live registration is `1A-004`'s ledger-only `migration repair`
 
 **validation**
+
+`PSQL="psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres"`
+`BASE=supabase/migrations/20260801000000_baseline_schema.sql`
+
 ```bash
-# 1. no client GRANT on the four P0 functions  -> absolute FAIL if matched
-grep -nEi "grant +execute.*(mock_activate_subscription|add_xp|track_weekly_xp|deal_damage_to_active_boss).*(public|anon|authenticated)"   supabase/migrations/*_baseline_schema.sql          # expect: NO MATCH
+# 1. ORDERING (B1) — assert the invariant on real filenames, before anything else
+BASELINE=20260801000000
+MOCK_REVOKE=20260802181931
+XP_REVOKE=20260802205850
+test -f "supabase/migrations/${BASELINE}_baseline_schema.sql"       || exit 1
+test "$BASELINE"    -lt "$MOCK_REVOKE"                              || exit 1
+test "$MOCK_REVOKE" -lt "$XP_REVOKE"                                || exit 1
 
-# 2. non-idempotency: blanket forms are forbidden outright
-grep -nEi "if not exists|create or replace"   supabase/migrations/*_baseline_schema.sql          # expect: NO MATCH
+# active migration root must contain EXACTLY these three, in this order
+ls supabase/migrations/*.sql | xargs -n1 basename
+# expect, in order:
+#   20260801000000_baseline_schema.sql
+#   20260802181931_emergency_gate_0_revoke_mock_activate_subscription.sql
+#   20260802205850_emergency_gate_0_revoke_client_exec_xp_functions.sql
+# 001_initial_schema.sql and 002_integrations.sql must NOT appear (archived)
 
-# 3. first application on an EMPTY local stack -> PASS
-supabase db reset                                     # expect: exit 0
+# 2. no client GRANT on the four P0 functions -> absolute FAIL if matched
+grep -nEi "grant +execute.*(mock_activate_subscription|add_xp|track_weekly_xp|deal_damage_to_active_boss).*(public|anon|authenticated)" \
+  "$BASE"                                            # expect: NO MATCH
 
-# 4. second application against the now-existing schema -> MUST fail
-psql -f supabase/migrations/*_baseline_schema.sql; echo "exit=$?"
-                                                      # expect: exit != 0
+# 3. non-idempotency: blanket forms forbidden
+grep -nEi "if not exists|create or replace" "$BASE"  # expect: NO MATCH (see note)
 
-# 5. privilege introspection on the LOCAL stack after reset
-psql -c "SELECT p.proname,
+# 4. first application on an EMPTY local stack
+supabase db reset                                    # expect: exit 0
+# proves ordering too: a reset that reached the Emergency migrations before the
+# baseline would have aborted on "function ... does not exist"
+
+# 5. SECOND application must FAIL — ON_ERROR_STOP is what makes this meaningful
+$PSQL -f "$BASE"; echo "exit=$?"                     # expect: exit != 0
+# Without -v ON_ERROR_STOP=1, psql exits 0 even when every statement errors,
+# so the bare form cannot demonstrate this criterion at all.
+
+# 6. privilege introspection — ALL FIVE roles named in the ACL table
+$PSQL -c "SELECT p.proname,
                 has_function_privilege('public',        p.oid,'EXECUTE') AS public_exec,
                 has_function_privilege('anon',          p.oid,'EXECUTE') AS anon_exec,
                 has_function_privilege('authenticated', p.oid,'EXECUTE') AS auth_exec,
-                has_function_privilege('service_role',  p.oid,'EXECUTE') AS svc_exec
+                has_function_privilege('service_role',  p.oid,'EXECUTE') AS svc_exec,
+                has_function_privilege('postgres',      p.oid,'EXECUTE') AS pg_exec
          FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
          WHERE n.nspname='public' AND p.proname IN
            ('mock_activate_subscription','add_xp','track_weekly_xp','deal_damage_to_active_boss');"
-# expect: public_exec=f, anon_exec=f, auth_exec=f, svc_exec=t  for all four
+# expect for all four rows:
+#   public_exec=f  anon_exec=f  auth_exec=f  svc_exec=t  pg_exec=t
 ```
+
+**Also required**
 - **Schema-hash match** between the reset local database and the live capture from `1A-001`
-- **pgTAP security regression tests `AC-S01..S07` (`1E-L2b`) pass against the freshly reset database** — before any Emergency Gate 0 migration is applied, proving the baseline alone is secure
-- **Never call any of the four functions to test them.** Privilege is introspected via `has_function_privilege`; a call would itself be the exploit
+- All four functions **exist** after reset (proves the baseline created them before the revokes ran)
+- **pgTAP `AC-S01..S07` (`1E-L2b`) pass against the freshly reset database**
+- **Never call any of the four functions.** Privilege is introspected via `has_function_privilege`; a call would itself be the exploit
+
+> **Note on step 3 (m3).** The criteria forbid **blanket** `IF NOT EXISTS` /
+> `CREATE OR REPLACE`. If a specific, justified exception is ever needed (e.g.
+> `CREATE EXTENSION IF NOT EXISTS`), it must be listed by line in the baseline
+> header with its justification, and step 3 becomes "no match **other than** the
+> listed exceptions". An unlisted match is a FAIL.
 
 **risk** **HIGH — two failure modes.**
 1. An omission produces a schema that looks right and is not. Mitigated by the `1A-001` diff and the schema-hash comparison.
@@ -152,7 +229,7 @@ psql -c "SELECT p.proname,
 **acceptance_criteria**
 - `supabase db reset` produces a schema whose table/column/RPC/trigger inventory matches the live inventory captured in 1A-001
 - Schema-hash comparison recorded (e.g. sorted `information_schema` digest) for local vs live
-- The **live cutover procedure is documented but NOT executed**: `supabase migration repair --status applied <baseline-version>` so live is marked as having the baseline without re-creating 48 existing tables
+- The **live cutover procedure is documented but NOT executed**: `supabase migration repair --status applied 20260801000000` so live is marked as having the baseline without re-creating 48 existing tables
 - Document states the data-backup requirement that must precede any live cutover
 
 **validation** Reset transcript attached; hash comparison shown; no live command run.
@@ -163,7 +240,7 @@ psql -c "SELECT p.proname,
 ---
 
 ## 1A-004 · Live ledger cutover *(specified; **not executed in Phase 1**)*
-`P1` · **MUST** · Supabase & Security · depends_on: 1A-003, **H-01**, **separate explicit approval** · **S**
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-003, **H-14 approval** · **S**
 
 > **Added at round 2 (item 10).** `plan/10` described the backup, cutover and
 > post-cutover verification as procedure with no owning task. Every step of that
@@ -179,14 +256,14 @@ psql -c "SELECT p.proname,
 - `1A-003` fully green, including the schema-hash match
 - Independent review of the baseline completed **before** this task starts
 - **Explicit user approval recorded**, separate from H-01
-- Cutover is `supabase migration repair --status applied <baseline-version>` — **ledger only; no DDL executes**
+- Cutover is `supabase migration repair --status applied 20260801000000` — **ledger only; no DDL executes**
 - `supabase db diff --linked` afterwards reports **no differences**
 - **Post-cutover privilege re-assertion**: `mock_activate_subscription`, `add_xp`, `track_weekly_xp` and `deal_damage_to_active_boss` are still **not** executable by `anon` or `authenticated`, checked via `has_function_privilege`. **Never call the functions** — privilege is introspected, not exercised
 - Every command run is recorded verbatim in the cutover record, as `docs/audit/08` does
 
 **validation** `db diff --linked` empty · the four `has_function_privilege` checks all return false for both roles · ledger row count is 22.
 **risk** **HIGH** — the only task in Phase 1A that touches the live project. Mitigated by: no DDL, verified backup, prior review, and a ledger-only operation that is reversible in one command.
-**rollback** `supabase migration repair --status reverted <baseline-version>` — ledger bookkeeping only, **no DDL runs, so no data is at risk**. Catastrophic fallback: restore from the backup taken in the first criterion.
+**rollback** `supabase migration repair --status reverted 20260801000000` — ledger bookkeeping only, **no DDL runs, so no data is at risk**. Catastrophic fallback: restore from the backup taken in the first criterion.
 
 ---
 
@@ -1030,11 +1107,15 @@ progress.
 - **Direct (8 tables):** `projects`, `habits`, `habit_logs`, `tasks`, `focus_tasks`, `recovery_plans`, `journal_entries`, `willpower_state`
 - **Indirect trigger side effects (6):** `profiles`, `weekly_xp`, `habits.streak_current`, `habits.streak_best`, `global_bosses`, `boss_contributors` — written by the three `habit_logs` triggers, not by any seeder code
 
-**13 distinct tables** are affected (`habits` appears in both lists — directly
-via `addHabit`, and again via the streak columns the trigger updates).
-**Five are named nowhere in the seeder**, and one of them — `weekly_xp` — backs
-the leaderboard, so the damage is visible to other users. That is why removing
-the row is `MUST` and not cosmetic.
+**12 distinct tables** are affected. The six indirect *entries* resolve to **five
+distinct tables**, because `habits.streak_current` and `habits.streak_best` are
+the same table — and `habits` is already in the direct list. So:
+8 direct + {`profiles`, `weekly_xp`, `global_bosses`, `boss_contributors`} = **12**.
+
+**Four tables are named nowhere in the seeder** — `profiles`, `weekly_xp`,
+`global_bosses`, `boss_contributors` — and one of them, `weekly_xp`, backs the
+leaderboard, so the damage is visible to other users. That is why removing the
+row is `MUST` and not cosmetic.
 
 > **Depends on `DEMO-001A`.** The library guard lands first; this task then
 > removes the now-refusing button.
@@ -1063,9 +1144,9 @@ Agent, size and dependency below are read from each block's header line.
 | Task | Phase | Agent | Size | Files | Blocking dependency |
 |---|---|---|---|---|---|
 | 1A-001 | 1A | Supabase & Security | M | 1 | Gate B PASS |
-| 1A-002 | 1A | Supabase & Security | M | 2 | 1A-001, **H-01** |
+| 1A-002 | 1A | Supabase & Security | M | 2 | 1A-001 |
 | 1A-003 | 1A | Supabase & Security | S | 1 | 1A-002 |
-| 1A-004 | 1A | Supabase & Security | S | 1 | 1A-003, **H-01**, **separate approval** — *not executed in Phase 1* |
+| 1A-004 | 1A | Supabase & Security | S | 1 | 1A-003, **H-14 approval** — *not executed in Phase 1* |
 | 1B-001 | 1B | Habit Domain | S | 1 | Gate B PASS |
 | 1B-002 | 1B | Habit Domain | M | 5 | 1B-001 |
 | 1B-003 | 1B | Habit Domain | S | 1 | Gate B PASS |

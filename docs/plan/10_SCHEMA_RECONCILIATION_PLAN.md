@@ -1,7 +1,25 @@
 # 10 — Schema Reconciliation Plan
 
-**Status:** Gate B remediation **C11** — recommendation final, **execution awaits H-01**
-**Decision owner:** user
+**Status:** Gate B remediation C11 — **H-01 ANSWERED; recommendation adopted**
+**Decision owner:** user — decision recorded, see below
+
+> ## H-01 is CLOSED
+>
+> **Answered by the user: (a) POST-REVOKE SQUASHED BASELINE.**
+>
+> Historically "H-01" was used for **two different questions**, which caused a
+> document to look unanswered after the decision was made:
+>
+> | Pair | Question | Status |
+> |---|---|---|
+> | **H-01/strategy** | Squashed baseline (**A**) vs incremental reconstruction (**B**) | **A chosen** |
+> | **H-01/posture** | Post-revoke (**a**) vs pre-revoke (**b**) baseline privilege posture | **(a) chosen** |
+>
+> Both are answered. Neither is an open decision. `1A-002` is unblocked.
+> Remaining human blockers: **H-13** (Docker/Layer 2 — blocks Phase 1 completion
+> and Gate C) and **H-14** (`1A-004` live cutover only — does **not** block
+> Phase 1 start).
+
 
 ---
 
@@ -46,7 +64,7 @@ only disguise its absence.
 
 ## 3. Procedure
 
-Executed as `1A-002` and `1A-003`, **only after H-01**.
+Executed as `1A-002` and `1A-003`. **H-01 is answered (A + post-revoke), so this procedure is unblocked.**
 
 ### Step 1 — Capture (read-only)
 Dump the live schema: tables, columns, types, defaults, constraints, indexes,
@@ -54,7 +72,10 @@ RPCs with `prosecdef`/`proconfig`, triggers, policies, grants. Record a **schema
 hash** — a sorted digest over `information_schema` — as the comparison baseline.
 
 ### Step 2 — Author the baseline
-`supabase/migrations/<ts>_baseline_schema.sql`, containing everything from Step 1.
+`supabase/migrations/20260801000000_baseline_schema.sql`, containing everything from Step 1.
+
+**The version `20260801000000` is fixed, not a placeholder.** It must sort before
+`20260802181931` and `20260802205850`; see `1A-002` Group 1a, which governs.
 
 Header records: generation date · source project ref · that it is a squash, not
 a history · the schema hash it was generated from.
@@ -148,7 +169,7 @@ would attempt to re-create them and fail.
 supabase db dump --linked -f backup_<date>.sql
 
 # 2. Mark the baseline as already applied WITHOUT running its DDL
-supabase migration repair --status applied <baseline-version>
+supabase migration repair --status applied 20260801000000
 
 # 3. Confirm the ledger and the repository now agree
 supabase db diff --linked      # expect: no differences
@@ -163,7 +184,7 @@ separate authorised action, not part of `1A-002`.
 | Stage | Rollback |
 |---|---|
 | Steps 1–5 (local only) | delete the new file, restore `001`/`002` from `archive/`. **Nothing live touched** |
-| Step 6 (`migration repair`) | `supabase migration repair --status reverted <baseline-version>` — ledger bookkeeping only; **no DDL runs, so no data is at risk** |
+| Step 6 (`migration repair`) | `supabase migration repair --status reverted 20260801000000` — ledger bookkeeping only; **no DDL runs, so no data is at risk** |
 | Catastrophic | restore from the Step 6 backup |
 
 `migration repair` changes only the ledger table. That is what makes this cutover
@@ -226,9 +247,20 @@ executable content, and none of them changes anything live.
 
 ---
 
-## 7. Decision required — H-01
+## 7. H-01 — DECISION RECORD (closed)
 
-**Option A (squashed baseline) or Option B (incremental reconstruction)?**
+**Both parts answered by the user. This is a record, not a question.**
 
-Recommendation: **A**. `1A-002` cannot start until this is answered. `1A-001`
-(the three-way diff) is read-only and starts regardless.
+| Pair | Options | **Decision** |
+|---|---|---|
+| Strategy | **A** squashed baseline · **B** incremental reconstruction | **A** |
+| Posture | **(a)** post-revoke · **(b)** pre-revoke | **(a)** |
+
+Consequences, all binding on `1A-002`:
+- One squashed baseline, version **`20260801000000`**, sorting before both Emergency migrations
+- It reproduces the **current secure** privilege posture, not the historical insecure one
+- No migration history is reconstructed or fabricated
+- `1A-001` (read-only diff) and `1A-002` are both unblocked
+
+**Remaining human blockers:** `H-13` (Docker/Layer 2) and `H-14` (`1A-004` live
+cutover approval). Neither is H-01, and neither blocks `1A-002`.

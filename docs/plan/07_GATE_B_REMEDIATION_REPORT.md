@@ -161,7 +161,7 @@ with a 7-step procedure, Emergency Gate 0 migration preservation, schema-hash
 verification, mandatory backup, a `migration repair` cutover that runs **no DDL
 against live**, and rollback at every stage.
 
-**Awaits H-01. Not executed.**
+~~Awaits H-01.~~ **H-01 was answered after this report** — Option A, post-revoke (`plan/13`). Still not executed: the live cutover is `1A-004`, gated on H-14.
 
 ---
 

@@ -133,8 +133,9 @@ documented for the record in doc 07 §8.
 (1B, **14 of 32** failing criteria) depends on **none** of the schema decision —
 if §3 stalls, that stream still starts. The figure was previously stated as 20;
 that was a miscount, corrected in `08_CANONICAL_METRICS.md` §2. At 14 the
-majority of failing criteria **do** need the schema decision, which makes H-01
-critical-path rather than deferrable — see `09_PHASE_1B_EARLY_START.md` §4.
+majority of failing criteria **do** need the schema decision. **H-01 is now
+ANSWERED** — Option A, post-revoke posture — so that path is unblocked; see
+`13_GATE_B_POST_REVOKE_BASELINE_DECISION.md`.
 
 ---
 
@@ -144,7 +145,7 @@ Work that cannot proceed without a person.
 
 | # | Dependency | Blocks | Owner |
 |---|---|---|---|
-| **H-01** | Schema reconciliation A or B | 1A-002 and everything DB-side | **user** |
+| ~~**H-01**~~ | ~~Schema reconciliation A or B~~ — **CLOSED: A, post-revoke posture** (`plan/13`) | ~~1A-002~~ — **unblocked** | **answered** |
 | **H-02** | Rotate the 4 account passwords found in the agent permission allowlist (entries pruned; rotation is not mine to do) | nothing technically | **user** |
 | **H-03** | Approve relocation of `backend/.env.local` (foreign service-role key) — OPS-0B-001 | 2C | **user** |
 | **H-04** | Decide the fate of bad-habits tracking, webhooks and data export (currently `localhost:8000`) | 2A | **user** |
@@ -159,11 +160,11 @@ Work that cannot proceed without a person.
 | **H-13** | **Docker is not running on this machine** — required by `supabase start` for every Layer 2 test | **`1E-L2`, `1E-L2a`, `1E-L2b`** | **user** |
 | **H-14** | **Separate explicit approval for `1A-004`** (live ledger cutover), distinct from H-01 | `1A-004` — *not executed in Phase 1* | **user** |
 
-**Three block Phase 1, not one:**
+**H-01 is closed. Two remain, of which one blocks Phase 1 completion:**
 
 | # | Blocks | Effect if unresolved |
 |---|---|---|
-| **H-01** | `1A-002` and everything DB-side | The Schema stream idles. The Habit Domain, Expo Architecture, Repository Audit and Open-Source Research lanes still run — 14 of 32 failing criteria close without it |
+| ~~**H-01**~~ | **CLOSED** — no longer blocks anything | Answered: Option A, post-revoke. `1A-002` is unblocked and its baseline version is fixed at `20260801000000` |
 | **H-13** | the entire Layer 2 test lane | `1E-L2`/`L2a`/`L2b` cannot run at all. **Phase 1 cannot reach Gate C without Layer 2**, since no RLS, RPC-atomicity or constraint claim may rest on a Layer 1 test |
 | **H-14** | `1A-004` only | No effect on Phase 1 — `1A-004` is deliberately **not executed** in Phase 1. Listed so the live cutover is never treated as implied by H-01 |
 

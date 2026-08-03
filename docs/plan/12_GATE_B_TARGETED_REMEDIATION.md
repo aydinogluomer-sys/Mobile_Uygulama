@@ -200,7 +200,7 @@ Supabase call in the file is `supabase.auth.getUser()` at `:46`. The previous
 > **`weekly_xp` backs the leaderboard** — the only affected table whose pollution
 > is visible to other users. See `plan/13 §7` and the `DEMO-001A` block.
 
-**No group-B table appears in the direct list.** Twelve tables are affected in
+> ⚠ **Superseded (round 6).** This previously read "No group-B table appears in the direct list." After the round-5 correction added `habits.streak_current`/`streak_best` to group B, `habits` **is** in both lists — which is why the distinct-table count is **12**, not 13, and only **4** tables are never named by the seeder. Twelve tables are affected in
 total; four of them are never named by any seeder code.
 
 ### Detection plan — three tiers, zero deletes
@@ -222,7 +222,7 @@ user's XP on that basis would destroy real progress.
 
 | # | Decision | Blocks Phase 1? |
 |---|---|---|
-| **H-01** | Schema reconciliation **A or B** (A recommended) | **yes** — `1A-002` and all DB-side work |
+| ~~**H-01**~~ | **CLOSED after this round** — Option A, post-revoke posture (`plan/13`) | **no longer blocks anything** |
 | **H-13** | **Docker not running** — required by `supabase start` | **yes** — the whole Layer 2 lane; Phase 1 cannot reach Gate C without it |
 | **H-14** | Separate approval for `1A-004` (live cutover), distinct from H-01 | **no** — `1A-004` is deliberately not executed in Phase 1 |
 | H-02..H-12 | passwords · env relocation · product decisions · device · store accounts | later phases |

@@ -85,7 +85,7 @@ while 1B is 14 failing tests that can be written today.
 | **SEC-1D-001..003** XP function body hardening | 1A-002 | — | after 1A-002 |
 | **SEC-1D-004** money-table grants | 1A-002 | — | after 1A-002 |
 | **SEC-1D-005a..f** profiles column grants | 1A-002 | — | after 1A-002 |
-| **1A-004** live ledger cutover | 1A-003, **H-01**, **H-14 approval** | — | **not executed in Phase 1** |
+| **1A-004** live ledger cutover | 1A-003, **H-14 approval** | — | **not executed in Phase 1** |
 | **1B-007** remaining store date sites | 1B-001 | — | after 1B-001 |
 | **1B-008** `app/**` date sites (Expo Arch) | 1B-001 | — | after 1B-001 |
 | **1C-006** recovery store client | 1C-004, 1C-005 | — | after both |
@@ -97,8 +97,9 @@ while 1B is 14 failing tests that can be written today.
 
 ## 3. The decision that gates the critical path
 
-**1A-002 cannot start until the reconciliation strategy is chosen.** Two options,
-both defensible:
+**H-01 is ANSWERED — Option A, post-revoke posture.** `1A-002` is unblocked.
+The two options are retained below as the decision record, **not** as an open
+question:
 
 ### Option A — Squashed baseline *(recommended)*
 
@@ -140,7 +141,8 @@ alongside from day one.
 **Practical consequence:** Phase 1 does not have to wait on the §3 decision to
 begin. 1B alone is **14 of the 32** known failing acceptance criteria — enough
 to start productively, but **not** a majority. The other 18 do require the
-schema decision, so H-01 is on the critical path.
+schema decision — which is now **answered** (H-01 closed: Option A, post-revoke),
+so that path is open.
 
 ---
 
@@ -182,7 +184,7 @@ Assuming the §3 decision arrives promptly:
 day 1   1B-001, 1B-003              ║  1A-001 (three-way diff)
 day 1   1E-000, OPS-1E-001          ║  1D-000 (reconcile generate-routine)
 day 1   DEMO-001A → DEMO-001B       ║  1D-005 (OAuth state)
-day 2   1B-002, 1B-004, 1B-005      ║  ── H-01 decision ──
+day 2   1B-002, 1B-004, 1B-005      ║  (H-01 already answered)
 day 2   1B-007, 1B-008              ║  1A-002 (baseline migration)
 day 2   1E-L1 (harness)             ║  1D-006 → 1D-007, 1D-009
 day 3   1E-L1a, 1E-L1b (L1 green)   ║  1A-003 (db reset verified)
@@ -191,9 +193,9 @@ day 4   1C-003 → 1C-002             ║  1C-001,004,005; 1D-008; SEC-1D-*;
 day 5   1C-006                      ║
 day 5   1E-L2 → 1E-L2a, 1E-L2b      ║  (needs H-13 Docker)
         Gate C
-        1A-004 cutover — NOT in Phase 1 (needs H-01 + H-14)
+        1A-004 cutover — NOT in Phase 1 (needs H-14 approval)
 ```
 
 The left column needs no database and no decision. **If the schema decision
 stalls, the Domain stream still closes 14 of the 32 failing criteria** — and the
-remaining 18 stay blocked, which is why stalling H-01 is costly rather than free.
+remaining 18 needed the schema decision — **now answered**, so they are unblocked.
