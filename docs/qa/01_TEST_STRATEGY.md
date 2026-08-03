@@ -17,7 +17,7 @@ Current result **139/142**, with three long-standing failures. `todolist.md:11`
 redefines success as "the count stays at 89/92" — the failures were normalised
 rather than fixed.
 
-**Not one of the 21 predicted failures in doc 06 would be caught**, because none
+**Not one of the 23 predicted failures in doc 06 would be caught**, because none
 of that code is ever executed.
 
 Treat the project as having **0 % behavioural test coverage**. The 26 % test
@@ -61,7 +61,7 @@ Roughly 860 lines of genuinely pure, immediately testable logic:
 
 ### Write the failing test first
 
-Every one of the 21 predicted failures in doc 06 becomes a test that **fails
+Every one of the 23 predicted failures in doc 06 becomes a test that **fails
 today and passes after the Phase 1B fix**. That is the only way to prove the fix
 worked rather than assert it.
 

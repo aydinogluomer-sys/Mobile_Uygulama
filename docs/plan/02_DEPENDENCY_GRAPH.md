@@ -118,7 +118,9 @@ by capacity, not by dependency. The Domain stream shares nothing and can run
 alongside from day one.
 
 **Practical consequence:** Phase 1 does not have to wait on the §3 decision to
-begin. 1B alone is 20 of the 32 known failing acceptance criteria.
+begin. 1B alone is **14 of the 32** known failing acceptance criteria — enough
+to start productively, but **not** a majority. The other 18 do require the
+schema decision, so H-01 is on the critical path.
 
 ---
 
@@ -168,4 +170,5 @@ day 5   1E-L2 (database tests green)
 ```
 
 The left column needs no database and no decision. **If the schema decision
-stalls, the Domain stream still closes 20 of the 32 failing criteria.**
+stalls, the Domain stream still closes 14 of the 32 failing criteria** — and the
+remaining 18 stay blocked, which is why stalling H-01 is costly rather than free.

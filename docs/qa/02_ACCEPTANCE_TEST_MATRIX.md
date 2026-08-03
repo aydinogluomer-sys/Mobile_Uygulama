@@ -1,7 +1,7 @@
 # 02 — Acceptance Test Matrix
 
 **Status:** `Planned` — executable specification for Phase 1E
-**Source:** the 58 cases in doc 06, converted to acceptance criteria with an owning layer
+**Source:** the 62 cases in doc 06, converted to acceptance criteria with an owning layer
 
 ---
 
@@ -143,7 +143,13 @@ All of blocks **A, B, C, D, E** pass — 51 cases. Block F is Phase 2D/6A.
 
 ### The number that matters
 
-**20 of the 32 known failures are `L1` — pure functions, no device, no database.**
+**14 of the 32 known failures are `L1` — pure functions, no device, no database.**
+
+This document previously said 20. That counted rows whose *layer* column read
+`L1` — 20 of them — not rows that are both `L1` **and** failing. Six of the 20
+already pass. The corrected figure is **14**, and the 14 are named individually
+in `plan/09_PHASE_1B_EARLY_START.md` §2.
+
 They can be written and fixed in a single focused pass, and they cover the
 defect cluster with the widest blast radius (dates and metrics touch habits,
 tasks, focus, journal, life areas, deep work and willpower simultaneously).

@@ -76,8 +76,8 @@ which must pass the gate first.
 
 Two layers, with the reason one is insufficient stated: a mocked client can
 assert a store *called* upsert; it cannot prove Postgres *rejected* a
-cross-tenant read. 91 acceptance criteria, 32 known failing, **20 of them
-Layer 1** — no device, no database.
+cross-tenant read. 91 acceptance criteria, 32 known failing, **14 of them
+Layer 1** — no device, no database. The other 18 need a real Postgres.
 
 **Signed:** QA & Test agent
 
@@ -130,8 +130,11 @@ documented for the record in doc 07 §8.
 | Independent review | **pending** |
 
 **Phase 1 may begin when all nine hold.** Note that the Habit Domain stream
-(1B, 20 of 32 failing criteria) depends on **none** of the schema decision — if
-§3 stalls, that stream still starts.
+(1B, **14 of 32** failing criteria) depends on **none** of the schema decision —
+if §3 stalls, that stream still starts. The figure was previously stated as 20;
+that was a miscount, corrected in `08_CANONICAL_METRICS.md` §2. At 14 the
+majority of failing criteria **do** need the schema decision, which makes H-01
+critical-path rather than deferrable — see `09_PHASE_1B_EARLY_START.md` §4.
 
 ---
 
@@ -146,7 +149,7 @@ Work that cannot proceed without a person.
 | **H-03** | Approve relocation of `backend/.env.local` (foreign service-role key) — OPS-0B-001 | 2C | **user** |
 | **H-04** | Decide the fate of bad-habits tracking, webhooks and data export (currently `localhost:8000`) | 2A | **user** |
 | **H-05** | Confirm `backend/server.py` is not deployed — escalates to P0 if reachable | 2C | **user** |
-| **H-06** | Physical device or emulator | 18 E2E cases; 21 predicted failures remain unobserved | **user** |
+| **H-06** | Physical device or emulator | 15 E2E cases; 23 predicted failures remain unobserved | **user** |
 | **H-07** | Resolve `awwwards-loop` browser-capture blocker | Phase 5F scoring | **user / Design** |
 | **H-08** | Apple Developer + Google Play accounts | 6E | **user** |
 | **H-09** | RevenueCat account and real IAP products | 6D/6E | **user** |

@@ -113,7 +113,7 @@ Each has `SKILL.md` + `references/` + `checklists/` + `templates/`.
 
 | Blocker | Consequence |
 |---|---|
-| **No device / emulator run** | 18 E2E cases `BLOCKED-DEVICE`; 21 failures remain **predicted**, not observed |
+| **No device / emulator run** | 15 E2E cases `BLOCKED-DEVICE`; 23 failures remain **predicted**, not observed |
 | **No rendered design evidence** | `awwwards-loop` `"status": "blocked"`, `hardGatesPassed: false`, `lastScore: null` after 3 capture attempts. Motion and performance scored `n/r` |
 | **No SQL writes permitted** | 1 case `BLOCKED-WRITE`; concurrency claims unproven |
 | **No performance baseline** | every runtime target in `qa/03` is provisional |

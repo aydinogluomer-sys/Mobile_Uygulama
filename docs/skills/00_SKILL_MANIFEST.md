@@ -30,7 +30,7 @@ reporting both would double-count.
 |---|---|---|---|---|---|---|
 | `audit-expo-react-native-project` | Evidence-based Expo/RN audit | repo root, lockfiles, `app.json` | docs 00, 02 | Repository Audit | every number reproducible by a stated command | **Validated on one task** — produced docs 00 and 02 |
 | `map-reference-html-to-mobile-features` | Reference → atomic `REF-NNN` | reference file, route tree | doc 04 | Product & Feature Parity | every REF cites reference evidence; denominator explicit | **Validated on one task** — produced doc 04 (139 requirements) |
-| `verify-feature-end-to-end` | Does it actually work? | feature, entry point | doc 06 | QA & Test | every case has a verdict class; nothing passes on inference | **Validated on one task** — produced doc 06 (58 cases) |
+| `verify-feature-end-to-end` | Does it actually work? | feature, entry point | doc 06 | QA & Test | every case has a verdict class; nothing passes on inference | **Validated on one task** — produced doc 06 (62 cases) |
 | `design-mobile-product-system` | Design quality + system extension | tokens, components, screens | docs design/01, 02 | Mobile Design System | scores carry code evidence; `n/r` where unrendered | **Validated on one task** — produced both design docs |
 | `audit-supabase-security` | Live security posture | project ref, read-only SQL | doc 07 | Supabase & Security | every claim is a query result | **Validated on one task** — produced doc 07; found the P0 payment bypass |
 | `design-habit-domain-model` | Habit/streak/recovery correctness | schema, scheduling, metrics | doc 07 §5, backlog | Habit Domain | every defect has a failing input | **Validated on one task** — found 4 metric defects |
@@ -82,7 +82,7 @@ Each was written from a mistake this audit actually made or nearly made:
 | Never treat a filename as evidence | 268 files existed; most of the app was uncommitted |
 | An empty result can mean "not ready", not "empty" | `list_tables` returned `[]` during a restore; reading it as data loss would have been a false finding |
 | Never invoke a privileged function to test it | a "test call" on `mock_activate_subscription` would itself have granted Pro |
-| Separate observed from predicted | doc 06 keeps 6 VERIFIED FAIL apart from 21 PREDICTED FAIL |
+| Separate observed from predicted | doc 06 keeps 7 VERIFIED FAIL apart from 23 PREDICTED FAIL |
 | Prefer the pattern over the dependency | TanStack Query rejected for "we forgot to check `error`" |
 | Unresolved licence defaults to blocked | an unlicensed repo is not public domain |
 | An author cannot review their own diff | Emergency Gate 0 was applied once without independent review — recorded as a process failure |

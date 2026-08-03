@@ -157,12 +157,18 @@ defect cluster in the product and the strongest argument for Phase 1B.
 
 | Verdict | Count |
 |---|---|
-| `VERIFIED-DB` / `VERIFIED-STATIC` **PASS** | **12** |
-| **VERIFIED FAIL** (observed statically) | **6** |
-| **PREDICTED FAIL** (code path demonstrably broken) | **21** |
-| `BLOCKED-DEVICE` | 18 |
+| `VERIFIED-DB` / `VERIFIED-STATIC` **PASS** | **16** |
+| **VERIFIED FAIL** (observed statically) | **7** |
+| **PREDICTED FAIL** (code path demonstrably broken) | **23** |
+| `BLOCKED-DEVICE` | 15 |
 | `BLOCKED-WRITE` | 1 |
-| **Total** | **58** |
+| **Total** | **62** |
+
+> **Corrected at Gate B remediation (C4).** This table previously read
+> 12 / 6 / 21 / 18 / 1 = 58. Those were hand-tallied and every figure was wrong.
+> The values above come from a script that counts the verdict cells in the case
+> tables of this document. `08_CANONICAL_METRICS.md` is the single source for
+> these counts; no other document restates them.
 
 ### What passes and matters
 
@@ -181,7 +187,7 @@ unauthenticated XP grant closed.
 
 ### To close this document
 
-Phase 1E Layer 1 converts the 21 predicted failures into executing tests — most
+Phase 1E Layer 1 converts the 23 predicted failures into executing tests — most
 need no device, only `TZ=Europe/Istanbul` and the pure modules. Phase 6A covers
 the 18 device-blocked cases. **No case here should be marked passing until it has
 actually run.**

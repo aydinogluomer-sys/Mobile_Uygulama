@@ -104,7 +104,7 @@ generating defects.**
 ## P4 · Two-layer testing — the one place a dependency is unavoidable
 
 **Defect.** `run-tests.js` asserts on source **text**. It cannot detect any of
-the 21 predicted failures in doc 06.
+the 23 predicted failures in doc 06.
 
 **Pattern:**
 

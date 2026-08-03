@@ -1,543 +1,711 @@
 # 01 — Implementation Backlog
 
-**Status:** **NOT FINAL — reverted at Gate B review.** 19 of 31 tasks lack acceptance criteria, validation and rollback; the cross-reference claiming otherwise does not resolve. See `06_GATE_B_REVIEW_OUTCOME.md` §F2 and §6 (C1, C2).
-**Rule:** no XL tasks · 1–5 files per task · every task independently reversible.
+**Status:** **FINAL for Phase 1** (rewritten at Gate B remediation, C1)
+**Tasks:** 31 · 1 DONE · 30 open · **0 XL** · largest **L**
+**Metrics source:** `08_CANONICAL_METRICS.md` — no count is restated here
 
-Phase 2+ tasks are enumerated in `03_RELEASE_ROADMAP.md` and are decomposed to
-this standard **when their phase is authorised**, not before — decomposing work
-whose inputs come from an unfinished phase produces tasks that must be rewritten.
-
----
-
-## Phase 1 task index
-
-| Task | Phase | Agent | Size | Depends on |
-|---|---|---|---|---|
-| 1A-001 three-way schema diff | 1A | Supabase & Security | M | Gate B |
-| 1A-002 reconciliation migration | 1A | Supabase & Security | M | 1A-001 + **H-01** |
-| 1A-003 `db reset` verification | 1A | Supabase & Security | S | 1A-002 |
-| 1B-001 `lib/date.ts` canonical module | 1B | Habit Domain | S | Gate B |
-| 1B-002 purge UTC/local mixing | 1B | Habit Domain | M | 1B-001 |
-| 1B-003 `isDueOn` + `frequency_config.count` | 1B | Habit Domain | S | Gate B |
-| 1B-004 metric correctness | 1B | Habit Domain | M | 1B-003 |
-| 1B-005 habit-log error handling + upsert | 1B | Habit Domain | S | Gate B |
-| 1C-001 atomic willpower debit RPC | 1C | Supabase & Security | M | 1A-002 |
-| 1C-002 activation TOCTOU + refund guard | 1C | Habit Domain | S | 1C-001 |
-| 1C-003 midnight rollover | 1C | Habit Domain | S | 1B-001 |
-| 1C-004 telafi → habit_log + XP | 1C | Supabase & Security | M | 1A-002 |
-| 1C-005 recovery_plans unique constraint | 1C | Supabase & Security | XS | 1A-002 |
-| 1D-001 generate-routine rate limit | 1D | Supabase & Security | S | 1A-002 |
-| 1D-002 generate-routine cooldown | 1D | Supabase & Security | S | 1A-002 |
-| 1D-003 atomic credit debit | 1D | Supabase & Security | M | 1A-002 |
-| 1D-004 fail-closed credit behaviour | 1D | Supabase & Security | S | 1D-003 |
-| 1D-005 OAuth `state` verification | 1D | Supabase & Security | M | Gate B |
-| 1D-006 redirect-URI allowlist | 1D | Supabase & Security | S | Gate B |
-| 1D-007 Notion callback user verification | 1D | Supabase & Security | S | Gate B |
-| 1D-008 webhook idempotency | 1D | Supabase & Security | M | 1A-002 |
-| 1D-009 wrong-project deploy guard | 1D | Supabase & Security | XS | Gate B |
-| ~~1D-010 `__DEV__` paywall guard~~ | 1D | — | — | **DONE — `42b64a0`** |
-| SEC-1D-001 secure `add_xp` | 1D | Supabase & Security | S | 1A-002 |
-| SEC-1D-002 secure `track_weekly_xp` | 1D | Supabase & Security | S | 1A-002 |
-| SEC-1D-003 secure `deal_damage_to_active_boss` | 1D | Supabase & Security | M | 1A-002 |
-| SEC-1D-004 money-table grants | 1D | Supabase & Security | XS | 1A-002 |
-| SEC-1D-005a..f profiles column grants | 1D | Supabase & Security + Habit Domain | S each | 1A-002 |
-| 1E-L1 jest-expo + unit tests | 1E | QA & Test | M | 1B-001 |
-| 1E-L2 pgTAP + database tests | 1E | QA & Test | M | 1A-003 |
-| OPS-0B-001 relocate foreign env | 2C | Supabase & Security | XS | **H-03** |
-
-**31 tasks · 0 XL · largest is M.** Full specifications for the security tasks
-follow; 1A/1B/1C/1E specifications are in `02_DEPENDENCY_GRAPH.md` §2 and
-`qa/02_ACCEPTANCE_TEST_MATRIX.md`, which together give each its acceptance
-criteria and validation command.
+Every task below carries all 13 mandatory fields inline. **No cross-references
+to other documents for acceptance criteria.** Field order: `id · title ·
+priority · MUST/SHOULD/COULD · agent · depends_on · scope · goal ·
+acceptance_criteria · validation · risk · rollback · size`.
 
 ---
 
-## Emergency Gate 0 status of SEC-1D-001..003
+# Phase 1A — Schema reconciliation
 
-Client `EXECUTE` on all three functions was revoked in migration
-**`20260802205850_emergency_gate_0_revoke_client_exec_xp_functions`** after an
-independent pre-change review returned PASS WITH FINDINGS.
+## 1A-001 · Produce the three-way schema diff
+`P1` · **MUST** · Supabase & Security · depends_on: Gate B PASS · **M**
 
-Post-change ACL for all three: `{postgres=X/postgres,service_role=X/postgres}` —
-`anon` and `authenticated` both `false`. **Function bodies were not touched.**
+**scope** (1 file created): `docs/audit/10_SCHEMA_THREE_WAY_DIFF.md`
 
-**What that closed:** unauthenticated and cross-user invocation.
-**What it did NOT close:** self-inflation. Tracked as SEC-1D-005 below.
+**goal** Establish exactly how the repository migrations, the live database and the code's expectations differ — before writing any migration.
 
-The tasks below therefore remain open: the revoke is a containment measure, not
-the fix.
+**acceptance_criteria**
+- Three column lists produced: repo-migration schema · live schema · schema the client references
+- Every live table classified: in-repo / missing-from-repo / repo-only
+- Every renamed column listed with both names and the referencing `file:line`
+- Every live RPC listed with `prosecdef`, `proconfig`, client-callable yes/no
+- Every CHECK constraint that contradicts a client-written value named
+- Document states which live objects are **unused by the client** (candidates for exclusion from the baseline)
+
+**validation** `docs/audit/10_SCHEMA_THREE_WAY_DIFF.md` exists; every live table from `pg_tables` appears exactly once in a classification.
+
+**risk** LOW — read-only analysis.
+**rollback** Delete the document. No system change.
+
+---
+
+## 1A-002 · Write the squashed baseline migration
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-001, **H-01 user decision** · **M**
+
+**scope** (2 files): `supabase/migrations/<ts>_baseline_schema.sql` · `supabase/migrations/README.md`
+
+**goal** One migration that reproduces the current live schema from empty, so `db reset` yields a database the app runs against.
+
+**acceptance_criteria**
+- Baseline creates every live table, column, constraint, index, RPC, trigger and policy identified in 1A-001
+- The two Emergency Gate 0 migrations (`20260802181931`, `20260802205850`) are **preserved as separate files after the baseline**, not folded into it
+- `001_initial_schema.sql` and `002_integrations.sql` moved to `supabase/migrations/archive/` with a README explaining they predate the drift
+- Baseline header records: generation date, source project ref, and that it is a squash rather than a history
+- **Not applied to live** in this task
+
+**validation** `supabase db reset` on a local stack completes without error; `supabase db diff --linked` reports no differences.
+
+**risk** HIGH — an omission produces a schema that looks right and is not.
+**rollback** Delete the new file; restore `001`/`002` from `archive/`. Nothing live changed.
 
 ---
 
-## SEC-1D-005 · Prevent clients writing server-managed `profiles` columns
+## 1A-003 · Verify local reset and register the ledger
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **S**
 
-| | |
-|---|---|
-| Priority | **P1** |
-| Class | **Self-inflation / domain integrity — NOT cross-user write** |
-| Phase | **1** |
-| Agent | Supabase & Security |
+**scope** (1 file): `docs/audit/11_SCHEMA_RESET_VERIFICATION.md`
 
-### Correction to an earlier, technically wrong statement
+**goal** Prove the baseline reproduces a working database, and record how it is registered against the 21-row live ledger without re-running DDL on live.
 
-An earlier draft of this task claimed the policy was unsafe *because*
-`with_check` is NULL. **That is incorrect PostgreSQL semantics and is withdrawn.**
+**acceptance_criteria**
+- `supabase db reset` produces a schema whose table/column/RPC/trigger inventory matches the live inventory captured in 1A-001
+- Schema-hash comparison recorded (e.g. sorted `information_schema` digest) for local vs live
+- The **live cutover procedure is documented but NOT executed**: `supabase migration repair --status applied <baseline-version>` so live is marked as having the baseline without re-creating 48 existing tables
+- Document states the data-backup requirement that must precede any live cutover
 
-For an `UPDATE` policy, when `WITH CHECK` is omitted, **the `USING` expression is
-applied to the new row as well**. So `USING (id = auth.uid())` already prevents a
-user from re-assigning their row to another `id`. There is no missing row-level
-constraint.
+**validation** Reset transcript attached; hash comparison shown; no live command run.
 
-### The actual finding
-
-```
-policy "Users can update own profile"  UPDATE  USING (id = (SELECT auth.uid()))
-```
-
-1. The policy correctly limits the user to **their own row**.
-2. **It does not limit which columns of that row may change** — RLS operates on rows, not columns.
-3. `authenticated` holds a table-level `UPDATE` grant **and** column-level `UPDATE` on *every* column of `profiles`, including the server-managed ones.
-
-Therefore an authenticated user can `PATCH /rest/v1/profiles?id=eq.<self>` and
-set `total_xp`, `current_level_xp`, `level`, `coins`, `willpower_rank`,
-`skill_points`, `makeup_credits` and `streak_record` to any value.
-
-**This is not a cross-user write.** A user can only affect their own row. It is a
-**self-inflation / domain-integrity** defect: XP, level, rank, coins and the
-leaderboard become client-authored. **P1, carried into Phase 1.**
-
-### Column classification (17 columns, live)
-
-| Class | Columns | Client `UPDATE` grant today |
-|---|---|---|
-| **User-editable** | `username`, `push_token`, `ai_persona` | should keep |
-| **Server-managed** | `total_xp`, `current_level_xp`, `coins`, `skill_points`, `makeup_credits`, `last_credit_reset`, `streak_record` | **must remove** |
-| **Derived** (computed by `add_xp` / `get_rank_for_level` from `total_xp`) | `level`, `next_level_xp`, `willpower_rank` | **must remove** |
-| **Identity / immutable** | `id`, `created_at`, `email` | **must remove** (`id`/`created_at`); `email` needs a decision |
-| **Unknown — classify before acting** | `last_ai_context` | written by AI features? confirm owner |
-
-### Frontend write surface — the whole of it
-
-`store/profileStore.ts` is the only file that writes `profiles`:
-
-- `:46` `.insert({ id: user.id, email: user.email })` — bootstrap
-- `:73` `.update({ username: trimmed || null })` — the only mutation
-
-**The app writes exactly three columns: `id`, `email`, `username`.** Every other
-grant is unused by the product and exists only as attack surface. That makes the
-fix low-risk: removing the other column grants cannot break any current feature.
-
-### Sub-tasks — each 1–5 files, independently reversible
-
-**SEC-1D-005a · Grant and policy design** *(no code)*
-Decide per column: keep client `UPDATE`, revoke it, or route through an RPC.
-Resolve `email` (auth-owned — should it be client-writable at all?) and
-`last_ai_context`. Decide whether `INSERT` stays client-side or moves into the
-existing `handle_new_user` trigger. Output: a written decision table.
-*Acceptance:* every one of the 17 columns has a recorded decision and rationale.
-
-**SEC-1D-005b · Column-level grant migration** *(1 migration)*
-`REVOKE UPDATE (…server-managed + derived + identity…) ON public.profiles FROM anon, authenticated;`
-Keep `UPDATE (username, push_token, ai_persona)`. Also revoke the unused
-`anon` table grants (`UPDATE`/`INSERT`/`DELETE`/`TRUNCATE`) — `anon` has no
-`SELECT` and no policy, so nothing legitimate uses them.
-*Acceptance:* `has_column_privilege('authenticated','profiles','total_xp','UPDATE')` = false; `…,'username','UPDATE')` = true.
-
-**SEC-1D-005c · Safe profile-update path** *(1–2 files)*
-Only if 005a concludes the client needs to write more than the remaining
-columns: a `SECURITY DEFINER` RPC accepting only user-editable fields and
-deriving the user from `auth.uid()`. Otherwise mark **not required** and close.
-*Acceptance:* no client write path reaches a server-managed column.
-
-**SEC-1D-005d · Frontend adaptation** *(1 file — `store/profileStore.ts`)*
-Expected to be **near-zero work**: the app already writes only `username` on
-update. Confirm the `:46` insert still succeeds under the new grants (it writes
-`id` and `email`, both of which 005a may restrict) and adapt if needed.
-*Acceptance:* `tsc` clean; profile rename works; first-login bootstrap works.
-
-**SEC-1D-005e · RLS and integration tests** *(Layer 2)*
-1. authenticated PATCH own `username` → succeeds
-2. authenticated PATCH own `total_xp` → **rejected**
-3. authenticated PATCH own `coins`/`level`/`willpower_rank` → **rejected**
-4. authenticated PATCH *another* user's row → rejected (already true; regression guard)
-5. habit completion → trigger still awards XP and level still advances
-6. `anon` → no access at all
-*Acceptance:* all six pass against a real local Postgres, not a client mock.
-
-**SEC-1D-005f · Rollback**
-`GRANT UPDATE (<exact prior column list>) ON public.profiles TO anon, authenticated;`
-Capture the pre-change column grants verbatim in the migration header before
-applying, exactly as was done for the two Emergency Gate 0 migrations.
-*Acceptance:* rollback restores the captured grant set byte-for-byte.
-
-### Why this is Phase 1, not Emergency Gate 0
-
-It is not a cross-user or unauthenticated write. A user can only inflate their
-own numbers, and no payment, credit or subscription value is reachable. It fails
-the "actively exploitable against other users or against payment" bar, so it goes
-through the normal gate.
+**risk** MEDIUM — a mismatch means 1A-002 is incomplete.
+**rollback** N/A — documentation only.
 
 ---
+
+# Phase 1B — Dates, scheduling and metrics
+
+## 1B-001 · Create the canonical date module
+`P1` · **MUST** · Habit Domain · depends_on: Gate B PASS · **S**
+
+**scope** (2 files): `frontend/lib/date.ts` (new) · `frontend/__tests__/lib/date.test.ts` (new)
+
+**goal** One module that is the only place a calendar date is derived.
+
+**acceptance_criteria**
+- Exports `todayLocal()`, `ymd(d)`, `startOfWeekLocal(d)`, `parseLocalDate(s)`
+- Every function is pure and accepts an injectable `now` where a clock is needed
+- `todayLocal()` returns the device's local calendar date at **00:30** and at **23:30** under `TZ=Europe/Istanbul`
+- No function uses `toISOString()` to derive a calendar date
+
+**validation** `TZ=Europe/Istanbul npx jest lib/date` — green.
+**risk** LOW — additive, nothing consumes it yet.
+**rollback** Delete both files.
+
+---
+
+## 1B-002 · Route all date derivation through `lib/date.ts`
+`P1` · **MUST** · Habit Domain · depends_on: 1B-001 · **M**
+
+**scope** (5 files): `frontend/store/taskStore.ts` · `frontend/store/deepWorkStore.ts` · `frontend/store/lifeAreasStore.ts` · `frontend/lib/focusReport.ts` · `frontend/lib/journalStats.ts`
+
+> Store-layer sites only. `frontend/lib/demoSeed.ts` is **1B-006**; the four further store files are **1B-007**; the 10 sites in `frontend/app/**` are **1B-008**. Split because `app/**` has a different owner.
+
+**goal** Eliminate UTC/local mixing in the five highest-impact modules.
+
+**acceptance_criteria**
+- The byte-identical `ymd()` duplicates at `focusReport.ts:22-24` and `journalStats.ts:12-14` are deleted and imported from `lib/date`
+- `taskStore.dueToday()` and `.overdue()` return the correct set at 01:00 local
+- `deepWorkStore.weekMinutes()` bucket boundary is local Monday 00:00, not Sunday 21:00
+- `lifeAreasStore.save()` writes today's date at 01:00 local, not yesterday's
+- `focusReport` and `journalStats` compare local keys to local keys only
+- `grep -nE "toISOString\(\)\.(slice|split)" ` over these 5 files returns **zero**
+
+**validation** `TZ=Europe/Istanbul npx jest` — AC-D01, D03, D04, D05, D06, D07, D08 pass (7 of the 14 failing L1 criteria).
+**risk** MEDIUM — changes day attribution; historical rows keep their stored values.
+**rollback** `git revert` the commit; no data migration involved.
+
+---
+
+## 1B-003 · Implement `frequency_config.count` in `isDueOn`
+`P1` · **MUST** · Habit Domain · depends_on: Gate B PASS · **S**
+
+**scope** (2 files): `frontend/lib/habitSchedule.ts` · `frontend/__tests__/lib/habitSchedule.test.ts` (new)
+
+**goal** Make "X times per week" habits actually become due.
+
+**acceptance_criteria**
+- `{kind:'weekly', count:n}` with no `days` is due on at least `n` days per ISO week
+- `{kind:'weekly', days:[...]}` behaviour is unchanged
+- `{kind:'monthly'}` behaviour is explicitly decided and documented in the function (currently returns `false`)
+- Negative-creation-date and `end_condition` guards still hold
+
+**validation** `npx jest lib/habitSchedule` — AC-H03 passes.
+**risk** LOW — pure function, fully covered by tests.
+**rollback** `git revert`.
+
+---
+
+## 1B-004 · Correct the metric formulas
+`P1` · **MUST** · Habit Domain · depends_on: 1B-003 · **M**
+
+**scope** (2 files): `frontend/lib/reportMetrics.ts` · `frontend/__tests__/lib/reportMetrics.test.ts` (new)
+
+**goal** Make completion percentages reflect what the user actually did.
+
+**acceptance_criteria**
+- `habitAveragePercent` calls `isDueOn`; the denominator is **due days**, not `habits × days`
+- A Mon/Wed/Fri habit completed all three days scores **100 %**, not 43 %
+- `habitLogPercent` honours `target_direction`: `at_most` scores higher for lower values
+- `summarizeHabitProgress` excludes `state:'miss'` and `state:'skip'` from completed days
+- Historical reports do not change when a habit's `status` changes today
+
+**validation** `npx jest lib/reportMetrics` — AC-H04, H05, H06, H07, H08, H09 pass (6 of 14).
+**risk** MEDIUM — user-visible percentages will change, correctly.
+**rollback** `git revert`.
+
+---
+
+## 1B-005 · Surface habit-log write errors
+`P1` · **MUST** · Habit Domain · depends_on: Gate B PASS · **S**
+
+**scope** (2 files): `frontend/store/logStore.ts` · `frontend/__tests__/store/logStore.test.ts` (new)
+
+**goal** Stop swallowing the unique-constraint violation so a failed toggle is visible.
+
+**acceptance_criteria**
+- Both branches destructure and check `error`
+- Store exposes an `error: string | null` field
+- The insert path uses `.upsert(..., { onConflict: 'habit_id,completed_at' })`
+- An in-flight guard prevents a second request while one is pending
+- On failure, local state is not mutated
+
+**validation** `npx jest store/logStore` — AC-I02's L1 half passes (client reads and exposes the error).
+**risk** LOW.
+**rollback** `git revert`.
+
+---
+
+## 1B-006 · Gate the demo-data seeder — see **DEMO-001** below
+Cross-listed for sequencing only. Full specification is `DEMO-001`.
+
+---
+
+## 1B-007 · Date derivation in the remaining store files
+`P2` · SHOULD · Habit Domain · depends_on: 1B-001 · **S**
+
+**scope** (4 files): `frontend/store/focusStore.ts` · `frontend/store/readingListStore.ts` · `frontend/store/notionSessionStore.ts` · `frontend/store/insightsStore.ts`
+
+**goal** Close the 11 `toISOString()` occurrences the reviewer found outside 1B-002's list.
+
+**acceptance_criteria**
+- All 11 occurrences replaced with `lib/date` helpers or justified in a code comment where a UTC timestamp is genuinely wanted (e.g. `started_at`)
+- `grep -c "toISOString" ` over these 4 files matches the justified count only
+
+**validation** `npx tsc --noEmit` clean; grep count recorded in the commit.
+**risk** LOW — `focusStore.started_at` legitimately wants UTC; do not blanket-replace.
+**rollback** `git revert`.
+
+---
+
+## 1B-008 · Date derivation in `frontend/app/**`
+`P2` · SHOULD · **Expo Architecture** (activated for this task — see `04 §3`) · depends_on: 1B-001 · **S**
+
+**scope** (5 files, highest impact first): `frontend/app/tabs/today.tsx` · `frontend/app/tabs/tasks.tsx` · `frontend/app/screens/journal.tsx` · `frontend/app/screens/recovery.tsx` · `frontend/app/screens/calendar.tsx`
+
+> The remaining 5 app-level sites (`deep-work`, `ai-coach`, `hub`, and the second `journal`/`calendar` occurrences) are **1B-009**, deferred to Phase 2A with `hub.tsx` orphan resolution.
+
+**goal** Without this, 1B can pass its exit criteria while `today.tsx` still shows the wrong day at 00:30.
+
+**acceptance_criteria**
+- All date derivations in these 5 files use `lib/date`
+- `today.tsx` renders the correct calendar date at 00:30 local
+- No screen derives a date independently of the stores it reads
+
+**validation** `TZ=Europe/Istanbul npx jest` green; manual check of `today.tsx` date at a simulated 00:30.
+**risk** MEDIUM — screen-level changes need visual confirmation, which is device-blocked.
+**rollback** `git revert`.
+
+---
+
+# Phase 1C — Willpower and recovery
+
+## 1C-001 · Atomic willpower debit RPC
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **M**
+
+**scope** (2 files): `supabase/migrations/<ts>_willpower_atomic_debit.sql` · `supabase/tests/willpower.test.sql`
+
+**goal** Replace the client read-modify-write with a single atomic statement.
+
+**acceptance_criteria**
+- RPC performs `UPDATE willpower_state SET used = used + $1 WHERE user_id = auth.uid() AND state_date = $2 AND used + $1 <= daily_budget RETURNING *`
+- Returns NULL / raises when the budget would be exceeded — the check and the write are one statement
+- Derives the user from `auth.uid()`; takes no `user_id` parameter
+- `SECURITY DEFINER` with `SET search_path = public`
+- Migration header carries pre-change state and exact rollback SQL
+
+**validation** `supabase test db` — AC-I03 passes (two concurrent debits of 4 from 15 yield `used = 12`).
+**risk** HIGH — touches the budget users see.
+**rollback** `DROP FUNCTION`; revert `willpowerStore` to the prior path in the same revert.
+
+---
+
+## 1C-002 · Close the activation TOCTOU and refund exploit
+`P1` · **MUST** · Habit Domain · depends_on: 1C-001 · **S**
+
+**scope** (2 files): `frontend/store/willpowerStore.ts` · `frontend/store/habitStore.ts`
+
+**goal** Make activation atomic and stop pausing an unactivated habit from refunding budget.
+
+**acceptance_criteria**
+- `activateHabit` calls the 1C-001 RPC; there is no client-side check-then-spend
+- `pauseHabit` refunds **only** if the habit was previously `active`
+- The silent `return` at `habitStore.ts:113` is replaced by a user-visible error
+- Willpower cost is read from the habit row, not passed by the caller
+
+**validation** `supabase test db` — AC-I04, AC-I05 pass.
+**risk** MEDIUM.
+**rollback** `git revert` (must revert together with 1C-001).
+
+---
+
+## 1C-003 · Midnight rollover for willpower state
+`P1` · **MUST** · Habit Domain · depends_on: 1B-001 · **S**
+
+**scope** (1 file): `frontend/store/willpowerStore.ts`
+
+**goal** Stop an app left open overnight from writing to yesterday's row.
+
+**acceptance_criteria**
+- Cached `state_date` is compared against `todayLocal()` before every read and write
+- A date change triggers a refetch rather than reusing the cached row
+- `score()` returns a loading state, not `100`, when `state` is null
+
+**validation** `supabase test db` — AC-I06 passes.
+**risk** LOW.
+**rollback** `git revert`.
+
+---
+
+## 1C-004 · Link telafi completion to a real habit log
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **M**
+
+**scope** (2 files): `supabase/migrations/<ts>_recovery_completion_writes_log.sql` · `supabase/tests/recovery.test.sql`
+
+> **Ownership note (Gate B remediation C7):** the client half — `frontend/store/recoveryStore.ts` — is **1C-006**, owned by Habit Domain. Supabase & Security does not edit `frontend/**`.
+
+**goal** Make completing a makeup actually move the metrics.
+
+**acceptance_criteria**
+- Completing a plan writes a `habit_logs` row for `source_date` with `is_makeup = true`
+- The existing XP trigger fires on that row
+- Completion percentage for the affected period increases
+- Idempotent: completing twice produces one log
+
+**validation** `supabase test db` — AC-I08, AC-I09 pass.
+**risk** MEDIUM — writes historical rows.
+**rollback** `DROP` the function/trigger; the written logs are retained (deleting user data on rollback is worse).
+
+---
+
+## 1C-005 · Unique constraint on recovery plans
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **XS**
+
+**scope** (1 file): `supabase/migrations/<ts>_recovery_plans_unique.sql`
+
+**goal** Prevent duplicate telafi plans for the same missed day.
+
+**acceptance_criteria**
+- `UNIQUE (habit_id, source_date)` exists
+- Pre-existing duplicates are identified and resolved **before** the constraint is added (migration includes the dedupe query)
+- Client `addPlan` uses upsert with matching `onConflict`
+
+**validation** `supabase test db` — AC-I07 passes.
+**risk** MEDIUM — will fail if duplicates already exist; the dedupe step is mandatory.
+**rollback** `DROP CONSTRAINT`.
+
+---
+
+## 1C-006 · Recovery store client adaptation
+`P1` · **MUST** · Habit Domain · depends_on: 1C-004, 1C-005 · **S**
+
+**scope** (1 file): `frontend/store/recoveryStore.ts`
+
+**goal** Consume the new server behaviour; stop treating completion as a status flip.
+
+**acceptance_criteria**
+- `completePlan` refreshes habit logs and metrics after completion
+- `addPlan` uses `onConflict: 'habit_id,source_date'`
+- `fetchPlans` can retrieve completed/skipped plans, not only `planned`
+- Every Supabase call reads `error`
+
+**validation** `npx tsc --noEmit` clean; `npx jest store/recoveryStore`.
+**risk** LOW.
+**rollback** `git revert`.
+
+---
+
+# Phase 1D — Edge function and RPC security
+
+## 1D-001 · Rate limit `generate-routine`
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002, **1D-000** · **S**
+
+**scope** (2 files): `supabase/functions/generate-routine/index.ts` · `supabase/migrations/<ts>_ai_rate_limit.sql`
+
+**goal** Bound AI spend per user.
+
+**acceptance_criteria** Per-user request count enforced server-side over a fixed window · limit exceeded returns 429 with `Retry-After` · limit is configurable without a redeploy · the counter is atomic.
+**validation** `supabase test db`; N+1 rapid calls return 429.
+**risk** MEDIUM — too tight a limit blocks legitimate use.
+**rollback** `git revert` + `DROP TABLE`.
+
+## 1D-002 · Cooldown between AI generations
+`P1` · **MUST** · Supabase & Security · depends_on: 1D-001 · **S**
+**scope** (1 file): `supabase/functions/generate-routine/index.ts`
+**goal** Enforce the cooldown `implementation.md:421,471` claims exists but which is absent.
+**acceptance_criteria** A second call within the cooldown returns 429 · cooldown is per user per mode · documented value.
+**validation** two calls in quick succession → second returns 429.
+**risk** LOW. **rollback** `git revert`.
+
+## 1D-003 · Atomic credit debit
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **M**
+**scope** (2 files): `supabase/migrations/<ts>_spend_focus_points_atomic.sql` · `supabase/functions/generate-routine/index.ts`
+**goal** Close the TOCTOU between balance read (`:59`) and debit (`:110`).
+**acceptance_criteria** Balance check and debit are one statement · concurrent calls cannot overspend · returns the new balance.
+**validation** `supabase test db` — AC-S14 passes.
+**risk** HIGH — touches billing. **rollback** restore the prior function definition.
+
+## 1D-004 · Fail-closed credit behaviour
+`P1` · **MUST** · Supabase & Security · depends_on: 1D-003 · **S**
+**scope** (1 file): `supabase/functions/generate-routine/index.ts`
+**goal** Stop returning the AI answer when the debit fails (`:109-112` currently swallows it).
+**acceptance_criteria** A failed debit returns an error and **no** AI content · the failure is logged · the user sees an actionable message.
+**validation** `supabase test db` — AC-S15 passes.
+**risk** LOW. **rollback** `git revert`.
+
+## 1D-005 · Verify OAuth `state`
+`P1` · **MUST** · Supabase & Security · depends_on: Gate B PASS · **M**
+**scope** (3 files): `supabase/functions/notion-auth/index.ts` · `supabase/functions/spotify-auth/index.ts` · `supabase/migrations/<ts>_oauth_state.sql`
+**goal** Close the account-linking CSRF — `state` is minted in every flow and never checked.
+**acceptance_criteria** `state` is persisted server-side with the user and a TTL · callback rejects a missing/unknown/expired/foreign `state` · single-use.
+**validation** `supabase test db`; a replayed `state` is rejected.
+**risk** MEDIUM — breaks in-flight OAuth sessions on deploy. **rollback** `git revert` + `DROP TABLE`.
+
+## 1D-006 · Redirect-URI allowlist
+`P1` · **MUST** · Supabase & Security · depends_on: Gate B PASS · **S**
+**scope** (2 files): `supabase/functions/notion-auth/index.ts` · `supabase/functions/spotify-auth/index.ts`
+**goal** Stop caller-controlled `redirect_uri` being embedded in the authorize URL.
+**acceptance_criteria** A fixed allowlist is checked before use · non-allowlisted values are rejected with 400 · the app's real scheme is on the list.
+**validation** a crafted `redirect_uri` returns 400.
+**risk** MEDIUM — a missing entry breaks a live flow. **rollback** `git revert`.
+
+## 1D-007 · Require an authenticated user in the Notion callback
+`P1` · **MUST** · Supabase & Security · depends_on: Gate B PASS · **S**
+**scope** (1 file): `supabase/functions/notion-auth/index.ts`
+**goal** The callback currently proceeds with `user = null` and still creates pages in a third-party workspace.
+**acceptance_criteria** Callback returns 401 without a valid user · no third-party side effect occurs before authentication · `verify_jwt` reviewed and recorded.
+**validation** unauthenticated callback → 401, no Notion write.
+**risk** LOW. **rollback** `git revert`.
+
+## 1D-008 · Webhook idempotency
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **M**
+**scope** (2 files): `supabase/functions/subscription-webhook/index.ts` · `supabase/migrations/<ts>_webhook_idempotency.sql`
+**goal** RevenueCat retries currently re-grant credits in normal operation.
+**acceptance_criteria** `provider_ref` is unique · a replayed event is a no-op returning 200 · the first delivery still grants.
+**validation** `supabase test db` — AC-S16 passes.
+**risk** MEDIUM. **rollback** `git revert` + `DROP CONSTRAINT`.
+
+## 1D-009 · Wrong-project deploy guard
+`P1` · **MUST** · Repository Audit · depends_on: Gate B PASS · **XS**
+**scope** (2 files): `supabase/config.toml` (new) · `.github/workflows/guard.yml` or a `predeploy` script
+**goal** Make it impossible to deploy this repo against `zdqiujpeewtyhtcqhdcj`.
+**acceptance_criteria** Canonical `project_id` pinned in config · a pre-deploy check aborts on any other ref · documented.
+**validation** a deploy attempt with a foreign ref aborts.
+**risk** LOW. **rollback** delete the guard.
+
+## 1D-000 · Reconcile `supabase/functions/generate-routine` with production
+`P1` · **MUST** · Supabase & Security · depends_on: Gate B PASS · **M**
+
+> **Added at Gate B remediation (C8).** Gate A finding **R1** had no task while 1D-001..004 were scheduled to modify and redeploy this exact file.
+
+**scope** (2 files): `supabase/functions/generate-routine/index.ts` · `docs/audit/12_GENERATE_ROUTINE_RECONCILIATION.md`
+
+**goal** The committed file supports 2 modes; the app sends 4; deployed version is 11. Deploying the repo file as-is would charge `summarize` 25 FP instead of 3 and hand it the wrong prompt — a production regression.
+
+**acceptance_criteria**
+- Deployed v11 source retrieved via `get_edge_function` and diffed against the repo file
+- Repo file updated to match production behaviour for all four modes (`coach`, `routine`, `summarize`, `insights`) with correct per-mode costs
+- Every Mas Technic reference, connection and secret stripped — re-implemented, not copied
+- Differences between repo and deployed recorded in the document
+- **This task must land before any of 1D-001..004 deploys**
+
+**validation** repo file and deployed v11 agree on mode list and cost table; `deno check` passes.
+**risk** HIGH — this is the regression vector. **rollback** `git revert`; deployed version unchanged (this task does not deploy).
+
+---
+
+# Phase 1D — RPC hardening (SEC series)
 
 ## SEC-1D-001 · Constrain `add_xp` to the calling user
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **S**
 
-| | |
-|---|---|
-| Priority | **P0 candidate — see escalation note** |
-| MUST/SHOULD | **MUST** |
-| Phase | 1D |
-| Agent | Supabase & Security |
-| Size | S |
-| depends_on | Gate B PASS |
+**scope** (2 files): `supabase/migrations/<ts>_secure_add_xp.sql` · `supabase/tests/xp_security.test.sql`
 
-### Current signature (verified live)
+**signature (verified live):** `add_xp(p_user_id uuid, p_xp_amount integer)` · `SECURITY DEFINER` · `search_path=public` · client EXECUTE already revoked by `20260802205850`
 
-```
-public.add_xp(p_user_id uuid, p_xp_amount integer)
-  SECURITY DEFINER · search_path=public
-  EXECUTE: PUBLIC, authenticated  →  has_function_privilege('anon') = TRUE
-  Body contains no reference to auth.uid()
-```
+**goal** Client EXECUTE is revoked, but the body still trusts a caller-supplied `user_id`. Any future re-grant, or any new caller, reopens cross-user writes. Fix the body, not only the grant.
 
-Body effect: `update profiles set total_xp = total_xp + p_xp_amount, current_level_xp=…, level=…, willpower_rank=… where id = p_user_id`
+**acceptance_criteria**
+- Body raises unless `p_user_id = auth.uid()`, **with a documented bypass for trigger context** (the two live callers are triggers acting legitimately for the row owner)
+- Both live callers — `fn_habit_log_award`, `trigger_damage_on_habit_log` — still award XP
+- Parameter retained (removing it breaks trigger use); ownership enforced instead
+- Migration header carries the pre-change definition and exact rollback
 
-### Exploit scenario
+**validation** `supabase test db`: A→A succeeds · A→B raises · anon raises · habit completion still awards XP (AC-S07 regression).
+**risk** HIGH — a wrong guard silently stops all XP.
+**rollback** `CREATE OR REPLACE` with the captured prior body.
 
-The anon key ships inside the mobile bundle and is public by design. An
-**unauthenticated** attacker posts:
+## SEC-1D-002 · Constrain `track_weekly_xp` and pin `search_path`
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **S**
 
-```
-POST /rest/v1/rpc/add_xp
-apikey: <public anon key>
-{"p_user_id":"<any user uuid>","p_xp_amount":999999}
-```
+**scope** (2 files): `supabase/migrations/<ts>_secure_track_weekly_xp.sql` · `supabase/tests/xp_security.test.sql`
 
-and rewrites **any** user's `total_xp`, `level` and `willpower_rank`. Both
-self-inflation and griefing another account are possible. No authentication, no
-ownership check, no amount bound.
+**signature (verified live):** `track_weekly_xp(p_user_id uuid, p_xp integer)` · `SECURITY DEFINER` · **`search_path` NOT pinned**
 
-### Escalation note — severity is under review
+**goal** Same ownership defect, plus an unpinned `search_path` on a definer function referencing `weekly_xp` unqualified.
 
-This was first recorded as P1 on the basis of "any authenticated user". The
-independent reviewer established it is **`anon`-callable**, which makes it an
-*unauthenticated cross-user write*. Whether that re-qualifies it for Emergency
-Gate 0 is **a decision for the user**, not something to assume. It does not
-touch `tier`, `focus_points`, `user_subscriptions` or `credit_transactions`, so
-it is not a payment bypass — which is why P1 was defensible. **No live change
-has been made.**
-
-### Proposed fix
-
-In-body ownership guard, not a bare revoke:
-
-```sql
-IF auth.uid() IS NULL OR p_user_id <> auth.uid() THEN
-  RAISE EXCEPTION 'add_xp: caller may only modify their own profile';
-END IF;
-```
-
-### Can the `user_id` parameter be removed?
-
-**No — not safely.** Inside a trigger the row's owner is the correct subject, so
-the parameter must stay for those paths.
-
-**Caller inventory — corrected by independent pre-change review.** An earlier
-draft of this task claimed "five `SECURITY DEFINER` trigger functions". That was
-stale: five functions *reference* `add_xp`, but **only two are attached to a
-trigger**.
-
-| Caller | `SECURITY DEFINER` | Owner | Attached to a trigger? |
-|---|---|---|---|
-| `fn_habit_log_award` | yes | postgres | **yes** — `habit_logs.trg_habit_log_award` |
-| `trigger_damage_on_habit_log` | yes | postgres | **yes** — `habit_logs.on_habit_completed_damage_boss` |
-| `process_habit_xp` | yes | postgres | **no — orphaned** |
-| `trigger_xp_habit_completion` | yes | postgres | **no — orphaned** |
-| `trigger_xp_task_completion` | yes | postgres | **no — orphaned** |
-
-**Task-completion XP is not a database pipeline at all** — there is no trigger on
-any tasks table. Anyone reading the schema would reasonably assume otherwise. A
-later phase must not "repair" a pipeline that was never wired.
-
-Because both live callers are `SECURITY DEFINER` owned by `postgres`, the client
-EXECUTE revoke applied in migration `20260802205850` did **not** break them.
-
-### Migration
-
-`supabase/migrations/<ts>_secure_add_xp.sql` — `CREATE OR REPLACE FUNCTION` with
-the guard, plus an internal bypass for trigger context if testing shows one is
-needed.
-
-### Test (Layer 2, pgTAP/integration)
-
-1. As `authenticated` user A, call `add_xp(A, 10)` → succeeds.
-2. As `authenticated` user A, call `add_xp(B, 10)` → **raises**.
-3. As `anon`, call `add_xp(B, 10)` → **raises**.
-4. Complete a habit as user A → trigger pipeline still awards XP (regression).
-
-### Rollback
-
-`CREATE OR REPLACE FUNCTION` restoring the previous body (captured verbatim
-before the change).
-
-### Acceptance criteria
-
-- `add_xp` cannot modify a profile other than the caller's
-- `anon` cannot invoke it to any effect
-- habit and task XP triggers still award XP — proven by test 4
-- rollback restores prior behaviour exactly
-
----
-
-## SEC-1D-002 · Constrain `track_weekly_xp` to the calling user
-
-| | |
-|---|---|
-| Priority | P1 |
-| MUST/SHOULD | **MUST** |
-| Phase | 1D |
-| Agent | Supabase & Security |
-| Size | S |
-| depends_on | Gate B PASS |
-
-### Current signature (verified live)
-
-```
-public.track_weekly_xp(p_user_id uuid, p_xp integer)
-  SECURITY DEFINER · search_path NOT pinned
-  EXECUTE: PUBLIC, authenticated  →  anon = TRUE
-  No auth.uid() reference
-```
-
-Body: `INSERT INTO public.weekly_xp (user_id, week_start, xp_earned) VALUES (p_user_id, …)`
-
-### Exploit scenario
-
-Unauthenticated write to the **weekly leaderboard** for an arbitrary
-`user_id`. An attacker can place themselves at the top, or push another user's
-totals to absurd values to discredit the board. `get_weekly_leaderboard` reads
-this table, so the corruption is user-visible.
-
-### Proposed fix
-
-Same ownership guard as SEC-1D-001, **plus pin `SET search_path = public`** —
-this function is `SECURITY DEFINER` with an unpinned search_path and references
-`weekly_xp` unqualified.
-
-### Can the `user_id` parameter be removed?
-
-**Likely yes**, but confirm caller list first. If every caller is a trigger that
-already knows the owning row, replacing the parameter with `auth.uid()` breaks
-trigger use. Safer target: keep the parameter, add the guard, and allow a
-trigger-context bypass. Decide during implementation with the caller list in hand.
-
-### Migration
-
-`supabase/migrations/<ts>_secure_track_weekly_xp.sql` — `CREATE OR REPLACE`
-with guard + `SET search_path = public`.
-
-### Test (Layer 2)
-
-1. User A calls for A → row written.
-2. User A calls for B → **raises**.
-3. `anon` calls → **raises**.
-4. `get_weekly_leaderboard` still returns correct data after a real habit completion.
-
-### Rollback
-
-`CREATE OR REPLACE` restoring the captured prior definition.
-
-### Acceptance criteria
-
-- no cross-user `weekly_xp` write is possible
-- `anon` cannot write
-- `search_path` pinned
-- leaderboard still populates through the normal path
-
----
+**acceptance_criteria** Ownership guard as SEC-1D-001 · `SET search_path = public` added · leaderboard still populates through the normal path · caller list confirmed before deciding whether the parameter can be dropped.
+**validation** `supabase test db`; `proconfig` shows `search_path=public`.
+**risk** MEDIUM.
+**rollback** Restore the captured prior definition.
 
 ## SEC-1D-003 · Constrain and bound `deal_damage_to_active_boss`
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **M**
 
-| | |
-|---|---|
-| Priority | P1 |
-| MUST/SHOULD | **MUST** |
-| Phase | 1D |
-| Agent | Supabase & Security |
-| Size | M |
-| depends_on | Gate B PASS |
+**scope** (2 files): `supabase/migrations/<ts>_secure_boss_damage.sql` · `supabase/tests/boss_security.test.sql`
 
-### Current signature (verified live)
+**signature (verified live):** `deal_damage_to_active_boss(p_user_id uuid, p_damage integer DEFAULT 10)` · `SECURITY DEFINER` · `search_path` NOT pinned
 
-```
-public.deal_damage_to_active_boss(p_user_id uuid, p_damage integer)
-  SECURITY DEFINER · search_path NOT pinned
-  EXECUTE: PUBLIC, authenticated  →  anon = TRUE
-  No auth.uid() reference
-```
+**goal** Three defects: caller-supplied `user_id`; **unbounded** `p_damage` (one call zeroes boss HP and pays out to attacker-chosen contributors); and **negative** `p_damage`, which heals the boss and writes negative `total_damage`, corrupting the contribution leaderboard.
 
-Body: inserts into `boss_contributors(boss_id, p_user_id, p_damage)`; on kill,
-`UPDATE profiles SET coins = coins + reward_coins, total_xp = total_xp + reward_xp`
-for contributors.
-
-### Exploit scenario
-
-Worse than the other two because it mutates **global** state. `p_damage` is
-unbounded and unvalidated. A single unauthenticated call with a huge value
-zeroes `current_hp`, flips `is_active = false`, and pays `reward_coins` /
-`reward_xp` to every row in `boss_contributors` — **including rows the attacker
-just inserted for arbitrary `user_id`s**. One request can end the global boss
-event and mint currency for accounts of the attacker's choosing.
-
-### Proposed fix
-
-Three changes, all required:
-1. Ownership guard (as SEC-1D-001).
-2. **Bound `p_damage`** — clamp to a per-call maximum derived from game rules, and reject non-positive values.
-3. Pin `SET search_path = public`.
-
-### Additional case found by independent review — negative damage
-
-`p_damage` is not only unbounded upward. A **negative** value evaluates
-`v_new_hp := current_hp - (-N)`, which **heals the boss**, and writes a negative
-`total_damage` into `boss_contributors`, corrupting the contribution
-leaderboard. The positivity check is therefore not optional polish — it is a
-second distinct defect. The real signature is
-`deal_damage_to_active_boss(p_user_id uuid, p_damage integer DEFAULT 10)`; the
-`DEFAULT` is not part of the identity argument list.
-
-### Can the `user_id` parameter be removed?
-
-**No.** Called by the `trigger_damage_on_habit_log` trigger on `habit_logs`,
-which must attribute damage to the row's owner. Keep the parameter; guard it.
-
-### Migration
-
-`supabase/migrations/<ts>_secure_deal_damage_to_active_boss.sql`
-
-### Test (Layer 2)
-
-1. User A damages as A → contribution recorded.
-2. User A damages as B → **raises**.
-3. `anon` → **raises**.
-4. `p_damage` above the cap → clamped or rejected; boss HP cannot be zeroed in one call.
-5. `p_damage <= 0` → rejected.
-6. Habit completion still deals damage through the trigger.
-
-### Rollback
-
-`CREATE OR REPLACE` restoring the captured prior definition.
-
-### Acceptance criteria
-
-- no cross-user contribution can be inserted
-- `anon` cannot invoke
-- a single call cannot kill the boss
-- non-positive damage rejected
-- `search_path` pinned
-- trigger path unaffected
-
----
+**acceptance_criteria** Ownership guard · `p_damage` clamped to a documented per-call maximum · `p_damage <= 0` rejected · `SET search_path = public` · trigger path still deals damage on habit completion.
+**validation** `supabase test db`: cross-user raises · over-cap clamped or rejected · negative rejected · a single call cannot kill the boss · trigger still works.
+**risk** MEDIUM.
+**rollback** Restore the captured prior definition.
 
 ## SEC-1D-004 · Remove blanket write grants on the money tables
+`P2` · SHOULD · Supabase & Security · depends_on: 1A-002 · **XS**
 
-| | |
-|---|---|
-| Priority | P2 (latent) |
-| MUST/SHOULD | SHOULD |
-| Phase | 1D |
-| Agent | Supabase & Security |
-| Size | XS |
-| depends_on | Gate B PASS |
+**scope** (1 file): `supabase/migrations/<ts>_revoke_money_table_grants.sql`
 
-`anon` and `authenticated` hold `INSERT`, `UPDATE`, `DELETE` **and `TRUNCATE`**
-on both `user_subscriptions` and `credit_transactions` (verified).
+**goal** `anon` and `authenticated` hold `INSERT`, `UPDATE`, `DELETE` **and `TRUNCATE`** on `user_subscriptions` and `credit_transactions`. Only RLS default-deny stops I/U/D today, and `TRUNCATE` is not subject to RLS. Protection is incidental (no policy) rather than structural (no grant).
 
-Today this is neutralised: RLS is enabled and only `SELECT` policies exist, so
-I/U/D default-deny. **`TRUNCATE` is not subject to RLS** — but PostgREST exposes
-no TRUNCATE verb, so it is not reachable through the API today. Hence *latent*,
-not active.
+**acceptance_criteria** `REVOKE INSERT, UPDATE, DELETE, TRUNCATE` from `anon, authenticated` on both tables · `get_or_init_subscription`, `spend_focus_points` and the webhook path still work · client writes now fail at the grant layer.
+**validation** `supabase test db` — AC-S12 still passes; grant introspection confirms the revoke.
+**risk** LOW — verified nothing legitimate uses these grants.
+**rollback** Re-`GRANT` the captured prior set.
 
-The risk is structural: the protection is incidental (absence of a policy)
-rather than intentional (absence of a grant). The moment anyone adds a
-permissive or `FOR ALL` write policy, `user_subscriptions` becomes directly
-client-writable and the Emergency Gate 0 revoke becomes worthless.
+## SEC-1D-005a · Profiles grant and policy design
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **S**
 
-**Fix:** `REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.user_subscriptions, public.credit_transactions FROM anon, authenticated;`
+**scope** (1 file): `docs/audit/14_PROFILES_COLUMN_DECISIONS.md`
+**goal** Decide, per column, whether the client may write it.
+**acceptance_criteria** All 17 columns carry a decision and rationale · `email` resolved (auth-owned) · `last_ai_context` owner confirmed (**H-11**) · `INSERT` path decided (client vs `handle_new_user` trigger).
+**validation** Document lists 17 columns, none unclassified.
+**risk** LOW. **rollback** N/A — documentation.
 
-**Acceptance:** client writes to both tables fail at the *grant* layer, not only
-the policy layer; `get_or_init_subscription`, `spend_focus_points` and the
-webhook path continue to work (they run as `SECURITY DEFINER` / service-role).
+## SEC-1D-005b · Column-level grant migration
+`P1` · **MUST** · Supabase & Security · depends_on: SEC-1D-005a · **S**
 
----
+**scope** (1 file): `supabase/migrations/<ts>_profiles_column_grants.sql`
+**goal** RLS restricts rows, not columns; `authenticated` holds column-level UPDATE on all 17.
+**acceptance_criteria** `REVOKE UPDATE` on server-managed, derived and identity columns from `anon, authenticated` · retain `username`, `push_token`, `ai_persona` · revoke the unused `anon` table grants · pre-change grants captured verbatim in the header.
+**validation** `has_column_privilege('authenticated','profiles','total_xp','UPDATE')` = false and `...,'username','UPDATE')` = true — AC-S10 passes.
+**risk** LOW — the app writes only `id`, `email`, `username`.
+**rollback** `GRANT UPDATE (<captured list>)`.
+
+## SEC-1D-005c · Safe profile-update RPC *(may prove unnecessary)*
+`P2` · COULD · Supabase & Security · depends_on: SEC-1D-005a · **S**
+
+**scope** (1 file): `supabase/migrations/<ts>_update_profile_rpc.sql`
+**goal** Only if 005a concludes the client needs a write path beyond the retained columns.
+**acceptance_criteria** RPC accepts only user-editable fields and derives the user from `auth.uid()` — **or** the task is closed as `not required` with that decision recorded.
+**validation** `supabase test db`, or a recorded closure.
+**risk** LOW. **rollback** `DROP FUNCTION`.
+
+## SEC-1D-005d · Profile store client adaptation
+`P1` · **MUST** · **Habit Domain** · depends_on: SEC-1D-005b · **XS**
+
+**scope** (1 file): `frontend/store/profileStore.ts`
+**goal** Confirm the app still works under tightened grants. Expected near-zero: it writes only `insert({id,email})` at `:46` and `update({username})` at `:73`.
+**acceptance_criteria** Profile rename works · first-login bootstrap works · every Supabase call reads `error`.
+**validation** `npx tsc --noEmit` clean; `npx jest store/profileStore`.
+**risk** LOW. **rollback** `git revert`.
+
+## SEC-1D-005e · Profiles RLS and integration tests
+`P1` · **MUST** · QA & Test · depends_on: SEC-1D-005b · **S**
+
+**scope** (1 file): `supabase/tests/profiles.test.sql`
+**goal** Prove the column-grant restriction in `SEC-1D-005b` actually denies self-promotion of XP, coins, level and rank — and that it does so without breaking the server-side XP trigger. A grant change that is not asserted under a real client role is an assumption, not a control.
+**acceptance_criteria** PATCH own `username` succeeds · PATCH own `total_xp` rejected · PATCH own `coins`/`level`/`willpower_rank` rejected · PATCH another user's row rejected · habit completion still awards XP via trigger · `anon` has no access.
+**validation** `supabase test db` green.
+**risk** LOW. **rollback** Delete the test file.
+
+## SEC-1D-005f · Profiles rollback rehearsal
+`P2` · SHOULD · Supabase & Security · depends_on: SEC-1D-005b · **XS**
+
+**scope** (1 file): `docs/audit/15_PROFILES_ROLLBACK_REHEARSAL.md`
+**goal** Prove the rollback restores the captured grant set exactly — a superset is not a restore.
+**acceptance_criteria** Rollback executed on a **local** stack · post-rollback grants byte-match the captured pre-change set · rehearsal recorded.
+**validation** Local-only grant diff shows zero difference.
+**risk** LOW — local only. **rollback** N/A.
 
 ## OPS-0B-001 · Relocate the foreign `backend/.env.local`
+`P1` · **MUST** · Supabase & Security · depends_on: **H-03 user approval** · **XS**
 
-| | |
-|---|---|
-| Priority | P1 |
-| MUST/SHOULD | MUST |
-| Phase | 2C — **awaiting user approval** |
-| Agent | Supabase & Security |
-| Size | XS |
+**scope** (2 files): `backend/.env.local` · `backend/supabase/functions/.env.local` — both moved out of the tree
 
-### What it is
+**goal** A full-admin service-role key for the separate `zdqiujpeewtyhtcqhdcj` project sits inside this repository. Untracked and gitignored, so not a commit leak — but it does not belong here.
 
-`backend/.env.local` holds `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET`,
-`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for **`zdqiujpeewtyhtcqhdcj`
-("Mas Technic Site")** — a separate, unrelated project. Untracked, gitignored,
-never committed.
+**acceptance_criteria** Both files copied to a machine-local secrets location outside any git work tree, verified byte-identical, then removed from this tree · no canonical function reads them (verified — Supabase auto-injects `SUPABASE_URL` / `SERVICE_ROLE_KEY` into deployed functions, per `subscription-webhook/index.ts:3`) · Notion OAuth continues via Supabase function secrets on the canonical project · **user approved beforehand**.
 
-### Components that consume it — verified
-
-| Consumer | Reads | Note |
-|---|---|---|
-| `backend/supabase/functions/notion-auth` | `NOTION_CLIENT_ID/SECRET`, `SUPABASE_SERVICE_ROLE_KEY` | non-canonical tree (doc 07 §2b: legacy/superseded) |
-| `backend/supabase/functions/google-auth` | `SUPABASE_SERVICE_ROLE_KEY` | non-canonical tree |
-
-**Nothing in Mobile_Uygulama's deployed path consumes this file.** Supabase
-**auto-injects** `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` into deployed
-edge functions — stated at `supabase/functions/subscription-webhook/index.ts:3`.
-The file matters only for `supabase functions serve` run locally from
-`backend/supabase/`, which targets the foreign project.
-
-`NOTION_CLIENT_ID/SECRET` **are** genuinely needed by the canonical
-`supabase/functions/notion-auth`, but as **Supabase function secrets set on
-`kbcuolhjjnmhjaarxxmu`**, not from a file in this repo.
-
-### Proposed relocation
-
-1. **Target:** a machine-local secrets directory outside the repository, e.g. `%USERPROFILE%\.secrets\mas-technic\.env.local`. Outside any git work tree.
-2. **Backup first:** copy to that target and verify byte-identical before removing the original.
-3. **Remove** `backend/.env.local` and `backend/supabase/functions/.env.local` from the repo tree.
-4. **Verify** Mobile_Uygulama is unaffected — no canonical function reads it (table above).
-5. Hand the relocated file to whoever owns Mas Technic.
-
-### Explicitly out of scope
-
-**No rotation.** This engagement does not rotate, invalidate or otherwise touch
-that key, and performs no operation on Mas Technic. Rotation is that project
-owner's decision, made outside this work.
-
-### Acceptance criteria
-
-- no `.env*` containing foreign-project credentials remains under `Mobile_Uygulama/`
-- canonical Notion OAuth continues to work via Supabase function secrets on `kbcuolhjjnmhjaarxxmu`
-- backup verified before deletion
-- **user approved the move beforehand**
+**validation** No `.env*` containing foreign-project credentials remains under `Mobile_Uygulama/`; Notion connect still works.
+**risk** LOW for this project. **Zero operations performed on Mas Technic. No rotation** — that is Mas Technic's owner's decision, outside this engagement.
+**rollback** Restore from the verified backup.
 
 ---
 
-## Deferred to Phase 1A — do not act on now
+# Phase 1E — Test infrastructure
 
-The live database has **21** migrations; the repository has **4** files, of which
-**2** match a ledger entry. Nineteen live migrations have no repo counterpart.
-(Corrected at Gate B review — this paragraph previously said 20/3 and then
-contradicted itself.)
+## 1E-000 · Dependency and licence clearance
+`P1` · **MUST** · Open-Source Research · depends_on: Gate B PASS · **S**
 
-**These are deliberately NOT reconstructed by guesswork.** Writing 19 speculative
-migration files would create a schema that merely looks authoritative while
-diverging from reality. Handling:
+> **Added at Gate B remediation (C6).** 1E was blocked by a licence gate assigned to Phase 8. This task moves the clearance for exactly three dev dependencies into Phase 1 as 1E's entry dependency.
 
-- **Gate A** — documented as schema drift (doc 07 §8)
-- **Gate B** — reconciliation decision recorded (squashed baseline vs. incremental)
-- **Phase 1A** — applied only after the three-way diff (migrations / live / code expectations)
+**scope** (1 file): `docs/research/04_PHASE1_DEPENDENCY_CLEARANCE.md`
+
+**goal** Clear `jest-expo`, `pgTAP` and `supabase/cli` for adoption so 1E can start.
+
+**acceptance_criteria** For each of the three: pinned version · `LICENSE` read at that version with SHA recorded · compatibility with Expo SDK 54 / RN 0.81 / Postgres 17 stated · adoption decision · owner · Gate B approval state. All three are **dev/test-only** and never ship in the app bundle — recorded explicitly so no in-app attribution obligation arises.
+
+**validation** document exists; each entry has a SHA; no entry says "recalled".
+**risk** LOW. **rollback** N/A — documentation.
+
+## 1E-L1 · jest-expo and unit tests
+`P1` · **MUST** · QA & Test · depends_on: 1B-001, **1E-000** · **M**
+**scope** (5 files): `frontend/jest.config.js` · `frontend/package.json` · `frontend/__tests__/lib/*.test.ts` · `frontend/__tests__/store/*.test.ts` · `frontend/jest.setup.js`
+**goal** An executing unit suite covering the pure domain layer.
+**acceptance_criteria** `npm test` and `npm run typecheck` exist and run · `TZ=Europe/Istanbul` pinned in config · all **14 failing L1 criteria** covered by a test that failed before its fix · no test asserts on UI copy · does not read `.env`.
+**validation** `npm test` green; 14 previously-failing criteria now pass.
+**risk** LOW. **rollback** delete config and tests.
+
+## 1E-L2 · pgTAP and database tests
+`P1` · **MUST** · QA & Test · depends_on: 1A-003, **1E-000** · **M**
+**scope** (5 files): `supabase/tests/rls.test.sql` · `security_regression.test.sql` · `willpower.test.sql` · `recovery.test.sql` · `constraints.test.sql`
+**goal** Prove the properties a client mock cannot.
+**acceptance_criteria** `supabase test db` runs in one command · covers the **17 failing L2 criteria** · **AC-S01..S07 exist as permanent regression tests** for the two Emergency Gate 0 migrations · no RLS or RPC claim rests on a Layer 1 test.
+**validation** `supabase test db` green.
+**risk** LOW. **rollback** delete the test files.
+
+---
+
+# Cross-phase
+
+## DEMO-001 · Gate the demo-data seeder
+`P1` · **MUST** · Habit Domain · depends_on: Gate B PASS · **S**
+
+> **Added at Gate B remediation (C5).** Found by the Gate B reviewer; missed by the Gate A audit, which asserted the opposite.
+
+**scope** (3 files): `frontend/app/tabs/settings.tsx` · `frontend/lib/demoSeed.ts` · `docs/audit/13_DEMO_DATA_AUDIT.md`
+
+**goal** `settings.tsx:339` renders a tappable row calling `handleSeedDemoData` → `seedDemoData()`. There is **no `__DEV__` guard anywhere in that file**. In a release build a user can write fabricated data into their real account.
+
+**Access point:** `settings.tsx:30` imports `seedDemoData`; `:134` defines `handleSeedDemoData`; `:137` calls it; `:339` renders the row.
+
+**Tables written by `demoSeed.ts`:** `projects`, `tasks`, `habits`, `habit_logs`, `focus_tasks`, `recovery_plans`, `journal_entries`.
+
+**Collision risk with real user data**
+- `habit_logs` rows pollute XP, streaks, completion percentages and the leaderboard — the exact metrics Phase 1B exists to make correct
+- Seeded rows are indistinguishable from real ones: no `is_demo` flag, no marker column
+- `demoSeed.ts:21` uses `toISOString().slice(0,10)`, so seeded dates are also UTC-skewed
+- If a user seeds and then reports a metric bug, the data is unusable as evidence
+
+**acceptance_criteria**
+- `handleSeedDemoData` and its UI row are unreachable when `!__DEV__` — the button is not rendered, not merely disabled
+- `seedDemoData()` returns early with an explicit error when `!__DEV__`, so a code path that bypasses the UI still cannot seed
+- Prefer an explicit `EXPO_PUBLIC_DEMO_ENV` flag over bare `__DEV__` if the team wants seeding in a staging build; decide and document
+- A release build contains no reachable path to `seedDemoData`
+- Read-only audit plan written (below) — **no data is deleted by this task**
+
+**Read-only detection plan for already-seeded data** (documented, not executed)
+- `demoSeed.ts` uses recognisable literals (project names, habit names) — enumerate them
+- Query per user: rows in the seven tables whose values match those literals **and** whose `created_at` clusters within one second
+- Report counts per user; **propose** cleanup as a separate approved task
+- Cleanup is **not** part of this task — deleting user rows on a heuristic is a data-loss risk
+
+**validation** `grep -c "__DEV__" frontend/app/tabs/settings.tsx` ≥ 1 · a production build shows no seed row · `npx tsc --noEmit` clean.
+**risk** LOW to implement; the audit plan must not become an automated delete.
+**rollback** `git revert` — restores the current (unsafe) behaviour, so revert only with cause.
+
+> `OPS-0B-001` is specified once, in the Phase 1D/OPS section above. A duplicate
+> stub previously sat here and was removed at Gate B remediation.
+
+---
+
+## Task index
+
+| Task | Phase | Agent | Size | Blocking dependency |
+|---|---|---|---|---|
+| 1A-001 | 1A | Supabase & Security | M | Gate B |
+| 1A-002 | 1A | Supabase & Security | M | 1A-001 + **H-01** |
+| 1A-003 | 1A | Supabase & Security | S | 1A-002 |
+| 1B-001 | 1B | Habit Domain | S | Gate B |
+| 1B-002 | 1B | Habit Domain | M | 1B-001 |
+| 1B-003 | 1B | Habit Domain | S | Gate B |
+| 1B-004 | 1B | Habit Domain | M | 1B-003 |
+| 1B-005 | 1B | Habit Domain | S | Gate B |
+| 1B-007 | 1B | Habit Domain | S | 1B-001 |
+| 1B-008 | 1B | Expo Architecture | S | 1B-001 |
+| 1C-001 | 1C | Supabase & Security | M | 1A-002 |
+| 1C-002 | 1C | Habit Domain | S | 1C-001 |
+| 1C-003 | 1C | Habit Domain | S | 1B-001 |
+| 1C-004 | 1C | Supabase & Security | M | 1A-002 |
+| 1C-005 | 1C | Supabase & Security | XS | 1A-002 |
+| 1C-006 | 1C | Habit Domain | S | 1C-004, 1C-005 |
+| 1D-000 | 1D | Supabase & Security | M | Gate B |
+| 1D-001 | 1D | Supabase & Security | S | 1A-002, 1D-000 |
+| 1D-002 | 1D | Supabase & Security | S | 1D-001 |
+| 1D-003 | 1D | Supabase & Security | M | 1A-002 |
+| 1D-004 | 1D | Supabase & Security | S | 1D-003 |
+| 1D-005 | 1D | Supabase & Security | M | Gate B |
+| 1D-006 | 1D | Supabase & Security | S | Gate B |
+| 1D-007 | 1D | Supabase & Security | S | Gate B |
+| 1D-008 | 1D | Supabase & Security | M | 1A-002 |
+| 1D-009 | 1D | Repository Audit | XS | Gate B |
+| ~~1D-010~~ | 1D | — | — | **DONE `42b64a0`** |
+| SEC-1D-001 | 1D | Supabase & Security | S | 1A-002 |
+| SEC-1D-002 | 1D | Supabase & Security | S | 1A-002 |
+| SEC-1D-003 | 1D | Supabase & Security | M | 1A-002 |
+| SEC-1D-004 | 1D | Supabase & Security | XS | 1A-002 |
+| SEC-1D-005a | 1D | Supabase & Security | S | 1A-002 |
+| SEC-1D-005b | 1D | Supabase & Security | S | SEC-1D-005a |
+| SEC-1D-005c | 1D | Supabase & Security | S | SEC-1D-005a |
+| SEC-1D-005d | 1D | Habit Domain | S | SEC-1D-005b |
+| SEC-1D-005e | 1D | QA & Test | S | SEC-1D-005b |
+| SEC-1D-005f | 1D | Supabase & Security | XS | SEC-1D-005b |
+| 1E-000 | 1E | Open-Source Research | S | Gate B |
+| 1E-L1 | 1E | QA & Test | M | 1B-001, 1E-000 |
+| 1E-L2 | 1E | QA & Test | M | 1A-003, 1E-000 |
+| DEMO-001 | 1 | Habit Domain | S | Gate B |
+| OPS-0B-001 | 2C | Supabase & Security | XS | **H-03** |
+
+**42 rows · 1 DONE (`1D-010`, closed in `42b64a0`) · 41 open · 0 XL · largest M.**
+
+Every one of the 41 open tasks has a specification block above carrying all
+six mandatory fields (`scope`, `goal`, `acceptance_criteria`, `validation`,
+`risk`, `rollback`) plus its header line (`id`, `title`, `priority`,
+`MUST/SHOULD/COULD`, `agent`, `depends_on`, `size`) — 13 fields in total.
+
+`1B-006` is **not** a task. It is a cross-listing pointer that keeps the
+demo-seeder visible in Phase 1B sequencing; the specification lives in
+`DEMO-001`. It is deliberately absent from this index so it cannot be
+double-counted.
+
+The previous revision listed 31 and this table mistallied itself as 36 —
+it counted its own rows as 36 when there were 37, and never expanded the
+collapsed `SEC-1D-005a–f` row into the six tasks it stood for. Both errors
+are corrected here. Remediation added `1D-000`, `1E-000`, `DEMO-001`,
+`1B-007`, `1B-008`, and split `1C-004` into `1C-004` + `1C-006`.

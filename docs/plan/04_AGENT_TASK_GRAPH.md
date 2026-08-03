@@ -21,9 +21,43 @@
 
 ---
 
+## 1a. Corrections applied at Gate B remediation (C7, C9)
+
+The Gate B reviewer found this document contradicted itself. All four issues are
+fixed here.
+
+| Issue | Was | **Now** |
+|---|---|---|
+| **Ownership violation** | `1C-004` assigned Supabase & Security to `frontend/store/recoveryStore.ts`, which `§1` forbids | **`1C-004` is migration-only.** The client half is **`1C-006`**, owned by Habit Domain |
+| **No `frontend/app/**` owner in Phase 1** | every agent owning it was marked inactive, yet 10 UTC date sites live there | **Expo Architecture is activated for `1B-008` only**, scoped to 5 named files |
+| **R1 had no owner or task** | Gate A flagged the stale `generate-routine` as production-regressing, while `1D-001..004` would redeploy it | **`1D-000`**, Supabase & Security, **must land before any 1D deploy** |
+| **Concurrent edits to one file** | `1C-002` and `1C-003` both touch `willpowerStore.ts` and were drawn as parallel | **serialised**: `1C-003` → `1C-002` |
+
+### Review ownership is separate from edit ownership
+
+| Kind | Who | Writes files? |
+|---|---|---|
+| **Edit ownership** | the agent named in the task | yes — exclusively |
+| **Review ownership** | Skeptical Reviewer | **never** |
+
+**The Skeptical Reviewer owns no production file, in any phase.** It has
+read-only access and produces a verdict, never a diff. This is now stated as a
+rule rather than left implicit.
+
+---
+
 ## 2. Ownership conflicts and how they are resolved
 
-Three genuine overlaps exist. Each is resolved by sequencing, not by shared ownership.
+Four genuine overlaps exist. Each is resolved by sequencing or by splitting the
+task, never by shared ownership.
+
+### Conflict 0 — `frontend/store/recoveryStore.ts` *(found by the Gate B reviewer)*
+
+`1C-004` needed both a migration and a client change. Supabase & Security may not
+touch `frontend/**`.
+
+**Resolution:** split. `1C-004` is the migration (Supabase & Security);
+**`1C-006`** is the client adaptation (Habit Domain), depending on it.
 
 ### Conflict 1 — `frontend/store/**`
 
@@ -114,17 +148,37 @@ Habit Domain lane depends on the schema decision.
 
 ---
 
-## 6. Agents NOT active in Phase 1
+## 6. Agent activation in Phase 1 — corrected
 
-| Agent | Reason | First active |
+| Agent | Phase 1 state | Scope if active |
 |---|---|---|
-| Expo Architecture | routing/reachability is Phase 2A | 2A |
-| Product & Feature Parity | REF implementation is Phase 3 | 3 |
-| Mobile Design System | design rollout is Phase 5; blocked on Reanimated (2B) | 5 |
-| Open-Source Research | no adoption before the licence gate closes | 8A |
+| Supabase & Security | **active** | migrations, edge functions, RPCs |
+| Habit Domain | **active** | `frontend/lib/**`, `frontend/store/**` |
+| QA & Test | **active** | `frontend/__tests__/**`, `supabase/tests/**`, jest config |
+| Repository Audit | **active — one task** | `1D-009` deploy guard; `package.json` script additions |
+| **Expo Architecture** | **active — one task** *(C9)* | **`1B-008` only** — 5 named files under `frontend/app/**`. No routing or reachability work; that stays Phase 2A |
+| **Open-Source Research** | **active — one task** *(C6)* | **`1E-000` only** — clearance for `jest-expo`, `supabase/cli`, `pgTAP`. No other adoption |
+| Product & Feature Parity | inactive | REF implementation is Phase 3 |
+| Mobile Design System | inactive | blocked on Reanimated (2B) |
+| Skeptical Reviewer | **active, read-only** | reviews every diff; **owns no file** |
 
-Listing them as inactive is deliberate — it prevents scope creep into Phase 1
-by an agent that has nothing legitimate to do there.
+Two agents were previously marked inactive while Phase 1 nonetheless required
+work only they could legitimately do. Both are now activated with a **single
+named task each**, which keeps the anti-scope-creep intent while removing the
+deadlock.
+
+### Files with no Phase 1 owner — stated explicitly
+
+| Path | Phase 1 owner | Note |
+|---|---|---|
+| `frontend/app/**` except the 5 files in `1B-008` | **none** | deliberate — remaining 5 date sites are `1B-009`, deferred to Phase 2A with the `hub.tsx` orphan work |
+| `frontend/components/**` | **none** | no Phase 1 task touches components |
+| `frontend/lib/tokens.ts`, `theme.ts` | **none** | frozen in Phase 1 |
+| `backend/**` | **none** | except `OPS-0B-001`, which only moves files out |
+
+Naming the unowned paths prevents the failure the reviewer found: a phase
+passing its exit criteria while a user-visible defect survives in a file nobody
+was allowed to touch.
 
 ---
 
