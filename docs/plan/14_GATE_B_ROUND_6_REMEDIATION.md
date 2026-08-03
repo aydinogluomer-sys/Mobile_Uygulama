@@ -126,7 +126,7 @@ transition arithmetic (`41 + 7 = 48`), and explicit correction records in
 | # | Status |
 |---|---|
 | **H-01** | **CLOSED** — Option A (squashed baseline) **and** posture (a) (post-revoke). Both parts answered |
-| **H-13** | **OPEN** — Docker not running. Blocks the entire Layer 2 lane, therefore Phase 1 *completion* and Gate C |
+| **H-13** | **OPEN** — Docker not running. Blocks the Layer 2 lane **and all of Phase 1A past authoring** (`1A-002` Stage A/B validation, `1A-003`), therefore Phase 1 *completion* and Gate C. Scope corrected at round 8 (M4) |
 | **H-14** | **OPEN** — separate approval for `1A-004` live ledger cutover. Does **not** block Phase 1 start; `1A-004` is deliberately not executed in Phase 1 |
 
 ---

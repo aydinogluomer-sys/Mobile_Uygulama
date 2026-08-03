@@ -36,11 +36,23 @@ acceptance_criteria · validation · risk · rollback · size`.
 ---
 
 ## 1A-002 · Write the squashed baseline migration *(post-revoke posture)*
-`P1` · **MUST** · Supabase & Security · depends_on: 1A-001 · **M**
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-001, **H-13 (Docker)** · **M**
 
-> **H-01 is answered** (Option A, post-revoke posture), so it is no longer a dependency of this task. `1A-001` is the only remaining prerequisite.
+> **H-01 is answered** (Option A, post-revoke posture), so it is no longer a dependency of this task.
+>
+> **H-13 IS a dependency (round-8, M4).** This task can be *authored* without
+> Docker, but it cannot be **completed**: Stage A and Stage B validation both
+> require a running local stack. Six documents previously scoped H-13 to "the
+> Layer 2 test lane only" — that was wrong. H-13 gates `1A-002`, `1A-003` and
+> therefore the whole of Phase 1A past authoring.
 
-**scope** (2 files): `supabase/migrations/20260801000000_baseline_schema.sql` · `supabase/migrations/README.md`
+**scope** (5 files): `supabase/migrations/20260801000000_baseline_schema.sql` (new) · `supabase/migrations/README.md` (new) · `supabase/migrations/archive/001_initial_schema.sql` (moved) · `supabase/migrations/archive/002_integrations.sql` (moved) · `supabase/migrations/archive/README.md` (new)
+
+> **Scope corrected at round 8 (M3).** The block previously listed 2 files while
+> its own criteria required moving `001`/`002` into `archive/` with a README —
+> three paths that no task scoped. All five are Supabase & Security's, so no
+> ownership conflict arises; the omission made the distinct-file count and the
+> verifier's file set undercount.
 
 **goal** One migration that reproduces the live schema **and its current, secure privilege posture** from empty, so `db reset` yields a database the app runs against and which is safe on the first statement — not safe only after two later migrations happen to run.
 
@@ -147,72 +159,128 @@ attempt to look push-safe:
 
 **validation**
 
-`PSQL="psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres"`
-`BASE=supabase/migrations/20260801000000_baseline_schema.sql`
+Two stages. **Stage A proves the property that defines posture (a)** — that the
+baseline *alone* is secure. **Stage B proves the full chain still works.** A full
+`db reset` runs all three migrations, so it can never distinguish "the baseline
+produced the secure ACL" from "the Emergency revokes produced it"; only Stage A
+can. Both stages are required.
+
+### Stage A — baseline alone, Emergency migrations NOT applied
 
 ```bash
-# 1. ORDERING (B1) — assert the invariant on real filenames, before anything else
-BASELINE=20260801000000
-MOCK_REVOKE=20260802181931
-XP_REVOKE=20260802205850
-test -f "supabase/migrations/${BASELINE}_baseline_schema.sql"       || exit 1
-test "$BASELINE"    -lt "$MOCK_REVOKE"                              || exit 1
-test "$MOCK_REVOKE" -lt "$XP_REVOKE"                                || exit 1
+set -euo pipefail
 
-# active migration root must contain EXACTLY these three, in this order
-ls supabase/migrations/*.sql | xargs -n1 basename
-# expect, in order:
-#   20260801000000_baseline_schema.sql
-#   20260802181931_emergency_gate_0_revoke_mock_activate_subscription.sql
-#   20260802205850_emergency_gate_0_revoke_client_exec_xp_functions.sql
-# 001_initial_schema.sql and 002_integrations.sql must NOT appear (archived)
+PSQL=(psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d postgres)
+BASE="supabase/migrations/20260801000000_baseline_schema.sql"
+MOCK_REVOKE="supabase/migrations/20260802181931_emergency_gate_0_revoke_mock_activate_subscription.sql"
+XP_REVOKE="supabase/migrations/20260802205850_emergency_gate_0_revoke_client_exec_xp_functions.sql"
 
-# 2. no client GRANT on the four P0 functions -> absolute FAIL if matched
-grep -nEi "grant +execute.*(mock_activate_subscription|add_xp|track_weekly_xp|deal_damage_to_active_boss).*(public|anon|authenticated)" \
-  "$BASE"                                            # expect: NO MATCH
+test -f "$BASE"
+test -f "$MOCK_REVOKE"
+test -f "$XP_REVOKE"
 
-# 3. non-idempotency: blanket forms forbidden
-grep -nEi "if not exists|create or replace" "$BASE"  # expect: NO MATCH (see note)
+# A1. ordering invariant, on the real filenames
+BASELINE_V=$(basename "$BASE"        | cut -d_ -f1)
+MOCK_V=$(basename "$MOCK_REVOKE"     | cut -d_ -f1)
+XP_V=$(basename "$XP_REVOKE"         | cut -d_ -f1)
+test "$BASELINE_V" -lt "$MOCK_V"
+test "$MOCK_V"     -lt "$XP_V"
 
-# 4. first application on an EMPTY local stack
-supabase db reset                                    # expect: exit 0
-# proves ordering too: a reset that reached the Emergency migrations before the
-# baseline would have aborted on "function ... does not exist"
+# A2. no client GRANT on the four P0 functions -> absolute FAIL if matched
+! grep -qEi "grant +execute.*(mock_activate_subscription|add_xp|track_weekly_xp|deal_damage_to_active_boss).*(public|anon|authenticated)" "$BASE"
 
-# 5. SECOND application must FAIL — ON_ERROR_STOP is what makes this meaningful
-$PSQL -f "$BASE"; echo "exit=$?"                     # expect: exit != 0
-# Without -v ON_ERROR_STOP=1, psql exits 0 even when every statement errors,
-# so the bare form cannot demonstrate this criterion at all.
+# A3. no blanket idempotent forms (see the exception note below)
+! grep -qEi "if not exists|create or replace" "$BASE"
 
-# 6. privilege introspection — ALL FIVE roles named in the ACL table
-$PSQL -c "SELECT p.proname,
-                has_function_privilege('public',        p.oid,'EXECUTE') AS public_exec,
-                has_function_privilege('anon',          p.oid,'EXECUTE') AS anon_exec,
-                has_function_privilege('authenticated', p.oid,'EXECUTE') AS auth_exec,
-                has_function_privilege('service_role',  p.oid,'EXECUTE') AS svc_exec,
-                has_function_privilege('postgres',      p.oid,'EXECUTE') AS pg_exec
-         FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-         WHERE n.nspname='public' AND p.proname IN
-           ('mock_activate_subscription','add_xp','track_weekly_xp','deal_damage_to_active_boss');"
-# expect for all four rows:
-#   public_exec=f  anon_exec=f  auth_exec=f  svc_exec=t  pg_exec=t
+# A4. apply ONLY the baseline to an empty database
+dropdb --if-exists -h 127.0.0.1 -p 54322 -U postgres gateb_stage_a
+createdb -h 127.0.0.1 -p 54322 -U postgres gateb_stage_a
+PSQL_A=(psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d gateb_stage_a)
+"${PSQL_A[@]}" -f "$BASE"
+
+# A5. all four functions EXIST after the baseline alone
+"${PSQL_A[@]}" -tAc "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public' AND p.proname IN
+  ('mock_activate_subscription','add_xp','track_weekly_xp','deal_damage_to_active_boss');" \
+  | grep -qx 4
+
+# A6. THE DEFINING ASSERTION — secure posture with the Emergency migrations NOT applied.
+#     Five roles, matching the ACL table above.
+"${PSQL_A[@]}" -c "SELECT p.proname,
+       has_function_privilege('public',        p.oid,'EXECUTE') AS public_exec,
+       has_function_privilege('anon',          p.oid,'EXECUTE') AS anon_exec,
+       has_function_privilege('authenticated', p.oid,'EXECUTE') AS auth_exec,
+       has_function_privilege('service_role',  p.oid,'EXECUTE') AS svc_exec,
+       has_function_privilege('postgres',      p.oid,'EXECUTE') AS pg_exec
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public' AND p.proname IN
+  ('mock_activate_subscription','add_xp','track_weekly_xp','deal_damage_to_active_boss');"
+# expect for all four rows: public_exec=f anon_exec=f auth_exec=f svc_exec=t pg_exec=t
+# This runs BEFORE either Emergency Gate 0 migration is applied. If it passes,
+# the baseline alone produced the secure posture — the property posture (a) exists for.
+
+# A7. pgTAP AC-S01..S07 privilege assertions, run in the baseline-only state
+"${PSQL_A[@]}" -f supabase/tests/security_regression.test.sql
+```
+
+### Stage B — full migration chain
+
+```bash
+set -euo pipefail
+
+PSQL=(psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 54322 -U postgres -d gateb_stage_a)
+BASE="supabase/migrations/20260801000000_baseline_schema.sql"
+MOCK_REVOKE="supabase/migrations/20260802181931_emergency_gate_0_revoke_mock_activate_subscription.sql"
+XP_REVOKE="supabase/migrations/20260802205850_emergency_gate_0_revoke_client_exec_xp_functions.sql"
+
+# B1. the two Emergency migrations apply CLEANLY against the already-secure database
+"${PSQL[@]}" -f "$MOCK_REVOKE"
+"${PSQL[@]}" -f "$XP_REVOKE"
+# They are a security no-op here. They must not error: the functions exist
+# (created by the baseline), and REVOKE of an already-absent privilege is a no-op.
+
+# B2. posture UNCHANGED after applying them — re-run the Stage A6 query
+#     expect the identical result: public_exec=f anon_exec=f auth_exec=f svc_exec=t pg_exec=t
+
+# B3. full reset from scratch, all three migrations in order
+supabase db reset            # expect exit 0
+
+# B4. SECOND application of the baseline must FAIL — non-idempotency.
+#     test -f guards against a missing file making this pass for the wrong reason.
+test -f "$BASE"
+set +e
+"${PSQL[@]}" -f "$BASE"
+status=$?
+set -e
+test "$status" -ne 0
+# ON_ERROR_STOP=1 is what makes this meaningful: without it psql exits 0 even
+# when every statement errors, and the assertion would pass vacuously.
 ```
 
 **Also required**
 - **Schema-hash match** between the reset local database and the live capture from `1A-001`
-- All four functions **exist** after reset (proves the baseline created them before the revokes ran)
-- **pgTAP `AC-S01..S07` (`1E-L2b`) pass against the freshly reset database**
+- **The `AC-S01..S07` privilege assertions pass in the baseline-only state (Stage A7) and again after the full chain (Stage B2)** — executed here by running `supabase/tests/security_regression.test.sql` directly, **not** by waiting on `1E-L2b`
+
+> **Circular dependency removed at round 8 (M5).** This criterion previously
+> required *`1E-L2b` to pass*. `1E-L2b` depends on `1E-L2` → `1A-003` → `1A-002`,
+> so `1A-002` could not close until a task that transitively depended on it had
+> closed. `1A-002` now runs the assertion file directly; `1E-L2b` separately owns
+> the same assertions as a **permanent regression test**, which is coherent.
 - **Never call any of the four functions.** Privilege is introspected via `has_function_privilege`; a call would itself be the exploit
 
-> **Note on step 3 (m3).** The criteria forbid **blanket** `IF NOT EXISTS` /
-> `CREATE OR REPLACE`. If a specific, justified exception is ever needed (e.g.
+> **Note on A3 (m3).** The criteria forbid **blanket** `IF NOT EXISTS` /
+> `CREATE OR REPLACE`. If a specific justified exception is ever needed (e.g.
 > `CREATE EXTENSION IF NOT EXISTS`), it must be listed by line in the baseline
-> header with its justification, and step 3 becomes "no match **other than** the
+> header with its justification, and A3 becomes "no match **other than** the
 > listed exceptions". An unlisted match is a FAIL.
+
+> **Stages A and B both require a running local stack (`H-13`, Docker).** Without
+> it neither can be executed, and `1A-002` cannot be *completed* — only authored.
+> See the `depends_on` line above.
 
 **risk** **HIGH — two failure modes.**
 1. An omission produces a schema that looks right and is not. Mitigated by the `1A-001` diff and the schema-hash comparison.
-2. **P0 re-grant.** If the baseline emitted the four functions without the immediate `REVOKE`s, a fresh database would leave a payment bypass and an unauthenticated cross-user write open from the first statement. Under the post-revoke contract this is a **single-file property that is directly testable** (validation 5) rather than a fragile consequence of migration ordering — which is precisely why (a) was chosen over (b).
+2. **P0 re-grant.** If the baseline emitted the four functions without the immediate `REVOKE`s, a fresh database would leave a payment bypass and an unauthenticated cross-user write open from the first statement. Under the post-revoke contract this is a **single-file property that is directly testable** (Stage A2 and Stage A6) rather than a fragile consequence of migration ordering — which is precisely why (a) was chosen over (b).
 
 **rollback** Delete the new file; restore `001`/`002` from `archive/`. Nothing live changed by this task.
 **If a P0 re-grant is ever observed on live**, rollback is not "revert the baseline" — **re-apply the two Emergency Gate 0 revokes immediately** (`20260802181931`, `20260802205850`), then investigate. Closing the exploit comes first.
@@ -220,7 +288,9 @@ $PSQL -c "SELECT p.proname,
 ---
 
 ## 1A-003 · Verify local reset and register the ledger
-`P1` · **MUST** · Supabase & Security · depends_on: 1A-002 · **S**
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002, **H-13 (Docker)** · **S**
+
+> **H-13 added at round 8 (M4).** This task's entire acceptance is a `supabase db reset`, which requires a running local stack.
 
 **scope** (1 file): `docs/audit/11_SCHEMA_RESET_VERIFICATION.md`
 
@@ -1144,8 +1214,8 @@ Agent, size and dependency below are read from each block's header line.
 | Task | Phase | Agent | Size | Files | Blocking dependency |
 |---|---|---|---|---|---|
 | 1A-001 | 1A | Supabase & Security | M | 1 | Gate B PASS |
-| 1A-002 | 1A | Supabase & Security | M | 2 | 1A-001 |
-| 1A-003 | 1A | Supabase & Security | S | 1 | 1A-002 |
+| 1A-002 | 1A | Supabase & Security | M | 5 | 1A-001, **H-13** |
+| 1A-003 | 1A | Supabase & Security | S | 1 | 1A-002, **H-13** |
 | 1A-004 | 1A | Supabase & Security | S | 1 | 1A-003, **H-14 approval** — *not executed in Phase 1* |
 | 1B-001 | 1B | Habit Domain | S | 1 | Gate B PASS |
 | 1B-002 | 1B | Habit Domain | M | 5 | 1B-001 |

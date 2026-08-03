@@ -23,24 +23,35 @@ Exit code `0` if every invariant holds, `1` otherwise.
 
 | # | Check |
 |---|---|
-| 1 | Every open task carries all 13 mandatory fields |
-| 2 | `depends_on` in each task block equals its task-index row |
+| 1 | Every open task carries all **13** mandatory fields — each parsed individually (7 header + 6 body), not a 6-field proxy |
+| 2 | `depends_on` in each block equals its index row, **including human tokens** (`H-13`, `H-14`, `Gate B PASS`). Human dependencies are real dependencies |
 | 3 | Files edited by more than one task are serialised by a transitive `depends_on` path |
 | 4 | No file has two agent owners; no task violates its agent's "never touches" list; test files belong to QA & Test only |
-| 5 | No XL task, no scope over 5 files, no dependency cycles |
-| 6 | **Migration ordering (B1)**: `20260801000000 < 20260802181931 < 20260802205850`, and `1A-002` pins the baseline version with no placeholder |
-| 7 | `1A-002` carries the full post-revoke contract and no permissive-grant clause |
-| 8 | Stale-metric scan over **every** `.md` under `docs/` |
+| 5 | No XL task, no scope over 5 files, no declared dependency cycles |
+| 6 | **Migration ordering** — versions are **parsed from the `1A-002` scope line and from the filenames on disk**, then compared. No hardcoded version is used as a comparison source |
+| 7 | **Validation-block executability** — variables used inside the ```bash fence must be assigned inside it and before use; `ON_ERROR_STOP=1` must reach a real `psql` invocation; the second-application test must guard against a setup-error false positive and must capture and assert an exit status |
+| 8 | **Two-stage validation** — a baseline-alone stage that asserts posture **before** the Emergency migrations, plus a full-chain stage. A full `db reset` alone is rejected as posture evidence |
+| 9 | **Acceptance-criteria deletion regression** — compares `1A-002` against `--baseline-rev` (default `HEAD~1`) and FAILS if a critical criterion has been removed |
+| 10 | Stale-metric scan over **every** `.md` under `docs/` |
+| 11 | **H-01 closure** — no document may present it as an open decision |
 
 ## Constraints, deliberate
 
-- **Read-only.** Opens files for reading. Never writes; never runs a git command.
+- **Read-only.** Opens files for reading. Runs `git show` (read-only) for check 9 and nothing else. Never writes; never mutates git.
 - **No network, no database.** Nothing here connects anywhere.
 - **Deterministic and fixture-free.** Same repository state, same output.
 - **Not application code.** Nothing in `frontend/` imports it; it ships in no
   bundle and is not part of the Expo build.
 
 ## Two design decisions worth keeping
+
+**Nothing is verified by existence alone.** Round 8's governing rule: checking
+that a piece of text exists is not verification — the checker must test the
+behaviour and executability that text claims. Checks 6, 7, 8 and 9 exist because
+earlier versions passed vacuously: check 6 once compared two hardcoded constants
+to each other and could never fail; check 7 catches variables defined *outside*
+the bash fence they are used in, which made a non-idempotency test pass while
+proving nothing; check 9 catches a criterion being deleted during a rewrite.
 
 **Task IDs come from the real H2 headings**, matched by literal alternation
 (longest first), never from a guessed pattern. An earlier checker used a regex

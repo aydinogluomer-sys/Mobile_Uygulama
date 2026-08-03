@@ -42,7 +42,7 @@
 | — cross-listing pointers | **1** | `1B-006` → `DEMO-001A`/`B`; **not** a task, not indexed |
 | **Files with two edit owners** | **0** | ownership matrix regenerated from scope fields |
 | **`never touches` violations** | **0** | same |
-| Distinct Phase 1 files | **70** | same |
+| Distinct Phase 1 files | **73** | same — 70 + the 3 `archive/` paths added to `1A-002` scope at round 8 (M3) |
 | **Live tables** | **48** | `pg_tables where schemaname='public'` |
 | — with RLS enabled | **48** | `rowsecurity = true` |
 | — ERROR-level advisors | **0** | `get_advisors(security)` |

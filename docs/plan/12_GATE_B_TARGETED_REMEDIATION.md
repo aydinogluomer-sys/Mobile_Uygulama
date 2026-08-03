@@ -150,7 +150,7 @@ longer describes a mitigation that exists only in the register.
 | E2E cases | **62** — 16 PASS · 7 VERIFIED FAIL · 23 PREDICTED FAIL · 15 BLOCKED-DEVICE · 1 BLOCKED-WRITE |
 | Acceptance criteria | **91**, **32 failing**, **14 at L1** |
 | Backlog | **49 rows · 1 DONE · 48 open · 48 fully specified · 0 XL · largest M** |
-| Distinct Phase 1 files | **70** |
+| Distinct Phase 1 files | 70 *(round-4 figure; **73** since round 8 — see `plan/08`)* |
 | Migrations | **21** live · **4** repo · **2** matched |
 | Files with two edit owners | **0** |
 | Unserialised shared-file pairs | **0** |

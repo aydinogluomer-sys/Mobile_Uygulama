@@ -106,7 +106,7 @@ Regenerated from `plan/01`, not hand-maintained.
 
 | Check | Result |
 |---|---|
-| Distinct Phase 1 files | **70** |
+| Distinct Phase 1 files | 70 *(round-2 figure; **73** since round 8 — see `plan/08`)* |
 | **Files with two different edit owners** | **0** |
 | **`never touches` violations** | **0** |
 | Test files not owned by QA & Test | **0** |

@@ -233,7 +233,7 @@ unowned; nothing is left as prose that someone is expected to notice.
 | 5 | Local `db reset` validation | **`1A-003`** | Supabase & Security | yes — local only |
 | 6 | **Schema-hash comparison** local vs live | **`1A-003`** (acceptance criterion) | Supabase & Security | yes |
 | 7 | Post-reset revoke assertion — the 4 functions are **not** client-executable on a fresh DB | **`1E-L2b`** | QA & Test | yes — permanent regression test |
-| 8 | **Backup before cutover** (`supabase db dump --linked`) | **`1A-004`** | Supabase & Security | **no — needs H-01 + explicit approval** |
+| 8 | **Backup before cutover** (`supabase db dump --linked`) | **`1A-004`** | Supabase & Security | **no — needs H-14 approval** |
 | 9 | **Cutover** (`migration repair --status applied`) | **`1A-004`** | Supabase & Security | **no — separate authorised action** |
 | 10 | Post-cutover `db diff --linked` shows no differences | **`1A-004`** | Supabase & Security | **no** |
 | 11 | **Post-cutover revoke re-assertion** — prove the two P0s are still closed on live | **`1A-004`** | Supabase & Security | **no** |
@@ -241,7 +241,7 @@ unowned; nothing is left as prose that someone is expected to notice.
 | 13 | Rollback, Step 9 (`repair --status reverted`) | **`1A-004`** rollback field | Supabase & Security | n/a |
 
 **`1A-004` is specified in the backlog but does not run in Phase 1.** It is
-gated on H-01 *and* a separate explicit approval, and it is the only task in
+gated on **H-14** — a separate explicit approval — and it is the only task in
 this plan that touches the live project. Steps 1–7 are the whole of Phase 1A's
 executable content, and none of them changes anything live.
 

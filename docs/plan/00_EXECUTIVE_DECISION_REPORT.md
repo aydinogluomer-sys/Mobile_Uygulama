@@ -165,7 +165,7 @@ Work that cannot proceed without a person.
 | # | Blocks | Effect if unresolved |
 |---|---|---|
 | ~~**H-01**~~ | **CLOSED** — no longer blocks anything | Answered: Option A, post-revoke. `1A-002` is unblocked and its baseline version is fixed at `20260801000000` |
-| **H-13** | the entire Layer 2 test lane | `1E-L2`/`L2a`/`L2b` cannot run at all. **Phase 1 cannot reach Gate C without Layer 2**, since no RLS, RPC-atomicity or constraint claim may rest on a Layer 1 test |
+| **H-13** | **the entire Layer 2 lane AND all of Phase 1A past authoring** | `1E-L2`/`L2a`/`L2b` cannot run at all, and neither can `1A-002`'s Stage A/B validation or `1A-003`. **Phase 1 cannot reach Gate C without it.** Corrected at round 8 (M4) — previously scoped to Layer 2 only |
 | **H-14** | `1A-004` only | No effect on Phase 1 — `1A-004` is deliberately **not executed** in Phase 1. Listed so the live cutover is never treated as implied by H-01 |
 
 The rest block later phases.

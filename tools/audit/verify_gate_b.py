@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
 """Gate B structural verifier.
 
-Parses the planning documents under docs/ and asserts the structural invariants
-Gate B depends on. This is AUDIT TOOLING, not application code: it is not
-imported by the app, ships in no bundle, and is excluded from the Expo build.
+AUDIT TOOLING, not application code. Nothing in `frontend/` imports it, it ships
+in no bundle, and it is not part of the Expo build.
 
-Design constraints, deliberate:
-  * READ-ONLY. Opens files for reading only. Never writes, never mutates git.
-  * NO NETWORK, NO DATABASE. Nothing here connects anywhere.
-  * DETERMINISTIC and FIXTURE-FREE. Same repo state => same output.
-  * Task IDs are read from the ACTUAL H2 headings in the backlog and matched by
-    literal alternation. No ID pattern is guessed. An earlier version of this
-    checker used a regex that could not match `DEMO-001A`/`DEMO-001B` (an
-    uppercase suffix defeats `\\b`), which hid a real defect from the very check
-    that claimed to cover it.
-  * NO DOCUMENT WHITELIST in the stale scan. Every .md under docs/ is scanned.
-    An earlier version skipped six plan documents by filename and let a stale
-    figure survive.
+Governing rule, established at Gate B round 8:
+
+    Checking that a piece of text EXISTS is not verification.
+    The verifier must test the BEHAVIOUR and EXECUTABILITY that text claims.
+
+Constraints:
+  * READ-ONLY. Opens files for reading. Runs `git show` (read-only) for the
+    deletion-regression check and nothing else. Never writes, never mutates git.
+  * NO NETWORK, NO DATABASE.
+  * DETERMINISTIC and FIXTURE-FREE, given a repository state.
 
 Usage:
-    python tools/audit/verify_gate_b.py            # from the repository root
-    python tools/audit/verify_gate_b.py --repo /path/to/repo
+    python tools/audit/verify_gate_b.py
+    python tools/audit/verify_gate_b.py --repo . --baseline-rev HEAD~1
 
-Exit code 0 if every invariant holds, 1 otherwise.
+Exit 0 if every invariant holds, 1 otherwise.
 """
 from __future__ import annotations
 
@@ -31,18 +28,23 @@ import collections
 import io
 import os
 import re
+import subprocess
 import sys
 
 if hasattr(sys.stdout, "buffer"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 BACKLOG = "docs/plan/01_IMPLEMENTATION_BACKLOG.md"
-FIELDS = ["scope", "goal", "acceptance_criteria", "validation", "risk", "rollback"]
+MIGRATIONS_DIR = os.path.join("supabase", "migrations")
+
+BODY_FIELDS = ["scope", "goal", "acceptance_criteria", "validation", "risk", "rollback"]
+HEADER_FIELDS = ["id", "title", "priority", "obligation", "agent", "depends_on", "size"]
+ALL_13 = HEADER_FIELDS + BODY_FIELDS
+
 AGENTS = [
     "Supabase & Security", "Habit Domain", "Expo Architecture",
     "QA & Test", "Repository Audit", "Open-Source Research",
 ]
-# Each agent's forbidden path prefixes, per docs/plan/04_AGENT_TASK_GRAPH.md section 1.
 FORBIDDEN = {
     "Supabase & Security":  ["frontend/"],
     "Habit Domain":         ["supabase/", "frontend/app/"],
@@ -50,9 +52,23 @@ FORBIDDEN = {
     "Repository Audit":     ["supabase/", "frontend/app/", "frontend/lib/", "frontend/store/"],
     "Open-Source Research": ["supabase/", "frontend/"],
 }
-# The migration ordering invariant that Gate B round 6 established (finding B1).
-BASELINE_VERSION = "20260801000000"
-EMERGENCY_VERSIONS = ["20260802181931", "20260802205850"]
+
+# Non-task dependency tokens that are still REAL dependencies and must take part
+# in the block-vs-index comparison (round-7 finding m4c: filtering these out hid
+# exactly the H-01 divergence that round-6 B2 was about).
+HUMAN_TOKENS = ["H-01", "H-13", "H-14", "H-03", "Gate B PASS"]
+
+# Criteria whose DELETION from 1A-002 is a regression (round-8 item 1E).
+# Each is (label, [alternative marker phrases]) — matched case-insensitively.
+CRITICAL_1A002 = [
+    ("baseline-alone secure posture",   ["baseline's own output contract", "baseline alone"]),
+    ("before-Emergency validation",     ["before either emergency", "before any emergency"]),
+    ("preserved Emergency files",       ["not deleted", "not folded"]),
+    ("migration ordering invariant",    ["sorts before", "ordering invariant"]),
+    ("second application non-zero",     ["second application", "-ne 0"]),
+    ("no client grants",                ["fail condition"]),
+    ("five-role privilege introspection", ["pg_exec", "postgres"]),
+]
 
 
 def is_test_path(path: str) -> bool:
@@ -70,10 +86,14 @@ class Report:
     def ok(self, msg: str) -> None:
         print("   ok    " + msg)
 
+    def note(self, msg: str) -> None:
+        print("   note  " + msg)
 
-def parse_backlog(repo: str):
-    """Return (tasks, pointer_stubs) parsed from the real H2 headings."""
-    text = open(os.path.join(repo, BACKLOG), encoding="utf-8").read()
+
+# --------------------------------------------------------------------------- #
+# parsing
+# --------------------------------------------------------------------------- #
+def split_blocks(text: str):
     blocks, current = [], None
     for line in text.split("\n"):
         if line.startswith("## "):
@@ -84,13 +104,17 @@ def parse_backlog(repo: str):
             current["body"].append(line)
     if current:
         blocks.append(current)
+    return blocks
 
+
+def parse_backlog(repo: str):
+    text = open(os.path.join(repo, BACKLOG), encoding="utf-8").read()
     tasks, stubs = {}, []
-    for block in blocks:
-        match = re.match(r"^(\S+)\s*·", block["head"])
+    for block in split_blocks(text):
+        match = re.match(r"^(\S+)\s*·\s*(.+)$", block["head"])
         if not match:
             continue
-        task_id = match.group(1)
+        task_id, title = match.group(1), match.group(2).strip()
         body = "\n".join(block["body"])
         if "**scope**" not in body:
             stubs.append(task_id)
@@ -98,29 +122,61 @@ def parse_backlog(repo: str):
         header = next((x for x in block["body"] if x.startswith("`P")), "")
         scope_line = re.search(r"\*\*scope\*\*[^:]*:\s*(.+)", body)
         files = re.findall(r"`([^`]+)`", scope_line.group(1)) if scope_line else []
-        size = re.search(r"\*\*(XS|S|M|L|XL)\*\*", header)
+
+        # --- all 13 fields parsed individually (round-8 item 1B) ---
+        present = {}
+        present["id"] = bool(task_id)
+        present["title"] = bool(title)
+        present["priority"] = bool(re.search(r"`P[0-4]`", header))
+        present["obligation"] = bool(re.search(r"\b(MUST|SHOULD|COULD)\b", header))
+        present["agent"] = any(a in header for a in AGENTS)
+        present["depends_on"] = "depends_on:" in header
+        size_match = re.search(r"\*\*(XS|S|M|L|XL)\*\*", header)
+        present["size"] = bool(size_match)
+        for field in BODY_FIELDS:
+            present[field] = ("**%s**" % field) in body
+
         tasks[task_id] = {
+            "title": title,
             "header": header,
             "body": body,
             "agent": next((a for a in AGENTS if a in header), "?"),
             "files": [f.strip() for f in files],
-            "size": size.group(1) if size else "?",
-            "missing": [f for f in FIELDS if "**%s**" % f not in body],
+            "size": size_match.group(1) if size_match else "?",
+            "present": present,
+            "missing": [f for f in ALL_13 if not present.get(f)],
         }
     return text, tasks, stubs
 
 
+# --------------------------------------------------------------------------- #
+# checks
+# --------------------------------------------------------------------------- #
 def check_fields(tasks, report):
-    print("\n[1] MANDATORY FIELDS")
+    """1B: assert all 13 fields individually, not a 6-field proxy."""
+    print("\n[1] MANDATORY FIELDS (all %d, parsed individually)" % len(ALL_13))
+    bad = 0
     for task_id, task in sorted(tasks.items()):
         if task["missing"]:
             report.fail("%s missing %s" % (task_id, task["missing"]))
-    if not report.failures:
-        report.ok("all %d open tasks carry all 13 fields" % len(tasks))
+            bad += 1
+    if not bad:
+        report.ok("all %d open tasks carry all %d fields (%s)"
+                  % (len(tasks), len(ALL_13), ", ".join(ALL_13)))
+    return bad
 
 
-def check_index(text, tasks, ids_in, report):
-    print("\n[2] BLOCK vs INDEX depends_on")
+def dep_tokens(raw: str, id_re) -> set:
+    """1C: task IDs AND human/gate tokens. Human dependencies are real."""
+    tokens = set(id_re.findall(raw or ""))
+    for human in HUMAN_TOKENS:
+        if re.search(re.escape(human), raw or ""):
+            tokens.add(human)
+    return tokens
+
+
+def check_index(text, tasks, id_re, report):
+    print("\n[2] BLOCK vs INDEX depends_on (human tokens included)")
     index_start = text.index("## Task index")
     rows = {}
     for line in text[index_start:].split("\n"):
@@ -140,14 +196,14 @@ def check_index(text, tasks, ids_in, report):
             mismatches += 1
             continue
         dep = re.search(r"depends_on:\s*(.+?)\s*·\s*\*\*(?:XS|S|M|L|XL)\*\*", task["header"])
-        block_ids = ids_in(dep.group(1) if dep else "") - {task_id}
-        index_ids = ids_in(rows[task_id]) - {task_id}
-        task["deps"] = block_ids
-        if block_ids != index_ids:
-            report.fail("%s block=%s index=%s" % (task_id, sorted(block_ids), sorted(index_ids)))
+        block_set = dep_tokens(dep.group(1) if dep else "", id_re) - {task_id}
+        index_set = dep_tokens(rows[task_id], id_re) - {task_id}
+        task["deps"] = {d for d in block_set if d in tasks}
+        if block_set != index_set:
+            report.fail("%s block=%s index=%s" % (task_id, sorted(block_set), sorted(index_set)))
             mismatches += 1
-    if mismatches == 0:
-        report.ok("block and index agree for all %d tasks" % len(tasks))
+    if not mismatches:
+        report.ok("block and index agree for all %d tasks, human tokens included" % len(tasks))
     return mismatches
 
 
@@ -171,30 +227,26 @@ def check_serialisation(tasks, report):
     for path, ids in sorted(owners.items()):
         if len(ids) < 2:
             continue
-        pairs = [
-            (x, y) for i, x in enumerate(ids) for y in ids[i + 1:]
-            if not reaches(x, y) and not reaches(y, x)
-        ]
+        pairs = [(x, y) for i, x in enumerate(ids) for y in ids[i + 1:]
+                 if not reaches(x, y) and not reaches(y, x)]
         if pairs:
             unserialised += len(pairs)
             report.fail("%s edited by unordered tasks %s" % (path, pairs))
         else:
             report.ok("%s : %s" % (path, " -> ".join(ids)))
-    if unserialised == 0:
+    if not unserialised:
         report.ok("0 unserialised shared-file pairs")
     return owners, unserialised
 
 
 def check_ownership(tasks, owners, report):
     print("\n[4] OWNERSHIP")
-    conflicts = 0
+    conflicts = violations = 0
     for path, ids in sorted(owners.items()):
         agents = {tasks[i]["agent"] for i in ids}
         if len(agents) > 1:
             conflicts += 1
             report.fail("%s owned by %s" % (path, sorted(agents)))
-
-    violations = 0
     for task_id, task in sorted(tasks.items()):
         for path in task["files"]:
             if task["agent"] == "QA & Test":
@@ -210,12 +262,12 @@ def check_ownership(tasks, owners, report):
                 if path.startswith(prefix):
                     report.fail("%s: %s must not touch %s" % (task_id, task["agent"], path))
                     violations += 1
-    if conflicts == 0 and violations == 0:
+    if not conflicts and not violations:
         report.ok("0 ownership conflicts, 0 never-touches violations")
     return conflicts, violations
 
 
-def check_cycles_and_sizes(tasks, report):
+def check_sizes_and_cycles(tasks, report):
     print("\n[5] SIZES, SCOPE AND CYCLES")
     sizes = collections.Counter(t["size"] for t in tasks.values())
     if sizes["XL"]:
@@ -224,8 +276,7 @@ def check_cycles_and_sizes(tasks, report):
     if oversized:
         report.fail("scope exceeds 5 files: %s" % oversized)
 
-    colour = collections.defaultdict(int)
-    cycles = []
+    colour, cycles = collections.defaultdict(int), []
 
     def visit(node, stack):
         if colour[node] == 1:
@@ -241,73 +292,189 @@ def check_cycles_and_sizes(tasks, report):
     for task_id in tasks:
         visit(task_id, [])
     if cycles:
-        report.fail("dependency cycles: %s" % cycles)
+        report.fail("declared dependency cycles: %s" % cycles)
 
     files = {f for t in tasks.values() for f in t["files"]}
-    print("   sizes: %s" % dict(sizes))
-    print("   distinct scoped files: %d" % len(files))
+    print("   sizes: %s   distinct scoped files: %d" % (dict(sizes), len(files)))
     if not (sizes["XL"] or oversized or cycles):
-        report.ok("0 XL, no scope over 5 files, 0 dependency cycles")
+        report.ok("0 XL, no scope over 5 files, 0 declared cycles")
     return sizes, len(files)
 
 
 def check_migration_ordering(repo, tasks, report):
-    """Gate B round-6 finding B1: the baseline must sort before both Emergency
-    migrations, or their REVOKEs run against functions that do not yet exist."""
-    print("\n[6] MIGRATION ORDERING (B1)")
-    versions = [BASELINE_VERSION] + EMERGENCY_VERSIONS
-    for earlier, later in zip(versions, versions[1:]):
-        if int(earlier) < int(later):
-            report.ok("%s < %s" % (earlier, later))
+    """1A: derive every version from REAL sources. No hardcoded comparison."""
+    print("\n[6] MIGRATION ORDERING (derived from disk + 1A-002 scope)")
+    block = tasks.get("1A-002", {})
+    body = block.get("body", "")
+
+    # baseline filename parsed from the 1A-002 scope line
+    baseline_files = [f for f in block.get("files", []) if "baseline_schema" in f]
+    if not baseline_files:
+        report.fail("1A-002 scope names no baseline_schema file")
+        return
+    baseline_name = os.path.basename(baseline_files[0])
+    m = re.match(r"^(\d+)_", baseline_name)
+    if not m:
+        report.fail("baseline filename carries no numeric version: %s" % baseline_name)
+        return
+    baseline_version = m.group(1)
+    if "<ts>" in baseline_name or "<" in baseline_name:
+        report.fail("baseline filename is still a placeholder: %s" % baseline_name)
+        return
+    report.ok("baseline version parsed from 1A-002 scope: %s (%s)" % (baseline_version, baseline_name))
+
+    # emergency + active migrations parsed from disk
+    mig_dir = os.path.join(repo, MIGRATIONS_DIR)
+    if not os.path.isdir(mig_dir):
+        report.fail("%s not found" % MIGRATIONS_DIR)
+        return
+    on_disk = sorted(f for f in os.listdir(mig_dir) if f.endswith(".sql"))
+    emergency = sorted(f for f in on_disk if "emergency_gate_0" in f)
+    if len(emergency) != 2:
+        report.fail("expected 2 Emergency Gate 0 migrations on disk, found %d: %s"
+                    % (len(emergency), emergency))
+        return
+    emergency_versions = [re.match(r"^(\d+)_", f).group(1) for f in emergency]
+    report.ok("emergency versions parsed from disk: %s" % emergency_versions)
+
+    if os.path.exists(os.path.join(mig_dir, baseline_name)):
+        report.ok("baseline file exists on disk")
+    else:
+        report.note("baseline file NOT on disk yet — PLANNED filename (1A-002 unstarted)")
+
+    # real comparison: parsed baseline vs parsed emergency versions
+    for ev, ef in zip(emergency_versions, emergency):
+        if int(baseline_version) < int(ev) and baseline_version < ev:
+            report.ok("%s < %s  (numeric and lexical)" % (baseline_version, ef))
         else:
-            report.fail("ordering invariant violated: %s !< %s" % (earlier, later))
+            report.fail("ORDERING VIOLATED: baseline %s does not sort before %s"
+                        % (baseline_version, ef))
 
-    block = tasks.get("1A-002", {}).get("body", "")
-    if BASELINE_VERSION not in block:
-        report.fail("1A-002 does not pin the baseline version %s" % BASELINE_VERSION)
+    # any other active migration that would sort before the baseline
+    for f in on_disk:
+        if f in emergency or f == baseline_name:
+            continue
+        v = re.match(r"^(\d+)_", f)
+        if v and v.group(1) < baseline_version:
+            report.note("%s sorts BEFORE the baseline — 1A-002 requires it archived "
+                        "before the baseline lands" % f)
+
+    # the block must state the invariant, not merely be consistent with it
+    if re.search(r"sorts?\s+before|ordering invariant", body, re.I):
+        report.ok("1A-002 states the ordering invariant in its criteria")
     else:
-        report.ok("1A-002 pins the baseline version %s" % BASELINE_VERSION)
-    if "<ts>" in block:
-        report.fail("1A-002 still contains a '<ts>' filename placeholder")
-
-    migrations_dir = os.path.join(repo, "supabase", "migrations")
-    if os.path.isdir(migrations_dir):
-        active = sorted(f for f in os.listdir(migrations_dir) if f.endswith(".sql"))
-        print("   active migration root: %s" % active)
-        for version in EMERGENCY_VERSIONS:
-            if not any(f.startswith(version) for f in active):
-                report.fail("Emergency migration %s is missing from the active root" % version)
-        # 001/002 must be archived before the baseline lands, else they sort first.
-        legacy = [f for f in active if re.match(r"^0*\d{1,3}_", f)]
-        if legacy:
-            print("   note: legacy migrations still in the active root "
-                  "(1A-002 requires archiving before the baseline lands): %s" % legacy)
+        report.fail("1A-002 does not state the ordering invariant")
 
 
-def check_1a002_contract(tasks, report):
-    print("\n[7] 1A-002 POST-REVOKE CONTRACT")
-    block = tasks.get("1A-002", {}).get("body", "").lower()
-    required = [
-        "post-revoke", "mock_activate_subscription", "add_xp", "track_weekly_xp",
-        "deal_damage_to_active_boss", "service_role", "postgres",
-        "same transaction", "second application", "non-zero",
-        "on_error_stop=1", "if not exists", "create or replace", "push-unsafe",
-        "has_function_privilege", "ac-s01", "not deleted", "not folded",
-    ]
-    missing = [term for term in required if term not in block]
-    if missing:
-        report.fail("1A-002 missing required terms: %s" % missing)
+def check_bash_executability(tasks, report):
+    """1D: does the validation block actually run, or pass vacuously?"""
+    print("\n[7] 1A-002 VALIDATION BLOCK EXECUTABILITY")
+    body = tasks.get("1A-002", {}).get("body", "")
+    fences = re.findall(r"```bash\n(.*?)```", body, re.S)
+    if not fences:
+        report.fail("1A-002 has no ```bash validation block")
+        return
+    script = "\n".join(fences)
+
+    # variables used inside the fence must be ASSIGNED inside the fence
+    used = set(re.findall(r"\$\{?([A-Z_][A-Z0-9_]*)\}?", script))
+    used -= {"PGPASSWORD", "PATH", "HOME", "PWD", "TZ", "IFS"}
+    assigned = set(re.findall(r"^\s*([A-Z_][A-Z0-9_]*)=", script, re.M))
+    assigned |= set(re.findall(r"^\s*([A-Z_][A-Z0-9_]*)=\(", script, re.M))
+    undefined = sorted(used - assigned)
+    if undefined:
+        report.fail("variables used but never assigned INSIDE the bash fence: %s "
+                    "-> they expand to empty and the test passes vacuously" % undefined)
     else:
-        report.ok("all %d required contract terms present in the block" % len(required))
-    if "original permissive grants" in block:
-        report.fail("1A-002 still contains the superseded permissive-grant clause")
+        report.ok("every variable used in the fence is assigned inside it")
+
+    # assignment must precede first use
+    for var in sorted(assigned):
+        first_assign = re.search(r"^\s*%s=" % var, script, re.M)
+        first_use = re.search(r"\$\{?%s\b" % var, script)
+        if first_assign and first_use and first_use.start() < first_assign.start():
+            report.fail("%s is used before it is assigned" % var)
+
+    # ON_ERROR_STOP must reach a real psql invocation
+    if "ON_ERROR_STOP=1" not in script:
+        report.fail("ON_ERROR_STOP=1 absent — psql exits 0 on statement errors")
     else:
-        report.ok("no permissive-grant clause")
+        psql_assign = re.search(r"^\s*PSQL=.*ON_ERROR_STOP=1", script, re.M)
+        if psql_assign and re.search(r"\$\{?PSQL", script):
+            report.ok("ON_ERROR_STOP=1 reaches psql via the PSQL variable")
+        elif re.search(r"psql\s+-v\s+ON_ERROR_STOP=1", script):
+            report.ok("ON_ERROR_STOP=1 is on a direct psql invocation")
+        else:
+            report.fail("ON_ERROR_STOP=1 present but not wired to any psql invocation")
+
+    # the second-application test must guard against a setup-error false positive
+    if re.search(r"test\s+-f\s+\"?\$\{?BASE", script):
+        report.ok("baseline file existence is asserted before the second-application test")
+    else:
+        report.fail("no `test -f $BASE` guard — a missing file would make the "
+                    "non-zero expectation pass for the wrong reason")
+    if re.search(r"status=\$\?|\$\?", script) and re.search(r"-ne\s+0|!= *0", script):
+        report.ok("second-application exit status is captured and asserted non-zero")
+    else:
+        report.fail("second-application test does not capture and assert an exit status")
+
+
+def check_two_stage_validation(tasks, report):
+    """Item 2: baseline-alone posture must be proven separately from full reset."""
+    print("\n[8] TWO-STAGE VALIDATION (baseline-alone vs full chain)")
+    body = tasks.get("1A-002", {}).get("body", "").lower()
+    stage_a = any(k in body for k in ["stage a", "baseline alone", "baseline-alone"])
+    before = any(k in body for k in ["before either emergency", "before any emergency",
+                                     "without applying the emergency"])
+    stage_b = any(k in body for k in ["stage b", "full migration chain", "full chain"])
+    for label, ok in [("Stage A (baseline alone) present", stage_a),
+                      ("privilege assertion BEFORE Emergency migrations", before),
+                      ("Stage B (full chain) present", stage_b)]:
+        (report.ok if ok else report.fail)(label)
+    if re.search(r"db reset", body) and not before:
+        report.fail("full `db reset` is used as the only posture evidence — it cannot "
+                    "distinguish baseline-produced ACL from Emergency-produced ACL")
+
+
+def check_deletion_regression(repo, tasks, baseline_rev, report):
+    """1E: FAIL if a critical 1A-002 criterion present in <rev> is now gone."""
+    print("\n[9] ACCEPTANCE-CRITERIA DELETION REGRESSION (vs %s)" % baseline_rev)
+    try:
+        prev = subprocess.run(
+            ["git", "show", "%s:%s" % (baseline_rev, BACKLOG)],
+            cwd=repo, capture_output=True, text=True, timeout=30,
+        )
+    except Exception as exc:                                    # pragma: no cover
+        report.note("git unavailable (%s) — regression check skipped" % exc)
+        return
+    if prev.returncode != 0:
+        report.note("cannot read %s:%s — regression check skipped" % (baseline_rev, BACKLOG))
+        return
+
+    prev_block = ""
+    for block in split_blocks(prev.stdout):
+        if block["head"].startswith("1A-002"):
+            prev_block = "\n".join(block["body"]).lower()
+            break
+    now_block = tasks.get("1A-002", {}).get("body", "").lower()
+
+    regressions = 0
+    for label, markers in CRITICAL_1A002:
+        was = any(m in prev_block for m in markers)
+        now = any(m in now_block for m in markers)
+        if was and not now:
+            report.fail("REGRESSION: '%s' was in 1A-002 at %s and is now GONE" % (label, baseline_rev))
+            regressions += 1
+        elif now:
+            report.ok("'%s' present" % label)
+        else:
+            report.fail("'%s' absent (and absent at %s too)" % (label, baseline_rev))
+            regressions += 1
+    return regressions
 
 
 def check_stale(repo, report):
-    """Scan every .md under docs/. No document whitelist."""
-    print("\n[8] ACTIVE STALE ASSERTIONS")
+    print("\n[10] ACTIVE STALE ASSERTIONS (every .md under docs/, no whitelist)")
     stale = {
         "58": ["case", "e2e"], "21": ["predict", "defect", "failur"],
         "18": ["blocked", "device"], "20": ["l1", "layer", "failing"],
@@ -315,12 +482,13 @@ def check_stale(repo, report):
         "36": ["task", "row"], "31": ["task"], "69": ["file", "distinct"],
         "13 distinct": ["table"], "10 sites": ["site"],
     }
-    superseded_markers = (
+    # Narrow markers only. "->", "closed" and "answered" were removed at round 8:
+    # they skipped whole lines wholesale and hid real assertions.
+    superseded = (
         "previously", "was wrong", "corrected", "superseded", "supersed",
         "no longer", "round-1", "round 1", "stale", "mistall", "miscount",
-        "wrong when", "claimed", "historical", "then 36", "then 42",
-        "not 20", "not 21", "deleted in full", "previous revision",
-        "reverses the previous", "->", "→", "closed", "answered",
+        "wrong when", "historical", "then 36", "then 42", "not 20", "not 21",
+        "deleted in full", "previous revision", "reverses the previous",
     )
     correction_headers = ("| was ", "| previously", "| claimed", "| old ", "was |", "(round-1")
 
@@ -329,56 +497,91 @@ def check_stale(repo, report):
         for filename in sorted(filenames):
             if not filename.endswith(".md"):
                 continue
-            in_correction_table = False
-            path = os.path.join(dirpath, filename)
-            for lineno, line in enumerate(open(path, encoding="utf-8", errors="replace"), 1):
-                lowered = line.lower()
-                if lowered.startswith("|"):
-                    if any(h in lowered for h in correction_headers):
-                        in_correction_table = True
-                elif not lowered.strip().startswith("|"):
-                    in_correction_table = False
-                if in_correction_table or any(m in lowered for m in superseded_markers):
+            in_table = False
+            for lineno, line in enumerate(
+                    open(os.path.join(dirpath, filename), encoding="utf-8", errors="replace"), 1):
+                low = line.lower()
+                if low.startswith("|"):
+                    if any(h in low for h in correction_headers):
+                        in_table = True
+                elif not low.strip().startswith("|"):
+                    in_table = False
+                if in_table or any(m in low for m in superseded):
                     continue
                 for number, context in stale.items():
                     if number in ("13 distinct", "10 sites"):
-                        if number not in lowered:
+                        if number not in low:
                             continue
                     else:
                         if not re.search(r"(?<![\d.:\-])" + number + r"(?![\d.:%\-])", line):
                             continue
-                        if not any(c in lowered for c in context):
+                        if not any(c in low for c in context):
                             continue
                         if re.search(r"[\w/]+\.(ts|tsx|sql|js|py|md):" + number, line):
                             continue
                         if re.search(r"AC-[A-Z]?" + number, line):
                             continue
                     candidates += 1
-                    print("   ?  %s:%s  n=%s  %s" % (filename, lineno, number, line.strip()[:90]))
-    print("   candidates: %d (each requires adjudication; see docs/plan/14)" % candidates)
+                    print("   ?  %s:%s  n=%s  %s" % (filename, lineno, number, line.strip()[:88]))
+    print("   candidates: %d — each requires adjudication (see docs/plan/14 §4)" % candidates)
     return candidates
 
 
+def check_h01(repo, report):
+    """Item 11 of round 6, re-verified: H-01 must not read as an open decision."""
+    print("\n[11] H-01 CLOSURE")
+    open_markers = [
+        "awaits h-01", "decision required — h-01", "only after h-01",
+        "waits on h-01", "needs h-01", "h-01 + ", "h-01 is on the critical path",
+        "if h-01 stalls", "cannot start until this is answered",
+    ]
+    banner_docs = ("07_GATE_B_REMEDIATION_REPORT", "11_GATE_B_REMEDIATION_ROUND_2")
+    # A row whose line also carries a resolution arrow is a correction record,
+    # not a live assertion: "| `plan/10:3` \"awaits H-01\" | -> H-01 ANSWERED |".
+    resolution_markers = ("→", "->", "answered", "closed", "resolution", "annotated")
+    hits = 0
+    for dirpath, _, filenames in os.walk(os.path.join(repo, "docs")):
+        for filename in sorted(filenames):
+            if not filename.endswith(".md"):
+                continue
+            if any(b in filename for b in banner_docs):
+                continue                      # legitimately banner-superseded
+            for lineno, line in enumerate(
+                    open(os.path.join(dirpath, filename), encoding="utf-8", errors="replace"), 1):
+                low = line.lower()
+                if low.startswith("|") and any(r in low for r in resolution_markers):
+                    continue                  # correction-record row
+                if any(m in low for m in open_markers):
+                    report.fail("H-01 presented as open: %s:%s  %s"
+                                % (filename, lineno, line.strip()[:80]))
+                    hits += 1
+    if not hits:
+        report.ok("no document presents H-01 as an open decision")
+    return hits
+
+
+# --------------------------------------------------------------------------- #
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", default=".", help="repository root (default: cwd)")
+    parser.add_argument("--repo", default=".")
+    parser.add_argument("--baseline-rev", default="HEAD~1",
+                        help="revision to compare 1A-002 against for deletion regressions")
     args = parser.parse_args()
     repo = os.path.abspath(args.repo)
 
     if not os.path.isfile(os.path.join(repo, BACKLOG)):
-        print("ERROR: %s not found. Run from the repository root or pass --repo." % BACKLOG)
+        print("ERROR: %s not found. Run from the repository root." % BACKLOG)
         return 1
 
-    print("=" * 74)
-    print("GATE B STRUCTURAL VERIFIER   repo: %s" % repo)
-    print("=" * 74)
+    print("=" * 78)
+    print("GATE B STRUCTURAL VERIFIER")
+    print("repo: %s" % repo)
+    print("rule: existence of text is not verification — behaviour is")
+    print("=" * 78)
 
     text, tasks, stubs = parse_backlog(repo)
-    ids = sorted(tasks, key=len, reverse=True)  # longest first: DEMO-001A before DEMO-001
+    ids = sorted(tasks, key=len, reverse=True)
     id_re = re.compile("(" + "|".join(re.escape(i) for i in ids) + ")")
-
-    def ids_in(s: str):
-        return set(id_re.findall(s or ""))
 
     print("\n[0] TASK INVENTORY")
     print("   task-ID alphabet from real H2 headings: %d" % len(ids))
@@ -387,15 +590,18 @@ def main() -> int:
 
     report = Report()
     check_fields(tasks, report)
-    mismatches = check_index(text, tasks, ids_in, report)
+    mismatches = check_index(text, tasks, id_re, report)
     owners, unserialised = check_serialisation(tasks, report)
     conflicts, violations = check_ownership(tasks, owners, report)
-    sizes, file_count = check_cycles_and_sizes(tasks, report)
+    sizes, file_count = check_sizes_and_cycles(tasks, report)
     check_migration_ordering(repo, tasks, report)
-    check_1a002_contract(tasks, report)
+    check_bash_executability(tasks, report)
+    check_two_stage_validation(tasks, report)
+    check_deletion_regression(repo, tasks, args.baseline_rev, report)
     candidates = check_stale(repo, report)
+    h01 = check_h01(repo, report)
 
-    print("\n" + "=" * 74)
+    print("\n" + "=" * 78)
     print("SUMMARY")
     print("  open tasks .................. %d" % len(tasks))
     print("  index rows (incl. 1D-010) ... %d" % (len(tasks) + 1))
@@ -405,9 +611,10 @@ def main() -> int:
     print("  ownership conflicts ......... %d" % conflicts)
     print("  never-touches violations .... %d" % violations)
     print("  XL tasks .................... %d" % sizes["XL"])
+    print("  H-01 open-decision sites .... %d" % h01)
     print("  stale candidates ............ %d" % candidates)
     print("  FAILURES .................... %s" % (len(report.failures) or "NONE"))
-    print("=" * 74)
+    print("=" * 78)
     return 1 if report.failures else 0
 
 

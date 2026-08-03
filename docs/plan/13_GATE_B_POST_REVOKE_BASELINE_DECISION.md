@@ -210,7 +210,7 @@ fixed this round: `plan/07:23`.
 | # | Decision | Blocks Phase 1? |
 |---|---|---|
 | ~~H-01~~ | **ANSWERED — (a) post-revoke baseline** | resolved |
-| **H-13** | **Docker not running** — required by `supabase start` | **yes** — the entire Layer 2 lane; Phase 1 cannot reach Gate C without it |
+| **H-13** | **Docker not running** — required by `supabase start` | **yes** — the Layer 2 lane **and all of Phase 1A past authoring** (`1A-002` Stage A/B, `1A-003`). Phase 1 cannot reach Gate C without it |
 | **H-14** | Separate approval for `1A-004` (live ledger cutover) | **no** — `1A-004` is deliberately not executed in Phase 1 |
 | H-02..H-12 | passwords · env relocation · product decisions · device · store accounts · RevenueCat · OAuth | later phases |
 
@@ -220,6 +220,12 @@ only remaining Phase 1 blocker.**
 ---
 
 ## 10. Files changed
+
+> **This table covers `e89e265` only.** `bc84d4a` additionally changed
+> `docs/plan/11_GATE_B_REMEDIATION_ROUND_2.md` and
+> `docs/plan/12_GATE_B_TARGETED_REMEDIATION.md` (supersession banners and
+> corrections). Round-8 changes are recorded in `14_GATE_B_ROUND_6_REMEDIATION.md`
+> and the round-8 commit message. Noted at round 8 (M1).
 
 | File | Change |
 |---|---|

@@ -41,7 +41,7 @@ Regenerated from every task's `scope` and `agent` field in `plan/01`:
 
 | Check | Result |
 |---|---|
-| Distinct files across all Phase 1 tasks | **70** |
+| Distinct files across all Phase 1 tasks | **73** |
 | **Files with two different agents as edit owner** | **0** |
 | **`never touches` violations** | **0** |
 | Test files with an owner other than QA & Test | **0** |
@@ -156,7 +156,7 @@ Open-Source Research ─ 1E-000              (no dependency)
 Skeptical Reviewer  ── continuous, read-only, on every diff
 ```
 
-**Five agents are productive from day one.** H-01 is answered, so the Schema lane is unblocked too; the remaining human blocker is **H-13** (Docker), which gates only the Layer 2 test lane.
+**Five agents are productive from day one**, and H-01 is answered. But **H-13 (Docker) gates more than Layer 2**: `1A-002`'s validation and all of `1A-003` need a running local stack, so the Schema lane can author but not complete. Corrected at round 8 (M4).
 
 ---
 

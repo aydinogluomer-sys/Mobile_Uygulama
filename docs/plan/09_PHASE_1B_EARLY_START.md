@@ -93,12 +93,13 @@ count:
 
 1. **The 14 are the widest-blast-radius defects in the product.** They span habits, tasks, focus, journal, life areas and deep work — six subsystems — and every downstream metric is computed from them. Fixing metrics *after* building on wrong ones multiplies the correction cost.
 2. **They need no device, no database and no user decision.** They are pure functions with an injectable clock. The only prerequisite is `1E-000` (licence clearance) plus `1B-001`.
-3. **1A is gated on a person, not on work.** If H-01 stalls, the Supabase & Security lane idles. Starting 1B costs nothing and blocks nothing — the two lanes share no file (`04 §5`).
+3. **1B shares no file with the 1A lane** (`04 §5`), so it costs nothing and blocks nothing. H-01 is now answered, so 1A is unblocked too — but **H-13 (Docker) gates 1A's *completion***: `1A-002` Stage A/B validation and all of `1A-003` need a running local stack. 1B needs neither.
 
 **What the corrected number changes:** it no longer supports the claim that Phase 1
 is "mostly closable" without the schema decision. **18 of 32 failing criteria —
-the majority — do require it.** H-01 is on the critical path and should be
-decided promptly rather than treated as deferrable.
+the majority — do require it.** That decision is **now made** (H-01 closed:
+Option A, post-revoke), so those 18 are unblocked in principle — but they are
+largely Layer 2, so **H-13 (Docker) is now the binding constraint**, not H-01.
 
 ---
 
@@ -137,4 +138,6 @@ survive.
 | 7 | `1B-008` | `app/**` — different owner, can run in parallel from step 2 |
 
 `1A-001` (three-way diff) runs alongside from step 1: it is read-only analysis
-and needs no decision. Only `1A-002` waits on H-01.
+and needs no local stack. `1A-002` can be **authored** immediately (H-01 is
+answered) but cannot be **completed** without H-13, because its Stage A and
+Stage B validation both require a running local database.
