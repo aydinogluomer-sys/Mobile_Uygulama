@@ -49,8 +49,9 @@ while 1B is 14 failing tests that can be written today.
 | Task | Depends on | Blocks | Can start |
 |---|---|---|---|
 | **1A-001** three-way schema diff | Gate B PASS | everything DB-side | immediately |
-| **1A-002** reconciliation migration | 1A-001 + user decision | 1E-L2, 1C, 1D | after decision |
-| **1A-003** `supabase db reset` verification | 1A-002 | 1E-L2 | — |
+| **1A-002A** baseline authoring (static validation) | 1A-001 | 1A-002B | **immediately** — H-01 answered, no stack needed |
+| **1A-002B** baseline-only posture proof | 1A-002A, **H-13** | 1A-003, 1C, 1D, SEC-1D | after 1A-002A **and Docker** |
+| **1A-003** `supabase db reset` verification | 1A-002B, **H-13** | 1E-L2 | — |
 | **1B-001** `lib/date.ts` | Gate B PASS | 1B-002..004 | **immediately, parallel to 1A** |
 | **1B-002** purge UTC/local mixing (5 store/lib sites) | 1B-001 | 1E-L1a date tests | — |
 | **1B-003** `isDueOn` + `frequency_config.count` | Gate B PASS | 1B-004 | immediately |

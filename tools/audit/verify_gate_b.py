@@ -70,8 +70,31 @@ TRACKED_PREFIX = "1A-002"
 # valid Supabase environment: no auth schema, no anon/authenticated/service_role
 # roles, no platform extensions. has_function_privilege('anon', ...) would raise
 # "role does not exist", so the defining assertion could not even run.
-PLAIN_DB_MARKERS = ["createdb", "dropdb"]
+# Round 9 (F4): a literal blacklist is not enough. Plain-PostgreSQL bootstrap is
+# matched broadly, and the real requirement is expressed as a positive contract.
+PLAIN_DB_PATTERNS = [
+    r"\bcreatedb\b", r"\bdropdb\b",
+    r"\bCREATE\s+DATABASE\b", r"\bDROP\s+DATABASE\b",
+]
+# Behavioural contract a baseline-only validation must satisfy.
+BOOTSTRAP_CONTRACT = [
+    ("starts or asserts a running stack", [r"supabase start", r"docker info"]),
+    ("scratch migration directory",       [r"SCRATCH", r"mktemp -d"]),
+    ("Stage A asserts exactly ONE migration", [r"migrations\"? \| wc -l\)\"? -eq 1",
+                                               r"wc -l\)\"? -eq 1"]),
+    ("Stage B asserts all THREE migrations",   [r"wc -l\)\"? -eq 3"]),
+    ("Supabase roles assertion",          [r"pg_roles"]),
+    ("auth schema assertion",             [r"schema_name='auth'", r"information_schema.schemata"]),
+    ("Emergency migrations absent",       [r"NOT copied", r"not copied", r"deliberately"]),
+    ("local-only / no remote",            [r"127\.0\.0\.1", r"zdqiujpeewtyhtcqhdcj"]),
+]
+# Gate tokens a depends_on may legitimately name.
+GATE_TOKENS = ["Gate B PASS", "Gate C", "separate explicit approval", "separate approval"]
+# Repository artefact extensions worth resolving to a producing task.
+ARTEFACT_RE = r"(?:supabase|frontend|backend|docs|tools)/[\w./\-]+\.(?:sql|sh|py|ts|tsx|js|toml|json|md)"
 SUPABASE_BOOTSTRAP_MARKERS = ["supabase db reset", "supabase start"]
+# DONE tasks that exist only as an index row.
+INDEX_ONLY_TASKS = ["1D-010"]
 
 # Criteria whose DELETION from 1A-002 is a regression (round-8 item 1E).
 # Each is (label, [alternative marker phrases]) — matched case-insensitively.
@@ -410,12 +433,23 @@ def check_migration_ordering(repo, tasks, report):
 def check_bash_executability(tasks, report):
     """1D: does the validation block actually run, or pass vacuously?"""
     print("\n[7] 1A-002 VALIDATION BLOCK EXECUTABILITY")
-    body = tracked_body(tasks)
-    fences = re.findall(r"```bash\n(.*?)```", body, re.S)
-    if not fences:
-        report.fail("%s has no ```bash validation block" % sorted(tracked_blocks(tasks)))
+    blocks = tracked_blocks(tasks)
+    numbered = []
+    for tid in sorted(blocks):
+        for n, fence in enumerate(re.findall(r"```bash\n(.*?)```", blocks[tid]["body"], re.S), 1):
+            numbered.append(("%s fence %d" % (tid, n), fence))
+    if not numbered:
+        report.fail("%s has no ```bash validation block" % sorted(blocks))
         return
-    script = "\n".join(fences)
+    # Round 9 (F5): each fence is checked INDEPENDENTLY. A variable assigned in
+    # one fence must not satisfy a use in another, and document order must not
+    # change the result.
+    for label, script in numbered:
+        _check_one_fence(label, script, report)
+    return
+
+
+def _check_one_fence(label, script, report):
 
     # variables used inside the fence must be ASSIGNED inside the fence
     used = set(re.findall(r"\$\{?([A-Z_][A-Z0-9_]*)\}?", script))
@@ -424,21 +458,24 @@ def check_bash_executability(tasks, report):
     assigned |= set(re.findall(r"^\s*([A-Z_][A-Z0-9_]*)=\(", script, re.M))
     undefined = sorted(used - assigned)
     if undefined:
-        report.fail("variables used but never assigned INSIDE the bash fence: %s "
-                    "-> they expand to empty and the test passes vacuously" % undefined)
+        report.fail("%s: variables used but never assigned in THIS fence: %s "
+                    "-> they expand to empty and the test passes vacuously" % (label, undefined))
     else:
-        report.ok("every variable used in the fence is assigned inside it")
+        report.ok("%s: every variable used is assigned in this fence" % label)
 
     # assignment must precede first use
     for var in sorted(assigned):
         first_assign = re.search(r"^\s*%s=" % var, script, re.M)
         first_use = re.search(r"\$\{?%s\b" % var, script)
         if first_assign and first_use and first_use.start() < first_assign.start():
-            report.fail("%s is used before it is assigned" % var)
+            report.fail("%s: %s is used before it is assigned" % (label, var))
 
     # ON_ERROR_STOP must reach a real psql invocation
-    if "ON_ERROR_STOP=1" not in script:
-        report.fail("ON_ERROR_STOP=1 absent — psql exits 0 on statement errors")
+    uses_psql = bool(re.search(r"\bpsql\b", script))
+    if not uses_psql:
+        report.ok("%s: static fence — no database access, psql guarantees N/A" % label)
+    elif "ON_ERROR_STOP=1" not in script:
+        report.fail("%s: ON_ERROR_STOP=1 absent — psql exits 0 on statement errors" % label)
     else:
         psql_assign = re.search(r"^\s*PSQL=.*ON_ERROR_STOP=1", script, re.M)
         if psql_assign and re.search(r"\$\{?PSQL", script):
@@ -449,15 +486,21 @@ def check_bash_executability(tasks, report):
             report.fail("ON_ERROR_STOP=1 present but not wired to any psql invocation")
 
     # the second-application test must guard against a setup-error false positive
-    if re.search(r"test\s+-f\s+\"?\$\{?BASE", script):
-        report.ok("baseline file existence is asserted before the second-application test")
+    # A "second application" test exists only where the baseline is re-applied
+    # against an already-populated database.
+    reapplies = bool(re.search(r"set \+e", script) and re.search(r"status=\$\?", script))
+    if not reapplies:
+        report.ok("%s: no second-application test in this fence — N/A" % label)
     else:
-        report.fail("no `test -f $BASE` guard — a missing file would make the "
-                    "non-zero expectation pass for the wrong reason")
-    if re.search(r"status=\$\?|\$\?", script) and re.search(r"-ne\s+0|!= *0", script):
-        report.ok("second-application exit status is captured and asserted non-zero")
-    else:
-        report.fail("second-application test does not capture and assert an exit status")
+        if re.search(r"test\s+-f\s+\"?\$\{?BASE", script):
+            report.ok("%s: baseline existence asserted before the re-apply test" % label)
+        else:
+            report.fail("%s: no `test -f $BASE` guard — a missing file would make "
+                        "the non-zero expectation pass for the wrong reason" % label)
+        if re.search(r"-ne\s+0|!= *0", script):
+            report.ok("%s: second-application exit status asserted non-zero" % label)
+        else:
+            report.fail("%s: second-application test does not assert an exit status" % label)
 
 
 def check_two_stage_validation(tasks, report):
@@ -533,7 +576,7 @@ def check_supabase_bootstrap(tasks, report):
     offenders = 0
     for task_id, task in sorted(tasks.items()):
         for fence in re.findall(r"```bash\n(.*?)```", task["body"], re.S):
-            plain = [m for m in PLAIN_DB_MARKERS if re.search(r"^\s*%s\b" % m, fence, re.M)]
+            plain = [pat for pat in PLAIN_DB_PATTERNS if re.search(pat, fence, re.I)]
             if plain:
                 report.fail("%s validation builds its environment with %s — a plain "
                             "PostgreSQL database has no auth schema and no "
@@ -546,6 +589,20 @@ def check_supabase_bootstrap(tasks, report):
                     report.fail("%s introspects privileges but never establishes a "
                                 "Supabase-bootstrapped stack" % task_id)
                     offenders += 1
+
+    # POSITIVE behavioural contract. A blacklist alone cannot express what a
+    # baseline-only proof must DO; this asserts each required behaviour is
+    # present in the task that performs the proof.
+    for task_id, task in sorted(tasks.items()):
+        fences = "\n".join(re.findall(r"```bash\n(.*?)```", task["body"], re.S))
+        if "baseline_privileges" not in fences:
+            continue
+        for label, pats in BOOTSTRAP_CONTRACT:
+            if any(re.search(pat, fences, re.I) for pat in pats):
+                report.ok("%s: %s" % (task_id, label))
+            else:
+                report.fail("%s: bootstrap contract missing '%s'" % (task_id, label))
+                offenders += 1
     if not offenders:
         report.ok("no validation block uses a plain createdb environment")
     return offenders
@@ -596,6 +653,128 @@ def check_artefact_cycles(tasks, report):
     return cycles
 
 
+def check_dependency_tokens(text, tasks, report):
+    """Round 9 (F2): every depends_on token must resolve to a real task id, a
+    known human dependency, or a defined gate. An unknown token must FAIL.
+
+    This is the check whose absence hid the 1A-002 -> 1A-002A/B split: an
+    unknown token was dropped from BOTH the block set and the index set, so the
+    equality check compared two sets that agreed *because the same edge had
+    vanished from each*."""
+    print("\n[3] DEPENDENCY TOKEN RESOLUTION")
+    known = set(tasks) | set(INDEX_ONLY_TASKS) | set(HUMAN_TOKENS) | set(GATE_TOKENS)
+    # candidate tokens: task-id shaped strings appearing in a depends_on clause
+    shape = re.compile(r"\b(?:SEC-|OPS-|DEMO-)?\d?[A-Z]?-?[0-9A-Za-z]*\d[0-9A-Za-z]*\b")
+    unknown = 0
+
+    def scan(where, raw, ident):
+        nonlocal unknown
+        cleaned = raw
+        for k in sorted(known, key=len, reverse=True):
+            cleaned = cleaned.replace(k, " ")
+        for tok in re.findall(r"\b(?:SEC-1D|OPS-[0-9A-Z]+|DEMO)-[0-9A-Za-z]+|\b1[A-E]-[0-9]{3}[A-Z]?\b|\b1E-L\d[ab]?\b|\bH-\d{2}\b",
+                              cleaned):
+            report.fail("UNKNOWN DEPENDENCY '%s' in %s of %s — resolves to no task, "
+                        "human dependency or gate" % (tok, where, ident))
+            unknown += 1
+
+    for tid, task in sorted(tasks.items()):
+        dep = re.search(r"depends_on:\s*(.+?)\s*·\s*\*\*(?:XS|S|M|L|XL)\*\*", task["header"])
+        if dep:
+            scan("block depends_on", dep.group(1), tid)
+
+    index_start = text.index("## Task index")
+    for line in text[index_start:].split("\n"):
+        if not line.startswith("| "):
+            continue
+        cells = [c.strip() for c in line.split("|")[1:-1]]
+        if len(cells) < 6:
+            continue
+        key = cells[0].replace("~~", "").replace("`", "").replace("**", "")
+        if key in tasks or key in INDEX_ONLY_TASKS:
+            scan("index row", cells[5], key)
+
+    if not unknown:
+        report.ok("every depends_on token resolves to a task, human dependency or gate")
+    return unknown
+
+
+def check_artefact_resolution(repo, tasks, report):
+    """Round 9 (F4): resolve EVERY repository artefact referenced in a validation
+    fence, not just supabase/tests/*.sql. Missing producer, wrong order, or two
+    producers are all failures. This is the check that would have caught
+    supabase/config.toml being required before 1D-009 creates it."""
+    print("\n[12] ARTEFACT RESOLUTION (all paths, not just supabase/tests)")
+    producers = collections.defaultdict(list)   # file -> tasks that CREATE it
+    editors = collections.defaultdict(list)     # file -> tasks that touch it
+    for tid, task in tasks.items():
+        scope_line = re.search(r"\*\*scope\*\*[^:]*:\s*(.+)", task["body"])
+        raw = scope_line.group(1) if scope_line else ""
+        for f in task["files"]:
+            key = f.lstrip("./")
+            editors[key].append(tid)
+            # marked "(new)" in the scope line -> this task creates the file
+            if re.search(re.escape(f) + r"`?\s*\((?:new|moved)\)", raw):
+                producers[key].append(tid)
+
+    def reaches(a, b, seen=None):
+        seen = seen or set()
+        if a == b:
+            return True
+        if a in seen:
+            return False
+        seen.add(a)
+        return any(reaches(d, b, seen) for d in tasks.get(a, {}).get("deps", ()))
+
+    problems = 0
+    for f, owners in sorted(producers.items()):
+        if len(set(owners)) > 1:
+            report.fail("two tasks both CREATE %s: %s" % (f, sorted(set(owners))))
+            problems += 1
+    # several tasks may EDIT one file; that is governed by serialisation
+    # (check [3]) and single-agent ownership (check [4]), not by this check.
+
+    for tid, task in sorted(tasks.items()):
+        referenced = set()
+        for fence in re.findall(r"```bash\n(.*?)```", task["body"], re.S):
+            # Paths under a scratch/temp variable are NOT repository artefacts.
+            # Strip them first, or "$SCRATCH/supabase/config.toml" reads as a
+            # demand for the repository's own supabase/config.toml.
+            # strip shell comments: a comment cannot require a file
+            scanned = re.sub(r"(?m)^\s*#.*$", " ", fence)
+            scanned = re.sub(r"\$\{?(?:SCRATCH|TMPDIR|TMP)\}?/[\w./\-]+", " ", scanned)
+            referenced |= set(re.findall(ARTEFACT_RE, scanned))
+        own = {f.lstrip("./") for f in task["files"]}
+        for art in sorted(referenced):
+            art = art.lstrip("./")
+            if art in own:
+                continue
+            on_disk = os.path.exists(os.path.join(repo, art))
+            producer = (producers.get(art) or [None])[0]
+            if on_disk and producer is None:
+                report.ok("%s uses %s (exists on disk, no producer needed)" % (tid, art))
+                continue
+            if producer is None:
+                report.fail("%s requires %s — file does NOT exist and NO task produces it"
+                            % (tid, art))
+                problems += 1
+                continue
+            if reaches(producer, tid):
+                report.fail("ACCEPTANCE CYCLE: %s requires %s, produced by %s, which "
+                            "transitively depends on %s" % (tid, art, producer, tid))
+                problems += 1
+            elif not reaches(tid, producer):
+                report.fail("ORDER: %s requires %s, produced by %s, but %s does not "
+                            "depend on %s — nothing guarantees the file exists yet"
+                            % (tid, art, producer, tid, producer))
+                problems += 1
+            else:
+                report.ok("%s requires %s (produced by %s, correctly ordered)" % (tid, art, producer))
+    if not problems:
+        report.ok("0 artefact resolution problems")
+    return problems
+
+
 def check_stale(repo, report):
     print("\n[12] ACTIVE STALE ASSERTIONS (every .md under docs/, no whitelist)")
     stale = {
@@ -603,6 +782,9 @@ def check_stale(repo, report):
         "18": ["blocked", "device"], "20": ["l1", "layer", "failing"],
         "42": ["task", "row", "backlog"], "41": ["open", "specified"],
         "36": ["task", "row"], "31": ["task"], "69": ["file", "distinct"],
+        # round-9: cover the transitions the canonical figures actually made
+        "48": ["open", "specified", "task"], "49": ["row", "backlog"],
+        "73": ["file", "distinct"],
         "13 distinct": ["table"], "10 sites": ["site"],
     }
     # Narrow markers only. "->", "closed" and "answered" were removed at round 8:
@@ -714,6 +896,7 @@ def main() -> int:
     report = Report()
     check_fields(tasks, report)
     mismatches = check_index(text, tasks, id_re, report)
+    unknown_tokens = check_dependency_tokens(text, tasks, report)
     owners, unserialised = check_serialisation(tasks, report)
     conflicts, violations = check_ownership(tasks, owners, report)
     sizes, file_count = check_sizes_and_cycles(tasks, report)
@@ -723,6 +906,7 @@ def main() -> int:
     check_deletion_regression(repo, tasks, args.baseline_rev, report)
     check_supabase_bootstrap(tasks, report)
     artefact_cycles = check_artefact_cycles(tasks, report)
+    artefact_problems = check_artefact_resolution(repo, tasks, report)
     candidates = check_stale(repo, report)
     h01 = check_h01(repo, report)
 
@@ -736,7 +920,9 @@ def main() -> int:
     print("  ownership conflicts ......... %d" % conflicts)
     print("  never-touches violations .... %d" % violations)
     print("  XL tasks .................... %d" % sizes["XL"])
+    print("  unknown dependency tokens ... %d" % unknown_tokens)
     print("  acceptance-artefact cycles .. %d" % artefact_cycles)
+    print("  artefact resolution issues .. %d" % artefact_problems)
     print("  H-01 open-decision sites .... %d" % h01)
     print("  stale candidates ............ %d" % candidates)
     print("  FAILURES .................... %s" % (len(report.failures) or "NONE"))

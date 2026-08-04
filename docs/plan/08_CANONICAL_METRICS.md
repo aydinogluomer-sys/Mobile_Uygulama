@@ -83,8 +83,8 @@ miscounted its own index rows (37, not 36) *and* it left `SEC-1D-005a–f` as on
 collapsed row standing for six tasks. A duplicate `OPS-0B-001` heading and a
 `SEC-1D-005e` block missing its `goal` were found in the same recount. All four
 defects are fixed in `plan/01`; the figure verified at that time was **42 rows · 1 DONE · 41 open**.
-**That value is itself now superseded — see §1: the current figure is 49 rows ·
-1 DONE · 48 open · 48 fully specified.**
+**That value is itself now superseded — see §1: the current figure is 50 rows ·
+1 DONE · 49 open · 49 fully specified**, after the round-8 `1A-002` split.
 
 This is recorded rather than quietly corrected because it is the second
 counting error in the same document, found by the same method — recounting from
