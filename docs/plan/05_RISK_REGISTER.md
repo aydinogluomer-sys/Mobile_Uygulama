@@ -13,7 +13,7 @@ force re-evaluation.
 |---|---|---|---|---|---|---|---|
 | **R-01** | **23 failures are predicted, not observed.** No device run happened. A fix could be written against a misdiagnosis | M | H | **HIGH** | QA & Test | `1E-L1a`/`1E-L1b` convert each into a failing-then-passing test **before** any fix lands; a test that does not fail first stops the task | any predicted failure that does **not** reproduce as a test |
 | **R-02** | Schema reconciliation picks the wrong strategy and history is fabricated | L | H | MED | Supabase & Security | Option A recommended precisely to avoid inventing history; decision is the user's | user selects Option B |
-| **R-03** | `db reset` still fails after 1A-002 — undiscovered drift | M | H | **HIGH** | Supabase & Security | 1A-001 three-way diff **before** writing the migration; 1A-003 verifies | any table/RPC the diff missed |
+| **R-03** | `db reset` still fails after 1A-002A — undiscovered drift | M | H | **HIGH** | Supabase & Security | 1A-001 three-way diff **before** writing the migration; 1A-002B proves the baseline alone, 1A-003 verifies the canonical chain | any table/RPC the diff missed |
 | **R-04** | Reanimated 3→4 under `newArchEnabled` breaks animations app-wide | M | H | **HIGH** | Repository Audit | one migration per commit; device smoke after each | any animation regression |
 | **R-05** | SDK 55 forces New Arch before 2B completes | M | M | MED | Repository Audit | 2B scheduled before any SDK bump | Expo announces SDK 55 GA |
 | **R-06** | A future migration silently reopens a closed Emergency Gate 0 exploit | M | H | **HIGH** | QA & Test | AC-S01..S07 are permanent regression tests | any migration touching grants |

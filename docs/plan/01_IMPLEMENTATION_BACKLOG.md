@@ -369,7 +369,13 @@ test "$status" -ne 0
 ---
 
 ## 1A-003 · Verify local reset and register the ledger
-`P1` · **MUST** · Supabase & Security · depends_on: 1A-002B, **H-13 (Docker)** · **S**
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002B, **1D-009**, **H-13 (Docker)** · **S**
+
+> **`1D-009` added at round 11 (BLOCKER-A).** This task runs `supabase db reset`
+> in the **canonical repository directory**, which requires `supabase/config.toml`.
+> `1D-009` is that file's sole producer. The gate previously existed only in a
+> blockquote further down — the same "rule lives in prose, not in the field that
+> executes it" failure the transfer from `1A-002B` was meant to end.
 
 > **H-13 added at round 8 (M4).** This task's entire acceptance is a `supabase db reset`, which requires a running local stack.
 
@@ -393,7 +399,8 @@ test "$status" -ne 0
 - Local evidence recorded verbatim in `docs/audit/11_SCHEMA_RESET_VERIFICATION.md`
 
 > This task, not `1A-002B`, owns the canonical reset. It requires
-> `supabase/config.toml`, so it is additionally gated on `1D-009`.
+> `supabase/config.toml`, so it is additionally gated on `1D-009` — **encoded in
+> `depends_on`, not only stated here.**
 
 **validation** Reset transcript attached; hash comparison shown; no live command run.
 
@@ -915,7 +922,12 @@ double-counted.
 **rollback** Re-`GRANT` the captured prior set.
 
 ## SEC-1D-005a · Profiles grant and policy design
-`P1` · **MUST** · Supabase & Security · depends_on: 1A-002A · **S**
+`P1` · **MUST** · Supabase & Security · depends_on: 1A-002A, **H-11** · **S**
+
+> **H-11 encoded at round 11.** Its acceptance criteria require `last_ai_context`
+> ownership to be confirmed — that is H-11, a user decision. It was named in the
+> criteria but carried in **no** `depends_on`, so the dependency graph did not
+> show this task waiting on a person.
 
 **scope** (1 file): `docs/audit/14_PROFILES_COLUMN_DECISIONS.md`
 **goal** Decide, per column, whether the client may write it.
@@ -1311,7 +1323,7 @@ Agent, size and dependency below are read from each block's header line.
 | 1A-001 | 1A | Supabase & Security | M | 1 | Gate B PASS |
 | 1A-002A | 1A | Supabase & Security | M | 5 | 1A-001 |
 | 1A-002B | 1A | Supabase & Security | M | 2 | 1A-002A, **H-13** |
-| 1A-003 | 1A | Supabase & Security | S | 1 | 1A-002B, **H-13** |
+| 1A-003 | 1A | Supabase & Security | S | 1 | 1A-002B, **1D-009**, **H-13** |
 | 1A-004 | 1A | Supabase & Security | S | 1 | 1A-003, **H-14 approval** — *not executed in Phase 1* |
 | 1B-001 | 1B | Habit Domain | S | 1 | Gate B PASS |
 | 1B-002 | 1B | Habit Domain | M | 5 | 1B-001 |
@@ -1341,7 +1353,7 @@ Agent, size and dependency below are read from each block's header line.
 | SEC-1D-002 | 1D | Supabase & Security | S | 1 | 1A-002B |
 | SEC-1D-003 | 1D | Supabase & Security | M | 1 | 1A-002B |
 | SEC-1D-004 | 1D | Supabase & Security | XS | 1 | 1A-002B |
-| SEC-1D-005a | 1D | Supabase & Security | S | 1 | 1A-002A |
+| SEC-1D-005a | 1D | Supabase & Security | S | 1 | 1A-002A, **H-11** |
 | SEC-1D-005b | 1D | Supabase & Security | S | 1 | SEC-1D-005a |
 | SEC-1D-005c | 1D | Supabase & Security | S | 1 | SEC-1D-005a |
 | SEC-1D-005d | 1D | Habit Domain | XS | 1 | SEC-1D-005b |

@@ -40,6 +40,30 @@ Exit code `0` if every invariant holds, `1` otherwise.
 | 15 | **Self-test** — every `check_*` defined must be reachable from `main()`. A defined-but-uncalled check has happened twice |
 | 16 | **Fence shell syntax** — `bash -n` on every validation fence |
 
+## What this verifier does and does NOT guarantee
+
+**It guarantees** — structural properties only:
+
+- task and reference **existence** across `plan/01`–`plan/05`
+- **block ↔ index equality** of `depends_on`, human tokens included
+- **graph reachability**: no dangling token, no cycle, no unresolved human dependency
+- **ownership uniqueness** and `never touches` compliance
+- **file scope and count consistency**
+- a fixed set of **known structural invariants** (migration ordering, field completeness, artefact producers, fence syntax)
+
+**It does NOT guarantee** — and no output of it should be read as evidence of:
+
+- **shell procedure semantics** — that a fence does what its comments say
+- **SQL correctness**
+- **Supabase runtime behaviour**
+- **privilege correctness** on any real database
+- **schema equivalence** with live
+- **business-logic correctness**
+
+Those are established by **human review** (Gate B) and **execution evidence**
+(Gate C), never by this tool. It is a structural checker; it is not a semantic
+verifier, and it does not prove execution correctness.
+
 ## Constraints, deliberate
 
 - **Read-only.** Opens files for reading. Runs `git show` (read-only) for check 9 and nothing else. Never writes; never mutates git.

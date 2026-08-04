@@ -4,10 +4,30 @@
 AUDIT TOOLING, not application code. Nothing in `frontend/` imports it, it ships
 in no bundle, and it is not part of the Expo build.
 
-Governing rule, established at Gate B round 8:
+SCOPE — read this before quoting any output as evidence.
+
+GUARANTEES (structural only):
+  * task and reference existence across plan/01-05
+  * block/index equality of depends_on, human tokens included
+  * graph reachability: no dangling token, no cycle, no unresolved human dependency
+  * ownership uniqueness and `never touches` compliance
+  * file scope and count consistency
+  * a fixed set of known structural invariants
+
+DOES NOT GUARANTEE:
+  * shell procedure semantics       * SQL correctness
+  * Supabase runtime behaviour      * privilege correctness
+  * schema equivalence              * business-logic correctness
+
+Those are established by HUMAN REVIEW (Gate B) and EXECUTION EVIDENCE (Gate C),
+never by this tool. It is a structural checker, not a semantic verifier, and no
+output of it proves execution correctness.
+
+Governing rule, established at Gate B round 8 and still binding for the
+structural checks it does make:
 
     Checking that a piece of text EXISTS is not verification.
-    The verifier must test the BEHAVIOUR and EXECUTABILITY that text claims.
+    A structural check must test the property it claims, not a keyword near it.
 
 Constraints:
   * READ-ONLY. Opens files for reading. Runs `git show` (read-only) for the
@@ -56,7 +76,7 @@ FORBIDDEN = {
 # Non-task dependency tokens that are still REAL dependencies and must take part
 # in the block-vs-index comparison (round-7 finding m4c: filtering these out hid
 # exactly the H-01 divergence that round-6 B2 was about).
-HUMAN_TOKENS = ["H-01", "H-13", "H-14", "H-03", "Gate B PASS"]
+HUMAN_TOKENS = ["H-01", "H-03", "H-11", "H-13", "H-14", "Gate B PASS"]
 
 # The single named exception to "all test files belong to QA & Test"
 # (docs/plan/04_AGENT_TASK_GRAPH.md section 1). Any other non-QA test file FAILS.
@@ -114,8 +134,14 @@ PLAN_GRAPHS = [
 TASK_SHAPE = re.compile(
     r"\b(?:SEC-1D-[0-9a-z]+|OPS-[0-9A-Z]+-[0-9]+|DEMO-[0-9]+[A-Z]?"
     r"|1[A-Z]-[0-9]{3}[A-Z]?|1E-L[0-9][ab]?|H-[0-9]{2})\b")
-# Ranged forms that legitimately name a span rather than one task.
-RANGE_OK = re.compile(r"\.\.[0-9a-z]|\.\.\.|–|—")
+# A ranged form names a span rather than one task: "SEC-1D-001..003".
+# Round 11 (MAJOR-B): this used to match a bare em/en dash ANYWHERE on the line.
+# The em-dash is this project's standard empty-cell marker, so the guard silently
+# disabled the check on 33 of 69 rows in plan/02 and 10 of 53 in plan/05 — and a
+# live dangling token was already hiding behind it. The range test is now
+# anchored to the token itself.
+def _is_ranged(token, line):
+    return bool(re.search(re.escape(token) + r"\s*(?:\.\.|\u2026)", line))
 
 # Actions a task may declare OUT OF SCOPE. If the same task also REQUIRES one,
 # that is a task-internal contradiction (round-10 BLOCKER 2).
@@ -841,15 +867,20 @@ def check_graph_referential_integrity(repo, tasks, report):
                 continue
             if stripped.startswith(">"):
                 continue                       # blockquote = commentary
-            if RANGE_OK.search(line):
-                continue                       # "SEC-1D-001..003" names a span
+            # (range handling is per-token, below)
             # a row that annotates its own supersession is a record, not an edge
-            if re.search(r"superseded|previously|round-\d|~~|history|was\b|split into",
+            # Round 11: this list previously included `history` and `was`, which are
+            # ordinary English appearing in live rows (R-02 says "history is
+            # fabricated"), so a whole active row was skipped for containing one.
+            # Only unambiguous supersession markers remain.
+            if re.search(r"superseded|~~|split into|round-\d+ (?:figure|record)",
                          line, re.I):
                 continue
             for tok in set(TASK_SHAPE.findall(line)):
                 if tok in known:
                     continue
+                if _is_ranged(tok, line):
+                    continue                   # "SEC-1D-001..003" names a span
                 # A RENAME RECORD names the retired id on the left of an arrow and
                 # its replacement(s) on the right: "DEMO-001 -> DEMO-001A + DEMO-001B".
                 # That is documentation of the split, not a live edge. Recognised
@@ -897,16 +928,32 @@ def check_self_test(report):
     A defined-but-uncalled check has happened twice in this engagement."""
     print("\n[15] VERIFIER SELF-TEST (defined-but-unreachable checks)")
     src = open(os.path.abspath(__file__), encoding="utf-8").read()
-    defined = set(re.findall(r"^def (check_[a-z_]+)\(", src, re.M))
+    # Round 11 (MAJOR-C): the old pattern was `check_[a-z_]+`, which cannot match
+    # a name containing a digit. `check_h01` was invisible, so the verifier
+    # reported 18/18 when there were 19 — and deleting its call stayed green.
+    defined = set(re.findall(r"^def (check_[A-Za-z0-9_]+)\(", src, re.M))
     main_src = src[src.index("def main("):]
-    called = {n for n in defined if re.search(r"\b%s\(" % n, main_src)}
+    called = {n for n in defined if re.search(r"\b%s\(" % re.escape(n), main_src)}
     unreachable = sorted(defined - called - {"check_self_test"})
     print("   defined: %d   reachable from main(): %d" % (len(defined), len(called)))
     if unreachable:
         report.fail("defined but NEVER CALLED: %s" % unreachable)
     else:
         report.ok("all %d check functions are reachable from main()" % len(defined))
-    return len(unreachable)
+
+    # A check whose failures go into a throwaway Report() is silently discarded.
+    # Every call must pass the shared `report` name.
+    bad_report = []
+    for fn in sorted(defined - {"check_self_test"}):
+        for call in re.findall(re.escape(fn) + r"\(([^)]*)\)", main_src):
+            if "report" not in call:
+                bad_report.append(fn)
+    if bad_report:
+        report.fail("called with a non-shared Report (failures would be discarded): %s"
+                    % sorted(set(bad_report)))
+    else:
+        report.ok("every check receives the shared report object")
+    return len(unreachable) + len(bad_report)
 
 
 def check_fence_syntax(repo, tasks, report):
