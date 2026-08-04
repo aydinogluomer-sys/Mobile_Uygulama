@@ -129,11 +129,11 @@ This is the **only** assignment table in this document. No summary elsewhere res
 ## 6. Parallel execution map — Phase 1
 
 ```
-Supabase & Security ── 1A-001 → 1A-002 → 1A-003 ─┬→ 1C-001, 1C-004, 1C-005
+Supabase & Security ── 1A-001 → 1A-002A → 1A-002B → 1A-003 ─┬→ 1C-001, 1C-004, 1C-005
                                                   ├→ SEC-1D-001..005
                                                   └→ 1D-008
                        1D-000 ──→ 1D-001 → 1D-002 → 1D-003 → 1D-004
-                                   (all also need 1A-002; R-19 gate.
+                                   (all also need 1A-002B; R-19 gate.
                                     One file, one chain — no parallel edits)
                        1D-005 → 1D-006 → 1D-007   (serialised: shared files)
                        1D-009                      (no dependency)
@@ -159,7 +159,7 @@ Open-Source Research ─ 1E-000              (no dependency)
 Skeptical Reviewer  ── continuous, read-only, on every diff
 ```
 
-**Five agents are productive from day one**, and H-01 is answered. But **H-13 (Docker) gates more than Layer 2**: `1A-002`'s validation and all of `1A-003` need a running local stack, so the Schema lane can author but not complete. Corrected at round 8 (M4).
+**Five agents are productive from day one**, and H-01 is answered. But **H-13 (Docker) gates more than Layer 2**: `1A-002B` and all of `1A-003` need a running local stack, so the Schema lane can author (`1A-002A`) but not complete. Corrected at round 8 (M4), split-aware at round 10.
 
 ---
 

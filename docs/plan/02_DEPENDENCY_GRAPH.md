@@ -57,15 +57,15 @@ while 1B is 14 failing tests that can be written today.
 | **1B-003** `isDueOn` + `frequency_config.count` | Gate B PASS | 1B-004 | immediately |
 | **1B-004** metrics: `target_direction`, `miss`/`skip`, `isDueOn` wiring | 1B-003 | — | — |
 | **1B-005** habit-log error handling + upsert | Gate B PASS | — | immediately |
-| **1C-001** atomic willpower debit RPC | 1A-002 | 1C-002 | after 1A-002 |
+| **1C-001** atomic willpower debit RPC | 1A-002B | 1C-002 | after 1A-002B |
 | **1C-002** activation TOCTOU + refund guard | 1C-001, **1C-003** | — | — |
 | **1C-003** midnight rollover | 1B-001 | **1C-002** | after 1B-001 |
-| **1C-004** telafi → `habit_log` + XP | 1A-002 | — | after 1A-002 |
-| **1C-005** `recovery_plans` unique constraint | 1A-002 | — | after 1A-002 |
+| **1C-004** telafi → `habit_log` + XP | 1A-002B | — | after 1A-002B |
+| **1C-005** `recovery_plans` unique constraint | 1A-002B | — | after 1A-002B |
 | **1D-000** reconcile generate-routine with live v11 | Gate B PASS | **1D-001..004** | immediately |
-| **1D-001** rate limit | 1A-002, **1D-000** | 1D-002 | after 1A-002 **and 1D-000** (R-19) |
+| **1D-001** rate limit | 1A-002B, **1D-000** | 1D-002 | after 1A-002B **and 1D-000** (R-19) |
 | **1D-002** cooldown | 1D-001 | 1D-003 | — |
-| **1D-003** atomic credit debit | 1A-002, **1D-000**, **1D-002** | 1D-004 | — |
+| **1D-003** atomic credit debit | 1A-002B, **1D-000**, **1D-002** | 1D-004 | — |
 | **1D-004** fail-closed credits | 1D-003 | — | — |
 
 > All five edit `generate-routine/index.ts`. They form **one chain**, not two
@@ -74,7 +74,7 @@ while 1B is 14 failing tests that can be written today.
 | **1D-005** OAuth `state` verification | Gate B PASS | **1D-006** | immediately |
 | **1D-006** redirect-URI allowlist | **1D-005** | **1D-007** | after 1D-005 |
 | **1D-007** Notion callback auth | **1D-006** | — | after 1D-006 |
-| **1D-008** webhook idempotency | 1A-002 | — | after 1A-002 |
+| **1D-008** webhook idempotency | 1A-002B | — | after 1A-002B |
 | **1D-009** wrong-project deploy guard | Gate B PASS | — | immediately |
 | **1D-010** `__DEV__` paywall guard | — | — | **DONE** (`42b64a0`) |
 | **1E-000** licence clearance | Gate B PASS | 1E-L1, 1E-L2 | immediately |
@@ -83,9 +83,10 @@ while 1B is 14 failing tests that can be written today.
 | **1E-L1a / 1E-L1b** L1 tests | 1E-L1 | Gate C | after 1E-L1 |
 | **1E-L2** pgTAP harness | 1A-003, **1E-000**, **H-13 Docker** | 1E-L2a, 1E-L2b | after all three |
 | **1E-L2a / 1E-L2b** L2 tests | 1E-L2 | Gate C | after 1E-L2 |
-| **SEC-1D-001..003** XP function body hardening | 1A-002 | — | after 1A-002 |
-| **SEC-1D-004** money-table grants | 1A-002 | — | after 1A-002 |
-| **SEC-1D-005a..f** profiles column grants | 1A-002 | — | after 1A-002 |
+| **SEC-1D-001..003** XP function body hardening | 1A-002B | — | after 1A-002B |
+| **SEC-1D-004** money-table grants | 1A-002B | — | after 1A-002B |
+| **SEC-1D-005a** profiles column design | 1A-002A | SEC-1D-005b | after 1A-002A — document-only validation |
+| **SEC-1D-005b..f** profiles grants, client, tests | 1A-002B | — | after 1A-002B |
 | **1A-004** live ledger cutover | 1A-003, **H-14 approval** | — | **not executed in Phase 1** |
 | **1B-007** remaining store date sites | 1B-001 | — | after 1B-001 |
 | **1B-008** `app/**` date sites (Expo Arch) | 1B-001 | — | after 1B-001 |
@@ -98,7 +99,7 @@ while 1B is 14 failing tests that can be written today.
 
 ## 3. The decision that gates the critical path
 
-**H-01 is ANSWERED — Option A, post-revoke posture.** `1A-002` is unblocked.
+**H-01 is ANSWERED — Option A, post-revoke posture.** `1A-002A` is unblocked; `1A-002B` additionally needs **H-13**.
 The two options are retained below as the decision record, **not** as an open
 question:
 
@@ -156,7 +157,7 @@ so that path is open.
 | 2B Reanimated 3→4 | — | **but blocks all Phase 5 motion work** |
 | 2C retire `backend/supabase/` | 1D re-implementations landing first | `google-auth`/`notion-sync` exist only there |
 | 3 REF parity | 2A/2B | building on a stale router and dead navigation compounds the problem |
-| 4A monthly-review persistence | 1A-002 | needs a stable schema |
+| 4A monthly-review persistence | 1A-002A | needs a stable schema definition |
 | 5 design system | 2B (Reanimated) | motion built on the legacy line is thrown away |
 | 6B CI | 1E both layers | nothing to run otherwise |
 | 6E store submission | app icon fix, EAS config, licence screen | store blockers |
@@ -186,7 +187,7 @@ day 1   1B-001, 1B-003              ║  1A-001 (three-way diff)
 day 1   1E-000, OPS-1E-001          ║  1D-000 (reconcile generate-routine)
 day 1   DEMO-001A → DEMO-001B       ║  1D-005 (OAuth state)
 day 2   1B-002, 1B-004, 1B-005      ║  (H-01 already answered)
-day 2   1B-007, 1B-008              ║  1A-002 (baseline migration)
+day 2   1B-007, 1B-008              ║  1A-002A (author baseline) → 1A-002B (prove, H-13)
 day 2   1E-L1 (harness)             ║  1D-006 → 1D-007, 1D-009
 day 3   1E-L1a, 1E-L1b (L1 green)   ║  1A-003 (db reset verified)
 day 4   1C-003 → 1C-002             ║  1C-001,004,005; 1D-008; SEC-1D-*;

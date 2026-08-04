@@ -237,7 +237,6 @@ of a correct platform bootstrap.
 - The two Emergency migrations are added to the same scratch migration directory
 - `supabase db reset` again completes with **exit 0** — they apply **cleanly**, because the functions now exist and their privileges are already revoked (a no-op, not an error)
 - **Privilege posture is unchanged** from Stage A
-- A final `supabase db reset` in the **canonical** repository directory, with the full three-migration chain, exits 0
 - Second application of the baseline against the populated database returns **non-zero**
 
 *Environment — one local stack, one working directory*
@@ -294,6 +293,10 @@ test -f "$PRIV_TEST"
 # created by 1D-009 in Phase 1D, and depending on it would couple 1A to 1D.
 cd "$SCRATCH"
 supabase init
+# `supabase init` creates ONLY supabase/config.toml — verified by probe, CLI 2.109.1.
+# The migrations directory does not exist until we make it.
+mkdir -p "$SCRATCH/supabase/migrations"
+test -d "$SCRATCH/supabase/migrations"
 
 ! grep -q "zdqiujpeewtyhtcqhdcj" "$SCRATCH/supabase/config.toml"   # no Mas Technic ref, ever
 ! grep -qE '^[[:space:]]*(project_ref|db_url)[[:space:]]*=' "$SCRATCH/supabase/config.toml"
@@ -307,6 +310,8 @@ PSQL=(psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$DB_PORT" -U postgres -d postgres
 "${PSQL[@]}" -tAc "SELECT 1;" | grep -qx 1                     # port reachable
 
 # ============================== STAGE A — baseline alone ======================
+test -d "$SCRATCH/supabase/migrations"
+test -f "$BASE"
 cp "$BASE" "$SCRATCH/supabase/migrations/"
 # Emergency migrations are deliberately NOT copied. Stage A must not benefit from them.
 test "$(ls "$SCRATCH/supabase/migrations" | wc -l)" -eq 1
@@ -349,9 +354,14 @@ test "$status" -ne 0
 - The `trap` stops the stack and removes the scratch directory on any exit path, including a `set -e` abort.
 - Results recorded verbatim in `docs/audit/13_BASELINE_POSTURE_EVIDENCE.md`
 
-> **A canonical-repository reset is deliberately NOT part of this task.** It would
-> require `supabase/config.toml`, which `1D-009` produces in Phase 1D. `1A-003`
-> owns the canonical reset and is sequenced accordingly.
+> **A canonical-repository reset is deliberately NOT part of this task**, and no
+> acceptance criterion above requires one. It would need `supabase/config.toml`,
+> which `1D-009` produces in Phase 1D. **`1A-003` owns the canonical reset.**
+>
+> *Removed at round 10 (BLOCKER 2):* this task previously bound "a final
+> `supabase db reset` in the **canonical** repository directory … exits 0" as an
+> acceptance criterion while this note disclaimed it — a task-internal
+> contradiction, and it re-required the very file BLOCKER F1 was about.
 
 **risk** **MEDIUM.** A Stage A failure must be triaged correctly: assertion A1 exists so that a **missing Supabase bootstrap** is distinguished from a **baseline defect**. Without A1, an environment problem would be misread as a security failure, or the reverse.
 **rollback** Delete `baseline_privileges.test.sql` and the evidence document; remove the scratch directory. Nothing live or in-repo is otherwise changed.
@@ -372,6 +382,18 @@ test "$status" -ne 0
 - Schema-hash comparison recorded (e.g. sorted `information_schema` digest) for local vs live
 - The **live cutover procedure is documented but NOT executed**: `supabase migration repair --status applied 20260801000000` so live is marked as having the baseline without re-creating 48 existing tables
 - Document states the data-backup requirement that must precede any live cutover
+
+
+**acceptance_criteria — canonical full-chain reset** *(transferred from `1A-002B` at round 10)*
+
+- The **canonical** active migration root contains exactly the expected migration set: `20260801000000_baseline_schema.sql`, `20260802181931_…`, `20260802205850_…` — and **no** `001`/`002`, which `1A-002A` archived
+- `supabase db reset` in the **canonical repository directory** exits 0 with the full three-migration chain
+- **Schema hash matches** the live capture from `1A-001`
+- **The four P0 functions retain their privilege posture after the full chain** — `PUBLIC`=f, `anon`=f, `authenticated`=f, `service_role`=t, `postgres`=t, by introspection. **Never call the functions**
+- Local evidence recorded verbatim in `docs/audit/11_SCHEMA_RESET_VERIFICATION.md`
+
+> This task, not `1A-002B`, owns the canonical reset. It requires
+> `supabase/config.toml`, so it is additionally gated on `1D-009`.
 
 **validation** Reset transcript attached; hash comparison shown; no live command run.
 

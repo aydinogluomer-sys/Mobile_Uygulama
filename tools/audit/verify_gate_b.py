@@ -79,7 +79,12 @@ PLAIN_DB_PATTERNS = [
 # Behavioural contract a baseline-only validation must satisfy.
 BOOTSTRAP_CONTRACT = [
     ("starts or asserts a running stack", [r"supabase start", r"docker info"]),
-    ("scratch migration directory",       [r"SCRATCH", r"mktemp -d"]),
+    ("scratch directory created",         [r"mktemp -d"]),
+    # `supabase init` creates ONLY config.toml — verified by probe. The
+    # migrations directory must be made explicitly, before anything is copied
+    # into it, or the fence dies on the first cp (round-10 BLOCKER 1).
+    ("migrations directory created",      [r"mkdir -p +\"?\$\{?SCRATCH\}?/supabase/migrations"]),
+    ("migrations directory asserted",     [r"test -d +\"?\$\{?SCRATCH\}?/supabase/migrations"]),
     ("Stage A asserts exactly ONE migration", [r"migrations\"? \| wc -l\)\"? -eq 1",
                                                r"wc -l\)\"? -eq 1"]),
     ("Stage B asserts all THREE migrations",   [r"wc -l\)\"? -eq 3"]),
@@ -95,6 +100,36 @@ ARTEFACT_RE = r"(?:supabase|frontend|backend|docs|tools)/[\w./\-]+\.(?:sql|sh|py
 SUPABASE_BOOTSTRAP_MARKERS = ["supabase db reset", "supabase start"]
 # DONE tasks that exist only as an index row.
 INDEX_ONLY_TASKS = ["1D-010"]
+
+# Round 10: active plan graphs that must not reference a task that does not exist.
+PLAN_GRAPHS = [
+    "docs/plan/01_IMPLEMENTATION_BACKLOG.md",
+    "docs/plan/02_DEPENDENCY_GRAPH.md",
+    "docs/plan/03_RELEASE_ROADMAP.md",
+    "docs/plan/04_AGENT_TASK_GRAPH.md",
+    "docs/plan/05_RISK_REGISTER.md",
+]
+# Task-shaped tokens, matched by SHAPE so an unknown id cannot slip through by
+# not being in the alphabet (round-9 MAJOR 4).
+TASK_SHAPE = re.compile(
+    r"\b(?:SEC-1D-[0-9a-z]+|OPS-[0-9A-Z]+-[0-9]+|DEMO-[0-9]+[A-Z]?"
+    r"|1[A-Z]-[0-9]{3}[A-Z]?|1E-L[0-9][ab]?|H-[0-9]{2})\b")
+# Ranged forms that legitimately name a span rather than one task.
+RANGE_OK = re.compile(r"\.\.[0-9a-z]|\.\.\.|–|—")
+
+# Actions a task may declare OUT OF SCOPE. If the same task also REQUIRES one,
+# that is a task-internal contradiction (round-10 BLOCKER 2).
+# An action is identified by a SET of terms that must co-occur in the same line,
+# in any order. The earlier version required "canonical ... reset" in that order
+# and so missed "a final `supabase db reset` in the **canonical** repository".
+CONTRADICTION_ACTIONS = [
+    ("canonical repository reset", [r"\bcanonical\b", r"\breset\b"]),
+]
+# NOTE: "owns the canonical reset" is an OWNERSHIP claim, not an exclusion -
+# including it made 1A-003 (which legitimately owns and requires the reset)
+# read as self-contradictory.
+EXCLUSION_MARKERS = (r"(?:deliberately )?NOT part of this task|not part of this task"
+                     r"|out of scope")
 
 # Criteria whose DELETION from 1A-002 is a regression (round-8 item 1E).
 # Each is (label, [alternative marker phrases]) — matched case-insensitively.
@@ -775,6 +810,149 @@ def check_artefact_resolution(repo, tasks, report):
     return problems
 
 
+def check_graph_referential_integrity(repo, tasks, report):
+    """Round 10: every task-shaped token in ANY active plan graph must resolve.
+
+    The backlog being clean is not enough: round 9 fixed plan/01 and left
+    plan/02 and plan/04 pointing at a task the split had removed. Tokens are
+    matched by SHAPE, not against a known alphabet, so an unknown id cannot
+    slip through by simply not being recognised."""
+    print("\n[13] PLAN-GRAPH REFERENTIAL INTEGRITY")
+    known = set(tasks) | set(INDEX_ONLY_TASKS) | set(HUMAN_TOKENS) | set(GATE_TOKENS)
+    known |= {"H-01", "H-02", "H-03", "H-04", "H-05", "H-06", "H-07", "H-08",
+              "H-09", "H-10", "H-11", "H-12", "H-13", "H-14"}
+    # Documented non-tasks: 1B-006 is the cross-listing pointer (plan/01 names it
+    # as such); 1B-009 is deferred to Phase 2A and registered as D-17 in plan/05.
+    known |= {"1B-006", "1B-009"}
+    bad = 0
+    for rel in PLAN_GRAPHS:
+        fp = os.path.join(repo, rel)
+        if not os.path.isfile(fp):
+            continue
+        for lineno, line in enumerate(open(fp, encoding="utf-8", errors="replace"), 1):
+            stripped = line.lstrip()
+            # Only ACTIVE plan rows carry live edges: markdown table rows and
+            # task-header `depends_on:` lines. Prose, blockquotes and history
+            # tables legitimately name superseded ids (e.g. explaining a split),
+            # and flagging those would make the check unusable.
+            is_table_row = stripped.startswith("|")
+            is_dep_line = stripped.startswith("`P") and "depends_on:" in line
+            if not (is_table_row or is_dep_line):
+                continue
+            if stripped.startswith(">"):
+                continue                       # blockquote = commentary
+            if RANGE_OK.search(line):
+                continue                       # "SEC-1D-001..003" names a span
+            # a row that annotates its own supersession is a record, not an edge
+            if re.search(r"superseded|previously|round-\d|~~|history|was\b|split into",
+                         line, re.I):
+                continue
+            for tok in set(TASK_SHAPE.findall(line)):
+                if tok in known:
+                    continue
+                # A RENAME RECORD names the retired id on the left of an arrow and
+                # its replacement(s) on the right: "DEMO-001 -> DEMO-001A + DEMO-001B".
+                # That is documentation of the split, not a live edge. Recognised
+                # precisely (successor must itself resolve) rather than by skipping
+                # every row containing an arrow.
+                rename = re.search(re.escape(tok) + r"`?\s*(?:->|\u2192)\s*`?([^|]*)", line)
+                if rename and any(s in known for s in TASK_SHAPE.findall(rename.group(1))):
+                    continue
+                report.fail("UNRESOLVED TASK TOKEN '%s' in %s:%d — no such task, "
+                            "human dependency or gate" % (tok, os.path.basename(rel), lineno))
+                bad += 1
+    if not bad:
+        report.ok("every task token in the 5 active plan graphs resolves")
+    return bad
+
+
+def check_task_contradictions(tasks, report):
+    """Round 10 (BLOCKER 2): a task may not both REQUIRE an action and declare
+    it out of scope."""
+    print("\n[14] TASK-INTERNAL CONTRADICTIONS")
+    bad = 0
+    for tid, task in sorted(tasks.items()):
+        body = task["body"]
+        # acceptance criteria = bullet lines; exclusions = blockquote lines
+        required = "\n".join(l for l in body.split("\n") if l.startswith("- "))
+        excluded = "\n".join(l for l in body.split("\n") if l.lstrip().startswith(">"))
+        for label, terms in CONTRADICTION_ACTIONS:
+            req = any(all(re.search(term, line, re.I) for term in terms)
+                      for line in required.split("\n"))
+            exc = any(all(re.search(term, line, re.I) for term in terms)
+                      and re.search(EXCLUSION_MARKERS, line, re.I)
+                      for line in excluded.split("\n"))
+            if req and exc:
+                report.fail("CONTRADICTION in %s: '%s' is REQUIRED by an acceptance "
+                            "criterion and simultaneously declared out of scope"
+                            % (tid, label))
+                bad += 1
+    if not bad:
+        report.ok("no task both requires and excludes the same action")
+    return bad
+
+
+def check_self_test(report):
+    """Round 10: every check_* defined must be reachable from main().
+    A defined-but-uncalled check has happened twice in this engagement."""
+    print("\n[15] VERIFIER SELF-TEST (defined-but-unreachable checks)")
+    src = open(os.path.abspath(__file__), encoding="utf-8").read()
+    defined = set(re.findall(r"^def (check_[a-z_]+)\(", src, re.M))
+    main_src = src[src.index("def main("):]
+    called = {n for n in defined if re.search(r"\b%s\(" % n, main_src)}
+    unreachable = sorted(defined - called - {"check_self_test"})
+    print("   defined: %d   reachable from main(): %d" % (len(defined), len(called)))
+    if unreachable:
+        report.fail("defined but NEVER CALLED: %s" % unreachable)
+    else:
+        report.ok("all %d check functions are reachable from main()" % len(defined))
+    return len(unreachable)
+
+
+def check_fence_syntax(repo, tasks, report):
+    """Round 10 item 7: the validation fences must be valid shell."""
+    print("\n[16] FENCE SHELL SYNTAX (bash -n)")
+    import subprocess as _sp, tempfile as _tf
+    bad = 0
+    for tid, task in sorted(tasks.items()):
+        for n, fence in enumerate(re.findall(r"```bash\n(.*?)```", task["body"], re.S), 1):
+            fh = _tf.NamedTemporaryFile("w", suffix=".sh", delete=False, encoding="utf-8")
+            fh.write(fence)
+            fh.close()
+            try:
+                r = None
+                for shell in ("bash", "sh", "/usr/bin/bash", "/bin/bash"):
+                    try:
+                        r = _sp.run([shell, "-n", fh.name], capture_output=True,
+                                    text=True, timeout=30)
+                    except FileNotFoundError:
+                        continue
+                    # a shell that cannot even start is an environment fault,
+                    # not a syntax defect in the document
+                    if r.returncode != 0 and re.search(
+                            r"execvpe|CreateProcessCommon|No such file or directory",
+                            r.stderr or ""):
+                        r = None
+                        continue
+                    break
+                if r is None:
+                    report.note("no usable shell for `-n` — syntax check skipped "
+                                "(environment, not a document defect)")
+                    return 0
+                if r.returncode != 0:
+                    report.fail("%s fence %d is not valid shell: %s"
+                                % (tid, n, r.stderr.strip()[:120]))
+                    bad += 1
+            except Exception as exc:
+                report.note("bash unavailable (%s) — syntax check skipped" % exc)
+                return 0
+            finally:
+                os.unlink(fh.name)
+    if not bad:
+        report.ok("every validation fence passes `bash -n`")
+    return bad
+
+
 def check_stale(repo, report):
     print("\n[12] ACTIVE STALE ASSERTIONS (every .md under docs/, no whitelist)")
     stale = {
@@ -907,6 +1085,10 @@ def main() -> int:
     check_supabase_bootstrap(tasks, report)
     artefact_cycles = check_artefact_cycles(tasks, report)
     artefact_problems = check_artefact_resolution(repo, tasks, report)
+    graph_bad = check_graph_referential_integrity(repo, tasks, report)
+    contradictions = check_task_contradictions(tasks, report)
+    unreachable = check_self_test(report)
+    syntax_bad = check_fence_syntax(repo, tasks, report)
     candidates = check_stale(repo, report)
     h01 = check_h01(repo, report)
 
@@ -923,6 +1105,10 @@ def main() -> int:
     print("  unknown dependency tokens ... %d" % unknown_tokens)
     print("  acceptance-artefact cycles .. %d" % artefact_cycles)
     print("  artefact resolution issues .. %d" % artefact_problems)
+    print("  unresolved graph tokens ..... %d" % graph_bad)
+    print("  task contradictions ......... %d" % contradictions)
+    print("  unreachable checks .......... %d" % unreachable)
+    print("  fence syntax errors ......... %d" % syntax_bad)
     print("  H-01 open-decision sites .... %d" % h01)
     print("  stale candidates ............ %d" % candidates)
     print("  FAILURES .................... %s" % (len(report.failures) or "NONE"))

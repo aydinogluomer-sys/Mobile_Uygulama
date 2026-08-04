@@ -34,6 +34,11 @@ Exit code `0` if every invariant holds, `1` otherwise.
 | 9 | **Acceptance-criteria deletion regression** — compares `1A-002` against `--baseline-rev` (default `HEAD~1`) and FAILS if a critical criterion has been removed |
 | 10 | Stale-metric scan over **every** `.md` under `docs/` |
 | 11 | **H-01 closure** — no document may present it as an open decision |
+| 12 | **Artefact resolution** — every repository path referenced in a fence resolves to a producing task, correctly ordered |
+| 13 | **Plan-graph referential integrity** — every task token in the 5 active plan graphs resolves; matched by *shape*, so an unknown id cannot pass by not being recognised |
+| 14 | **Task-internal contradictions** — a task may not both require an action and declare it out of scope |
+| 15 | **Self-test** — every `check_*` defined must be reachable from `main()`. A defined-but-uncalled check has happened twice |
+| 16 | **Fence shell syntax** — `bash -n` on every validation fence |
 
 ## Constraints, deliberate
 

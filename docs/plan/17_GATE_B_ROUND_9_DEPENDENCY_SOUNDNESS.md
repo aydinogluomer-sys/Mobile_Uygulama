@@ -140,9 +140,16 @@ statement · local-only assertion.
 ## 7. F5 — per-fence independent validation
 
 Fences are **no longer joined**. Each is checked on its own for: variables
-assigned in *that* fence and before use, `set -euo pipefail`, referenced paths,
-command guards, and exit-status assertions. A variable defined in one fence
-cannot satisfy another, and **document order does not change the result**.
+assigned in *that* fence and before use, referenced paths, and exit-status
+assertions.
+
+> ⚠ **Corrected at round 10 (MINOR 7).** This sentence originally also claimed
+> `set -euo pipefail` and command-guard checks. **Neither existed.** Round 10
+> adds `bash -n` syntax checking of every fence; `pipefail` presence and command
+> guards are still not asserted individually — see `plan/18 §4`.
+
+A variable defined in one fence cannot satisfy another, and **document order does
+not change the result**.
 
 Checks are also scoped to fence capability: a static fence with no `psql` is not
 required to set `ON_ERROR_STOP`, and a fence that never re-applies the baseline
