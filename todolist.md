@@ -37,15 +37,15 @@ tarıyor; self-test `main()`'i `ast` ile buluyor.
 
 ---
 
-## FAZ 1 — Gate B kabulü  🔒 KULLANICI KARARI
+## FAZ 1 — Gate B kabulü  ✅ **PASS** (kullanıcı, 2026-08-04)
 
 Verifier bunu sağlayamaz. Okunacak dört artefakt:
 
-- [ ] **1.1** `1A-002A` + `1A-002B` — post-revoke baseline sözleşmesi doğru mu; Stage A iddia ettiğini kanıtlıyor mu
-- [ ] **1.2** `1A-003` — canonical reset artık burada; doğru mu tanımlanmış
-- [ ] **1.3** `plan/19 §7` — Gate B / Gate C sınırı istediğin yerde mi
-- [ ] **1.4** `plan/18 §4` — kabul edeceğin bilinen limitler
-- [ ] **1.5** **Karar:** Gate B PASS / FAIL
+- [x] **1.1** `1A-002A` + `1A-002B` — post-revoke baseline sözleşmesi doğru mu; Stage A iddia ettiğini kanıtlıyor mu
+- [x] **1.2** `1A-003` — canonical reset artık burada; doğru mu tanımlanmış
+- [x] **1.3** `plan/19 §7` — Gate B / Gate C sınırı istediğin yerde mi
+- [x] **1.4** `plan/18 §4` — kabul edeceğin bilinen limitler
+- [x] **1.5** **Karar:** Gate B PASS / FAIL
 
 ---
 
@@ -70,12 +70,12 @@ Verifier bunu sağlayamaz. Okunacak dört artefakt:
 
 ---
 
-## FAZ 3 — Phase 1A · Şema temeli  🔒 FAZ 1 + FAZ 2 gerekli
+## FAZ 3 — Phase 1A · Şema temeli  🟦 **DEVAM EDİYOR**
 
-- [ ] **3.1** `1A-001` three-way diff (read-only, Docker gerekmez)
+- [ ] **3.1** `1A-001` three-way diff — 🔴 **ENGELLİ: proje INACTIVE** (R-18)
 - [ ] **3.2** `1A-002A` baseline yaz — `20260801000000_baseline_schema.sql` + archive
 - [ ] **3.3** `1A-002B` Stage A/B — baseline-alone posture kanıtı
-- [ ] **3.4** `1D-009` `supabase/config.toml` + deploy guard
+- [x] **3.4** `1D-009` `supabase/config.toml` + deploy guard — **5/5 validation geçti**
 - [ ] **3.5** `1A-003` canonical reset + schema hash
 - [ ] **3.6** `1A-004` **çalıştırılmaz** — H-14 ayrı onay
 
