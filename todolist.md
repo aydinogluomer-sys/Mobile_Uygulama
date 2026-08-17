@@ -178,11 +178,12 @@ değil, nüks çiti.
 
 - [ ] **5.1** `1C-001` atomik debit RPC 🔒 · `1C-002` 🔒 · `1C-004`/`1C-005`/`1C-006` 🔒
 - [x] **5.1a** `1C-003` gece yarısı rollover — **10/10** (`04d7605`)
+- [x] **5.1b** `1C-007` bayat irade satırı + `1C-008` onboarding ikizleri — **6/6** (`2d640d6`). Bulgu **N-07**'den doğdu; backlog'a `af6c987` ile eklendi. Serileştirme: `1C-003` → `1C-007` → `1C-002`
 - [ ] **5.2** `1D-000` generate-routine reconcile 🔒 (canlı v11 ile karşılaştırma gerekir)
 - [ ] **5.3** `1D-001`→`002`→`003`→`004` zinciri 🔒
 - [x] **5.4a** `1D-006` redirect_uri allowlist — **17/17** (`6ba6f44`), iki fonksiyona da uygulandı
-- [ ] **5.4b** `1D-005` state doğrulama — ⏸ **KARAR BEKLİYOR (D-02)**
-- [ ] **5.4c** `1D-007` callback auth — ⏸ **KARAR BEKLİYOR (D-01)**, planın öncülü hatalı
+- [x] **5.4b** `1D-005` state doğrulama — ✅ **HMAC ile uygulandı** (`4a66abc`), 21 test. D-02 kararı verildi; migration gerekmediği için H-15'e takılmadı. **Bilinen sınır:** imzalı state TTL dolana kadar replay edilebilir; tam tek-kullanımlık `oauth_states` tablosu ister, FAZ D'de yeniden değerlendirilir
+- [ ] **5.4c** `1D-007` callback auth — ⬜ **AÇIK, FAZ F'e atandı.** D-01 kararı verildi (gerçek Notion→Supabase kimliği). `plan/01`'deki hatalı öncül düzeltildi: "her durumda 401" yerine **intent-bazlı** kriter. Kod, kimlik özelliği geldikten sonra
 - [ ] **5.4d** `1D-008` webhook idempotency 🔒
 - [ ] **5.5** `SEC-1D-001..004` 🔒 · `SEC-1D-005a..f` 🔒 (005a **H-11** bekliyor)
 
@@ -243,14 +244,15 @@ kontrolündedir; bu koruma değil. `state` sunucuda doğrulanmalı — `1D-005`.
 
 ## Açık insan kararları
 
+> **Kapananlar tablodan çıkarıldı, kaydı burada:** **Gate B** ✅ PASS (kullanıcı, 2026-08-04 — FAZ 1) · **H-13** ✅ Docker çalışıyor (FAZ 2). Açık bir karar listesinde kapanmış madde tutmak, listeyi okunmaz yapar.
+
 | # | Karar | Engellediği |
 |---|---|---|
-| **Gate B** | task semantiklerinin kabulü | FAZ 1 → her şey |
-| **H-13** | Docker başlat | FAZ 2 → 3, 5, 6 |
 | **H-11** | `last_ai_context` sahipliği | `SEC-1D-005a` |
 | **H-14** | `1A-004` canlı cutover onayı | sadece `1A-004` |
 | **H-03** | `backend/.env.local` taşıma | `OPS-0B-001` (2C) |
-| **OAUTH_REDIRECT_ALLOWLIST** 🆕 | `1D-006` ile zorunlu hale geldi: ayarlanmazsa OAuth fonksiyonları fail-closed. Deploy adımı, kod adımı değil | `notion-auth`, `spotify-auth` deploy'u |
+| **OAUTH_REDIRECT_ALLOWLIST** | `1D-006` ile zorunlu: ayarlanmazsa liste boş, boş liste hiçbir şeye izin vermez → fail-closed. Deploy adımı, kod adımı değil | `notion-auth`, `spotify-auth` deploy'u |
+| **OAUTH_STATE_SECRET** 🆕 | `1D-005` ile zorunlu: HMAC anahtarı. Yoksa state üretimi ve doğrulaması fail-closed. Service-role anahtarı **kullanılmaz** — amaç ayrımı | `notion-auth`, `spotify-auth` deploy'u |
 | **H-15** | free-tier 2-aktif-proje sınırı — **karar: Pro plana yükselt** (2026-08-17). ⬜ **YAPILMADI.** Son gözlem 2026-08-17: org `plan: free`, kanonik proje `INACTIVE`, `restore_project` → `ForbiddenException`. Faturalama işlemi; kullanıcı yapar. Detay + devam adımları: `docs/plan/20_UYGULAMA_REHBERI.md §0` | `1A-001` → tüm şema zinciri (FAZ C–G) |
 | H-02, H-04..H-10, H-12 | — | sonraki fazlar |
 

@@ -102,7 +102,8 @@ gerekçe buraya yazılır — sessizce sapılmaz.
 | `1C-003` | `spend()` **dünün satırını** güncelliyordu | `store/willpowerStore.ts` | `04d7605` | 10/10 |
 | `1D-006` | `redirect_uri` doğrudan istekten alınıp authorize URL'ine gömülüyordu | `notion-auth`, `spotify-auth`, `_shared/redirectAllowlist.ts` | `6ba6f44` | 17/17 |
 
-**Toplam: 119 test yeşil, `tsc --noEmit` exit 0.**
+**Toplam: 165 test yeşil, `tsc --noEmit` exit 0.** *(Bu tablo yalnızca
+kapatılan görevleri sayar; 119 → 165 artışı FAZ B'nin testlerinden gelir.)*
 
 ### 2.2 Planın adlandırmadığı hatalar — bulundu ve kapatıldı
 
@@ -122,15 +123,15 @@ yerel gün anahtarı), ve mevcut `weekStartYmd`.
 
 ### 2.3 Yeni saptamalar — planda yok, henüz düzeltilmedi
 
-| # | Saptama | Yer | Faz |
-|---|---|---|---|
-| **N-01** | **P1 — sahte giriş.** `login()` başarılı dönünce `router.replace('/tabs/today')` çalışıyor ama **Supabase oturumu hiç oluşturulmuyor**. Dosyadaki tek gerçek kimlik doğrulama `signInWithPassword`. Kullanıcı uygulamaya giriyor, `supabase.auth.getUser()` her yerde `null`, **RLS her şeyi reddediyor** — boş bir uygulama | `app/(auth)/login.tsx:39-41` | **F** |
-| **N-02** | CSRF state **istemcide** doğrulanıyor (AsyncStorage karşılaştırması). CSRF senaryosunda istemci saldırganın kontrolündedir; bu koruma değil dekordur | `store/notionSessionStore.ts:88-97` | **B** |
-| **N-03** | `notion-auth` tek uçtan **iki farklı akışa** hizmet ediyor. Planın `1D-007` reçetesi ("callback'te 401 döndür") uygulanırsa giriş akışı **tamamen ölür** — o akışta tanım gereği henüz kullanıcı yoktur | `supabase/functions/notion-auth/index.ts:89` | **F** |
-| **N-04** | `logHabit` artık `LogResult` ile hatayı taşıyor ama `app/**` çağıranları hâlâ dönüş değerini yok sayıyor — hata kullanıcıya ulaşmıyor | `today.tsx:154`, `timeline.tsx:84,91`, `recovery.tsx:187,231` | **B** |
-| **N-05** | `OAUTH_REDIRECT_ALLOWLIST` — `1D-006` ile **zorunlu** hale geldi. Ayarlanmazsa liste boş, boş liste hiçbir şeye izin vermez → OAuth fonksiyonları fail-closed. İstenen duruş budur ama **deploy şartıdır** | deploy config | **A** |
-| **N-06** | pgTAP lisans clearance hâlâ **PENDING**. `research/04:160` "sürüm veya lisans **okunmadı**" diyor — hafızadan iddia etmek yerine kayda geçirilmiş | `1E-L2` girişi | **G** |
-| **N-07** | **`1C-003`'ün koruması yalnızca store metodlarını kapsıyor.** `canActivate`/`score`/`spend`/`refund` bayatlığı kontrol ediyor ama **ekranlar `state`'i doğrudan okuyup kendi hesabını yapıyor**: `HabitOnboarding.tsx:95-97` `canActivate`'in ikizi, `:110-114` `score`'un ikizi; ayrıca `habits.tsx:191,318,322,512`, `timeline.tsx:559`, `WillpowerBand.tsx:27`. Üstelik hiçbir şey tarih değişiminde yeniden tetiklemiyor — `fetchToday()` yalnızca mount ve pull-to-refresh'te çağrılıyor. **Gece yarısı geçilince ekranlar dünün bütçesini göstermeye devam ediyor** | `HabitOnboarding.tsx`, `habits.tsx`, `timeline.tsx`, `WillpowerBand.tsx` | **B5** |
+| # | Saptama | Yer | Faz | Durum |
+|---|---|---|---|---|
+| **N-01** | **P1 — sahte giriş.** `login()` başarılı dönünce `router.replace('/tabs/today')` çalışıyor ama **Supabase oturumu hiç oluşturulmuyor**. Dosyadaki tek gerçek kimlik doğrulama `signInWithPassword`. Kullanıcı uygulamaya giriyor, `supabase.auth.getUser()` her yerde `null`, **RLS her şeyi reddediyor** — boş bir uygulama | `app/(auth)/login.tsx:39-41` | **F** | ⬜ **açık** |
+| **N-02** | CSRF state **istemcide** doğrulanıyor (AsyncStorage karşılaştırması). CSRF senaryosunda istemci saldırganın kontrolündedir; bu koruma değil dekordur | `store/notionSessionStore.ts:88-97` | **B** | ✅ `4a66abc` |
+| **N-03** | `notion-auth` tek uçtan **iki farklı akışa** hizmet ediyor. Planın `1D-007` reçetesi ("callback'te 401 döndür") uygulanırsa giriş akışı **tamamen ölür** — o akışta tanım gereği henüz kullanıcı yoktur | `supabase/functions/notion-auth/index.ts:89` | **F** | ⬜ **açık** — `plan/01` `1D-007` kriteri düzeltildi, kod FAZ F'te |
+| **N-04** | `logHabit` artık `LogResult` ile hatayı taşıyor ama `app/**` çağıranları hâlâ dönüş değerini yok sayıyor — hata kullanıcıya ulaşmıyor | `today.tsx:154`, `timeline.tsx:84,91`, `recovery.tsx:187,231` | **B** | ✅ `8a04c04` |
+| **N-05** | `OAUTH_REDIRECT_ALLOWLIST` — `1D-006` ile **zorunlu** hale geldi. Ayarlanmazsa liste boş, boş liste hiçbir şeye izin vermez → OAuth fonksiyonları fail-closed. İstenen duruş budur ama **deploy şartıdır** | deploy config | **A** | ✅ kaydedildi — **değer hâlâ ayarlanmadı** (deploy şartı) |
+| **N-06** | pgTAP lisans clearance hâlâ **PENDING**. `research/04:160` "sürüm veya lisans **okunmadı**" diyor — hafızadan iddia etmek yerine kayda geçirilmiş | `1E-L2` girişi | **G** | ⬜ **açık** |
+| **N-07** | **`1C-003`'ün koruması yalnızca store metodlarını kapsıyor.** `canActivate`/`score`/`spend`/`refund` bayatlığı kontrol ediyor ama **ekranlar `state`'i doğrudan okuyup kendi hesabını yapıyor**: `HabitOnboarding.tsx:95-97` `canActivate`'in ikizi, `:110-114` `score`'un ikizi; ayrıca `habits.tsx:191,318,322,512`, `timeline.tsx:559`, `WillpowerBand.tsx:27`. Üstelik hiçbir şey tarih değişiminde yeniden tetiklemiyor — `fetchToday()` yalnızca mount ve pull-to-refresh'te çağrılıyor. **Gece yarısı geçilince ekranlar dünün bütçesini göstermeye devam ediyor** | `HabitOnboarding.tsx`, `habits.tsx`, `timeline.tsx`, `WillpowerBand.tsx` | **B5** | ✅ `2d640d6` |
 
 #### N-03'ün ayrıntısı — iki akış tek uçta
 
@@ -172,13 +173,18 @@ Bunlar benim ürettiğim işteki kusurlar. Sessizce düzeltmek yerine kayda geç
 
 | # | Karar | Engellediği |
 |---|---|---|
-| **H-15** | Pro yükseltme *(karar verildi, uygulanmadı)* | FAZ C–G |
+| **H-15** | Pro yükseltme — **karar verildi, uygulanmadı** (§0'da kanıtıyla) | FAZ C–G |
 | **H-11** | `last_ai_context` sahipliği | `SEC-1D-005a` |
 | **H-14** | `1A-004` canlı ledger cutover onayı | yalnızca `1A-004` |
 | **H-03** | `backend/.env.local` taşıma | `OPS-0B-001` (Phase 2C) |
 | **H-02** | Pruned credential rotasyonu | — |
-| **N-05** | `OAUTH_REDIRECT_ALLOWLIST` değeri | OAuth deploy'u |
+| **N-05** | `OAUTH_REDIRECT_ALLOWLIST` **değeri** — şart kayda geçti, değer ayarlanmadı | OAuth deploy'u |
+| **D-02** | `OAUTH_STATE_SECRET` **değeri** — aynı sınıf; `1D-005` ile zorunlu oldu | OAuth deploy'u |
 | H-04..H-10, H-12 | sonraki fazlar | — |
+
+> Kapananlar burada tutulmuyor. Kaydı: **Gate B** ✅ PASS (2026-08-04) ·
+> **H-13** ✅ Docker çalışıyor · **D-01** ve **D-02** ✅ karar verildi
+> (uygulaması sırasıyla FAZ F ve ✅ FAZ B).
 
 ---
 
@@ -445,7 +451,7 @@ lint sınıflandırılmış · bağımsız review · Gate C raporu.
 
 | Ne | Komut | Geçme ölçütü |
 |---|---|---|
-| L1 testler | `cd frontend && npm test` | hepsi yeşil (şu an **119**) |
+| L1 testler | `cd frontend && npm test` | hepsi yeşil (şu an **165**) |
 | Tipler | `cd frontend && npm run typecheck` | exit 0 |
 | Gate B yapısı | `python tools/audit/verify_gate_b.py` | `FAILURES: NONE` |
 | Deploy guard | `bash supabase/predeploy_guard.sh` | exit 0; yabancı ref'te non-zero |
