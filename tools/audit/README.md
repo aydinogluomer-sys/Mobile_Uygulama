@@ -39,12 +39,17 @@ Exit code `0` if every invariant holds, `1` otherwise.
 | 14 | **Task-internal contradictions** — a task may not both require an action and declare it out of scope |
 | 15 | **Self-test** — every `check_*` defined must be reachable from `main()`. A defined-but-uncalled check has happened twice |
 | 16 | **Fence shell syntax** — `bash -n` on every validation fence |
+| 17 | **Dependency token resolution** — every `depends_on` token resolves to a task, human dependency or gate |
+| 18 | **Acceptance-artefact cycles** — a task may not require a file produced by something that depends on it |
+| 19 | **Supabase-bootstrapped environment** — no plain `createdb`/`CREATE DATABASE` in an executable fence; positive bootstrap contract |
+
+*(19 checks. Printed section numbers `[3]`, `[12]` and `[13]` are each shared by two checks — cosmetic, recorded in `docs/plan/18 §4`.)*
 
 ## What this verifier does and does NOT guarantee
 
 **It guarantees** — structural properties only:
 
-- task and reference **existence** across `plan/01`–`plan/05`
+- task and reference **existence** across `plan/01`–`plan/05` — in **active content only**: table rows, `depends_on` headers, and the mandatory task fields. Prose, blockquotes and history tables are deliberately not scanned, because they legitimately name superseded ids
 - **block ↔ index equality** of `depends_on`, human tokens included
 - **graph reachability**: no dangling token, no cycle, no unresolved human dependency
 - **ownership uniqueness** and `never touches` compliance

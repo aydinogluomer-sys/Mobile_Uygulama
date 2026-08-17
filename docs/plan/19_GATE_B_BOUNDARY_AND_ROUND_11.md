@@ -53,7 +53,7 @@ are proofs).
 
 The range guard matched a bare em/en dash **anywhere on the line**. The em-dash
 is this project's standard empty-cell marker, so the guard silently disabled the
-check on **33 of 69** eligible rows in `plan/02` and **10 of 53** in `plan/05` —
+check on **31 of 69** eligible rows in `plan/02` and **10 of 53** in `plan/05` —
 and the `plan/05:16` token above was already hiding behind it while the verifier
 reported `unresolved graph tokens: 0`.
 
@@ -78,7 +78,15 @@ digit. **`check_h01` was invisible**: the verifier printed `defined: 18,
 reachable: 18` when there were **19**, so deleting `check_h01`'s call kept it
 green — the guarantee that every check runs did not hold.
 
-**Fixed:** `check_[A-Za-z0-9_]+`. Now reports **19/19**.
+**Round 11 fixed the COUNT** (`check_[A-Za-z0-9_]+`, reporting 19/19) but **not
+the guarantee.** The reviewer showed `src.index("def main(")` matched the string
+literal on its own line, so every check defined *below* it counted as reachable
+regardless — `check_h01`, `check_stale` and `check_fence_syntax` could all have
+their calls deleted and stay green.
+
+**Round 12 fixed the guarantee:** `main()` is now located with `ast`. Mutation-
+tested — deleting any of those three calls now fails, as does passing a throwaway
+`Report()`.
 
 **Also added:** every check must receive the **shared** `report` object. A check
 called with a throwaway `Report()` would have its failures silently discarded;
@@ -104,7 +112,7 @@ Recorded in the module docstring and `tools/audit/README.md`:
 
 **The verifier GUARANTEES — structural properties only:**
 
-- task and reference **existence** across `plan/01`–`plan/05`
+- task and reference **existence** across `plan/01`–`plan/05` — **active content only**: table rows, `depends_on` headers and mandatory task fields. Prose, blockquotes and history tables are not scanned
 - **block ↔ index equality** of `depends_on`, human tokens included
 - **graph reachability** — no dangling token, no cycle, no unresolved human dependency
 - **ownership uniqueness** and `never touches` compliance

@@ -7,7 +7,9 @@ in no bundle, and it is not part of the Expo build.
 SCOPE — read this before quoting any output as evidence.
 
 GUARANTEES (structural only):
-  * task and reference existence across plan/01-05
+  * task and reference existence across plan/01-05, in ACTIVE CONTENT ONLY:
+    table rows, depends_on headers and the mandatory task fields. Prose,
+    blockquotes and history tables are deliberately not scanned
   * block/index equality of depends_on, human tokens included
   * graph reachability: no dangling token, no cycle, no unresolved human dependency
   * ownership uniqueness and `never touches` compliance
@@ -863,7 +865,14 @@ def check_graph_referential_integrity(repo, tasks, report):
             # and flagging those would make the check unusable.
             is_table_row = stripped.startswith("|")
             is_dep_line = stripped.startswith("`P") and "depends_on:" in line
-            if not (is_table_row or is_dep_line):
+            # Round 12 (MAJOR-1): mandatory task fields are live content too.
+            # A dangling id sat in 1A-003's **risk** field and was invisible,
+            # because only table rows and depends_on lines were scanned - while
+            # the guarantee list claimed 'reference existence across plan/01-05'.
+            is_field_line = bool(re.match(r"\*\*(scope|goal|acceptance_criteria"
+                                          r"|validation|risk|rollback|test_contract)\*\*",
+                                          stripped))
+            if not (is_table_row or is_dep_line or is_field_line):
                 continue
             if stripped.startswith(">"):
                 continue                       # blockquote = commentary
@@ -931,9 +940,21 @@ def check_self_test(report):
     # Round 11 (MAJOR-C): the old pattern was `check_[a-z_]+`, which cannot match
     # a name containing a digit. `check_h01` was invisible, so the verifier
     # reported 18/18 when there were 19 — and deleting its call stayed green.
-    defined = set(re.findall(r"^def (check_[A-Za-z0-9_]+)\(", src, re.M))
-    main_src = src[src.index("def main("):]
-    called = {n for n in defined if re.search(r"\b%s\(" % re.escape(n), main_src)}
+    # Round 12: parse with `ast`. The previous `src.index("def main(")` matched
+    # the string literal on its OWN line, so `main_src` began here and contained
+    # the *definitions* of every check declared below - each matching its own
+    # `def` line and counting as reachable whether or not main() called it.
+    # check_fence_syntax, check_stale and check_h01 were all falsely reachable.
+    import ast as _ast
+    _tree = _ast.parse(src)
+    defined = {f.name for f in _ast.walk(_tree)
+               if isinstance(f, _ast.FunctionDef) and f.name.startswith('check_')}
+    _main = next((f for f in _ast.walk(_tree)
+                  if isinstance(f, _ast.FunctionDef) and f.name == 'main'), None)
+    called = set()
+    if _main is not None:
+        called = {c.func.id for c in _ast.walk(_main)
+                  if isinstance(c, _ast.Call) and isinstance(c.func, _ast.Name)} & defined
     unreachable = sorted(defined - called - {"check_self_test"})
     print("   defined: %d   reachable from main(): %d" % (len(defined), len(called)))
     if unreachable:
@@ -944,10 +965,13 @@ def check_self_test(report):
     # A check whose failures go into a throwaway Report() is silently discarded.
     # Every call must pass the shared `report` name.
     bad_report = []
-    for fn in sorted(defined - {"check_self_test"}):
-        for call in re.findall(re.escape(fn) + r"\(([^)]*)\)", main_src):
-            if "report" not in call:
-                bad_report.append(fn)
+    if _main is not None:
+        for c in _ast.walk(_main):
+            if (isinstance(c, _ast.Call) and isinstance(c.func, _ast.Name)
+                    and c.func.id in defined and c.func.id != 'check_self_test'):
+                names = {a.id for a in c.args if isinstance(a, _ast.Name)}
+                if 'report' not in names:
+                    bad_report.append(c.func.id)
     if bad_report:
         report.fail("called with a non-shared Report (failures would be discarded): %s"
                     % sorted(set(bad_report)))

@@ -404,7 +404,7 @@ test "$status" -ne 0
 
 **validation** Reset transcript attached; hash comparison shown; no live command run.
 
-**risk** MEDIUM — a mismatch means 1A-002 is incomplete.
+**risk** MEDIUM — a mismatch means `1A-002A`'s baseline is incomplete.
 **rollback** N/A — documentation only.
 
 ---

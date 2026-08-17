@@ -206,7 +206,7 @@ known defect. These remain true of the current verifier:
 - **`BOOTSTRAP_CONTRACT` is keyed on fence content**, so a sufficiently different rewrite of `1A-002B` could still bypass it.
 - **Artefact resolution scans bash fences only** — a file demand in prose or `acceptance_criteria` is invisible.
 - **Producer recognition needs a `(new)`/`(moved)` marker**; 19 scoped files lack one.
-- **Duplicate log section numbers** `[3]` and `[12]` persist.
+- **Duplicate log section numbers** `[3]`, `[12]` **and `[13]`** persist (`[13]` is shared by the graph-integrity and H-01 checks).
 - **`1A-002A`'s idempotent-form grep contradicts its own exception clause** (MINOR 12) — needs a decision, not an edit.
 
 `plan/17 §7`'s claim that each fence is checked for `set -euo pipefail` and
