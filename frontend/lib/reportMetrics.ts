@@ -2,7 +2,7 @@ import { eachDayOfInterval, endOfMonth, endOfWeek, format, startOfMonth, startOf
 import { type Habit, type HabitLog } from './supabase';
 import { type FocusSessionRow } from './focusReport';
 import { isDueOn } from './habitSchedule';
-import { parseLocalDate } from './date';
+import { parseLocalDate, ymd } from './date';
 
 export type ReportRange = 'week' | 'month';
 export type ReportBadge = {
@@ -25,9 +25,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function ymd(date: Date): string {
-  return format(date, 'yyyy-MM-dd');
-}
 
 function listDateStrings(start: string, end: string): string[] {
   const from = new Date(`${start}T00:00:00`);

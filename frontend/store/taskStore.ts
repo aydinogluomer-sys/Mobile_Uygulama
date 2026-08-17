@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import { todayLocal } from '../lib/date';
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 export type TaskPriority = 'high' | 'medium' | 'low' | 'none';
@@ -127,14 +128,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   overdue: () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocal();
     return get().tasks.filter(
       (t) => t.due_date && t.due_date < today && !t.completed && t.status !== 'cancelled'
     );
   },
 
   dueToday: () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocal();
     return get().tasks.filter(
       (t) => t.due_date === today && !t.completed && t.status !== 'cancelled'
     );

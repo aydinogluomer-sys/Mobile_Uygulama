@@ -1,5 +1,6 @@
 // Günlük yazılarının "raporu" — saf hesap, arşiv başlığında kullanılır.
 import type { JournalEntry } from '../store/journalStore';
+import { ymd, startOfWeekLocal } from './date';
 
 export type JournalStats = {
   total: number;       // toplam kayıt
@@ -9,9 +10,6 @@ export type JournalStats = {
   moodAvg: number | null;
 };
 
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 export type InsightPeriod = 'weekly' | 'monthly' | 'yearly';
 
@@ -30,10 +28,7 @@ export function periodWindow(
     return { key: y, label: 'Bu yıl', match: (d) => d.startsWith(`${y}-`) };
   }
   // weekly — Pazartesi başlangıçlı hafta
-  const monday = new Date(now);
-  const dow = (now.getDay() + 6) % 7; // Pzt=0 ... Paz=6
-  monday.setDate(now.getDate() - dow);
-  const start = ymd(monday);
+  const start = ymd(startOfWeekLocal(now));
   const end = ymd(now);
   return { key: start, label: 'Bu hafta', match: (d) => d >= start && d <= end };
 }

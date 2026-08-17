@@ -7,6 +7,7 @@ import { useFocusStore } from '../store/focusStore';
 import { useRecoveryStore } from '../store/recoveryStore';
 import { useJournalStore } from '../store/journalStore';
 import { supabase } from './supabase';
+import { ymd } from './date';
 
 type SeedSummary = {
   projects: number;
@@ -18,9 +19,6 @@ type SeedSummary = {
   journalEntries: number;
 };
 
-function ymd(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
 
 function plusDays(base: Date, days: number): Date {
   const d = new Date(base);

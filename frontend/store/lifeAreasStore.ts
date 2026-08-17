@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import { todayLocal } from '../lib/date';
 
 export const LIFE_AREAS = [
   { key: 'saglik', label: 'Sağlık', color: '#10b981' },
@@ -69,7 +70,7 @@ export const useLifeAreasStore = create<LifeAreasStore>((set, get) => ({
     set({ saving: true });
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { set({ saving: false }); return; }
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocal();
     const { values } = get();
 
     const rows = LIFE_AREAS.map((a) => ({

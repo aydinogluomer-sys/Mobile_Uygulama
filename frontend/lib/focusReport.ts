@@ -1,6 +1,8 @@
 // Odak raporu — focus_sessions üzerinden saf hesaplamalar.
 // Artifact (POS v2) FocusReport mantığının RN karşılığı. mode='work' = odak seansı.
 
+import { ymd } from './date';
+
 export type FocusSessionRow = {
   id: string;
   task_id: string | null;
@@ -19,9 +21,6 @@ export const MONTHS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağ
 // Pazartesi başlangıçlı hafta etiketleri
 export const DOW_TR = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 function addDays(d: Date, n: number): Date {
   const x = new Date(d);
   x.setDate(x.getDate() + n);

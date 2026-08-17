@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import { todayLocal, ymd, weekStartYmd } from '../lib/date';
 
 export type DeepWorkSession = {
   id: string;
@@ -34,7 +35,7 @@ export const useDeepWorkStore = create<DeepWorkStore>((set, get) => ({
       .from('deep_work_sessions')
       .select('*')
       .eq('user_id', user.id)
-      .gte('date', since.toISOString().split('T')[0])
+      .gte('date', ymd(since))
       .order('date', { ascending: false })
       .order('created_at', { ascending: false });
     if (data) set({ sessions: data as DeepWorkSession[] });
@@ -44,7 +45,7 @@ export const useDeepWorkStore = create<DeepWorkStore>((set, get) => ({
   addSession: async (subject, minutes, date) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocal();
     const row = { user_id: user.id, subject, duration_minutes: minutes, date: date ?? today };
     const { data } = await supabase.from('deep_work_sessions').insert(row).select().single();
     if (data) set((s) => ({ sessions: [data as DeepWorkSession, ...s.sessions] }));
@@ -56,17 +57,17 @@ export const useDeepWorkStore = create<DeepWorkStore>((set, get) => ({
   },
 
   todayMinutes: () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocal();
     return get().sessions
       .filter((s) => s.date === today)
       .reduce((acc, s) => acc + s.duration_minutes, 0);
   },
 
   weekMinutes: () => {
-    const now = new Date();
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-    const weekStart = monday.toISOString().split('T')[0];
+    // Hafta siniri YEREL Pazartesi gece yarisidir. toISOString() burada UTC
+    // Pazartesi'yi veriyordu: UTC+3'te Pazartesi 00:00-03:00 arasinda hafta
+    // basi bir gun geriye kayiyor, onceki haftanin Pazar seanslari sizmiyordu.
+    const weekStart = weekStartYmd();
     return get().sessions
       .filter((s) => s.date >= weekStart)
       .reduce((acc, s) => acc + s.duration_minutes, 0);
