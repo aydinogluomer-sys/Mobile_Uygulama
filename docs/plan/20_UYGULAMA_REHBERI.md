@@ -87,6 +87,7 @@ yerel gün anahtarı), ve mevcut `weekStartYmd`.
 | **N-04** | `logHabit` artık `LogResult` ile hatayı taşıyor ama `app/**` çağıranları hâlâ dönüş değerini yok sayıyor — hata kullanıcıya ulaşmıyor | `today.tsx:154`, `timeline.tsx:84,91`, `recovery.tsx:187,231` | **B** |
 | **N-05** | `OAUTH_REDIRECT_ALLOWLIST` — `1D-006` ile **zorunlu** hale geldi. Ayarlanmazsa liste boş, boş liste hiçbir şeye izin vermez → OAuth fonksiyonları fail-closed. İstenen duruş budur ama **deploy şartıdır** | deploy config | **A** |
 | **N-06** | pgTAP lisans clearance hâlâ **PENDING**. `research/04:160` "sürüm veya lisans **okunmadı**" diyor — hafızadan iddia etmek yerine kayda geçirilmiş | `1E-L2` girişi | **G** |
+| **N-07** | **`1C-003`'ün koruması yalnızca store metodlarını kapsıyor.** `canActivate`/`score`/`spend`/`refund` bayatlığı kontrol ediyor ama **ekranlar `state`'i doğrudan okuyup kendi hesabını yapıyor**: `HabitOnboarding.tsx:95-97` `canActivate`'in ikizi, `:110-114` `score`'un ikizi; ayrıca `habits.tsx:191,318,322,512`, `timeline.tsx:559`, `WillpowerBand.tsx:27`. Üstelik hiçbir şey tarih değişiminde yeniden tetiklemiyor — `fetchToday()` yalnızca mount ve pull-to-refresh'te çağrılıyor. **Gece yarısı geçilince ekranlar dünün bütçesini göstermeye devam ediyor** | `HabitOnboarding.tsx`, `habits.tsx`, `timeline.tsx`, `WillpowerBand.tsx` | **B5** |
 
 #### N-03'ün ayrıntısı — iki akış tek uçta
 
@@ -175,7 +176,7 @@ FAZ B kotadan bağımsızdır.
 
 **Giriş şartı:** TEST A geçti. **H-15 gerekmez.**
 
-#### B1 · `1C-003` AC-3 tamamlanması (**S-01**)
+#### B1 · `1C-003` AC-3 tamamlanması (**S-01**) — ✅ `98c3898`
 
 **Sorun:** `score()` `state` null ya da bayat iken `100` döndürüyor. Kullanıcı
 hiç veri yokken "%100 irade" görüyor — uydurma bir sayı.
@@ -188,9 +189,13 @@ hiç veri yokken "%100 irade" görüyor — uydurma bir sayı.
    `null` → yükleniyor göstergesi. Uydurma sayı gösterme.
 4. `npm run typecheck` — dönüş tipi değişimi çağıranları zorlayacak, bu istenen.
 
-**Not:** `canActivate()` fail-**closed** kalır, `score()` artık fail-**null**.
-Mevcut koddaki "fail-open 100" yorumu bu değişiklikle geçersizleşiyor; yorum da
-güncellenmeli.
+**Yapıldı.** `score(): number | null`. 13/13, `tsc` exit 0. Dört yeni test,
+ikisi düzeltmeden önce başarısız oldu (R-01).
+
+> **Yürütmede öğrenilen:** `score()`'ın **hiç üretim çağıranı yoktu** —
+> ekranlar hesabı kendileri yapıyor. Dolayısıyla `plan/01:661` kriteri
+> karşılandı ama tek başına kullanıcıya görünen bir şeyi değiştirmedi. Asıl
+> açık **N-07**'dir ve **B5**'te kapanır. Fazlası iddia edilmiyor.
 
 #### B2 · `1D-005` — HMAC imzalı state (**D-02**)
 
@@ -235,6 +240,31 @@ sunucuda doğrulanıyor. İstemci yalnızca `state`'i taşır.
 
 `today.tsx:154`, `timeline.tsx:84,91`, `recovery.tsx:187,231` dönüş değerini yok
 sayıyor. Her biri `LogResult`'ı okur; `ok:false` ise kullanıcıya mesaj gösterir.
+
+#### B5 · **N-07** — bayat irade durumu ekranlara sızıyor
+
+**Sorun:** `1C-003` store metodlarını korudu, ekranları korumadı. İki ayrı kusur:
+
+1. **İkizler.** `HabitOnboarding.tsx:95-97` `canActivate()`'in, `:110-114`
+   `score()`'un kopyası. `willpowerState` prop'unu doğrudan okuyorlar, yani
+   store'un bayatlık kontrolünü **atlıyorlar** — `ymd` ikizleriyle (**F-04**)
+   aynı sınıf hata.
+2. **Tetikleyici yok.** `fetchToday()` yalnızca mount ve pull-to-refresh'te
+   çağrılıyor (`today.tsx:70`, `habits.tsx:44,50`, `timeline.tsx:62`). Gece
+   yarısında hiçbir şey yeniden render etmiyor.
+
+**Adımlar:**
+1. Önce testi yaz: gece yarısı geçildikten sonra ekran seviyesinde okunan
+   değerin bayat **olmadığını** doğrula. **Başarısız olduğunu gözle.**
+2. İkizleri kaldır — tek kaynak ilkesi: `HabitOnboarding` store'u kullansın ya da
+   parent bayat-olmayan değeri geçsin.
+3. Tarih değişimi tetikleyicisi: `AppState` `active` olduğunda ve `todayLocal()`
+   değiştiğinde `fetchToday()`.
+
+> **Kapsam uyarısı.** 4+ dosya ve bir yaşam-döngüsü değişikliği. `plan/01`'de
+> karşılığı olan bir görev **yok**; B5 çalıştırılmadan önce backlog'a kendi
+> id'siyle eklenmeli ki sahiplik, boyut ve rollback kaydı tutulsun. Bunu
+> atlamak `R-21` (ownership drift) riskine girer.
 
 **TEST B:**
 
