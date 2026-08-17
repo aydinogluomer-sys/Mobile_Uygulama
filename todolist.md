@@ -87,9 +87,22 @@ Verifier bunu sağlayamaz. Okunacak dört artefakt:
 
 **TEST 3:** `supabase db reset` exit 0 · beş rol privilege introspection · schema hash eşleşmesi
 
+> **H-15 bu turda ikinci kez ısırdı.** `1B-005` `.upsert({ onConflict:
+> 'habit_id,completed_at' })` yazacaktı — çift kaydı gerçekten imkânsız kılan
+> tek şey bu. Ama o constraint'in canlıda var olup olmadığını okuyamadım:
+> proje INACTIVE, `execute_sql` connection timeout verdi. Constraint yoksa
+> `upsert` çalışma anında hata verir ve **alışkanlık kaydı tamamen çalışmaz**.
+> Bu yüzden `1B-005` `upsert` **kullanmıyor**; serileştirme + 23505 kurtarma
+> ile yetiniyor ve sınırını commit mesajında açıkça yazıyor.
+>
+> Repo migration'ı `001_initial_schema.sql:34` `UNIQUE (habit_id, date)` diyor
+> ama canlıda kolon `completed_at` olarak yeniden adlandırılmış (bilinen drift),
+> yani repo bu soruya **cevap veremez**. `1A-001` three-way diff'in
+> cevaplayacağı şeylerden biri de bu.
+
 ---
 
-## FAZ 4 — Phase 1B · Tarih ve metrik doğruluğu  🟦 **DEVAM EDİYOR** (FAZ 1 ✅)
+## FAZ 4 — Phase 1B · Tarih ve metrik doğruluğu  ✅ **TAMAMLANDI** (TEST 4 geçti)
 
 Docker gerekmez. 14 failing L1 kriterinin tamamı burada.
 
@@ -98,11 +111,29 @@ Docker gerekmez. 14 failing L1 kriterinin tamamı burada.
 - [x] **4.3** `1B-001` `lib/date.ts` — kodda 0 `toISOString`
 - [x] **4.4** `1E-L1a` date testleri — **25/25**
 - [x] **4.5** `1B-003` count → **15/15** · `1B-004` AC-H04..H09 → **14/14** (9 test önce başarısız oldu)
-- [ ] **4.6** `1E-L1b` metrik/store testleri
-- [ ] **4.7** `1B-002` 5 store/lib · `1B-005` log hata · `1B-007` kalan store · `1B-008` `app/**`
-- [ ] **4.8** `DEMO-001A` → `DEMO-001B` seeder guard
+- [x] **4.6** `1E-L1b` metrik/store testleri — `dateDerivation` 7/7, `logStore` 7/7
+- [x] **4.7** `1B-002` (`c8f54fc`) · `1B-005` (`9f88cfa`) · `1B-007` (`0ffce28`) · `1B-008` (`29ac301`)
+- [x] **4.8** `DEMO-001A` → `DEMO-001B` seeder guard (`998476e`)
 
-**TEST 4:** `npm test` yeşil · 14 kriter geçiyor · `npx tsc --noEmit` temiz
+**TEST 4 SONUÇ:** `npm test` **92/92** · `npx tsc --noEmit` exit 0 · her düzeltme
+önce başarısız olan bir testle kanıtlandı (R-01).
+
+### FAZ 4'te bulunan, planda adlandırılmamış hatalar
+
+| # | Yer | Hata | Nasıl bulundu |
+|---|---|---|---|
+| **F-01** | `lib/focusReport.ts:60,108,126,133` | `started_at` tam UTC instant; ilk 10 karakteri gün anahtarı sanılıp **yerel** `ymd()` anahtarlarıyla karşılaştırılıyordu. Aynı dosya saatleri **yerel** okuyordu — kendi içinde çelişiyordu | `1B-007` taraması |
+| **F-02** | `app/screens/monthly-review.tsx:47`, `weekly-review.tsx:48` | `task.completed_at` tam UTC timestamp; `.split('T')[0]` UTC gününü verip yerel ay/hafta sınırlarıyla karşılaştırılıyordu. 01:00'de tamamlanan görev bir önceki ayın raporuna düşüyordu | `1B-008` taraması, ilk regex'in kaçırdığı kalıp |
+| **F-03** | `lib/demoSeed.ts:21` | `toISOString().slice(0,10)` — gerçek UTC sızıntısı, plan bunu yalnızca 'ikiz `ymd`' olarak listeliyordu | `1B-002` |
+| **F-04** | `lib/journalStats.ts`, `lib/focusReport.ts`, `lib/habitSchedule.ts`, `lib/reportMetrics.ts` | `ymd`'nin kanonik olan dışında **4** kopyası daha vardı (plan 2 diyordu) | `grep 'function ymd'` |
+
+`lib/date.ts` iki yardımcı kazandı: `ymLocal` (ay anahtarı) ve `ymdFromIso`
+(saklanan UTC instant → yerel gün anahtarı). İkisi de `ymd`'den türetiliyor ki
+asla ayrışamasınlar.
+
+Yeni: `__tests__/repo/noUtcDayKeys.test.ts` — depo çapında invariant. Kaynak
+**metni** üzerinde çalıştığını kendi başlığında açıkça yazıyor; davranış kanıtı
+değil, nüks çiti.
 
 ---
 
