@@ -97,7 +97,7 @@ Docker gerekmez. 14 failing L1 kriterinin tamamı burada.
 - [x] **4.2** `1E-L1` harness — `TZ=Europe/Istanbul` sabitlendi, `.env` okumuyor
 - [x] **4.3** `1B-001` `lib/date.ts` — kodda 0 `toISOString`
 - [x] **4.4** `1E-L1a` date testleri — **25/25**
-- [ ] **4.5** `1B-003` `isDueOn` count · `1B-004` metrik formülleri
+- [x] **4.5** `1B-003` count → **15/15** · `1B-004` AC-H04..H09 → **14/14** (9 test önce başarısız oldu)
 - [ ] **4.6** `1E-L1b` metrik/store testleri
 - [ ] **4.7** `1B-002` 5 store/lib · `1B-005` log hata · `1B-007` kalan store · `1B-008` `app/**`
 - [ ] **4.8** `DEMO-001A` → `DEMO-001B` seeder guard

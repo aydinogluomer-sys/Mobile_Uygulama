@@ -1,6 +1,8 @@
 import { eachDayOfInterval, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from 'date-fns';
 import { type Habit, type HabitLog } from './supabase';
 import { type FocusSessionRow } from './focusReport';
+import { isDueOn } from './habitSchedule';
+import { parseLocalDate } from './date';
 
 export type ReportRange = 'week' | 'month';
 export type ReportBadge = {
@@ -33,12 +35,30 @@ function listDateStrings(start: string, end: string): string[] {
   return eachDayOfInterval({ start: from, end: to }).map((date) => ymd(date));
 }
 
+/** `done`/`partial` sayılır; `miss`/`skip` sayılmaz (AC-H07, AC-H08). */
+export function isCompletedState(state: HabitLog['state']): boolean {
+  return state === 'done' || state === 'partial';
+}
+
 function habitLogPercent(
-  habit: Pick<Habit, 'tracking_type' | 'daily_goal'>,
+  habit: Pick<Habit, 'tracking_type' | 'daily_goal' | 'target_direction'>,
   log: Pick<HabitLog, 'state' | 'value'>,
 ): number {
+  // Kaçırılan/atlanan bir gün hiçbir zaman puan üretmez, sayısal olsa bile.
+  if (!isCompletedState(log.state)) return 0;
+
   if (habit.tracking_type === 'numeric') {
     if (typeof log.value === 'number' && habit.daily_goal && habit.daily_goal > 0) {
+      // AC-H05 / AC-H06 — yön önemli.
+      // `at_most` bir ÜST SINIRDIR ("günde en fazla 5 sigara"). Ham
+      // value/goal oranı burada ödülü TERSE çevirir: 20 sigara %100'e
+      // tavanlanır, 1 sigara %20 alır. Daha kötü davranış daha yüksek puan.
+      if (habit.target_direction === 'at_most') {
+        if (log.value <= habit.daily_goal) return 100; // sınırda olmak başarıdır
+        // Sınırın üstünde: aşım büyüdükçe puan düşer, 2× sınırda sıfırlanır.
+        const overshoot = (log.value - habit.daily_goal) / habit.daily_goal;
+        return clamp(100 - overshoot * 100, 0, 100);
+      }
       return clamp((log.value / habit.daily_goal) * 100, 0, 100);
     }
     if (log.state === 'done') return 100;
@@ -66,13 +86,18 @@ export function getMonthBounds(anchor: Date = new Date()): { start: string; end:
 }
 
 export function habitAveragePercent(params: {
-  habits: Array<Pick<Habit, 'id' | 'status' | 'tracking_type' | 'daily_goal'>>;
+  habits: Array<Pick<Habit, 'id' | 'status' | 'tracking_type' | 'daily_goal'
+    | 'target_direction' | 'frequency_config' | 'behavior_type'
+    | 'created_at' | 'end_condition'>>;
   logs: Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>>;
   start: string;
   end: string;
 }): number {
-  const activeHabits = params.habits.filter((habit) => habit.status === 'active');
-  if (activeHabits.length === 0) return 0;
+  // AC-H09 — `status` bugünkü durumdur, o dönemde geçerli olan değil.
+  // Buradan filtrelemek, bugün bir alışkanlığı duraklatmanın GEÇEN AYIN
+  // raporunu değiştirmesi demekti. Rapor edilmiş bir sayı sonradan değişmemeli.
+  const habits = params.habits;
+  if (habits.length === 0) return 0;
 
   const days = listDateStrings(params.start, params.end);
   if (days.length === 0) return 0;
@@ -82,19 +107,30 @@ export function habitAveragePercent(params: {
     logMap.set(`${log.habit_id}|${log.completed_at.slice(0, 10)}`, { state: log.state, value: log.value });
   }
 
+  // AC-H04 — payda DUE günlerdir, takvim günleri değil.
+  // Pzt/Çar/Cum alışkanlığını 7'ye bölmek, üç günün üçünü de yapan birini
+  // %43'e mahkûm ediyordu: mükemmel uyum, başarısız görünen skor.
   let total = 0;
-  for (const habit of activeHabits) {
+  let dueCount = 0;
+  for (const habit of habits) {
     for (const day of days) {
+      const dateObj = parseLocalDate(day);
+      if (!dateObj) continue;
+      if (!isDueOn(habit as Habit, dateObj)) continue;
+      dueCount += 1;
       const log = logMap.get(`${habit.id}|${day}`);
       total += log ? habitLogPercent(habit, log) : 0;
     }
   }
 
-  return Math.round(total / (activeHabits.length * days.length));
+  if (dueCount === 0) return 0;
+  return Math.round(total / dueCount);
 }
 
 export function calculateHabitCompletionRate(
-  habits: Array<Pick<Habit, 'id' | 'status' | 'tracking_type' | 'daily_goal'>>,
+  habits: Array<Pick<Habit, 'id' | 'status' | 'tracking_type' | 'daily_goal'
+    | 'target_direction' | 'frequency_config' | 'behavior_type'
+    | 'created_at' | 'end_condition'>>,
   logs: Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>>,
   start: string,
   end: string,
@@ -108,7 +144,8 @@ export function summarizeHabitProgress(
   start: string,
   end: string,
 ): HabitProgressRow[] {
-  const activeHabits = habits.filter((habit) => habit.status === 'active');
+  // AC-H09 — bugünkü `status`a göre filtrelemek geçmişi yeniden yazar.
+  const activeHabits = habits;
   const days = listDateStrings(start, end);
   const logMap = new Map<string, Pick<HabitLog, 'state' | 'value'>>();
 
@@ -124,7 +161,10 @@ export function summarizeHabitProgress(
       for (const day of days) {
         const log = logMap.get(`${habit.id}|${day}`);
         if (!log) continue;
-        completedDays += 1;
+        // AC-H07 / AC-H08 — bir satırın VAR OLMASI tamamlandığı anlamına gelmez.
+        // `miss` ve `skip` de satır yazar; bunları saymak "kaçırdım" demeyi
+        // "yaptım" saymaktı.
+        if (isCompletedState(log.state)) completedDays += 1;
         scoreTotal += habitLogPercent(habit, log);
       }
 
