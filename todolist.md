@@ -137,13 +137,52 @@ değil, nüks çiti.
 
 ---
 
-## FAZ 5 — Phase 1C/1D · İrade, telafi, edge-fn güvenliği  🔒 FAZ 3 gerekli
+## FAZ 5 — Phase 1C/1D · İrade, telafi, edge-fn güvenliği  🟦 **KISMEN AÇIK**
 
-- [ ] **5.1** `1C-001` atomik debit RPC · `1C-003` → `1C-002` · `1C-004`/`1C-005`/`1C-006`
-- [ ] **5.2** `1D-000` generate-routine reconcile (R-19 — 1D deploy'undan önce)
-- [ ] **5.3** `1D-001`→`002`→`003`→`004` zinciri
-- [ ] **5.4** `1D-005`→`006`→`007` OAuth zinciri · `1D-008` webhook
-- [ ] **5.5** `SEC-1D-001..004` · `SEC-1D-005a..f` (005a **H-11** bekliyor)
+> **Düzeltme.** Bu bölüm toptan "🔒 FAZ 3 gerekli" diye işaretlenmişti; **yanlıştı**.
+> `plan/02 §2`'ye göre `1C-003`, `1D-005`, `1D-006` ve `1D-009` canlı DB
+> gerektirmiyor. Yalnızca `1A-002B`'ye bağlı olanlar FAZ 3'ü bekliyor.
+
+- [ ] **5.1** `1C-001` atomik debit RPC 🔒 · `1C-002` 🔒 · `1C-004`/`1C-005`/`1C-006` 🔒
+- [x] **5.1a** `1C-003` gece yarısı rollover — **10/10** (`04d7605`)
+- [ ] **5.2** `1D-000` generate-routine reconcile 🔒 (canlı v11 ile karşılaştırma gerekir)
+- [ ] **5.3** `1D-001`→`002`→`003`→`004` zinciri 🔒
+- [x] **5.4a** `1D-006` redirect_uri allowlist — **17/17** (`6ba6f44`), iki fonksiyona da uygulandı
+- [ ] **5.4b** `1D-005` state doğrulama — ⏸ **KARAR BEKLİYOR (D-02)**
+- [ ] **5.4c** `1D-007` callback auth — ⏸ **KARAR BEKLİYOR (D-01)**, planın öncülü hatalı
+- [ ] **5.4d** `1D-008` webhook idempotency 🔒
+- [ ] **5.5** `SEC-1D-001..004` 🔒 · `SEC-1D-005a..f` 🔒 (005a **H-11** bekliyor)
+
+### `notion-auth` — planın kaçırdığı yapısal çatışma
+
+Tek uç iki farklı akışa hizmet ediyor:
+
+| Akış | Çağıran | Auth başlığı | Sunucu davranışı |
+|---|---|---|---|
+| Entegrasyon bağlama | `notionStore.ts:111` → `integrations.tsx` | **var** | `if (user)` → kayıt yazılıyor |
+| "Notion ile giriş" | `notionSessionStore.ts:61` → `login.tsx:39` | **yok** | `user` null → **hiçbir şey yazılmıyor**, yine de `success:true` |
+
+Planın `1D-007` reçetesi "callback'te 401 döndür". O satır yazılırsa **"Notion
+ile giriş" tamamen ölür**, çünkü o akışta tanım gereği henüz kullanıcı yoktur.
+
+**Altındaki asıl kusur (P1, yeni):** `login.tsx:39-41` — `login()` başarılı
+dönünce `router.replace('/tabs/today')` çalışıyor ama **Supabase oturumu hiç
+oluşturulmuyor**. Kullanıcı uygulamanın içine giriyor, `supabase.auth.getUser()`
+her yerde `null`, RLS her şeyi reddediyor. Sahte giriş.
+
+**İkincil:** `notionSessionStore.ts:88-97` CSRF state'ini **istemcide**
+doğruluyor (AsyncStorage karşılaştırması). CSRF senaryosunda istemci saldırganın
+kontrolündedir; bu koruma değil. `state` sunucuda doğrulanmalı — `1D-005`.
+
+### Açık kararlar
+
+| # | Karar | Neyi engelliyor |
+|---|---|---|
+| **D-01** | "Notion ile giriş" ne olsun: kaldırılsın mı, gerçek Notion→Supabase kimliği mi kurulsun | `1D-007` |
+| **D-02** | OAuth `state` nerede doğrulansın: imzalı stateless HMAC (tablo yok, bugün yazılabilir, yeni secret) ya da `oauth_states` tablosu (migration → H-15'e bağlı) | `1D-005` |
+
+> Bu iki karar bu oturumda **sorulmuş ama cevaplanmamıştır.** Hiçbiri varsayılarak
+> ilerlenmedi.
 
 **TEST 5:** `supabase test db` yeşil · AC-S01..S07 beş rol · concurrency testleri
 
@@ -178,6 +217,7 @@ değil, nüks çiti.
 | **H-11** | `last_ai_context` sahipliği | `SEC-1D-005a` |
 | **H-14** | `1A-004` canlı cutover onayı | sadece `1A-004` |
 | **H-03** | `backend/.env.local` taşıma | `OPS-0B-001` (2C) |
+| **OAUTH_REDIRECT_ALLOWLIST** 🆕 | `1D-006` ile zorunlu hale geldi: ayarlanmazsa OAuth fonksiyonları fail-closed. Deploy adımı, kod adımı değil | `notion-auth`, `spotify-auth` deploy'u |
 | **H-15** 🆕 | free-tier 2-aktif-proje sınırı: Mas Technic veya MeritFlow duraklatılmalı / plan yükseltilmeli | `1A-001` → tüm şema zinciri (FAZ 3) |
 | H-02, H-04..H-10, H-12 | — | sonraki fazlar |
 
