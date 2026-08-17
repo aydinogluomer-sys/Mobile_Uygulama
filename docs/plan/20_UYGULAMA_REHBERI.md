@@ -197,7 +197,7 @@ ikisi düzeltmeden önce başarısız oldu (R-01).
 > karşılandı ama tek başına kullanıcıya görünen bir şeyi değiştirmedi. Asıl
 > açık **N-07**'dir ve **B5**'te kapanır. Fazlası iddia edilmiyor.
 
-#### B2 · `1D-005` — HMAC imzalı state (**D-02**)
+#### B2 · `1D-005` — HMAC imzalı state (**D-02**) — ✅ `4a66abc`
 
 **Sorun:** `state` üretilip döndürülüyor, callback onu **hiç okumuyor**. CSRF
 koruması yok.
@@ -231,15 +231,24 @@ payload = { v: 1, nonce: <rastgele>, exp: <unix ts>, uid?: <supabase user id> }
 > koruma `oauth_states` tablosudur; şema zinciri açıldığında **FAZ D**'de
 > yeniden değerlendirilir. Bu sınır kod yorumunda ve commit mesajında yer alır.
 
-#### B3 · **N-02** — istemci CSRF tiyatrosunun kaldırılması
+#### B3 · **N-02** — istemci CSRF tiyatrosunun kaldırılması — ✅ `4a66abc`
 
 `notionSessionStore.ts:88-97` AsyncStorage karşılaştırmasını siler; state artık
 sunucuda doğrulanıyor. İstemci yalnızca `state`'i taşır.
 
-#### B4 · **N-04** — `logHabit` hatalarının gösterilmesi
+#### B4 · **N-04** — `logHabit` hatalarının gösterilmesi — ✅
 
-`today.tsx:154`, `timeline.tsx:84,91`, `recovery.tsx:187,231` dönüş değerini yok
-sayıyor. Her biri `LogResult`'ı okur; `ok:false` ise kullanıcıya mesaj gösterir.
+Beş çağrı yeri dönüş değerini yok sayıyordu. Hepsi `LogResult`'ı okuyor ve
+`ok:false` ise `Alert` gösteriyor.
+
+> **Kozmetik olmayan tek nokta:** `recovery.tsx:231` `logHabit()`'ten sonra
+> `completePlan()`'i **koşulsuz** çağırıyordu. Yazma başarısız olsa bile telafi
+> planı "tamamlandı" işaretleniyor, karşılığında hiçbir `habit_log` olmuyordu —
+> plan ile log **kalıcı olarak** çelişiyordu. Artık başarısız yazmada
+> `completePlan` çağrılmıyor. `AC-N04b` bunu sabitliyor.
+
+Yeni: `__tests__/repo/logHabitErrorsSurfaced.test.ts` — `noUtcDayKeys` gibi
+kaynak-metni invariant'ı, başlığında bunu yazıyor.
 
 #### B5 · **N-07** — bayat irade durumu ekranlara sızıyor
 
@@ -266,11 +275,14 @@ sayıyor. Her biri `LogResult`'ı okur; `ok:false` ise kullanıcıya mesaj göst
 > id'siyle eklenmeli ki sahiplik, boyut ve rollback kaydı tutulsun. Bunu
 > atlamak `R-21` (ownership drift) riskine girer.
 
-**TEST B:**
+**TEST B — GEÇTİ (B1–B4):**
 
 ```bash
-cd frontend && npm test && npm run typecheck
+cd frontend && npm test        # 159/159
+cd frontend && npm run typecheck  # exit 0
 ```
+
+**B5 hâlâ açık** — çalıştırılmadan önce `plan/01`'e kendi id'siyle eklenmeli.
 
 Geçme ölçütü: hepsi yeşil · `tsc` exit 0 · **her yeni düzeltmenin testi önce
 başarısız olduğu gözlendi** (R-01).

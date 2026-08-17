@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -152,7 +152,8 @@ export default function TodayScreen() {
     const log = getLogForHabit(h.id);
     const done = log?.state === 'done' || log?.state === 'partial';
     haptic.success();
-    await logHabit({ habitId: h.id, date: new Date(), state: done ? 'miss' : 'done' });
+    const res = await logHabit({ habitId: h.id, date: new Date(), state: done ? 'miss' : 'done' });
+    if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
   }
 
   return (

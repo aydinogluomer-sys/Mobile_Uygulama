@@ -81,20 +81,25 @@ export default function TimelineScreen() {
     const log = getLogForHabit(habit.id, selectedDate);
     const nextState = (!log || log.state === 'miss') ? 'done' : 'miss';
     if (nextState === 'done') haptic.success(); else haptic.light();
-    await logHabit({ habitId: habit.id, date: selectedDate, state: nextState });
+    const res = await logHabit({ habitId: habit.id, date: selectedDate, state: nextState });
+    if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
   };
 
   const handleMeasurableSubmit = async (value: number) => {
     if (!measureHabit) return;
     const remaining = getRemainingValue(measureHabit.id, measureHabit.daily_goal ?? 0, selectedDate);
     const isDone = value >= remaining;
-    await logHabit({
+    const res = await logHabit({
       habitId: measureHabit.id,
       date: selectedDate,
       state: isDone ? 'done' : 'partial',
       value,
       targetValue: measureHabit.daily_goal ?? 0,
     });
+    if (!res.ok) {
+      Alert.alert('Kaydedilemedi', res.error);
+      return;                       // modalı açık bırak; kullanıcı tekrar denesin
+    }
     setMeasureHabit(null);
   };
 

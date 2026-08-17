@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator,
-  Modal, TextInput, KeyboardAvoidingView, Platform,
-} from 'react-native';
+  Modal, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subDays, addDays } from 'date-fns';
@@ -185,7 +184,12 @@ export default function RecoveryScreen() {
     haptic.success();
     setLoggingId(`${habitId}|${date}`);
     const [y, mo, d] = date.split('-').map(Number);
-    await logHabit({ habitId, date: new Date(y, mo - 1, d), state: 'done' });
+    const res = await logHabit({ habitId, date: new Date(y, mo - 1, d), state: 'done' });
+    if (!res.ok) {
+      Alert.alert('Kaydedilemedi', res.error);
+      setLoggingId(null);
+      return;
+    }
     await refreshSets();
     setLoggingId(null);
   }
@@ -229,7 +233,14 @@ export default function RecoveryScreen() {
     const value = state === 'partial' && h?.tracking_type === 'numeric' && h.daily_goal
       ? Math.max(1, Math.round(h.daily_goal * (plan.strategy === 'half' ? 0.5 : 0.25)))
       : undefined;
-    await logHabit({ habitId: plan.habit_id, date: logDate, state, value, targetValue: h?.daily_goal ?? undefined });
+    const res = await logHabit({ habitId: plan.habit_id, date: logDate, state, value, targetValue: h?.daily_goal ?? undefined });
+    // Kayıt yazılmadıysa planı TAMAMLANDI işaretleme. Eskiden koşulsuzdu, yani
+    // başarısız bir yazma sonrası plan "tamam" görünüyor ama karşılığında hiçbir
+    // habit_log yok — ikisi kalıcı olarak çelişiyordu (bulgu N-04).
+    if (!res.ok) {
+      Alert.alert('Kaydedilemedi', res.error);
+      return;
+    }
     await completePlan(plan.id);
     await refreshSets();
     if (plan.target_date === today) await fetchLogsForDate(today);
