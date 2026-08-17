@@ -7,6 +7,49 @@ detayı yalnızca şu an eyleme geçilebilir olan **Phase 1 + kararlar** içindi
 
 ---
 
+## 0 · Durum — 2026-08-17
+
+| Faz | Durum | Engel |
+|---|---|---|
+| **A** Kayıt düzeltme | ✅ **TAMAMLANDI** (A1–A8) · **A9 AÇIK** | A9 = H-15 |
+| **B** Canlısız kod | ✅ **TAMAMLANDI** (B1–B5) | — |
+| **C** Şema temeli | ⬜ **BAŞLANMADI** | **H-15** |
+| **D** Migration + RPC | ⬜ **BAŞLANMADI** | FAZ C |
+| **E** `generate-routine` | ⬜ **BAŞLANMADI** | FAZ D |
+| **F** Notion kimliği | ⬜ **BAŞLANMADI** | FAZ D |
+| **G** Layer 2 + Gate C | ⬜ **BAŞLANMADI** | FAZ E + F |
+
+### H-15 — YAPILMADI, kanıtıyla
+
+Karar **Pro plana yükselt** olarak verildi (§2.5), ama **uygulanmadı**. Bu bir
+faturalama işlemi; ben yapamam.
+
+Son gözlem, 2026-08-17:
+
+```
+get_organization(jiabjxuhjspbiythhexg)  → "plan": "free"
+list_projects()                          → kbcuolhjjnmhjaarxxmu
+                                           "Alışkanlık Uygulaması"
+                                           "status": "INACTIVE"
+restore_project(kbcuolhjjnmhjaarxxmu)    → ForbiddenException
+   "2 project limit ... delete, pause or upgrade"
+```
+
+Aktif iki yeri **Mas Technic** (`zdqiujpeewtyhtcqhdcj` — dokunulması yasak) ve
+**MeritFlow** (`ieiblroubtzktnykvhhz` — ilgisiz üçüncü proje) tutuyor.
+
+### Buradan nasıl devam edilir
+
+1. Kullanıcı organizasyonu **Pro**'ya yükseltir. *(Tek insan adımı.)*
+2. Doğrula: `get_organization` → `"plan"` artık `"free"` değil.
+3. `restore_project("kbcuolhjjnmhjaarxxmu")` → `ACTIVE_HEALTHY` bekle.
+4. **TEST A**'nın son iki satırını çalıştır (§3 FAZ A).
+5. **FAZ C**'ye geç: `1A-001` three-way diff.
+
+Kod tarafında bekleyen hiçbir şey yok. Canlı DB gerektirmeyen işin tamamı bitti.
+
+---
+
 ## 1 · Bu belge nedir
 
 Üç belge var ve üçü farklı soruya cevap veriyor. Karıştırılırsa iş tekrarlanır:
@@ -141,28 +184,28 @@ Bunlar benim ürettiğim işteki kusurlar. Sessizce düzeltmek yerine kayda geç
 
 ## 3 · Fazlar
 
-### FAZ A — Kayıt düzeltme ve kilit açma *(kod yok)*
+### FAZ A — Kayıt düzeltme ve kilit açma *(kod yok)* — ✅ A1–A8, **A9 açık**
 
 **Giriş şartı:** yok.
 
-| # | İş |
-|---|---|
-| A1 | Bu belge yazılır |
-| A2 | **S-03** — `plan/05 §3`'teki geçersiz risk kabulü düzeltilir; `R-18`'in mitigation'ı güncellenir |
-| A3 | **S-04** — `plan/05` `D-17` kapatılır (yürütmeyle karşılandı) |
-| A4 | **S-02** — `1D-006` sıra sapması `plan/01`'e not düşülür |
-| A5 | **D-02** — `plan/01` `1D-005` kabul kriterleri **HMAC**'e göre yeniden yazılır *(mevcut metin `oauth_states` tablosu istiyor)* |
-| A6 | **D-01** — `plan/01` `1D-007` kabul kriterleri N-03 gereği düzeltilir; FAZ F görevleri eklenir |
-| A7 | **N-05** — deploy şartı `plan/01 1D-006` ve `todolist.md`'ye yazılır |
-| A8 | `todolist.md` FAZ A–G yapısına göre güncellenir |
-| A9 | **H-15** — kullanıcı Pro'ya yükseltir → `restore_project` çağrılır |
+| # | İş | Durum |
+|---|---|---|
+| A1 | Bu belge yazılır | ✅ `7c79aa2` |
+| A2 | **S-03** — `plan/05 §3`'teki geçersiz risk kabulü düzeltilir; `R-18`'in mitigation'ı güncellenir | ✅ `7c79aa2` |
+| A3 | **S-04** — `plan/05` `D-17` kapatılır (yürütmeyle karşılandı) | ✅ `7c79aa2` |
+| A4 | **S-02** — `1D-006` sıra sapması `plan/01`'e not düşülür | ✅ `7c79aa2` |
+| A5 | **D-02** — `plan/01` `1D-005` kabul kriterleri **HMAC**'e göre yeniden yazılır | ✅ `7c79aa2` |
+| A6 | **D-01** — `plan/01` `1D-007` kabul kriterleri N-03 gereği düzeltilir | ✅ `7c79aa2` |
+| A7 | **N-05** — deploy şartı `plan/01 1D-006` ve `todolist.md`'ye yazılır | ✅ `7c79aa2` |
+| A8 | `todolist.md` FAZ A–G yapısına göre güncellenir | ✅ `7c79aa2` |
+| A9 | **H-15** — kullanıcı Pro'ya yükseltir → `restore_project` çağrılır | ⬜ **AÇIK — insan adımı** |
 
 **TEST A** — hepsi geçmeli:
 
 ```bash
 python tools/audit/verify_gate_b.py          # FAILURES: NONE
 bash supabase/predeploy_guard.sh             # exit 0
-cd frontend && npm test && npm run typecheck # 119/119, exit 0
+cd frontend && npm test && npm run typecheck # 165/165, exit 0
 ```
 
 Artı: `list_projects` kanonik projeyi `ACTIVE_HEALTHY` gösterir ve salt-okunur
@@ -173,7 +216,7 @@ FAZ B kotadan bağımsızdır.
 
 ---
 
-### FAZ B — Canlı DB gerektirmeyen kod
+### FAZ B — Canlı DB gerektirmeyen kod — ✅ **TAMAMLANDI**
 
 **Giriş şartı:** TEST A geçti. **H-15 gerekmez.**
 
@@ -305,7 +348,7 @@ başarısız olduğu gözlendi** (R-01).
 
 ---
 
-### FAZ C — Şema temeli
+### FAZ C — Şema temeli — ⬜ **BAŞLANMADI** (H-15 bekliyor)
 
 **Giriş şartı:** TEST B geçti **ve** H-15 kapandı (kanonik proje `ACTIVE_HEALTHY`).
 
@@ -327,7 +370,7 @@ schema hash canlıyla eşleşiyor.
 
 ---
 
-### FAZ D — Migration ve RPC güvenliği
+### FAZ D — Migration ve RPC güvenliği — ⬜ **BAŞLANMADI**
 
 **Giriş şartı:** TEST C geçti (`1A-002B` yeşil).
 
@@ -342,7 +385,7 @@ tablosuna geçilecek mi?
 
 ---
 
-### FAZ E — `generate-routine` zinciri
+### FAZ E — `generate-routine` zinciri — ⬜ **BAŞLANMADI**
 
 **Giriş şartı:** TEST D geçti.
 
@@ -357,7 +400,7 @@ tablosuna geçilecek mi?
 
 ---
 
-### FAZ F — Notion kimliği (**D-01**) ve `1D-007`
+### FAZ F — Notion kimliği (**D-01**) ve `1D-007` — ⬜ **BAŞLANMADI**
 
 **Giriş şartı:** TEST D geçti (migration hattı açık).
 
@@ -385,7 +428,7 @@ sağlayıcısı **yoktur**, bu yüzden özel akış gerekir.
 
 ---
 
-### FAZ G — Layer 2 ve Gate C
+### FAZ G — Layer 2 ve Gate C — ⬜ **BAŞLANMADI**
 
 **Giriş şartı:** TEST E ve TEST F geçti.
 

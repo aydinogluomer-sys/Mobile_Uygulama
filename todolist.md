@@ -20,13 +20,13 @@ Gate durumu: `⬜ yapılacak` · `🟦 devam` · `✅ bitti` · `🔒 kilitli (k
 > | Bu belge | Rehber | Durum |
 > |---|---|---|
 > | FAZ 0–2, 4 | *(tamamlandı)* | ✅ |
-> | — | **FAZ A** kayıt düzeltme + kilit açma | 🟦 |
-> | FAZ 5 kısmı | **FAZ B** canlısız kod | ⬜ |
-> | FAZ 3 | **FAZ C** şema temeli | 🔒 H-15 |
-> | FAZ 5 | **FAZ D** migration + RPC | 🔒 |
-> | FAZ 5 | **FAZ E** generate-routine | 🔒 |
-> | *(yeni)* | **FAZ F** Notion kimliği + `1D-007` | 🔒 |
-> | FAZ 6 | **FAZ G** Layer 2 + Gate C | 🔒 |
+> | — | **FAZ A** kayıt düzeltme + kilit açma | ✅ A1–A8 · **A9 açık** |
+> | FAZ 5 kısmı | **FAZ B** canlısız kod | ✅ B1–B5 |
+> | FAZ 3 | **FAZ C** şema temeli | 🔒 **H-15 — başlanmadı** |
+> | FAZ 5 | **FAZ D** migration + RPC | 🔒 başlanmadı |
+> | FAZ 5 | **FAZ E** generate-routine | 🔒 başlanmadı |
+> | *(yeni)* | **FAZ F** Notion kimliği + `1D-007` | 🔒 başlanmadı |
+> | FAZ 6 | **FAZ G** Layer 2 + Gate C | 🔒 başlanmadı |
 
 ### Alınan kararlar — 2026-08-17
 
@@ -251,7 +251,7 @@ kontrolündedir; bu koruma değil. `state` sunucuda doğrulanmalı — `1D-005`.
 | **H-14** | `1A-004` canlı cutover onayı | sadece `1A-004` |
 | **H-03** | `backend/.env.local` taşıma | `OPS-0B-001` (2C) |
 | **OAUTH_REDIRECT_ALLOWLIST** 🆕 | `1D-006` ile zorunlu hale geldi: ayarlanmazsa OAuth fonksiyonları fail-closed. Deploy adımı, kod adımı değil | `notion-auth`, `spotify-auth` deploy'u |
-| **H-15** | free-tier 2-aktif-proje sınırı — **karar: Pro plana yükselt** (2026-08-17). Uygulanmayı bekliyor; yükseltmeyi kullanıcı yapar | `1A-001` → tüm şema zinciri (FAZ C–G) |
+| **H-15** | free-tier 2-aktif-proje sınırı — **karar: Pro plana yükselt** (2026-08-17). ⬜ **YAPILMADI.** Son gözlem 2026-08-17: org `plan: free`, kanonik proje `INACTIVE`, `restore_project` → `ForbiddenException`. Faturalama işlemi; kullanıcı yapar. Detay + devam adımları: `docs/plan/20_UYGULAMA_REHBERI.md §0` | `1A-001` → tüm şema zinciri (FAZ C–G) |
 | H-02, H-04..H-10, H-12 | — | sonraki fazlar |
 
 ## Değişmeyen kısıtlar
