@@ -1,8 +1,14 @@
 # Mobile_Uygulama — Yapılacaklar (faz faz)
 
-**Durum:** Gate B `FAIL` (0 blocker · 2 major · 5 minor) — `05ab83e`
+**Plan onayı:** ✅ **ONAYLANDI** (kullanıcı, 2026-08-04) — bu belge artık
+uygulanacak faz sırasının referansıdır.
 **Kural:** Her faz sonunda test çalışır. Test geçmeden sonraki faza geçilmez.
 **Yetki sınırı:** Phase 1 ve sonrası **Gate B PASS + açık kullanıcı onayı** gerektirir.
+
+> **Bu onay planın kendisinedir, Gate B kabulü değildir.** FAZ 1 (task
+> semantiklerinin kabulü) hâlâ açık ve FAZ 3+ onu bekliyor. İkisi ayrı kararlar:
+> bu belge *neyin hangi sırayla yapılacağını* onaylar; Gate B *yapılacak şeyin
+> doğru tarif edilip edilmediğini* onaylar.
 
 Gate durumu: `⬜ yapılacak` · `🟦 devam` · `✅ bitti` · `🔒 kilitli (karar/insan bekliyor)`
 
