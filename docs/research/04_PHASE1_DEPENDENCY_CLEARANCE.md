@@ -89,6 +89,92 @@ being unambiguous, which it now is.
 
 ---
 
+## Clearance executed — `1E-000`, 2026-08-04
+
+Conditions discharged by running the stated commands. **One asserted licence was
+wrong**, which is the whole reason the gate required reading rather than
+recalling.
+
+### `jest-expo` — **CLEARED**
+
+| Field | Verified value |
+|---|---|
+| Pinned version | **`54.0.17`** (`jest-expo@~54`, matches Expo SDK major 54) |
+| Licence | **MIT** — `npm view jest-expo@~54 version license` returned MIT for every 54.x |
+| Integrity record | `dist.shasum` **`c4b905097889340fe44f868d601c165c113ddc55`** |
+| Source | `git://github.com/expo/expo.git` |
+| peerDependencies | `expo: *`, `react-native: *`, `react-server-dom-webpack: ~19.0.4 \|\| ~19.1.5 \|\| ~19.2.4` |
+| Installed stack | expo `^54.0.31` · react-native `0.81.5` · react `19.1.0` — compatible |
+| Ships in bundle | **No** — `devDependencies` only |
+| State | **PASS** |
+
+**Runner version — a compatibility defect this clearance initially missed.**
+
+The first pass recorded `jest@30.4.2` (MIT) as "the runner", because that is what
+`npm view jest` returns. Installing it broke the harness immediately:
+
+```
+TypeError: this._moduleMocker.clearMocksOnScope is not a function
+    at Runtime.resetModules (node_modules/jest-runtime/…)
+```
+
+`jest-expo@54.0.17` depends on **jest 29 internals** — `babel-jest ^29.2.1`,
+`@jest/globals ^29.2.1`, `jest-snapshot ^29.2.1`, `jest-environment-jsdom
+^29.2.1`. It is not merely "compatible with" a jest version; it is built against
+one.
+
+| Field | Verified value |
+|---|---|
+| Runner | **`jest@^29.7.0`** — MIT |
+| Why pinned | `jest-expo@54.0.17` requires the 29.x internal API |
+| How found | harness failed to run on jest 30; `npm view jest-expo@54.0.17 dependencies` confirmed |
+
+**The lesson, recorded rather than smoothed over:** the clearance verified the
+*licence* of the runner and asserted compatibility without pinning its version.
+"Latest MIT" is not the same as "the one this preset is built against". The
+`compatibility source` field existed precisely to catch this and was answered
+too loosely on the first pass.
+
+### `supabase/cli` — **CLEARED, with a correction**
+
+| Field | Verified value |
+|---|---|
+| Installed version | **`2.109.1`** — the version every probe in this engagement was run against |
+| Licence | **MIT** — `npm view supabase` |
+| Source | `https://github.com/supabase/cli.git` |
+| Ships in bundle | **No** — machine/CI tool |
+| State | **PASS** |
+
+> ⚠ **Correction.** This document previously recorded **Apache-2.0** and reasoned
+> at length about its NOTICE-on-redistribution obligation. The published package
+> is **MIT**. The Apache-2.0 claim was never read — it was exactly the
+> "recorded from published knowledge, a claim not evidence" case the adoption
+> gate exists to catch. MIT imposes no NOTICE obligation, so the earlier
+> reasoning was not just wrong, it was reasoning about an obligation that does
+> not exist.
+>
+> npm latest is `2.114.0`; **`2.109.1` is pinned** because that is the version
+> whose behaviour was actually verified here (`migration squash --version`,
+> `init` output, port block).
+
+### `pgTAP` — **STILL PENDING**
+
+Not discharged. It is bundled with the local Supabase Postgres image, and the
+image query returned nothing on this machine, so **no version or licence has
+been read**. Recording that plainly rather than asserting the PostgreSQL Licence
+a second time from memory.
+
+**This blocks nothing today:** pgTAP is required only by `1E-L2` (FAZ 6). It must
+be discharged before that task starts, not before `1E-L1`.
+
+| Dependency | Pinned | Licence | Verified | State |
+|---|---|---|---|---|
+| `jest-expo` | 54.0.17 | MIT | ✅ npm + shasum | **PASS** |
+| `supabase/cli` | 2.109.1 | MIT *(was wrongly Apache-2.0)* | ✅ npm | **PASS** |
+| `pgTAP` | — | — | ❌ not read | **PENDING — gates `1E-L2` only** |
+
+---
+
 ## Summary
 
 | Dependency | Licence expected | Ships in bundle? | Install task | Accepting owner | State |

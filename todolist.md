@@ -72,7 +72,13 @@ Verifier bunu sağlayamaz. Okunacak dört artefakt:
 
 ## FAZ 3 — Phase 1A · Şema temeli  🟦 **DEVAM EDİYOR**
 
-- [ ] **3.1** `1A-001` three-way diff — 🔴 **ENGELLİ: proje INACTIVE** (R-18)
+- [ ] **3.1** `1A-001` three-way diff — 🔴 **ENGELLİ**
+      Canonical proje INACTIVE. `restore_project` **reddedildi**: free-tier
+      2 aktif proje sınırı dolu.
+      Yer tutanlar: **Mas Technic** (`zdqiujpeewtyhtcqhdcj`, yasaklı) ve
+      **MeritFlow** (`ieiblroubtzktnykvhhz`, ilgisiz üçüncü proje).
+      **H-15 (YENİ):** birinin duraklatılması/yükseltilmesi gerekiyor — kullanıcı kararı.
+      Ben yapamam: Mas Technic yasak, MeritFlow bana ait değil.
 - [ ] **3.2** `1A-002A` baseline yaz — `20260801000000_baseline_schema.sql` + archive
 - [ ] **3.3** `1A-002B` Stage A/B — baseline-alone posture kanıtı
 - [x] **3.4** `1D-009` `supabase/config.toml` + deploy guard — **5/5 validation geçti**
@@ -83,14 +89,14 @@ Verifier bunu sağlayamaz. Okunacak dört artefakt:
 
 ---
 
-## FAZ 4 — Phase 1B · Tarih ve metrik doğruluğu  🔒 FAZ 1 gerekli
+## FAZ 4 — Phase 1B · Tarih ve metrik doğruluğu  🟦 **DEVAM EDİYOR** (FAZ 1 ✅)
 
 Docker gerekmez. 14 failing L1 kriterinin tamamı burada.
 
-- [ ] **4.1** `1E-000` lisans clearance · `OPS-1E-001` npm script'leri
-- [ ] **4.2** `1E-L1` jest harness
-- [ ] **4.3** `1B-001` `lib/date.ts`
-- [ ] **4.4** `1E-L1a` testleri **önce yaz, önce başarısız olsun**
+- [x] **4.1** `1E-000` clearance **kapatıldı** (jest-expo 54.0.17 MIT + shasum; supabase CLI **MIT**, Apache-2.0 iddiası yanlıştı; pgTAP hâlâ PENDING — sadece 1E-L2'yi bekletir) · `OPS-1E-001` script'ler + devDeps
+- [x] **4.2** `1E-L1` harness — `TZ=Europe/Istanbul` sabitlendi, `.env` okumuyor
+- [x] **4.3** `1B-001` `lib/date.ts` — kodda 0 `toISOString`
+- [x] **4.4** `1E-L1a` date testleri — **25/25**
 - [ ] **4.5** `1B-003` `isDueOn` count · `1B-004` metrik formülleri
 - [ ] **4.6** `1E-L1b` metrik/store testleri
 - [ ] **4.7** `1B-002` 5 store/lib · `1B-005` log hata · `1B-007` kalan store · `1B-008` `app/**`
@@ -141,6 +147,7 @@ Docker gerekmez. 14 failing L1 kriterinin tamamı burada.
 | **H-11** | `last_ai_context` sahipliği | `SEC-1D-005a` |
 | **H-14** | `1A-004` canlı cutover onayı | sadece `1A-004` |
 | **H-03** | `backend/.env.local` taşıma | `OPS-0B-001` (2C) |
+| **H-15** 🆕 | free-tier 2-aktif-proje sınırı: Mas Technic veya MeritFlow duraklatılmalı / plan yükseltilmeli | `1A-001` → tüm şema zinciri (FAZ 3) |
 | H-02, H-04..H-10, H-12 | — | sonraki fazlar |
 
 ## Değişmeyen kısıtlar
