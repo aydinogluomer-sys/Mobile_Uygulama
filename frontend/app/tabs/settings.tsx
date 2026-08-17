@@ -27,7 +27,7 @@ const SEASONAL_OPTIONS: { v: SeasonalMotionIntensity; l: string }[] = [
 ];
 import { Webhook } from '../../types';
 import BadHabitsTracker from '../../components/BadHabitsTracker';
-import { seedDemoData } from '../../lib/demoSeed';
+import { seedDemoData, isSeedingAllowed } from '../../lib/demoSeed';
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 import IntegrationItemCard from '../../components/IntegrationItemCard';
 import {
@@ -334,22 +334,27 @@ export default function SettingsScreen() {
               </View>
             </View>
 
-            <TouchableOpacity
-              style={[styles.settingItem, seedingDemo && styles.seedBtnDisabled]}
-              onPress={handleSeedDemoData}
-              disabled={seedingDemo}
-            >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: '#87A67820' }]}>
-                  <Ionicons name="flask-outline" size={24} color="#87A678" />
+            {/* DEMO-001B - sadece gelistirme derlemesinde. Kaynak koruma
+                lib/demoSeed.ts icindedir; bu yalnizca calismayacak bir
+                kontrolu kullaniciya gostermemek icin. */}
+            {isSeedingAllowed() && (
+              <TouchableOpacity
+                style={[styles.settingItem, seedingDemo && styles.seedBtnDisabled]}
+                onPress={handleSeedDemoData}
+                disabled={seedingDemo}
+              >
+                <View style={styles.settingLeft}>
+                  <View style={[styles.settingIcon, { backgroundColor: '#87A67820' }]}>
+                    <Ionicons name="flask-outline" size={24} color="#87A678" />
+                  </View>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Demo verileri doldur</Text>
+                    <Text style={styles.settingSubtitle}>Test icin gorev, aliskanlik, gunluk ve odak verisi ekler</Text>
+                  </View>
                 </View>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Demo verileri doldur</Text>
-                  <Text style={styles.settingSubtitle}>Test icin gorev, aliskanlik, gunluk ve odak verisi ekler</Text>
-                </View>
-              </View>
-              {seedingDemo ? <ActivityIndicator size="small" color="#87A678" /> : <Ionicons name="chevron-forward" size={20} color="#827E72" />}
-            </TouchableOpacity>
+                {seedingDemo ? <ActivityIndicator size="small" color="#87A678" /> : <Ionicons name="chevron-forward" size={20} color="#827E72" />}
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Tracking */}

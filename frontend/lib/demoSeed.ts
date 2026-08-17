@@ -26,7 +26,33 @@ function plusDays(base: Date, days: number): Date {
   return d;
 }
 
+/**
+ * May the demo seeder run in this build?
+ *
+ * `seedDemoData` writes fabricated projects, tasks, habits, logs, recovery
+ * plans and journal entries into whichever account is signed in. There is no
+ * marker distinguishing them from the user's own records afterwards, so in a
+ * release build one tap silently contaminates real data.
+ *
+ * `__DEV__` is the same mechanism the paywall mock uses (subscriptionStore.ts,
+ * task 1D-010), so there is one answer to "is this a development build".
+ *
+ * Exported so the UI can hide the entry point instead of offering a control
+ * that always fails -- DEMO-001B. The source guard below is the one that
+ * actually holds; the UI check is only there so nothing is offered that cannot
+ * work.
+ */
+export function isSeedingAllowed(): boolean {
+  return typeof __DEV__ !== 'undefined' && __DEV__ === true;
+}
+
 export async function seedDemoData(): Promise<SeedSummary> {
+  // Fail closed, and fail FIRST: before the auth lookup, before any insert.
+  // A guard that refuses after the first write has prevented nothing.
+  if (!isSeedingAllowed()) {
+    throw new Error('Demo veri yükleyici yalnızca geliştirme (__DEV__) derlemelerinde çalışır.');
+  }
+
   const summary: SeedSummary = {
     projects: 0,
     tasks: 0,
