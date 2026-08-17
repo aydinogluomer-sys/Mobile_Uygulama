@@ -12,6 +12,39 @@ uygulanacak faz sırasının referansıdır.
 
 Gate durumu: `⬜ yapılacak` · `🟦 devam` · `✅ bitti` · `🔒 kilitli (karar/insan bekliyor)`
 
+> **2026-08-17 — yürütme haritası `docs/plan/20_UYGULAMA_REHBERI.md`'ye taşındı.**
+> Bu belge **sıra** ve **gate durumu** için referans olmaya devam ediyor; adım
+> adım *nasıl uygulanacağı* ve saptama envanteri artık rehberde. Rehber FAZ A–G
+> kullanıyor; eşleme:
+>
+> | Bu belge | Rehber | Durum |
+> |---|---|---|
+> | FAZ 0–2, 4 | *(tamamlandı)* | ✅ |
+> | — | **FAZ A** kayıt düzeltme + kilit açma | 🟦 |
+> | FAZ 5 kısmı | **FAZ B** canlısız kod | ⬜ |
+> | FAZ 3 | **FAZ C** şema temeli | 🔒 H-15 |
+> | FAZ 5 | **FAZ D** migration + RPC | 🔒 |
+> | FAZ 5 | **FAZ E** generate-routine | 🔒 |
+> | *(yeni)* | **FAZ F** Notion kimliği + `1D-007` | 🔒 |
+> | FAZ 6 | **FAZ G** Layer 2 + Gate C | 🔒 |
+
+### Alınan kararlar — 2026-08-17
+
+| # | Karar | Sonucu |
+|---|---|---|
+| **D-01** | **Gerçek Notion→Supabase kimliği kurulacak** | Sahte giriş (**N-01**) kaldırılmıyor, düzeltiliyor. `1D-007` kriteri intent-bazlı hale getirildi (`plan/01` güncellendi) |
+| **D-02** | **İmzalı stateless HMAC state** | `1D-005` migration gerektirmiyor → H-15'e takılmıyor. `plan/01` kabul kriterleri yeniden yazıldı. Yeni secret: `OAUTH_STATE_SECRET` |
+| **H-15** | **Pro plana yükseltilecek** | Yükseltmeyi kullanıcı yapar; ben yalnızca `restore_project` çağırırım |
+
+### Kendi işimde bulunan eksikler
+
+| # | Eksik | Durum |
+|---|---|---|
+| **S-01** | `1C-003` AC-3 karşılanmadı — `score()` `state` null iken `100` döndürüyor, `plan/01:661` "loading" istiyor | FAZ B1'de düzeltilecek |
+| **S-02** | `1D-006` bağımlılık sırası dışında yürütüldü (`1D-005`'ten önce) | ✅ `plan/01`'e kaydedildi; `depends_on` bilerek değiştirilmedi |
+| **S-03** | `plan/05 §3` free-tier auto-pause kabulü yanlış öncüle dayanıyordu ("restore tek çağrı") | ✅ kabul geri çekildi, R-18 `H×H` olarak yeniden puanlandı |
+| **S-04** | `D-17` (`1B-009`) yürütmeyle kapandı — `1B-008` 12 sitenin hepsini aldı | ✅ `plan/05`'te kapatıldı |
+
 ---
 
 ## FAZ 0 — Gate B kapanışı  ✅ **TAMAMLANDI** (TEST 0: 6/6)
@@ -218,7 +251,7 @@ kontrolündedir; bu koruma değil. `state` sunucuda doğrulanmalı — `1D-005`.
 | **H-14** | `1A-004` canlı cutover onayı | sadece `1A-004` |
 | **H-03** | `backend/.env.local` taşıma | `OPS-0B-001` (2C) |
 | **OAUTH_REDIRECT_ALLOWLIST** 🆕 | `1D-006` ile zorunlu hale geldi: ayarlanmazsa OAuth fonksiyonları fail-closed. Deploy adımı, kod adımı değil | `notion-auth`, `spotify-auth` deploy'u |
-| **H-15** 🆕 | free-tier 2-aktif-proje sınırı: Mas Technic veya MeritFlow duraklatılmalı / plan yükseltilmeli | `1A-001` → tüm şema zinciri (FAZ 3) |
+| **H-15** | free-tier 2-aktif-proje sınırı — **karar: Pro plana yükselt** (2026-08-17). Uygulanmayı bekliyor; yükseltmeyi kullanıcı yapar | `1A-001` → tüm şema zinciri (FAZ C–G) |
 | H-02, H-04..H-10, H-12 | — | sonraki fazlar |
 
 ## Değişmeyen kısıtlar

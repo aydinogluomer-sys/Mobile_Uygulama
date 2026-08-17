@@ -781,19 +781,40 @@ double-counted.
 `P1` · **MUST** · Supabase & Security · depends_on: Gate B PASS · **M**
 
 > **Head of the OAuth chain (B2).** `1D-005` → `1D-006` → `1D-007` all edit `notion-auth/index.ts`; `1D-005` and `1D-006` also edit `spotify-auth/index.ts`. Serialised so the three never edit concurrently.
-**scope** (3 files): `supabase/functions/notion-auth/index.ts` · `supabase/functions/spotify-auth/index.ts` · `supabase/migrations/<ts>_oauth_state.sql`
+> **Amended 2026-08-17 — decision D-02: signed stateless state (HMAC).** The
+> original criteria required a server-side `oauth_states` table, which needs a
+> migration, which needs `1A-002B`, which is blocked on **H-15**. An HMAC-signed
+> stateless `state` closes the same CSRF hole with no schema change, so this task
+> is no longer gated on the quota. The cost is recorded honestly below: TTL-based
+> expiry is **not** full single-use replay protection. Revisited in Phase 1D once
+> the schema chain opens.
+
+**scope** (3 files): `supabase/functions/notion-auth/index.ts` · `supabase/functions/spotify-auth/index.ts` · `supabase/functions/_shared/oauthState.ts` (new)
 **goal** Close the account-linking CSRF — `state` is minted in every flow and never checked.
-**acceptance_criteria** `state` is persisted server-side with the user and a TTL · callback rejects a missing/unknown/expired/foreign `state` · single-use.
-**validation** `supabase test db`; a replayed `state` is rejected.
-**risk** MEDIUM — breaks in-flight OAuth sessions on deploy. **rollback** `git revert` + `DROP TABLE`.
+
+**acceptance_criteria**
+- `state` = `base64url(payload).base64url(HMAC-SHA256(payload, secret))`, payload `{ v, nonce, exp, uid? }`
+- `uid` is **optional**: bound to the authenticated user in the link flow, absent in the login flow, which has no user yet (finding **N-03**)
+- Callback rejects a missing, malformed, tampered, wrongly-signed or expired `state` with **400**
+- Secret comes from `OAUTH_STATE_SECRET`; **absent secret fails closed**. The service-role key is **not** reused as the HMAC key — separate purposes, separate keys
+- The module is Deno-free and dependency-free so the jest suite can exercise it, exactly as `_shared/redirectAllowlist.ts` is
+- The TTL-vs-single-use limitation is stated in the module docstring and the commit message, not left implicit
+
+**validation** `npm test` — signature verification, expiry, tampered payload, wrong secret, `uid` mismatch. Deno is not installed on the execution machine and no local stack exists, so a pure module is the only testable part of an edge function here.
+**risk** MEDIUM — breaks in-flight OAuth sessions on deploy; adds a required deploy secret.
+**rollback** `git revert`. No table to drop.
 
 ## 1D-006 · Redirect-URI allowlist
 `P1` · **MUST** · Supabase & Security · depends_on: **1D-005** · **S**
 
 > **Serialised (B2).** Shares `notion-auth/index.ts` and `spotify-auth/index.ts` with `1D-005` and `1D-007`. Chain: `1D-005` → `1D-006` → `1D-007`.
+>
+> **Executed out of order 2026-08-17 (finding S-02).** This task landed in `6ba6f44` **before** `1D-005`. The reason the order exists — three tasks editing one file must not run concurrently — was satisfied, because execution was strictly sequential and single-agent. But the graph and the execution history now disagree, so it is recorded here rather than left for a reviewer to find. `1D-005` will edit the same file again; that is safe sequentially. `depends_on` is **deliberately left unchanged** so the intended order stays authoritative.
 **scope** (2 files): `supabase/functions/notion-auth/index.ts` · `supabase/functions/spotify-auth/index.ts`
 **goal** Stop caller-controlled `redirect_uri` being embedded in the authorize URL.
-**acceptance_criteria** A fixed allowlist is checked before use · non-allowlisted values are rejected with 400 · the app's real scheme is on the list.
+**acceptance_criteria** A fixed allowlist is checked before use · non-allowlisted values are rejected with 400 · the app's real scheme is on the list · matching is **exact** on scheme+host+port+path, never a prefix · a bare `*` is dropped at parse time rather than honoured.
+
+> **New required deploy config (finding N-05): `OAUTH_REDIRECT_ALLOWLIST`.** Unset means an empty list, and an empty list permits nothing — an unconfigured deployment refuses to mint authorize URLs instead of accepting whatever the caller supplies. This is the intended posture, but it does mean **the OAuth functions will not work until the variable is set**. Recorded here and in `docs/plan/20_UYGULAMA_REHBERI.md §5`.
 **validation** a crafted `redirect_uri` returns 400.
 **risk** MEDIUM — a missing entry breaks a live flow. **rollback** `git revert`.
 
@@ -803,7 +824,23 @@ double-counted.
 > **Serialised (B2).** Shares `notion-auth/index.ts` with `1D-005` and `1D-006`. Chain: `1D-005` → `1D-006` → `1D-007`. Last in the chain, so it sees the `state` check and the allowlist already in place.
 **scope** (1 file): `supabase/functions/notion-auth/index.ts`
 **goal** The callback currently proceeds with `user = null` and still creates pages in a third-party workspace.
-**acceptance_criteria** Callback returns 401 without a valid user · no third-party side effect occurs before authentication · `verify_jwt` reviewed and recorded.
+
+> **Premise corrected 2026-08-17 — finding N-03, decision D-01.** The original
+> criterion "callback returns 401 without a valid user" is **not correct in all
+> cases**. `notion-auth` serves two different flows through one endpoint:
+> integration linking (`notionStore.ts:111`, authenticated) and "sign in with
+> Notion" (`notionSessionStore.ts:61`, **unauthenticated by definition** — there
+> is no user yet). Returning 401 unconditionally would kill the login flow
+> outright. D-01 chose to **build real Notion→Supabase identity** rather than
+> remove that flow, so the criterion becomes intent-based and this task now
+> depends on that work.
+
+**acceptance_criteria**
+- The callback takes an explicit `intent`: `link` or `login`
+- `intent=link` without a valid Supabase user returns **401**, and **no** Notion token exchange or `/users/me` call happens first — today an unauthenticated caller burns an authorization code and receives workspace metadata with `success: true` while nothing is stored
+- `intent=login` is authenticated **against Notion**, then mints a real Supabase session (see FAZ F in `docs/plan/20_UYGULAMA_REHBERI.md`)
+- No third-party side effect occurs before whichever authentication applies
+- `verify_jwt` reviewed and recorded
 **validation** unauthenticated callback → 401, no Notion write.
 **risk** LOW. **rollback** `git revert`.
 

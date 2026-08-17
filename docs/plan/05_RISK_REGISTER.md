@@ -28,12 +28,13 @@ force re-evaluation.
 | **R-15** | Fixing dates in `lib/` while screens keep deriving their own | M | M | MED | Habit Domain | 1B-002 covers stores; a lint rule bans the pattern repo-wide | any new `toISOString().slice(0,10)` |
 | **R-16** | Session/context limits interrupt a multi-file change midway | **H** | M | MED | all | small tasks (0 XL, max 5 files); commit per task; typecheck before each commit | any task left with an uncommitted partial edit, or any task growing past 5 files mid-flight |
 | **R-17** | Product decisions (bad habits, webhooks, export) never made, so 2A stalls | M | M | MED | **user** | decision list in the Gate B report §6 | 2A start |
-| **R-18** | Supabase free-tier project auto-pauses again mid-work | **H** | L | MED | Supabase & Security | restore is one call; `INACTIVE` returns misleading empties — always check status first | any empty result |
+| **R-18** | Supabase free-tier project auto-pauses again mid-work | **H** | **H** | **HIGH** | Supabase & Security | ~~restore is one call~~ — **falsified 2026-08-17 (S-03)**. Restore is refused while two other projects hold the org's two ACTIVE slots, so an auto-pause can block the entire schema chain indefinitely. Mitigation is now **H-15: upgrade to Pro**, which removes the active-project cap. `INACTIVE` still returns misleading empties — always check status first | any empty result; any `ForbiddenException` from `restore_project` |
 
 ### The three highest
 
 - **R-01** is the deepest. Everything downstream assumes the diagnoses in doc 06 are right. The mitigation is not "test more later" — it is that **no fix lands before a test reproduces the defect**.
 - **R-14** is the most likely to actually happen. Accessibility has no natural forcing function; it is never what blocks a release until a store review or a user complains.
+- **R-18** was scored `H x L` on the assumption that a pause costs one restore call. That assumption was false, so the impact is `H`: an auto-pause blocks Phase 1A entirely. Recorded rather than quietly rescored.
 - **R-06** is the one that would undo completed work. Two migrations closed real exploits; without permanent regression tests a future migration reopens them silently.
 
 ---
@@ -61,7 +62,7 @@ change it. Nothing here is forgotten; everything here is a decision.
 | **D-14** | `react-native-animatable` removal | Two animation systems coexist; removal is bundled with the Reanimated upgrade | Phase 2B |
 | **D-15** | In-app licences screen | No third-party code ships requiring attribution *yet* | first attributed dependency, or Phase 6E |
 | **D-16** | Debug screenshots (`ss_*.png`) in the repo | Committed for a clean tree; ~130 KB, harmless | Phase 2 cleanup |
-| **D-17** | **`1B-009`** — the remaining 5 UTC date sites in `frontend/app/**` | `1B-008` covers the 5 highest-impact screens. The rest are lower-traffic and share an owner with the Phase 2A `hub.tsx` orphan work, so they are done together | **Phase 2A**. Escalates immediately if any of the 5 turns out to drive a user-visible date, as `today.tsx` did |
+| **D-17** | **`1B-009`** — the remaining 5 UTC date sites in `frontend/app/**` | `1B-008` covers the 5 highest-impact screens. The rest are lower-traffic and share an owner with the Phase 2A `hub.tsx` orphan work, so they are done together | ~~Phase 2A~~ — **CLOSED BY EXECUTION 2026-08-17 (S-04).** `1B-008` (`29ac301`) covered **all 12** sites, not the 5 highest-impact ones; `grep -rnE "toISOString\(\)\.(slice|split)" frontend/app/` returns 0 and `__tests__/repo/noUtcDayKeys.test.ts` fences it. `1B-009` no longer exists as work |
 
 ### Added at Gate B remediation round 2
 
@@ -84,7 +85,7 @@ four further risks the round-2 review exposed as distinct failure classes.
 | Risk | Why accepted |
 |---|---|
 | `.git` stays 45 MB | Clone cost only. Rewriting history breaks every existing clone and SHA — worse than the problem |
-| Free-tier auto-pause | Restore is one call; no data loss. Paying to avoid it is not justified pre-launch |
+| ~~Free-tier auto-pause~~ | **ACCEPTANCE WITHDRAWN 2026-08-17 (S-03).** The premise was "restore is one call". It is not: the free tier caps ACTIVE projects at **two per organisation**, and `restore_project` on the canonical project returns `ForbiddenException` while two unrelated projects hold those slots. A risk accepted on a false premise is not accepted. Promoted to **H-15**; resolution chosen = upgrade to Pro |
 | Turkish-only product | No i18n requirement surfaced. Adding a framework speculatively is unjustified |
 | `skipLibCheck: true` | Masks SDK type skew, but removing it before 2B would produce noise, not signal |
 | Mock paywall in dev | Disclosed to the user, revoked server-side, `__DEV__`-gated |
