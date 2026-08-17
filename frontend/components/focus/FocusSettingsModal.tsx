@@ -13,6 +13,7 @@ import {
   ExportFmt, EXPORT_META, webDownload,
 } from '../../lib/focusReport';
 import { FocusSettings, DEFAULT_SETTINGS } from '../../store/focusStore';
+import { todayLocal } from '../../lib/date';
 
 type Section = 'general' | 'timer' | 'tasks' | 'reports' | 'sounds' | 'account' | 'integrations' | 'advanced';
 
@@ -97,7 +98,7 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
       ]);
     }
     const { ext, mime } = EXPORT_META[fmt];
-    const filename = `odak-verisi-${new Date().toISOString().slice(0, 10)}.${ext}`;
+    const filename = `odak-verisi-${todayLocal()}.${ext}`;
 
     // Web: gerçek dosya indir (Share masaüstü tarayıcılarda yok/no-op).
     if (Platform.OS === 'web') {

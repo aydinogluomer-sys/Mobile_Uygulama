@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { colors, fontFamily } from '../../lib/tokens';
 import { useFocusStore } from '../../store/focusStore';
+import { todayLocal } from '../../lib/date';
 import {
   FocusSessionRow, ReportRange, inRange, summary, byTask, buckets, ranking,
   fmtDuration, fmtHours, toCSV, toExcelXML, sessionsSheet, EXPORT_META, webDownload,
@@ -82,7 +83,7 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
       : fmt === 'excel' ? toExcelXML([sessionsSheet(sessions)])
       : JSON.stringify(sessions, null, 2);
     const { ext, mime } = EXPORT_META[fmt];
-    const filename = `odak-raporu-${new Date().toISOString().slice(0, 10)}.${ext}`;
+    const filename = `odak-raporu-${todayLocal()}.${ext}`;
 
     // Web: gerçek dosya indir (Share masaüstü tarayıcılarda yok/no-op).
     if (Platform.OS === 'web') { webDownload(filename, mime, content); return; }

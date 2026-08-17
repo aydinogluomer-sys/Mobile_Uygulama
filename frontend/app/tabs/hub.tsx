@@ -6,6 +6,7 @@ import { useTaskStore } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { IconCircle } from '../../components/ui';
+import { todayLocal } from '../../lib/date';
 
 type HubItem = {
   label: string;
@@ -61,7 +62,7 @@ export default function HubScreen() {
 
   const inboxCount = tasks.filter((t) => t.list_type === 'inbox' && !t.completed).length;
   const recoveryCount = tasks.filter(
-    (t) => t.due_date && t.due_date < new Date().toISOString().split('T')[0] && !t.completed
+    (t) => t.due_date && t.due_date < todayLocal() && !t.completed
   ).length;
 
   function getBadge(route: string) {

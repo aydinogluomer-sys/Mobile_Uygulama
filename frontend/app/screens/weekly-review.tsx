@@ -8,6 +8,7 @@ import { useTaskStore } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore } from '../../store/journalStore';
 import { buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions, reportBadge, type ReportBadge } from '../../lib/reportMetrics';
+import { ymdFromIso } from '../../lib/date';
 
 function getWeekKey(date = new Date()) {
   return format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -45,7 +46,7 @@ export default function WeeklyReviewScreen() {
   const isCurrentWeek = weekOffset === 0;
 
   const weekTasks = tasks.filter((task) => {
-    const day = (task.completed_at ?? task.created_at ?? '').split('T')[0];
+    const day = ymdFromIso(task.completed_at ?? task.created_at);
     return day >= start && day <= end;
   });
   const completedTasks = weekTasks.filter((task) => task.completed);

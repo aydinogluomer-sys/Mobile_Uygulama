@@ -13,6 +13,7 @@ import { useReducedMotion } from '../../components/seasonalMotion/useReducedMoti
 import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
 import GlassPanel from '../../components/ui/GlassPanel';
 import { colors, hexA } from '../../lib/tokens';
+import { ymd } from '../../lib/date';
 
 const DAYS_SHORT = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
 const MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
@@ -33,7 +34,7 @@ export default function CalendarScreen() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
-  const [selected, setSelected] = useState(today.toISOString().split('T')[0]);
+  const [selected, setSelected] = useState(ymd(today));
   const [showMotionPreview, setShowMotionPreview] = useState(false);
 
   const { tasks, fetchTasks } = useTaskStore();
@@ -86,7 +87,7 @@ export default function CalendarScreen() {
 
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = ymd(today);
 
   function dateStr(day: number) {
     return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;

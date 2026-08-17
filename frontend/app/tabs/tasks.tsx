@@ -10,6 +10,7 @@ import { useProjectStore } from '../../store/projectStore';
 import { colors, space } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import InlineComposer from '../../components/InlineComposer';
+import { todayLocal } from '../../lib/date';
 
 const TABS: { key: ListType | 'done'; label: string }[] = [
   { key: 'inbox', label: 'Gelen' },
@@ -139,7 +140,7 @@ export default function TasksScreen() {
                 {item.due_date && (
                   <Text style={[
                     s.dueText,
-                    item.due_date < new Date().toISOString().split('T')[0] && !item.completed && s.duePast,
+                    item.due_date < todayLocal() && !item.completed && s.duePast,
                   ]}>
                     {item.due_date}
                   </Text>

@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { useJournalStore } from '../../store/journalStore';
 import { MOODS } from '../../lib/journalMoods';
+import { todayLocal, ymd, addDaysLocal } from '../../lib/date';
 
 const PROMPTS = [
   'Bugün ne için minnettarsın?',
@@ -18,7 +19,7 @@ const PROMPTS = [
 
 export default function JournalScreen() {
   const router = useRouter();
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const { entries, fetchEntries, saveEntry, getByDate } = useJournalStore();
   const [selectedDate, setSelectedDate] = useState(today);
   const [content, setContent] = useState('');
@@ -44,11 +45,7 @@ export default function JournalScreen() {
   }
 
   // Son 7 gün
-  const last7 = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    return d.toISOString().split('T')[0];
-  });
+  const last7 = Array.from({ length: 7 }, (_, i) => ymd(addDaysLocal(new Date(), -i)));
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>

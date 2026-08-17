@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useDeepWorkStore } from '../../store/deepWorkStore';
+import { todayLocal } from '../../lib/date';
 
 const QUICK_DURATIONS = [25, 45, 60, 90];
 
@@ -36,7 +37,7 @@ export default function DeepWorkScreen() {
   const todayM = todayMinutes();
   const weekM = weekMinutes();
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const todaySessions = sessions.filter((s) => s.date === today);
   const pastSessions = sessions.filter((s) => s.date !== today);
 

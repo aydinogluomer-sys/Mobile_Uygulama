@@ -18,6 +18,7 @@ import RecoveryRailCard from '../../components/today/RecoveryRailCard';
 import { buildTodayNarrative } from '../../lib/todayNarrative';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
+import { todayLocal } from '../../lib/date';
 import {
   Card, SectionHeader, EmptyState, ProgressRing, IconCircle, WillpowerBand,
 } from '../../components/ui';
@@ -43,7 +44,7 @@ export default function TodayScreen() {
   const { width } = useWindowDimensions();
   const pagePadding = width < 480 ? space.lg : width < 900 ? space.xl : space.h;
   const isWide = width >= 1180;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
   const now = new Date();
 
   const { habits, fetchHabits } = useHabitStore();

@@ -14,6 +14,7 @@ import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useJournalStore } from '../../store/journalStore';
 import { ACTION_COST } from '../../lib/subscription';
 import { extractInvokeError } from '../../lib/aiInvoke';
+import { todayLocal } from '../../lib/date';
 
 type Message = {
   id: string;
@@ -159,7 +160,7 @@ export default function AICoachScreen() {
     if (!text || summarySaving) return;
     setSummarySaving(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayLocal();
       await appendEntry(today, `🤖 AI Coach özeti\n${text}`);
       setSummarySaved(true);
     } catch {

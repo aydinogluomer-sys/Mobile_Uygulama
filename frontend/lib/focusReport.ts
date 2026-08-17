@@ -1,7 +1,7 @@
 // Odak raporu — focus_sessions üzerinden saf hesaplamalar.
 // Artifact (POS v2) FocusReport mantığının RN karşılığı. mode='work' = odak seansı.
 
-import { ymd, startOfWeekLocal } from './date';
+import { ymd, ymdFromIso, startOfWeekLocal } from './date';
 
 export type FocusSessionRow = {
   id: string;
@@ -54,7 +54,7 @@ export type FocusSummary = {
 
 export function summary(sessions: FocusSessionRow[]): FocusSummary {
   const totalSeconds = sessions.reduce((a, s) => a + (s.completed_seconds || 0), 0);
-  const days = new Set(sessions.map((s) => ymd(new Date(s.started_at))));
+  const days = new Set(sessions.map((s) => ymdFromIso(s.started_at)));
   return {
     totalSeconds,
     totalSessions: sessions.length,
@@ -102,7 +102,7 @@ export function buckets(sessions: FocusSessionRow[], range: ReportRange, now: Da
     arr.push({ label: range === 'week' ? DOW_TR[i] : String(d.getDate()), key: ymd(d), seconds: 0 });
   }
   sessions.forEach((s) => {
-    const k = ymd(new Date(s.started_at));
+    const k = ymdFromIso(s.started_at);
     const b = arr.find((x) => x.key === k);
     if (b) b.seconds += s.completed_seconds || 0;
   });
@@ -120,14 +120,14 @@ export type Ranking = {
 export function ranking(sessions: FocusSessionRow[]): Ranking {
   const tasks = byTask(sessions);
   const byDay: Record<string, number> = {};
-  sessions.forEach((s) => { const k = ymd(new Date(s.started_at)); byDay[k] = (byDay[k] || 0) + (s.completed_seconds || 0); });
+  sessions.forEach((s) => { const k = ymdFromIso(s.started_at); byDay[k] = (byDay[k] || 0) + (s.completed_seconds || 0); });
   const topDayEntry = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
   const byHour: Record<number, number> = {};
   sessions.forEach((s) => { const h = new Date(s.started_at).getHours(); byHour[h] = (byHour[h] || 0) + (s.completed_seconds || 0); });
   const topHourEntry = Object.entries(byHour).sort((a, b) => b[1] - a[1])[0];
 
   // Streak: ardışık (≥1 tamamlanan seans) günler, bugünden/dünden geri
-  const doneDays = new Set(sessions.filter((s) => s.completed).map((s) => ymd(new Date(s.started_at))));
+  const doneDays = new Set(sessions.filter((s) => s.completed).map((s) => ymdFromIso(s.started_at)));
   let streak = 0;
   const cur = new Date(); cur.setHours(0, 0, 0, 0);
   if (!doneDays.has(ymd(cur))) cur.setDate(cur.getDate() - 1);

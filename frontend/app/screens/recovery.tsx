@@ -17,6 +17,7 @@ import { isDueOn } from '../../lib/habitSchedule';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip } from '../../components/ui';
+import { todayLocal } from '../../lib/date';
 
 // Telafi gününü hesaplayan hızlı seçenekler (date-picker dep yok)
 function nextSaturdayOffset(): number {
@@ -62,7 +63,7 @@ export default function RecoveryScreen() {
   const [reminderTime, setReminderTime] = useState('20:00');
   const [saving, setSaving] = useState(false);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
 
   const overdueTasks = tasks.filter(
     (t) => t.due_date && t.due_date < today && !t.completed && t.status !== 'cancelled'

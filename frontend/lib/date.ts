@@ -86,6 +86,24 @@ export function startOfWeekLocal(d: Date): Date {
 }
 
 /**
+ * The LOCAL day key of a stored UTC instant.
+ *
+ * Columns like `tasks.completed_at` and `focus_sessions.started_at` hold a full
+ * ISO instant. `iso.split('T')[0]` truncates it to the day *in Greenwich*,
+ * which at UTC+3 is yesterday for anything logged between 00:00 and 03:00
+ * local -- and that key is then compared against local keys built by `ymd`.
+ * Parse the instant first, then ask what local day it fell on.
+ *
+ * Returns `''` for a missing or unparseable value, so callers can keep using a
+ * plain string comparison without a null branch.
+ */
+export function ymdFromIso(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : ymd(d);
+}
+
+/**
  * The local `YYYY-MM` month key of `d`.
  *
  * Derived from `ymd` rather than rebuilt, so the month key and the day key can

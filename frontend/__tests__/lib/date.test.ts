@@ -11,7 +11,7 @@
  */
 import {
   ymd, todayLocal, parseLocalDate, startOfWeekLocal,
-  weekStartYmd, addDaysLocal, daysBetweenLocal, isSameLocalDay, ymLocal,
+  weekStartYmd, addDaysLocal, daysBetweenLocal, isSameLocalDay, ymLocal, ymdFromIso,
 } from '../../lib/date';
 
 describe('TZ is pinned', () => {
@@ -171,5 +171,34 @@ describe('ymLocal', () => {
 
   it('pads single-digit months', () => {
     expect(ymLocal(new Date(2026, 2, 9))).toBe('2026-03');
+  });
+});
+
+describe('ymdFromIso', () => {
+  it('maps a stored UTC instant onto the LOCAL day it happened', () => {
+    // 2026-08-03T22:00Z is 2026-08-04 01:00 in Istanbul.
+    expect(ymdFromIso('2026-08-03T22:00:00.000Z')).toBe('2026-08-04');
+    // The naive truncation gets this wrong, which is the whole point.
+    expect('2026-08-03T22:00:00.000Z'.split('T')[0]).toBe('2026-08-03');
+  });
+
+  it('leaves an instant that does not cross the boundary alone', () => {
+    expect(ymdFromIso('2026-08-04T09:00:00.000Z')).toBe('2026-08-04');
+  });
+
+  it('round-trips whatever ymd produced', () => {
+    const d = new Date(2026, 7, 4, 1, 0);
+    expect(ymdFromIso(d.toISOString())).toBe(ymd(d));
+  });
+
+  it("returns '' for absent or unparseable input, so callers need no null branch", () => {
+    expect(ymdFromIso(null)).toBe('');
+    expect(ymdFromIso(undefined)).toBe('');
+    expect(ymdFromIso('')).toBe('');
+    expect(ymdFromIso('not a date')).toBe('');
+  });
+
+  it("sorts '' below every real key, so a missing date never lands inside a range", () => {
+    expect('' >= '2026-08-01').toBe(false);
   });
 });

@@ -10,6 +10,7 @@ import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore } from '../../store/journalStore';
 import { colors } from '../../lib/tokens';
 import { buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions, reportBadge, summarizeHabitProgress, type ReportBadge } from '../../lib/reportMetrics';
+import { ymdFromIso } from '../../lib/date';
 
 const MONTHS_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const REFLECT_KEY = (monthKey: string) => `monthly_review_${monthKey}`;
@@ -44,7 +45,7 @@ export default function MonthlyReviewScreen() {
   const isCurrentMonth = monthOffset === 0;
 
   const monthTasks = tasks.filter((task) => {
-    const day = (task.completed_at ?? task.created_at ?? '').split('T')[0];
+    const day = ymdFromIso(task.completed_at ?? task.created_at);
     return day >= start && day <= end;
   });
   const completedTasks = monthTasks.filter((task) => task.completed);
