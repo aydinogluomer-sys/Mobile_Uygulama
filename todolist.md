@@ -43,14 +43,24 @@ Verifier bunu sağlayamaz. Okunacak dört artefakt:
 
 ---
 
-## FAZ 2 — H-13 (Docker)  🔒 KULLANICI EYLEMİ
+## FAZ 2 — H-13 (Docker)  ✅ **TAMAMLANDI** (TEST 2 geçti)
 
-- [ ] **2.1** Docker Desktop başlat
-- [ ] **2.2** `docker info` → exit 0
-- [ ] **2.3** `supabase --version` → 2.109.1
+- [x] **2.1** Docker zaten çalışıyor — Docker Desktop, server 29.7.2
+- [x] **2.2** `docker info` → exit 0
+- [x] **2.3** `supabase --version` → 2.109.1
+- [x] **2.4** **YENİ BULGU:** 54322'yi ilgisiz bir stack tutuyor —
+      `supabase_db_meritflow-dev` (postgres 17.6.1.155), 9 container.
+      `1A-002B` kendi stack'ini başlatıyordu → **çakışırdı**.
+      Düzeltme: scratch config'e özel port bloğu (55321–55329) + doğrulama.
+      İlgisiz projeye **dokunulmadı**.
 
-**TEST 2:** `docker info` ve `supabase --version` başarılı.
-Bu olmadan Phase 1A **tamamlanamaz** (sadece yazılabilir).
+**TEST 2 — GEÇTİ:**
+- ✅ `docker info` exit 0 · server 29.7.2
+- ✅ `supabase --version` 2.109.1
+- ✅ port yeniden yazımı gerçek `supabase init` çıktısında çalıştırıldı:
+  6 port taşındı, `DB_PORT` çıkarımı 55322, assertion geçti
+
+**H-13 artık Phase 1A'yı engellemiyor.** Kalan tek engel FAZ 1.
 
 ---
 

@@ -298,11 +298,17 @@ supabase init
 mkdir -p "$SCRATCH/supabase/migrations"
 test -d "$SCRATCH/supabase/migrations"
 
+# Port isolation. An UNRELATED Supabase stack may already own the defaults -
+# verified on this machine: supabase_db_meritflow-dev holds 54322. Starting a
+# second stack on those ports would collide, and stopping another project's
+# stack is not this task's business. Give the scratch stack a private block.
+sed -i -E "s/^port = 54321$/port = 55321/; s/^port = 54322$/port = 55322/; s/^port = 54323$/port = 55323/; s/^port = 54324$/port = 55324/; s/^port = 54327$/port = 55327/; s/^port = 54329$/port = 55329/" "$SCRATCH/supabase/config.toml"
+
 ! grep -q "zdqiujpeewtyhtcqhdcj" "$SCRATCH/supabase/config.toml"   # no Mas Technic ref, ever
 ! grep -qE '^[[:space:]]*(project_ref|db_url)[[:space:]]*=' "$SCRATCH/supabase/config.toml"
 grep -qE '^[[:space:]]*major_version[[:space:]]*=[[:space:]]*17' "$SCRATCH/supabase/config.toml"
 DB_PORT="$(grep -A3 '^\[db\]' "$SCRATCH/supabase/config.toml" | grep -m1 '^port' | tr -dc '0-9')"
-test -n "$DB_PORT"
+test "$DB_PORT" = "55322"          # the private port block really was applied
 
 # the ONE stack, started from this working directory
 supabase start
