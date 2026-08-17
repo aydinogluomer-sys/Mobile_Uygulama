@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase, WillpowerState } from '../lib/supabase';
-import { format } from 'date-fns';
+import { todayLocal } from '../lib/date';
 
 type WillpowerStore = {
   state: WillpowerState | null;
@@ -19,7 +19,7 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
   fetchToday: async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const today = todayLocal();
     set({ loading: true });
 
     const { data } = await supabase

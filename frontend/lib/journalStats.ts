@@ -1,6 +1,6 @@
 // Günlük yazılarının "raporu" — saf hesap, arşiv başlığında kullanılır.
 import type { JournalEntry } from '../store/journalStore';
-import { ymd, startOfWeekLocal } from './date';
+import { ymd, ymLocal, startOfWeekLocal } from './date';
 
 export type JournalStats = {
   total: number;       // toplam kayıt
@@ -20,7 +20,7 @@ export function periodWindow(
   now: Date = new Date(),
 ): { key: string; label: string; match: (dateStr: string) => boolean } {
   if (period === 'monthly') {
-    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const ym = ymLocal(now);
     return { key: ym, label: 'Bu ay', match: (d) => d.startsWith(ym) };
   }
   if (period === 'yearly') {
@@ -41,7 +41,7 @@ export function computeJournalStats(entries: JournalEntry[]): JournalStats {
   const moodAvg = moods.length ? moods.reduce((a, b) => a + b, 0) / moods.length : null;
 
   const now = new Date();
-  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const ym = ymLocal(now);
   const thisMonth = entries.filter((e) => e.date.startsWith(ym)).length;
 
   // Seri: bugünden geriye ardışık kayıtlı günler. Bugün boşsa dünden başla.

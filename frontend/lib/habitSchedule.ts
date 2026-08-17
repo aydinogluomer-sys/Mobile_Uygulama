@@ -1,4 +1,4 @@
-import { format } from 'date-fns';
+import { ymd } from './date';
 import type { Habit } from './supabase';
 
 // HabitOnboarding WEEKDAYS = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz']
@@ -6,10 +6,6 @@ import type { Habit } from './supabase';
 // JS Date.getDay(): 0=Pazar … 6=Cumartesi. Dönüşüm:
 export function weekdayIndex(date: Date): number {
   return (date.getDay() + 6) % 7; // Pzt=0 … Paz=6
-}
-
-function dStr(d: Date): string {
-  return format(d, 'yyyy-MM-dd');
 }
 
 /**
@@ -22,9 +18,9 @@ function dStr(d: Date): string {
 export function isDueOn(habit: Habit, date: Date): boolean {
   if (habit.behavior_type !== 'positive') return false;
 
-  const ds = dStr(date);
+  const ds = ymd(date);
   // Oluşturulmadan önceki günlerde due değil
-  if (habit.created_at && format(new Date(habit.created_at), 'yyyy-MM-dd') > ds) return false;
+  if (habit.created_at && ymd(new Date(habit.created_at)) > ds) return false;
   // Tarihli bitiş koşulu geçmişse due değil
   const ec = habit.end_condition;
   if (ec && ec.kind === 'date' && typeof ec.value === 'string' && ds > ec.value) return false;

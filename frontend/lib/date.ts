@@ -85,6 +85,16 @@ export function startOfWeekLocal(d: Date): Date {
   return x;
 }
 
+/**
+ * The local `YYYY-MM` month key of `d`.
+ *
+ * Derived from `ymd` rather than rebuilt, so the month key and the day key can
+ * never disagree about which month a local instant falls in.
+ */
+export function ymLocal(d: Date = new Date()): string {
+  return ymd(d).slice(0, 7);
+}
+
 /** Convenience: the local `YYYY-MM-DD` of this week's Monday. */
 export function weekStartYmd(d: Date = new Date()): Ymd {
   return ymd(startOfWeekLocal(d));

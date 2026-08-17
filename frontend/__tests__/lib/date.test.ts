@@ -11,7 +11,7 @@
  */
 import {
   ymd, todayLocal, parseLocalDate, startOfWeekLocal,
-  weekStartYmd, addDaysLocal, daysBetweenLocal, isSameLocalDay,
+  weekStartYmd, addDaysLocal, daysBetweenLocal, isSameLocalDay, ymLocal,
 } from '../../lib/date';
 
 describe('TZ is pinned', () => {
@@ -154,5 +154,22 @@ describe('daysBetweenLocal / isSameLocalDay', () => {
     // Both are 2026-08-04 locally; in UTC the first is still 2026-08-03.
     expect(isSameLocalDay(new Date(2026, 7, 4, 0, 30), new Date(2026, 7, 4, 23, 30))).toBe(true);
     expect(isSameLocalDay(new Date(2026, 7, 4, 23, 59), new Date(2026, 7, 5, 0, 1))).toBe(false);
+  });
+});
+
+describe('ymLocal', () => {
+  it('returns the local month, not the UTC one', () => {
+    // 2026-09-01 01:00 local is 2026-08-31T22:00Z -- still August in UTC.
+    expect(ymLocal(new Date(2026, 8, 1, 1, 0))).toBe('2026-09');
+  });
+
+  it('agrees with ymd by construction', () => {
+    for (const d of [new Date(2026, 0, 1, 0, 30), new Date(2026, 11, 31, 23, 30), new Date(2026, 7, 4, 12)]) {
+      expect(ymLocal(d)).toBe(ymd(d).slice(0, 7));
+    }
+  });
+
+  it('pads single-digit months', () => {
+    expect(ymLocal(new Date(2026, 2, 9))).toBe('2026-03');
   });
 });
