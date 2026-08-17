@@ -108,6 +108,7 @@ Bunlar benim ürettiğim işteki kusurlar. Sessizce düzeltmek yerine kayda geç
 | **S-01** | **`1C-003` AC-3 karşılanmadı.** `plan/01:661` "`score()` `state` null iken **loading** döndürmeli, `100` değil" diyor. Uygulamam `willpowerStore.ts:83,85`'te `100` döndürüyor — kullanıcıya **uydurma bir "%100 irade"** gösteriyor. Yorumda gerekçelendirdim ama gerekçe kriteri karşılamıyor | **B1**'de düzeltilecek |
 | **S-02** | **`1D-006` bağımlılık sırası dışında yürütüldü.** `plan/01:791` `depends_on: 1D-005` diyor; `1D-006` önce yapıldı. Sıranın gerekçesi *"üçü de `notion-auth/index.ts`'i düzenliyor, eşzamanlı düzenleme olmasın"* — sıralı yürütmeyle bu sağlandı, dolayısıyla **zarar yok**. Ama grafik ile yürütme geçmişi uyuşmuyor | **A**'da kayda geçirildi |
 | **S-03** | **Kabul edilmiş bir riskin öncülü geçersizleşti.** `plan/05 §3` free-tier auto-pause'u *"restore **tek çağrı**, veri kaybı yok"* diyerek kabul ediyor. Artık doğru değil: 2-aktif-proje sınırı `restore_project`'i `ForbiddenException` ile reddediyor. **Kabul kararı yanlış bir öncüle dayanıyordu** | **A**'da `plan/05` düzeltilecek |
+| **S-05** | **`plan/04:185` bayatlamış.** *"Hiçbir Phase 1 görevi components'e dokunmaz"* diyordu; `1B-008` iki component dosyasını düzenledi ve `1C-008` bir tanesine sahip oldu. **İhlal değil** — verifier'ın `FORBIDDEN` haritası Expo Architecture'ı `frontend/components/`'ten hiç barmıyordu; görev kümesi hakkında bir olgu beyanıydı ve eskidi | ✅ `plan/04`'te düzeltildi |
 | **S-04** | **`D-17` yürütmeyle kapandı.** `plan/05:64` `1B-009`'u (kalan 5 `app/**` UTC sitesi) Phase 2A'ya erteliyordu; `1B-008` **hepsini** kapattı (`grep` → 0). Ertelenmiş kalem artık mevcut değil | **A**'da kapatılacak |
 
 ### 2.5 Bu oturumda alınan kararlar
@@ -250,7 +251,7 @@ Beş çağrı yeri dönüş değerini yok sayıyordu. Hepsi `LogResult`'ı okuyo
 Yeni: `__tests__/repo/logHabitErrorsSurfaced.test.ts` — `noUtcDayKeys` gibi
 kaynak-metni invariant'ı, başlığında bunu yazıyor.
 
-#### B5 · **N-07** — bayat irade durumu ekranlara sızıyor
+#### B5 · **N-07** — bayat irade durumu ekranlara sızıyor — ✅ `1C-007` + `1C-008`
 
 **Sorun:** `1C-003` store metodlarını korudu, ekranları korumadı. İki ayrı kusur:
 
@@ -270,19 +271,34 @@ kaynak-metni invariant'ı, başlığında bunu yazıyor.
 3. Tarih değişimi tetikleyicisi: `AppState` `active` olduğunda ve `todayLocal()`
    değiştiğinde `fetchToday()`.
 
-> **Kapsam uyarısı.** 4+ dosya ve bir yaşam-döngüsü değişikliği. `plan/01`'de
-> karşılığı olan bir görev **yok**; B5 çalıştırılmadan önce backlog'a kendi
-> id'siyle eklenmeli ki sahiplik, boyut ve rollback kaydı tutulsun. Bunu
-> atlamak `R-21` (ownership drift) riskine girer.
+**Yapıldı — ama tasarım değişti.** Beş UI dosyasını tek tek düzeltmek yerine
+**bayatlığı gözlemlenemez** hale getirdim: yerel gün değişir değişmez satır
+düşürülüp yeniden çekiliyor. Tüketiciler zaten `wp && (...)` ile korunuyordu,
+dolayısıyla `today.tsx`, `habits.tsx`, `timeline.tsx` ve `WillpowerBand.tsx`
+**hiç düzenlenmeden** düzeldi. Beş dosya yerine iki.
 
-**TEST B — GEÇTİ (B1–B4):**
+İki tetikleyici, çünkü hiçbiri tek başına yetmiyor: zamanlayıcı (ön planda gece
+yarısını geçen uygulama için) **ve** `AppState → 'active'` (uyuyan telefon
+zamanlayıcıyı güvenilir çalıştırmaz, ve uygulamaya dönüş tam da bayat satırın
+okunacağı andır).
+
+| Görev | Sahip | Dosya |
+|---|---|---|
+| `1C-007` | Habit Domain | `store/willpowerStore.ts` |
+| `1C-008` | Expo Architecture | `components/HabitOnboarding.tsx` |
+
+Serileştirme: `willpowerStore.ts`'i artık üç görev paylaşıyor →
+`1C-003` → `1C-007` → `1C-002`, `depends_on`'a yazıldı.
+
+**TEST B — GEÇTİ (B1–B5):**
 
 ```bash
-cd frontend && npm test        # 159/159
+cd frontend && npm test           # 165/165
 cd frontend && npm run typecheck  # exit 0
+python tools/audit/verify_gate_b.py   # FAILURES: NONE
 ```
 
-**B5 hâlâ açık** — çalıştırılmadan önce `plan/01`'e kendi id'siyle eklenmeli.
+**FAZ B tamamlandı.** Sıradaki faz **C** ve **H-15**'i bekliyor.
 
 Geçme ölçütü: hepsi yeşil · `tsc` exit 0 · **her yeni düzeltmenin testi önce
 başarısız olduğu gözlendi** (R-01).

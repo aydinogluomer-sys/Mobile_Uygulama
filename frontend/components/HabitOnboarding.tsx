@@ -19,6 +19,7 @@ import {
 } from '../lib/triage';
 import { useHabitStore } from '../store/habitStore';
 import { LIFE_AREAS } from '../store/lifeAreasStore';
+import { useWillpowerStore } from '../store/willpowerStore';
 
 // DB sütun adlarına uygun form tipi
 type HabitFormData = Omit<Habit, 'id' | 'created_at' | 'user_id'>;
@@ -92,10 +93,12 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
   }
 
   // Triaj + kapasite → nihai Kanban hedefi (3 yönlü)
-  const canActivateNow = willpowerState
-    ? willpowerState.active_count < willpowerState.focus_capacity
-      && willpowerState.used + form.willpower_cost <= willpowerState.daily_budget
-    : false;
+  // Tek kaynak: kuralın kopyası değil, store'un kendisi. Bu blok
+  // canActivate()'in ikiziydi ve prop'u doğrudan okuduğu için store'un
+  // bayatlık kontrolünü atlıyordu (bulgu N-07).
+  const canActivate = useWillpowerStore((s) => s.canActivate);
+  const score = useWillpowerStore((s) => s.score);
+  const canActivateNow = canActivate(form.willpower_cost);
   const plannedTriage = computeTriage(form.impact_level, form.urgency);
   const plannedStatus = triageToStatus(plannedTriage, canActivateNow); // 'active'|'waiting'|'idea'
   const DEST = {
@@ -109,9 +112,10 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
 
   const wpUsedRatio = willpowerState ? willpowerState.used / willpowerState.daily_budget : 0;
   const wpBarColor = wpUsedRatio < 0.5 ? '#87A678' : wpUsedRatio < 0.8 ? '#D4A84A' : '#C76A6A';
-  const wpScore = willpowerState && willpowerState.daily_budget > 0
-    ? Math.round(((willpowerState.daily_budget - willpowerState.used) / willpowerState.daily_budget) * 100)
-    : 100;
+  // null = "okuma yok". Eskiden 100'e düşüyordu, yani kullanıcı hiç sahip
+  // olmadığı dolu bir iradeyi görüyordu — S-01'de store'dan kaldırılan
+  // uydurmanın aynısı.
+  const wpScore = score();
 
   function canProceed() {
     if (step === 1) return form.name.trim().length > 0;
@@ -870,7 +874,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
                   <Ionicons name="flash" size={14} color={wpBarColor} />
                   <Text style={[styles.wpBandLabel, { color: wpBarColor }]}>İrade Skoru</Text>
                 </View>
-                <Text style={[styles.wpBandScore, { color: wpBarColor }]}>{wpScore}%</Text>
+                <Text style={[styles.wpBandScore, { color: wpBarColor }]}>{wpScore === null ? '…' : `${wpScore}%`}</Text>
               </View>
               <View style={styles.wpBarBg}>
                 <View style={[styles.wpBarFill, { width: `${wpUsedRatio * 100}%` as any, backgroundColor: wpBarColor }]} />

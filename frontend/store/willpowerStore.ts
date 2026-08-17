@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { AppState } from 'react-native';
 import { supabase, WillpowerState } from '../lib/supabase';
 import { todayLocal } from '../lib/date';
 
@@ -14,6 +15,41 @@ type WillpowerStore = {
   spend: (cost: number) => Promise<void>;
   refund: (cost: number) => Promise<void>;
 };
+
+
+/**
+ * Day watcher (task 1C-007, finding N-07).
+ *
+ * `1C-003` guarded the store's METHODS. It did not guard the `state` FIELD, and
+ * every consumer reads that field directly -- today.tsx:279, habits.tsx:191,
+ * timeline.tsx:559, WillpowerBand.tsx:27, HabitOnboarding's prop. Nothing
+ * re-triggered a fetch when the local day changed, because `fetchToday()` runs
+ * on mount and pull-to-refresh only, so an app left open past local midnight
+ * kept rendering yesterday's budget.
+ *
+ * Rather than asking six screens to remember to check, staleness is made
+ * impossible to OBSERVE: the moment the local day moves on, the cached row is
+ * dropped and refetched. Consumers already guard on `wp && (...)`, so they need
+ * no edit.
+ *
+ * Two triggers, because neither alone is sufficient:
+ *   - a timer, for an app sitting in the foreground across midnight;
+ *   - AppState -> 'active', because a sleeping phone does not run timers
+ *     reliably, and returning to the app is exactly when a stale row would be
+ *     read.
+ */
+let dayWatchStarted = false;
+
+function startDayWatch(check: () => void): void {
+  if (dayWatchStarted) return;
+  dayWatchStarted = true;
+  AppState.addEventListener('change', (status) => {
+    if (status === 'active') check();
+  });
+  const timer = setInterval(check, 60_000);
+  // Never keep a bare timer alive on Node/test runners.
+  (timer as unknown as { unref?: () => void }).unref?.();
+}
 
 export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
   state: null,
@@ -33,6 +69,15 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
   },
 
   fetchToday: async () => {
+    // Arm on first use, so a store nobody touches installs no listeners.
+    startDayWatch(() => {
+      const s = get().state;
+      if (s && s.state_date !== todayLocal()) {
+        set({ state: null });        // bayat satırı bir daha DIŞARI VERME
+        void get().fetchToday();     // ve yerine bugünkünü getir
+      }
+    });
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const today = todayLocal();

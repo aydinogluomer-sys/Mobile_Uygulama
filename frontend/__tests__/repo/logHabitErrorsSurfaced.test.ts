@@ -70,3 +70,27 @@ describe('AC-N04b -- a failed log never completes a plan', () => {
     expect(between).toMatch(/\.ok|!res|!logRes|return;/);
   });
 });
+
+/**
+ * AC-Y05 (task 1C-008) -- the onboarding sheet holds no copy of the willpower
+ * rules. A second implementation of a rule drifts from the first; that is what
+ * F-04 was, four times over, for `ymd`.
+ */
+describe('AC-Y05 -- no duplicate willpower arithmetic in HabitOnboarding', () => {
+  const src = readFileSync(
+    join(__dirname, '..', '..', 'components', 'HabitOnboarding.tsx'), 'utf8');
+
+  it('uses the store rather than reimplementing canActivate', () => {
+    expect(src).toContain('useWillpowerStore');
+    expect(src).not.toMatch(/active_count\s*<\s*\w+\.focus_capacity/);
+  });
+
+  it('does not recompute the score', () => {
+    expect(src).not.toMatch(/daily_budget\s*-\s*\w+\.used\)\s*\/\s*\w+\.daily_budget/);
+  });
+
+  it('never falls back to a fabricated 100', () => {
+    // S-01 removed this from the store; :114 was the surviving copy.
+    expect(src).not.toMatch(/:\s*100;/);
+  });
+});
