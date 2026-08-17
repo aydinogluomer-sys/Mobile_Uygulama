@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { parseAllowlist, isAllowedRedirect } from '../_shared/redirectAllowlist.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -23,6 +24,17 @@ const SCOPES = [
 ].join(' ');
 
 const basicAuth = () => `Basic ${btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`)}`;
+
+/**
+ * Comma-separated allowlist, e.g.
+ *   "atlas://notion-callback,https://atlas.app/notion-callback,exp://*"
+ *
+ * Unset means the list is empty, and an empty list permits NOTHING. That is
+ * deliberate: an unconfigured deployment must refuse to mint authorize URLs
+ * rather than accept whatever redirect the caller supplies. Setting this is a
+ * required deploy step, alongside the provider client id/secret.
+ */
+const REDIRECT_ALLOWLIST = parseAllowlist(Deno.env.get('OAUTH_REDIRECT_ALLOWLIST'));
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -95,6 +107,9 @@ serve(async (req) => {
   if (action === 'url') {
     if (!SPOTIFY_CLIENT_ID) return json({ error: 'Spotify yapılandırması eksik (yönetici kurulumu gerekli).' }, 500);
     const redirectUri = url.searchParams.get('redirect_uri') ?? body.redirect_uri ?? '';
+    if (!isAllowedRedirect(redirectUri, REDIRECT_ALLOWLIST)) {
+      return json({ error: 'redirect_uri izin verilen listede değil.' }, 400);
+    }
     const state = crypto.randomUUID();
     const oauthUrl =
       'https://accounts.spotify.com/authorize' +
@@ -112,6 +127,9 @@ serve(async (req) => {
     const user = await getUser(req);
     if (!user) return json({ error: 'Unauthorized' }, 401);
     const { code, redirect_uri } = body;
+    if (!isAllowedRedirect(redirect_uri ?? '', REDIRECT_ALLOWLIST)) {
+      return json({ error: 'redirect_uri izin verilen listede değil.' }, 400);
+    }
     if (!code) return json({ error: 'code gerekli' }, 400);
 
     const tokenRes = await fetch('https://accounts.spotify.com/api/token', {

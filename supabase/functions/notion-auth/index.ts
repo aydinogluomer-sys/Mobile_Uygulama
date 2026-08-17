@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { parseAllowlist, isAllowedRedirect } from '../_shared/redirectAllowlist.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -13,6 +14,17 @@ const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
 const NOTION_VERSION = '2022-06-28';
+
+/**
+ * Comma-separated allowlist, e.g.
+ *   "atlas://notion-callback,https://atlas.app/notion-callback,exp://*"
+ *
+ * Unset means the list is empty, and an empty list permits NOTHING. That is
+ * deliberate: an unconfigured deployment must refuse to mint authorize URLs
+ * rather than accept whatever redirect the caller supplies. Setting this is a
+ * required deploy step, alongside the provider client id/secret.
+ */
+const REDIRECT_ALLOWLIST = parseAllowlist(Deno.env.get('OAUTH_REDIRECT_ALLOWLIST'));
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -45,6 +57,9 @@ serve(async (req) => {
   if (action === 'url') {
     if (!NOTION_CLIENT_ID) return json({ error: 'Notion yapılandırması eksik.' }, 500);
     const redirectUri = url.searchParams.get('redirect_uri') ?? body.redirect_uri ?? '';
+    if (!isAllowedRedirect(redirectUri, REDIRECT_ALLOWLIST)) {
+      return json({ error: 'redirect_uri izin verilen listede değil.' }, 400);
+    }
     const state = crypto.randomUUID();
     const oauthUrl =
       'https://api.notion.com/v1/oauth/authorize' +
@@ -60,6 +75,9 @@ serve(async (req) => {
     const user = await getUser(req);
 
     const { code, redirect_uri } = body;
+    if (!isAllowedRedirect(redirect_uri ?? '', REDIRECT_ALLOWLIST)) {
+      return json({ error: 'redirect_uri izin verilen listede değil.' }, 400);
+    }
     if (!code) return json({ error: 'code gerekli' }, 400);
 
     const tokenRes = await fetch('https://api.notion.com/v1/oauth/token', {
