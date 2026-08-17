@@ -9,7 +9,8 @@ type WillpowerStore = {
   isStale: () => boolean;
   fetchToday: () => Promise<void>;
   canActivate: (cost: number) => boolean;
-  score: () => number;
+  /** Percentage of today's budget still unspent, or `null` when unknown. */
+  score: () => number | null;
   spend: (cost: number) => Promise<void>;
   refund: (cost: number) => Promise<void>;
 };
@@ -75,14 +76,19 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
     return s.active_count < s.focus_capacity && s.used + cost <= s.daily_budget;
   },
 
-  // Only displays a number, so it fails OPEN. This looks inconsistent with
-  // canActivate above and is deliberate: a new local day starts with the
-  // budget untouched, so "full" is what the database is about to say. Showing
-  // yesterday's depleted score instead would be actively wrong.
+  // Returns `null` when there is no usable reading -- no state, or a row from
+  // a day that is no longer today.
+  //
+  // An earlier version returned 100 here, reasoning that a fresh day starts
+  // with a full budget. That was wrong twice over: it is a guess presented as
+  // a measurement, and the user sees "100% willpower" they never had. 100 is a
+  // real reading (a fresh day, or a zero budget); the ABSENCE of a reading is
+  // not 100. Callers render a loading state instead -- plan/01:661.
   score: () => {
-    if (get().isStale()) return 100;
+    if (get().isStale()) return null;
     const s = get().state;
-    if (!s || s.daily_budget === 0) return 100;
+    if (!s) return null;
+    if (s.daily_budget === 0) return 100;
     return Math.round(((s.daily_budget - s.used) / s.daily_budget) * 100);
   },
 

@@ -136,8 +136,27 @@ describe('AC-W02/W03 -- a stale budget is not used for decisions', () => {
     expect(useWillpowerStore.getState().canActivate(3)).toBe(true);
   });
 
-  it('does not report yesterday score after midnight', () => {
-    useWillpowerStore.setState({ state: row() as never });          // 12/15 spent -> 20
+  // plan/01:661 -- "score() returns a loading state, not 100, when state is null".
+  // The first implementation returned 100 for both the null and the stale case,
+  // which shows the user a fabricated "100% willpower" they never had. 100 is a
+  // real reading; absence of a reading is not 100.
+  it('returns null, not a fabricated 100, when the cache is stale', () => {
+    useWillpowerStore.setState({ state: row() as never });          // 12/15 spent
+    expect(useWillpowerStore.getState().score()).toBeNull();
+  });
+
+  it('returns null when there is no state at all', () => {
+    useWillpowerStore.setState({ state: null });
+    expect(useWillpowerStore.getState().score()).toBeNull();
+  });
+
+  it('returns a real number when the row really is today', () => {
+    useWillpowerStore.setState({ state: row({ state_date: TODAY }) as never });
+    expect(useWillpowerStore.getState().score()).toBe(20);          // (15-12)/15
+  });
+
+  it('still returns 100 for a fresh day with a zero budget', () => {
+    useWillpowerStore.setState({ state: row({ state_date: TODAY, daily_budget: 0 }) as never });
     expect(useWillpowerStore.getState().score()).toBe(100);
   });
 });
