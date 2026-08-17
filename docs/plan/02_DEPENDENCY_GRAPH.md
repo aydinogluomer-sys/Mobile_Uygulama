@@ -58,8 +58,8 @@ while 1B is 14 failing tests that can be written today.
 | **1B-004** metrics: `target_direction`, `miss`/`skip`, `isDueOn` wiring | 1B-003 | — | — |
 | **1B-005** habit-log error handling + upsert | Gate B PASS | — | immediately |
 | **1C-001** atomic willpower debit RPC | 1A-002B | 1C-002 | after 1A-002B |
-| **1C-002** activation TOCTOU + refund guard | 1C-001, **1C-003** | — | — |
-| **1C-003** midnight rollover | 1B-001 | **1C-002** | after 1B-001 |
+| **1C-002** activation TOCTOU + refund guard | 1C-001, **1C-003**, **1C-007** | — | — |
+| **1C-003** midnight rollover | 1B-001 | **1C-007** | after 1B-001 |
 | **1C-004** telafi → `habit_log` + XP | 1A-002B | — | after 1A-002B |
 | **1C-005** `recovery_plans` unique constraint | 1A-002B | — | after 1A-002B |
 | **1D-000** reconcile generate-routine with live v11 | Gate B PASS | **1D-001..004** | immediately |
@@ -91,6 +91,8 @@ while 1B is 14 failing tests that can be written today.
 | **1B-007** remaining store date sites | 1B-001 | — | after 1B-001 |
 | **1B-008** `app/**` date sites (Expo Arch) | 1B-001 | — | after 1B-001 |
 | **1C-006** recovery store client | 1C-004, 1C-005 | — | after both |
+| **1C-007** stale willpower row (N-07) | **1C-003** | **1C-002**, **1C-008** | **immediately — no live DB** |
+| **1C-008** onboarding duplicates (N-07) | **1C-007** | — | after 1C-007 |
 | **DEMO-001A** seeder library guard | Gate B PASS | **DEMO-001B** | immediately |
 | **DEMO-001B** seeder UI removal (Expo Arch) | **DEMO-001A** | — | after DEMO-001A — source guard lands first |
 | **OPS-0B-001** relocate foreign env | **H-03 user approval** | — | blocked on user |

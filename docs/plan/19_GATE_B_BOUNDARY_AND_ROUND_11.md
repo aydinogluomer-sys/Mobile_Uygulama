@@ -184,7 +184,12 @@ further tooling round.
 
 ---
 
-## 10. Canonical metrics — unchanged
+## 10. Canonical metrics — round-11 record
+
+> **Superseded 2026-08-17.** The figures below are the **round-11 record**, not a
+> live assertion. `1C-007` and `1C-008` were added from finding **N-07**; the
+> current numbers are **52 rows · 1 DONE · 51 open · 51 fully specified · 76
+> distinct files**. `plan/08` is the sole source (**R-22**) — read it, not this.
 
 50 rows · 1 DONE · 49 open · 49 fully specified · 0 XL · largest M · 75 distinct
 files · 0 block/index mismatches · 0 unresolved graph tokens · 0 unknown
@@ -192,7 +197,7 @@ dependency tokens · 0 acceptance-artefact cycles · 0 artefact resolution issue
 0 task contradictions · 0 unreachable checks (**19/19**) · 0 fence syntax errors ·
 0 ownership conflicts · 0 active stale assertions.
 
-No task or scope count changed this round.
+No task or scope count changed **in round 11**.
 
 ---
 

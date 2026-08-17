@@ -54,7 +54,7 @@ Regenerated from every task's `scope` and `agent` field in `plan/01`:
 
 | File | Tasks | Serialisation |
 |---|---|---|
-| `frontend/store/willpowerStore.ts` | `1C-003` → `1C-002` | encoded in `depends_on`, not prose |
+| `frontend/store/willpowerStore.ts` | `1C-003` → **`1C-007`** → `1C-002` | encoded in `depends_on`, not prose |
 | `supabase/functions/generate-routine/index.ts` | `1D-000` → `1D-001` → `1D-002` → `1D-003` → `1D-004` | single chain; `1D-000` gates all (**R-19**) |
 | `supabase/functions/notion-auth/index.ts` | `1D-005` → `1D-006` → `1D-007` | chained in `depends_on` |
 | `supabase/functions/spotify-auth/index.ts` | `1D-005` → `1D-006` | chained in `depends_on` |
@@ -85,6 +85,8 @@ This is the **only** assignment table in this document. No summary elsewhere res
 | **1C-004 telafi linkage** | **Supabase & Security** | **migration only — no client file** | Skeptical Reviewer |
 | 1C-005 recovery unique | Supabase & Security | migration | Skeptical Reviewer |
 | **1C-006 recovery client** | **Habit Domain** | **`frontend/store/recoveryStore.ts`** | Skeptical Reviewer |
+| **1C-007 stale willpower row** | **Habit Domain** | `frontend/store/willpowerStore.ts` | Skeptical Reviewer |
+| **1C-008 onboarding duplicates** | **Expo Architecture** | `frontend/components/HabitOnboarding.tsx` | Skeptical Reviewer |
 | 1D-000 reconcile generate-routine | Supabase & Security | `supabase/functions/**` | Skeptical Reviewer |
 | 1D-001..008 edge-fn security | Supabase & Security | `supabase/functions/**` | Skeptical Reviewer |
 | **1D-009 deploy guard** | **Supabase & Security** | `supabase/config.toml` · `supabase/predeploy_guard.sh` | Skeptical Reviewer |
@@ -182,7 +184,7 @@ Skeptical Reviewer  ── continuous, read-only, on every diff
 | Path | Note |
 |---|---|
 | `frontend/app/**` beyond the 6 files in `1B-008` + `DEMO-001B` | deliberate — the remaining 5 date sites are `1B-009`, deferred to Phase 2A |
-| `frontend/components/**` | no Phase 1 task touches components |
+| `frontend/components/**` | ~~no Phase 1 task touches components~~ — **falsified 2026-08-17 (finding S-05).** `1B-008` edited `components/focus/FocusReportModal.tsx` and `FocusSettingsModal.tsx`, and `1C-008` now owns `components/HabitOnboarding.tsx`. This was a statement of fact about the task set, **not** a prohibition — the verifier's `FORBIDDEN` map never barred Expo Architecture from `frontend/components/`, so no ownership rule was broken. The claim was simply left stale. Expo Architecture's owned tree is read as covering UI components, consistent with it already owning `components/Drawer.tsx` |
 | `frontend/lib/tokens.ts`, `theme.ts` | frozen in Phase 1 |
 | `backend/**` | except `OPS-0B-001`, which only moves files out |
 

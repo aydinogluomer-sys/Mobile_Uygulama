@@ -32,17 +32,17 @@
 | **Repo migration files** | **4** | `ls supabase/migrations \| wc -l` |
 | — matching a ledger entry | **2** | the two Emergency Gate 0 migrations |
 | — **history gap** | **19** | 21 − 2 |
-| **Backlog tasks** | **50** | task index rows (round 8: `1A-002` split into `1A-002A` + `1A-002B`) |
+| **Backlog tasks** | **52** | task index rows (round 8: `1A-002` split; 2026-08-17: `1C-007` + `1C-008` added from finding **N-07**) |
 | — DONE | **1** | 1D-010, commit `42b64a0` |
-| — **open** | **49** | 50 − 1 |
-| — fully specified | **49** | every open task has all 13 fields |
+| — **open** | **51** | 52 − 1 |
+| — fully specified | **51** | every open task has all 13 fields |
 | — XL | **0** | largest is M |
 | — scope > 5 files | **0** | scope field |
 | — dependency cycles | **0** | DFS over every `depends_on` |
 | — cross-listing pointers | **1** | `1B-006` → `DEMO-001A`/`B`; **not** a task, not indexed |
 | **Files with two edit owners** | **0** | ownership matrix regenerated from scope fields |
 | **`never touches` violations** | **0** | same |
-| Distinct Phase 1 files | **75** | 70 + 3 `archive/` paths (round-8 M3) + 2 from `1A-002B` |
+| Distinct Phase 1 files | **76** | 75 + `frontend/components/HabitOnboarding.tsx` (`1C-008`). `1C-007` adds no new path — `willpowerStore.ts` was already scoped by `1C-002`/`1C-003` |
 | **Live tables** | **48** | `pg_tables where schemaname='public'` |
 | — with RLS enabled | **48** | `rowsecurity = true` |
 | — ERROR-level advisors | **0** | `get_advisors(security)` |
@@ -83,8 +83,8 @@ miscounted its own index rows (37, not 36) *and* it left `SEC-1D-005a–f` as on
 collapsed row standing for six tasks. A duplicate `OPS-0B-001` heading and a
 `SEC-1D-005e` block missing its `goal` were found in the same recount. All four
 defects are fixed in `plan/01`; the figure verified at that time was **42 rows · 1 DONE · 41 open**.
-**That value is itself now superseded — see §1: the current figure is 50 rows ·
-1 DONE · 49 open · 49 fully specified**, after the round-8 `1A-002` split.
+**That value is itself now superseded — see §1: the current figure is 52 rows ·
+1 DONE · 51 open · 51 fully specified**, after the round-8 `1A-002` split.
 
 This is recorded rather than quietly corrected because it is the second
 counting error in the same document, found by the same method — recounting from
@@ -161,3 +161,20 @@ grep -c "^| 1[ABCDE]-\|^| SEC-1D-\|^| DEMO-\|^| OPS-" docs/plan/01_IMPLEMENTATIO
 
 Any document that states a count contradicting §1 is stale and must be corrected
 here first, then propagated.
+
+---
+
+## Değişiklik — 2026-08-17
+
+| Metrik | Önce | Sonra | Sebep |
+|---|---|---|---|
+| Backlog tasks | 50 | **52** | `1C-007` + `1C-008`, bulgu **N-07**'den |
+| — open | 49 | **51** | aynı |
+| — fully specified | 49 | **51** | aynı |
+| Distinct Phase 1 files | 75 | **76** | `components/HabitOnboarding.tsx` |
+
+Doğrulama: `python tools/audit/verify_gate_b.py` → `open tasks 51 · index rows 52
+· distinct scoped files 76 · FAILURES NONE`.
+
+**R-22 gereği:** bu sayılar yalnızca burada beyan edilir. Başka bir belgede
+tekrarlanırsa bu tabloyla çelişme riski doğar.

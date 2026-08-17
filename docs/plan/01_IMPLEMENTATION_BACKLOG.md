@@ -624,7 +624,7 @@ double-counted.
 ---
 
 ## 1C-002 · Close the activation TOCTOU and refund exploit
-`P1` · **MUST** · Habit Domain · depends_on: 1C-001, **1C-003** · **S**
+`P1` · **MUST** · Habit Domain · depends_on: 1C-001, **1C-003**, **1C-007** · **S**
 
 **scope** (2 files): `frontend/store/willpowerStore.ts` · `frontend/store/habitStore.ts`
 
@@ -721,6 +721,63 @@ double-counted.
 - Every Supabase call reads `error`
 
 **validation** `npx tsc --noEmit` clean; `npx jest store/recoveryStore`.
+**risk** LOW.
+**rollback** `git revert`.
+
+---
+
+## 1C-007 · Stop the store handing out a stale willpower row
+`P1` · **MUST** · Habit Domain · depends_on: **1C-003** · **S**
+
+> **Added 2026-08-17 from finding N-07.** `1C-003` guarded the store's METHODS
+> — `canActivate`, `score`, `spend`, `refund` all check `isStale()`. It did not
+> guard the `state` field itself, and every consumer reads that field directly:
+> `today.tsx:279`, `habits.tsx:191,318,322,512`, `timeline.tsx:559`,
+> `WillpowerBand.tsx:27`, plus `HabitOnboarding`'s prop. Nothing re-triggers a
+> fetch when the local day changes — `fetchToday()` runs on mount and
+> pull-to-refresh only. An app left open past local midnight therefore keeps
+> rendering yesterday's budget.
+>
+> **Serialised.** Three tasks now edit `frontend/store/willpowerStore.ts`:
+> `1C-003` → **`1C-007`** → `1C-002`. Encoded in `depends_on`, not prose.
+
+**scope** (1 file): `frontend/store/willpowerStore.ts`
+
+**goal** Make staleness impossible to observe from outside the store, so no consumer has to remember to check.
+
+**acceptance_criteria**
+- `state` is **never** exposed while it belongs to a day that is no longer today — a stale row reads as `null`, exactly as "not loaded yet" does
+- The local day change is detected without a screen having to ask: an `AppState` transition to `active` and a timer that survives a backgrounded app both re-evaluate it
+- A day change triggers a refetch, not merely a clear, when a session exists
+- Existing consumers need **no edit** to stop showing yesterday's numbers — their `wp && (...)` guards already handle `null`. Any consumer that still fabricates a value is out of scope here and belongs to `1C-008`
+- The listener is registered once and removed on teardown; no leak across fast refresh
+
+**validation** `npm test` — a faked clock crossing midnight makes `state` read `null` and issues a refetch; `npx tsc --noEmit` clean.
+**risk** MEDIUM — every willpower surface reads this field, so a wrong guard blanks the UI.
+**rollback** `git revert`. Must revert together with `1C-008`.
+
+---
+
+## 1C-008 · Remove the willpower duplicates from the onboarding sheet
+`P1` · **MUST** · Expo Architecture · depends_on: **1C-007** · **XS**
+
+> **Added 2026-08-17 from finding N-07.** `HabitOnboarding.tsx:95-97` reimplements
+> `canActivate()` and `:110-114` reimplements `score()`, both against the
+> `willpowerState` prop. They are the same defect class as the four duplicate
+> `ymd()` implementations (**F-04**): a second copy of a rule that drifts from
+> the first. `:114` falls back to **100** when the prop is null — the same
+> fabricated "full willpower" that `S-01` removed from the store.
+
+**scope** (1 file): `frontend/components/HabitOnboarding.tsx`
+
+**goal** One implementation of "can I activate this" and "how much is left".
+
+**acceptance_criteria**
+- The local `canActivateNow` and `wpScore` computations are gone; the store's `canActivate()` and `score()` are used
+- A `null` score renders a loading state, never `100`
+- No behaviour change when the row really is today's
+
+**validation** `npx tsc --noEmit` clean; the repo invariant asserting no duplicate willpower arithmetic passes.
 **risk** LOW.
 **rollback** `git revert`.
 
@@ -1376,11 +1433,13 @@ Agent, size and dependency below are read from each block's header line.
 | 1B-007 | 1B | Habit Domain | S | 4 | 1B-001 |
 | 1B-008 | 1B | Expo Architecture | S | 5 | 1B-001 |
 | 1C-001 | 1C | Supabase & Security | M | 1 | 1A-002B |
-| 1C-002 | 1C | Habit Domain | S | 2 | 1C-001, **1C-003** |
+| 1C-002 | 1C | Habit Domain | S | 2 | 1C-001, **1C-003**, **1C-007** |
 | 1C-003 | 1C | Habit Domain | S | 1 | 1B-001 |
 | 1C-004 | 1C | Supabase & Security | M | 1 | 1A-002B |
 | 1C-005 | 1C | Supabase & Security | XS | 1 | 1A-002B |
 | 1C-006 | 1C | Habit Domain | S | 1 | 1C-004, 1C-005 |
+| 1C-007 | 1C | Habit Domain | S | 1 | **1C-003** |
+| 1C-008 | 1C | Expo Architecture | XS | 1 | **1C-007** |
 | 1D-000 | 1D | Supabase & Security | M | 2 | Gate B PASS |
 | 1D-001 | 1D | Supabase & Security | S | 2 | 1A-002B, **1D-000** |
 | 1D-002 | 1D | Supabase & Security | S | 1 | 1D-001 |
