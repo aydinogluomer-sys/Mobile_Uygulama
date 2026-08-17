@@ -14,5 +14,11 @@ module.exports = {
   // Never read .env - the old run-tests.js did, and a test that depends on a
   // gitignored file is not reproducible.
   testPathIgnorePatterns: ['/node_modules/'],
+  // supabase/functions/_shared/** lives OUTSIDE this package, so when babel
+  // transpiles its async functions the emitted `require('@babel/runtime/...')`
+  // has no node_modules to walk up to -- the repo root has none. Point jest at
+  // this package's node_modules explicitly. The modules must stay where they
+  // are: they are edge-function source that happens to be pure enough to test.
+  modulePaths: ['<rootDir>/node_modules'],
   passWithNoTests: true,
 };

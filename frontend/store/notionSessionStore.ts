@@ -4,17 +4,10 @@ import * as Linking from 'expo-linking';
 import { create } from 'zustand';
 
 const STORAGE_KEY = 'atlas_notion_login_session';
-const STATE_STORAGE_KEY = 'atlas_notion_oauth_state';
-const STATE_TTL_MS = 10 * 60 * 1000; // 10 dakika
 const OAUTH_TIMEOUT_MS = 2 * 60 * 1000; // 2 dakika
 
 const SUPABASE_FUNCTIONS_URL = process.env.EXPO_PUBLIC_SUPABASE_URL + '/functions/v1';
 const REDIRECT_URI = Linking.createURL('notion-callback');
-
-type StoredState = {
-  state: string;
-  createdAt: string;
-};
 
 export type NotionLoginSession = {
   workspaceName: string;
@@ -62,13 +55,6 @@ export const useNotionSessionStore = create<NotionLoginStore>((set, get) => ({
       const urlData = await urlRes.json();
       if (!urlRes.ok || !urlData.url || !urlData.state) throw new Error(urlData.error ?? 'Notion bağlantı URL’i alınamadı');
 
-      // CSRF state'i backend'den al ve sakla
-      const storedState: StoredState = {
-        state: String(urlData.state),
-        createdAt: new Date().toISOString(),
-      };
-      await AsyncStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(storedState));
-
       const result = await Promise.race([
         WebBrowser.openAuthSessionAsync(urlData.url, REDIRECT_URI),
         new Promise<never>((_, reject) => {
@@ -86,21 +72,10 @@ export const useNotionSessionStore = create<NotionLoginStore>((set, get) => ({
       if (!code) throw new Error('Yetkilendirme kodu alınamadı');
       if (!returnedState) throw new Error('OAuth state alınamadı');
 
-      // State'i doğrula
-      const storedStateRaw = await AsyncStorage.getItem(STATE_STORAGE_KEY);
-      if (!storedStateRaw) {
-        throw new Error('OAuth state bulunamadı. Lütfen tekrar deneyin.');
-      }
-      const stored = JSON.parse(storedStateRaw) as StoredState;
-      const stateAge = Date.now() - new Date(stored.createdAt).getTime();
-
-      if (stored.state !== returnedState) {
-        throw new Error('CSRF state doğrulama başarısız');
-      }
-      if (stateAge > STATE_TTL_MS) {
-        throw new Error('OAuth oturumu süresi doldu. Lütfen tekrar deneyin.');
-      }
-      await AsyncStorage.removeItem(STATE_STORAGE_KEY);
+      // State artık SUNUCUDA doğrulanıyor (1D-005). Buradaki eski karşılaştırma
+      // AsyncStorage'daki değeri gelen değerle kıyaslıyordu; CSRF senaryosunda
+      // istemci saldırganın kontrolündedir, dolayısıyla o kontrol koruma değil
+      // dekordu. İmza, son kullanma ve uid bağı callback'te doğrulanır.
 
       const callbackRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=callback`, {
         method: 'POST',
@@ -131,7 +106,6 @@ export const useNotionSessionStore = create<NotionLoginStore>((set, get) => ({
   logout: async () => {
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
-      await AsyncStorage.removeItem(STATE_STORAGE_KEY);
       set({ session: null, error: null });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

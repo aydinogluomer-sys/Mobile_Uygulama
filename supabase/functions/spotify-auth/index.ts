@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { parseAllowlist, isAllowedRedirect } from '../_shared/redirectAllowlist.ts';
+import { mintState, verifyState } from '../_shared/oauthState.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -35,6 +36,17 @@ const basicAuth = () => `Basic ${btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SEC
  * required deploy step, alongside the provider client id/secret.
  */
 const REDIRECT_ALLOWLIST = parseAllowlist(Deno.env.get('OAUTH_REDIRECT_ALLOWLIST'));
+
+/**
+ * HMAC key for the signed OAuth `state` (task 1D-005, decision D-02).
+ *
+ * Unset means every mint fails and every verify rejects. That is the intended
+ * posture: a deployment without this secret must refuse to start an OAuth flow
+ * rather than issue a token anyone can forge. It is a REQUIRED deploy step.
+ *
+ * Deliberately NOT the service-role key -- separate purposes, separate keys.
+ */
+const STATE_SECRET = Deno.env.get('OAUTH_STATE_SECRET') ?? '';
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -110,7 +122,18 @@ serve(async (req) => {
     if (!isAllowedRedirect(redirectUri, REDIRECT_ALLOWLIST)) {
       return json({ error: 'redirect_uri izin verilen listede değil.' }, 400);
     }
-    const state = crypto.randomUUID();
+    // Bind the state to the session owner when there is one. The login flow has
+    // NO user by definition (finding N-03), so it mints without a uid and the
+    // callback verifies without one. verifyState requires the two sides to
+    // AGREE in both directions, so the login path cannot be used to strip the
+    // binding off the link path.
+    const stateUser = await getUser(req);
+    let state: string;
+    try {
+      state = await mintState(STATE_SECRET, { uid: stateUser?.id });
+    } catch {
+      return json({ error: 'OAuth state yapılandırması eksik (OAUTH_STATE_SECRET).' }, 500);
+    }
     const oauthUrl =
       'https://accounts.spotify.com/authorize' +
       `?client_id=${encodeURIComponent(SPOTIFY_CLIENT_ID)}` +
@@ -131,6 +154,13 @@ serve(async (req) => {
       return json({ error: 'redirect_uri izin verilen listede değil.' }, 400);
     }
     if (!code) return json({ error: 'code gerekli' }, 400);
+    // Verify BEFORE the token exchange. An unverified state that reaches the
+    // provider has already burned an authorization code, which is the side
+    // effect the check exists to prevent.
+    const stateCheck = await verifyState(STATE_SECRET, body.state ?? '', { uid: user?.id });
+    if (!stateCheck.ok) {
+      return json({ error: `OAuth state doğrulanamadı (${stateCheck.reason}).` }, 400);
+    }
 
     const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',

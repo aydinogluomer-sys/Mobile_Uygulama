@@ -131,7 +131,11 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
       // Callback URL'den code'u ayıkla
       const parsed = Linking.parse(result.url);
       const code = parsed.queryParams?.code as string;
+      // Notion'un geri yansıttığı state. Doğrulama SUNUCUDA yapılır (1D-005);
+      // istemcinin görevi yalnızca taşımak.
+      const returnedState = parsed.queryParams?.state as string | undefined;
       if (!code) throw new Error('Yetkilendirme kodu alınamadı');
+      if (!returnedState) throw new Error('OAuth state alınamadı');
 
       // Code'u token ile değiştir ve veritabanları kur
       const callbackRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=callback`, {
@@ -140,7 +144,7 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ code, redirect_uri: REDIRECT_URI }),
+        body: JSON.stringify({ code, redirect_uri: REDIRECT_URI, state: returnedState }),
       });
       
       if (!callbackRes.ok) {

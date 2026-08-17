@@ -95,9 +95,12 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
 
       const parsed = Linking.parse(result.url);
       const code = parsed.queryParams?.code as string;
+      // Spotify'ın geri yansıttığı state. Doğrulama SUNUCUDA (1D-005).
+      const returnedState = parsed.queryParams?.state as string | undefined;
       if (!code) throw new Error('Yetkilendirme kodu alınamadı');
+      if (!returnedState) throw new Error('OAuth state alınamadı');
 
-      const data = await callFn('callback', { code, redirect_uri: REDIRECT_URI });
+      const data = await callFn('callback', { code, redirect_uri: REDIRECT_URI, state: returnedState });
       if (!data?.success) throw new Error(data?.error ?? 'Bağlantı kurulamadı');
 
       set({
