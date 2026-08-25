@@ -1,0 +1,321 @@
+/**
+ * Offline-first habit completion.  (Phase 4, plan §18)
+ *
+ * AC-O01  an offline tap updates local state IMMEDIATELY (optimistic),
+ *         queues the write, and does not surface an error to the caller.
+ * AC-O02  COLD START: the queue is persisted, the in-memory `chains` map
+ *         (`store/logStore.ts`) is never touched for this key before replay
+ *         runs, and replay against a row that ALREADY exists remotely
+ *         resolves to an UPDATE -- not a duplicate row, not an error.
+ * AC-O02b COLD START with no remote row yet: replay inserts exactly once.
+ * AC-O03  N offline taps on the same (habit, day) collapse: exactly ONE
+ *         write reaches the database, carrying the FINAL intended state.
+ * AC-O04  a permanently failing (non-network) op reaches its terminal
+ *         `dead` state after MAX_ATTEMPTS and a further flush does not
+ *         attempt it again -- observable via `getSyncStatusFor`/`deadSyncCount`.
+ * AC-O05  a corrupt persisted payload is discarded on hydrate, not thrown.
+ * AC-O06  a REAL (non-network) rejection still surfaces `{ ok: false }` to
+ *         the caller -- the 8a04c04 behaviour this task must not regress.
+ *
+ * Mirrors `store/logStore.test.ts`'s mock style (a fake `../../lib/supabase`
+ * client) rather than reusing it, per this task's "no existing test file
+ * changes" constraint -- this is a NEW file with its own mock DB, extended
+ * with a `networkDown` switch (throws, simulating a connectivity failure
+ * instead of returning a normal `{ error }`) and a uniqueness check on
+ * insert that mirrors the real `UNIQUE (habit_id, completed_at)` constraint
+ * (`supabase/migrations/001_initial_schema.sql:34`) rather than requiring
+ * the test to hand-inject a 23505 -- the whole point of AC-O02 is that the
+ * constraint itself, not a manually staged error, is what replay reconciles
+ * against.
+ *
+ * Written BEFORE the fix and observed to fail for the right reason on a
+ * deliberately-broken stub (see the task report's "red-first evidence").
+ */
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { enqueue as enqueueOp, emptyQueueState, saveSyncQueue, MAX_ATTEMPTS } from '../../lib/syncQueue';
+
+type Row = {
+  id: string; habit_id: string; user_id: string; completed_at: string;
+  value: number | null; is_completed: boolean; state: string;
+  xp: number | null; created_at: string;
+};
+type PgError = { message: string; code?: string };
+
+const mockDb = {
+  calls: [] as string[],
+  rows: [] as Row[],
+  idSeq: 0,
+  /** true => every DB call throws, simulating a connectivity failure. */
+  networkDown: false,
+  /** injects a non-uniqueness rejection, e.g. RLS/validation. */
+  insertError: null as PgError | null,
+  updateError: null as PgError | null,
+};
+
+jest.mock('../../lib/supabase', () => {
+  const match = (filters: Record<string, unknown>) =>
+    mockDb.rows.filter((r) =>
+      Object.entries(filters).every(
+        ([k, v]) => (r as unknown as Record<string, unknown>)[k] === v));
+
+  return {
+    supabase: {
+      auth: {
+        getUser: jest.fn().mockImplementation(async () => {
+          if (mockDb.networkDown) throw new TypeError('Network request failed');
+          return { data: { user: { id: 'u1' } } };
+        }),
+      },
+      from: () => ({
+        select: () => {
+          const filters: Record<string, unknown> = {};
+          const q = {
+            eq(col: string, val: unknown) { filters[col] = val; return q; },
+            async maybeSingle() {
+              if (mockDb.networkDown) throw new TypeError('Network request failed');
+              mockDb.calls.push('select');
+              return { data: match(filters)[0] ?? null, error: null };
+            },
+          };
+          return q;
+        },
+        insert(payload: Record<string, unknown>) {
+          return {
+            select: () => ({
+              single: async () => {
+                if (mockDb.networkDown) throw new TypeError('Network request failed');
+                mockDb.calls.push('insert');
+                if (mockDb.insertError) {
+                  const e = mockDb.insertError;
+                  return { data: null, error: e };
+                }
+                // Mirrors the real UNIQUE (habit_id, completed_at) constraint
+                // (supabase/migrations/001_initial_schema.sql:34) -- this is
+                // what a cold-start replay must reconcile against, not a
+                // manually staged error.
+                const dup = mockDb.rows.find((r) =>
+                  r.habit_id === payload.habit_id && r.completed_at === payload.completed_at);
+                if (dup) {
+                  return {
+                    data: null,
+                    error: { message: 'duplicate key value violates unique constraint', code: '23505' },
+                  };
+                }
+                const row = { id: 'r' + ++mockDb.idSeq, created_at: 'now', ...payload } as unknown as Row;
+                mockDb.rows.push(row);
+                return { data: row, error: null };
+              },
+            }),
+          };
+        },
+        update(payload: Record<string, unknown>) {
+          const filters: Record<string, unknown> = {};
+          const u = {
+            eq(col: string, val: unknown) { filters[col] = val; return u; },
+            select: () => ({
+              single: async () => {
+                if (mockDb.networkDown) throw new TypeError('Network request failed');
+                mockDb.calls.push('update');
+                if (mockDb.updateError) {
+                  const e = mockDb.updateError;
+                  return { data: null, error: e };
+                }
+                const row = mockDb.rows.find((r) => r.id === filters.id);
+                if (!row) return { data: null, error: { message: 'no row' } };
+                Object.assign(row, payload);
+                return { data: row, error: null };
+              },
+            }),
+          };
+          return u;
+        },
+      }),
+    },
+  };
+});
+
+import { useLogStore } from '../../store/logStore';
+
+const DAY = new Date(2026, 7, 4);
+const DATE_STR = '2026-08-04';
+
+beforeEach(async () => {
+  mockDb.calls.length = 0;
+  mockDb.rows.length = 0;
+  mockDb.idSeq = 0;
+  mockDb.networkDown = false;
+  mockDb.insertError = null;
+  mockDb.updateError = null;
+  await AsyncStorage.clear();
+  useLogStore.setState({ logs: [], loading: false, pendingSyncCount: 0, deadSyncCount: 0 });
+  await useLogStore.getState().hydrateSyncQueue();
+});
+
+describe('AC-O01 -- an offline tap is optimistic, queued, and not an error', () => {
+  it('updates local state immediately and does not wait for the network', () => {
+    mockDb.networkDown = true;
+    const habitId = 'off-1';
+
+    // Call synchronously, without awaiting -- the point is that the local
+    // state is already correct before any microtask runs.
+    void useLogStore.getState().logHabit({ habitId, date: DAY, state: 'done' });
+
+    const local = useLogStore.getState().getLogForHabit(habitId, DATE_STR);
+    expect(local).toBeDefined();
+    expect(local?.state).toBe('done');
+    expect(useLogStore.getState().getSyncStatusFor(habitId, DATE_STR)).toBe('pending');
+  });
+
+  it('resolves ok:true (not an error) while offline, and leaves the op pending', async () => {
+    mockDb.networkDown = true;
+    const habitId = 'off-2';
+
+    const res = await useLogStore.getState().logHabit({ habitId, date: DAY, state: 'done' });
+
+    expect(res.ok).toBe(true);
+    expect(mockDb.rows).toHaveLength(0); // nothing reached the database
+    expect(useLogStore.getState().pendingSyncCount).toBe(1);
+    expect(useLogStore.getState().getSyncStatusFor(habitId, DATE_STR)).toBe('pending');
+  });
+
+  it('nothing is lost: the queued op carries the tapped state', async () => {
+    mockDb.networkDown = true;
+    const habitId = 'off-3';
+    await useLogStore.getState().logHabit({ habitId, date: DAY, state: 'partial', value: 2, targetValue: 4 });
+
+    mockDb.networkDown = false;
+    await useLogStore.getState().flushPendingSync();
+
+    expect(mockDb.rows).toHaveLength(1);
+    expect(mockDb.rows[0].state).toBe('partial');
+    expect(mockDb.rows[0].value).toBe(2);
+    expect(useLogStore.getState().pendingSyncCount).toBe(0);
+  });
+});
+
+describe('AC-O02 -- cold start: persisted queue replays without duplicating', () => {
+  it('resolves to an UPDATE, not a duplicate insert, when the row already exists remotely', async () => {
+    const habitId = 'cold-1';
+
+    // The previous process's write actually reached the server (or another
+    // device wrote it) before this process ever ran -- nothing in THIS test
+    // has called logHabit for this key, so store/logStore.ts's in-memory
+    // `chains` map has no entry for it. This is the cold-start condition,
+    // not a simulation of it.
+    mockDb.rows.push({
+      id: 'remote-1', habit_id: habitId, user_id: 'u1', completed_at: DATE_STR,
+      value: null, is_completed: false, state: 'partial', xp: 10, created_at: 'now',
+    });
+
+    // A previous session persisted its intent before being killed.
+    const persisted = enqueueOp(emptyQueueState(), habitId, DATE_STR, { state: 'done', baseXp: 30 });
+    await saveSyncQueue(persisted.state);
+
+    // True cold start: reload the queue from disk into a fresh store.
+    await useLogStore.getState().hydrateSyncQueue();
+    expect(useLogStore.getState().getSyncStatusFor(habitId, DATE_STR)).toBe('pending');
+
+    const results = await useLogStore.getState().flushPendingSync();
+
+    expect(results).toHaveLength(1);
+    expect(results[0].ok).toBe(true);
+    expect(mockDb.rows).toHaveLength(1); // NOT duplicated
+    expect(mockDb.rows[0].state).toBe('done'); // the queued intent won, via update
+    expect(mockDb.calls).toEqual(expect.arrayContaining(['insert', 'update']));
+    expect(useLogStore.getState().pendingSyncCount).toBe(0);
+    expect(useLogStore.getState().deadSyncCount).toBe(0);
+  });
+
+  it('inserts exactly once when no remote row exists yet', async () => {
+    const habitId = 'cold-2';
+    const persisted = enqueueOp(emptyQueueState(), habitId, DATE_STR, { state: 'done', baseXp: 30 });
+    await saveSyncQueue(persisted.state);
+
+    await useLogStore.getState().hydrateSyncQueue();
+    const results = await useLogStore.getState().flushPendingSync();
+
+    expect(results[0].ok).toBe(true);
+    expect(mockDb.calls.filter((c) => c === 'insert')).toHaveLength(1);
+    expect(mockDb.rows).toHaveLength(1);
+    expect(useLogStore.getState().pendingSyncCount).toBe(0);
+  });
+});
+
+describe('AC-O03 -- N offline taps on the same (habit, day) collapse to one write', () => {
+  it('replays exactly one write, carrying the FINAL tapped state', async () => {
+    mockDb.networkDown = true;
+    const habitId = 'collapse-1';
+
+    await useLogStore.getState().logHabit({ habitId, date: DAY, state: 'done' });
+    await useLogStore.getState().logHabit({ habitId, date: DAY, state: 'partial', value: 1, targetValue: 4 });
+    await useLogStore.getState().logHabit({ habitId, date: DAY, state: 'miss' });
+
+    expect(useLogStore.getState().pendingSyncCount).toBe(1); // collapsed, not 3
+    // The optimistic local display already reflects the final intent, before any sync.
+    expect(useLogStore.getState().getLogForHabit(habitId, DATE_STR)?.state).toBe('miss');
+
+    mockDb.networkDown = false;
+    await useLogStore.getState().flushPendingSync();
+
+    expect(mockDb.calls.filter((c) => c === 'insert' || c === 'update')).toHaveLength(1);
+    expect(mockDb.rows).toHaveLength(1);
+    expect(mockDb.rows[0].state).toBe('miss');
+  });
+});
+
+describe('AC-O04 -- a permanently failing op reaches a terminal state, not retried forever', () => {
+  it('goes dead after MAX_ATTEMPTS rejections and stops being attempted', async () => {
+    const habitId = 'dead-1';
+    mockDb.insertError = { message: 'check constraint violation' }; // reached the server, real rejection
+
+    const first = await useLogStore.getState().logHabit({ habitId, date: DAY, state: 'done' });
+    expect(first.ok).toBe(false); // AC-O06 double-checked inline: still surfaced
+
+    // `readyAt` after that first rejection was stamped from the REAL clock
+    // (logHabit's own attempt does not take a `now` override) -- the
+    // synthetic clock driving the remaining flushes must start from there,
+    // not from an arbitrary small number, or the backoff comparison in
+    // `orderedPending` would compare a real timestamp against a tiny one.
+    let clock = Date.now();
+    for (let i = 1; i < MAX_ATTEMPTS; i++) {
+      clock += 10 * 60_000; // well past any backoff window
+      await useLogStore.getState().flushPendingSync(clock);
+    }
+
+    expect(useLogStore.getState().getSyncStatusFor(habitId, DATE_STR)).toBe('dead');
+    expect(useLogStore.getState().deadSyncCount).toBe(1);
+    expect(useLogStore.getState().pendingSyncCount).toBe(0);
+
+    const insertsSoFar = mockDb.calls.filter((c) => c === 'insert').length;
+    expect(insertsSoFar).toBe(MAX_ATTEMPTS);
+
+    // A further flush must NOT attempt the dead op again.
+    await useLogStore.getState().flushPendingSync(clock + 10 * 60_000);
+    expect(mockDb.calls.filter((c) => c === 'insert').length).toBe(insertsSoFar);
+  });
+});
+
+describe('AC-O05 -- a corrupt persisted payload is discarded on hydrate, not thrown', () => {
+  it('hydrateSyncQueue resolves cleanly and leaves counts at zero', async () => {
+    await AsyncStorage.setItem('atlas_sync_queue_v1', 'not json at all {{{');
+    await expect(useLogStore.getState().hydrateSyncQueue()).resolves.toBeUndefined();
+    expect(useLogStore.getState().pendingSyncCount).toBe(0);
+    expect(useLogStore.getState().deadSyncCount).toBe(0);
+  });
+});
+
+describe('AC-O06 -- a real (non-network) failure still surfaces ok:false (commit 8a04c04)', () => {
+  it('an insert rejection is returned to the caller, not swallowed as offline', async () => {
+    const habitId = 'reject-1';
+    mockDb.insertError = { message: 'RLS denied' };
+
+    const res = await useLogStore.getState().logHabit({ habitId, date: DAY, state: 'done' });
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain('RLS denied');
+    // The optimistic placeholder is rolled back -- a rejected write leaves
+    // no phantom "done" in local state, same net effect as the pre-offline
+    // store/logStore.test.ts AC-L02 assertion this mirrors.
+    expect(useLogStore.getState().getLogForHabit(habitId, DATE_STR)).toBeUndefined();
+  });
+});
