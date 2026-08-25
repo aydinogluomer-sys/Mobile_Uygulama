@@ -382,3 +382,58 @@ E owns `repositories/**` + `app/**` + `components/**`. Neither may touch `lib/**
 features, so E is explicitly required to keep `seasonalRegression.test.ts` green while
 migrating it.
 
+#### Coders D + E → wiring + repository layer — commit `99d9d3d`
+
+**Orchestrator independent verification:**
+
+| Check | Before | After |
+|---|---|---|
+| `tsc --noEmit` | 0 | **0** |
+| `expo lint` | exit 0 | **exit 0** |
+| `run-tests.js` | 142/142 | **142/142** |
+| `jest` | 372 / 19 suites | **437 / 29 suites** (+65 tests) |
+| **Rule 4 violations** | **16 across 9 files** | **0** — re-measured with the multi-line scan |
+
+**Rule 4 is now held for the first time.** All 16 UI call sites migrated, allowlist
+empty. The new guard `__tests__/repo/rule4NoDirectDbInUi.test.ts` prevents recurrence
+and — importantly — carries its own scanner-sanity test proving it detects the
+multi-line `supabase\n  .from(...)` form. That matters because the single-line grep is
+exactly what reported 1 violation instead of 16 earlier in this run. It deliberately
+exempts `supabase.auth.*` and `supabase.functions.invoke`.
+
+**Rule 8 held through the migration.** `monthly-review.tsx` carried 2 violations AND the
+protected seasonal features; `seasonalRegression.test.ts` (20 tests) stayed green and the
+seasonal code is byte-identical.
+
+**Two real production defects fixed by the wiring**, both mutation-verified:
+- `logStore.calcXp` awarded **more than 100% XP** for an over-target partial log
+  (reverting the fix made the test return 36 instead of 30 — the bug reproducing exactly).
+- The same function wrote **`NaN` XP to the database** on a cleared numeric field.
+Both fixed at source by routing through `habitEngine.completionRatio`.
+
+**Protected invariants confirmed intact:** `isStale()` remains the first check in
+`canActivate`/`spend`/`refund`; `score()` untouched, still returns `null` rather than a
+fabricated 100. `canActivate`'s new capacity parameter is **optional**, so every existing
+caller behaves exactly as before — required, since neither Coder was allowed to touch
+screens.
+
+**Judgement calls accepted:**
+- Coder D declined to wire `expirePlans`: nothing specifies *when* a plan becomes
+  `expired`, so it left an available export rather than invent a write-behaviour.
+- Coder E added explicit `user_id` scoping to `credit_transactions`, which previously
+  relied on RLS alone. Same rows under correct RLS, so not a behaviour change, but it
+  satisfies plan Rule 2/3 ("RLS is the backstop, not the only guard") and it flagged the
+  change rather than sliding it in.
+- Coder E preserved a subtle asymmetry in `monthly-review.tsx` (a real DB error yields
+  zero-filled stats; a missing session yields an empty array) instead of collapsing both
+  into one path — the kind of detail a careless refactor loses.
+
+**Correction to the record:** Coder D reported that a parallel agent was "committing" to
+the branch. It was not — `git log` confirmed no unauthorised commits; the inflated test
+count it observed was Coder E's unstaged work in the shared tree.
+
+**Still open for Phase 1:** no *screen* passes capacity data into `canActivate` or calls
+`recoveryOptionsFor`, so habit activation still uses the legacy fixed-slot path at the UI
+level. `store/**` retains 78 direct Supabase call sites (out of Rule 4's scope, which
+governs UI). No service/hooks layer yet.
+
