@@ -994,3 +994,67 @@ This is recorded now, before any code is written, because it is exactly the kind
 interlock that looks fine in a unit test with a fresh module and fails on a real device
 after a cold start.
 
+#### Coder L → Task Splitter V2 + AI weekly/monthly digests — commit `6b664bc`
+
+| Check | Before | After |
+|---|---|---|
+| `tsc` / `lint` / `run-tests` | 0 / 0 / 142 | **0 / 0 / 142** |
+| `jest` | 696 / 48 | **780 / 51** |
+
+**Honest finding that changed the task: `ADHDTaskSplitter` was DEAD CODE and contained no
+AI at all.** No screen imports it (Orchestrator-verified). Its real behaviour: tap
+15/25/45 min → build three subtasks from a **hardcoded label table** → write straight to
+the DB. No preview, no confirm, failures swallowed into `console.error` where the user
+never saw them. So the brief's premise ("AI writes unvalidated here") was wrong — there was
+no AI. The Coder said so instead of building a pipeline around a fictional AI call, and
+`buildLocalSplitProposal` is an honest deterministic stand-in rather than a fake AI hop.
+
+**The digest rule is genuinely enforced.** A `{ok:false}` metric is **omitted entirely**,
+never emitted as `0`. Sending `monday_completion = 0` when data was insufficient would make
+the AI **confidently assert something false to the user** — worse than silence. Orchestrator
+mutation check: fabricating a `0` turns **4 tests red**.
+
+Raw data is structurally impossible in a digest — the input types can only hold `Result<T>`,
+numbers and `{habitName, rate}`; they cannot carry `habit_id`/`completed_at`/`state`. The
+two matches for those words in `insightDigest.ts` are doc comments asserting their absence.
+
+**The Coder caught its own methodology error** — its seeded-bug comment contained the text
+`return;`, so the assertion **false-passed on a substring match**. It noticed, anchored the
+regex to a real line (`/^\s*return;\s*$/m`), re-seeded the real bug, and got a correct red.
+This is the **third form** the shallow-text-matching trap has taken this run.
+
+**Edge-function findings — reported, NOT fixed (deploy is a repo-owner action):**
+1. No task-decomposition edge function exists at all.
+2. `generate-routine` truncates `message` at 500 chars; a realistic weekly digest is ~586 —
+   the tail would be **silently** dropped before reaching the model.
+3. `mode:'summarize'` falls through to the `'routine'` branch, which expects `prompt` not
+   `transcript` — a pre-existing bug, discovered not caused.
+4. `context.analytics` is a dead parameter the server never reads.
+
+#### Orchestrator → §22 analytics event layer — commit `06c7a68`
+
+Built directly (zero collision with Coder L). The design decision that matters: enforce the
+privacy rule by **allowlisting value SHAPE**, not by blocklisting sensitive key names. A
+string passes only if it is structurally a uuid, a short enum token, or an ISO date — prose,
+habit titles and journal text fail regardless of which key carries them. A blocklist forgets
+the moment someone adds a field; a shape allowlist does not.
+
+Careless payloads are **dropped, not thrown** (a sloppy call site must not crash the app, but
+must not leak either), with dropped keys reported on the event so leaks stay observable. An
+**undeclared event name throws** — silently emitting one would put an unreviewed payload on
+the wire.
+
+The Orchestrator held itself to its own red-first standard: the first red was "module not
+found", which it had been rejecting from subagents, so it wrote a seeded-bug stub and got
+**exactly 2 red / 4 green**. Mutation-verified.
+
+Pure module + guard only; store/screen wiring is a separate unit.
+
+#### Coder M → offline-first completion (§18) — DISPATCHED (sole writer)
+
+Briefed with the Orchestrator's interlock analysis: the persisted queue **cannot** rely on
+`logStore`'s in-memory `serialise()` chain for replay de-duplication, because that chain dies
+with the process while `pending sync` must outlive it. The queue must reconcile against the
+`habit_logs` UNIQUE constraint — resolving a collision to an UPDATE — rather than trying to
+out-clever it in application code.
+
