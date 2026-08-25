@@ -56,6 +56,7 @@ const GROUPS: { title: string; items: DrawerItem[] }[] = [
     items: [
       { label: 'Alışkanlık Yönetimi', icon: 'list-circle-outline', color: '#D97757', route: '/tabs/habits' },
       { label: 'AI Rutin Oluştur', icon: 'sparkles-outline', color: '#8b5cf6', route: '/tabs/habits?ai=true' },
+      { label: 'İçgörüler', icon: 'analytics-outline', color: '#14b8a6', route: '/screens/insights' },
     ],
   },
   {

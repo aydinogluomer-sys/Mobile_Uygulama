@@ -32,6 +32,7 @@ export default function ScreensLayout() {
     >
       <Stack.Screen name="calendar" options={{ title: 'Takvim', ...seasonalHeader }} />
       <Stack.Screen name="habit-detail" options={{ title: 'Alışkanlık Detayı' }} />
+      <Stack.Screen name="insights" options={{ title: 'İçgörüler' }} />
       <Stack.Screen name="recovery" options={{ title: 'Telafi' }} />
       <Stack.Screen name="projects" options={{ title: 'Projeler' }} />
       <Stack.Screen name="notes" options={{ title: 'Notlar' }} />

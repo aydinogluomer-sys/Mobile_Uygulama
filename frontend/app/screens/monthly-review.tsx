@@ -4,19 +4,28 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
-import { supabase } from '../../lib/supabase';
-import { useTaskStore } from '../../store/taskStore';
+import { format, startOfMonth, endOfMonth, subMonths, subWeeks, eachDayOfInterval } from 'date-fns';
+import { supabase, type Habit } from '../../lib/supabase';
+import { useTaskStore, type Task } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore } from '../../store/journalStore';
+import { useGoalStore } from '../../store/goalStore';
 import MonthBackground from '../../components/MonthBackground';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
 import { colors, hexA } from '../../lib/tokens';
 import { buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions, reportBadge, summarizeHabitProgress, type ReportBadge } from '../../lib/reportMetrics';
-import { ymdFromIso } from '../../lib/date';
+import { ymdFromIso, ymd, parseLocalDate } from '../../lib/date';
+import { dailyLoad, type TaskLoadItem } from '../../lib/capacity';
+import { isDueOn } from '../../lib/habitSchedule';
+import {
+  completionTrend, strongestHabit, mostFragileHabit, recoverySuccessRate,
+  type Trend, type Result,
+} from '../../lib/behaviorIntelligence';
+import { fromLegacyRecoveryPlan } from '../../lib/recovery';
 import { fetchHabitLogsForReview } from '../../repositories/habitLogRepository';
-import { fetchFocusSecondsForReview } from '../../repositories/focusSessionRepository';
+import { fetchFocusSessionsSince } from '../../repositories/focusSessionRepository';
+import { fetchRecoveryPlansForReview } from '../../repositories/recoveryRepository';
 
 const MONTHS_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const REFLECT_KEY = (monthKey: string) => `monthly_review_${monthKey}`;
@@ -27,12 +36,102 @@ const REVIEW_QUESTIONS = [
   { key: 'next_month', label: '🎯 Gelecek ay neyi değiştireceksin?', placeholder: 'Bir sonraki ay için önceliklerin...' },
 ];
 
+// ---------------------------------------------------------------------------
+// §12 -- monthly analysis block. "Ay özeti"/"Focus"/"Reflection" already
+// existed (metricsRow+badge, focusMinutes, AYLIK YANSIMA below) -- this adds
+// the five genuinely missing blocks: Trend, En iyi habit, En sorunlu habit,
+// Capacity trend, Recovery trend, Completed goals.
+// ---------------------------------------------------------------------------
+
+type MonthlyAnalysis = {
+  trend4: Result<Trend>;
+  trend12: Result<Trend>;
+  strongest: Result<{ habitId: string; strength: number }>;
+  fragile: Result<{ habitId: string; volatility: number }>;
+  capacityOverloadThisMonth: number;
+  capacityOverloadPrevMonth: number;
+  recoveryThisMonth: Result<number>;
+  recoveryPrevMonth: Result<number>;
+  completedGoals: number;
+  totalMonthlyGoals: number;
+};
+
+const NOT_LOADED: Result<never> = { ok: false, reason: 'Henüz yüklenmedi' };
+
+const EMPTY_ANALYSIS: MonthlyAnalysis = {
+  trend4: NOT_LOADED,
+  trend12: NOT_LOADED,
+  strongest: NOT_LOADED,
+  fragile: NOT_LOADED,
+  capacityOverloadThisMonth: 0,
+  capacityOverloadPrevMonth: 0,
+  recoveryThisMonth: NOT_LOADED,
+  recoveryPrevMonth: NOT_LOADED,
+  completedGoals: 0,
+  totalMonthlyGoals: 0,
+};
+
+function trendLabel(direction: 'improving' | 'declining' | 'flat'): string {
+  if (direction === 'improving') return 'Yükseliyor';
+  if (direction === 'declining') return 'Düşüyor';
+  return 'Sabit';
+}
+
+function formatTrend(t: Result<Trend>): string {
+  if (!t.ok) return t.reason;
+  const pts = Math.round(t.value.magnitude * 100);
+  return `${trendLabel(t.value.direction)} · ${pts >= 0 ? '+' : ''}${pts} puan${t.value.partialWindow ? ` (${t.value.weeksUsed}/${t.value.weeksRequested} hafta)` : ''}`;
+}
+
+/**
+ * How many days in `[start, end]` had a `dailyLoad` band of `aşırı` --
+ * plan §12's "Capacity trend" input. Identical composition to the same
+ * helper in `weekly-review.tsx` (screen-local, `lib/**` is off-limits to
+ * this task -- see that file's own doc for the full reasoning).
+ */
+function countOverloadDays(params: {
+  start: string;
+  end: string;
+  activeHabits: Habit[];
+  allTasks: Task[];
+  focusSessions: { started_at: string; completed_seconds: number }[];
+}): number {
+  const startDate = parseLocalDate(params.start);
+  const endDate = parseLocalDate(params.end);
+  if (!startDate || !endDate) return 0;
+
+  const days = eachDayOfInterval({ start: startDate, end: endDate }).map((d) => ymd(d));
+  let count = 0;
+  for (const day of days) {
+    const dateObj = parseLocalDate(day);
+    if (!dateObj) continue;
+    const habitsDue = params.activeHabits.filter((h) => isDueOn(h, dateObj));
+    // `Task` (store/taskStore.ts) has no `estimated_minutes` field -- map to
+    // `TaskLoadItem` (an intentionally all-optional weak type) so `dailyLoad`
+    // falls back to its own `DEFAULT_TASK_MINUTES` per task, same as every
+    // other caller of `dailyLoad({ tasks })` in this codebase.
+    const tasksDue: TaskLoadItem[] = params.allTasks
+      .filter((t) => t.due_date === day && t.status !== 'cancelled')
+      .map(() => ({}));
+    const overdueCount = params.allTasks.filter(
+      (t) => !!t.due_date && t.due_date < day && !t.completed && t.status !== 'cancelled',
+    ).length;
+    const focusMinutesForDay = focusMinutesFromSessions(
+      params.focusSessions.filter((s) => ymdFromIso(s.started_at) === day),
+    );
+    const load = dailyLoad({ habits: habitsDue, tasks: tasksDue, focusMinutes: focusMinutesForDay, overdueCount });
+    if (load.band === 'asiri') count += 1;
+  }
+  return count;
+}
+
 export default function MonthlyReviewScreen() {
   const now = new Date();
   const isFocused = useIsFocused();
   const { tasks, fetchTasks } = useTaskStore();
   const { habits, fetchHabits } = useHabitStore();
   const { appendEntry } = useJournalStore();
+  const { goals, loadGoals } = useGoalStore();
 
   const [monthOffset, setMonthOffset] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -40,6 +139,7 @@ export default function MonthlyReviewScreen() {
   const [focusMinutes, setFocusMinutes] = useState(0);
   const [habitStats, setHabitStats] = useState<{ id: string; name: string; color: string; percent: number; completedDays: number; possibleDays: number }[]>([]);
   const [badge, setBadge] = useState<ReportBadge | null>(null);
+  const [analysis, setAnalysis] = useState<MonthlyAnalysis>(EMPTY_ANALYSIS);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -78,12 +178,13 @@ export default function MonthlyReviewScreen() {
   useEffect(() => {
     fetchTasks();
     fetchHabits();
-  }, [fetchTasks, fetchHabits]);
+    loadGoals();
+  }, [fetchTasks, fetchHabits, loadGoals]);
 
   useEffect(() => {
     void loadReflection();
     void loadMonthMetrics();
-  }, [monthOffset, habits.length]);
+  }, [monthOffset, habits.length, tasks.length, goals.length]);
 
   // Ekran odağa gelince defter "açılır" (bkz. calendar.tsx)
   useEffect(() => { if (isFocused) animatePage(0); }, [isFocused]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -112,23 +213,40 @@ export default function MonthlyReviewScreen() {
       setFocusMinutes(0);
       setHabitStats([]);
       setBadge(reportBadge({ habitRate: 0, focusMinutes: 0, completedTasks: completedTasks.length }));
+      setAnalysis(EMPTY_ANALYSIS);
       return;
     }
 
-    const [logsRes, sessionsRes] = await Promise.all([
-      fetchHabitLogsForReview({ start, end }),
-      fetchFocusSecondsForReview({ start, end }),
+    // `asOf` anchors every behaviorIntelligence window: "now" for the current
+    // month (so a partial in-progress month still reads its trend honestly),
+    // the month's own last day for a past month being reviewed.
+    const asOf = isCurrentMonth ? now : endOfMonth(targetDate);
+    const wideStart = format(subWeeks(asOf, 13), 'yyyy-MM-dd'); // 13 weeks >= the 12-week trend + 8-week fragility windows below
+    const prevMonthDate = subMonths(targetDate, 1);
+    const prevStart = format(startOfMonth(prevMonthDate), 'yyyy-MM-dd');
+    const prevEnd = format(endOfMonth(prevMonthDate), 'yyyy-MM-dd');
+
+    const [logsRes, sessionsRes, recoveryRes] = await Promise.all([
+      fetchHabitLogsForReview({ start: wideStart, end }),
+      fetchFocusSessionsSince({ sinceIso: prevStart }),
+      fetchRecoveryPlansForReview({ start: prevStart, end }),
     ]);
 
+    const logsForBI = logsRes.ok ? logsRes.data : [];
     const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end) : 0;
-    const minutes = sessionsRes.ok ? focusMinutesFromSessions(sessionsRes.data) : 0;
+
+    // `fetchFocusSessionsSince` has no upper bound -- clip to `end` client-side.
+    const allSessions = sessionsRes.ok ? sessionsRes.data.filter((sess) => sess.started_at <= `${end}T23:59:59`) : [];
+    const monthSessions = allSessions.filter((sess) => sess.started_at >= start);
+    const prevMonthSessions = allSessions.filter((sess) => sess.started_at >= prevStart);
+    const minutes = focusMinutesFromSessions(monthSessions);
     const nextBadge = reportBadge({ habitRate: rate, focusMinutes: minutes, completedTasks: completedTasks.length });
 
     setHabitCompletionRate(rate);
     setFocusMinutes(minutes);
     setBadge(nextBadge);
 
-    const stats = summarizeHabitProgress(habits, logsRes.ok ? logsRes.data : [], start, end).map((row) => ({
+    const stats = summarizeHabitProgress(habits, logsForBI, start, end).map((row) => ({
       id: row.id,
       name: row.name,
       color: row.color,
@@ -137,6 +255,36 @@ export default function MonthlyReviewScreen() {
       possibleDays: row.possibleDays,
     }));
     setHabitStats(stats);
+
+    const trend4 = completionTrend(activeHabits, logsForBI, { weeks: 4, asOf });
+    const trend12 = completionTrend(activeHabits, logsForBI, { weeks: 12, asOf });
+    const strongest = strongestHabit(activeHabits, logsForBI, { asOf });
+    const fragile = mostFragileHabit(activeHabits, logsForBI, { asOf });
+
+    const capacityOverloadThisMonth = countOverloadDays({ start, end, activeHabits, allTasks: tasks, focusSessions: monthSessions });
+    const capacityOverloadPrevMonth = countOverloadDays({ start: prevStart, end: prevEnd, activeHabits, allTasks: tasks, focusSessions: prevMonthSessions });
+
+    const recoveryPlans = recoveryRes.ok ? recoveryRes.data : [];
+    const thisMonthPlans = recoveryPlans.filter((p) => p.target_date >= start && p.target_date <= end);
+    const prevMonthPlans = recoveryPlans.filter((p) => p.target_date >= prevStart && p.target_date <= prevEnd);
+    const recoveryThisMonth = recoverySuccessRate(thisMonthPlans.map(fromLegacyRecoveryPlan));
+    const recoveryPrevMonth = recoverySuccessRate(prevMonthPlans.map(fromLegacyRecoveryPlan));
+
+    // Goal.month is 1-indexed (see app/screens/goals.tsx's CUR_MONTH = NOW.getMonth() + 1);
+    // `month` here is JS's 0-indexed Date#getMonth(), so +1 to compare.
+    // Only `kind === 'monthly'` goals are scoped to a specific month -- yearly/
+    // quarterly goals have no month of their own to attribute to this review,
+    // so they are excluded rather than guessed at.
+    const targetMonthNumber = month + 1;
+    const monthlyGoals = goals.filter((g) => g.kind === 'monthly' && g.year === year && g.month === targetMonthNumber);
+    const completedGoals = monthlyGoals.filter((g) => g.progress >= 100).length;
+
+    setAnalysis({
+      trend4, trend12, strongest, fragile,
+      capacityOverloadThisMonth, capacityOverloadPrevMonth,
+      recoveryThisMonth, recoveryPrevMonth,
+      completedGoals, totalMonthlyGoals: monthlyGoals.length,
+    });
   }
 
   async function handleSave() {
@@ -179,6 +327,10 @@ export default function MonthlyReviewScreen() {
     ],
   };
 
+  function habitNameById(id: string): string {
+    return habits.find((h) => h.id === id)?.name ?? '—';
+  }
+
   return (
     <View style={s.root}>
       {/* Görünen aya göre değişen, tam-ekran mevsimsel arka plan (bkz. calendar.tsx) */}
@@ -217,6 +369,8 @@ export default function MonthlyReviewScreen() {
             </View>
           </View>
 
+          {/* §12 -- "Ay özeti" */}
+          <Text style={s.sectionTitle}>AY ÖZETİ</Text>
           <View style={s.metricsRow}>
             <View style={s.metric}>
               <Text style={s.metricValue}>{completedTasks.length}</Text>
@@ -280,6 +434,63 @@ export default function MonthlyReviewScreen() {
               })}
             </View>
           )}
+
+          {/* §12 -- "Trend" (4/12 haftalık, lib/behaviorIntelligence.completionTrend) */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>TREND</Text>
+            <View style={s.analysisRow}>
+              <Text style={s.analysisLabel}>4 Haftalık</Text>
+              <Text style={s.analysisValue}>{formatTrend(analysis.trend4)}</Text>
+            </View>
+            <View style={s.analysisRow}>
+              <Text style={s.analysisLabel}>12 Haftalık</Text>
+              <Text style={s.analysisValue}>{formatTrend(analysis.trend12)}</Text>
+            </View>
+          </View>
+
+          {/* §12 -- "En iyi habit" / "En sorunlu habit" (strongestHabit / mostFragileHabit) */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>ALIŞKANLIK ANALİZİ</Text>
+            <View style={s.analysisRow}>
+              <Text style={s.analysisLabel}>En İyi Habit</Text>
+              <Text style={s.analysisValue}>{analysis.strongest.ok ? habitNameById(analysis.strongest.value.habitId) : analysis.strongest.reason}</Text>
+            </View>
+            <View style={s.analysisRow}>
+              <Text style={s.analysisLabel}>En Sorunlu Habit</Text>
+              <Text style={s.analysisValue}>{analysis.fragile.ok ? habitNameById(analysis.fragile.value.habitId) : analysis.fragile.reason}</Text>
+            </View>
+          </View>
+
+          {/* §12 -- "Capacity trend" (lib/capacity.dailyLoad -- aşırı-band günü sayımı) */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>KAPASİTE TRENDİ</Text>
+            <View style={s.analysisRow}>
+              <Text style={s.analysisLabel}>Aşırı Yüklenme Günü</Text>
+              <Text style={s.analysisValue}>Bu ay {analysis.capacityOverloadThisMonth} · Geçen ay {analysis.capacityOverloadPrevMonth}</Text>
+            </View>
+          </View>
+
+          {/* §12 -- "Recovery trend" (lib/behaviorIntelligence.recoverySuccessRate) */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>TELAFİ TRENDİ</Text>
+            <View style={s.analysisRow}>
+              <Text style={s.analysisLabel}>Bu Ay</Text>
+              <Text style={s.analysisValue}>{analysis.recoveryThisMonth.ok ? `%${Math.round(analysis.recoveryThisMonth.value * 100)}` : analysis.recoveryThisMonth.reason}</Text>
+            </View>
+            <View style={s.analysisRow}>
+              <Text style={s.analysisLabel}>Geçen Ay</Text>
+              <Text style={s.analysisValue}>{analysis.recoveryPrevMonth.ok ? `%${Math.round(analysis.recoveryPrevMonth.value * 100)}` : analysis.recoveryPrevMonth.reason}</Text>
+            </View>
+          </View>
+
+          {/* §12 -- "Completed goals" (store/goalStore.ts, kind:'monthly' bu ay/yıl) */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>TAMAMLANAN HEDEFLER</Text>
+            <View style={s.analysisRow}>
+              <Text style={s.analysisLabel}>Bu Ayın Hedefleri</Text>
+              <Text style={s.analysisValue}>{analysis.completedGoals} / {analysis.totalMonthlyGoals} tamamlandı</Text>
+            </View>
+          </View>
 
           <View style={s.section}>
             <Text style={s.sectionTitle}>AYLIK YANSIMA</Text>
@@ -367,6 +578,13 @@ const s = StyleSheet.create({
   habitBarBg: { height: 5, backgroundColor: '#28261F', borderRadius: 3 },
   habitBarFill: { height: 5, borderRadius: 3 },
   habitCount: { fontSize: 11, color: '#827E72', minWidth: 40, textAlign: 'right' },
+  analysisRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+    backgroundColor: '#1D1C17', borderRadius: 10, borderWidth: 1, borderColor: '#383528',
+    paddingVertical: 10, paddingHorizontal: 12, marginBottom: 6,
+  },
+  analysisLabel: { fontSize: 12, color: '#827E72', fontWeight: '600' },
+  analysisValue: { fontSize: 12, color: '#EDEAE0', fontWeight: '600', flexShrink: 1, textAlign: 'right' },
   questionCard: { marginBottom: 14 },
   questionLabel: { fontSize: 14, color: '#EDEAE0', fontWeight: '600', marginBottom: 8 },
   questionInput: { backgroundColor: '#1D1C17', borderRadius: 12, padding: 14, fontSize: 14, color: '#fff', borderWidth: 1, borderColor: '#383528', minHeight: 80, textAlignVertical: 'top' },
