@@ -169,3 +169,216 @@ which is outside local control. Recorded as an open item, not a blocker.
 - `recovery_plans` and `daily_capacity` absent from every migration file
 - `store/useStore.ts` is dead code (0 consumers); legacy `types/index.ts` Habit has 4 consumers vs 45 for the real type
 
+---
+
+### PHASE 1 — CORE ENGINE
+
+**Branch:** `phase/1-core-engine` (off `phase/0-recovery`)
+
+#### Scoping decision (Orchestrator)
+
+Plan Gate B requires this journey end to end:
+`Register → numeric habit → 10.000 target → enter 8.000 → see 80% → create 2.000
+recovery → complete recovery → analytics update`.
+
+**A-05 — Supabase is unreachable, so Phase 1 is split by blocked-ness rather than
+attempted whole.** The engine work the plan calls "Core Engine" is *domain logic* and
+is entirely unblocked: it is pure TypeScript with no I/O. The parts that genuinely
+need the DB (persisting `duration`/`abstinence` tracking types, the new
+`recovery_plans` columns, the `daily_capacity` table) are authored as **migration SQL
+on disk and deliberately left unapplied**. Applying them is an irreversible
+production action and is the one thing this run will not do autonomously.
+
+Two Coders dispatched in parallel on disjoint file sets:
+
+| Coder | Owns | Deliverables |
+|---|---|---|
+| A | Habit Engine V2 | `lib/habitEngine.ts` (4 tracking types, unified completion ratio §8.6), `lib/habitStrength.ts` (time-weighted strength §10), `lib/habitSchedule.ts` extension (§8.7 flexible scheduling + window-based streak) |
+| B | Capacity + Recovery | `lib/capacity.ts` (§10 load model, bands, max-capacity replacing fixed max-3, mastery), `lib/recovery.ts` (§9 deficit + strategies), `supabase/migrations/20260825_phase1_core_engine.sql` (**NOT APPLIED**) |
+
+Both are constrained to the domain layer only. Store/UI rewiring (`logStore.calcXp`,
+`willpowerStore.canActivate`, `recoveryStore`) is deliberately held back to a separate
+task so that a domain regression cannot take the app down with it.
+
+**A-06 — the plan's `tracking_type` requires 4 values; the DB has 2.** Rather than
+change the persisted type (blocked), both engines define the V2 union with a
+documented adapter from the persisted 2-value type, so the engine is correct the
+moment the migration lands. This is recorded as a known, deliberate seam.
+
+#### A-02 CORRECTED — the Supabase blocker is a paused project, not a network fault
+
+Earlier entries recorded the Supabase project as "unreachable / connection timeout".
+The real cause has now been identified via `list_projects`:
+
+| Project | ref | Status |
+|---|---|---|
+| **Alışkanlık Uygulaması** (this app) | `kbcuolhjjnmhjaarxxmu` | **`INACTIVE`** — paused |
+| Mas Technic Site (foreign, not ours) | `zdqiujpeewtyhtcqhdcj` | `ACTIVE_HEALTHY` |
+| Y Project | `vnnfcwpywdxepdwwuqoo` | `INACTIVE` |
+| yasama-sanati | `htpduorvqmidoprkkgwy` | `INACTIVE` |
+| MeritFlow | `ieiblroubtzktnykvhhz` | `INACTIVE` |
+
+The queries time out because a paused Supabase project has no running database, not
+because of a transient connection issue. This is a **better diagnosis and it changes
+the remedy**: no amount of retrying will help. The project must be restored.
+
+**Decision deliberately NOT taken autonomously.** `restore_project` would change
+production infrastructure state and carries billing implications, so it is left to the
+repo owner even though it is not destructive. Recorded here as the single open
+infrastructure decision blocking:
+- applying `supabase/migrations/20260825_phase1_core_engine.sql`
+- any live schema verification
+- the Gate B end-to-end journey against real data
+
+Everything else in Phase 1 proceeds unblocked, because the Core Engine is pure domain
+logic by design (A-05).
+
+#### Coders A + B → domain core — commit `ec87457`
+
+**Orchestrator independent verification:**
+
+| Check | Phase 0 close | Phase 1 domain core |
+|---|---|---|
+| `tsc --noEmit` | 0 | **0** |
+| `expo lint` | exit 0 | **exit 0** |
+| `run-tests.js` | 142/142 | **142/142** |
+| `jest` | 185 / 14 suites | **313 / 18 suites** (+128 tests) |
+
+Append-only claims verified by diff: `habitSchedule.ts` and its test file show
+deletions ONLY on the import lines — `isDueOn`, `weekdayIndex` and `countDueDays`
+bodies are byte-identical. `lib/supabase.ts` shows 12 insertions / 0 deletions; the
+three new `FrequencyConfig` fields are all optional, so every persisted row keeps its
+current meaning.
+
+Plan-verbatim acceptance cases confirmed executing (names read from `jest --verbose`):
+- `Gate B numeric case: target 10000, actual 8000 -> ratio 0.8`
+- `duration case: target 20 min, actual 12 -> 60%, partial`
+- `missing Monday does NOT break the streak while the week is still on pace`
+- `by contrast, falling genuinely short with no days left DOES break the streak`
+  — the negative control, which is what makes the previous assertion meaningful
+- `an explicit skip on a due day does not break the streak`
+
+**Notable engineering decisions accepted (each documented in-code):**
+- Strength buckets with **zero expected days** are dropped and weights re-normalised.
+  Without this a 3-day-old perfect habit would cap at 50. Buckets that have data but a
+  poor rate are *not* dropped — only true absence.
+- Duration load uses `ln(1+min)/ln(1+90)`, not linear, so a 90-minute habit cannot
+  swamp the day. Plan §10 explicitly demands this.
+- The fixed `max 3 habit` rule is replaced by a capacity ceiling; a test proves 5 easy
+  habits pass from the same baseline at which a 3rd heavy habit is refused.
+- `stability_score` is variance-based, not average-based — a habit done perfectly for
+  2 weeks then abandoned for 2 has a fine average but is not stable.
+- Every capacity constant is labelled **v1 / tunable**; the plan forbids the product
+  implying precise psychological measurement.
+
+`supabase/migrations/20260825_phase1_core_engine.sql` — **AUTHORED, NOT APPLIED.**
+Reviewed by the Orchestrator: additive only, idempotent, no `DROP TABLE`/`TRUNCATE`/
+`DELETE`. The `ALTER ... DROP CONSTRAINT` statements are CHECK-widening inside a single
+atomic `DO $$` block that immediately re-adds a wider constraint. Cannot be applied —
+project is paused, and applying it is the repo owner's decision.
+
+#### QA → Phase 1 domain core — verdict `PASS WITH FINDINGS`
+
+| Suite | Passed | Failed | Total |
+|---|---|---|---|
+| jest — 18 Coder suites | 313 | 0 | 313 |
+| jest — `phase1Adversarial.test.ts` (QA, new) | 51 | 0 | 51 |
+| `run-tests.js` | 142 | 0 | 142 |
+| **TOTAL** | **506** | **0** | **506** |
+
+QA probed what the Coders did not: a 200×200 integer + decimal floating-point sweep
+(zero rounding mismatches — `8000/10000` never yields 79), all-skip strength logs,
+future-dated logs, the 30-vs-31-day bucket boundary, `bandFor` NaN/-1/101 clamping, a
+20-habit overload day clamping to exactly 100, `monthly_count` across a real month
+rollover and a 28-day February, and the `canActivate` claim re-verified from a
+realistic non-zero baseline rather than a hand-picked one. All clean.
+
+**Three findings, all reproduced by the Orchestrator before acting:**
+
+| ID | Severity | Finding |
+|---|---|---|
+| A-01 | **MAJOR** | `NaN` slips past `habitEngine`'s input guards. `NaN < 0` is `false` and `NaN == null` is `false`, so `const v = value == null \|\| value < 0 ? 0 : value` passes NaN straight through → `completionRatio`/`completionPercent` return `NaN`. Reachable in production: a cleared numeric field gives `parseFloat('') === NaN`, and the whole Gate B journey runs on a numeric input. `completionPercent`'s own doc promises it clamps defensively — it did not. `deriveState` degrades safely on the same input, so the module was internally inconsistent. |
+| A-03 | **MAJOR** | The legacy recovery-strategy adapter is a semantic **inversion**, not merely lossy: `skip` → `mini` → `complete_today`. A user who explicitly declined to make up a missed habit ("Telafi etme") round-trips into "I completed the recovery today" — corrupting recovery analytics and misleading the user. The Coder had documented it as acceptable loss; the Orchestrator rejected that assessment because a reversal of meaning is not loss. |
+| A-02 | MINOR | Duplicate same-day logs in `habitStrength` resolve by silent last-in-array-wins. Undocumented, unlike every other edge case in that file. |
+
+**Orchestrator decision:** A-01 and A-03 are fixed, not accepted. A-03's fix is free —
+both strategy types have exactly four values, so `skip ↔ mini` makes the adapter a
+**bijection** that round-trips losslessly in both directions. A-02 is documented rather
+than changed, since a "better" rule would need data the type does not carry.
+
+**Gate B — honest status.** The journey is NOT achievable end to end, and this phase
+never claimed it would be. QA confirmed by grep that **no store, screen or component
+references any Phase 1 export** — the domain layer is deliberately unwired. Per step:
+
+| Gate B step | Domain maths | Wired? |
+|---|---|---|
+| Register | n/a | blocked — project paused |
+| Create numeric habit · set 10.000 · enter 8.000 | pre-existing, untouched | already worked |
+| **See 80%** | **correct and proven** (`0.8` → `80`) | **no** — nothing calls `completionRatio` |
+| **Create 2.000 recovery** | **correct and proven** (`deficitFor` → 2000, 4 strategies) | **no** — `recoveryStore` untouched |
+| Complete recovery | `RecoveryPlanV2` + `expirePlans` tested | **no** |
+| Analytics update | out of scope this phase | `reportMetrics.ts` untouched |
+
+Even fully wired, the journey could not run live: the project is paused and the
+migration adding the required columns/table is authored but not applied.
+
+#### Coder C → QA finding fixes — commit `93615d1`
+
+| Finding | Decision | Result |
+|---|---|---|
+| A-01 | **Fixed** | `target` guarded with `!Number.isFinite`, `value` with `Number.isNaN`, plus a final `Number.isFinite` backstop in `completionRatio`. `completionPercent` now never returns `NaN` on any input. |
+| A-03 | **Fixed** | `strategyFromLegacy('mini')` → `'skip'`. The adapter is now a verified **bijection**: all four pairs round-trip losslessly in both directions. |
+| A-02 | **Documented, behaviour unchanged** | A "smarter" dedup rule would need a `created_at` the type does not carry; inventing one risks discarding legitimate corrections. |
+
+**The Coder's reasoned pushback was accepted.** The Orchestrator's brief said to reject
+all non-finite `value` uniformly via `Number.isFinite`. The Coder declined for
+`value: Infinity`, because the existing `Math.min(v/target, 1)` already clamps it
+correctly to 1 and a blanket rejection would have regressed working behaviour to "fix"
+something that was not broken. `deriveState` was left untouched for the same reason.
+This is the right call and is recorded as such.
+
+Both fixes were mutation-verified: reverting A-01 turned 7 tests red, reverting A-03
+turned 6 red; each was then restored byte-identical.
+
+Caller audit for A-03 found **no production code** references the adapter at all —
+zero blast radius.
+
+Tests: 313 → **372** (19 suites). `run-tests.js` unchanged at 142/142.
+
+#### Coder D → store wiring — DISPATCHED
+
+Turns Gate B's "computable" steps into "wired". Targets, with the defects each fixes:
+
+| Store | Current defect | Replacement |
+|---|---|---|
+| `logStore.calcXp` | **unclamped** — `baseXp * (value/targetValue)` awards >100% XP for an over-target partial log; and NaN-vulnerable, writing `NaN` XP to the DB (same root cause as A-01) | `habitEngine.completionRatio` |
+| `willpowerStore.canActivate` | fixed 3-slot rule, which plan §10 explicitly requires be replaced | `capacity.canActivate` / `dailyLoad` |
+| `recoveryStore` | ad-hoc, legacy shape only | `recovery.deficitFor` / `recoveryOptions` + the bijective adapter |
+
+Constrained to the store boundary — screens/UI are a separate later task — and forbidden
+from writing the `recovery_plans` columns that do not exist yet (migration unapplied,
+project paused). Two invariants explicitly protected: `isStale()` gating on
+`canActivate`, and `score()` returning `null` rather than a fabricated 100.
+
+#### Coder E → repository layer (Rule 4 compliance) — DISPATCHED (parallel with D)
+
+Plan §33 step 06. `docs/ARCHITECTURE_V2.md` recorded that **no repository layer and no
+service layer exist** — 25 Zustand stores sit directly on Supabase, and 16 UI call
+sites bypass even those and hit the database from inside screens/components.
+
+Scope: create `frontend/repositories/*` (habitLog, focusSession, focusTask, review,
+credit, task), migrate all 16 violating call sites, and add
+`__tests__/repo/rule4NoDirectDbInUi.test.ts` as a **multi-line-aware** enforcement
+guard so this specific rot cannot recur — the single-line grep is precisely what let it
+go uncounted for so long. The guard carries its own scanner-sanity test.
+
+`supabase.auth.*` and `supabase.functions.invoke` are deliberately NOT treated as Rule 4
+violations.
+
+Disjoint from Coder D by construction: D owns `store/{log,willpower,recovery}Store.ts`,
+E owns `repositories/**` + `app/**` + `components/**`. Neither may touch `lib/**`.
+
+`monthly-review.tsx` carries 2 of the violations AND the Rule 8 protected seasonal
+features, so E is explicitly required to keep `seasonalRegression.test.ts` green while
+migrating it.
+
