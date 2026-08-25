@@ -949,3 +949,20 @@ mocked client; the analytics layer is pure until a provider is wired). Widgets a
 assets require native/native-store work outside this run's reach and will be reported as
 such rather than faked.
 
+#### Privacy pre-audit for §22 (Orchestrator, read-only)
+
+What actually leaves the device today:
+
+| Call site | Payload | Assessment |
+|---|---|---|
+| `app/screens/journal-insights.tsx:68` | `{ mode:'insights', period, entries: text }` — **raw journal text** | **Not a §22 violation.** §22 forbids sending sensitive journal text to *event/analytics platforms*; this is the AI journal-insights feature the user explicitly invoked, and the text is its whole input. Recorded because the distinction is easy to lose. |
+| `app/screens/ai-coach.tsx`, `store/routineStore.ts` | habit/task summaries, now enriched with `behaviorIntelligence` digests | Aligned with §13 (summaries, not raw rows) |
+| `store/notionStore.ts` | `notion-sync` | Out of scope this phase |
+
+**Consequence for the Phase 4 analytics layer:** the constraint is not "journal text never
+leaves" — it is "journal text never reaches an *analytics/event* sink." The event layer
+(§22's `habit_created`, `habit_completed`, `recovery_created`, `routine_installed`,
+`weekly_review_completed`, `ai_routine_generated`, …) must carry **ids, counts, enums and
+timestamps only — never free text**. That is a source-invariant worth enforcing with a
+guard test rather than a code-review promise, in the same style as `rule4NoDirectDbInUi`.
+
