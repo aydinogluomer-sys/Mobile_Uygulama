@@ -743,3 +743,72 @@ So the deliverables are, in priority order:
    intended input.
 4. **Gate D proof:** a test demonstrating core flows work with AI unavailable/failing.
 
+#### Coder I → Insights + Weekly/Monthly Review — commit `6789bc9`
+
+**The subagent DIED on a network error** (`ENOTFOUND`) immediately before running its
+verification commands, so it produced no report. Its work was complete in the tree.
+The Orchestrator re-verified everything from scratch rather than trusting an unfinished
+hand-off — and that caught a real defect.
+
+| Check | Before | After |
+|---|---|---|
+| `tsc` / `lint` / `run-tests` | 0 / 0 / 142 | **0 / 0 / 142** |
+| `jest` | 511 / 37 | **581 / 42** |
+
+Delivered: `app/screens/insights.tsx` (all six §11 sections, drawer-linked), weekly-review
+completed with the six §12 metrics + three reflection questions, monthly-review completed
+with all nine §12 blocks, plus `repositories/recoveryRepository.ts`.
+
+`En sorunlu habit` correctly uses `mostFragileHabit` — **volatility, not merely the lowest
+rate**. A steady 60% habit is less fragile than one oscillating 100/0.
+
+**ORCHESTRATOR-FOUND DEFECT — a fabricated zero.** The Coder applied the
+never-invent-a-number rule correctly to `recoveryCompletion` (`{ok:false,reason}`) and
+`taskCompletionRate` (`null`), but missed `totalCompletions`: when the habit-log query
+**failed**, the screen rendered `Toplam Tamamlama: 0` — telling the user they accomplished
+nothing that week. A fabricated answer, not a missing one; exactly the bug this codebase
+already settled via `willpowerStore.score() → null`. Now nullable, rendering `Veri yok`.
+
+Fixed red-first: `__tests__/repo/reviewNoFabricatedZero.test.ts` failed 3 of 4 assertions
+while its scanner-sanity check passed — red for the right reason. Mutation-verified
+(`: null` → `: 0` turns it red).
+
+**The Orchestrator's own test had the brittleness bug it keeps catching in others.** The
+first version was LINE-based; the fix made the expression multi-line, so the assertion
+would have stopped finding it and started passing for the wrong reason. Rewritten
+window-based. This is the third appearance of the single-line-matcher trap in this run
+(after the Rule 4 census and the `recoveryPartialDeficit` body-slicer) — it is now
+recorded as a standing hazard for any source-text invariant test in this repo.
+
+### PHASE 2 — GATE (plan Rule 4 + Gate C)
+
+| Requirement | Result | Evidence |
+|---|---|---|
+| `npx tsc --noEmit` | **PASS** | exit 0 |
+| `npx expo lint` | **PASS** | exit 0, 0 errors |
+| jest | **PASS** | 581/581, 42 suites |
+| `run-tests.js` | **PASS** | 142/142 |
+| Android export | **PASS** | exit 0 |
+| iOS export | **PASS** | exit 0 |
+
+**Gate C — analytics exactness, without AI:**
+
+| Gate C bullet | Status | Evidence |
+|---|---|---|
+| Completion rate exact | **PASS** | hand-computed `2/3` (scheduled days, not `2/7`) |
+| Streak exact | **PASS** | hand-computed `4`, `skip` transparent |
+| Recovery rate exact | **PASS** | hand-computed `0.5`, `planned` excluded from denominator |
+| Capacity history exact | **PASS** | `dailyLoad`/`bandFor`, all six band boundaries asserted (Phase 1) |
+| Works without AI | **PASS** | the entire engine is pure deterministic TypeScript; zero AI calls |
+
+Orchestrator mutation-verified the engine rather than accepting the subagent's
+"module not found" red: removing the `skip` exclusion, re-adding `planned` to the
+recovery denominator, and swapping fragility from `stdDev` to mean each turned tests red.
+
+**PHASE 2 STATUS: `DONE` (2026-08-25)** — commits `87f6102`, `03f557d`, `6789bc9`.
+
+One plan §11 item is deliberately NOT delivered: `sabah/akşam farkı` is **structurally
+uncomputable** — `habit_logs.completed_at` is date-only with no time-of-day. Reported as
+an explicit unsupported signal rather than inferred from `created_at` (row-write time) or
+`part_of_day` (intent, not behaviour). Recorded as an honest gap, not silently skipped.
+
