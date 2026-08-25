@@ -812,3 +812,70 @@ uncomputable** — `habit_logs.completed_at` is date-only with no time-of-day. R
 an explicit unsupported signal rather than inferred from `created_at` (row-write time) or
 `part_of_day` (intent, not behaviour). Recorded as an honest gap, not silently skipped.
 
+### PHASE 3 — ROUTINES & AI
+
+#### Coder J → AI write-gate + Routine Packs — commit `e3a9a33`
+
+**The pre-existing write path was confirmed unvalidated — verified by the Orchestrator
+from git history, not taken on report:**
+```ts
+difficulty: 3, estimated_minutes: 0,          // hardcoded
+await supabase.from('habits').insert(inserts); // bare insert of AI JSON
+```
+`estimated_minutes: 0` meant `capacity.habitLoad` computed ~0 for every AI-created habit —
+the capacity engine was **structurally blind** to them, so a user could install AI routines
+indefinitely without the ceiling ever noticing. `AIRoutineModal.tsx:73` wrote on a single
+tap, with an `as any` cast defeating the remaining type safety.
+
+Now: `lib/routineProposal.ts` is a hand-written defensive validator (no dependency added)
+treating AI output as hostile — prototype-pollution keys, wrong types, absurd values,
+duplicates, unknown `tracking_type`, extra keys. Errors accumulate rather than fail-fast;
+`ok:false` never carries a proposal. No coercion, because coercion is how bad data gets in.
+
+Pack loads computed **live** from `capacity.ts`, with the plan's numbers stored as data and
+never presented as computed. 12% tolerance, justified in the test: `capacity.ts` documents
+its own weights as "v1 heuristic, not a measured quantity", so the plan's figures cannot be
+reverse-derived exactly.
+
+Red-first with seeded bugs: disabling the schema gate → exactly 2 red / 56 green;
+`if (fits)` → `if (true)` → 5 red (habits that should queue appeared force-activated) /
+62 green.
+
+`jest` 581 → **664 / 45 suites**.
+
+#### Orchestrator → Rule 8 regression found and fixed — commit `2db2639`
+
+Coder J reported honestly that its own change broke "Rutin Oluştur": the edge function's
+`SYSTEM_PROMPT` asks the AI for a **different schema** than plan §13 and never requests
+`difficulty`/`estimated_minutes`, so under the new strict validator **every real AI routine
+was rejected**. Plan Rule 8 forbids one feature regressing another's working implementation.
+
+Regression reproduced before fixing — the actual rejections against today's real payload:
+```
+unknown tracking_type 'boolean' — expected one of binary, numeric
+difficulty: expected a number, got undefined
+estimated_minutes: expected a number, got undefined
+```
+
+**The edge function was NOT touched** — deploying it is an irreversible production action
+and out of scope. The fix is entirely client-side.
+
+**The trap avoided:** silently defaulting the two missing fields *is* the bug that was just
+removed. Instead the adapter marks them `null`, flags the proposal `incomplete`, and the
+preview collects `difficulty`/`estimated_minutes` from the user before confirm unlocks.
+Nothing auto-fills. User-supplied values are re-run through the full validator — the user is
+not trusted either.
+
+A three-way discriminated union (`ok:false` / `complete:true` / `complete:false`) makes
+TypeScript itself prevent an incomplete proposal reaching `evaluateProposal`.
+
+Orchestrator mutation check: replacing `null` with a silent `3` turns **6 tests red** — the
+"never invent it" rule is genuinely carried by tests, not just by comments.
+
+`jest` 664 → **690 / 47 suites**.
+
+**Reported, not fixed (out of scope):** `supabase/functions/generate-routine/index.ts`
+performs **zero** server-side schema validation (`text.match(/\{[\s\S]*\}/)` + `JSON.parse`)
+and its prompt diverges from plan §13. Updating it requires an edge-function deploy —
+a repo-owner decision.
+
