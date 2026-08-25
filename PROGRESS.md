@@ -606,3 +606,57 @@ goes wrong:
 - **morning/evening**: `habit_logs.completed_at` is a **date string, not a timestamp**, so the
   Coder is instructed to report an honest unsupported-signal rather than infer it
 
+#### Coder G → Behavior Intelligence engine — commit `87f6102`
+
+Verified with `git status`/`git log`: only the two new files, no commits by the subagent.
+
+| Check | Before | After |
+|---|---|---|
+| `tsc` / `lint` / `run-tests` | 0 / 0 / 142 | **0 / 0 / 142** |
+| `jest` | 467 / 35 | **489 / 36** |
+
+**The Coder's red-first evidence was rejected as insufficient and re-done by the
+Orchestrator.** Its "red" was `Cannot find module '../../lib/behaviorIntelligence'` —
+that only proves the module was absent, not that any individual assertion is
+load-bearing. A suite of 22 tests could contain 22 tautologies and still produce that
+red. So the Orchestrator mutation-tested the three claims that matter:
+
+| Mutation | Result |
+|---|---|
+| removed the `skip` exclusion | **1 test red** |
+| added `'planned'` back into the recovery-rate denominator | **2 tests red** |
+| ranked fragility by mean instead of `stdDev` | **1 test red** |
+
+All three caught, all restored, 22/22 green. The assertions are real.
+
+**Gate C exactness confirmed by reading the test file** — the expected values are
+hand-computed in comments and asserted with `toEqual`/`toBe`, not compared against
+implementation output:
+- completion rate: 3×/week habit, 2 done → **exactly `2/3`, not `2/7`**
+- streak: `done,done,skip,done,partial,none` → **exactly 4**, `skip` transparent
+- recovery rate: 5 plans (2 completed, 1 expired, 1 cancelled, 1 planned) → **exactly 0.5**,
+  `planned` excluded from the denominator
+
+**Honest gap, exactly as anticipated:** `sabah/akşam farkı` is **structurally
+uncomputable**. `habit_logs.completed_at` is a date-only string with no time-of-day;
+`frequency_config.part_of_day` records intent, not observed behaviour; `created_at` is
+row-write time. The engine returns an explicit unsupported signal rather than
+substituting a different question for the one the plan asked. This is the correct
+outcome — the alternative was a fabricated metric.
+
+Every metric returns `{ok:true,value}` or `{ok:false,reason}`, never a fabricated
+number — the same rule as `willpowerStore.score() → null`.
+
+#### Coder H → Habit Detail screen (§11) — DISPATCHED (sole writer)
+
+Route convention deviates from the plan deliberately (Rule 7): the plan writes
+`/habits/[id]`, but this repo uses flat `app/screens/*.tsx` with `expo-router`, so the
+screen is `app/screens/habit-detail.tsx`. Real code wins over the doc.
+
+Two requirements called out as non-negotiable: the calendar must render
+`full / partial / miss / skip / not scheduled` in **five distinct colours** (the plan
+states this explicitly), and every `{ok:false}` metric must render its `reason` rather
+than a fabricated `0`.
+
+Red-first bar raised after Coder G: a "module not found" red is not accepted as proof.
+
