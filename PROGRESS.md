@@ -437,3 +437,103 @@ count it observed was Coder E's unstaged work in the shared tree.
 level. `store/**` retains 78 direct Supabase call sites (out of Rule 4's scope, which
 governs UI). No service/hooks layer yet.
 
+---
+
+#### Coder F → UI capacity/recovery wiring — DISPATCHED (sole writer)
+
+**Process change applied.** Last round two subagents wrote to the same working tree
+concurrently and one misread the other's unstaged files as unauthorised commits. From
+here: **one writer at a time**, commit before handing off, and verify a subagent's
+report with `git status`/`git log` rather than by test counts.
+
+Closes the gap PROGRESS.md itself named: `grep` confirms every UI call site still calls
+`canActivate(cost)` with no capacity input, so the app silently takes the legacy
+fixed-slot path despite plan §10 requiring it be replaced. `recoveryOptionsFor` has zero
+callers, so §9's deficit maths never reaches a user.
+
+Call sites to wire: `app/tabs/habits.tsx` (6), `app/tabs/timeline.tsx` (6),
+`components/HabitOnboarding.tsx` (1), `store/habitStore.ts:113` (1).
+
+**Method mandated: red-first.** Every change must be proven by a test that fails before
+the fix. A test that passes beforehand means the diagnosis is wrong and the Coder must
+stop and report rather than proceed.
+
+#### PHASE 2 — INTELLIGENCE — scoped (Orchestrator, read-only)
+
+Plan §11/§12 + Gate C. Gate C's bar: *"Analytics values raw database samples ile
+karşılaştırılacaktır — Completion rate exact · Streak exact · Recovery rate exact ·
+Capacity history exact. AI kullanılmadan doğru çalışmalıdır."* So Phase 2's core is again
+**pure, exactly-testable domain logic** — which the paused project does not block.
+
+| Item | Plan ref | Notes |
+|---|---|---|
+| Behavior Intelligence engine | §11 | best/worst day, strongest/most fragile habit, 4-week + 12-week trend, most-recovered habit, recovery success rate, morning/evening difference, streak stability |
+| Habit Detail `/habits/[id]` | §11 | 4 tabs (GENEL/GEÇMİŞ/TAKVİM/İÇGÖRÜ); calendar must render `full`/`partial`/`miss`/`skip`/`not scheduled` in **distinct** colours |
+| Insights screen | §11 | week/month/habits/capacity/recovery/focus sections |
+| Weekly Review | §12 | auto-derived metrics + 3 reflection questions |
+| Monthly Review | §12 | month summary, trend, best/worst habit, capacity trend, recovery trend, focus, goals, reflection |
+
+**Note — a Phase 0 fix already discharged part of a Phase 2 requirement.** Plan §12 states
+the `MonthBackground` / `GlassPanel` / seasonal-header pattern *"regression nedeniyle
+kaybolmuştur. Tekrar bağlanmalıdır."* That reconnection was completed in Phase 0 (commits
+`92becd9` + `a16d0af`, incl. QA finding F-01's transparent header) and is now locked by
+`seasonalRegression.test.ts`. Recorded so Phase 2 does not redo it.
+
+#### Coder F → UI capacity/recovery wiring — commit `02c351d`
+
+**Verified with `git status`/`git log`, not test counts** (per the corrected process): no
+unauthorised commits, `store/willpowerStore.ts` diff empty.
+
+| Check | Before | After |
+|---|---|---|
+| `tsc` | 0 | **0** |
+| `expo lint` | exit 0 | **exit 0** |
+| `run-tests.js` | 142/142 | **142/142** |
+| `jest` | 437 / 29 | **463 / 34** |
+
+**Red-first evidence accepted.** The headline proof: before wiring, a 5th heavy habit was
+**wrongly activated** — 4×18 = 72 current load + 18 incoming = 90, over the 85 ceiling —
+because the legacy rule only asked `active_count(4) < focus_capacity(10)`. The test was
+red, then green, and no write occurs. This is exactly the failure plan §10 describes.
+
+Also proven red-first: `dailyLoad` had 0 occurrences in both screens; `recoveryOptionsFor`
+had 0 occurrences in `recovery.tsx`.
+
+All 14 call sites now pass real capacity data. When the habit list is still loading the
+code deliberately falls back to the legacy call rather than passing a half-empty
+`activeHabits`, which would **under-report** load and wrongly permit activation.
+
+**Coder's reasoned deviation accepted:** `store/habitStore.ts`'s
+`await import('./willpowerStore')` was converted to a static import. Those dynamic imports
+could not execute under this repo's jest-expo config at all, so `activateHabit`/`pauseHabit`
+were **untestable** — a pre-existing gap, not one W1 introduced. No circular dependency
+(`willpowerStore` does not import `habitStore`); behaviour identical.
+
+**Honest gaps reported by the Coder rather than hidden:**
+- `Düşük yoğunlukla başla` CTA does not exist anywhere in the codebase — not invented.
+- `Yine de etkinleştir` is not a true override; the button re-enables when capacity frees
+  up rather than forcing through an `aşırı` verdict. No new activation flow was invented.
+
+#### Orchestrator → plan §9 deficit gap — commit `32fbea1`
+
+Coder F flagged, rather than buried, that its recovery display was wrong:
+`fetchHabitLogsForHabitsSince` selected only `habit_id, completed_at, state` — no `value` —
+so `deficitFor` had nothing to subtract on a partial day and the screen reported the
+**full target** as owed. The plan's §9 headline (10.000 target / 8.000 actual → 2.000)
+did not work in the UI even though the engine computed it correctly.
+
+Fixed red-first. `__tests__/repo/recoveryPartialDeficit.test.ts` failed 3 assertions first.
+
+**The test itself had a bug, found and fixed before trusting it:** it sliced the function
+body to the first `\n}`, but the inline params object type also closes with `\n}`, so the
+body was truncated before `.select(` — it was red for the *wrong reason*. Now slices to the
+next top-level `export` and carries a scanner-sanity test so the suite cannot silently
+start asserting against an empty string. Mutation-verified: narrowing the select turns it
+red again.
+
+Where no value exists (binary habit, or a null `value`), `null` is still passed and
+`deficitFor` falls back to its documented conservative behaviour — counts the whole target
+as owed, **never under-states**.
+
+`jest` 463 → **467 / 35 suites**.
+
