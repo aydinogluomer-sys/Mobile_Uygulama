@@ -966,3 +966,31 @@ leaves" — it is "journal text never reaches an *analytics/event* sink." The ev
 timestamps only — never free text**. That is a source-invariant worth enforcing with a
 guard test rather than a code-review promise, in the same style as `rule4NoDirectDbInUi`.
 
+#### Offline-sync design constraint (Orchestrator, read-only analysis of `logStore`)
+
+`logStore` already serialises writes: `const chains = new Map<string, Promise<unknown>>()`
+keyed `habitId|date` (`store/logStore.ts:82-93`). Its documented purpose — *"a second tap
+on the same habit waits for the first write to settle, so it observes the row the first one
+created and takes the update branch instead of inserting again"* — is what prevents
+double-tap duplicate rows.
+
+**Two properties of that chain matter for §18 offline-first, and they pull in opposite
+directions:**
+
+1. It is **in-memory and per-process.** It does not survive an app restart. A sync queue
+   that persists across restarts (which §18 requires — `pending sync` must outlive the
+   session) therefore cannot rely on it for de-duplication on replay.
+2. Replaying a queued write after restart hits the **same** insert-vs-update decision with
+   **no** in-memory chain protecting it. Naively replaying is how the duplicate rows the
+   chain was built to prevent get created anyway — just on a different code path.
+
+So the Phase 4 offline work must persist the queue AND carry the insert/update decision
+into replay, rather than assuming the existing chain covers it. The
+`habit_logs (habit_id, completed_at)` UNIQUE constraint (confirmed present in
+`docs/audit/07`) is the real backstop and should be treated as such — the queue should
+reconcile against it, not hope to avoid it.
+
+This is recorded now, before any code is written, because it is exactly the kind of
+interlock that looks fine in a unit test with a fresh module and fails on a real device
+after a cold start.
+
