@@ -5,8 +5,12 @@ import { useHabitStore } from './habitStore';
 import {
   validateRoutineProposal,
   evaluateProposal,
+  adaptEdgeRoutineResponse,
+  completeAdaptedProposal,
   type RoutineProposal,
   type ProposalEvaluation,
+  type AdaptedRoutineProposal,
+  type ProposalCompletion,
 } from '../lib/routineProposal';
 import { findRoutinePack, packToProposal, type RoutinePackKey } from '../lib/routinePacks';
 import { insertRoutineHabits, type InstallHabitRow } from '../repositories/habitRepository';
@@ -51,12 +55,30 @@ type RoutineStore = {
   // response does, never a bypass. Only ever consumed by confirmInstall. ──
   proposalSource: ProposalSource | null;
   proposal: RoutineProposal | null;
-  /** Non-null only when validation FAILED -- a clear, user-facing reason per
-   *  problem, never a crash and never a silent no-op (Gate D). */
+  /** Non-null when validation FAILED (a clear, user-facing reason per
+   *  problem -- never a crash and never a silent no-op, Gate D) OR when a
+   *  proposal was accepted but is still `pendingProposal`-incomplete (in
+   *  that case these are "please supply X" prompts, not rejection reasons
+   *  -- see `pendingProposal`'s own doc). */
   proposalErrors: string[] | null;
   evaluation: ProposalEvaluation | null;
+  /** Non-null ONLY for an AI proposal `adaptEdgeRoutineResponse` accepted
+   *  but could not fully evaluate -- today's real edge function never sends
+   *  `difficulty`/`estimated_minutes` (see `lib/routineProposal.ts`'s doc).
+   *  `proposal`/`evaluation` stay `null` while this is set: nothing here is
+   *  capacity-evaluated or installable until `completeProposal` below turns
+   *  it into a real `proposal`, using values the user supplies -- never a
+   *  guessed default. */
+  pendingProposal: AdaptedRoutineProposal | null;
   loadPack: (key: RoutinePackKey) => void;
   clearGenerated: () => void;
+  /** Step 1.5 of the pipeline, AI-only: turns `pendingProposal` into a real,
+   *  capacity-evaluated `proposal` using one user-supplied
+   *  {difficulty, estimated_minutes} pair per habit (index-aligned). Runs
+   *  the completed values through the exact same strict validator as
+   *  everything else -- a hostile/absurd value typed into the completion UI
+   *  is rejected here exactly like anywhere else in the gate. */
+  completeProposal: (completions: ProposalCompletion[]) => void;
 
   // ── Step 5 of the pipeline -- the only place a write happens. ──
   installing: boolean;
@@ -66,43 +88,21 @@ type RoutineStore = {
 };
 
 /**
- * Bridges TODAY's actual `generate-routine` wire shape
- * (`{name, description, items:[{name, tracking_type, ...}]}`) onto the field
- * names `validateRoutineProposal` checks (`{title, goal,
- * habits:[{name, tracking_type, difficulty, estimated_minutes}]}` -- plan
- * §13's canonical schema).
- *
- * This is a PURE RENAME of whatever value is already present at each key --
- * it invents nothing and drops nothing the validator itself checks. In
- * particular, the edge function's current prompt never asks the AI for
- * `difficulty`/`estimated_minutes` (see this task's Edge Function Findings);
- * those two keys come through here as `undefined`, and the validator
- * correctly rejects the proposal for a missing required field rather than
- * this function silently inventing a plausible-looking value. That is by
- * design -- see `lib/routineProposal.ts`'s "no coercion" rule in its file
- * doc. This function is intentionally NOT exported from `lib/routineProposal.ts`:
- * it is wiring for today's specific edge-function response shape, not part
- * of the plan §13 schema the validator itself embodies.
+ * Rule 8 regression fix (Phase 3, CODER-K): `adaptGeneratedRoutine` used to
+ * live here as a PURE rename with no `tracking_type` mapping and no handling
+ * for the edge function's real gap (it never sends `difficulty`/
+ * `estimated_minutes` at all) -- so `validateRoutineProposal` rejected every
+ * single real AI response outright ("Rutin Oluştur" was broken end-to-end;
+ * Routine Packs, which build a complete `RoutineProposal` directly, were
+ * unaffected). The adapter now lives in `lib/routineProposal.ts` as
+ * `adaptEdgeRoutineResponse` -- it does the same field-renaming PLUS maps
+ * `tracking_type`'s vocabulary (`'boolean' -> 'binary'`) AND, when
+ * `difficulty`/`estimated_minutes` are genuinely absent, accepts the
+ * response as an EXPLICITLY incomplete proposal instead of rejecting it --
+ * still never inventing the two missing fields (see that file's doc for the
+ * full reasoning). `completeProposal` below is the only place a user-
+ * supplied value ever fills them in.
  */
-function adaptGeneratedRoutine(raw: unknown): unknown {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return raw;
-  const r = raw as Record<string, unknown>;
-  const items = Array.isArray(r.items) ? r.items : undefined;
-  return {
-    title: r.name,
-    goal: r.description,
-    habits: items?.map((item) => {
-      if (typeof item !== 'object' || item === null || Array.isArray(item)) return item;
-      const i = item as Record<string, unknown>;
-      return {
-        name: i.name,
-        tracking_type: i.tracking_type,
-        difficulty: i.difficulty,
-        estimated_minutes: i.estimated_minutes,
-      };
-    }),
-  };
-}
 
 /** Today's active habits, shaped for `evaluateProposal`'s capacity baseline. */
 function activeHabitLoadInputs(): HabitLoadInput[] {
@@ -131,6 +131,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
   proposal: null,
   proposalErrors: null,
   evaluation: null,
+  pendingProposal: null,
 
   installing: false,
   installError: null,
@@ -151,6 +152,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       proposal: null,
       proposalErrors: null,
       evaluation: null,
+      pendingProposal: null,
       installed: false,
       installError: null,
     });
@@ -181,26 +183,48 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       if (typeof data?.balance === 'number') useSubscriptionStore.getState().setBalance(data.balance);
 
       // ── THE GATE (plan §13). Nothing past this line is the AI's raw
-      // response -- `validation.proposal` only exists on the `ok:true`
-      // branch, so there is no variable in this function that could hold an
-      // unvalidated value and later reach `confirmInstall`. ──
-      const validation = validateRoutineProposal(adaptGeneratedRoutine(data));
-      if (!validation.ok) {
+      // response -- `adapted.proposal` only exists on the `ok:true` branch,
+      // so there is no variable in this function that could hold an
+      // unvalidated value and later reach `confirmInstall`. `adaptEdgeRoutineResponse`
+      // renames today's real edge-function fields onto plan §13's schema
+      // AND runs the identical hostile-input checks `validateRoutineProposal`
+      // does -- see lib/routineProposal.ts's doc. ──
+      const adapted = adaptEdgeRoutineResponse(data);
+      if (!adapted.ok) {
         set({
           generating: false,
           proposalSource: 'ai',
-          proposalErrors: validation.errors.map((e) => e.message),
+          proposalErrors: adapted.errors.map((e) => e.message),
+          pendingProposal: null,
         });
         return;
       }
 
-      const evaluation = evaluateProposal(validation.proposal, { activeHabits: activeHabitLoadInputs() });
+      if (!adapted.complete) {
+        // Accepted, but today's edge function never asks the AI for
+        // difficulty/estimated_minutes -- staged here for the user to
+        // supply via AIRoutineModal's completion step (`completeProposal`
+        // below). `proposal`/`evaluation` stay null: there is nothing valid
+        // to evaluate capacity against yet, and NOTHING is guessed.
+        set({
+          generating: false,
+          proposalSource: 'ai',
+          pendingProposal: adapted.proposal,
+          proposalErrors: adapted.proposal.missingFieldNotices,
+          proposal: null,
+          evaluation: null,
+        });
+        return;
+      }
+
+      const evaluation = evaluateProposal(adapted.proposal, { activeHabits: activeHabitLoadInputs() });
       set({
         generating: false,
         proposalSource: 'ai',
-        proposal: validation.proposal,
+        proposal: adapted.proposal,
         evaluation,
         proposalErrors: null,
+        pendingProposal: null,
       });
     } catch (err) {
       set({ generateError: err instanceof Error ? err.message : 'Sunucu hatası.', generating: false });
@@ -210,13 +234,17 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
   loadPack: (key) => {
     const pack = findRoutinePack(key);
     if (!pack) {
-      set({ proposalSource: 'pack', proposal: null, evaluation: null, proposalErrors: [`Bilinmeyen paket: ${key}`] });
+      set({ proposalSource: 'pack', proposal: null, evaluation: null, proposalErrors: [`Bilinmeyen paket: ${key}`], pendingProposal: null });
       return;
     }
     // A pack goes through the SAME validator an AI response does -- see
     // routinePacks.ts's doc. A pack failing here would be a bug in
     // routinePacks.ts, not a real AI failure, but it is still surfaced
-    // through the same never-silently-write path rather than thrown.
+    // through the same never-silently-write path rather than thrown. A pack
+    // is always a COMPLETE `RoutineProposal` (difficulty/estimated_minutes
+    // are app-authored data, never missing) -- `pendingProposal` is reset
+    // here purely so a leftover incomplete AI proposal from a prior attempt
+    // cannot linger alongside a freshly-loaded pack in the UI.
     const validation = validateRoutineProposal(packToProposal(pack));
     if (!validation.ok) {
       set({
@@ -224,6 +252,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
         proposal: null,
         evaluation: null,
         proposalErrors: validation.errors.map((e) => e.message),
+        pendingProposal: null,
       });
       return;
     }
@@ -233,6 +262,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       proposal: validation.proposal,
       evaluation,
       proposalErrors: null,
+      pendingProposal: null,
       generateError: null,
       installed: false,
       installError: null,
@@ -245,9 +275,32 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
     proposal: null,
     proposalErrors: null,
     evaluation: null,
+    pendingProposal: null,
     installed: false,
     installError: null,
   }),
+
+  // Step 1.5 of the pipeline, AI-only (see `pendingProposal`'s doc on the
+  // type above). Re-validates EVERYTHING via `completeAdaptedProposal` --
+  // including the values the user just supplied -- so a hostile/absurd
+  // completion input is rejected exactly like anywhere else in the gate,
+  // never trusted just because a human typed it.
+  completeProposal: (completions) => {
+    const { pendingProposal } = get();
+    if (!pendingProposal) return;
+    const result = completeAdaptedProposal(pendingProposal, completions);
+    if (!result.ok) {
+      set({ proposalErrors: result.errors.map((e) => e.message) });
+      return;
+    }
+    const evaluation = evaluateProposal(result.proposal, { activeHabits: activeHabitLoadInputs() });
+    set({
+      pendingProposal: null,
+      proposal: result.proposal,
+      evaluation,
+      proposalErrors: null,
+    });
+  },
 
   // Step 5 of the pipeline -- the ONLY function in this store that writes to
   // the database, and only ever from `proposal`/`evaluation` already staged

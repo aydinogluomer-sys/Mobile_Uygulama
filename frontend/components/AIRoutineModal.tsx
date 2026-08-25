@@ -10,6 +10,9 @@ import { useRoutineStore } from '../store/routineStore';
 import { useSubscriptionStore } from '../store/subscriptionStore';
 import { ACTION_COST } from '../lib/subscription';
 import { ROUTINE_PACKS, type RoutinePack } from '../lib/routinePacks';
+import { MAX_ESTIMATED_MINUTES, type ProposalCompletion } from '../lib/routineProposal';
+import { DIFFICULTY_LEVELS } from '../lib/triage';
+import { Chip } from './ui';
 
 interface Props {
   visible: boolean;
@@ -30,6 +33,8 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
     proposal,
     proposalErrors,
     evaluation,
+    pendingProposal,
+    completeProposal,
     loadPack,
     clearGenerated,
     installing,
@@ -38,7 +43,23 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
     confirmInstall,
   } = useRoutineStore();
 
+  // Tamamlama formu -- yalnızca `pendingProposal` (AI'nın difficulty/
+  // estimated_minutes vermediği eksik öneri) doluyken kullanılır. Habit
+  // index'ine göre hizalı; hiçbir alan otomatik doldurulmaz (bkz.
+  // lib/routineProposal.ts'nin "no coercion" kuralı).
+  const [completions, setCompletions] = useState<Record<number, { difficulty?: 1 | 3 | 5; estimated_minutes?: number }>>({});
+  const [minutesText, setMinutesText] = useState<Record<number, string>>({});
+
   useEffect(() => { if (visible) fetchSub(); }, [visible]);
+
+  // Yeni bir eksik öneri geldiğinde (yeni bir AI çağrısı) formu sıfırla --
+  // ama başarısız bir "Devam Et" denemesinden sonra (pendingProposal AYNI
+  // referans kalır, çünkü store başarısızlıkta onu temizlemez) kullanıcının
+  // girdiği değerler KORUNUR.
+  useEffect(() => {
+    setCompletions({});
+    setMinutesText({});
+  }, [pendingProposal]);
 
   function handleClose() {
     setPrompt('');
@@ -55,11 +76,36 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
     await confirmInstall();
   }
 
+  function setHabitDifficulty(i: number, d: 1 | 3 | 5) {
+    setCompletions((prev) => ({ ...prev, [i]: { ...prev[i], difficulty: d } }));
+  }
+
+  function setHabitMinutesText(i: number, text: string) {
+    setMinutesText((prev) => ({ ...prev, [i]: text }));
+    const n = Number(text);
+    const valid = text.trim().length > 0 && Number.isFinite(n) && n >= 0 && n <= MAX_ESTIMATED_MINUTES;
+    setCompletions((prev) => ({ ...prev, [i]: { ...prev[i], estimated_minutes: valid ? n : undefined } }));
+  }
+
+  const allHabitsComplete = !!pendingProposal && pendingProposal.habits.every((_, i) =>
+    completions[i]?.difficulty !== undefined && completions[i]?.estimated_minutes !== undefined
+  );
+
+  function handleCompleteProposal() {
+    if (!pendingProposal || !allHabitsComplete) return;
+    const payload: ProposalCompletion[] = pendingProposal.habits.map((_, i) => ({
+      difficulty: completions[i]!.difficulty!,
+      estimated_minutes: completions[i]!.estimated_minutes!,
+    }));
+    completeProposal(payload);
+  }
+
   // Ready-made paketten mi, AI'dan mı gösteriliyor -- ikisi de aynı doğrulama +
   // kapasite kapısından geçer (routineStore.ts loadPack/generateRoutine).
   const showPreview = !!proposal && !!evaluation && !installed;
-  const showErrors = !generating && !!proposalErrors && proposalErrors.length > 0;
-  const showPickers = !generating && !proposal && !showErrors && !installed;
+  const showCompletion = !generating && !!pendingProposal;
+  const showErrors = !generating && !!proposalErrors && proposalErrors.length > 0 && !pendingProposal;
+  const showPickers = !generating && !proposal && !pendingProposal && !showErrors && !installed;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
@@ -114,6 +160,72 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                   <Ionicons name="refresh-outline" size={16} color="#BFBBAE" />
                   <Text style={styles.retryText}>Yeniden dene</Text>
                 </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {/* Eksik-alan tamamlama -- AI, difficulty/estimated_minutes
+                vermiyor (bkz. lib/routineProposal.ts). Kapasite hesaplaması
+                bu iki alan olmadan yapılamaz, o yüzden AI reddedilmek yerine
+                kabul edilir ama kullanıcı tamamlamadan Onayla'ya geçilemez --
+                hiçbir alan otomatik doldurulmaz. */}
+            {showCompletion ? (
+              <View style={styles.completionBox}>
+                <View style={styles.completionHeader}>
+                  <Ionicons name="create-outline" size={18} color="#D4A84A" />
+                  <Text style={styles.completionTitle}>Birkaç bilgi eksik</Text>
+                </View>
+                <Text style={styles.completionSub}>
+                  AI, {pendingProposal!.title} için zorluk ve süre tahmini vermiyor. Kapasite hesaplaması
+                  için her alışkanlık için bu ikisini sen belirlemelisin.
+                </Text>
+
+                {pendingProposal!.habits.map((h, i) => {
+                  const sel = completions[i] || {};
+                  return (
+                    <View key={i} style={styles.completionCard}>
+                      <Text style={styles.completionHabitName}>{h.name}</Text>
+
+                      <Text style={styles.completionLabel}>Zorluk</Text>
+                      <View style={styles.completionRow}>
+                        {DIFFICULTY_LEVELS.map((d) => (
+                          <Chip
+                            key={d.key}
+                            label={d.label}
+                            color={d.color}
+                            icon={d.icon as any}
+                            selected={sel.difficulty === d.key}
+                            onPress={() => setHabitDifficulty(i, d.key as 1 | 3 | 5)}
+                          />
+                        ))}
+                      </View>
+
+                      <Text style={[styles.completionLabel, { marginTop: 10 }]}>Tahmini süre (dakika)</Text>
+                      <TextInput
+                        style={styles.completionInput}
+                        placeholder={`ör. 10 (maks ${MAX_ESTIMATED_MINUTES})`}
+                        placeholderTextColor="#827E72"
+                        keyboardType="numeric"
+                        value={minutesText[i] ?? ''}
+                        onChangeText={(t) => setHabitMinutesText(i, t)}
+                      />
+                    </View>
+                  );
+                })}
+
+                <View style={styles.resultActions}>
+                  <TouchableOpacity style={styles.retryBtn} onPress={() => clearGenerated()}>
+                    <Ionicons name="refresh-outline" size={16} color="#BFBBAE" />
+                    <Text style={styles.retryText}>Yeniden dene</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.addAllBtn, !allHabitsComplete && styles.generateBtnDisabled]}
+                    onPress={handleCompleteProposal}
+                    disabled={!allHabitsComplete}
+                  >
+                    <Ionicons name="arrow-forward-circle" size={18} color="#fff" />
+                    <Text style={styles.addAllText}>Devam Et</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ) : null}
 
@@ -311,6 +423,25 @@ const styles = StyleSheet.create({
   retryBtnWide: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     backgroundColor: '#383528', borderRadius: 12, paddingVertical: 10, marginTop: 10,
+  },
+
+  completionBox: {
+    backgroundColor: '#D4A84A10', borderWidth: 1, borderColor: '#D4A84A30',
+    borderRadius: 14, padding: 16, marginBottom: 16,
+  },
+  completionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  completionTitle: { fontSize: 15, fontWeight: '700', color: '#D4A84A' },
+  completionSub: { fontSize: 12.5, color: '#BFBBAE', lineHeight: 18, marginBottom: 14 },
+  completionCard: {
+    backgroundColor: '#1D1C17', borderRadius: 12, padding: 14,
+    marginBottom: 10, borderWidth: 1, borderColor: '#383528',
+  },
+  completionHabitName: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 10 },
+  completionLabel: { fontSize: 11.5, color: '#827E72', fontWeight: '600', marginBottom: 6 },
+  completionRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  completionInput: {
+    backgroundColor: '#15140F', borderRadius: 10, padding: 10, fontSize: 14,
+    color: '#fff', borderWidth: 1, borderColor: '#383528',
   },
 
   tagline: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 8, lineHeight: 26 },
