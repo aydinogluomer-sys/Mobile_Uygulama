@@ -1106,3 +1106,78 @@ explicit confirmation, and the two capacity-critical fields are never invented.
    `generate-routine`; `message` truncated at 500 chars vs a ~586-char digest;
    `mode:'summarize'` routed to the wrong branch; `context.analytics` never read.
 
+#### Coder M → offline-first completion (§18) — commit `1696557`
+
+| Check | Before | After |
+|---|---|---|
+| `tsc` / `lint` / `run-tests` | 0 / 0 / 142 | **0 / 0 / 142** |
+| `jest` | 787 / 52 | **813 / 54** |
+
+**The interlock the Orchestrator flagged in advance was exactly where the danger was, and it
+was resolved the right way.** Replay does not re-derive the insert-vs-update decision at
+all: live taps and cold-start replays funnel through **one shared `attemptWrite`** that
+reconciles against the real `UNIQUE (habit_id, completed_at)` constraint
+(`insert → 23505 → select + update`). That is idempotent regardless of which process
+attempts it, so a cold start with an empty `chains` map is safe **by construction**, not by
+hope.
+
+**A subtlety the Coder found that the Orchestrator had not anticipated:** `attemptWrite`'s
+"does a row already exist?" check must explicitly ignore the app's **own optimistic
+placeholder**. Otherwise a live tap mistakes its own optimistic row for a confirmed DB row
+and sends an UPDATE against an id the database never issued. Orchestrator mutation check:
+removing that guard fails **18 of 22 tests, including pre-existing baseline ones**.
+
+Two design calls worth recording:
+- **Ordering uses a counter, not a timestamp.** Two taps in the same millisecond tie under
+  wall-clock time; a counter cannot tie.
+- **Network failures do not consume the retry budget.** Being offline is not a reason for a
+  tap to expire — only a server that was reached and said *no* counts. Offline-first would
+  be self-defeating otherwise. A `rejected` op backs off exponentially and becomes terminal
+  `dead` after 5 attempts, staying visible rather than vanishing.
+
+**Interlock verified:** `serialise()`/`chains` bodies are byte-identical (only call sites
+were extracted to a variable), and the pre-existing `logStore.test.ts` / `logStoreXp.test.ts`
+pass **unmodified** against the new code.
+
+**The cold-start test is a real cold start, not a simulation:** the queue is written straight
+to `AsyncStorage` (never via `logHabit`), so `chains` is genuinely empty for that key; and
+the mock enforces the actual UNIQUE constraint rather than hand-injecting a 23505 — so what
+replay reconciles against is the constraint itself.
+
+Five seeded bugs, all right-reason reds (3/17, 2/17, 18/22, exactly 1, exactly 2 — the last
+including a **pre-existing** test, proving rollback is load-bearing beyond the new suite).
+
+#### Orchestrator → Skeleton primitive — commit `1808f8d`
+
+Built directly. Honours reduce-motion, uses the native driver (animates off the JS thread —
+which matters precisely when that thread is busy with the fetch it covers), and is
+non-interactive (it sits where tappable content will appear).
+
+**The Orchestrator's own test was wrong and mutation caught it.** The "non-interactive"
+assertion was **file-scoped**; mutating the primitive to remove `pointerEvents="none"` left
+the test green, because `SkeletonLines` further down the same file still had it. Re-scoped to
+the default export's own JSX and re-mutated — now correctly red.
+
+**This was the FOURTH form of the shallow-text-match trap in this run:**
+
+| # | Where | Symptom |
+|---|---|---|
+| 1 | Rule 4 census grep | reported **1** violation instead of **16** |
+| 2 | `recoveryPartialDeficit` | body-slicer cut before `.select(` — red for the wrong reason |
+| 3 | `aiGateD` | matched `return;` inside a **comment** — false pass |
+| 4 | `skeletonStates` | file-scoped match satisfied by a **different component** |
+
+All four produced *silent false confidence* rather than a visible failure. The fix was
+identical every time: **anchor the scope, not the pattern.** This is now standing guidance
+for every source-text invariant test in this repo.
+
+#### Coder N → wire sync lifecycle + analytics emission — DISPATCHED (sole writer)
+
+Both subsystems are finished and tested but **inert**: `hydrateSyncQueue`/`flushPendingSync`
+are called by nothing, no UI shows `pending sync`, and no code emits an analytics event.
+This unit makes them live. Requirements called out: hydrate must run **before** any
+`logHabit` (its contract replaces the queue wholesale), concurrent flushes must be
+prevented, `dead` must be visibly distinct from `pending` (a permanently-failed write that
+looks queued is silent data loss from the user's side), and events must be emitted from the
+store layer — a screen can be bypassed.
+
