@@ -879,3 +879,41 @@ performs **zero** server-side schema validation (`text.match(/\{[\s\S]*\}/)` + `
 and its prompt diverges from plan §13. Updating it requires an edge-function deploy —
 a repo-owner decision.
 
+#### Phase 3 interim gate (after `2db2639`)
+
+| Requirement | Result |
+|---|---|
+| `tsc --noEmit` | PASS — exit 0 |
+| `expo lint` | PASS — 0 errors |
+| jest | PASS — 690/690, 47 suites |
+| `run-tests.js` | PASS — 142/142 |
+| Android export | **PASS** |
+| iOS export | **PASS** |
+
+§24 Phase 3 checklist status:
+
+| Item | Status |
+|---|---|
+| Routine Library | **DONE** — 4 Routine Packs (plan rejects a large habit library) |
+| routine install | **DONE** — validate → evaluate → preview → confirm → repository write |
+| capacity-aware installation | **DONE** — over-ceiling habits queued, never force-activated |
+| AI routine builder | **DONE** — gated; real edge-fn output adapted + user-completed |
+| AI task splitter V2 | Coder L — in progress |
+| AI weekly insights | Coder L — in progress |
+| AI monthly insights | Coder L — in progress |
+
+#### Coder L → splitter V2 + weekly/monthly AI insights — DISPATCHED (sole writer)
+
+Plan §15 preserves the splitter feature but changes its architecture to
+`task → decomposition service → AI → validated subtasks → preview → save`.
+Plan §13 requires AI be fed **deterministic analytics summaries, not raw data** —
+`walking_completion_30d = 72`, `monday_completion = 41` — which is exactly what
+`lib/behaviorIntelligence.ts` now produces.
+
+One rule carried forward explicitly: a `{ok:false}` metric must never enter a digest as a
+fabricated `0`. Sending `monday_completion = 0` when the data was insufficient would make
+the AI **assert something false to the user** — a worse failure than saying nothing.
+
+The Coder is instructed to follow `lib/routineProposal.ts`'s established pattern rather
+than invent a second, different validator style.
+
