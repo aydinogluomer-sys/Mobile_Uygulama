@@ -23,6 +23,18 @@ export type FrequencyConfig = {
   days?: number[];
   part_of_day?: ('morning' | 'afternoon' | 'evening')[];
   count?: number;
+  // --- Aşağıdaki üç alan ADDITIVE'dir (task 1-W3 / IMPLEMENTATION_V2.md §8.7). ---
+  // Hiçbiri bugün DB'ye yazılmıyor/okunmuyor; yalnızca `lib/habitSchedule.ts`
+  // içindeki `scheduleKind`/`streakBroken` gibi V2 fonksiyonları tüketiyor.
+  // Var olan hiçbir satırın anlamını değiştirmezler (hepsi opsiyonel, hepsi undefined
+  // iken davranış birebir eskisiyle aynıdır). Migration bloklu olduğu için henüz
+  // kalıcı hâle getirilemiyorlar — bkz. habitSchedule.ts en üstündeki not.
+  /** `kind: 'daily'` ile birlikte: "her N günde bir". >1 olduğunda anlamlıdır. */
+  interval_days?: number;
+  /** Özel tarih aralığı — dahil (inclusive) alt sınır, 'YYYY-MM-DD'. */
+  range_start?: string;
+  /** Özel tarih aralığı — dahil (inclusive) üst sınır, 'YYYY-MM-DD'. */
+  range_end?: string;
 };
 
 export type EndCondition = {

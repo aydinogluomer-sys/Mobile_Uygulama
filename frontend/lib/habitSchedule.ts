@@ -1,5 +1,5 @@
-import { ymd } from './date';
-import type { Habit } from './supabase';
+import { addDaysLocal, daysBetweenLocal, parseLocalDate, startOfWeekLocal, ymd } from './date';
+import type { Habit, HabitLog } from './supabase';
 
 // HabitOnboarding WEEKDAYS = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz']
 // → saklanan frequency_config.days indeksi: 0=Pazartesi … 6=Pazar.
@@ -70,4 +70,232 @@ function countDueDays(count: number): number[] {
     out.push(Math.round((i * 7) / n)); // n=3 → 0,2,5 (Pzt/Çar/Cmt)
   }
   return Array.from(new Set(out));
+}
+
+// =====================================================================================
+// V2 — Esnek zamanlama (task 1-W3, IMPLEMENTATION_V2.md §8.7)
+//
+// Her şey ADDITIVE'dir. `isDueOn`, `weekdayIndex` ve `countDueDays` yukarıda BİREBİR
+// aynı kaldı — imzaları, davranışları ve mevcut testleri değişmedi. Aşağıdaki
+// fonksiyonlar onları TÜKETİR, değiştirmez.
+//
+// `FrequencyConfig` artık üç opsiyonel alan daha taşıyor (`interval_days`,
+// `range_start`, `range_end` — bkz. lib/supabase.ts). Bunlar bugün hiçbir yerde
+// persist edilmiyor (migration bloklu); yalnızca bu modülün V2 fonksiyonları onları
+// okuyor. Var olan hiçbir satır bu alanları taşımadığı için (hepsi undefined),
+// eski davranış tamamen korunuyor.
+// =====================================================================================
+
+/** `scheduleKind`'ın döndürdüğü ayrık (discriminated) görünüm — §8.7'nin altı modu. */
+export type ScheduleKind =
+  | { readonly kind: 'daily' }
+  | { readonly kind: 'weekly_days'; readonly days: number[] }
+  | { readonly kind: 'weekly_count'; readonly count: number }
+  | { readonly kind: 'monthly_count'; readonly count: number }
+  | { readonly kind: 'every_n_days'; readonly intervalDays: number }
+  | { readonly kind: 'date_range'; readonly start: string | null; readonly end: string | null };
+
+/**
+ * `habit.frequency_config`'i §8.7'nin altı zamanlama moduna sınıflandırır.
+ *
+ * Öncelik sırası (en spesifikten en genele):
+ *  1. `range_start`/`range_end` verilmişse → `'date_range'`. Kullanıcı açık bir
+ *     tarih penceresi tanımlamışsa bu, o pencere içinde HER GÜN due anlamına gelir.
+ *     SINIR — bilerek: date_range bugün haftalık-gün/haftalık-sayı deseniyle
+ *     BİRLEŞTİRİLEMİYOR ("Pzt/Çar/Cum, ama yalnızca 1-15 Ağustos" ifade edilemez).
+ *     Bu basitleştirme kabul edilebilir çünkü migration bloklu olduğu sürece hiçbir
+ *     kombinasyon zaten kalıcı hâle gelemiyor; V1 kapsamı yalnızca "bu pencerede her
+ *     gün" senaryosunu kapsıyor.
+ *  2. `kind: 'daily'` + `interval_days > 1` → `'every_n_days'`. `interval_days`
+ *     verilmemiş veya `<=1` ise sıradan `'daily'` olarak kalır — bu, var olan hiçbir
+ *     `kind:'daily'` satırının (hepsi `interval_days` taşımıyor) anlamını değiştirmez.
+ *  3. `kind: 'weekly'` + `days` doluysa → `'weekly_days'` (mevcut `isDueOn` davranışıyla
+ *     birebir aynı gün kümesi).
+ *  4. `kind: 'weekly'` + `days` boş/yok → `'weekly_count'`. `count` yoksa/≤0 ise
+ *     `count: 0` döner (bkz. `windowFor`/`streakBroken` — hedef 0 iken "bozulacak"
+ *     bir şey yoktur, `isDueOn`'un "belirsizlikte az say" ilkesiyle tutarlı).
+ *  5. `kind: 'monthly'` → `'monthly_count'`. `isDueOn` aylık deseni bilerek
+ *     desteklemiyor (dosya başındaki not); burada da aynı dürüstlükle `count` yoksa
+ *     `0` döner — "ayda kaç kez" hesaba katılamıyorsa hedef karşılanamaz sayılmaz,
+ *     yalnızca hiç sayılmaz.
+ */
+export function scheduleKind(habit: Habit): ScheduleKind {
+  const fc = habit.frequency_config;
+
+  if (fc?.range_start || fc?.range_end) {
+    return { kind: 'date_range', start: fc.range_start ?? null, end: fc.range_end ?? null };
+  }
+
+  const kind = fc?.kind ?? 'daily';
+
+  if (kind === 'daily') {
+    const interval = fc?.interval_days;
+    if (typeof interval === 'number' && interval > 1) {
+      return { kind: 'every_n_days', intervalDays: Math.floor(interval) };
+    }
+    return { kind: 'daily' };
+  }
+
+  if (kind === 'weekly') {
+    if (fc?.days && fc.days.length > 0) return { kind: 'weekly_days', days: fc.days };
+    const count = fc?.count;
+    return { kind: 'weekly_count', count: typeof count === 'number' && count > 0 ? Math.floor(count) : 0 };
+  }
+
+  // kind === 'monthly'
+  const count = fc?.count;
+  return { kind: 'monthly_count', count: typeof count === 'number' && count > 0 ? Math.floor(count) : 0 };
+}
+
+/**
+ * `isDueOn`'un GENİŞLETİLMİŞ hâli — yalnızca bu modülün V2 alanlarını (`every_n_days`,
+ * `date_range`) hesaba katar. `isDueOn`'un kendisi BİLEREK değiştirilmedi; bu ayrı,
+ * modül-içi bir yardımcıdır ve `streakBroken`'ın gün-bazlı dallarında kullanılır.
+ * `weekly_count`/`monthly_count` bu fonksiyona hiç girmez — onlar pencere bazlı
+ * değerlendirilir (bkz. `windowFor`/`streakBroken`).
+ */
+function dueOnExtended(habit: Habit, date: Date): boolean {
+  const sk = scheduleKind(habit);
+
+  if (sk.kind === 'every_n_days') {
+    if (!isDueOn(habit, date)) return false; // temel korumalar (behavior_type/created_at/end_condition) önce
+    if (!habit.created_at) return true; // referans yoksa daraltamayız — temel korumaya güven
+    const anchor = parseLocalDate(ymd(new Date(habit.created_at)));
+    if (!anchor) return true;
+    const diff = daysBetweenLocal(anchor, date);
+    if (diff < 0) return false;
+    return diff % Math.max(1, sk.intervalDays) === 0;
+  }
+
+  if (sk.kind === 'date_range') {
+    if (!isDueOn(habit, date)) return false; // temel korumalar önce
+    const ds = ymd(date);
+    if (sk.start && ds < sk.start) return false;
+    if (sk.end && ds > sk.end) return false;
+    return true;
+  }
+
+  return isDueOn(habit, date); // daily / weekly_days — davranış değişmedi
+}
+
+/** Sayaç-tabanlı (weekly_count/monthly_count) bir alışkanlığın değerlendirildiği pencere. */
+export type ScheduleWindow = { start: Date; end: Date; targetCount: number };
+
+/**
+ * `weekly_count`/`monthly_count` için `date`'i kapsayan değerlendirme penceresi.
+ * Diğer tüm modlar için `null` döner — onlarda "pencere" kavramı yoktur, kaçırma
+ * gün bazında değerlendirilir (bkz. `streakBroken`).
+ *
+ * Hafta sınırı `startOfWeekLocal` ile hesaplanır — repo'nun haftası Pazartesi başlar
+ * (bkz. `lib/date.ts`), varsayılmadı, doğrulandı.
+ */
+export function windowFor(habit: Habit, date: Date): ScheduleWindow | null {
+  const sk = scheduleKind(habit);
+
+  if (sk.kind === 'weekly_count') {
+    const start = startOfWeekLocal(date);
+    const end = addDaysLocal(start, 6);
+    return { start, end, targetCount: sk.count };
+  }
+
+  if (sk.kind === 'monthly_count') {
+    const start = new Date(date.getFullYear(), date.getMonth(), 1);
+    const end = new Date(date.getFullYear(), date.getMonth() + 1, 0); // ayın son günü, yerel
+    return { start, end, targetCount: sk.count };
+  }
+
+  return null;
+}
+
+/**
+ * `logs` içinde, `window` aralığına düşen (dahil) `done`/`partial` sayısı.
+ *
+ * `isCompletedState` (lib/reportMetrics.ts) burada BİLEREK yeniden import edilmedi:
+ * `reportMetrics.ts` zaten `isDueOn`'u bu modülden import ediyor, ters yönde bir
+ * import döngüsel bağımlılık yaratırdı. Aynı iki satırlık kural (`done`/`partial`
+ * sayılır, `miss`/`skip` sayılmaz — AC-H07/AC-H08) burada kasıtlı olarak yinelendi.
+ */
+function completedCountInWindow(
+  habit: Habit,
+  logs: Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>>,
+  window: { start: Date; end: Date },
+): number {
+  const startYmd = ymd(window.start);
+  const endYmd = ymd(window.end);
+  let count = 0;
+  for (const log of logs) {
+    if (log.habit_id !== habit.id) continue;
+    const d = log.completed_at.slice(0, 10); // completed_at zaten yerel 'date' kolonu — UTC dönüşümü yok, no-op.
+    if (d < startYmd || d > endYmd) continue;
+    if (log.state === 'done' || log.state === 'partial') count += 1;
+  }
+  return count;
+}
+
+/**
+ * Sayaç-tabanlı bir alışkanlığın penceresi, hedefini KARŞILAMIŞ mı?
+ * Pencere kavramı olmayan modlarda (`daily`/`weekly_days`/`every_n_days`/`date_range`)
+ * bilinçli olarak `true` döner — "boş sorgu, boş doğru": bu fonksiyon onlar için
+ * anlamsızdır ve `false` dönmesi çağıranı yanlışlıkla "kaçırıldı" sonucuna
+ * götürebilirdi. Bu modların kaçırma tespiti tamamen `streakBroken`'ın gün-bazlı
+ * dalındadır.
+ */
+export function isWindowSatisfied(
+  habit: Habit,
+  logs: Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>>,
+  date: Date,
+): boolean {
+  const window = windowFor(habit, date);
+  if (!window) return true;
+  if (window.targetCount <= 0) return true; // hedef yoksa karşılanamayacak bir şey de yok
+  return completedCountInWindow(habit, logs, window) >= window.targetCount;
+}
+
+/**
+ * Bir alışkanlığın akışı `date` itibarıyla BOZULDU mu?
+ *
+ * Planın başlık örneği (§8.7): "Gym, haftada 3" alışkanlığı Pazartesi'yi kaçırırsa
+ * akış BOZULMAZ — başarı GÜNLÜK değil, HAFTALIK PENCERE üzerinden değerlendirilir.
+ *
+ * Sayaç-tabanlı (`weekly_count`/`monthly_count`) modlar için: pencerede hedef zaten
+ * karşılanmışsa bozulmamıştır; karşılanmamışsa, pencerenin KALAN günleriyle hedefe
+ * ulaşmak hâlâ MATEMATİKSEL olarak mümkün olduğu sürece de bozulmamıştır — ancak
+ * hedefe ulaşmak artık imkânsız hâle geldiğinde (kalan gün sayısı, eksik kalan sayıdan
+ * azsa) bozulmuş sayılır. `skip` günleri bu sayıma hiç girmez (ne pay ne payda) —
+ * dolayısıyla bir skip, kalan günleri azaltmaz ve tek başına akışı bozamaz.
+ *
+ * Gün-bazlı modlar (`daily`/`weekly_days`/`every_n_days`/`date_range`) için: yalnızca
+ * `date` gerçekten due İSE ve o gün için `done`/`partial` bir log YOKSA bozulmuş
+ * sayılır. `skip` burada da AÇIKÇA cezasızdır: due bir günün logu `skip` ise akış
+ * bozulmaz (§8.5 — "skip akış cezası yaratmamalı").
+ */
+export function streakBroken(
+  habit: Habit,
+  logs: Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>>,
+  date: Date,
+): boolean {
+  const sk = scheduleKind(habit);
+
+  if (sk.kind === 'weekly_count' || sk.kind === 'monthly_count') {
+    if (sk.count <= 0) return false; // hedef yok → bozulacak bir şey yok
+
+    const window = windowFor(habit, date);
+    if (!window) return false; // teorik olarak ulaşılamaz (sk zaten sayaç-tabanlı); savunma amaçlı
+
+    const doneSoFar = completedCountInWindow(habit, logs, window);
+    if (doneSoFar >= window.targetCount) return false; // hedef zaten karşılandı
+
+    const remainingDays = daysBetweenLocal(date, window.end) + 1; // `date` dahil, pencere sonuna kalan gün
+    if (remainingDays <= 0) return true; // pencere bitti, hedef karşılanmadı
+    return (window.targetCount - doneSoFar) > remainingDays; // kalan günlerle bile yetişilemez mi?
+  }
+
+  // Gün-bazlı modlar
+  if (!dueOnExtended(habit, date)) return false; // due değilse bozulacak bir şey yok
+
+  const ds = ymd(date);
+  const logForDay = logs.find((l) => l.habit_id === habit.id && l.completed_at.slice(0, 10) === ds);
+  if (logForDay?.state === 'skip') return false; // skip cezasız (§8.5)
+  const hasCompletion = logForDay ? (logForDay.state === 'done' || logForDay.state === 'partial') : false;
+  return !hasCompletion;
 }
