@@ -63,7 +63,7 @@ export default function ProfileScreen() {
         {/* Kullanıcı adı */}
         <View style={s.section}>
           <Text style={s.sectionTitle}>KULLANICI ADI</Text>
-          <Text style={s.sectionHint}>Sıralamada görünecek ad. Boş bırakırsan "Gizli Savaşçı" görünürsün.</Text>
+          <Text style={s.sectionHint}>Sıralamada görünecek ad. Boş bırakırsan &quot;Gizli Savaşçı&quot; görünürsün.</Text>
           <View style={s.nameRow}>
             <TextInput
               style={s.nameInput}

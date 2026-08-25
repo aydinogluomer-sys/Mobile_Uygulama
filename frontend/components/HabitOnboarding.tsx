@@ -162,7 +162,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
 
       <Text style={[styles.label, { marginTop: 20 }]}>Kategori</Text>
       <Text style={styles.areaHint}>
-        Yaşam dengeni ölçer: hayatının hangi alanlarında alışkanlığın var, hangilerinde yok — bunu İstatistikler'de görürsün. (opsiyonel)
+        Yaşam dengeni ölçer: hayatının hangi alanlarında alışkanlığın var, hangilerinde yok — bunu İstatistikler&apos;de görürsün. (opsiyonel)
       </Text>
       <View style={styles.areaGrid}>
         {LIFE_AREAS.map((a) => {
@@ -831,7 +831,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           <View style={[styles.routingCard, { borderColor: DEST.color + '40', backgroundColor: DEST.color + '12' }]}>
             <Ionicons name={DEST.icon as any} size={18} color={DEST.color} />
             <View style={{ flex: 1 }}>
-              <Text style={[styles.routingTitle, { color: DEST.color }]}>{DEST.room}'a eklenecek</Text>
+              <Text style={[styles.routingTitle, { color: DEST.color }]}>{DEST.room}&apos;a eklenecek</Text>
               <Text style={styles.routingDesc}>
                 {plannedStatus === 'active'
                   ? `🔥 ${TRIAGE_META[plannedTriage].label} · Slot: ${willpowerState.active_count + 1}/${willpowerState.focus_capacity} · Harcama: ${willpowerState.used + form.willpower_cost}/${willpowerState.daily_budget} irade`

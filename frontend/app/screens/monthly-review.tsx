@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
@@ -8,7 +9,10 @@ import { supabase } from '../../lib/supabase';
 import { useTaskStore } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore } from '../../store/journalStore';
-import { colors } from '../../lib/tokens';
+import MonthBackground from '../../components/MonthBackground';
+import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
+import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
+import { colors, hexA } from '../../lib/tokens';
 import { buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions, reportBadge, summarizeHabitProgress, type ReportBadge } from '../../lib/reportMetrics';
 import { ymdFromIso } from '../../lib/date';
 
@@ -23,6 +27,7 @@ const REVIEW_QUESTIONS = [
 
 export default function MonthlyReviewScreen() {
   const now = new Date();
+  const isFocused = useIsFocused();
   const { tasks, fetchTasks } = useTaskStore();
   const { habits, fetchHabits } = useHabitStore();
   const { appendEntry } = useJournalStore();
@@ -35,6 +40,23 @@ export default function MonthlyReviewScreen() {
   const [badge, setBadge] = useState<ReportBadge | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+
+  // Defter sayfası animasyonu: girişte "açılma", ay değişiminde yön bazlı "sayfa çevirme" (bkz. calendar.tsx).
+  const reduceMotion = useReducedMotion();
+  const pageAnim = useRef(new Animated.Value(1)).current;
+  const [flipDir, setFlipDir] = useState(0); // -1 önceki, 0 açılış, +1 sonraki
+
+  function animatePage(dir: number) {
+    setFlipDir(dir);
+    if (reduceMotion) { pageAnim.setValue(1); return; } // erişilebilirlik: animasyon yok
+    pageAnim.setValue(0);
+    Animated.timing(pageAnim, {
+      toValue: 1,
+      duration: dir === 0 ? 480 : 430,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }
 
   const targetDate = subMonths(now, monthOffset);
   const year = targetDate.getFullYear();
@@ -60,6 +82,9 @@ export default function MonthlyReviewScreen() {
     void loadReflection();
     void loadMonthMetrics();
   }, [monthOffset, habits.length]);
+
+  // Ekran odağa gelince defter "açılır" (bkz. calendar.tsx)
+  useEffect(() => { if (isFocused) animatePage(0); }, [isFocused]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadReflection() {
     try {
@@ -152,10 +177,33 @@ export default function MonthlyReviewScreen() {
     }
   }
 
+  // Sayfa-çevirme stili (native driver: rotateY + translateX + opacity; sol cilt menteşesi) — bkz. calendar.tsx
+  const pageStyle = {
+    opacity: pageAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }),
+    transformOrigin: 'left center' as const,
+    transform: [
+      { perspective: 900 },
+      { rotateY: pageAnim.interpolate({ inputRange: [0, 1], outputRange: [`${(flipDir === 0 ? 10 : flipDir * 16)}deg`, '0deg'] }) },
+      { translateX: pageAnim.interpolate({ inputRange: [0, 1], outputRange: [flipDir * 26, 0] }) },
+    ],
+  };
+
   return (
-    <SafeAreaView style={s.safe} edges={['bottom']}>
+    <View style={s.root}>
+      {/* Görünen aya göre değişen, tam-ekran mevsimsel arka plan (bkz. calendar.tsx) */}
+      <MonthBackground month={month} active={isFocused} />
+
+      <SafeAreaView style={s.safe} edges={['bottom']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+        <Animated.View style={pageStyle}>
+          {/* Ajanda kapak başlığı — ay adı + mevsim mottosu (tek kaynak: seasonalMotion/config) */}
+          <View style={s.heroCover}>
+            <Text style={s.heroMonth}>{MONTHS_TR[month]}</Text>
+            <Text style={s.heroYear}>{year}</Text>
+            <Text style={s.heroTagline}>{MONTH_TAGLINES_TR[month]}</Text>
+          </View>
+
           <View style={s.hero}>
             <View style={s.heroIcon}>
               <Ionicons name="calendar-number-outline" size={28} color="#D97757" />
@@ -165,11 +213,11 @@ export default function MonthlyReviewScreen() {
               <Text style={s.heroDates}>{MONTHS_TR[month]} {year}</Text>
             </View>
             <View style={s.monthNav}>
-              <TouchableOpacity onPress={() => setMonthOffset((offset) => offset + 1)} style={s.navBtn}>
+              <TouchableOpacity onPress={() => { setMonthOffset((offset) => offset + 1); animatePage(-1); }} style={s.navBtn}>
                 <Ionicons name="chevron-back" size={18} color="#BFBBAE" />
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => setMonthOffset((offset) => Math.max(0, offset - 1))}
+                onPress={() => { setMonthOffset((offset) => Math.max(0, offset - 1)); animatePage(1); }}
                 style={[s.navBtn, isCurrentMonth && s.navBtnDisabled]}
                 disabled={isCurrentMonth}
               >
@@ -272,15 +320,34 @@ export default function MonthlyReviewScreen() {
               <Text style={s.saveBtnText}>Aylık Raporu Kaydet</Text>
             )}
           </TouchableOpacity>
+        </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  root: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: 'transparent' },
   content: { padding: 20, paddingBottom: 40 },
+
+  // Ajanda kapak başlığı — ay adı + mevsim mottosu (cam yok → mevsim sahnesi/hareket görünür, bkz. calendar.tsx)
+  heroCover: { minHeight: 132, alignItems: 'center', justifyContent: 'center', paddingVertical: 20, marginBottom: 18 },
+  heroMonth: {
+    fontSize: 34, fontWeight: '800', color: colors.white, letterSpacing: 0.5, textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 10, textShadowOffset: { width: 0, height: 2 },
+  },
+  heroYear: {
+    fontSize: 14, fontWeight: '600', color: hexA(colors.white, 0.82), marginTop: 4, letterSpacing: 3,
+    textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6,
+  },
+  heroTagline: {
+    fontSize: 12, color: hexA(colors.white, 0.85), marginTop: 8, fontStyle: 'italic', textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6,
+  },
+
   hero: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
   heroIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#D9775720', alignItems: 'center', justifyContent: 'center' },
   heroTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },

@@ -196,7 +196,7 @@ export default function EisenhowerScreen() {
 
         {!isTasks && (
           <Text style={s.mirrorNote}>
-            Bu görünüm "Yeni Alışkanlık → Öncelik & Strateji" adımının aynasıdır. Değiştirmek için alışkanlığı düzenle.
+            Bu görünüm &quot;Yeni Alışkanlık → Öncelik & Strateji&quot; adımının aynasıdır. Değiştirmek için alışkanlığı düzenle.
           </Text>
         )}
       </ScrollView>

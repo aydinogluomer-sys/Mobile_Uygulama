@@ -421,7 +421,7 @@ export default function HabitsScreen() {
         <Animatable.View animation="fadeInUp" duration={250} style={styles.undoToast}>
           <Ionicons name="trash" size={16} color="#C76A6A" />
           <Text style={styles.undoText} numberOfLines={1}>
-            "{pendingDelete.habit.name}" silindi
+            &quot;{pendingDelete.habit.name}&quot; silindi
           </Text>
           <TouchableOpacity style={styles.undoBtn} onPress={handleUndoDelete}>
             <Ionicons name="arrow-undo" size={14} color="#D97757" />
@@ -451,7 +451,7 @@ export default function HabitsScreen() {
             </View>
             <Text style={styles.delTitle}>Alışkanlığı Sil</Text>
             <Text style={styles.delSub} numberOfLines={2}>
-              "{deleteTarget?.name}" silinecek. Nedenini seçer misin?
+              &quot;{deleteTarget?.name}&quot; silinecek. Nedenini seçer misin?
             </Text>
 
             <View style={styles.reasonWrap}>
@@ -501,7 +501,7 @@ export default function HabitsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.capTitle}>İrade Limitin Dolu</Text>
                 <Text style={styles.capSub}>
-                  "{capacityTarget?.name}" ({capacityTarget?.willpower_cost} irade) aktif etmek için yer aç
+                  &quot;{capacityTarget?.name}&quot; ({capacityTarget?.willpower_cost} irade) aktif etmek için yer aç
                 </Text>
               </View>
             </View>

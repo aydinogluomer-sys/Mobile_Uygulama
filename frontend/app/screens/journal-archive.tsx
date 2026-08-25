@@ -99,7 +99,7 @@ export default function JournalArchiveScreen() {
                         {e.ai_summary && (
                           <View style={s.aiChip}>
                             <Ionicons name="sparkles" size={10} color="#ec4899" />
-                            <Text style={s.aiChipText}>AI'dan özetlenmiştir</Text>
+                            <Text style={s.aiChipText}>AI&apos;dan özetlenmiştir</Text>
                           </View>
                         )}
                       </View>

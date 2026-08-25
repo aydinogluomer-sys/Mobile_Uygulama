@@ -118,7 +118,7 @@ export default function OKRScreen() {
             );
           })
         )}
-        <Text style={s.tip}>İpucu: bir KR'ye dokun → değeri güncelle · uzun bas → sil</Text>
+        <Text style={s.tip}>İpucu: bir KR&apos;ye dokun → değeri güncelle · uzun bas → sil</Text>
       </ScrollView>
 
       <TouchableOpacity style={s.fab} onPress={() => { setObjYear(CUR_Y); setObjQuarter(CUR_Q); setObjModal(true); }}>
