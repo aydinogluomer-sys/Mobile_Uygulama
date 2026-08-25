@@ -1,0 +1,86 @@
+/**
+ * `habits` writes for the validated Routine/AI install path.  (Phase 3,
+ * CODER-J, plan §13 Rule 4 + the AI validation gate)
+ *
+ * The one function this task adds to the repository layer (see this task's
+ * report). Before this change, `store/routineStore.ts`'s
+ * `addGeneratedToHabits` wrote to `habits` with a bare
+ * `supabase.from('habits').insert(inserts)` call sitting directly inside the
+ * STORE, fed by the AI's JSON with only nullish-coalescing defaults — no
+ * validation, no capacity check. `store/routineStore.ts`'s `confirmInstall`
+ * (this task's W3) now calls THIS function instead, and only ever with rows
+ * built from an already-validated `RoutineProposal` (see
+ * `lib/routineProposal.ts`) — never with the AI's raw response.
+ *
+ * Every OTHER `habits` write in the app (manual add/edit/archive/restore/
+ * purge via `store/habitStore.ts`) is unchanged and out of this task's
+ * scope; this file exists narrowly for the Routine/AI install path so it
+ * gets the same typed `RepoResult` convention every other repository uses,
+ * instead of a second ad-hoc insert call site.
+ */
+import { supabase } from '../lib/supabase';
+import type { Habit, FrequencyConfig } from '../lib/supabase';
+import { currentUserId, RepoResult } from './shared';
+
+/** Column list mirrors `store/habitStore.ts`'s `addHabit`/`fetchHabits` --
+ *  same table, same shape, kept consistent rather than reinvented. */
+const HABIT_COLUMNS =
+  'id,user_id,name,icon,color,behavior_type,tracking_type,unit,daily_goal,target_direction,frequency_config,willpower_cost,status,impact_level,urgency,difficulty,estimated_minutes,reminders,cue_habit_id,cue_note,life_area,end_condition,created_at';
+
+/** What `confirmInstall` (routineStore.ts) hands this repository per habit
+ *  -- already-validated proposal fields, plus the install-time decisions
+ *  (`status`) and app-level defaults (`icon`/`unit`/etc.) the AI-facing
+ *  schema never carries. */
+export type InstallHabitRow = {
+  name: string;
+  icon: string | null;
+  tracking_type: 'boolean' | 'numeric';
+  unit: string | null;
+  daily_goal: number | null;
+  target_direction: 'at_least' | 'at_most' | null;
+  frequency_config: FrequencyConfig;
+  willpower_cost: number;
+  difficulty: number;
+  estimated_minutes: number;
+  /** Capacity-gated by `evaluateProposal` before this is ever called --
+   *  'active' only for habits that fit under the ceiling, 'waiting'
+   *  (queued) otherwise. Never any other status. */
+  status: 'active' | 'waiting';
+};
+
+/**
+ * Bulk-inserts already-validated, already-capacity-evaluated habit rows.
+ * Empty input is a no-op success (not an error) so a caller never needs a
+ * special case for "the proposal had zero habits that made it this far".
+ */
+export async function insertRoutineHabits(rows: InstallHabitRow[]): Promise<RepoResult<Habit[]>> {
+  if (rows.length === 0) return { ok: true, data: [] };
+
+  const u = await currentUserId();
+  if (!u.ok) return u;
+
+  const inserts = rows.map((r) => ({
+    user_id: u.userId,
+    name: r.name,
+    icon: r.icon,
+    behavior_type: 'positive' as const,
+    tracking_type: r.tracking_type,
+    unit: r.unit,
+    daily_goal: r.daily_goal,
+    target_direction: r.target_direction,
+    frequency_config: r.frequency_config,
+    willpower_cost: r.willpower_cost,
+    status: r.status,
+    impact_level: 'medium' as const,
+    urgency: 'not_urgent' as const,
+    difficulty: r.difficulty,
+    estimated_minutes: r.estimated_minutes,
+  }));
+
+  const { data, error } = await supabase
+    .from('habits')
+    .insert(inserts)
+    .select(HABIT_COLUMNS);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as Habit[] };
+}

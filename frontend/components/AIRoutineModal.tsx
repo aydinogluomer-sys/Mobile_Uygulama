@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { useRoutineStore } from '../store/routineStore';
 import { useSubscriptionStore } from '../store/subscriptionStore';
 import { ACTION_COST } from '../lib/subscription';
+import { ROUTINE_PACKS, type RoutinePack } from '../lib/routinePacks';
 
 interface Props {
   visible: boolean;
@@ -17,48 +18,30 @@ interface Props {
 
 const MAX_CHARS = 200;
 
-function freqLabel(item: { tracking_type: string; frequency_config?: { kind?: string; part_of_day?: string[] } }): string {
-  const kind = item.frequency_config?.kind;
-  const part = item.frequency_config?.part_of_day?.[0];
-
-  const partLabel: Record<string, string> = {
-    morning: '🌅 Sabah',
-    noon: '☀️ Öğlen',
-    afternoon: '🌤 Öğleden Sonra',
-    evening: '🌙 Akşam',
-    night: '🌃 Gece',
-  };
-
-  if (part && partLabel[part]) return partLabel[part];
-
-  const kindLabel: Record<string, string> = {
-    daily: '📅 Günlük',
-    weekly: '📆 Haftalık',
-    monthly: '🗓 Aylık',
-  };
-  return kindLabel[kind ?? 'daily'] ?? '📅 Günlük';
-}
-
 export default function AIRoutineModal({ visible, onClose }: Props) {
   const router = useRouter();
   const [prompt, setPrompt] = useState('');
-  const [added, setAdded] = useState(false);
   const { focusPoints, fetch: fetchSub } = useSubscriptionStore();
 
   const {
-    generatedRoutine,
     generating,
     generateError,
     generateRoutine,
+    proposal,
+    proposalErrors,
+    evaluation,
+    loadPack,
     clearGenerated,
-    addGeneratedToHabits,
+    installing,
+    installError,
+    installed,
+    confirmInstall,
   } = useRoutineStore();
 
   useEffect(() => { if (visible) fetchSub(); }, [visible]);
 
   function handleClose() {
     setPrompt('');
-    setAdded(false);
     clearGenerated();
     onClose();
   }
@@ -68,11 +51,15 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
     await generateRoutine(prompt.trim());
   }
 
-  async function handleAddAll() {
-    if (!generatedRoutine) return;
-    await addGeneratedToHabits(generatedRoutine.items as any);
-    setAdded(true);
+  async function handleConfirm() {
+    await confirmInstall();
   }
+
+  // Ready-made paketten mi, AI'dan mı gösteriliyor -- ikisi de aynı doğrulama +
+  // kapasite kapısından geçer (routineStore.ts loadPack/generateRoutine).
+  const showPreview = !!proposal && !!evaluation && !installed;
+  const showErrors = !generating && !!proposalErrors && proposalErrors.length > 0;
+  const showPickers = !generating && !proposal && !showErrors && !installed;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
@@ -96,7 +83,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
 
           <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
 
-            {/* Hata kutusu */}
+            {/* Hata kutusu (istek/sunucu hatası) */}
             {generateError ? (
               <View style={styles.errorBox}>
                 <Ionicons name="alert-circle-outline" size={18} color="#C76A6A" />
@@ -110,7 +97,27 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
               </TouchableOpacity>
             ) : null}
 
-            {!generatedRoutine ? (
+            {/* Doğrulama reddi -- AI (veya bir paket) beklenen şemaya uymadı.
+                Hiçbir şey yazılmadı; sebep açıkça gösteriliyor (Gate D: AI
+                başarısızlığı sessiz bir no-op ya da çökme değildir). */}
+            {showErrors ? (
+              <View style={styles.rejectBox}>
+                <View style={styles.rejectHeader}>
+                  <Ionicons name="shield-outline" size={18} color="#C76A6A" />
+                  <Text style={styles.rejectTitle}>Bu öneri doğrulanamadı</Text>
+                </View>
+                <Text style={styles.rejectSub}>Hiçbir şey eklenmedi. Bulunan sorunlar:</Text>
+                {proposalErrors!.slice(0, 6).map((msg, i) => (
+                  <Text key={i} style={styles.rejectItem}>• {msg}</Text>
+                ))}
+                <TouchableOpacity style={styles.retryBtnWide} onPress={() => clearGenerated()}>
+                  <Ionicons name="refresh-outline" size={16} color="#BFBBAE" />
+                  <Text style={styles.retryText}>Yeniden dene</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {showPickers ? (
               <>
                 <Text style={styles.tagline}>Hedefini yaz, rutini AI oluştursun ✨</Text>
                 <Text style={styles.hint}>
@@ -140,85 +147,124 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                 <TouchableOpacity
                   style={[
                     styles.generateBtn,
-                    (prompt.trim().length < 3 || generating) && styles.generateBtnDisabled,
+                    prompt.trim().length < 3 && styles.generateBtnDisabled,
                   ]}
                   onPress={handleGenerate}
-                  disabled={prompt.trim().length < 3 || generating}
+                  disabled={prompt.trim().length < 3}
                 >
-                  {generating ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <>
-                      <Ionicons name="sparkles" size={18} color="#fff" />
-                      <Text style={styles.generateBtnText}>Rutin Oluştur</Text>
-                    </>
-                  )}
+                  <Ionicons name="sparkles" size={18} color="#fff" />
+                  <Text style={styles.generateBtnText}>Rutin Oluştur</Text>
                 </TouchableOpacity>
 
-                {generating && (
-                  <View style={styles.loadingMsg}>
-                    <View style={styles.skeletonLine} />
-                    <View style={[styles.skeletonLine, { width: '70%' }]} />
-                    <View style={[styles.skeletonLine, { width: '85%' }]} />
-                  </View>
-                )}
+                <View style={styles.packsHeader}>
+                  <Ionicons name="albums-outline" size={14} color="#BFBBAE" />
+                  <Text style={styles.packsHeaderText}>ya da hazır bir paket seç</Text>
+                </View>
+                {ROUTINE_PACKS.map((pack: RoutinePack) => (
+                  <TouchableOpacity key={pack.key} style={styles.packCard} onPress={() => loadPack(pack.key)}>
+                    <View style={styles.packIcon}>
+                      <Ionicons name="layers-outline" size={18} color="#D97757" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.packTitle}>{pack.title}</Text>
+                      <Text style={styles.packGoal}>{pack.goal}</Text>
+                      <Text style={styles.packMeta}>{pack.habits.length} alışkanlık</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color="#56544B" />
+                  </TouchableOpacity>
+                ))}
               </>
-            ) : (
+            ) : null}
+
+            {generating && (
+              <View style={styles.loadingMsg}>
+                <View style={styles.skeletonLine} />
+                <View style={[styles.skeletonLine, { width: '70%' }]} />
+                <View style={[styles.skeletonLine, { width: '85%' }]} />
+              </View>
+            )}
+
+            {/* Doğrulanmış + kapasite değerlendirilmiş önizleme. Yazma burada
+                DEĞİL -- yalnızca "Onayla ve Ekle" ile, açık kullanıcı onayından
+                sonra olur (plan §13: preview -> explicit confirmation -> DB). */}
+            {showPreview ? (
               <>
                 <View style={styles.resultHeader}>
-                  <Text style={styles.resultName}>{generatedRoutine.name}</Text>
-                  <Text style={styles.resultDesc}>{generatedRoutine.description}</Text>
+                  <Text style={styles.resultName}>{proposal!.title}</Text>
+                  <Text style={styles.resultDesc}>{proposal!.goal}</Text>
                 </View>
 
-                {generatedRoutine.items.map((item: any, i: number) => (
+                <View style={styles.capacityBox}>
+                  <Text style={styles.capacityLine}>
+                    Bugünkü yük: {evaluation!.currentLoad} → {evaluation!.projectedIfAllActivated} / 100
+                  </Text>
+                  <Text style={styles.capacitySub}>
+                    {evaluation!.toActivate.length} alışkanlık hemen aktifleşecek
+                    {evaluation!.toQueue.length > 0 ? `, ${evaluation!.toQueue.length} tanesi kapasite nedeniyle Bekleme Odasına kuyruğa alınacak` : ''}.
+                  </Text>
+                </View>
+
+                {evaluation!.habits.map((he, i) => (
                   <View key={i} style={styles.itemCard}>
                     <View style={styles.itemLeft}>
-                      <View style={styles.itemIcon}>
-                        <Ionicons name={(item.icon ?? 'star-outline') as any} size={20} color="#D97757" />
+                      <View style={[styles.itemIcon, !he.fits && styles.itemIconQueued]}>
+                        <Ionicons
+                          name={he.fits ? 'checkmark-circle-outline' : 'time-outline'}
+                          size={20}
+                          color={he.fits ? '#87A678' : '#D4A84A'}
+                        />
                       </View>
                       <View style={styles.itemInfo}>
-                        <Text style={styles.itemName}>{item.name}</Text>
-                        <View style={styles.itemBadges}>
-                          <View style={styles.costBadge}>
-                            <Ionicons name="flash" size={10} color="#D4A84A" />
-                            <Text style={styles.costText}>{item.willpower_cost}</Text>
-                          </View>
-                          {item.tracking_type === 'numeric' && item.daily_goal != null && (
-                            <Text style={styles.unitText}>
-                              {item.daily_goal} {item.unit ?? ''}
-                            </Text>
-                          )}
-                          <Text style={styles.freqText}>{freqLabel(item)}</Text>
-                        </View>
+                        <Text style={styles.itemName}>{he.name}</Text>
+                        <Text style={[styles.itemStatus, !he.fits && styles.itemStatusQueued]}>
+                          {he.fits ? 'Aktif olacak' : 'Kapasite nedeniyle kuyrukta bekleyecek'}
+                        </Text>
                       </View>
                     </View>
                   </View>
                 ))}
 
-                {generatedRoutine.items.length > 0 && !added ? (
-                  <View style={styles.resultActions}>
-                    <TouchableOpacity style={styles.retryBtn} onPress={() => clearGenerated()}>
-                      <Ionicons name="refresh-outline" size={16} color="#BFBBAE" />
-                      <Text style={styles.retryText}>Yeniden dene</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.addAllBtn} onPress={handleAddAll}>
-                      <Ionicons name="add-circle" size={18} color="#fff" />
-                      <Text style={styles.addAllText}>Beklemeye Ekle</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : added ? (
-                  <View style={styles.successMsg}>
-                    <Ionicons name="checkmark-circle" size={24} color="#87A678" />
-                    <Text style={styles.successText}>
-                      Tüm alışkanlıklar Bekleme Odasına eklendi. Hazır olunca aktifleştirebilirsin!
-                    </Text>
-                    <TouchableOpacity onPress={handleClose} style={styles.closeSuccessBtn}>
-                      <Text style={styles.closeSuccessText}>Kapat</Text>
-                    </TouchableOpacity>
+                {installError ? (
+                  <View style={styles.errorBox}>
+                    <Ionicons name="alert-circle-outline" size={18} color="#C76A6A" />
+                    <Text style={styles.errorText}>{installError}</Text>
                   </View>
                 ) : null}
+
+                <View style={styles.resultActions}>
+                  <TouchableOpacity style={styles.retryBtn} onPress={() => clearGenerated()} disabled={installing}>
+                    <Ionicons name="refresh-outline" size={16} color="#BFBBAE" />
+                    <Text style={styles.retryText}>Yeniden dene</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.addAllBtn, installing && styles.generateBtnDisabled]}
+                    onPress={handleConfirm}
+                    disabled={installing}
+                  >
+                    {installing ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="add-circle" size={18} color="#fff" />
+                        <Text style={styles.addAllText}>Onayla ve Ekle</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </>
-            )}
+            ) : null}
+
+            {installed ? (
+              <View style={styles.successMsg}>
+                <Ionicons name="checkmark-circle" size={24} color="#87A678" />
+                <Text style={styles.successText}>
+                  Alışkanlıklar eklendi. Kapasiteye sığanlar aktif, kalanı Bekleme Odasında.
+                </Text>
+                <TouchableOpacity onPress={handleClose} style={styles.closeSuccessBtn}>
+                  <Text style={styles.closeSuccessText}>Kapat</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
           </ScrollView>
         </View>
@@ -254,6 +300,19 @@ const styles = StyleSheet.create({
   fpHintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 10 },
   fpHintText: { fontSize: 12, color: '#BFBBAE' },
 
+  rejectBox: {
+    backgroundColor: '#C76A6A10', borderWidth: 1, borderColor: '#C76A6A30',
+    borderRadius: 14, padding: 16, marginBottom: 16,
+  },
+  rejectHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  rejectTitle: { fontSize: 15, fontWeight: '700', color: '#C76A6A' },
+  rejectSub: { fontSize: 12.5, color: '#BFBBAE', marginBottom: 8 },
+  rejectItem: { fontSize: 12, color: '#BFBBAE', lineHeight: 18, marginBottom: 2 },
+  retryBtnWide: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: '#383528', borderRadius: 12, paddingVertical: 10, marginTop: 10,
+  },
+
   tagline: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 8, lineHeight: 26 },
   hint: { fontSize: 13, color: '#BFBBAE', marginBottom: 20, lineHeight: 19 },
   inputWrap: { marginBottom: 16 },
@@ -268,12 +327,35 @@ const styles = StyleSheet.create({
   },
   generateBtnDisabled: { opacity: 0.4 },
   generateBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  loadingMsg: { gap: 10, marginTop: 8 },
+  loadingMsg: { gap: 10, marginTop: 8, marginBottom: 16 },
   skeletonLine: { height: 14, backgroundColor: '#383528', borderRadius: 7, width: '100%' },
 
-  resultHeader: { marginBottom: 16 },
+  packsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  packsHeaderText: { fontSize: 12, color: '#827E72', fontWeight: '600' },
+  packCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#1D1C17', borderRadius: 12, padding: 12,
+    marginBottom: 10, borderWidth: 1, borderColor: '#383528',
+  },
+  packIcon: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: '#D9775715', alignItems: 'center', justifyContent: 'center',
+  },
+  packTitle: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 2 },
+  packGoal: { fontSize: 12, color: '#BFBBAE', marginBottom: 2 },
+  packMeta: { fontSize: 11, color: '#827E72' },
+
+  resultHeader: { marginBottom: 12 },
   resultName: { fontSize: 20, fontWeight: '700', color: '#fff', marginBottom: 4 },
   resultDesc: { fontSize: 13, color: '#BFBBAE', lineHeight: 18 },
+
+  capacityBox: {
+    backgroundColor: '#D4A84A10', borderWidth: 1, borderColor: '#D4A84A30',
+    borderRadius: 12, padding: 12, marginBottom: 14,
+  },
+  capacityLine: { fontSize: 13, fontWeight: '700', color: '#D4A84A', marginBottom: 4 },
+  capacitySub: { fontSize: 12, color: '#BFBBAE', lineHeight: 17 },
+
   itemCard: {
     backgroundColor: '#1D1C17', borderRadius: 12, padding: 14,
     marginBottom: 10, borderWidth: 1, borderColor: '#383528',
@@ -281,17 +363,15 @@ const styles = StyleSheet.create({
   itemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   itemIcon: {
     width: 40, height: 40, borderRadius: 10,
-    backgroundColor: '#D9775715', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#87A67815', alignItems: 'center', justifyContent: 'center',
   },
+  itemIconQueued: { backgroundColor: '#D4A84A15' },
   itemInfo: { flex: 1 },
   itemName: { fontSize: 15, fontWeight: '600', color: '#fff', marginBottom: 4 },
-  itemBadges: { flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
-  costBadge: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  costText: { fontSize: 11, color: '#D4A84A' },
-  unitText: { fontSize: 11, color: '#BFBBAE' },
-  freqText: { fontSize: 11, color: '#BFBBAE' },
+  itemStatus: { fontSize: 11.5, color: '#87A678' },
+  itemStatusQueued: { color: '#D4A84A' },
 
-  resultActions: { flexDirection: 'row', gap: 10, marginTop: 16, marginBottom: 32 },
+  resultActions: { flexDirection: 'row', gap: 10, marginTop: 6, marginBottom: 32 },
   retryBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: '#383528', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,

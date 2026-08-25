@@ -14,7 +14,12 @@ import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useJournalStore } from '../../store/journalStore';
 import { ACTION_COST } from '../../lib/subscription';
 import { extractInvokeError } from '../../lib/aiInvoke';
-import { todayLocal } from '../../lib/date';
+import { todayLocal, ymd, addDaysLocal } from '../../lib/date';
+import { habitCompletionRate, weekdayBreakdown, bestWeekday, worstWeekday, recoverySuccessRate } from '../../lib/behaviorIntelligence';
+import { fromLegacyRecoveryPlan } from '../../lib/recovery';
+import { fetchHabitLogsForReview } from '../../repositories/habitLogRepository';
+import { fetchRecoveryPlansForReview } from '../../repositories/recoveryRepository';
+import { DOW_TR } from '../../lib/focusReport';
 
 type Message = {
   id: string;
@@ -57,11 +62,74 @@ export default function AICoachScreen() {
 
   const hasConversation = messages.some((m) => m.role === 'user');
 
+  // Deterministic analytics summary (plan §13: "send walking_completion_30d
+  // = 72, monday_completion = 41, recovery_success = 80 -- not raw rows").
+  // Computed ONCE per screen visit from lib/behaviorIntelligence.ts (Phase 2's
+  // exact-arithmetic engine, the same one app/screens/insights.tsx uses) --
+  // never re-derived per message, and never blocking: a failure here leaves
+  // both pieces of state `null` and `send()` below falls back to the plain
+  // habit-name list it always sent, so an analytics hiccup can never break
+  // the coach itself (Gate D).
+  const [analyticsHabits, setAnalyticsHabits] = useState<string[] | null>(null);
+  const [analyticsSummary, setAnalyticsSummary] = useState<Record<string, string> | null>(null);
+
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [messages]);
 
-  useEffect(() => { fetchToday(); fetchSub(); }, []);
+  useEffect(() => { fetchToday(); fetchSub(); loadAnalyticsSummary(); }, []);
+
+  // Deliberately a one-shot, not re-run when `habits` changes later in the
+  // session -- same intentional "fetch once on mount" scope as `fetchToday`/
+  // `fetchSub` above.
+  async function loadAnalyticsSummary() {
+    try {
+      const activeHabitRows = habits.filter((h) => h.status === 'active');
+      if (activeHabitRows.length === 0) return;
+
+      const today = new Date();
+      const end = ymd(today);
+      // 8 weeks: clears weekdayBreakdown's MIN_WEEKDAY_SAMPLES (3) for most
+      // weekdays and is recoverySuccessRate's whole input window; short
+      // enough to stay a cheap, single-screen-visit fetch.
+      const start = ymd(addDaysLocal(today, -55));
+      const start30 = ymd(addDaysLocal(today, -29));
+
+      const [logsRes, recoveryRes] = await Promise.all([
+        fetchHabitLogsForReview({ start, end }),
+        fetchRecoveryPlansForReview({ start, end }),
+      ]);
+      if (!logsRes.ok) return; // best-effort -- see field doc
+      const logs = logsRes.data;
+
+      // Enriches the SAME `activeHabits` array the edge function already
+      // reads verbatim into its prompt (`ctx.activeHabits.join(', ')`) with
+      // each habit's real 30-day completion rate -- e.g. plan §13's own
+      // `walking_completion_30d = 72` example, computed via
+      // `habitCompletionRate`, never fabricated when data is insufficient.
+      const enrichedHabits = activeHabitRows.slice(0, 20).map((h) => {
+        const r = habitCompletionRate(h, logs, { start: start30, end });
+        return r.ok ? `${h.name} (30g tamamlama: %${Math.round(r.value * 100)})` : h.name;
+      });
+
+      const summary: Record<string, string> = {};
+      const stats = weekdayBreakdown(activeHabitRows, logs, { start, end });
+      const best = bestWeekday(stats);
+      const worst = worstWeekday(stats);
+      if (best.ok) summary.en_iyi_gun = `${DOW_TR[best.value.weekday]} (%${Math.round(best.value.rate * 100)})`;
+      if (worst.ok) summary.en_zayif_gun = `${DOW_TR[worst.value.weekday]} (%${Math.round(worst.value.rate * 100)})`;
+
+      if (recoveryRes.ok) {
+        const rate = recoverySuccessRate(recoveryRes.data.map(fromLegacyRecoveryPlan));
+        if (rate.ok) summary.telafi_basari_orani = `%${Math.round(rate.value * 100)}`;
+      }
+
+      setAnalyticsHabits(enrichedHabits);
+      setAnalyticsSummary(Object.keys(summary).length > 0 ? summary : null);
+    } catch {
+      // best-effort -- see field doc above
+    }
+  }
 
   async function send(text?: string) {
     const msg = (text ?? input).trim();
@@ -74,7 +142,10 @@ export default function AICoachScreen() {
     setInsufficientCredits(false);
 
     try {
-      const activeHabits = habits.filter((h) => h.status === 'active').map((h) => h.name);
+      // Deterministic analytics summary when available (see loadAnalyticsSummary
+      // above), else the same plain habit-name list this screen always sent --
+      // an analytics failure never blocks a coach message (Gate D).
+      const activeHabits = analyticsHabits ?? habits.filter((h) => h.status === 'active').map((h) => h.name);
       const pendingTasks = tasks.filter((t) => !t.completed).length;
 
       const { data, error } = await supabase.functions.invoke('generate-routine', {
@@ -87,6 +158,16 @@ export default function AICoachScreen() {
             willpower: wp
               ? { used: wp.used, daily_budget: wp.daily_budget, active_count: wp.active_count, focus_capacity: wp.focus_capacity }
               : undefined,
+            // Additional deterministic behaviorIntelligence.ts summaries
+            // (best/worst weekday, recovery success). NOTE (see this task's
+            // Edge Function Findings): today's generate-routine coach prompt
+            // builder only reads ctx.activeHabits/habitCount/pendingTaskCount/
+            // willpower -- this field is not yet forwarded into the LLM
+            // prompt server-side. Sent anyway so the shape is correct and
+            // ready the moment that prompt builder is updated to read it;
+            // `activeHabits` above is where the enrichment actually reaches
+            // the model today.
+            analytics: analyticsSummary ?? undefined,
           },
           mode: 'coach',
         },
