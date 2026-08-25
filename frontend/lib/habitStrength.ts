@@ -153,9 +153,28 @@ export function habitStrength(logs: StrengthLog[], options: HabitStrengthOptions
 
   if (sinceYmd == null) return 0; // ne `since` verildi ne de hiç log var — dayanacak hiçbir şey yok.
 
+  // FINDING A-02: two logs for the same calendar day are a store-level
+  // invariant violation -- "one log per habit per day" is enforced above
+  // this module (the log store), not here; `habitStrength` only ever
+  // receives whatever it is handed. This function's defence against that
+  // case is intentionally simple: `Map#set` overwrites, so the LAST entry
+  // for a given day in `logs`' array order wins outright -- no merge, no
+  // "best state wins", no "latest `created_at` wins". Array order is the
+  // tiebreak, full stop.
+  //
+  // Deliberately not "improved" to a smarter rule: `StrengthLog` does not
+  // carry a `created_at`/timestamp, only the local day (`completed_at`) the
+  // log is FOR -- so there is no reliable signal here for which of two same-
+  // day entries actually happened later in real time, and inventing a
+  // "best state wins" rule (e.g. done > partial > miss) is not obviously
+  // correct either: a user who corrects a mistaken `'done'` down to `'miss'`
+  // would have that correction silently discarded by a best-wins rule. With
+  // no trustworthy signal to prefer one entry, last-in-array-wins is at
+  // least simple, deterministic, and honest about being an ordering
+  // artifact rather than a guessed-at "smarter" rule.
   const logByDate = new Map<string, StrengthLog>();
   for (const l of logs) {
-    logByDate.set(l.completed_at.slice(0, 10), l);
+    logByDate.set(l.completed_at.slice(0, 10), l); // last entry for a given day overwrites -- see note above
   }
 
   let weightSum = 0;

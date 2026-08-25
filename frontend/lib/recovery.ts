@@ -212,13 +212,23 @@ export type RecoveryPlanV2 = {
 
 /**
  * v2 -> today's `RecoveryStrategy` ('full'|'half'|'mini'|'reschedule').
- * LOSSY in one direction: legacy has no "decline to recover" concept, so
- * `'skip'` has no faithful legacy value. Mapped to `'mini'` (the smallest
- * legacy commitment) as the closest approximation, and flagged here rather
- * than silently guessed -- widening `recovery_plans.strategy` itself is a
- * follow-up NOT included in the authored migration (see that file's
- * comments), because the task defining this migration's scope did not ask
- * for it; only the status vocabulary was in scope for reconciliation.
+ *
+ * Both v2 and legacy have exactly four values, and this adapter is a
+ * BIJECTION between them: `complete_today <-> full`, `push_tomorrow <->
+ * reschedule`, `split_two_days <-> half`, and `skip <-> mini`. Every value
+ * round-trips to itself in both directions -- see `strategyFromLegacy` for
+ * why `'mini'` (not some other value) is `'skip'`'s legacy counterpart, and
+ * why that pairing is a re-interpretation of `'mini'`'s original meaning
+ * rather than a perfect match.
+ *
+ * FINDING A-03 history: earlier, `strategyFromLegacy('mini')` returned
+ * `'complete_today'` while `strategyToLegacy('skip')` returned `'mini'`.
+ * That was not just lossy, it INVERTED meaning on a round-trip: a user who
+ * explicitly declined to recover ("Telafi etme", `'skip'`) would come back
+ * out of a `'mini'` row reading as `'complete_today'` -- "I completed the
+ * recovery" for a user who chose not to. Fixed by making `'mini'` map back
+ * to `'skip'` instead, so the pairing is stable and non-inverting in both
+ * directions (see `strategyFromLegacy`).
  */
 function strategyToLegacy(s: RecoveryStrategyV2): RecoveryStrategy {
   switch (s) {
@@ -229,16 +239,32 @@ function strategyToLegacy(s: RecoveryStrategyV2): RecoveryStrategy {
     case 'split_two_days':
       return 'half';
     case 'skip':
-      return 'mini'; // lossy -- see doc above
+      return 'mini'; // bijection with strategyFromLegacy -- see doc above
   }
 }
 
 /**
- * Legacy `RecoveryStrategy` -> v2. Also lossy for `'mini'`: legacy "a
- * reduced/smaller version, done same-day" has no v2 concept of partial
- * scope, so it is mapped to `'complete_today'` (the closest v2 strategy
- * that still means "done today"), losing the "it was reduced in scope"
- * information until the strategy vocabulary itself is migrated.
+ * Legacy `RecoveryStrategy` -> v2. The exact inverse of `strategyToLegacy`
+ * (FINDING A-03 fix) -- every legacy value maps back to the v2 value that
+ * produced it: `full -> complete_today`, `reschedule -> push_tomorrow`,
+ * `half -> split_two_days`, `mini -> skip`.
+ *
+ * `mini -> skip` is still an honest RE-INTERPRETATION, not a perfect
+ * translation: legacy `'mini'` originally meant "a reduced-size make-up
+ * attempt, done same-day" -- a partial-scope commitment that v2's four
+ * strategies have no equivalent for (v2 only has "declined to recover" at
+ * all, `'skip'`, or one of three full-scope timing choices). Reading a
+ * legacy `'mini'` row as v2 `'skip'` is therefore imperfect -- it loses the
+ * "it was reduced in scope, not declined outright" nuance -- but it is
+ * STABLE and NON-INVERTING: it no longer turns an explicit decline into a
+ * claimed completion, which is the property that actually matters for
+ * recovery analytics and for what the user is told. The real fix is
+ * widening the persisted `recovery_plans.strategy` CHECK constraint to carry
+ * all four v2 values (and drop this adapter entirely) -- authored in
+ * `supabase/migrations/20260825_phase1_core_engine.sql`, which deliberately
+ * did NOT widen that constraint (only the `status` vocabulary was in scope
+ * for that migration) and is blocked from applying while the Supabase
+ * project is paused.
  */
 function strategyFromLegacy(s: RecoveryStrategy): RecoveryStrategyV2 {
   switch (s) {
@@ -249,7 +275,7 @@ function strategyFromLegacy(s: RecoveryStrategy): RecoveryStrategyV2 {
     case 'half':
       return 'split_two_days';
     case 'mini':
-      return 'complete_today'; // lossy -- see doc above
+      return 'skip'; // FINDING A-03 fix -- was 'complete_today' (an inversion); see doc above
   }
 }
 

@@ -99,6 +99,31 @@ export type CompletionRatioInput = {
  *  - `value > target` (numeric/duration): clamped to `1`. §8.6 says so
  *    explicitly ("min(actual/target, 1)") — overshooting a goal is still
  *    exactly 100% complete, not more.
+ *  - `target` is `NaN`/`Infinity`/`-Infinity` (numeric/duration): treated the
+ *    same as `target == null` (FINDING A-01 fix) — falls back to `state`.
+ *    `Number.isFinite` catches all three in one check (and, per its own
+ *    semantics, `null`/`undefined` too — the explicit `target == null` stays
+ *    for readability). An infinite/NaN target has no meaningful "how much of
+ *    this was done" answer via division, exactly like a missing one.
+ *  - `value` is `NaN` (numeric/duration, valid target): clamped to `0`, same
+ *    treatment as `value < 0` (FINDING A-01 fix) — `NaN < 0` and
+ *    `NaN == null` are both `false` in JS, so the pre-fix guard let a `NaN`
+ *    value fall straight through into the division, poisoning the ratio.
+ *    Deliberately narrower than `!Number.isFinite(value)`: `value: Infinity`
+ *    is NOT clamped here — it is already handled correctly by the
+ *    `Math.min(v / target, 1)` below (overshoot-clamps to `1`, same as any
+ *    other value bigger than `target`), so rejecting it too would throw away
+ *    already-correct behaviour to "fix" something that was never broken.
+ *  - belt-and-suspenders: the final `v / target` is re-checked with
+ *    `Number.isFinite` before being returned. With the two guards above,
+ *    `target` is always finite and `> 0` and `value` is never `NaN` by the
+ *    time division happens, so this should be unreachable — the one
+ *    theoretical gap it still closes is `value: Infinity` divided by a
+ *    `target` that is *also* infinite, which the `target` guard above now
+ *    excludes anyway (`Infinity` is not finite) — but per this file's own
+ *    "worse failure mode" reasoning for `completionPercent`, a ratio-level
+ *    function that could still leak a raw `NaN` for some future combination
+ *    is worse than one more defensive check.
  *  - `state === 'partial'` passed for `binary`/`abstinence`: these two types
  *    have no fractional notion by definition (an avoidance day either
  *    happened or it didn't; there is no "half done" checkbox). This is a
@@ -136,11 +161,12 @@ export function completionRatio(input: CompletionRatioInput): number {
 
     case 'numeric':
     case 'duration': {
-      if (target == null || target <= 0) {
+      if (target == null || !Number.isFinite(target) || target <= 0) {
         return state === 'done' ? 1 : 0;
       }
-      const v = value == null || value < 0 ? 0 : value;
-      return Math.min(v / target, 1);
+      const v = value == null || Number.isNaN(value) || value < 0 ? 0 : value;
+      const ratio = Math.min(v / target, 1);
+      return Number.isFinite(ratio) ? ratio : 0; // defensive backstop -- see doc above
     }
 
     default:
@@ -179,6 +205,30 @@ export type DeriveStateInput = {
  *    `'done'`, else `'miss'` — deliberately mirroring the binary branch
  *    rather than `completionRatio`'s `state`-based fallback, because there
  *    is no `state` available to fall back to in this function.
+ *
+ * ## Non-finite input (FINDING A-01) -- deliberately NOT symmetric with `completionRatio`
+ *
+ * `value: NaN` is clamped to `0` here too (mirrors the `completionRatio`
+ * fix), which is output-neutral: it already fell through every `>=`/`>`
+ * comparison as `false` and landed on `'miss'` before this change, exactly
+ * as it does now -- this is a readability/defence-in-depth change only.
+ *
+ * `target: NaN`/`Infinity`/`-Infinity`, however, is INTENTIONALLY left out of
+ * the `target == null || target <= 0` guard below, unlike the equivalent
+ * guard in `completionRatio`. This function has no `state` to fall back on
+ * for a "no denominator" case -- the fallback here is `value > 0 ? 'done' :
+ * 'miss'` -- and a non-finite `target` is not the same situation as a
+ * missing one: routing it through that fallback would mean a merely
+ * malformed `target` (e.g. `NaN`) starts CREDITING a positive `value` as
+ * `'done'` (e.g. `{ value: 5, target: NaN }` would become `'done'`), which is
+ * a strictly worse, over-counting failure mode than what already happens
+ * today -- the division `v / target` evaluates to `NaN`, every comparison
+ * against it is `false`, and the cascade already safely lands on `'miss'`
+ * (this codebase's documented general preference for under-counting over
+ * over-counting on an underspecified combination -- see `habitSchedule.ts`).
+ * So the existing accidental-but-correct fallthrough is kept as the
+ * mechanism, deliberately, rather than replaced with an explicit branch that
+ * would change the answer.
  */
 export function deriveState(input: DeriveStateInput): 'done' | 'partial' | 'miss' {
   const { trackingType, value, target } = input;
@@ -188,10 +238,12 @@ export function deriveState(input: DeriveStateInput): 'done' | 'partial' | 'miss
   }
 
   // numeric / duration
+  // `target` is deliberately NOT checked for non-finiteness here -- see the
+  // doc comment above ("deliberately NOT symmetric with completionRatio").
   if (target == null || target <= 0) {
     return value != null && value > 0 ? 'done' : 'miss';
   }
-  const v = value == null || value < 0 ? 0 : value;
+  const v = value == null || Number.isNaN(value) || value < 0 ? 0 : value;
   const ratio = Math.min(v / target, 1);
   if (ratio >= 1) return 'done';
   if (ratio > 0) return 'partial';
@@ -215,7 +267,16 @@ export function isPartial(ratio: number): boolean {
  * already clamps to `[0, 1]`, so this should never actually trigger, but a
  * percent function that could return -5 or 140 for a malformed caller input
  * would be a worse failure mode than a silently-clamped display value.
+ *
+ * That same promise did NOT originally hold for a non-finite `ratio`
+ * (FINDING A-01): `Math.max`/`Math.min` do not filter `NaN` out at all
+ * (`Math.min(100, NaN)` is `NaN`, not `100`), so a `NaN` ratio used to leak
+ * straight through as `NaN`, not a clamped integer. `completionRatio` no
+ * longer produces `NaN` (see its own doc), but this function is guarded
+ * independently here too, so the "never returns NaN" promise holds even for
+ * a `ratio` that arrived from anywhere else.
  */
 export function completionPercent(ratio: number): number {
+  if (!Number.isFinite(ratio)) return 0; // NaN/Infinity/-Infinity in -> 0 out, never NaN out.
   return Math.max(0, Math.min(100, Math.round(ratio * 100)));
 }
