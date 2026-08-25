@@ -14,6 +14,8 @@ import {
 } from '../../lib/focusReport';
 import { FocusSettings, DEFAULT_SETTINGS } from '../../store/focusStore';
 import { todayLocal } from '../../lib/date';
+import { fetchAllFocusTasks } from '../../repositories/focusTaskRepository';
+import { fetchAllFocusSessions, deleteAllFocusSessions } from '../../repositories/focusSessionRepository';
 
 type Section = 'general' | 'timer' | 'tasks' | 'reports' | 'sounds' | 'account' | 'integrations' | 'advanced';
 
@@ -68,11 +70,11 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const [tasksRes, sessionsRes] = await Promise.all([
-      supabase.from('focus_tasks').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
-      supabase.from('focus_sessions').select('*').eq('user_id', user.id).order('started_at', { ascending: false }),
+      fetchAllFocusTasks(),
+      fetchAllFocusSessions(),
     ]);
-    const tasks = (tasksRes.data ?? []) as any[];
-    const sessions = (sessionsRes.data ?? []) as FocusSessionRow[];
+    const tasks = tasksRes.ok ? tasksRes.data : [];
+    const sessions: FocusSessionRow[] = sessionsRes.ok ? sessionsRes.data : [];
 
     let message: string;
     if (fmt === 'json') {
@@ -120,7 +122,7 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
   async function doClearReports() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    await supabase.from('focus_sessions').delete().eq('user_id', user.id);
+    await deleteAllFocusSessions();
     try { haptic.success(); } catch { /* yoksay */ }
     showFlash('Rapor verisi temizlendi.');
   }

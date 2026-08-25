@@ -9,6 +9,9 @@ import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore } from '../../store/journalStore';
 import { buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions, reportBadge, type ReportBadge } from '../../lib/reportMetrics';
 import { ymdFromIso } from '../../lib/date';
+import { fetchWeeklyReview, upsertWeeklyReview } from '../../repositories/reviewRepository';
+import { fetchHabitLogsForReview } from '../../repositories/habitLogRepository';
+import { fetchFocusSecondsForReview } from '../../repositories/focusSessionRepository';
 
 function getWeekKey(date = new Date()) {
   return format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -70,20 +73,15 @@ export default function WeeklyReviewScreen() {
       return;
     }
 
-    const { data } = await supabase
-      .from('weekly_reviews')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('week_key', weekKey)
-      .maybeSingle();
+    const res = await fetchWeeklyReview({ weekKey });
 
-    if (data) {
+    if (res.ok && res.data) {
       setAnswers({
-        wins: data.wins ?? '',
-        challenges: data.challenges ?? '',
-        next_week: data.next_week ?? '',
+        wins: res.data.wins ?? '',
+        challenges: res.data.challenges ?? '',
+        next_week: res.data.next_week ?? '',
       });
-      setSavedAt(data.created_at ? format(new Date(data.created_at), 'dd.MM.yyyy') : null);
+      setSavedAt(res.data.created_at ? format(new Date(res.data.created_at), 'dd.MM.yyyy') : null);
       return;
     }
 
@@ -101,23 +99,12 @@ export default function WeeklyReviewScreen() {
     }
 
     const [logsRes, sessionsRes] = await Promise.all([
-      supabase
-        .from('habit_logs')
-        .select('habit_id, completed_at, state, value')
-        .eq('user_id', user.id)
-        .gte('completed_at', start)
-        .lte('completed_at', `${end}T23:59:59`)
-        .in('state', ['done', 'partial', 'miss', 'skip']),
-      supabase
-        .from('focus_sessions')
-        .select('completed_seconds')
-        .eq('user_id', user.id)
-        .gte('started_at', start)
-        .lte('started_at', `${end}T23:59:59`),
+      fetchHabitLogsForReview({ start, end }),
+      fetchFocusSecondsForReview({ start, end }),
     ]);
 
-    const rate = logsRes.data ? calculateHabitCompletionRate(habits, logsRes.data as any, start, end) : 0;
-    const minutes = sessionsRes.data ? focusMinutesFromSessions(sessionsRes.data as any) : 0;
+    const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end) : 0;
+    const minutes = sessionsRes.ok ? focusMinutesFromSessions(sessionsRes.data) : 0;
     const nextBadge = reportBadge({ habitRate: rate, focusMinutes: minutes, completedTasks: completedTasks.length });
 
     setHabitCompletionRate(rate);
@@ -131,17 +118,13 @@ export default function WeeklyReviewScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Oturum bulunamadı');
 
-      const { error } = await supabase.from('weekly_reviews').upsert(
-        {
-          user_id: user.id,
-          week_key: weekKey,
-          wins: answers.wins ?? null,
-          challenges: answers.challenges ?? null,
-          next_week: answers.next_week ?? null,
-        },
-        { onConflict: 'user_id,week_key' },
-      );
-      if (error) throw error;
+      const res = await upsertWeeklyReview({
+        weekKey,
+        wins: answers.wins ?? null,
+        challenges: answers.challenges ?? null,
+        next_week: answers.next_week ?? null,
+      });
+      if (!res.ok) throw new Error(res.error);
 
       const currentBadge = badge ?? reportBadge({ habitRate: habitCompletionRate, focusMinutes, completedTasks: completedTasks.length });
 

@@ -17,6 +17,7 @@ import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip } from '../../components/ui';
 import { todayLocal } from '../../lib/date';
+import { fetchHabitLogsForHabitsSince } from '../../repositories/habitLogRepository';
 
 // Telafi gününü hesaplayan hızlı seçenekler (date-picker dep yok)
 function nextSaturdayOffset(): number {
@@ -122,15 +123,9 @@ export default function RecoveryScreen() {
     const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data } = await supabase
-      .from('habit_logs')
-      .select('habit_id, completed_at, state')
-      .eq('user_id', user.id)
-      .in('habit_id', habitIds)
-      .gte('completed_at', since)
-      .in('state', ['done', 'partial'])
-      .order('completed_at', { ascending: false });
-    if (!data) return;
+    const res = await fetchHabitLogsForHabitsSince({ habitIds, since });
+    if (!res.ok) return;
+    const data = res.data;
     const map: StreakMap = {};
     for (const id of habitIds) {
       const logs = data.filter((l) => l.habit_id === id);

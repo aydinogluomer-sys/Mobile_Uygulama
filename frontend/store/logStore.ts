@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase, HabitLog } from '../lib/supabase';
 import { ymd } from '../lib/date';
+import { completionRatio, type TrackingType } from '../lib/habitEngine';
 
 /**
  * What a write actually did. The previous signature was `Promise<void>` and
@@ -29,10 +30,39 @@ type LogStore = {
   getRemainingValue: (habitId: string, targetValue: number, date: Date) => number;
 };
 
+/**
+ * W1 (task 1-D, Phase 1 wiring): the `partial` branch used to be ad-hoc
+ * maths -- `baseXp * (value / targetValue)`, unclamped and un-guarded --
+ * with two real defects, both now fixed by routing through the domain
+ * layer's `completionRatio` (`lib/habitEngine.ts`) instead:
+ *
+ *  1. Unclamped -- a partial log with `value > targetValue` awarded MORE
+ *     than `baseXp`, i.e. over 100% XP for an incomplete habit.
+ *  2. NaN-vulnerable -- identical to QA finding A-01. `parseFloat('')` ->
+ *     `NaN` -> `Math.round(NaN)` -> `NaN` XP written to the database.
+ *
+ * `completionRatio` clamps its numeric ratio to `[0, 1]` and is NaN-safe by
+ * construction (see its own doc comment), so both defects are fixed at the
+ * source rather than patched here.
+ *
+ * `calcXp`'s signature is unchanged (`logHabit`'s public params carry no
+ * real V2 tracking-type -- widening the store's public surface for that
+ * would be a bigger change than this wiring task calls for). The tracking
+ * type is instead INFERRED from the arguments already available: a
+ * positive numeric `targetValue` implies a numeric/duration-tracked habit
+ * (mirrors `logHabit`'s own callers, who only ever pass `targetValue` for a
+ * numeric habit); anything else is treated as `binary`, which is the
+ * conservative choice and -- for the `partial` branch specifically --
+ * collapses to the same "no valid target -> 0 XP" behaviour `calcXp`
+ * already had before this change. This is deliberately the smallest change
+ * to `logStore`'s public surface, per this task's brief.
+ */
 function calcXp(baseXp: number, value: number | undefined, targetValue: number | undefined, state: HabitLog['state']): number {
   if (state === 'done') return baseXp;
-  if (state === 'partial' && value != null && targetValue != null && targetValue > 0) {
-    return Math.round(baseXp * (value / targetValue));
+  if (state === 'partial') {
+    const trackingType: TrackingType = targetValue != null && targetValue > 0 ? 'numeric' : 'binary';
+    const ratio = completionRatio({ trackingType, state, value, target: targetValue });
+    return Math.round(baseXp * ratio);
   }
   return 0;
 }

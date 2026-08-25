@@ -11,6 +11,7 @@ import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 import { supabase } from '../../lib/supabase';
 import { useHabitStore } from '../../store/habitStore';
 import { useTaskStore } from '../../store/taskStore';
+import { fetchHabitLogsHeatmap, fetchHabitIdsCompletedSince } from '../../repositories/habitLogRepository';
 import { LIFE_AREAS, AreaKey } from '../../store/lifeAreasStore';
 import AreaRadar from '../../components/AreaRadar';
 import HabitListView from '../../components/HabitListView';
@@ -148,16 +149,12 @@ export default function StatsScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
 
-      // Son 365 gün heatmap + toplam/bugün/bu ay sayıları tek sorguda
+      // Son 365 gün heatmap + toplam/bugün/bu ay sayıları tek sorguda (habit_logs)
       const since = format(subDays(now, 364), 'yyyy-MM-dd');
-      const { data } = await supabase
-        .from('habit_logs')
-        .select('completed_at, state')
-        .eq('user_id', user.id)
-        .in('state', ['done', 'partial'])
-        .gte('completed_at', since);
+      const heatmapRes = await fetchHabitLogsHeatmap({ since });
 
-      if (data) {
+      if (heatmapRes.ok) {
+        const data = heatmapRes.data;
         const map: HeatmapData = {};
         let total = 0;
         let today = 0;
@@ -183,17 +180,12 @@ export default function StatsScreen() {
         setTrend14(arr);
       }
 
-      // Son 30 gün — alan performansı için habit_id bazlı tamamlamalar
+      // Son 30 gün — alan performansı için habit_id bazlı tamamlamalar (habit_logs)
       const since30 = format(subDays(now, 29), 'yyyy-MM-dd');
-      const { data: logs30 } = await supabase
-        .from('habit_logs')
-        .select('habit_id')
-        .eq('user_id', user.id)
-        .in('state', ['done', 'partial'])
-        .gte('completed_at', since30);
-      if (logs30) {
+      const logs30Res = await fetchHabitIdsCompletedSince({ since: since30 });
+      if (logs30Res.ok) {
         const cmap: Record<string, number> = {};
-        logs30.forEach((r: any) => { if (r.habit_id) cmap[r.habit_id] = (cmap[r.habit_id] ?? 0) + 1; });
+        logs30Res.data.forEach((r) => { if (r.habit_id) cmap[r.habit_id] = (cmap[r.habit_id] ?? 0) + 1; });
         setAreaComp30(cmap);
       }
 

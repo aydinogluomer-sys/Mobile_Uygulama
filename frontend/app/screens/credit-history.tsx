@@ -5,8 +5,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import { supabase } from '../../lib/supabase';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
+import { fetchCreditTransactions } from '../../repositories/creditRepository';
 
 type Tx = {
   id: string;
@@ -34,12 +34,8 @@ export default function CreditHistoryScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const { data } = await supabase
-      .from('credit_transactions')
-      .select('id,delta,reason,balance_after,created_at')
-      .order('created_at', { ascending: false })
-      .limit(80);
-    setTxs((data as Tx[]) ?? []);
+    const res = await fetchCreditTransactions({ limit: 80 });
+    setTxs(res.ok ? res.data : []);
     await refresh();
   }, []);
 

@@ -1,0 +1,78 @@
+/**
+ * `focus_sessions` reads/deletes.  (Phase 1 repository layer, plan §5 Rule 4)
+ */
+import { supabase } from '../lib/supabase';
+import type { FocusSessionRow } from '../lib/focusReport';
+import { currentUserId, RepoResult } from './shared';
+
+export type ReviewFocusSecondsRow = { completed_seconds: number };
+export type FocusSessionFullRow = FocusSessionRow & { user_id: string };
+
+const REPORT_COLS = 'id,task_id,task_title,mode,started_at,ended_at,planned_seconds,completed_seconds,completed';
+
+/**
+ * `completed_seconds` only, for a `started_at` date range -- source for
+ * `focusMinutesFromSessions` on the weekly and monthly review screens.
+ */
+export async function fetchFocusSecondsForReview(params: {
+  start: string;
+  end: string;
+}): Promise<RepoResult<ReviewFocusSecondsRow[]>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('focus_sessions')
+    .select('completed_seconds')
+    .eq('user_id', u.userId)
+    .gte('started_at', params.start)
+    .lte('started_at', `${params.end}T23:59:59`);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as ReviewFocusSecondsRow[] };
+}
+
+/**
+ * Report-shaped columns since a given ISO instant, newest first -- shared by
+ * `FocusSessionCompleteModal` (last week) and `FocusReportModal` (last year).
+ */
+export async function fetchFocusSessionsSince(params: {
+  sinceIso: string;
+}): Promise<RepoResult<FocusSessionRow[]>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('focus_sessions')
+    .select(REPORT_COLS)
+    .eq('user_id', u.userId)
+    .gte('started_at', params.sinceIso)
+    .order('started_at', { ascending: false });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as FocusSessionRow[] };
+}
+
+/**
+ * Every column, newest session first -- source for `FocusSettingsModal`'s
+ * full data export (JSON/CSV/Excel).
+ */
+export async function fetchAllFocusSessions(): Promise<RepoResult<FocusSessionFullRow[]>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('focus_sessions')
+    .select('*')
+    .eq('user_id', u.userId)
+    .order('started_at', { ascending: false });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as FocusSessionFullRow[] };
+}
+
+/**
+ * Deletes every `focus_sessions` row owned by the current user -- backs
+ * `FocusSettingsModal`'s "clear report data" action.
+ */
+export async function deleteAllFocusSessions(): Promise<RepoResult<void>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { error } = await supabase.from('focus_sessions').delete().eq('user_id', u.userId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: undefined };
+}

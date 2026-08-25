@@ -15,6 +15,8 @@ import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
 import { colors, hexA } from '../../lib/tokens';
 import { buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions, reportBadge, summarizeHabitProgress, type ReportBadge } from '../../lib/reportMetrics';
 import { ymdFromIso } from '../../lib/date';
+import { fetchHabitLogsForReview } from '../../repositories/habitLogRepository';
+import { fetchFocusSecondsForReview } from '../../repositories/focusSessionRepository';
 
 const MONTHS_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const REFLECT_KEY = (monthKey: string) => `monthly_review_${monthKey}`;
@@ -114,30 +116,19 @@ export default function MonthlyReviewScreen() {
     }
 
     const [logsRes, sessionsRes] = await Promise.all([
-      supabase
-        .from('habit_logs')
-        .select('habit_id, completed_at, state, value')
-        .eq('user_id', user.id)
-        .gte('completed_at', start)
-        .lte('completed_at', `${end}T23:59:59`)
-        .in('state', ['done', 'partial', 'miss', 'skip']),
-      supabase
-        .from('focus_sessions')
-        .select('completed_seconds')
-        .eq('user_id', user.id)
-        .gte('started_at', start)
-        .lte('started_at', `${end}T23:59:59`),
+      fetchHabitLogsForReview({ start, end }),
+      fetchFocusSecondsForReview({ start, end }),
     ]);
 
-    const rate = logsRes.data ? calculateHabitCompletionRate(habits, logsRes.data as any, start, end) : 0;
-    const minutes = sessionsRes.data ? focusMinutesFromSessions(sessionsRes.data as any) : 0;
+    const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end) : 0;
+    const minutes = sessionsRes.ok ? focusMinutesFromSessions(sessionsRes.data) : 0;
     const nextBadge = reportBadge({ habitRate: rate, focusMinutes: minutes, completedTasks: completedTasks.length });
 
     setHabitCompletionRate(rate);
     setFocusMinutes(minutes);
     setBadge(nextBadge);
 
-    const stats = summarizeHabitProgress(habits, (logsRes.data ?? []) as any, start, end).map((row) => ({
+    const stats = summarizeHabitProgress(habits, logsRes.ok ? logsRes.data : [], start, end).map((row) => ({
       id: row.id,
       name: row.name,
       color: row.color,

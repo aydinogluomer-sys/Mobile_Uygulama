@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { Task } from '../store/taskStore';
+import { insertSplitTasks } from '../repositories/taskRepository';
 
 interface ADHDTaskSplitterProps {
   task: Task;
@@ -42,7 +43,6 @@ export default function ADHDTaskSplitter({
 
       const labels = SPLIT_LABELS[minutes] ?? ['Parça 1', 'Parça 2', 'Parça 3'];
       const rows = labels.map((label, i) => ({
-        user_id: user.id,
         title: `${task.title} — ${label}`,
         description: `${minutes} dk blok (${i + 1}/${labels.length})`,
         status: 'pending' as const,
@@ -53,11 +53,12 @@ export default function ADHDTaskSplitter({
         completed: false,
       }));
 
-      const { data, error } = await supabase.from('tasks').insert(rows).select();
-      if (error) throw error;
+      // Repository devralır: supabase.tasks tablosuna insert eder (bkz. repositories/taskRepository.ts).
+      const res = await insertSplitTasks(rows);
+      if (!res.ok) throw new Error(res.error);
 
-      setSubtasks(data as Task[]);
-      onSplit(data as Task[]);
+      setSubtasks(res.data);
+      onSplit(res.data);
     } catch (error) {
       console.error('Görev bölünürken hata:', error);
     } finally {

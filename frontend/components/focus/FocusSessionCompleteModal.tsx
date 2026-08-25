@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { colors, fontFamily } from '../../lib/tokens';
 import { CompletedSession, useFocusStore } from '../../store/focusStore';
 import { FocusSessionRow, inRange, summary, byTask, buckets, fmtDuration, fmtHours } from '../../lib/focusReport';
+import { fetchFocusSessionsSince } from '../../repositories/focusSessionRepository';
 
 type Props = {
   visible: boolean;
@@ -30,13 +31,9 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 8);
-      const { data } = await supabase
-        .from('focus_sessions')
-        .select('id,task_id,task_title,mode,started_at,ended_at,planned_seconds,completed_seconds,completed')
-        .eq('user_id', user.id)
-        .gte('started_at', weekAgo.toISOString())
-        .order('started_at', { ascending: false });
-      if (active) setRows((data as FocusSessionRow[]) ?? []);
+      // focus_sessions okunur — bkz. repositories/focusSessionRepository.ts
+      const res = await fetchFocusSessionsSince({ sinceIso: weekAgo.toISOString() });
+      if (active) setRows(res.ok ? res.data : []);
     })();
     return () => { active = false; };
   }, [visible]);

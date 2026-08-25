@@ -12,6 +12,7 @@ import {
   FocusSessionRow, ReportRange, inRange, summary, byTask, buckets, ranking,
   fmtDuration, fmtHours, toCSV, toExcelXML, sessionsSheet, EXPORT_META, webDownload,
 } from '../../lib/focusReport';
+import { fetchFocusSessionsSince } from '../../repositories/focusSessionRepository';
 
 type Props = { visible: boolean; onClose: () => void; accent: string };
 type Tab = 'summary' | 'detail' | 'ranking';
@@ -57,13 +58,8 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
       if (!user) { setLoading(false); return; }
       const yearAgo = new Date();
       yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-      const { data } = await supabase
-        .from('focus_sessions')
-        .select('id,task_id,task_title,mode,started_at,ended_at,planned_seconds,completed_seconds,completed')
-        .eq('user_id', user.id)
-        .gte('started_at', yearAgo.toISOString())
-        .order('started_at', { ascending: false });
-      if (active) { setRows((data as FocusSessionRow[]) ?? []); setLoading(false); }
+      const res = await fetchFocusSessionsSince({ sinceIso: yearAgo.toISOString() });
+      if (active) { setRows(res.ok ? res.data : []); setLoading(false); }
     })();
     return () => { active = false; };
   }, [visible]);
