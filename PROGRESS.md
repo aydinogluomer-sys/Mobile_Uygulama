@@ -660,3 +660,57 @@ than a fabricated `0`.
 
 Red-first bar raised after Coder G: a "module not found" red is not accepted as proof.
 
+#### Coder H → Habit Detail screen — commit `03f557d`
+
+| Check | Before | After |
+|---|---|---|
+| `tsc` / `lint` / `run-tests` | 0 / 0 / 142 | **0 / 0 / 142** |
+| `jest` | 489 / 36 | **511 / 37** |
+
+**Route convention deviates from the plan on purpose (Rule 7).** The plan writes
+`/habits/[id]`; this repo uses flat `app/screens/*.tsx` with `expo-router`. Real code
+wins, so the screen is `app/screens/habit-detail.tsx`.
+
+**This Coder did red-first properly and set the standard.** Rather than accept its own
+"file does not exist" red as proof, it registered the route and wrote a **deliberately
+wrong stub with two seeded bugs** (`skip`/`miss` sharing a colour, and a
+`r.ok ? r.value : 0` fabricated zero). Four assertions then failed for their real reason
+— `Expected: 5, Received: 4` on colour distinctness, the literal-zero detector flagging
+line 26, the "actually CALLS the Result functions" check, and the navigation check —
+**while 18 of 22 assertions in the same run passed**, proving the failures were specific
+rather than a blanket "nothing built yet".
+
+**Five distinct calendar colours (plan §11's explicit requirement)** — verified by the
+Orchestrator against real token values, not token names:
+`full #87A678 · partial #D4A84A · miss #C76A6A · skip #7C97C5 · not_scheduled #56544B`.
+Mutation-tested: aliasing `skip` to `miss` turns the assertion red.
+
+**Insufficient data is never fabricated.** Every `Result` branches on `.ok`; the false
+branch renders the real `reason`. Numeric slots use this codebase's established em-dash
+convention, never a `0`. `currentStreak`/`longestStreak`/`habitStrength` are exempt and
+correctly so — they always return a real number, where `0` is an earned answer rather
+than a placeholder.
+
+**A repository addition was justified, not assumed:** `fetchHabitLogsForHabit` was added
+because `fetchHabitLogsForHabitsSince` filters to `done`/`partial` only, which would have
+**silently hidden `miss`/`skip`** from both the calendar and the streak/fragility maths.
+
+Rule 4 held (the single `supabase` reference is a type-only import). Rule 8 held —
+`seasonalHeader` still spread on both `calendar` and `monthly-review` after the
+`_layout.tsx` edit.
+
+`HabitListView`'s row tap now reaches the detail screen instead of the previous dead-end
+`/tabs/habits` push.
+
+#### Coder I → Insights screen + Weekly/Monthly Review completion — DISPATCHED (sole writer)
+
+Plan §11 Insights + §12 Reviews. Rule 8 is the main hazard: `monthly-review.tsx` carries
+the protected seasonal treatment AND needs nine new content blocks. The brief requires a
+self-regression fence asserting the seasonal code survives its own edits.
+
+Red-first bar now explicitly set to Coder H's standard: seeded-bug stub, right-reason
+failures, unrelated assertions passing in the same run.
+
+`morningEveningDifference` is deliberately NOT surfaced — permanently unsupported by the
+schema, and dead "unsupported" text is worse than omission.
+
