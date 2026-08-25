@@ -714,3 +714,32 @@ failures, unrelated assertions passing in the same run.
 `morningEveningDifference` is deliberately NOT surfaced — permanently unsupported by the
 schema, and dead "unsupported" text is worse than omission.
 
+#### PHASE 3 — ROUTINES & AI — scoped (Orchestrator, read-only)
+
+Plan §13 + Gate D. Existing infrastructure found: `store/routineStore.ts`,
+`app/screens/ai-coach.tsx`, `supabase/functions/generate-routine/index.ts`,
+`lib/aiInvoke.ts`. So Phase 3 completes and hardens rather than starts from zero.
+
+**The architectural rule is the whole point of this phase.** Plan §13 states:
+> AI hiçbir zaman doğrudan database write yapmayacaktır.
+```
+AI proposal → schema validation → capacity evaluation → user preview
+→ explicit confirmation → database
+```
+Gate D reinforces it: *"AI olmadan uygulamanın bütün core işlevleri çalışmalıdır. AI
+failure core product failure yaratmamalıdır."*
+
+So the deliverables are, in priority order:
+1. **A validation + capacity gate between AI output and any write.** AI proposes
+   structured JSON; nothing reaches the DB without schema validation, a `capacity.ts`
+   evaluation, and an explicit user confirmation step.
+2. **Routine Packs** (not a giant habit library — the plan explicitly rejects that):
+   `MORNING RESET` load 24 · `DEEP WORK` 38 · `SLEEP RESET` 29 · `FITNESS FOUNDATION` 41.
+   Installation must be **capacity-aware** — the plan's worked example activates 3 habits
+   and queues 2 when the pack would raise daily load by 31%.
+3. **AI Coach fed by deterministic summaries, not raw data.** §13 is explicit: send
+   `walking_completion_30d = 72`, `monday_completion = 41`, etc. — exactly what
+   `lib/behaviorIntelligence.ts` now produces. The engine built in Phase 2 is the
+   intended input.
+4. **Gate D proof:** a test demonstrating core flows work with AI unavailable/failing.
+
