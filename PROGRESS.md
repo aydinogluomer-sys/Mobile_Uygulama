@@ -917,3 +917,35 @@ the AI **assert something false to the user** — a worse failure than saying no
 The Coder is instructed to follow `lib/routineProposal.ts`'s established pattern rather
 than invent a second, different validator style.
 
+#### PHASE 4 — PRODUCT POLISH — scoped (Orchestrator, read-only audit)
+
+| §24 item | Actual state |
+|---|---|
+| notifications | **PRESENT** — `lib/notifications.ts` |
+| haptics | **PRESENT** — `lib/haptics.ts` |
+| empty states | **PRESENT** — `components/ui/EmptyState.tsx` (editorial variant added in ETAP 15) |
+| animations | **PRESENT** — seasonal motion, page-flip, reduce-motion guard |
+| skeleton states | **ABSENT** |
+| offline sync | **ABSENT** |
+| crash reporting | **ABSENT** |
+| analytics events | **ABSENT** |
+| accessibility | partial — `accessibilityRole`/`accessibilityLabel` used in places, never audited |
+| performance audit · onboarding · widgets · store assets | not started |
+
+**The two items that are architecture, not polish:**
+
+1. **Offline-first completion (§18).** The plan calls habit completion "kritik interaction"
+   and requires: tap → local optimistic state → UI updates immediately → sync queue →
+   Supabase → server confirmation, with network failure held as `pending sync`. This is
+   real engineering, and it interacts with `logStore`'s existing serialised write chain
+   (one promise per habit/day) — which must not be broken.
+2. **Analytics event layer (§22)** with an explicit privacy constraint:
+   *"hassas journal metinleri event platformlarına gönderilmemelidir."* Sensitive journal
+   text must never leave the device. That is a hard rule, testable by a source-invariant
+   guard in the same style as `rule4NoDirectDbInUi`.
+
+Both are unblocked by the paused Supabase project (offline sync can be unit-tested with a
+mocked client; the analytics layer is pure until a provider is wired). Widgets and store
+assets require native/native-store work outside this run's reach and will be reported as
+such rather than faked.
+
