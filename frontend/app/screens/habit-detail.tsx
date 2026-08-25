@@ -34,7 +34,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useHabitStore } from '../../store/habitStore';
 import type { Habit } from '../../lib/supabase';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
-import { Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile } from '../../components/ui';
+import { Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines } from '../../components/ui';
 import { haptic } from '../../lib/haptics';
 import { addDaysLocal, parseLocalDate, ymd, ymdFromIso, type Ymd } from '../../lib/date';
 import { isDueOn } from '../../lib/habitSchedule';
@@ -438,7 +438,13 @@ export default function HabitDetailScreen() {
             </Text>
 
             {loadingLogs ? (
-              <ActivityIndicator color={colors.primary} style={{ marginTop: space.lg }} />
+              // A bar strip is arriving -- show its shape, not a spinner, so the
+              // layout does not jump when the real bars replace this.
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, marginTop: space.lg, height: 56 }}>
+                {Array.from({ length: 24 }, (_, i) => (
+                  <Skeleton key={i} width={6} height={12 + ((i * 7) % 40)} />
+                ))}
+              </View>
             ) : stripDays.length === 0 ? (
               <EmptyState icon="bar-chart-outline" title="Bu aralıkta veri yok" compact />
             ) : (
