@@ -28,18 +28,19 @@
  * repository functions -- no new repository code needed for this screen.
  */
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subWeeks, eachDayOfInterval } from 'date-fns';
 
 import { useHabitStore } from '../../store/habitStore';
 import { useTaskStore, type Task } from '../../store/taskStore';
+import { supabase } from '../../lib/supabase';
 import type { Habit, RecoveryPlan } from '../../lib/supabase';
 import type { FocusSessionRow } from '../../lib/focusReport';
 import { colors, space, font } from '../../lib/tokens';
 import { Card, SectionHeader, EmptyState, IconCircle } from '../../components/ui';
-import { ymd, ymdFromIso, parseLocalDate } from '../../lib/date';
+import { ymd, ymdFromIso, parseLocalDate, addDaysLocal } from '../../lib/date';
 import { isDueOn } from '../../lib/habitSchedule';
 import { dailyLoad, LOAD_BANDS, type TaskLoadItem } from '../../lib/capacity';
 import {
@@ -47,9 +48,14 @@ import {
 } from '../../lib/reportMetrics';
 import {
   weekdayBreakdown, bestWeekday, worstWeekday, strongestHabit, mostFragileHabit,
-  completionTrend, mostRecoveredHabit, recoverySuccessRate, type Result, type Trend,
+  completionTrend, mostRecoveredHabit, recoverySuccessRate, habitCompletionRate,
+  type Result, type Trend,
 } from '../../lib/behaviorIntelligence';
 import { fromLegacyRecoveryPlan } from '../../lib/recovery';
+import {
+  weeklyDigest, monthlyDigest, formatDigestForPrompt, MAX_HABIT_ENTRIES, type Digest,
+} from '../../lib/insightDigest';
+import { extractInvokeError } from '../../lib/aiInvoke';
 import { fetchHabitLogsForReview, type ReviewLogRow } from '../../repositories/habitLogRepository';
 import { fetchFocusSessionsSince } from '../../repositories/focusSessionRepository';
 import { fetchRecoveryPlansForReview } from '../../repositories/recoveryRepository';
@@ -160,6 +166,97 @@ function MetricRow({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMa
   );
 }
 
+/**
+ * `Result<{habitId, ...}>` -> `Result<{habitName, ...}>` -- `lib/insightDigest.ts`
+ * is decoupled from `Habit[]`/store types on purpose (see that file's doc),
+ * so id-to-name resolution happens here, screen-local, exactly once per
+ * value, mirroring this screen's own pre-existing `habitName(id)` helper.
+ */
+function nameResult<T extends { habitId: string }>(
+  r: Result<T>,
+  resolve: (id: string) => string,
+): Result<Omit<T, 'habitId'> & { habitName: string }> {
+  if (!r.ok) return r;
+  const { habitId, ...rest } = r.value;
+  return { ok: true, value: { ...(rest as Omit<T, 'habitId'>), habitName: resolve(habitId) } };
+}
+
+/**
+ * AI commentary action.  (Phase 3, CODER-L, plan §13)
+ *
+ * Sends ONLY `formatDigestForPrompt(digest)` -- a compact `key = value`
+ * summary, never a raw habit/log row -- to the SAME `generate-routine`
+ * edge function `app/screens/ai-coach.tsx` already calls in `mode: 'coach'`.
+ * The reply is DISPLAY-ONLY text rendered straight into this card: it is
+ * never parsed, never validated as structured data, and never reaches any
+ * repository/table write (plan §13's rule governs AI writes, not AI text a
+ * user merely reads). Gate D: every state this panel owns is local to
+ * itself -- a thrown/garble-returning AI call here can only ever produce an
+ * inline error message in THIS card; it cannot affect the deterministic
+ * metrics already rendered above it, which were computed and displayed
+ * before this component's `ask()` is ever called.
+ */
+function AiCommentaryPanel({ digest, label }: { digest: Digest; label: string }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reply, setReply] = useState<string | null>(null);
+
+  const hasData = Object.keys(digest.entries).length > 0;
+  if (!hasData) return null;
+
+  async function ask() {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const message = `${label} alışkanlık verilerimi analiz et, kısa bir yorum ve somut bir tavsiye ver:\n${formatDigestForPrompt(digest)}`;
+      const { data, error: invokeError } = await supabase.functions.invoke('generate-routine', {
+        body: { message, mode: 'coach' },
+      });
+      if (invokeError) {
+        const { msg } = await extractInvokeError(invokeError);
+        setError(msg);
+        return;
+      }
+      if (data?.error) {
+        setError(data.error);
+        return;
+      }
+      const text = data?.reply;
+      if (!text) {
+        setError('Yanıt alınamadı, tekrar deneyin.');
+        return;
+      }
+      setReply(text);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Bir hata oluştu, tekrar deneyin.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Card padding="md" style={s.aiCard}>
+      <View style={s.insightHead}>
+        <IconCircle icon="sparkles-outline" color={colors.primary} size={34} radiusKey="sm" />
+        <Text style={s.insightLabel}>AI Yorumu</Text>
+      </View>
+      {reply ? (
+        <Text style={s.aiReply}>{reply}</Text>
+      ) : (
+        <TouchableOpacity style={s.aiButton} onPress={ask} disabled={loading}>
+          {loading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Text style={s.aiButtonText}>{label} yorumunu iste</Text>
+          )}
+        </TouchableOpacity>
+      )}
+      {error && <Text style={s.aiError}>{error}</Text>}
+    </Card>
+  );
+}
+
 export default function InsightsScreen() {
   const { habits, fetchHabits } = useHabitStore();
   const { tasks, fetchTasks } = useTaskStore();
@@ -246,6 +343,46 @@ export default function InsightsScreen() {
     focusSessions.filter((s) => ymdFromIso(s.started_at) >= monthRange.start && ymdFromIso(s.started_at) <= monthRange.end),
   );
 
+  // ---- AI Yorumu digests (plan §13) -----------------------------------
+  // Built ONLY from the Result/number outputs already computed above --
+  // never from `logs`/`recoveryPlans` directly -- see lib/insightDigest.ts's
+  // own doc for why that is a structural guarantee, not a convention.
+  const start30d = ymd(addDaysLocal(today, -29));
+  const habitCompletionRates30d = activeHabits.slice(0, MAX_HABIT_ENTRIES).map((h) => ({
+    habitName: h.name,
+    rate: habitCompletionRate(h, logs, { start: start30d, end: todayYmd }),
+  }));
+  const overloadDaysThisMonth = countOverloadDays({
+    start: monthRange.start, end: monthRange.end, activeHabits, allTasks: tasks, focusSessions,
+  });
+
+  const weeklyDigestData = weeklyDigest({
+    activeHabitCount: activeHabits.length,
+    weekCompletionRate: weekRate,
+    weekOverWeekTrend: weekOverWeek,
+    weekdayStats,
+    strongestHabit: nameResult(strongest, habitName),
+    mostFragileHabit: nameResult(fragile, habitName),
+    recoverySuccess: recoveryRate,
+    habitCompletionRates30d,
+    capacityLoadToday: todayLoad.normalised,
+    overloadDaysThisWeek: overloadDaysThisWeek,
+    focusMinutesThisWeek: weekFocusMinutes,
+  });
+
+  const monthlyDigestData = monthlyDigest({
+    activeHabitCount: activeHabits.length,
+    monthCompletionRate: monthRate,
+    trend4w: trend4,
+    trend12w: trend12,
+    strongestHabit: nameResult(strongest, habitName),
+    mostFragileHabit: nameResult(fragile, habitName),
+    recoverySuccess: recoveryRate,
+    habitCompletionRates30d,
+    overloadDaysThisMonth,
+    focusMinutesThisMonth: monthFocusMinutes,
+  });
+
   if (loading) {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -292,11 +429,13 @@ export default function InsightsScreen() {
         <InsightRow icon="trending-up-outline" label="En başarılı gün" result={bestDay} formatOk={(v) => `${DOW_TR[v.weekday]} · %${Math.round(v.rate * 100)}`} />
         <InsightRow icon="trending-down-outline" label="En zayıf gün" result={worstDay} formatOk={(v) => `${DOW_TR[v.weekday]} · %${Math.round(v.rate * 100)}`} />
         <InsightRow icon={trendIcon(trend4.ok ? trend4.value.direction : 'flat')} label="4 haftalık trend" result={trend4} formatOk={() => formatTrend(trend4)} />
+        <AiCommentaryPanel digest={weeklyDigestData} label="Bu haftaki" />
 
         {/* AY */}
         <SectionHeader title="AY" variant="overline" style={{ marginTop: space.lg }} />
         <MetricRow icon="calendar-number-outline" label="Bu ay tamamlama" value={`%${monthRate}`} />
         <InsightRow icon={trendIcon(trend12.ok ? trend12.value.direction : 'flat')} label="12 haftalık trend" result={trend12} formatOk={() => formatTrend(trend12)} />
+        <AiCommentaryPanel digest={monthlyDigestData} label="Bu ayki" />
 
         {/* ALIŞKANLIKLAR */}
         <SectionHeader title="ALIŞKANLIKLAR" variant="overline" style={{ marginTop: space.lg }} />
@@ -345,4 +484,10 @@ const s = StyleSheet.create({
   insightLabel: { fontSize: 13, color: colors.textDim, fontWeight: '600', flex: 1 },
   insightValue: { fontSize: 15, color: colors.text, fontWeight: '700' },
   insightReason: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+
+  aiCard: { gap: space.sm, marginTop: space.xs, marginBottom: space.sm },
+  aiButton: { alignSelf: 'flex-start', paddingVertical: 6 },
+  aiButtonText: { fontSize: 13, color: colors.primary, fontWeight: '700' },
+  aiReply: { fontSize: 13.5, color: colors.text, lineHeight: 19 },
+  aiError: { fontSize: 12, color: colors.error, lineHeight: 17 },
 });

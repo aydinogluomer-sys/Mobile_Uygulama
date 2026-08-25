@@ -9,9 +9,14 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
 import { Task } from '../store/taskStore';
 import { insertSplitTasks } from '../repositories/taskRepository';
+import {
+  buildLocalSplitProposal,
+  validateSubtaskProposal,
+  toSplitTaskInputs,
+  type SubtaskDecompositionProposal,
+} from '../lib/taskDecomposition';
 
 interface ADHDTaskSplitterProps {
   task: Task;
@@ -20,11 +25,42 @@ interface ADHDTaskSplitterProps {
   onSplit: (subtasks: Task[]) => void;
 }
 
-const SPLIT_LABELS: Record<number, string[]> = {
-  15: ['Başlangıç', 'Devam', 'Bitiş'],
-  25: ['1. Pomodoro', '2. Pomodoro', '3. Pomodoro'],
-  45: ['Hazırlık & Araştırma', 'Ana Çalışma', 'Gözden Geçirme'],
-};
+/**
+ * ADHD Task Splitter V2.  (Phase 3, CODER-L, plan §15)
+ *
+ * BEFORE this change: tapping a duration button built three rows straight
+ * from a hard-coded label table and called `insertSplitTasks` immediately --
+ * no validation step, no preview, the "result" screen showed
+ * already-inserted database rows. Plan §15's architecture is
+ *
+ *   task -> task decomposition service -> AI -> validated subtasks -> preview -> save
+ *
+ * so this component now goes through three phases instead of one:
+ *
+ *  1. 'select'  -- unchanged duration presets (same Turkish copy, same
+ *     three options). Tapping one calls `lib/taskDecomposition.ts`'s
+ *     `buildLocalSplitProposal` (today's stand-in for a real AI call -- see
+ *     that function's own doc) and immediately runs the result through
+ *     `validateSubtaskProposal`, exactly as a real AI response would have
+ *     to be. A rejection (should never happen with today's trusted
+ *     generator, but the gate applies unconditionally) surfaces an inline
+ *     Turkish error and leaves 'select' fully usable -- nothing is written.
+ *  2. 'preview' -- the validated subtasks are shown for review, NOT yet
+ *     saved. The user must explicitly tap "Onayla ve Ekle" to proceed, or
+ *     "Vazgeç" to go back and pick a different duration. This is the step
+ *     that did not exist before.
+ *  3. 'done'    -- unchanged success screen, now showing the rows the
+ *     repository actually returned after the explicit confirm.
+ *
+ * Nothing reaches `insertSplitTasks` (the only DB write in this component)
+ * except from an explicit `handleConfirm()` tap on an already-validated
+ * proposal -- matching plan §13's rule for AI output in general, applied
+ * here even though today's proposal source is the deterministic local
+ * generator, not a live AI call (see `buildLocalSplitProposal`'s doc for
+ * why the gate still applies).
+ */
+
+type Phase = 'select' | 'preview' | 'done';
 
 export default function ADHDTaskSplitter({
   task,
@@ -32,41 +68,75 @@ export default function ADHDTaskSplitter({
   onClose,
   onSplit,
 }: ADHDTaskSplitterProps) {
-  const [loading, setLoading] = useState(false);
+  const [phase, setPhase] = useState<Phase>('select');
+  const [proposal, setProposal] = useState<SubtaskDecompositionProposal | null>(null);
+  const [proposalError, setProposalError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [subtasks, setSubtasks] = useState<Task[]>([]);
 
-  const handleSplit = async (minutes: number) => {
-    try {
-      setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  // Phase 1: 'AI' (today: the local decomposition service) proposes, this
+  // gate validates. Never writes anything -- see file doc.
+  const handlePick = (minutes: number) => {
+    const raw = buildLocalSplitProposal(task.title, minutes);
+    const result = validateSubtaskProposal(raw);
+    if (!result.ok) {
+      // Gate D: a rejected/garbage proposal degrades gracefully -- an
+      // inline Turkish message, 'select' stays fully usable, nothing about
+      // to be written.
+      setProposalError(
+        result.errors.map((e) => e.message).join(' '),
+      );
+      return;
+    }
+    setProposalError(null);
+    setProposal(result.proposal);
+    setPhase('preview');
+  };
 
-      const labels = SPLIT_LABELS[minutes] ?? ['Parça 1', 'Parça 2', 'Parça 3'];
-      const rows = labels.map((label, i) => ({
-        title: `${task.title} — ${label}`,
-        description: `${minutes} dk blok (${i + 1}/${labels.length})`,
-        status: 'pending' as const,
+  // Phase 2 -> 3: the ONLY path that reaches the database, and only after
+  // an explicit user tap on an already-validated proposal. Repository
+  // devralır: supabase.tasks tablosuna insert eder (bkz.
+  // repositories/taskRepository.ts) -- this component never queries the
+  // database directly itself (Rule 4).
+  const handleConfirm = async () => {
+    if (!proposal || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const rows = toSplitTaskInputs(proposal, {
         priority: task.priority,
         due_date: task.due_date ?? null,
         project_id: task.project_id ?? null,
         list_type: task.list_type,
-        completed: false,
-      }));
-
-      // Repository devralır: supabase.tasks tablosuna insert eder (bkz. repositories/taskRepository.ts).
+      });
       const res = await insertSplitTasks(rows);
-      if (!res.ok) throw new Error(res.error);
-
+      if (!res.ok) {
+        setSaveError(res.error);
+        return;
+      }
       setSubtasks(res.data);
       onSplit(res.data);
+      setPhase('done');
     } catch (error) {
       console.error('Görev bölünürken hata:', error);
+      setSaveError(error instanceof Error ? error.message : 'Görev bölünürken bir hata oluştu.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
+  const handleBackToSelect = () => {
+    setPhase('select');
+    setProposal(null);
+    setSaveError(null);
+  };
+
   const handleClose = () => {
+    setPhase('select');
+    setProposal(null);
+    setProposalError(null);
+    setSaveError(null);
     setSubtasks([]);
     onClose();
   };
@@ -101,14 +171,20 @@ export default function ADHDTaskSplitter({
             )}
           </View>
 
-          {subtasks.length === 0 ? (
+          {phase === 'select' && (
             <View style={styles.options}>
               <Text style={styles.optionsTitle}>Odaklanma süresi seçin:</Text>
 
+              {proposalError && (
+                <View style={styles.errorBox}>
+                  <Ionicons name="warning-outline" size={16} color="#C76A6A" />
+                  <Text style={styles.errorText}>{proposalError}</Text>
+                </View>
+              )}
+
               <TouchableOpacity
                 style={styles.optionButton}
-                onPress={() => handleSplit(15)}
-                disabled={loading}
+                onPress={() => handlePick(15)}
               >
                 <Ionicons name="timer-outline" size={24} color="#87A678" />
                 <View style={styles.optionText}>
@@ -119,8 +195,7 @@ export default function ADHDTaskSplitter({
 
               <TouchableOpacity
                 style={styles.optionButton}
-                onPress={() => handleSplit(25)}
-                disabled={loading}
+                onPress={() => handlePick(25)}
               >
                 <Ionicons name="time-outline" size={24} color="#D97757" />
                 <View style={styles.optionText}>
@@ -131,8 +206,7 @@ export default function ADHDTaskSplitter({
 
               <TouchableOpacity
                 style={styles.optionButton}
-                onPress={() => handleSplit(45)}
-                disabled={loading}
+                onPress={() => handlePick(45)}
               >
                 <Ionicons name="hourglass-outline" size={24} color="#8b5cf6" />
                 <View style={styles.optionText}>
@@ -140,12 +214,59 @@ export default function ADHDTaskSplitter({
                   <Text style={styles.optionSubtitle}>45 dakikalık bloklara böl</Text>
                 </View>
               </TouchableOpacity>
-
-              {loading && (
-                <ActivityIndicator size="large" color="#D97757" style={styles.loader} />
-              )}
             </View>
-          ) : (
+          )}
+
+          {phase === 'preview' && proposal && (
+            <View style={styles.subtasks}>
+              <Text style={styles.previewTitle}>Önizleme -- eklemeden önce gözden geçir</Text>
+              <ScrollView style={styles.subtasksList}>
+                {proposal.subtasks.map((subtask, index) => (
+                  <View key={`${subtask.title}-${index}`} style={styles.subtaskCard}>
+                    <View style={styles.subtaskNumber}>
+                      <Text style={styles.subtaskNumberText}>{index + 1}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.subtaskTitle}>{subtask.title}</Text>
+                      {subtask.description && (
+                        <Text style={styles.subtaskDescription}>{subtask.description}</Text>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+
+              {saveError && (
+                <View style={styles.errorBox}>
+                  <Ionicons name="warning-outline" size={16} color="#C76A6A" />
+                  <Text style={styles.errorText}>{saveError}</Text>
+                </View>
+              )}
+
+              <View style={styles.previewActions}>
+                <TouchableOpacity
+                  style={styles.backButton}
+                  onPress={handleBackToSelect}
+                  disabled={saving}
+                >
+                  <Text style={styles.backButtonText}>Vazgeç</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.confirmButton, saving && styles.confirmButtonDisabled]}
+                  onPress={handleConfirm}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.confirmButtonText}>Onayla ve Ekle</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {phase === 'done' && (
             <View style={styles.subtasks}>
               <Text style={styles.subtasksTitle}>Görev başarıyla bölündü! 🎯</Text>
               <ScrollView style={styles.subtasksList}>
@@ -254,11 +375,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#BFBBAE',
   },
-  loader: {
-    marginTop: 20,
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#C76A6A15',
+    borderColor: '#C76A6A30',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 4,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#C76A6A',
+    lineHeight: 18,
   },
   subtasks: {
     flex: 1,
+  },
+  previewTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#D4A84A',
+    marginBottom: 14,
+    textAlign: 'center',
   },
   subtasksTitle: {
     fontSize: 18,
@@ -298,6 +440,45 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#fff',
     flex: 1,
+  },
+  subtaskDescription: {
+    fontSize: 12,
+    color: '#827E72',
+    marginTop: 2,
+  },
+  previewActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  backButton: {
+    flex: 1,
+    backgroundColor: '#1D1C17',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#383528',
+  },
+  backButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#BFBBAE',
+  },
+  confirmButton: {
+    flex: 2,
+    backgroundColor: '#D97757',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  confirmButtonDisabled: {
+    opacity: 0.6,
+  },
+  confirmButtonText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   doneButton: {
     backgroundColor: '#D97757',
