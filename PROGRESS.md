@@ -537,3 +537,72 @@ as owed, **never under-states**.
 
 `jest` 463 → **467 / 35 suites**.
 
+### PHASE 1 — GATE (plan Rule 4: tsc + lint + test + build)
+
+| Requirement | Result | Evidence |
+|---|---|---|
+| `npx tsc --noEmit` | **PASS** | exit 0 |
+| `npx expo lint` | **PASS** | exit 0 — 0 errors (74 warnings, out of scope) |
+| test — jest | **PASS** | 467/467, 35 suites |
+| test — `run-tests.js` | **PASS** | 142/142 |
+| build — Android export | **PASS** | exit 0 |
+| build — iOS export | **PASS** | exit 0 |
+
+**PHASE 1 STATUS: `DONE` (2026-08-25)** — commits `ec87457`, `93615d1`, `99d9d3d`,
+`02c351d`, `32fbea1`.
+
+Rule 5 satisfied: no failing test. Rule 8 satisfied: Calendar + Monthly Review seasonal
+backgrounds, `GlassPanel` and transparent header all still asserted green by
+`seasonalRegression.test.ts` through a repository migration that touched
+`monthly-review.tsx` directly.
+
+#### What Phase 1 actually changed for a user
+
+The three engines the plan calls Atlas's differentiators went from "correct in isolation"
+to "reachable":
+
+| Plan §  | Before Phase 1 | After |
+|---|---|---|
+| §8.6 completion ratio | ad-hoc `baseXp * (value/target)` — **unclamped** (>100% XP) and **NaN-writing** | clamped, NaN-safe, via `habitEngine` |
+| §8.7 flexible schedule | a `3x/week` habit's Monday miss broke the streak | judged over the weekly window |
+| §9 recovery | no deficit concept in UI | real computed deficit, 10.000/8.000 → 2.000 |
+| §10 capacity | fixed `max 3 habit`; a 5th heavy habit activated at load 90 vs ceiling 85 | capacity ceiling actually refuses it |
+| Rule 4 | 16 direct DB calls inside screens | **0**, guarded by a multi-line-aware test |
+
+#### Gate B — status, stated honestly
+
+Gate B's journey (`Register → numeric habit → 10.000 → 8.000 → 80% → 2.000 recovery →
+complete → analytics`) is now **wired end to end in code**, but **cannot be executed and
+therefore cannot be certified**: Supabase project `kbcuolhjjnmhjaarxxmu` is `INACTIVE`
+(paused) and the Phase 1 migration is authored-but-unapplied. Every step is unit-proven
+against fixtures; none is proven against a live database.
+
+Per Rule 5, Gate B is **NOT** marked passed. It is marked *code-complete, live-verification
+blocked* — the block is an infrastructure decision belonging to the repo owner
+(restore the project, review and apply `20260825_phase1_core_engine.sql`), not a coding gap.
+
+---
+
+### PHASE 2 — INTELLIGENCE
+
+#### Coder G → Behavior Intelligence engine — DISPATCHED (sole writer)
+
+Gate C's bar is *exactness*: "Analytics values raw database samples ile karşılaştırılacaktır
+— Completion rate exact · Streak exact · Recovery rate exact · Capacity history exact. AI
+kullanılmadan doğru çalışmalıdır." So the brief requires each metric be **hand-computed in
+the test** and asserted for exact equality, not compared against whatever the implementation
+returns.
+
+Three correctness constraints imposed up front, each a place this kind of engine usually
+goes wrong:
+- **denominators are scheduled days, not calendar days** — a 3×/week habit must not be
+  scored against 7
+- **`skip` excluded from both numerator and denominator**, consistent with the rest of the codebase
+- **insufficient data returns an explicit signal, never a fabricated number** — following the
+  established `willpowerStore.score() → null` precedent ("a guess presented as a measurement
+  is a bug")
+- **fragility is volatility, not just a low rate** — a steady 60% habit is less fragile than
+  one oscillating 100/0, consistent with `capacity.masteryStatus`'s `stability_score`
+- **morning/evening**: `habit_logs.completed_at` is a **date string, not a timestamp**, so the
+  Coder is instructed to report an honest unsupported-signal rather than infer it
+
