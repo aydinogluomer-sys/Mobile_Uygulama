@@ -1058,3 +1058,51 @@ with the process while `pending sync` must outlive it. The queue must reconcile 
 `habit_logs` UNIQUE constraint — resolving a collision to an UPDATE — rather than trying to
 out-clever it in application code.
 
+### PHASE 3 — GATE (plan Rule 4 + Gate D)
+
+| Requirement | Result | Evidence |
+|---|---|---|
+| `npx tsc --noEmit` | **PASS** | exit 0 |
+| `npx expo lint` | **PASS** | exit 0, 0 errors |
+| jest | **PASS** | 780/780, 51 suites |
+| `run-tests.js` | **PASS** | 142/142 |
+| Android export | **PASS** | exit 0 |
+| iOS export | **PASS** | exit 0 |
+
+**§24 Phase 3 checklist — all seven items:**
+
+| Item | Status |
+|---|---|
+| Routine Library | **DONE** — 4 capacity-rated packs (plan rejects a large habit library) |
+| routine install | **DONE** — validate → evaluate → preview → confirm → repository write |
+| capacity-aware installation | **DONE** — over-ceiling habits queued, never force-activated |
+| AI routine builder | **DONE** — gated; real edge-fn output adapted, user completes capacity fields |
+| AI task splitter V2 | **DONE** — §15 architecture; found the feature was dead code with no AI in it |
+| AI weekly insights | **DONE** — deterministic digest, `{ok:false}` omitted not zeroed |
+| AI monthly insights | **DONE** — same |
+
+**Gate D — "AI olmadan uygulamanın bütün core işlevleri çalışmalıdır":**
+
+| Claim | Evidence |
+|---|---|
+| AI cannot write to the DB | Both new `lib/**` modules import no supabase/repository; 24-test `aiGateD` suite |
+| AI failure ≠ product failure | AI throwing / returning garbage → no write, no crash; `dailyLoad`, `canActivate`, `recoverySuccessRate` all proven working in the same run |
+| 8 classes of garbage AI output | none reaches a write spy |
+| Unvalidated AI output blocked | the pre-existing bare `supabase.from('habits').insert(...)` path is gone |
+
+**PHASE 3 STATUS: `DONE` (2026-08-25)** — commits `e3a9a33`, `2db2639`, `6b664bc`.
+
+**The most consequential thing Phase 3 fixed:** before it, AI JSON was inserted directly with
+`difficulty: 3, estimated_minutes: 0` hardcoded. Because `estimated_minutes: 0` makes
+`habitLoad` compute ~0, **the capacity engine was structurally blind to every AI-created
+habit** — a user could install AI routines without limit and the ceiling would never notice.
+That is now impossible: nothing reaches the DB without validation, capacity evaluation and
+explicit confirmation, and the two capacity-critical fields are never invented.
+
+**Open, requires repo-owner action (not a coding gap):**
+1. Restore paused Supabase project `kbcuolhjjnmhjaarxxmu`; review + apply
+   `supabase/migrations/20260825_phase1_core_engine.sql`. Blocks Gate B live verification.
+2. Edge-function fixes (deploy required): no server-side schema validation in
+   `generate-routine`; `message` truncated at 500 chars vs a ~586-char digest;
+   `mode:'summarize'` routed to the wrong branch; `context.analytics` never read.
+
