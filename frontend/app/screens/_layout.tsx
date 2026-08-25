@@ -39,7 +39,7 @@ export default function ScreensLayout() {
       <Stack.Screen name="journal-reader" options={{ title: 'Defter' }} />
       <Stack.Screen name="journal-insights" options={{ title: 'AI İçgörüleri' }} />
       <Stack.Screen name="weekly-review" options={{ title: 'Haftalık Rapor' }} />
-      <Stack.Screen name="monthly-review" options={{ title: 'Aylık Rapor' }} />
+      <Stack.Screen name="monthly-review" options={{ title: 'Aylık Rapor', ...seasonalHeader }} />
       <Stack.Screen name="reading-list" options={{ title: 'Okuma Listesi' }} />
       <Stack.Screen name="integrations" options={{ title: 'Entegrasyonlar' }} />
       <Stack.Screen name="eisenhower" options={{ title: 'Eisenhower Matrisi' }} />
