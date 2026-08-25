@@ -1,6 +1,17 @@
 import { create } from 'zustand';
 import { supabase, Habit } from '../lib/supabase';
 import { scheduleHabitReminder, cancelHabitReminder } from '../lib/notifications';
+// Static import (task Phase-1 CODER-F, W1). Was `await import('./willpowerStore')`
+// -- no circular dependency requires deferring it (willpowerStore.ts has no
+// import back on this file), and the dynamic form is unexecutable under this
+// repo's Jest config (`caller.name: 'metro'` in jest-expo's babel setup keeps
+// `import()` as a literal native dynamic import, which Node's Jest VM refuses
+// without `--experimental-vm-modules` -- not present here, and out of this
+// task's authority to add). Switching to a static import is behaviour-
+// preserving (same module, same singleton store) and is what makes
+// `activateHabit`'s W1 capacity wiring below provable by an executable test
+// instead of only a source-level one.
+import { useWillpowerStore } from './willpowerStore';
 
 type HabitInsert = Omit<Habit, 'id' | 'created_at' | 'user_id'>;
 
@@ -107,16 +118,25 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     set((state) => ({ habits: state.habits.filter((h) => h.id !== habit.id) }));
   },
 
+  // W1 (task Phase-1 CODER-F): passes the real capacity input (this habit +
+  // the currently active ones) into `canActivate` so the load-ceiling rule
+  // (Plan §10) gates activation here too, not just the legacy fixed-slot
+  // rule. `loading` gates it: while a fetch is in flight, `habits` may not
+  // yet reflect the true active set, and a half-populated `activeHabits`
+  // would UNDER-report load and wrongly permit an activation it shouldn't --
+  // so this falls back to the legacy single-argument call in that case,
+  // exactly as every other call site in this task does.
   activateHabit: async (id, willpowerCost) => {
-    const { useWillpowerStore } = await import('./willpowerStore');
     const wp = useWillpowerStore.getState();
-    if (!wp.canActivate(willpowerCost)) return;
+    const { habits, loading } = get();
+    const target = habits.find((h) => h.id === id);
+    const capacityInput = !loading && target ? { habit: target, activeHabits: habits.filter((h) => h.status === 'active') } : undefined;
+    if (!wp.canActivate(willpowerCost, capacityInput)) return;
     await get().updateHabit(id, { status: 'active' });
     await wp.spend(willpowerCost);
   },
 
   pauseHabit: async (id, willpowerCost) => {
-    const { useWillpowerStore } = await import('./willpowerStore');
     await get().updateHabit(id, { status: 'waiting' });
     await useWillpowerStore.getState().refund(willpowerCost);
   },

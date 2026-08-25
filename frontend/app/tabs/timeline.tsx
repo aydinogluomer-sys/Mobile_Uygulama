@@ -24,6 +24,7 @@ import MeasurableInputModal from '../../components/MeasurableInputModal';
 import HabitOnboarding from '../../components/HabitOnboarding';
 import type { Habit } from '../../lib/supabase';
 import { computeTriage, triageToStatus, impactMeta, TRIAGE_META, cueLabel } from '../../lib/triage';
+import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS } from '../../lib/capacity';
 import { syncAllReminders } from '../../lib/notifications';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
@@ -54,9 +55,16 @@ export default function TimelineScreen() {
   // Kapasite yöneticisi
   const [capacityTarget, setCapacityTarget] = useState<Omit<Habit, 'id' | 'created_at' | 'user_id'> | null>(null);
 
-  const { habits, fetchHabits, addHabit, activateHabit, pauseHabit, updateHabit, removeHabit, restoreHabit, purgeHabit } = useHabitStore();
+  const { habits, loading: habitsLoading, fetchHabits, addHabit, activateHabit, pauseHabit, updateHabit, removeHabit, restoreHabit, purgeHabit } = useHabitStore();
   const { fetchLogsForDate, logHabit, getLogForHabit, getRemainingValue } = useLogStore();
   const { state: wp, fetchToday, canActivate, spend, refund } = useWillpowerStore();
+
+  // W1 (task Phase-1 CODER-F, Plan §10): şu an aktif alışkanlıkların yükü --
+  // canActivate'e gerçek kapasite verisi geçmek için kullanılır. `habitsLoading`
+  // sırasında `habits` henüz tam olmayabilir; o durumda çağrı siteleri eski
+  // (legacy) tek-parametreli forma düşer -- yarım bir activeHabits listesi
+  // yükü OLDUĞUNDAN AZ gösterip aktivasyona yanlışlıkla izin verebilirdi.
+  const activeHabits = habits.filter((h) => h.status === 'active');
 
   const loadData = useCallback(async () => {
     await Promise.all([fetchHabits(), fetchLogsForDate(selectedDate), fetchToday()]);
@@ -108,12 +116,12 @@ export default function TimelineScreen() {
     setShowOnboarding(false);
     const triage = computeTriage(habitData.impact_level, habitData.urgency);
 
-    if (triage === 'do_now' && !canActivate(habitData.willpower_cost)) {
+    if (triage === 'do_now' && !canActivate(habitData.willpower_cost, habitsLoading ? undefined : { habit: habitData, activeHabits })) {
       setCapacityTarget(habitData);
       return;
     }
 
-    const finalStatus = triageToStatus(triage, canActivate(habitData.willpower_cost));
+    const finalStatus = triageToStatus(triage, canActivate(habitData.willpower_cost, habitsLoading ? undefined : { habit: habitData, activeHabits }));
     const result = await addHabit({ ...habitData, status: finalStatus });
     if (!result) return;
 
@@ -152,7 +160,7 @@ export default function TimelineScreen() {
 
   // ── Oda aksiyonları ──
   const handleActivate = async (habit: Habit) => {
-    if (!canActivate(habit.willpower_cost)) {
+    if (!canActivate(habit.willpower_cost, habitsLoading ? undefined : { habit, activeHabits })) {
       haptic.warning();
       Alert.alert('Kapasite Dolu', `${habit.willpower_cost} irade gerekiyor; bütçen yetmiyor veya slot dolu.`, [{ text: 'Tamam' }]);
       return;
@@ -391,7 +399,6 @@ export default function TimelineScreen() {
     );
   }
 
-  const activeHabits = habits.filter((h) => h.status === 'active');
   const waitingHabits = habits.filter((h) => h.status === 'waiting');
   const ideaHabits = habits.filter((h) => h.status === 'idea');
   const completedHabits = habits.filter((h) => h.status === 'completed');
@@ -566,6 +573,24 @@ export default function TimelineScreen() {
                 <View style={styles.capStat}><Text style={[styles.capStatVal, { color: '#f59e0b' }]}>{capacityTarget.willpower_cost}</Text><Text style={styles.capStatLabel}>Gereken</Text></View>
               </View>
             )}
+
+            {/* W2 (Plan §10) — "74 + 18 → 92" şeklindeki kapasite tahmini.
+                v1 sezgisel gösterge; hassas bir ölçüm iddiası değildir. */}
+            {capacityTarget && !habitsLoading && (() => {
+              const currentLoad = dailyLoad({ habits: activeHabits }).normalised;
+              const advice = capacityAdvice({ currentLoad, incomingHabit: capacityTarget });
+              const bandLabel = LOAD_BANDS.find((b) => b.key === bandFor(advice.projected))?.label ?? '';
+              return (
+                <View style={styles.capAdviceBox}>
+                  <Text style={styles.capAdviceFormula}>
+                    Kapasite (v1 tahmini) · {currentLoad} + {Math.round(advice.incomingPoints)} → {advice.projected}
+                    {bandLabel ? ` · ${bandLabel}` : ''}
+                  </Text>
+                  <Text style={styles.capAdviceMsg}>{advice.message}</Text>
+                </View>
+              );
+            })()}
+
             <Text style={styles.capListTitle}>AKTİF ALIŞKANLIKLAR — beklemeye al</Text>
             <ScrollView style={styles.capList}>
               {activeHabits.length === 0 ? (
@@ -594,13 +619,13 @@ export default function TimelineScreen() {
               </TouchableOpacity>
             </View>
             <TouchableOpacity
-              style={[styles.capActivateBtn, !(capacityTarget && canActivate(capacityTarget.willpower_cost)) && styles.capActivateDisabled]}
+              style={[styles.capActivateBtn, !(capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits })) && styles.capActivateDisabled]}
               onPress={handleActivatePending}
-              disabled={!(capacityTarget && canActivate(capacityTarget.willpower_cost))}
+              disabled={!(capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits }))}
             >
               <Ionicons name="flash" size={16} color="#fff" />
               <Text style={styles.capActivateText}>
-                {capacityTarget && canActivate(capacityTarget.willpower_cost) ? 'Aktif Olarak Ekle' : 'Yer açınca aktifleşir'}
+                {capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits }) ? 'Aktif Olarak Ekle' : 'Yer açınca aktifleşir'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -761,6 +786,12 @@ const styles = StyleSheet.create({
   capStat: { flex: 1, backgroundColor: '#0f0f0f', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#2a2a2a' },
   capStatVal: { fontSize: 20, fontWeight: '800', color: '#fff' },
   capStatLabel: { fontSize: 11, color: '#6b7280', marginTop: 2 },
+  capAdviceBox: {
+    backgroundColor: '#0f0f0f', borderRadius: 12, padding: 12, marginBottom: 14,
+    borderWidth: 1, borderColor: '#2a2a2a',
+  },
+  capAdviceFormula: { fontSize: 13, fontWeight: '700', color: '#f59e0b', marginBottom: 4 },
+  capAdviceMsg: { fontSize: 12, color: '#9ca3af', lineHeight: 16 },
   capListTitle: { fontSize: 11, fontWeight: '700', color: '#6b7280', letterSpacing: 1, marginBottom: 10 },
   capList: { maxHeight: 240 },
   capEmpty: { fontSize: 13, color: '#6b7280', textAlign: 'center', paddingVertical: 16 },

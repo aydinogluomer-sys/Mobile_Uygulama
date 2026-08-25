@@ -12,6 +12,7 @@ import { useTaskStore } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import { useRecoveryStore } from '../../store/recoveryStore';
+import { deficitFor, type TrackingTypeV2 } from '../../lib/recovery';
 import { isDueOn } from '../../lib/habitSchedule';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
@@ -44,7 +45,7 @@ export default function RecoveryScreen() {
   const { tasks, fetchTasks, toggleDone, moveToList } = useTaskStore();
   const { habits, fetchHabits } = useHabitStore();
   const { fetchLogsForDate, getLogForHabit, logHabit } = useLogStore();
-  const { plans, fetchPlans, addPlan, completePlan, skipPlan, deletePlan, planForHabit } = useRecoveryStore();
+  const { plans, fetchPlans, addPlan, completePlan, skipPlan, deletePlan, planForHabit, recoveryOptionsFor } = useRecoveryStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [streaks, setStreaks] = useState<StreakMap>({});
@@ -201,6 +202,37 @@ export default function RecoveryScreen() {
   }
 
   const targetDate = format(addDays(new Date(), whenOffset), 'yyyy-MM-dd');
+
+  // W3 (task Phase-1 CODER-F, Plan §9) — planlama sheet'inin hedef alışkanlığı
+  // için GERÇEK açık. Yalnızca GÖSTERİM amaçlı: `addPlan` hâlâ yalnızca
+  // bugünün gerçek `recovery_plans` sütunlarını yazıyor (bkz. addPlan/
+  // recoveryOptionsFor'un store'daki belgeleri) -- açık burada asla
+  // kalıcılaştırılmıyor.
+  //
+  // `value` her zaman `null` geçilir: `fetchHabitLogsForHabitsSince`
+  // (repositories/habitLogRepository.ts) yalnızca `habit_id, completed_at,
+  // state` seçiyor, `value` sütununu getirmiyor -- bu repository dosyası bu
+  // görevin kapsamı dışında (değiştirilemez). Sonuç: ölçülebilir bir
+  // alışkanlıkta 'kısmi' bir gün için gerçek değer bilinmediğinden hedefin
+  // TAMAMI açık kabul edilir -- gerçek açığı OLDUĞUNDAN AZ göstermek yerine
+  // (yanlışlıkla "az kaldı" dedirtmek) kasıtlı olarak muhafazakâr bir
+  // yaklaşım; 'kaçırıldı' günler için zaten doğru sonucu verir.
+  const planTrackingType: TrackingTypeV2 = planTarget?.tracking_type === 'numeric' ? 'numeric' : 'boolean';
+  const planLogKey = planTarget ? `${planTarget.id}|${planSource}` : '';
+  const planState: 'done' | 'partial' | 'miss' =
+    doneSet.has(planLogKey) ? 'done' : partialSet.has(planLogKey) ? 'partial' : 'miss';
+  const planDeficit = planTarget
+    ? deficitFor({ trackingType: planTrackingType, target: planTarget.daily_goal, value: null, state: planState })
+    : null;
+  const planOptions = planTarget
+    ? recoveryOptionsFor({
+        trackingType: planTrackingType,
+        target: planTarget.daily_goal,
+        value: null,
+        state: planState,
+        fromDate: planSource || today,
+      })
+    : [];
 
   async function submitPlan() {
     if (!planTarget) return;
@@ -427,6 +459,28 @@ export default function RecoveryScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* W3 (Plan §9) — gerçek hesaplanmış açık + recoveryOptionsFor'un
+                önerdiği 4 seçenek. Salt bilgi amaçlı; seçim hâlâ aşağıdaki
+                NASIL ızgarasından (STRATEGY_META) yapılır. v1 sezgisel
+                gösterge; hassas bir ölçüm iddiası değildir. */}
+            {planDeficit && (
+              <View style={s.deficitBox}>
+                <Text style={s.deficitLabel}>
+                  TELAFİ —{' '}
+                  {planDeficit.type === 'numeric'
+                    ? planDeficit.value > 0
+                      ? `${planDeficit.value.toLocaleString('tr-TR')}${planTarget?.unit ? ` ${planTarget.unit}` : ''} kaldı`
+                      : 'hedef tamamlandı'
+                    : planDeficit.value > 0 ? 'bu gün kaldı' : 'kaçırılan yok'}
+                </Text>
+                {planOptions.length > 0 && (
+                  <Text style={s.deficitHint}>
+                    Öneri: {planOptions.map((o) => o.label).join(' · ')}
+                  </Text>
+                )}
+              </View>
+            )}
+
             <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
               {/* NE ZAMAN */}
               <Text style={s.fieldLabel}>NE ZAMAN</Text>
@@ -570,6 +624,12 @@ const s = StyleSheet.create({
   sheetHead: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: space.lg },
   sheetTitle: { ...font.h2, color: colors.text },
   sheetHabit: { ...font.bodySm, color: colors.textFaint, marginTop: 2 },
+  deficitBox: {
+    backgroundColor: hexA(colors.warning, 0.1), borderRadius: radius.md, padding: space.md,
+    borderWidth: 1, borderColor: hexA(colors.warning, 0.3), marginBottom: space.lg,
+  },
+  deficitLabel: { ...font.body, color: colors.warning, fontWeight: '700' },
+  deficitHint: { ...font.bodySm, color: colors.textDim, marginTop: 4, lineHeight: 17 },
   fieldLabel: { ...font.overline, color: colors.textFaint, marginBottom: space.sm },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginBottom: space.md },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: colors.bgElevated, borderRadius: radius.md, padding: space.sm, borderWidth: 1, borderColor: colors.border },

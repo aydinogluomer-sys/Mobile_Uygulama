@@ -75,6 +75,13 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
   const [form, setForm] = useState<HabitFormData>(DEFAULT_FORM);
   const [cueMode, setCueMode] = useState<'none' | 'habit' | 'note'>('none');
   const existingHabits = useHabitStore((s) => s.habits);
+  const existingHabitsLoading = useHabitStore((s) => s.loading);
+  // W1 (task Phase-1 CODER-F, Plan §10): şu an aktif alışkanlıkların yükü --
+  // canActivate'e gerçek kapasite verisi geçmek için kullanılır. Yükleme
+  // sürerken (existingHabitsLoading) yarım bir liste yükü OLDUĞUNDAN AZ
+  // gösterip aktivasyona yanlışlıkla izin verebileceğinden, eski (legacy)
+  // tek-parametreli çağrıya düşülür.
+  const activeHabits = existingHabits.filter((h) => h.status === 'active');
 
   function reset() {
     setStep(1);
@@ -98,7 +105,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
   // bayatlık kontrolünü atlıyordu (bulgu N-07).
   const canActivate = useWillpowerStore((s) => s.canActivate);
   const score = useWillpowerStore((s) => s.score);
-  const canActivateNow = canActivate(form.willpower_cost);
+  const canActivateNow = canActivate(form.willpower_cost, existingHabitsLoading ? undefined : { habit: form, activeHabits });
   const plannedTriage = computeTriage(form.impact_level, form.urgency);
   const plannedStatus = triageToStatus(plannedTriage, canActivateNow); // 'active'|'waiting'|'idea'
   const DEST = {

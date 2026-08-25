@@ -21,6 +21,7 @@ import HabitOnboarding from '../../components/HabitOnboarding';
 import AIRoutineModal from '../../components/AIRoutineModal';
 import type { Habit } from '../../lib/supabase';
 import { computeTriage, triageToStatus, impactMeta, TRIAGE_META, cueLabel } from '../../lib/triage';
+import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS } from '../../lib/capacity';
 
 export default function HabitsScreen() {
   const { habits, loading, fetchHabits, addHabit, activateHabit, pauseHabit, updateHabit, removeHabit, restoreHabit, purgeHabit } = useHabitStore();
@@ -39,6 +40,13 @@ export default function HabitsScreen() {
   // Kapasite yöneticisi — limit aşımında eklemeyi bekleten taslak
   const [capacityTarget, setCapacityTarget] = useState<Omit<Habit, 'id' | 'created_at' | 'user_id'> | null>(null);
 
+  // W1 (task Phase-1 CODER-F, Plan §10): şu an aktif alışkanlıkların yükü --
+  // canActivate'e gerçek kapasite verisi geçmek için kullanılır. `loading`
+  // sırasında `habits` henüz tam olmayabilir; o durumda çağrı siteleri eski
+  // (legacy) tek-parametreli forma düşer -- yarım bir activeHabits listesi
+  // yükü OLDUĞUNDAN AZ gösterip aktivasyona yanlışlıkla izin verebilirdi.
+  const activeHabits = habits.filter((h) => h.status === 'active');
+
   useEffect(() => {
     fetchHabits();
     fetchToday();
@@ -56,12 +64,12 @@ export default function HabitsScreen() {
     const triage = computeTriage(habitData.impact_level, habitData.urgency);
 
     // do_now hedefli ama irade limiti yetmiyor → kapasite yöneticisini aç (henüz ekleme)
-    if (triage === 'do_now' && !canActivate(habitData.willpower_cost)) {
+    if (triage === 'do_now' && !canActivate(habitData.willpower_cost, loading ? undefined : { habit: habitData, activeHabits })) {
       setCapacityTarget(habitData);
       return;
     }
 
-    const finalStatus = triageToStatus(triage, canActivate(habitData.willpower_cost));
+    const finalStatus = triageToStatus(triage, canActivate(habitData.willpower_cost, loading ? undefined : { habit: habitData, activeHabits }));
     const result = await addHabit({ ...habitData, status: finalStatus });
     if (!result) return;
 
@@ -161,7 +169,7 @@ export default function HabitsScreen() {
   };
 
   const handleActivate = async (habit: Habit) => {
-    if (!canActivate(habit.willpower_cost)) {
+    if (!canActivate(habit.willpower_cost, loading ? undefined : { habit, activeHabits })) {
       Alert.alert(
         'Kapasite Dolu',
         `Bu alışkanlığı aktifleştirmek ${habit.willpower_cost} irade puanı gerektirir. Mevcut bütçeniz yetmiyor veya kapasite doldu.`,
@@ -302,7 +310,6 @@ export default function HabitsScreen() {
     );
   }
 
-  const activeHabits = habits.filter((h) => h.status === 'active');
   const waitingHabits = habits.filter((h) => h.status === 'waiting');
   const ideaHabits = habits.filter((h) => h.status === 'idea');
   const completedHabits = habits.filter((h) => h.status === 'completed');
@@ -523,6 +530,23 @@ export default function HabitsScreen() {
               </View>
             )}
 
+            {/* W2 (Plan §10) — "74 + 18 → 92" şeklindeki kapasite tahmini.
+                v1 sezgisel gösterge; hassas bir ölçüm iddiası değildir. */}
+            {capacityTarget && !loading && (() => {
+              const currentLoad = dailyLoad({ habits: activeHabits }).normalised;
+              const advice = capacityAdvice({ currentLoad, incomingHabit: capacityTarget });
+              const bandLabel = LOAD_BANDS.find((b) => b.key === bandFor(advice.projected))?.label ?? '';
+              return (
+                <View style={styles.capAdviceBox}>
+                  <Text style={styles.capAdviceFormula}>
+                    Kapasite (v1 tahmini) · {currentLoad} + {Math.round(advice.incomingPoints)} → {advice.projected}
+                    {bandLabel ? ` · ${bandLabel}` : ''}
+                  </Text>
+                  <Text style={styles.capAdviceMsg}>{advice.message}</Text>
+                </View>
+              );
+            })()}
+
             <Text style={styles.capListTitle}>AKTİF ALIŞKANLIKLAR — beklemeye al</Text>
             <ScrollView style={styles.capList}>
               {activeHabits.length === 0 ? (
@@ -557,13 +581,13 @@ export default function HabitsScreen() {
               </TouchableOpacity>
             </View>
             <TouchableOpacity
-              style={[styles.capActivateBtn, !(capacityTarget && canActivate(capacityTarget.willpower_cost)) && styles.capActivateDisabled]}
+              style={[styles.capActivateBtn, !(capacityTarget && canActivate(capacityTarget.willpower_cost, loading ? undefined : { habit: capacityTarget, activeHabits })) && styles.capActivateDisabled]}
               onPress={handleActivatePending}
-              disabled={!(capacityTarget && canActivate(capacityTarget.willpower_cost))}
+              disabled={!(capacityTarget && canActivate(capacityTarget.willpower_cost, loading ? undefined : { habit: capacityTarget, activeHabits }))}
             >
               <Ionicons name="flash" size={16} color="#fff" />
               <Text style={styles.capActivateText}>
-                {capacityTarget && canActivate(capacityTarget.willpower_cost)
+                {capacityTarget && canActivate(capacityTarget.willpower_cost, loading ? undefined : { habit: capacityTarget, activeHabits })
                   ? 'Aktif Olarak Ekle'
                   : 'Yer açınca aktifleşir'}
               </Text>
@@ -755,6 +779,12 @@ const styles = StyleSheet.create({
   },
   capStatVal: { fontSize: 20, fontWeight: '800', color: '#fff' },
   capStatLabel: { fontSize: 11, color: '#827E72', marginTop: 2 },
+  capAdviceBox: {
+    backgroundColor: '#1D1C17', borderRadius: 12, padding: 12, marginBottom: 14,
+    borderWidth: 1, borderColor: '#383528',
+  },
+  capAdviceFormula: { fontSize: 13, fontWeight: '700', color: '#D4A84A', marginBottom: 4 },
+  capAdviceMsg: { fontSize: 12, color: '#BFBBAE', lineHeight: 16 },
   capListTitle: { fontSize: 11, fontWeight: '700', color: '#827E72', letterSpacing: 1, marginBottom: 10 },
   capList: { maxHeight: 240 },
   capEmpty: { fontSize: 13, color: '#827E72', textAlign: 'center', paddingVertical: 16 },
