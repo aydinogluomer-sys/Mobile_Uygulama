@@ -15,7 +15,7 @@ import { currentUserId, RepoResult } from './shared';
 export type ReviewLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
 export type HeatmapLogRow = Pick<HabitLog, 'completed_at' | 'state'>;
 export type HabitIdLogRow = { habit_id: string | null };
-export type StreakLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>;
+export type StreakLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
 
 /**
  * `habit_id, completed_at, state, value` for a date range -- source for
@@ -91,7 +91,10 @@ export async function fetchHabitLogsForHabitsSince(params: {
   if (!u.ok) return u;
   const { data, error } = await supabase
     .from('habit_logs')
-    .select('habit_id, completed_at, state')
+    // `value` is required, not cosmetic: without it `recovery.deficitFor` has
+    // nothing to subtract on a `partial` day and reports the FULL target as
+    // owed -- 10.000 instead of plan §9's 2.000.
+    .select('habit_id, completed_at, state, value')
     .eq('user_id', u.userId)
     .in('habit_id', params.habitIds)
     .gte('completed_at', params.since)

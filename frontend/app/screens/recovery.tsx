@@ -52,6 +52,9 @@ export default function RecoveryScreen() {
   // Geçmiş günlerde tamamlanmış/kısmi günler — "habitId|yyyy-mm-dd" anahtarlı
   const [doneSet, setDoneSet] = useState<Set<string>>(new Set());
   const [partialSet, setPartialSet] = useState<Set<string>>(new Set());
+  // Kısmi günün GERÇEK değeri — "habitId|yyyy-mm-dd" -> value. Plan §9'un
+  // başlığı (10.000 hedef / 8.000 fiili -> 2.000 eksik) bu olmadan çalışmaz.
+  const [valueMap, setValueMap] = useState<Record<string, number>>({});
   const [loggingId, setLoggingId] = useState<string | null>(null);
 
   // Planlama sheet'i
@@ -145,13 +148,16 @@ export default function RecoveryScreen() {
     // Geçmiş gün set'leri — kaçırma/kısmi tespiti backlog için bunları kullanır
     const done = new Set<string>();
     const partial = new Set<string>();
+    const vals: Record<string, number> = {};
     for (const l of data) {
       const k = `${l.habit_id}|${l.completed_at}`;
       if (l.state === 'partial') partial.add(k);
       else done.add(k);
+      if (typeof l.value === 'number') vals[k] = l.value;
     }
     setDoneSet(done);
     setPartialSet(partial);
+    setValueMap(vals);
   }, []);
 
   const load = useCallback(async () => {
@@ -209,26 +215,27 @@ export default function RecoveryScreen() {
   // recoveryOptionsFor'un store'daki belgeleri) -- açık burada asla
   // kalıcılaştırılmıyor.
   //
-  // `value` her zaman `null` geçilir: `fetchHabitLogsForHabitsSince`
-  // (repositories/habitLogRepository.ts) yalnızca `habit_id, completed_at,
-  // state` seçiyor, `value` sütununu getirmiyor -- bu repository dosyası bu
-  // görevin kapsamı dışında (değiştirilemez). Sonuç: ölçülebilir bir
-  // alışkanlıkta 'kısmi' bir gün için gerçek değer bilinmediğinden hedefin
-  // TAMAMI açık kabul edilir -- gerçek açığı OLDUĞUNDAN AZ göstermek yerine
-  // (yanlışlıkla "az kaldı" dedirtmek) kasıtlı olarak muhafazakâr bir
-  // yaklaşım; 'kaçırıldı' günler için zaten doğru sonucu verir.
+  // `value` artık GERÇEK okunuyor: `fetchHabitLogsForHabitsSince` `value`
+  // sütununu da seçiyor, bu yüzden ölçülebilir bir alışkanlıkta 'kısmi' bir
+  // gün için planın §9 başlığı doğru çalışıyor: 10.000 hedef / 8.000 fiili
+  // -> 2.000 eksik. Değer yoksa (binary alışkanlık, ya da kayıtta `value`
+  // null) `null` geçilir ve `deficitFor` kendi belgelenmiş muhafazakâr
+  // davranışına düşer -- hedefin tamamını açık sayar, ASLA olduğundan az
+  // göstermez.
   const planTrackingType: TrackingTypeV2 = planTarget?.tracking_type === 'numeric' ? 'numeric' : 'boolean';
   const planLogKey = planTarget ? `${planTarget.id}|${planSource}` : '';
   const planState: 'done' | 'partial' | 'miss' =
     doneSet.has(planLogKey) ? 'done' : partialSet.has(planLogKey) ? 'partial' : 'miss';
+  const planLoggedValue: number | null =
+    planLogKey && Object.prototype.hasOwnProperty.call(valueMap, planLogKey) ? valueMap[planLogKey] : null;
   const planDeficit = planTarget
-    ? deficitFor({ trackingType: planTrackingType, target: planTarget.daily_goal, value: null, state: planState })
+    ? deficitFor({ trackingType: planTrackingType, target: planTarget.daily_goal, value: planLoggedValue, state: planState })
     : null;
   const planOptions = planTarget
     ? recoveryOptionsFor({
         trackingType: planTrackingType,
         target: planTarget.daily_goal,
-        value: null,
+        value: planLoggedValue,
         state: planState,
         fromDate: planSource || today,
       })
