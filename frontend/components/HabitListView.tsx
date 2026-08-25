@@ -134,7 +134,7 @@ export default function HabitListView() {
         key={habit.id}
         style={s.row}
         activeOpacity={0.75}
-        onPress={() => { haptic.light(); router.push('/tabs/habits'); }}
+        onPress={() => { haptic.light(); router.push({ pathname: '/screens/habit-detail', params: { id: habit.id } } as any); }}
       >
         <View style={[s.accent, { backgroundColor: accent }]} />
         <IconCircle icon={(habit.icon ?? 'star-outline') as any} color={habit.color ?? accent} size={40} radiusKey="sm" />

@@ -16,6 +16,7 @@ export type ReviewLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' 
 export type HeatmapLogRow = Pick<HabitLog, 'completed_at' | 'state'>;
 export type HabitIdLogRow = { habit_id: string | null };
 export type StreakLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
+export type HabitDetailLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
 
 /**
  * `habit_id, completed_at, state, value` for a date range -- source for
@@ -102,4 +103,39 @@ export async function fetchHabitLogsForHabitsSince(params: {
     .order('completed_at', { ascending: false });
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as StreakLogRow[] };
+}
+
+/**
+ * `habit_id, completed_at, state, value` for ONE habit over a date range, in
+ * ALL FOUR states -- source for `app/screens/habit-detail.tsx` (plan §11,
+ * Phase 2 CODER-H). Added rather than reused because no existing shape here
+ * matches: `fetchHabitLogsForReview` returns every habit in the range (this
+ * screen wants exactly one, to avoid transferring the whole user's log
+ * volume for a single-habit view), and `fetchHabitLogsForHabitsSince`
+ * restricts to `done`/`partial` only (recovery's own need), which would
+ * silently hide `miss`/`skip` days from the Habit Detail calendar and from
+ * `lib/behaviorIntelligence.ts`'s streak/fragility/trend math -- both of
+ * which read `miss` and `skip` as meaningful, distinct states (see that
+ * file's doc). Ascending order (oldest first) matches how the screen walks
+ * the range forward to build its calendar/history views, the opposite of
+ * `fetchHabitLogsForHabitsSince`'s newest-first order for its own reason.
+ */
+export async function fetchHabitLogsForHabit(params: {
+  habitId: string;
+  start: string;
+  end: string;
+}): Promise<RepoResult<HabitDetailLogRow[]>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('habit_logs')
+    .select('habit_id, completed_at, state, value')
+    .eq('user_id', u.userId)
+    .eq('habit_id', params.habitId)
+    .gte('completed_at', params.start)
+    .lte('completed_at', `${params.end}T23:59:59`)
+    .in('state', ['done', 'partial', 'miss', 'skip'])
+    .order('completed_at', { ascending: true });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as HabitDetailLogRow[] };
 }
