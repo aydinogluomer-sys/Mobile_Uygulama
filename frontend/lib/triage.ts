@@ -2,6 +2,7 @@
 // HabitOnboarding ve habits.tsx tarafından paylaşılan tek kaynak.
 
 import type { Habit, EndCondition } from './supabase';
+import { isMeasurableTracking } from './habitEngine';
 
 export type ImpactLevel = 'critical' | 'high' | 'medium' | 'low';
 export type Urgency = 'urgent' | 'not_urgent';
@@ -127,7 +128,7 @@ export type CostInput = {
   difficulty: number;
   impact_level: ImpactLevel | null;
   behavior_type: 'positive' | 'negative';
-  tracking_type: 'boolean' | 'numeric';
+  tracking_type: Habit['tracking_type'];
   frequency_config: { kind: 'daily' | 'weekly' | 'monthly' };
   estimated_minutes?: number;
 };
@@ -143,7 +144,9 @@ export function costBreakdown(input: CostInput) {
   const base = diff * freqFactor;
   const behaviorBonus = input.behavior_type === 'negative' ? 1.5 : 0;
   const impactBonus = input.impact_level ? IMPACT_BONUS[input.impact_level] : 0;
-  const trackingBonus = input.tracking_type === 'numeric' ? 0.5 : 0;
+  // Ölçülebilir olmak (sayısal ya da süreli) ek bir irade maliyeti getirir:
+  // sadece işaretlemek yerine bir değer okuyup girmek gerekir.
+  const trackingBonus = isMeasurableTracking(input.tracking_type) ? 0.5 : 0;
   const mins = input.estimated_minutes ?? 0;
   const timeBonus = Math.min(2, Math.floor(mins / 30) * 0.5);
   const raw = base + behaviorBonus + impactBonus + trackingBonus + timeBonus;

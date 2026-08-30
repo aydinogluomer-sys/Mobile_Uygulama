@@ -19,6 +19,7 @@ import { haptic } from '../../lib/haptics';
 import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton } from '../../components/ui';
 import { todayLocal } from '../../lib/date';
 import { fetchHabitLogsForHabitsSince } from '../../repositories/habitLogRepository';
+import { isMeasurableTracking } from '../../lib/habitEngine';
 
 // Telafi gününü hesaplayan hızlı seçenekler (date-picker dep yok)
 function nextSaturdayOffset(): number {
@@ -222,7 +223,11 @@ export default function RecoveryScreen() {
   // null) `null` geçilir ve `deficitFor` kendi belgelenmiş muhafazakâr
   // davranışına düşer -- hedefin tamamını açık sayar, ASLA olduğundan az
   // göstermez.
-  const planTrackingType: TrackingTypeV2 = planTarget?.tracking_type === 'numeric' ? 'numeric' : 'boolean';
+  // `TrackingTypeV2` artık `Habit['tracking_type']` ile birebir aynı; eskiden
+  // buradaki üçlü koşul 'numeric' dışındaki HER ŞEYİ 'boolean'a düşürüyordu,
+  // yani süreli bir alışkanlığın eksiği "20 dakika kaldı" yerine "tamamen
+  // kaçırıldı" diye hesaplanıyordu. Eşleme kimlik olduğu için kaldırıldı.
+  const planTrackingType: TrackingTypeV2 = planTarget?.tracking_type ?? 'boolean';
   const planLogKey = planTarget ? `${planTarget.id}|${planSource}` : '';
   const planState: 'done' | 'partial' | 'miss' =
     doneSet.has(planLogKey) ? 'done' : partialSet.has(planLogKey) ? 'partial' : 'miss';
@@ -264,7 +269,7 @@ export default function RecoveryScreen() {
     const [y, mo, d] = plan.target_date.split('-').map(Number);
     const logDate = new Date(y, mo - 1, d);
     const state = (plan.strategy === 'half' || plan.strategy === 'mini') ? 'partial' : 'done';
-    const value = state === 'partial' && h?.tracking_type === 'numeric' && h.daily_goal
+    const value = state === 'partial' && h && isMeasurableTracking(h.tracking_type) && h.daily_goal
       ? Math.max(1, Math.round(h.daily_goal * (plan.strategy === 'half' ? 0.5 : 0.25)))
       : undefined;
     const res = await logHabit({ habitId: plan.habit_id, date: logDate, state, value, targetValue: h?.daily_goal ?? undefined });

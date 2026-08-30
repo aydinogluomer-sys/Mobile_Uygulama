@@ -38,7 +38,7 @@ import { Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, 
 import { haptic } from '../../lib/haptics';
 import { addDaysLocal, parseLocalDate, ymd, ymdFromIso, type Ymd } from '../../lib/date';
 import { isDueOn } from '../../lib/habitSchedule';
-import { completionPercent } from '../../lib/habitEngine';
+import { completionPercent, isMeasurableTracking } from '../../lib/habitEngine';
 import { habitStrength, type StrengthLog } from '../../lib/habitStrength';
 import {
   habitCompletionRate,
@@ -348,7 +348,7 @@ export default function HabitDetailScreen() {
   const rangeStart = rangeStartFor(selectedRange.days, sinceYmd, today);
   const rangeCompletion: Result<number> = habitCompletionRate(habit, logs, { start: rangeStart, end: todayYmd });
   const stripDays = daysInRangeCapped(rangeStart, todayYmd, MAX_STRIP_DAYS);
-  const isNumeric = habit.tracking_type === 'numeric';
+  const isNumeric = isMeasurableTracking(habit.tracking_type);
 
   const weekdayStats = weekdayBreakdown([habit], logs, { start: sinceYmd, end: todayYmd });
   const bestDay = bestWeekday(weekdayStats);

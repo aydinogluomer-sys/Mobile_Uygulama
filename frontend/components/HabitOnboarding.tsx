@@ -17,6 +17,7 @@ import {
   computeWillpowerCost, costBreakdown, difficultyMeta, endConditionLabel, cueLabel,
   type ImpactLevel, type Urgency,
 } from '../lib/triage';
+import { DURATION_UNIT } from '../lib/habitEngine';
 import { useHabitStore } from '../store/habitStore';
 import { LIFE_AREAS } from '../store/lifeAreasStore';
 import { useWillpowerStore } from '../store/willpowerStore';
@@ -129,6 +130,11 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
     if (step === 2 && form.tracking_type === 'numeric') {
       return !!(form.unit?.trim() && form.daily_goal && form.daily_goal > 0);
     }
+    // Süre için birim sorulmaz — sabittir (DURATION_UNIT). Yalnız hedef dakika
+    // gerekir; serbest metin birimden süre çıkarımı YAPILMAZ.
+    if (step === 2 && form.tracking_type === 'duration') {
+      return !!(form.daily_goal && form.daily_goal > 0);
+    }
     return true;
   }
 
@@ -199,6 +205,9 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
         <TouchableOpacity
           style={[styles.typeCard, form.tracking_type === 'boolean' && styles.typeCardSelected]}
           onPress={() => setForm({ ...form, tracking_type: 'boolean', unit: null, daily_goal: null, target_direction: null })}
+          accessibilityRole="button"
+          accessibilityState={{ selected: form.tracking_type === 'boolean' }}
+          accessibilityLabel="Evet veya Hayır olarak takip et"
         >
           <Text style={styles.typeEmoji}>✓</Text>
           <Text style={styles.typeLabel}>Evet / Hayır</Text>
@@ -206,11 +215,46 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.typeCard, form.tracking_type === 'numeric' && styles.typeCardSelected]}
-          onPress={() => setForm({ ...form, tracking_type: 'numeric', target_direction: 'at_least' })}
+          onPress={() => setForm({ ...form, tracking_type: 'numeric', unit: null, daily_goal: null, target_direction: 'at_least' })}
+          accessibilityRole="button"
+          accessibilityState={{ selected: form.tracking_type === 'numeric' }}
+          accessibilityLabel="Sayısal miktar olarak takip et"
         >
           <Text style={styles.typeEmoji}>📊</Text>
-          <Text style={styles.typeLabel}>Ölçülebilir</Text>
-          <Text style={styles.typeDesc}>Miktar/süre takibi</Text>
+          <Text style={styles.typeLabel}>Sayısal</Text>
+          <Text style={styles.typeDesc}>Adım, sayfa, ml…</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.row}>
+        <TouchableOpacity
+          style={[styles.typeCard, form.tracking_type === 'duration' && styles.typeCardSelected]}
+          // Süre kendi takip tipidir; birimi sabittir. Birimi kullanıcıya
+          // yazdırıp metinden ("dakika"/"dk"/"minutes") çıkarım yapmak, bir
+          // yazım hatasının alışkanlığı sessizce sayısala düşürmesi demekti.
+          onPress={() => setForm({ ...form, tracking_type: 'duration', unit: DURATION_UNIT, target_direction: 'at_least' })}
+          accessibilityRole="button"
+          accessibilityState={{ selected: form.tracking_type === 'duration' }}
+          accessibilityLabel="Süre olarak takip et"
+        >
+          <Text style={styles.typeEmoji}>⏱️</Text>
+          <Text style={styles.typeLabel}>Süre</Text>
+          <Text style={styles.typeDesc}>Dakika cinsinden</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.typeCard, form.tracking_type === 'abstinence' && styles.typeCardSelected]}
+          // Kaçınma seçmek davranış tipini de 'negative' yapar: "bugün uzak
+          // durdum mu" ancak bırakılmak istenen bir alışkanlık için anlamlıdır.
+          // Yine de ikisi ayrı alanlarda saklanır — 1. adımda davranış tipi
+          // değiştirilebilir ve bu seçim onu geri almaz.
+          onPress={() => setForm({ ...form, tracking_type: 'abstinence', behavior_type: 'negative', unit: null, daily_goal: null, target_direction: null })}
+          accessibilityRole="button"
+          accessibilityState={{ selected: form.tracking_type === 'abstinence' }}
+          accessibilityLabel="Kaçınma olarak takip et"
+        >
+          <Text style={styles.typeEmoji}>🚫</Text>
+          <Text style={styles.typeLabel}>Kaçınma</Text>
+          <Text style={styles.typeDesc}>Bugün uzak durdum</Text>
         </TouchableOpacity>
       </View>
 
@@ -219,7 +263,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           <Text style={styles.label}>Birim</Text>
           <TextInput
             style={styles.input}
-            placeholder="Örn: adım, dakika, sayfa, ml"
+            placeholder="Örn: adım, sayfa, ml"
             placeholderTextColor="#827E72"
             value={form.unit ?? ''}
             onChangeText={(t) => setForm({ ...form, unit: t })}
@@ -250,6 +294,44 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
               <Text style={styles.dirBtnText}>En fazla ↓</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      )}
+
+      {form.tracking_type === 'duration' && (
+        <View style={styles.measurableSection}>
+          <Text style={styles.label}>Hedef Süre ({DURATION_UNIT})</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Örn: 20"
+            placeholderTextColor="#827E72"
+            keyboardType="numeric"
+            value={form.daily_goal?.toString() ?? ''}
+            onChangeText={(t) => setForm({ ...form, daily_goal: parseInt(t, 10) || null })}
+          />
+
+          <Text style={styles.label}>Yön</Text>
+          <View style={styles.row}>
+            <TouchableOpacity
+              style={[styles.dirBtn, form.target_direction === 'at_least' && styles.dirBtnSelected]}
+              onPress={() => setForm({ ...form, target_direction: 'at_least' })}
+            >
+              <Text style={styles.dirBtnText}>En az ↑</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.dirBtn, form.target_direction === 'at_most' && styles.dirBtnSelected]}
+              onPress={() => setForm({ ...form, target_direction: 'at_most' })}
+            >
+              <Text style={styles.dirBtnText}>En fazla ↓</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {form.tracking_type === 'abstinence' && (
+        <View style={styles.measurableSection}>
+          <Text style={styles.typeDesc}>
+            Her gün tek soru sorulur: bugün uzak durdun mu? Miktar ya da süre girilmez.
+          </Text>
         </View>
       )}
     </View>
@@ -786,8 +868,10 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
     const triage = computeTriage(form.impact_level, form.urgency);
     const tmeta = TRIAGE_META[triage];
     const imp = IMPACT_LEVELS.find((l) => l.key === form.impact_level);
-    const trackLabel = form.tracking_type === 'numeric'
-      ? `Ölçülebilir · ${form.daily_goal ?? '?'} ${form.unit ?? ''}`
+    const trackLabel =
+      form.tracking_type === 'numeric' ? `Sayısal · ${form.daily_goal ?? '?'} ${form.unit ?? ''}`.trim()
+      : form.tracking_type === 'duration' ? `Süre · ${form.daily_goal ?? '?'} ${DURATION_UNIT}`
+      : form.tracking_type === 'abstinence' ? 'Kaçınma'
       : 'Evet / Hayır';
     const freqLabel = form.frequency_config.kind === 'daily' ? 'Günlük'
       : form.frequency_config.kind === 'weekly' ? 'Haftalık' : 'Aylık';

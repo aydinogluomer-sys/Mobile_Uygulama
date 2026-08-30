@@ -22,6 +22,7 @@ import { todayLocal } from '../../lib/date';
 import {
   Card, SectionHeader, EmptyState, ProgressRing, IconCircle, WillpowerBand, SyncStatusBadge,
 } from '../../components/ui';
+import { isMeasurableTracking } from '../../lib/habitEngine';
 
 // ISO hafta numarası (1–53)
 function isoWeek(d: Date): number {
@@ -149,7 +150,7 @@ export default function TodayScreen() {
 
   // Binary alışkanlık → yerinde tamamla; numerik → timeline'a yönlen.
   async function onHabitTap(h: typeof habits[number]) {
-    if (h.tracking_type === 'numeric') {
+    if (isMeasurableTracking(h.tracking_type)) {
       router.push('/tabs/timeline' as any);
       return;
     }
@@ -316,7 +317,7 @@ export default function TodayScreen() {
                         onPress={() => onHabitTap(h)}
                         accessibilityRole="checkbox"
                         accessibilityState={{ checked: done }}
-                        accessibilityLabel={`${h.name}${h.tracking_type === 'numeric' ? ', değer gir' : ''}`}
+                        accessibilityLabel={`${h.name}${isMeasurableTracking(h.tracking_type) ? ', değer gir' : ''}`}
                       >
                         <View style={[
                           s.habitCheck,

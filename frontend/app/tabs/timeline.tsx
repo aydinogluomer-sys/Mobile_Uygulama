@@ -29,6 +29,7 @@ import { syncAllReminders } from '../../lib/notifications';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { WillpowerBand, SectionHeader, EmptyState, ProgressBar } from '../../components/ui';
+import { isMeasurableTracking } from '../../lib/habitEngine';
 
 const DELETE_REASONS = [
   'Artık ihtiyacım yok',
@@ -241,10 +242,10 @@ export default function TimelineScreen() {
     const log = getLogForHabit(habit.id, selectedDate);
     const isDone = log?.state === 'done';
     const isPartial = log?.state === 'partial';
-    const remaining = habit.tracking_type === 'numeric'
+    const remaining = isMeasurableTracking(habit.tracking_type)
       ? getRemainingValue(habit.id, habit.daily_goal ?? 0, selectedDate) : 0;
     const currentValue = (habit.daily_goal ?? 0) - remaining;
-    const pct = habit.tracking_type === 'numeric' && habit.daily_goal
+    const pct = isMeasurableTracking(habit.tracking_type) && habit.daily_goal
       ? Math.min(100, Math.round((currentValue / habit.daily_goal) * 100)) : 0;
     const imp = habit.impact_level ? impactMeta(habit.impact_level) : null;
     const cue = cueLabel(habit, habits);
@@ -253,7 +254,7 @@ export default function TimelineScreen() {
       <TouchableOpacity
         key={habit.id}
         style={[styles.habitRow, isDone && styles.habitRowDone]}
-        onPress={() => { habit.tracking_type === 'numeric' ? setMeasureHabit(habit) : handleYesNoTap(habit); }}
+        onPress={() => { isMeasurableTracking(habit.tracking_type) ? setMeasureHabit(habit) : handleYesNoTap(habit); }}
         activeOpacity={0.7}
       >
         <View style={styles.habitRowLeft}>
@@ -298,7 +299,7 @@ export default function TimelineScreen() {
                 <Text style={styles.cueText} numberOfLines={1}>{cue}</Text>
               </View>
             )}
-            {habit.tracking_type === 'numeric' && (
+            {isMeasurableTracking(habit.tracking_type) && (
               <View style={styles.measurableRow}>
                 <ProgressBar progress={pct / 100} color={habit.color ?? colors.primary} height={4} style={{ flex: 1 }} />
                 <Text style={styles.measurableLabel}>
@@ -351,7 +352,7 @@ export default function TimelineScreen() {
               <Ionicons name="flash" size={10} color="#f59e0b" />
               <Text style={styles.wpCostText}>{habit.willpower_cost}</Text>
             </View>
-            {habit.tracking_type === 'numeric' && (
+            {isMeasurableTracking(habit.tracking_type) && (
               <View style={styles.measurableBadge}><Text style={styles.measurableBadgeText}>📊 {habit.unit}</Text></View>
             )}
           </View>

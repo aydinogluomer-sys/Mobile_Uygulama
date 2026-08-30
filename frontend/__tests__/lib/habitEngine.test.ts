@@ -20,19 +20,47 @@ describe('adaptTrackingType', () => {
     expect(adaptTrackingType({ tracking_type: 'numeric', behavior_type: 'positive' })).toBe('numeric');
   });
 
-  it('maps ANY negative habit to abstinence, regardless of tracking_type', () => {
-    expect(adaptTrackingType({ tracking_type: 'boolean', behavior_type: 'negative' })).toBe('abstinence');
-    expect(adaptTrackingType({ tracking_type: 'numeric', behavior_type: 'negative' })).toBe('abstinence');
+  // ── CONTRACT CHANGE, 2026-08-30 ────────────────────────────────────────
+  // Two assertions here previously encoded a LIMITATION as if it were an
+  // invariant:
+  //
+  //   'maps ANY negative habit to abstinence, regardless of tracking_type'
+  //   'never produces duration -- todays schema cannot express it'
+  //
+  // Both described a schema that no longer exists. `20260825_phase1_core_engine.sql`
+  // widened `habits_tracking_type_check` to all four values and was applied to
+  // the canonical project on 2026-08-30, and IMPLEMENTATION_V2 requires that
+  // tracking_type and behavior_type stop overriding each other. These are
+  // rewritten to the new contract deliberately -- not relaxed to accommodate a
+  // wrong implementation. The old behaviour that IS still required (legacy
+  // rows) keeps its own test below.
+
+  it('honours an explicitly persisted duration', () => {
+    expect(adaptTrackingType({ tracking_type: 'duration', behavior_type: 'positive' })).toBe('duration');
   });
 
-  it('never produces duration — todays schema cannot express it', () => {
-    const cases: Array<Pick<Habit, 'tracking_type' | 'behavior_type'>> = [
-      { tracking_type: 'boolean', behavior_type: 'positive' },
-      { tracking_type: 'numeric', behavior_type: 'positive' },
-      { tracking_type: 'boolean', behavior_type: 'negative' },
-      { tracking_type: 'numeric', behavior_type: 'negative' },
-    ];
-    for (const c of cases) expect(adaptTrackingType(c)).not.toBe('duration');
+  it('honours an explicitly persisted abstinence', () => {
+    expect(adaptTrackingType({ tracking_type: 'abstinence', behavior_type: 'negative' })).toBe('abstinence');
+  });
+
+  it('reads a LEGACY negative boolean row as abstinence', () => {
+    // Rows written before 'abstinence' was persistable carry the meaning in
+    // behavior_type alone. They must keep working.
+    expect(adaptTrackingType({ tracking_type: 'boolean', behavior_type: 'negative' })).toBe('abstinence');
+  });
+
+  it('does NOT let behavior_type override an explicit tracking_type', () => {
+    // "at most 2 cigarettes a day" is negative AND numeric. The old rule
+    // discarded the count and scored it as a bare abstinence flag.
+    expect(adaptTrackingType({ tracking_type: 'numeric', behavior_type: 'negative' })).toBe('numeric');
+    expect(adaptTrackingType({ tracking_type: 'duration', behavior_type: 'negative' })).toBe('duration');
+  });
+
+  it('falls back to binary for an unrecognised value', () => {
+    const rogue = { tracking_type: 'nonsense', behavior_type: 'positive' } as unknown as Pick<
+      Habit, 'tracking_type' | 'behavior_type'
+    >;
+    expect(adaptTrackingType(rogue)).toBe('binary');
   });
 });
 

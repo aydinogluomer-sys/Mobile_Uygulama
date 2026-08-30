@@ -2,6 +2,7 @@ import { eachDayOfInterval, endOfMonth, endOfWeek, format, startOfMonth, startOf
 import { type Habit, type HabitLog } from './supabase';
 import { type FocusSessionRow } from './focusReport';
 import { isDueOn } from './habitSchedule';
+import { isMeasurableTracking } from './habitEngine';
 import { parseLocalDate, ymd } from './date';
 
 export type ReportRange = 'week' | 'month';
@@ -44,7 +45,9 @@ function habitLogPercent(
   // Kaçırılan/atlanan bir gün hiçbir zaman puan üretmez, sayısal olsa bile.
   if (!isCompletedState(log.state)) return 0;
 
-  if (habit.tracking_type === 'numeric') {
+  // Süreli alışkanlık da sayısal bir hedef taşır (dakika); burada 'numeric'
+  // ile birebir karşılaştırmak onun kaydedilmiş dakikalarını çöpe atardı.
+  if (isMeasurableTracking(habit.tracking_type)) {
     if (typeof log.value === 'number' && habit.daily_goal && habit.daily_goal > 0) {
       // AC-H05 / AC-H06 — yön önemli.
       // `at_most` bir ÜST SINIRDIR ("günde en fazla 5 sigara"). Ham

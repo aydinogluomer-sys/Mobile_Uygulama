@@ -26,10 +26,10 @@ import { type Ymd, ymd, addDaysLocal, parseLocalDate, daysBetweenLocal } from '.
 // ---------------------------------------------------------------------------
 
 /**
- * Tracking types this module reasons about. `'boolean'` and `'numeric'` are
- * today's live values (`lib/supabase.ts`'s `Habit.tracking_type`);
- * `'duration'` and `'abstinence'` are the plan's additions, widened onto the
- * live column by the authored-but-not-applied migration.
+ * Tracking types this module reasons about — identical to the persisted
+ * `Habit['tracking_type']` vocabulary since `20260825_phase1_core_engine.sql`
+ * widened `habits_tracking_type_check` (applied to the canonical project on
+ * 2026-08-30). All four values are live.
  */
 export type TrackingTypeV2 = 'boolean' | 'numeric' | 'duration' | 'abstinence';
 

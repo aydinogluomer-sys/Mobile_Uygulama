@@ -6,15 +6,14 @@
  * how a single log's numbers turn into a ratio, a percent and a state, and it
  * is deliberately independent of persistence.
  *
- * ## Why a V2 tracking-type union when the DB only has two values
+ * ## The persisted vocabulary and the domain vocabulary
  *
- * `lib/supabase.ts`'s `Habit.tracking_type` is `'boolean' | 'numeric'` and
- * **must not change** — that would be a migration, and migrations are
- * blocked. §8 of the plan calls for FOUR tracking types
- * (`binary | numeric | duration | abstinence`). `adaptTrackingType` below is
- * the seam: it maps today's two persisted values onto the V2 union so this
- * engine already works against real data, and is ready the moment the
- * migration lands without anyone having to touch its call sites.
+ * The DB persists `'boolean' | 'numeric' | 'duration' | 'abstinence'`; this
+ * module speaks `'binary' | 'numeric' | 'duration' | 'abstinence'`. The only
+ * difference is `boolean`/`binary`, and `adaptTrackingType` below is the
+ * single seam that translates. It is no longer a stopgap: the migration that
+ * widened the CHECK constraint landed on 2026-08-30, so all four values are
+ * writable and the persisted value is authoritative.
  */
 import type { Habit } from './supabase';
 
@@ -25,33 +24,76 @@ export type TrackingType = 'binary' | 'numeric' | 'duration' | 'abstinence';
 export type HabitLogState = 'done' | 'partial' | 'miss' | 'skip';
 
 /**
- * Derives the V2 `TrackingType` from what is actually persisted today.
+ * Does this tracking type carry a NUMERIC target?
  *
- * Mapping:
- *  - `behavior_type === 'negative'` → `'abstinence'`. A negative/avoidance
- *    habit ("sigara içme") is, conceptually, always abstinence-tracked —
- *    regardless of what `tracking_type` happens to hold — because the thing
- *    being measured is "did I abstain today", not a quantity. Checking
- *    `behavior_type` first (rather than `tracking_type`) keeps this mapping
- *    correct even though today's UI only ever writes `'boolean'` for
- *    negative habits.
- *  - otherwise `tracking_type === 'numeric'` → `'numeric'`.
- *  - otherwise (`'boolean'`, or anything unrecognised) → `'binary'`. Falling
- *    back to `'binary'` for an unrecognised value is the conservative choice:
- *    a binary habit can only ever be marked done/not-done, so an unknown
- *    input can never be silently over-credited the way a numeric guess could.
+ * The single answer to "should this habit show a value input / a percentage
+ * instead of a done-flag". Call sites must not hand-roll
+ * `tracking_type === 'numeric'`: every one of those comparisons silently
+ * answers *no* for a duration habit, which would render a 20-minute
+ * meditation as a bare Evet/Hayır tick and throw its logged minutes away.
  *
- * `'duration'` is **never** produced by this adapter. Today's schema has no
- * field that distinguishes "numeric with a duration unit" from any other
- * numeric habit (`habits.unit` is free text — `'dakika'` and `'sayfa'` look
- * identical to the type system). `'duration'` exists in the V2 union so the
- * rest of this engine (and its tests) can express the plan's duration case
- * precisely; a habit can only actually acquire it once the blocked migration
- * adds a dedicated column, at which point this adapter gets a third branch.
+ * Accepts both vocabularies — the persisted `Habit['tracking_type']`
+ * (`boolean`) and this module's `TrackingType` (`binary`) — because callers
+ * legitimately hold either.
+ */
+export function isMeasurableTracking(t: Habit['tracking_type'] | TrackingType): boolean {
+  return t === 'numeric' || t === 'duration';
+}
+
+/**
+ * The fixed unit of a duration habit.
+ *
+ * Duration is identified by `tracking_type === 'duration'`, **never** by
+ * sniffing `habits.unit`: that column is free text, so `'dakika'`, `'dk'`,
+ * `'minutes'` and a typo are indistinguishable, and a habit measured in
+ * `'sayfa'` would be one string away from being scored as time.
+ */
+export const DURATION_UNIT = 'dakika';
+
+/**
+ * Derives the V2 `TrackingType` from what is persisted.
+ *
+ * The DB's `habits_tracking_type_check` now accepts all four values
+ * (widened by `20260825_phase1_core_engine.sql`, applied 2026-08-30), so the
+ * persisted value is authoritative and this adapter simply honours it:
+ *
+ *  - `'numeric'` → `'numeric'`
+ *  - `'duration'` → `'duration'`
+ *  - `'abstinence'` → `'abstinence'`
+ *  - `'boolean'` → `'binary'`, **unless** the row is a legacy negative habit
+ *    (see below).
+ *
+ * ## Why `behavior_type` no longer overrides `tracking_type`
+ *
+ * This adapter used to return `'abstinence'` for ANY habit with
+ * `behavior_type === 'negative'`, whatever its tracking type. That collapsed
+ * two orthogonal concepts — *what kind of habit is this* (build vs. quit) and
+ * *how is it measured* — into one, and made a whole class of real habit
+ * inexpressible: "at most 2 cigarettes a day" is negative AND numeric, and
+ * under the old rule its count was thrown away and it was scored as a plain
+ * did-I-abstain flag.
+ *
+ * The override survives in exactly one place, as a **read-compatibility rule
+ * for existing rows**: before `'abstinence'` was persistable, the UI wrote
+ * `'boolean'` for negative habits and carried the abstinence meaning in
+ * `behavior_type` alone. Those rows are still in the database, so
+ * `'boolean' + negative` continues to read back as `'abstinence'`. New rows
+ * persist `'abstinence'` explicitly and do not rely on this.
+ *
+ * Anything unrecognised falls back to `'binary'`: a binary habit can only be
+ * marked done/not-done, so an unknown input can never be silently
+ * over-credited the way a numeric guess could.
  */
 export function adaptTrackingType(habit: Pick<Habit, 'tracking_type' | 'behavior_type'>): TrackingType {
-  if (habit.behavior_type === 'negative') return 'abstinence';
-  return habit.tracking_type === 'numeric' ? 'numeric' : 'binary';
+  switch (habit.tracking_type) {
+    case 'numeric': return 'numeric';
+    case 'duration': return 'duration';
+    case 'abstinence': return 'abstinence';
+    case 'boolean':
+    default:
+      // Legacy rows only — see the note above.
+      return habit.behavior_type === 'negative' ? 'abstinence' : 'binary';
+  }
 }
 
 export type CompletionRatioInput = {

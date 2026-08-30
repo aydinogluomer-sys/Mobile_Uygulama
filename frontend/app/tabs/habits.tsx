@@ -22,6 +22,7 @@ import AIRoutineModal from '../../components/AIRoutineModal';
 import type { Habit } from '../../lib/supabase';
 import { computeTriage, triageToStatus, impactMeta, TRIAGE_META, cueLabel } from '../../lib/triage';
 import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS } from '../../lib/capacity';
+import { isMeasurableTracking } from '../../lib/habitEngine';
 
 export default function HabitsScreen() {
   const { habits, loading, fetchHabits, addHabit, activateHabit, pauseHabit, updateHabit, removeHabit, restoreHabit, purgeHabit } = useHabitStore();
@@ -239,7 +240,7 @@ export default function HabitsScreen() {
                   <Text style={styles.remBadgeText}>{habit.reminders.time}</Text>
                 </View>
               )}
-              {habit.tracking_type === 'numeric' && (
+              {isMeasurableTracking(habit.tracking_type) && (
                 <View style={styles.measurableBadge}>
                   <Text style={styles.measurableText}>📊 {habit.unit}</Text>
                 </View>

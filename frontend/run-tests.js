@@ -104,7 +104,15 @@ test('Legacy API YOK', () => !stats.includes('completionAPI') && !stats.includes
 console.log('\n✅ 7. Timeline / Alışkanlıklar');
 const tl = read('./app/tabs/timeline.tsx');
 test('Haftalık takvim', () => tl.includes('weekCal') || tl.includes('renderWeekCalendar'));
-test('Ölçülebilir alışkanlık + MeasurableInputModal', () => tl.includes('numeric') && tl.includes('MeasurableInputModal'));
+// Bu assertion eskiden `tl.includes('numeric')` idi -- yani "numeric kelimesi
+// dosyada geçiyor mu". Ölçülebilirlik kararı paylaşılan `isMeasurableTracking`
+// seam'ine taşınınca literal kayboldu ve assertion kırmızıya döndü; oysa kod
+// DAHA doğru hale gelmişti (artık 'duration' da ölçülebilir sayılıyor). Sığ
+// eşleşmeyi gevşetmek yerine gerçek kararı sabitliyoruz: dokunma olayı
+// ölçülebilir alışkanlığı modala, diğerini evet/hayır akışına yönlendirmeli.
+test('Ölçülebilir alışkanlık + MeasurableInputModal', () =>
+  tl.includes('isMeasurableTracking(habit.tracking_type) ? setMeasureHabit(habit) : handleYesNoTap(habit)')
+  && tl.includes('MeasurableInputModal'));
 test('XP gösterimi', () => tl.includes('xp'));
 test('Willpower bandı', () => tl.includes('wp') && tl.includes('daily_budget'));
 test('Aktif alışkanlık boş durumu', () => tl.includes('Aktif alışkanlık yok') && tl.includes('EmptyState'));

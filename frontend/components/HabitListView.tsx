@@ -15,6 +15,7 @@ import type { Habit } from '../lib/supabase';
 import { colors, space, radius, font, hexA, shadow, fontFamily } from '../lib/tokens';
 import { haptic } from '../lib/haptics';
 import { Chip, Badge, IconCircle, EmptyState } from './ui';
+import { isMeasurableTracking } from '../lib/habitEngine';
 
 type StatusKey = 'active' | 'waiting' | 'idea' | 'completed';
 type SortKey = 'impact' | 'willpower' | 'name' | 'recent';
@@ -143,7 +144,7 @@ export default function HabitListView() {
           <View style={s.rowChips}>
             <Chip label={tmeta.label} icon={tmeta.icon as any} color={tmeta.color} size="sm" />
             <Badge label={habit.willpower_cost} icon="flash" color={colors.warning} />
-            {habit.tracking_type === 'numeric' && !!habit.unit && <Badge label={habit.unit} color={colors.primary} />}
+            {isMeasurableTracking(habit.tracking_type) && !!habit.unit && <Badge label={habit.unit} color={colors.primary} />}
             {habit.estimated_minutes > 0 && <Badge label={`${habit.estimated_minutes}dk`} icon="timer-outline" color={colors.teal} />}
             {habit.reminders?.enabled && <Badge label={habit.reminders.time} icon="notifications" color={colors.accent} />}
             {area && <Chip label={area.label} dot color={area.color} size="sm" />}

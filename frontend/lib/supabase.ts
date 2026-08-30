@@ -57,8 +57,15 @@ export type Habit = {
   icon: string | null;
   color: string | null;
   behavior_type: 'positive' | 'negative';
-  // DB'de tracking_type ('boolean'|'numeric'), biz type olarak kullanıyoruz
-  tracking_type: 'boolean' | 'numeric';
+  // DB'nin `habits_tracking_type_check` kısıtının kabul ettiği dört değer.
+  // 'duration' ve 'abstinence' 20260825_phase1_core_engine.sql ile açıldı ve
+  // 2026-08-30'da canlıya uygulandı — artık yazılabilir.
+  //
+  // `behavior_type` ile `tracking_type` İKİ AYRI kavramdır: ilki "bu alışkanlık
+  // kazanılacak mı, bırakılacak mı", ikincisi "nasıl ölçülür". Biri diğerini
+  // ezmez; bu sayede "günde en fazla 2 sigara" (negative + numeric) ifade
+  // edilebilir. Eşleme için lib/habitEngine.ts'teki adaptTrackingType'a bak.
+  tracking_type: 'boolean' | 'numeric' | 'duration' | 'abstinence';
   unit: string | null;
   daily_goal: number | null;          // target_value
   target_direction: 'at_least' | 'at_most' | null;
@@ -80,10 +87,16 @@ export type Habit = {
 
 export type ReminderConfig = { time: string; enabled: boolean } | null;
 
-// Convenience getter — "tip" kavramı olarak yes_no/measurable
-export function habitType(h: Habit): 'yes_no' | 'measurable' {
-  return h.tracking_type === 'numeric' ? 'measurable' : 'yes_no';
-}
+// NOT: "bu alışkanlık ölçülebilir mi" sorusunun tek cevabı
+// `lib/habitEngine.ts`'teki `isMeasurableTracking`. Buraya konmadı çünkü bu
+// modül yüklendiği anda bir Supabase istemcisi kuruyor (yukarıdaki
+// `createClient`); saf domain modüllerinin (triage, reportMetrics) bunu
+// import etmek zorunda kalmaması gerekir.
+//
+// Burada eskiden kullanılmayan bir `habitType()` yardımcısı vardı; hiçbir
+// çağıranı yoktu ve `tracking_type === 'numeric'` karşılaştırmasını
+// kopyalıyordu — yani 'duration' eklendiğinde sessizce yanlış cevap verecek
+// ikinci bir yerdi. Kaldırıldı.
 
 export type HabitLog = {
   id: string;
