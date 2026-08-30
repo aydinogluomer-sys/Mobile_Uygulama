@@ -8,9 +8,24 @@ import { colors } from '../lib/tokens';
 import { useThemeStore } from '../store/themeStore';
 import { useNotionSessionStore } from '../store/notionSessionStore';
 import { useLogStore } from '../store/logStore';
+import { installGlobalErrorHandlers } from '../lib/crashReporting';
+import ErrorBoundary from '../components/ui/ErrorBoundary';
 
 // Web OAuth popup callback'ini tamamla; aksi halde openAuthSessionAsync beklemede kalabilir.
 WebBrowser.maybeCompleteAuthSession();
+
+// §24 "crash reporting": global JS hata yakalayıcıları, MODÜL yüklenirken
+// kurulur -- bir effect'in içinde DEĞİL. Sebep: bir effect en erken ilk
+// render COMMIT edildikten sonra çalışır, oysa bu dosyanın kendi import
+// zincirinde (supabase istemcisi, store'ların modül seviyesi kurulumu) veya
+// ilk render'ın kendisinde atılan bir hata o ana kadar çoktan olup biter ve
+// yakalayıcı olmadan kaybolur. Boot çökmesi tam da en çok rapor edilmesi
+// gereken çökme türüdür.
+//
+// `installGlobalErrorHandlers` idempotent (bkz. kendi dokümanı), dolayısıyla
+// Fast Refresh sırasında modülün yeniden değerlendirilmesi olayları
+// ikiye katlamaz.
+installGlobalErrorHandlers();
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
@@ -139,12 +154,22 @@ export default function RootLayout() {
     );
   }
 
+  // §24 "crash reporting": navigator'ı saran sınır. Buradaki bir render
+  // throw'u önceden TÜM ağacı boş ekrana düşürüyordu.
+  //
+  // `resetKeys` olarak `segments[0]` veriliyor, `segments`'in kendisi değil:
+  // sınır bir kez bile kilitlenirse kullanıcının tek kurtuluşu uygulamayı
+  // kapatmaktır, ama her rota değişiminde sıfırlamak da yanlış olurdu --
+  // kırık ekrana geri dönmek fallback yerine aynı throw'u yeniden üretirdi.
+  // Sekme/grup değişimi ("başka bir yere gittim") doğru granülerlik.
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="tabs" />
-      <Stack.Screen name="habits" />
-      <Stack.Screen name="screens" options={{ headerShown: false }} />
-    </Stack>
+    <ErrorBoundary context="root-navigator" resetKeys={[segments[0]]}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="tabs" />
+        <Stack.Screen name="habits" />
+        <Stack.Screen name="screens" options={{ headerShown: false }} />
+      </Stack>
+    </ErrorBoundary>
   );
 }
