@@ -1,3 +1,4 @@
+import { newRequestId } from '../../services/focusPointService';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -139,6 +140,9 @@ export default function AICoachScreen() {
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
     setInsufficientCredits(false);
+    // One key per attempt: a retry of THIS message replays the first charge
+    // rather than paying for a second answer. See newRequestId().
+    const requestId = newRequestId();
 
     try {
       // Deterministic analytics summary when available (see loadAnalyticsSummary
@@ -169,6 +173,7 @@ export default function AICoachScreen() {
             analytics: analyticsSummary ?? undefined,
           },
           mode: 'coach',
+          request_id: requestId,
         },
       });
 
@@ -206,9 +211,12 @@ export default function AICoachScreen() {
 
     setSummarizing(true);
     setInsufficientCredits(false);
+    // One key per attempt: a retry of THIS summarise replays the first
+    // charge instead of paying twice. See newRequestId().
+    const requestId = newRequestId();
     try {
       const { data, error } = await supabase.functions.invoke('generate-routine', {
-        body: { mode: 'summarize', transcript },
+        body: { mode: 'summarize', transcript, request_id: requestId },
       });
 
       if (error) {

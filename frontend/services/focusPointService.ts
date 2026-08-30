@@ -68,3 +68,26 @@ export function interpretSpend(body: unknown, httpStatus: number): SpendOutcome 
 
 export const listTransactions = (limit = 80) => fetchCreditTransactions({ limit });
 export type { CreditTransactionRow };
+
+/**
+ * A key that identifies ONE spend attempt.
+ *
+ * The edge function passes it to `spend_focus_points_v2`, which is unique on
+ * `(user_id, request_id)`. Two things follow: a retry of the same attempt
+ * replays the first outcome instead of charging again, and a refund can name
+ * exactly which charge it reverses — without that, a retried refund would
+ * credit twice, which is the double-charge bug wearing the other sign.
+ *
+ * Generate it ONCE where the attempt starts and reuse it for every retry of
+ * that attempt. A fresh tap is a new attempt and gets a new key: the user
+ * asked for a second answer and pays for it. That is the intended meaning,
+ * not a gap.
+ *
+ * Not `crypto.randomUUID()`: it is absent on Hermes in some Expo runtimes,
+ * and a missing global here would throw on the path that spends money. The
+ * key only has to be unique within one account's ledger.
+ */
+export function newRequestId(): string {
+  const rand = () => Math.random().toString(36).slice(2, 10);
+  return `fp-${Date.now().toString(36)}-${rand()}${rand()}`;
+}

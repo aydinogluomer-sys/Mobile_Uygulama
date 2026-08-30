@@ -1,3 +1,4 @@
+import { newRequestId } from '../services/focusPointService';
 import { create } from 'zustand';
 import { supabase, Routine } from '../lib/supabase';
 import { useSubscriptionStore } from './subscriptionStore';
@@ -172,9 +173,10 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       installed: false,
       installError: null,
     });
+    const requestId = newRequestId();
     try {
       const { data, error } = await supabase.functions.invoke('generate-routine', {
-        body: { prompt },
+        body: { prompt, request_id: requestId },
       });
 
       if (error) {

@@ -47,6 +47,9 @@ Deno.serve(async (req: Request) => {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return json({ error: 'Yetkisiz' }, 401);
 
+  // `catch` blogu `try` icinde tanimlanan `refund`'a erisemez; kanca burada.
+  let refundOnThrow: ((reason: string) => Promise<void>) | null = null;
+
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -89,11 +92,41 @@ Deno.serve(async (req: Request) => {
       if (prompt.length < 3) return json({ error: 'Geçersiz prompt' }, 400);
     }
 
-    // ── Kredi ön kontrolü (Focus Point) ──
-    const { data: sub, error: subErr } = await supabase.rpc('get_or_init_subscription');
-    if (subErr) throw subErr;
-    const balance = (sub?.focus_points ?? 0) as number;
-    if (balance < cost) {
+    // ── Kredi: ONCE dus, sonra AI cagir ──────────────────────────────────
+    //
+    // Eskiden sira "bakiyeyi oku -> AI cagir -> dus" idi ve dusme sonucunun
+    // `ok` alani hic okunmuyordu. Bu iki ayri sizinti demekti:
+    //
+    //  1. `ok = false` (arada bakiye tukendi) durumunda edge, DUSULMEMIS
+    //     bakiyeyi basariymis gibi dondururdu -> kullanici cikti aldi, ucret
+    //     alinmadi. Bakiye 5, maliyet 5 iken iki es zamanli istek on kontrolu
+    //     birlikte gecer, ikisi de Anthropic'i cagirir, biri bedavaya gelir.
+    //  2. RPC hatasi `error` olarak DONER, firlatilmaz; `catch` bu yuzden hic
+    //     calismadi ve `balance - cost` uydurma bir bakiye olarak dondu.
+    //
+    // Artik atomik dusme kapinin kendisi. Yetersizse Anthropic hic cagrilmaz.
+    // Istemci bir anahtar gondermezse burada uretilir. Bos birakmak cazipti
+    // ama yanlisti: anahtarsiz bir cagriyi IADE edemezdik, yani AI adimi
+    // patladiginda kullanici basarisiz bir istek icin odemis kalirdi. Sunucu
+    // tarafi anahtar iadeyi calisir kilar; kaybedilen tek sey istekler ARASI
+    // tekrar korumasi, o da anahtari gondermeyen istemcinin sorunu.
+    const clientKey = typeof body?.request_id === 'string' ? body.request_id.trim() : '';
+    const requestId: string =
+      clientKey.length >= 8 && clientKey.length <= 128 ? clientKey : crypto.randomUUID();
+
+    const { data: spendRows, error: spendErr } = await supabase.rpc('spend_focus_points_v2', {
+      p_amount: cost,
+      p_reason: `ai_${mode}`,
+      p_request_id: requestId,
+    });
+    if (spendErr) {
+      // Bir zamanlar yutulan hata. Ucretlendiremiyorsak isi yapmiyoruz.
+      console.error('spend_focus_points_v2 failed:', spendErr.message);
+      return json({ error: 'Kredi islemi yapilamadi, lutfen tekrar deneyin.' }, 503);
+    }
+    const spend = Array.isArray(spendRows) ? spendRows[0] : spendRows;
+    if (!spend || spend.ok !== true) {
+      const balance = Number(spend?.balance ?? 0);
       return json({
         error: `Yetersiz Focus Point. Bu işlem ${cost} FP gerektiriyor, bakiyen ${balance}.`,
         code: 'INSUFFICIENT_CREDITS',
@@ -101,6 +134,24 @@ Deno.serve(async (req: Request) => {
         cost,
       }, 402);
     }
+    const balance = Number(spend.balance);
+    const replayed = spend.replayed === true;
+
+    // Bu noktadan sonra kullanicidan ucret ALINDI. Her cikis yolu ya cikti
+    // dondurmeli ya da iade etmeli; `charged` bunu izliyor.
+    let charged = !replayed;
+    const refund = async (reason: string) => {
+      if (!charged) return;
+      charged = false;
+      const { error } = await supabase.rpc('refund_focus_points', {
+        p_request_id: requestId,
+        p_reason: reason,
+      });
+      // Iade basarisiz olursa kullanici basarisiz bir cagri icin ucret odemis
+      // olur. Sessizce gecmiyoruz: mutabakat icin iz birakiliyor.
+      if (error) console.error('REFUND FAILED', { requestId, cost, reason, error: error.message });
+    };
+    refundOnThrow = refund;
 
     const client = new Anthropic({ apiKey });
 
@@ -123,7 +174,10 @@ Deno.serve(async (req: Request) => {
         messages: [{ role: 'user', content: `Bağlam: ${contextLine}\n\nKullanıcı: ${userMsg}` }],
       });
       const reply = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
-      if (!reply) return json({ error: 'Yanıt alınamadı, tekrar deneyin.' }, 500);
+      if (!reply) {
+        await refund('ai_empty_response');
+        return json({ error: 'Yanıt alınamadı, tekrar deneyin.' }, 500);
+      }
       payload = { reply };
     } else if (mode === 'summarize') {
       const message = await client.messages.create({
@@ -133,7 +187,10 @@ Deno.serve(async (req: Request) => {
         messages: [{ role: 'user', content: `Aşağıdaki AI koçluk sohbetini günlüğe eklenebilecek bir özet/yansıma haline getir:\n\n${transcript}` }],
       });
       const summary = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
-      if (!summary) return json({ error: 'Özet oluşturulamadı, tekrar deneyin.' }, 500);
+      if (!summary) {
+        await refund('ai_empty_response');
+        return json({ error: 'Özet oluşturulamadı, tekrar deneyin.' }, 500);
+      }
       payload = { summary };
     } else if (mode === 'insights') {
       const message = await client.messages.create({
@@ -143,7 +200,10 @@ Deno.serve(async (req: Request) => {
         messages: [{ role: 'user', content: `Dönem: ${periodLabel}. Aşağıdaki günlük kayıtlarını analiz edip içgörü ver:\n\n${entriesText}` }],
       });
       const insight = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
-      if (!insight) return json({ error: 'İçgörü oluşturulamadı, tekrar deneyin.' }, 500);
+      if (!insight) {
+        await refund('ai_empty_response');
+        return json({ error: 'İçgörü oluşturulamadı, tekrar deneyin.' }, 500);
+      }
       payload = { insight };
     } else {
       const message = await client.messages.create({
@@ -154,22 +214,23 @@ Deno.serve(async (req: Request) => {
       });
       const text = message.content[0].type === 'text' ? message.content[0].text : '';
       const match = text.match(/\{[\s\S]*\}/);
-      if (!match) return json({ error: 'AI yanıt formatı geçersiz, tekrar deneyin.' }, 500);
+      if (!match) {
+        await refund('ai_empty_response');
+        return json({ error: 'AI yanıt formatı geçersiz, tekrar deneyin.' }, 500);
+      }
       payload = JSON.parse(match[0]);
     }
 
-    // ── Başarı sonrası kredi düş ──
-    let newBalance = balance - cost;
-    try {
-      const { data: spendRes } = await supabase.rpc('spend_focus_points', { p_amount: cost, p_reason: `ai_${mode}` });
-      if (Array.isArray(spendRes) && spendRes[0]) newBalance = spendRes[0].balance;
-    } catch (_) { /* harcama kaydı başarısız olsa da yanıtı döndür */ }
-
-    return json({ ...payload, balance: newBalance, cost });
+    // Ucret zaten alindi; `balance` veritabanindan gelen GERCEK deger.
+    return json({ ...payload, balance, cost, replayed });
 
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);
     console.error('generate-routine error:', raw);
+    // Ucret alindiysa iade et: AI adimi basarisiz oldu, kullanici odemis
+    // olmamali. `refundOnThrow` outer scope'ta, cunku `refund` try blogunun
+    // icinde tanimli.
+    await refundOnThrow?.('ai_error');
     let msg = 'AI servisi şu an yanıt veremedi, lütfen sonra tekrar deneyin.';
     if (/credit balance|billing|insufficient_quota|insufficient/i.test(raw)) {
       msg = 'AI servisi geçici olarak kullanılamıyor (API kredisi yetersiz). Lütfen daha sonra tekrar deneyin.';

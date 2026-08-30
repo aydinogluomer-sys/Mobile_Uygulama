@@ -27,6 +27,7 @@
  * and 8-week fragility windows `behaviorIntelligence` uses), via existing
  * repository functions -- no new repository code needed for this screen.
  */
+import { newRequestId } from '../../services/focusPointService';
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -200,10 +201,11 @@ function AiCommentaryPanel({ digest, label }: { digest: Digest; label: string })
     if (loading) return;
     setLoading(true);
     setError(null);
+    const requestId = newRequestId();
     try {
       const message = `${label} alışkanlık verilerimi analiz et, kısa bir yorum ve somut bir tavsiye ver:\n${formatDigestForPrompt(digest)}`;
       const { data, error: invokeError } = await supabase.functions.invoke('generate-routine', {
-        body: { message, mode: 'coach' },
+        body: { message, mode: 'coach', request_id: requestId },
       });
       if (invokeError) {
         const { msg } = await extractInvokeError(invokeError);

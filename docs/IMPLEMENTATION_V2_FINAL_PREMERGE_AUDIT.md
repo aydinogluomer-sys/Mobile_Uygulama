@@ -29,7 +29,7 @@ the command, query or live request that produced it.
 | **§9** | Monthly review cloud persistence | AsyncStorage only | — | no `reviews` table created | **NOT_DONE** |
 | **§10** | Structural tests on current contract | three shallow proxies | all three rewritten to pin real contracts, each mutation-verified | `run-tests.js` 144/144. The monthly-review gate still encodes AsyncStorage, which matches today's code but not the target | **NOT_DONE** (blocked on §9) |
 | **§11** | XP idempotency | assumed broken | **premise disproven** — see §3 below | 6/6 live: duplicate INSERT `23505`, replay ×4 adds 0 XP | **PASS** (idempotency) / reconstructibility **NOT_DONE** |
-| **§12** | Focus-Point charging atomicity | `spend_focus_points` error unchecked | — | not addressed | **NOT_DONE** |
+| **§12** | Focus-Point charging atomicity | read balance -> call Anthropic -> debit, with the RPC's `ok` flag never read and its `error` never destructured: a refused debit returned the UN-debited balance as success (free AI output), a failed RPC returned a fabricated `balance - cost`, and a retry charged twice | debit FIRST through `spend_focus_points_v2` (idempotent on `(user_id, request_id)`), refund on every AI failure path, real balance returned | 7 live DB probes (spend / replay / insufficient / exact / empty / refund / double-refund / reused-refunded-key / zero / negative amount) + 20 source assertions on ordering. 3 mutations red: debit moved after the AI client, one refund path deleted, balance fabricated again. Edge deployed v12 ACTIVE | **PASS** |
 | **§13** | Pagination | unbounded reads across the data layer | keyset paging, per-tab paging, server-side search, `LoadMoreFooter` in four screens; 3 further unbounded queries found and bounded | Bounding is now checked PER QUERY (`queryBounding`), generating `docs/QUERY_BOUNDING_MATRIX.md`: 64 queries, 32 collection SELECTs, **0 UNCLASSIFIED**. Runtime paging proven with 65 rows at page size 30 — no duplicates, nothing missing, stable under insert/delete, id tie-breaker exercised. 3 mutations each turn it red | **PASS** |
 | **§14** | Navigation IA | today/tasks/focus/timeline/stats | Bugün · Plan · Alışkanlıklar · İçgörüler · Profil; hubs compose the existing screens, old routes kept as `href: null` | `run-tests.js` parses visible vs hidden; 3 mutations verified | **PASS** |
 | **§15** | Legacy FastAPI retirement | 3 features on an UNAUTHENTICATED service (`grep -c` for Depends/jwt/Authorization/verify_token = 0) where every row is `user_id = "default"`; `GET /api/export` returned every user's habits, tasks, completions and webhooks to any caller, and settings.tsx opened the Excel/CSV variants in the system browser | webhooks + bad habits on Supabase with owner RLS; export assembled on the device from the repositories; `utils/api.ts` and `axios` gone | 50 tests. 4 mutations red: re-reading `EXPO_PUBLIC_BACKEND_URL`, re-adding axios, un-stripping webhook headers from the backup, restoring the negative-savings bug. Live probes: `http://` refused, unknown event type refused, negative cost refused, blank name refused, `https://` accepted | **PASS** |
@@ -162,7 +162,7 @@ fixed.
 ### P1 — not done on this branch
 
 Monthly review cloud persistence (§9) ·
-Focus-Point charging atomicity (§12) · design tokens (§19) ·
+design tokens (§19) ·
 branding (§20) · widget (§21) · recovery vocabulary (§24) · performance
 profiling (§36).
 

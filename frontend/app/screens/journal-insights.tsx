@@ -1,3 +1,4 @@
+import { newRequestId } from '../../services/focusPointService';
 import { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
@@ -52,6 +53,8 @@ export default function JournalInsightsScreen() {
     setLoading(true);
     setError(null);
     setLowCredits(false);
+    // One key per attempt -- see newRequestId().
+    const requestId = newRequestId();
 
     // Kronolojik metin (eski→yeni)
     const text = [...periodEntries]
@@ -66,7 +69,7 @@ export default function JournalInsightsScreen() {
 
     try {
       const { data, error: invErr } = await supabase.functions.invoke('generate-routine', {
-        body: { mode: 'insights', period, entries: text },
+        body: { mode: 'insights', period, entries: text, request_id: requestId },
       });
 
       if (invErr) {
