@@ -2,8 +2,27 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { create } from 'zustand';
+import { supabase } from '../lib/supabase';
 
-const STORAGE_KEY = 'atlas_notion_login_session';
+/**
+ * Per-account key.
+ *
+ * This used to be one global `atlas_notion_login_session`. It holds no token
+ * — workspace name, icon, id and a timestamp — but on a shared device the
+ * next account to sign in read the previous one's workspace NAME out of it
+ * and rendered it as their own connection. Account-scoped data belongs under
+ * an account-scoped key, whether or not it happens to be a credential.
+ *
+ * `null` when signed out: there is no account to store against, and reusing
+ * the last one is the bug.
+ */
+const LEGACY_STORAGE_KEY = 'atlas_notion_login_session';
+
+async function storageKey(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const uid = session?.user?.id;
+  return uid ? `atlas_notion_login_session:${uid}` : null;
+}
 const OAUTH_TIMEOUT_MS = 2 * 60 * 1000; // 2 dakika
 
 const SUPABASE_FUNCTIONS_URL = process.env.EXPO_PUBLIC_SUPABASE_URL + '/functions/v1';
@@ -40,9 +59,21 @@ export const useNotionSessionStore = create<NotionLoginStore>((set, get) => ({
 
   hydrate: async () => {
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      set({ session: JSON.parse(raw) as NotionLoginSession });
+      const key = await storageKey();
+      if (!key) { set({ session: null }); return; }
+
+      const raw = await AsyncStorage.getItem(key);
+      if (raw) { set({ session: JSON.parse(raw) as NotionLoginSession }); return; }
+
+      // One-time migration off the unscoped key, adopted by the first account
+      // to sign in after the upgrade and then removed — the same shape as the
+      // sync queue's migration, and for the same reason: discarding it would
+      // silently drop a connection the user still has.
+      const legacy = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+      if (!legacy) { set({ session: null }); return; }
+      await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
+      await AsyncStorage.setItem(key, legacy);
+      set({ session: JSON.parse(legacy) as NotionLoginSession });
     } catch {
       set({ session: null });
     }
@@ -93,7 +124,8 @@ export const useNotionSessionStore = create<NotionLoginStore>((set, get) => ({
         workspaceId: callbackData.workspace_id ?? null,
         connectedAt: new Date().toISOString(),
       };
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextSession));
+      const key = await storageKey();
+      if (key) await AsyncStorage.setItem(key, JSON.stringify(nextSession));
       set({ session: nextSession, loading: false, error: null });
       return true;
     } catch (e) {
@@ -105,7 +137,8 @@ export const useNotionSessionStore = create<NotionLoginStore>((set, get) => ({
 
   logout: async () => {
     try {
-      await AsyncStorage.removeItem(STORAGE_KEY);
+      const key = await storageKey();
+      if (key) await AsyncStorage.removeItem(key);
       set({ session: null, error: null });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

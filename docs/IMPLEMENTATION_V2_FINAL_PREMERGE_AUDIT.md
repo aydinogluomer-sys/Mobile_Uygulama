@@ -44,7 +44,7 @@ the command, query or live request that produced it.
 | **§24** | Recovery vocabulary | lossy v1/v2 adapter | — | unchanged | **NOT_DONE** |
 | **§25** | Negative + measurable habits | reward inverted; two disagreeing scorers; negative habits due on no day | ceiling scoring unified AND the lifecycle closed: `isDueOn` no longer reads `behavior_type`; `isMissedOn`/`countsTowardAverage` carry the real asymmetry (absence of a log is not failure for a negative habit) | reports, analytics and the recovery backlog now include negative measurable habits; 3 mutations red (7/1/1). Also fixed: an explicit `miss` log landed in the done set, so a day the user recorded as failed could never be offered a make-up | **PASS** |
 | **§26** | Auth lifecycle | — | partially (queue on sign-out) | register blocked, so the full cycle is untestable | **BLOCKED_EXTERNAL** |
-| **§27** | Cache isolation | sync queue global | queue scoped per account | `atlas_notion_login_session` is still global — one account can see another's Notion workspace name on a shared device | **NOT_DONE** |
+| **§27** | Cache isolation | sync queue and Notion session both global | both scoped per account, each with a lossless one-time migration | 11 behaviour tests across the two; mutations red. `focus.settings.v1` and the theme keys stay global by decision — timer durations and a colour are UI preference, not personal data | **PASS** |
 | **§28** | One canonical edge tree | two writable trees | `backend/supabase/functions/` removed | gate: duplicate tree absent, function list pinned | **PASS** |
 | **§29** | Edge error contract | silent success in 2 places | notion-sync, notionStore and both disconnects fixed | Not every client-called edge function has been audited for transport error / non-2xx / `success:false` / malformed JSON / timeout | **NOT_DONE** |
 | **§30** | Obsolete comments | "NOT APPLIED", "migration blocked" | corrected in migration, recovery, routineProposal | — | **PASS** |
@@ -53,7 +53,7 @@ the command, query or live request that produced it.
 | **§33** | Test quality | — | 11 new suites, all mutation-verified | 1156 tests, 80 suites. Covers what was built; the untouched requirements have no new coverage | **PASS** |
 | **§34** | CI as merge gate | green | unchanged scope | CI runs `expo lint`, whose scope is narrower than the repo — 3 errors live outside it. §17 requires full-repo 0/0, so CI does not yet gate the stated requirement | **NOT_DONE** (tied to §17) |
 | **§35** | Full live smoke | — | duration, ceilings, RLS, XP, notion-sync, child-row ownership verified live | Registration is the first step and is externally blocked, so the journey cannot run end to end | **BLOCKED_EXTERNAL** |
-| **§36** | Performance profiling | — | — | not done | **NOT_DONE** |
+| **§36** | Performance profiling | `currentUserId` issued `GET /auth/v1/user` before EVERY repository operation | resolved from the local session instead | Measured live: 3 ops cost 3 auth requests / 373 ms (total 1779 ms) before, **0 auth requests** after; 6 sequential ops now issue none. Screen-level render profiling on a device is still not done | **NOT_DONE** (auth cost fixed; render profiling outstanding) |
 | **§37** | main sync | — | 0 behind | `git rev-list --left-right --count origin/main...HEAD` → `0  15` | **PASS** |
 
 ---
@@ -175,7 +175,7 @@ Completed since the first version of this document: the repository boundary
 |---|---|---|
 | G-1 | `profiles.total_xp` not reconstructible; one real account already drifted −30 | §3.2 |
 | G-2 | ~~`isDueOn` excludes negative habits~~ — **CLOSED**, see §25 | `ceilingSemantics.test.ts` now pins the fixed behaviour |
-| G-3 | `atlas_notion_login_session` is global — one account can see another's Notion workspace name | §27 |
+| G-3 | ~~`atlas_notion_login_session` is global~~ — **CLOSED**, see §27 | scoped per account, migration tested |
 | G-4 | `weekly_xp` / `boss_contributors` readable by any authenticated user; the client never uses them | `FINAL_RLS_MATRIX.md` O-1/O-2 |
 | G-5 | `tasks` has 3 overlapping ALL policies | O-3 |
 | G-6 | anon denied two different ways (`42501` vs empty) across the schema | O-4 |
