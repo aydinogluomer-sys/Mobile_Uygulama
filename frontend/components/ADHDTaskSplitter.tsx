@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Task } from '../store/taskStore';
-import { insertSplitTasks } from '../repositories/taskRepository';
+import { createSubtasks as insertSplitTasks } from '../services/taskService';
 import {
   buildLocalSplitProposal,
   validateSubtaskProposal,

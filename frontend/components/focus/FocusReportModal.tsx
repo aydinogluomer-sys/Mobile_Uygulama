@@ -12,7 +12,7 @@ import {
   FocusSessionRow, ReportRange, inRange, summary, byTask, buckets, ranking,
   fmtDuration, fmtHours, toCSV, toExcelXML, sessionsSheet, EXPORT_META, webDownload,
 } from '../../lib/focusReport';
-import { fetchFocusSessionsSince } from '../../repositories/focusSessionRepository';
+import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
 
 type Props = { visible: boolean; onClose: () => void; accent: string };
 type Tab = 'summary' | 'detail' | 'ranking';

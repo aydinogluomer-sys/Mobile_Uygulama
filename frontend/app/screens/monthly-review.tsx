@@ -23,9 +23,8 @@ import {
   type Trend, type Result,
 } from '../../lib/behaviorIntelligence';
 import { fromLegacyRecoveryPlan } from '../../lib/recovery';
-import { fetchHabitLogsForReview } from '../../repositories/habitLogRepository';
-import { fetchFocusSessionsSince } from '../../repositories/focusSessionRepository';
-import { fetchRecoveryPlansForReview } from '../../repositories/recoveryRepository';
+import { logsForPeriod, recoveryForPeriod } from '../../services/reviewService';
+import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
 import { EmptyState } from '../../components/ui';
 
 const MONTHS_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -228,16 +227,16 @@ export default function MonthlyReviewScreen() {
     const prevEnd = format(endOfMonth(prevMonthDate), 'yyyy-MM-dd');
 
     const [logsRes, sessionsRes, recoveryRes] = await Promise.all([
-      fetchHabitLogsForReview({ start: wideStart, end }),
+      logsForPeriod({ start: wideStart, end }),
       fetchFocusSessionsSince({ sinceIso: prevStart }),
-      fetchRecoveryPlansForReview({ start: prevStart, end }),
+      recoveryForPeriod({ start: prevStart, end }),
     ]);
 
     const logsForBI = logsRes.ok ? logsRes.data : [];
     const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end) : 0;
 
     // `fetchFocusSessionsSince` has no upper bound -- clip to `end` client-side.
-    const allSessions = sessionsRes.ok ? sessionsRes.data.filter((sess) => sess.started_at <= `${end}T23:59:59`) : [];
+    const allSessions = sessionsRes.ok ? sessionsRes.data.filter((sess: { started_at: string }) => sess.started_at <= `${end}T23:59:59`) : [];
     const monthSessions = allSessions.filter((sess) => sess.started_at >= start);
     const prevMonthSessions = allSessions.filter((sess) => sess.started_at >= prevStart);
     const minutes = focusMinutesFromSessions(monthSessions);

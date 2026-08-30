@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
-import { fetchCreditTransactions } from '../../repositories/creditRepository';
+import { listTransactions } from '../../services/focusPointService';
 import { EmptyState, Skeleton } from '../../components/ui';
 
 type Tx = {
@@ -35,7 +35,7 @@ export default function CreditHistoryScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetchCreditTransactions({ limit: 80 });
+    const res = await listTransactions(80);
     setTxs(res.ok ? res.data : []);
     await refresh();
   }, []);

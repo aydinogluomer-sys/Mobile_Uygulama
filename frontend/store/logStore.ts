@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { supabase, HabitLog } from '../lib/supabase';
 import { ymd } from '../lib/date';
-import { completionRatio, type TrackingType } from '../lib/habitEngine';
 import {
   emptyQueueState,
   enqueue as enqueueOp,
@@ -19,11 +18,11 @@ import {
 } from '../lib/syncQueue';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 import {
-  fetchLogsForDate as repoFetchLogsForDate,
-  findHabitLog as repoFindHabitLog,
-  insertHabitLog as repoInsertHabitLog,
-  updateHabitLog as repoUpdateHabitLog,
-} from '../repositories/habitLogRepository';
+  loadDay,
+  persistCompletion,
+  toPatch,
+  type LogPatch,
+} from '../services/habitLogService';
 
 /**
  * What a write actually did. The previous signature was `Promise<void>` and
@@ -115,35 +114,10 @@ type LogStore = {
  * already had before this change. This is deliberately the smallest change
  * to `logStore`'s public surface, per this task's brief.
  */
-function calcXp(
-  baseXp: number,
-  value: number | undefined,
-  targetValue: number | undefined,
-  state: HabitLog['state'],
-  targetDirection?: 'at_least' | 'at_most',
-): number {
-  if (state === 'done') return baseXp;
-  if (state === 'partial') {
-    const trackingType: TrackingType = targetValue != null && targetValue > 0 ? 'numeric' : 'binary';
-    // `direction` matters here: for a ceiling ("at most 2"), the at_least
-    // ratio clamps any overshoot to 1 and would award FULL XP for exceeding
-    // the limit. `completionRatio` decays it instead.
-    const ratio = completionRatio({
-      trackingType, state, value, target: targetValue, direction: targetDirection,
-    });
-    return Math.round(baseXp * ratio);
-  }
-  return 0;
-}
-
-function toPatch(intent: HabitLogIntent): Patch {
-  return {
-    state: intent.state,
-    value: intent.value ?? null,
-    xp: calcXp(intent.baseXp ?? 30, intent.value, intent.targetValue, intent.state, intent.targetDirection),
-    is_completed: intent.state === 'done',
-  };
-}
+// XP and the persisted patch are DOMAIN decisions and live in
+// `services/habitLogService.ts`. They were here because this store was the
+// only caller; leaving them here made the store the place that decided what a
+// completion is worth, which is not UI state.
 
 /**
  * §22 ANALYTICS EMISSION — why this lives in the store and not in a screen.
@@ -313,38 +287,19 @@ function rollbackTo(
 const optimisticGen = new Map<string, number>();
 let optimisticGenSeq = 0;
 
-type Patch = {
-  state: HabitLog['state'];
-  value: number | null;
-  xp: number;
-  is_completed: boolean;
-};
+/** The persisted shape of a completion — defined by the service. */
+type Patch = LogPatch;
 
 type SetState = (fn: (s: { logs: HabitLog[] }) => Partial<{ logs: HabitLog[] }>) => void;
 type GetState = () => { logs: HabitLog[]; getLogForHabit: (habitId: string, date?: Date | string) => HabitLog | undefined };
 
-async function applyUpdate(set: SetState, id: string, patch: Patch): Promise<LogResult> {
-  const res = await repoUpdateHabitLog(id, patch as Record<string, unknown>);
-  if (!res.ok) return { ok: false, error: res.error };
-  const log = res.data;
-  set((s) => replaceLogForKey(s, log.habit_id, log.completed_at, log));
-  return { ok: true, log };
-}
-
 /**
- * The one place the insert/update/23505-recovery decision is made -- shared
- * by a live tap (`logHabit`) and a replayed one (`flushPendingSync`), so
- * replay can never drift from what a fresh tap would do. This is the
- * function that makes a cold-start replay land on an UPDATE instead of a
- * duplicate INSERT when the row already exists remotely: it is exactly the
- * pre-existing 23505 recovery, run again, and it is idempotent by
- * construction against the `UNIQUE (habit_id, completed_at)` constraint
- * (`supabase/migrations/001_initial_schema.sql:34`) whether or not this
- * process has ever seen the row before.
+ * Writes one completion through the service and reconciles local state.
  *
- * `existing` explicitly excludes a local-only placeholder (see
- * `isLocalPlaceholder`) -- an optimistic guess is not a confirmed row to
- * update against.
+ * The insert / update / 23505-recovery DECISION lives in
+ * `services/habitLogService.persistCompletion`; what remains here is the part
+ * that is genuinely the store's: replacing the optimistic row with the
+ * confirmed one.
  */
 async function attemptWrite(
   set: SetState,
@@ -353,31 +308,17 @@ async function attemptWrite(
   dateStr: string,
   patch: Patch,
 ): Promise<LogResult> {
+  // An optimistic placeholder is a guess, not a confirmed row to update.
   const existing = get().getLogForHabit(habitId, dateStr);
   const confirmed = existing && !isLocalPlaceholder(existing) ? existing : undefined;
-  if (confirmed) return applyUpdate(set, confirmed.id, patch);
 
-  const inserted = await repoInsertHabitLog({
-    habitId, dateStr, patch: patch as Record<string, unknown>,
+  const res = await persistCompletion({
+    habitId, dateStr, patch, confirmedId: confirmed?.id,
   });
+  if (!res.ok) return { ok: false, error: res.error };
 
-  if (inserted.ok) {
-    const log = inserted.data;
-    set((s) => replaceLogForKey(s, log.habit_id, log.completed_at, log));
-    return { ok: true, log };
-  }
-
-  // 23505 = unique_violation. The row exists in the database but not in
-  // local state -- another device wrote it, this date was never fetched, or
-  // (plan §18) a previous session's write reached the server before the app
-  // was killed and this is that same intent replaying. Recover the row and
-  // update it rather than dropping the tap or duplicating the row.
-  if (inserted.code === '23505') {
-    const found = await repoFindHabitLog({ habitId, dateStr });
-    if (found.ok && found.data) return applyUpdate(set, found.data.id, patch);
-  }
-
-  return { ok: false, error: inserted.error };
+  set((s) => replaceLogForKey(s, res.log.habit_id, res.log.completed_at, res.log));
+  return { ok: true, log: res.log };
 }
 
 export const useLogStore = create<LogStore>((set, get) => {
@@ -526,8 +467,8 @@ export const useLogStore = create<LogStore>((set, get) => {
     fetchLogsForDate: async (date) => {
       set({ loading: true });
       const dateStr = typeof date === 'string' ? date : ymd(date);
-      const res = await repoFetchLogsForDate(dateStr);
-      if (res.ok) set({ logs: res.data });
+      const res = await loadDay(dateStr);
+      if (res.ok) set({ logs: res.logs });
       set({ loading: false });
     },
 

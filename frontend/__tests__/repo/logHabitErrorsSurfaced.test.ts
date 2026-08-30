@@ -58,16 +58,34 @@ describe('AC-N04a -- every logHabit result is inspected', () => {
 });
 
 describe('AC-N04b -- a failed log never completes a plan', () => {
-  it('recovery.tsx checks the result before completePlan', () => {
-    const src = readFileSync(join(APP, 'screens', 'recovery.tsx'), 'utf8');
-    const logAt = src.lastIndexOf('logHabit(');
-    const completeAt = src.indexOf('completePlan(', logAt);
-    expect(logAt).toBeGreaterThan(-1);
-    expect(completeAt).toBeGreaterThan(-1);
+  /**
+   * The ordering moved from the screen into
+   * `services/recoveryService.completePlanWithMakeup`, which is where it
+   * belongs: closing a plan with no log leaves the two permanently
+   * contradicting each other, and that is a domain rule rather than
+   * something each screen should remember. The invariant is unchanged and
+   * is now asserted at the service.
+   */
+  const service = readFileSync(join(APP, '..', 'services', 'recoveryService.ts'), 'utf8');
 
-    // Between the write and the completion there must be a guard on the result.
-    const between = src.slice(logAt, completeAt);
-    expect(between).toMatch(/\.ok|!res|!logRes|return;/);
+  it('the service writes the log before closing the plan', () => {
+    const logAt = service.indexOf('await params.writeLog(');
+    const closeAt = service.indexOf('await completePlan(params.plan.id)');
+    expect(logAt).toBeGreaterThan(-1);
+    expect(closeAt).toBeGreaterThan(logAt);
+  });
+
+  it('a failed log returns before the plan is touched', () => {
+    const between = service.slice(
+      service.indexOf('await params.writeLog('),
+      service.indexOf('await completePlan(params.plan.id)'),
+    );
+    expect(between).toMatch(/if \(!logged\.ok\) return/);
+  });
+
+  it('the screen delegates rather than re-implementing the order', () => {
+    const src = readFileSync(join(APP, 'screens', 'recovery.tsx'), 'utf8');
+    expect(src).toContain('completePlanWithMakeup(');
   });
 });
 

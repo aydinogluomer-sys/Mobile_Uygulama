@@ -18,11 +18,23 @@ import { stripComments } from '../helpers/sourceText';
 
 const ROOT = join(__dirname, '..', '..');
 
+/**
+ * UPDATED for the service layer.
+ *
+ * `store/habitStore.ts` no longer calls `canActivate` — activation moved to
+ * `services/habitService.activateHabit`, which asks
+ * `capacityService.evaluateActivation` for a verdict. The INVARIANT is
+ * unchanged and is still pinned, one describe block down: the capacity rule
+ * must run against the real active-habit set rather than the weak fixed-slot
+ * fallback. Only the file that has to satisfy it moved.
+ *
+ * The three screens still call `canActivate` directly for their disabled
+ * states, so they stay here.
+ */
 const FILES: [string, string][] = [
   ['app/tabs/habits.tsx', join(ROOT, 'app', 'tabs', 'habits.tsx')],
   ['app/tabs/timeline.tsx', join(ROOT, 'app', 'tabs', 'timeline.tsx')],
   ['components/HabitOnboarding.tsx', join(ROOT, 'components', 'HabitOnboarding.tsx')],
-  ['store/habitStore.ts', join(ROOT, 'store', 'habitStore.ts')],
 ];
 
 /**
@@ -84,6 +96,43 @@ describe('W1 -- canActivate call sites pass activeHabits-derived capacity data',
     const calls = extractCanActivateCalls(src);
     const missing = calls.filter((c) => !traced.some((name) => new RegExp(`\\b${name}\\b`).test(c)));
     expect(missing).toEqual([]);
+  });
+});
+
+describe('the service, not the store, now applies the capacity rule', () => {
+  const service = stripComments(readFileSync(join(ROOT, 'services', 'habitService.ts'), 'utf8'));
+  const store = stripComments(readFileSync(join(ROOT, 'store', 'habitStore.ts'), 'utf8'));
+
+  it('activation goes through the service', () => {
+    expect(store).toContain('activateHabitOp');
+    expect(store).not.toMatch(/canActivate\(/);
+  });
+
+  it('the service evaluates capacity before writing', () => {
+    const verdictAt = service.indexOf('evaluateActivation(');
+    const writeAt = service.indexOf("status: 'active'");
+    expect(verdictAt).toBeGreaterThan(-1);
+    expect(writeAt).toBeGreaterThan(verdictAt);
+  });
+
+  it('the real active-habit set reaches the capacity rule', () => {
+    // The whole point of W1: without `activeHabits`, load is under-reported
+    // and an activation that should be refused is permitted.
+    expect(service).toMatch(/activeHabits: params\.activeHabits/);
+    expect(store).toMatch(/activeHabits: habits\.filter\(\(h\) => h\.status === 'active'\)/);
+  });
+
+  it('the weak fixed-slot fallback is used only when the set is incomplete', () => {
+    expect(store).toMatch(/useCapacityRule: !loading/);
+    expect(service).toContain('params.useCapacityRule');
+  });
+
+  it('willpower is charged AFTER the status write, never before', () => {
+    // Charging first and then failing the write debits a budget for a habit
+    // that never activated.
+    const writeAt = service.indexOf("status: 'active'");
+    const spendAt = service.indexOf('await spend(');
+    expect(spendAt).toBeGreaterThan(writeAt);
   });
 });
 

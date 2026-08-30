@@ -22,6 +22,26 @@ jest.mock('../../lib/supabase', () => ({
   supabase: {
     auth: { getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'u1' } } }) },
     from: (table: string) => ({
+      // `habitService.activateHabit` re-reads today's willpower row after the
+      // write, so the mock needs a read path as well as a write path.
+      select: () => {
+        const q: any = {
+          eq: () => q,
+          maybeSingle: async () => ({
+            data: { user_id: 'u1', state_date: '2026-08-30', daily_budget: 15, used: 0, focus_capacity: 3, active_count: 0 },
+            error: null,
+          }),
+          single: async () => ({ data: null, error: { code: 'PGRST116', message: 'no rows' } }),
+          limit: () => q,
+          order: () => q,
+          not: () => q,
+          then: (onOk: (v: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(onOk),
+        };
+        return q;
+      },
+      upsert: () => ({
+        select: () => ({ single: async () => ({ data: null, error: null }) }),
+      }),
       // Chainable + thenable: `updateHabit` calls `.update().eq('id', ...)`
       // (one `.eq()`), `willpowerStore.spend`/`refund` call
       // `.update().eq('user_id', ...).eq('state_date', ...)` (two, chained).
@@ -30,15 +50,23 @@ jest.mock('../../lib/supabase', () => ({
       // of how many `.eq()` links precede it.
       update: (patch: unknown) => {
         const record = () => { mockCalls.push({ table, patch }); };
+        // The row is echoed back with the id it was filtered on. Returning a
+        // fixed id made the store replace a habit with a differently-keyed
+        // one, because it now stores the row the server confirmed rather than
+        // merging the patch locally.
+        const filters: Record<string, unknown> = {};
         const q: any = {
-          eq: () => q,
+          eq: (col: string, val: unknown) => { filters[col] = val; return q; },
           // `habitRepository.updateHabit` reads the row back through
           // `.select(cols).maybeSingle()` so a rejected write is visible
           // instead of assumed; the recorded call is unchanged.
           select: () => ({
             maybeSingle: async () => {
               record();
-              return { data: { id: 'h1', ...(patch as Record<string, unknown>) }, error: null };
+              return {
+                data: { id: (filters.id as string) ?? 'h1', ...(patch as Record<string, unknown>) },
+                error: null,
+              };
             },
           }),
           then: (onOk: (v: unknown) => unknown) => {

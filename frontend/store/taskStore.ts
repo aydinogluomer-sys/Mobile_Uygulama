@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import {
-  deleteTask as repoDeleteTask,
-  fetchTasksPage,
-  insertTask,
-  updateTask as repoUpdateTask,
-} from '../repositories/taskRepository';
+  createTask as insertTask,
+  listTasks as fetchTasksPage,
+  patchTask as repoUpdateTask,
+  removeTask as repoDeleteTask,
+  setCompleted,
+} from '../services/taskService';
 import type { Cursor } from '../repositories/shared';
 import { todayLocal } from '../lib/date';
 
@@ -117,13 +118,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   toggleDone: async (id) => {
     const task = get().tasks.find((t) => t.id === id);
     if (!task) return;
-    const done = !task.completed;
-    const patch: Partial<Task> = {
-      completed: done,
-      status: done ? 'completed' : 'pending',
-      completed_at: done ? new Date().toISOString() : null,
-    };
-    await get().updateTask(id, patch);
+    // `completed`, `status` and `completed_at` describe one fact across three
+    // columns, and different reports read different ones. Keeping them
+    // consistent is a domain invariant, so it lives in the service rather
+    // than being re-derived by whichever screen toggles a task.
+    const res = await setCompleted(id, !task.completed);
+    if (!res.ok) { set({ error: res.error }); return; }
+    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? res.data : t)), error: null }));
   },
 
   moveToList: async (id, list) => {

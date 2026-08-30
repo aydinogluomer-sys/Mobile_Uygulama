@@ -17,8 +17,7 @@ import { extractInvokeError } from '../../lib/aiInvoke';
 import { todayLocal, ymd, addDaysLocal } from '../../lib/date';
 import { habitCompletionRate, weekdayBreakdown, bestWeekday, worstWeekday, recoverySuccessRate } from '../../lib/behaviorIntelligence';
 import { fromLegacyRecoveryPlan } from '../../lib/recovery';
-import { fetchHabitLogsForReview } from '../../repositories/habitLogRepository';
-import { fetchRecoveryPlansForReview } from '../../repositories/recoveryRepository';
+import { loadReviewData } from '../../services/reviewService';
 import { DOW_TR } from '../../lib/focusReport';
 
 type Message = {
@@ -95,12 +94,10 @@ export default function AICoachScreen() {
       const start = ymd(addDaysLocal(today, -55));
       const start30 = ymd(addDaysLocal(today, -29));
 
-      const [logsRes, recoveryRes] = await Promise.all([
-        fetchHabitLogsForReview({ start, end }),
-        fetchRecoveryPlansForReview({ start, end }),
-      ]);
-      if (!logsRes.ok) return; // best-effort -- see field doc
-      const logs = logsRes.data;
+      const review = await loadReviewData({ start, end });
+      if (!review.ok) return; // best-effort -- see field doc
+      const logs = review.data.logs;
+      const recoveryRes = { ok: true as const, data: review.data.recoveryPlans };
 
       // Enriches the SAME `activeHabits` array the edge function already
       // reads verbatim into its prompt (`ctx.activeHabits.join(', ')`) with

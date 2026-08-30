@@ -14,8 +14,11 @@ import {
 } from '../../lib/focusReport';
 import { FocusSettings, DEFAULT_SETTINGS } from '../../store/focusStore';
 import { todayLocal } from '../../lib/date';
-import { fetchAllFocusTasks } from '../../repositories/focusTaskRepository';
-import { fetchAllFocusSessions, deleteAllFocusSessions } from '../../repositories/focusSessionRepository';
+import {
+  allSessions as fetchAllFocusSessions,
+  allTasks as fetchAllFocusTasks,
+  clearAllSessions as deleteAllFocusSessions,
+} from '../../services/focusService';
 
 type Section = 'general' | 'timer' | 'tasks' | 'reports' | 'sounds' | 'account' | 'integrations' | 'advanced';
 

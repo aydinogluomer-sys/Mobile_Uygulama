@@ -56,9 +56,8 @@ import {
   weeklyDigest, monthlyDigest, formatDigestForPrompt, MAX_HABIT_ENTRIES, type Digest,
 } from '../../lib/insightDigest';
 import { extractInvokeError } from '../../lib/aiInvoke';
-import { fetchHabitLogsForReview, type ReviewLogRow } from '../../repositories/habitLogRepository';
-import { fetchFocusSessionsSince } from '../../repositories/focusSessionRepository';
-import { fetchRecoveryPlansForReview } from '../../repositories/recoveryRepository';
+import { loadReviewData, type ReviewLogRow } from '../../services/reviewService';
+import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
 import { DOW_TR } from '../../lib/focusReport';
 
 const HISTORY_WEEKS = 14; // >= the 12-week trend + 8-week fragility windows behaviorIntelligence.ts uses, with a buffer
@@ -286,14 +285,16 @@ export default function InsightsScreen() {
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      fetchHabitLogsForReview({ start: since, end: todayYmd }),
-      fetchRecoveryPlansForReview({ start: since, end: todayYmd }),
+      loadReviewData({ start: since, end: todayYmd }),
       fetchFocusSessionsSince({ sinceIso: since }),
-    ]).then(([logsRes, recoveryRes, sessionsRes]) => {
+    ]).then(([reviewRes, sessionsRes]) => {
       if (cancelled) return;
-      setLogs(logsRes.ok ? logsRes.data : []);
-      setRecoveryPlans(recoveryRes.ok ? recoveryRes.data : []);
-      setFocusSessions(sessionsRes.ok ? sessionsRes.data.filter((sess) => sess.started_at <= `${todayYmd}T23:59:59`) : []);
+      // Habit logs and recovery come from ONE service call: a review
+      // built from logs plus an empty recovery list (because that query
+      // failed) understates how much the user caught up.
+      setLogs(reviewRes.ok ? reviewRes.data.logs : []);
+      setRecoveryPlans(reviewRes.ok ? (reviewRes.data.recoveryPlans as never) : []);
+      setFocusSessions(sessionsRes.ok ? sessionsRes.data.filter((sess: { started_at: string }) => sess.started_at <= `${todayYmd}T23:59:59`) : []);
       setLoading(false);
     });
     return () => { cancelled = true; };

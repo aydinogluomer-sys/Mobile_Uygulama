@@ -2,11 +2,12 @@ import { create } from 'zustand';
 import { supabase, type RecoveryPlan, type RecoveryStrategy, type HabitLog } from '../lib/supabase';
 import { scheduleRecoveryReminder, cancelRecoveryReminder } from '../lib/notifications';
 import {
-  deleteRecoveryPlan,
-  fetchPlannedRecoveryPlans,
-  insertRecoveryPlan,
-  setRecoveryPlanStatus,
-} from '../repositories/recoveryRepository';
+  completePlan as svcCompletePlan,
+  createPlan as insertRecoveryPlan,
+  listPlannedPlans as fetchPlannedRecoveryPlans,
+  removePlan as deleteRecoveryPlan,
+  skipPlan as svcSkipPlan,
+} from '../services/recoveryService';
 import {
   deficitFor,
   recoveryOptions,
@@ -136,7 +137,7 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
     // Read the plan BEFORE the local state drops it -- the event's habit_id
     // and strategy come from here, never from a caller-supplied argument.
     const plan = get().plans.find((p) => p.id === id);
-    const res = await setRecoveryPlanStatus(id, 'done');
+    const res = await svcCompletePlan(id);
     const error = res.ok ? null : { message: res.error };
     cancelRecoveryReminder(id);
     set((s) => ({ plans: s.plans.filter((p) => p.id !== id) }));
@@ -154,7 +155,7 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
   },
 
   skipPlan: async (id) => {
-    const res = await setRecoveryPlanStatus(id, 'skipped');
+    const res = await svcSkipPlan(id);
     // A failed write leaves the plan in place rather than clearing it from
     // the list and cancelling its reminder for a change that did not happen.
     if (!res.ok) return;

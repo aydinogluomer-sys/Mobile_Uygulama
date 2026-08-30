@@ -68,9 +68,11 @@ describe('Weekly Review -- six §12 auto-derived metrics', () => {
     expect(/recoverySuccessRate\s*\(/.test(screen)).toBe(true);
   });
 
-  it('fetches recovery plans via the new repository function (not a raw supabase call)', () => {
-    expect(/from\s+['"][^'"]*repositories\/recoveryRepository['"]/.test(screen)).toBe(true);
-    expect(/fetchRecoveryPlansForReview\s*\(/.test(screen)).toBe(true);
+  it('fetches recovery plans through the data layer, never a raw supabase call', () => {
+    // Recovery reads moved behind `services/reviewService`; the invariant is
+    // that the SCREEN never builds the query itself, whichever layer it asks.
+    expect(/from\s+['"][^'"]*services\/reviewService['"]/.test(screen)).toBe(true);
+    expect(/recoveryForPeriod\s*\(/.test(screen)).toBe(true);
   });
 });
 

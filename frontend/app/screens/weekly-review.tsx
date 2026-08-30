@@ -16,10 +16,13 @@ import { dailyLoad, type TaskLoadItem } from '../../lib/capacity';
 import { isDueOn } from '../../lib/habitSchedule';
 import { recoverySuccessRate, type Result } from '../../lib/behaviorIntelligence';
 import { fromLegacyRecoveryPlan } from '../../lib/recovery';
-import { fetchWeeklyReview, upsertWeeklyReview } from '../../repositories/reviewRepository';
-import { fetchHabitLogsForReview } from '../../repositories/habitLogRepository';
-import { fetchFocusSessionsSince } from '../../repositories/focusSessionRepository';
-import { fetchRecoveryPlansForReview } from '../../repositories/recoveryRepository';
+import {
+  logsForPeriod,
+  recoveryForPeriod,
+  loadWeeklyReflection as fetchWeeklyReview,
+  saveWeeklyReflection as upsertWeeklyReview,
+} from '../../services/reviewService';
+import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
 
 function getWeekKey(date = new Date()) {
   return format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -196,16 +199,16 @@ export default function WeeklyReviewScreen() {
     }
 
     const [logsRes, sessionsRes, recoveryRes] = await Promise.all([
-      fetchHabitLogsForReview({ start, end }),
+      logsForPeriod({ start, end }),
       fetchFocusSessionsSince({ sinceIso: start }),
-      fetchRecoveryPlansForReview({ start, end }),
+      recoveryForPeriod({ start, end }),
     ]);
 
     const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end) : 0;
     // `fetchFocusSessionsSince` has no upper bound -- clip to this week's `end`
     // client-side, same window `fetchFocusSecondsForReview` used to filter server-side.
     const weekSessions = sessionsRes.ok
-      ? sessionsRes.data.filter((sess) => sess.started_at <= `${end}T23:59:59`)
+      ? sessionsRes.data.filter((sess: { started_at: string }) => sess.started_at <= `${end}T23:59:59`)
       : [];
     const minutes = focusMinutesFromSessions(weekSessions);
     const nextBadge = reportBadge({ habitRate: rate, focusMinutes: minutes, completedTasks: completedTasks.length });

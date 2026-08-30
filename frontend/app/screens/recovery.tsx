@@ -18,8 +18,9 @@ import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton } from '../../components/ui';
 import { todayLocal } from '../../lib/date';
-import { fetchHabitLogsForHabitsSince } from '../../repositories/habitLogRepository';
+import { logsForHabitsSince as fetchHabitLogsForHabitsSince } from '../../services/habitService';
 import { isMeasurableTracking } from '../../lib/habitEngine';
+import { completePlanWithMakeup } from '../../services/recoveryService';
 
 // Telafi gününü hesaplayan hızlı seçenekler (date-picker dep yok)
 function nextSaturdayOffset(): number {
@@ -265,22 +266,20 @@ export default function RecoveryScreen() {
 
   async function handleCompletePlan(plan: typeof plans[number]) {
     haptic.success();
-    const h = habitById(plan.habit_id);
-    const [y, mo, d] = plan.target_date.split('-').map(Number);
-    const logDate = new Date(y, mo - 1, d);
-    const state = (plan.strategy === 'half' || plan.strategy === 'mini') ? 'partial' : 'done';
-    const value = state === 'partial' && h && isMeasurableTracking(h.tracking_type) && h.daily_goal
-      ? Math.max(1, Math.round(h.daily_goal * (plan.strategy === 'half' ? 0.5 : 0.25)))
-      : undefined;
-    const res = await logHabit({ habitId: plan.habit_id, date: logDate, state, value, targetValue: h?.daily_goal ?? undefined, targetDirection: h?.target_direction ?? undefined });
-    // Kayıt yazılmadıysa planı TAMAMLANDI işaretleme. Eskiden koşulsuzdu, yani
-    // başarısız bir yazma sonrası plan "tamam" görünüyor ama karşılığında hiçbir
-    // habit_log yok — ikisi kalıcı olarak çelişiyordu (bulgu N-04).
+    // What a make-up logs (done vs partial, and the reduced value) and the
+    // rule that the LOG is written before the plan is closed both live in
+    // `services/recoveryService.completePlanWithMakeup`. Closing the plan
+    // without a log leaves the two permanently contradicting each other
+    // (finding N-04), so the ordering is a domain rule, not screen code.
+    const res = await completePlanWithMakeup({
+      plan,
+      habit: habitById(plan.habit_id),
+      writeLog: (input) => logHabit(input),
+    });
     if (!res.ok) {
       Alert.alert('Kaydedilemedi', res.error);
       return;
     }
-    await completePlan(plan.id);
     await refreshSets();
     if (plan.target_date === today) await fetchLogsForDate(today);
   }

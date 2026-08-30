@@ -32,7 +32,9 @@ describe('W3 -- recovery.tsx reaches recoveryOptionsFor', () => {
   });
 
   it('preserves the existing plan list/complete/skip/delete flows', () => {
-    expect(src).toContain('completePlan(');
+    // `completePlan` is now reached through the service, which owns the
+    // log-before-close ordering; the other three are unchanged store actions.
+    expect(src).toContain('completePlanWithMakeup(');
     expect(src).toContain('skipPlan(');
     expect(src).toContain('deletePlan(');
     expect(src).toContain('addPlan(');

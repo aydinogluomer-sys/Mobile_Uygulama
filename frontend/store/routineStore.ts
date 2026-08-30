@@ -13,11 +13,11 @@ import {
   type ProposalCompletion,
 } from '../lib/routineProposal';
 import { findRoutinePack, packToProposal, type RoutinePackKey } from '../lib/routinePacks';
-import { insertRoutineHabits, type InstallHabitRow } from '../repositories/habitRepository';
+import { installProposal, listRoutines as repoFetchRoutines } from '../services/routineService';
 import { computeWillpowerCost } from '../lib/triage';
 import type { HabitLoadInput } from '../lib/capacity';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
-import { fetchRoutines as repoFetchRoutines } from '../repositories/routineRepository';
+
 
 /**
  * §22 analytics emission seam (task Phase-4 CODER-O) -- see the identical
@@ -342,33 +342,10 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
 
     set({ installing: true, installError: null });
     try {
-      const activateSet = new Set(evaluation.toActivate);
-      const rows: InstallHabitRow[] = proposal.habits.map((h) => {
-        const trackingType: 'boolean' | 'numeric' = h.tracking_type === 'numeric' ? 'numeric' : 'boolean';
-        const dailyFreq = { kind: 'daily' as const };
-        return {
-          name: h.name,
-          icon: null,
-          tracking_type: trackingType,
-          unit: null,
-          daily_goal: null,
-          target_direction: null,
-          frequency_config: dailyFreq,
-          willpower_cost: computeWillpowerCost({
-            difficulty: h.difficulty,
-            impact_level: 'medium',
-            behavior_type: 'positive',
-            tracking_type: trackingType,
-            frequency_config: dailyFreq,
-            estimated_minutes: h.estimated_minutes,
-          }),
-          difficulty: h.difficulty,
-          estimated_minutes: h.estimated_minutes,
-          status: activateSet.has(h.name) ? 'active' : 'waiting',
-        };
-      });
-
-      const result = await insertRoutineHabits(rows);
+      // Row construction, the derived willpower cost and the
+      // activate-vs-queue decision are domain rules and live in
+      // `services/routineService.buildInstallRows`.
+      const result = await installProposal(proposal.habits, evaluation.toActivate);
       if (!result.ok) {
         set({ installing: false, installError: result.error });
         return false;
@@ -376,7 +353,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
 
       // Reflect the new habits immediately -- same pattern habitStore.addHabit
       // uses (prepend to local state rather than forcing a refetch).
-      useHabitStore.setState((s) => ({ habits: [...result.data, ...s.habits] }));
+      useHabitStore.setState((s) => ({ habits: [...result.habits, ...s.habits] }));
 
       set({
         installing: false,
@@ -391,12 +368,14 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       // the AI and the Routine Pack entry points funnel through it, so one
       // finished install is one event. Placed after `result.ok`, so a failed
       // bulk insert (which returns above) is never reported as an install.
-      // Habit names live in `rows`/`result.data` and are never passed.
+      // Habit names live in the installed rows and are never passed. The
+      // counts are read back from what was actually persisted rather than
+      // from the request, so a partial write cannot be reported as a full one.
       emitAnalytics('routine_installed', {
         source: proposalSource,
-        habit_count: result.data.length,
-        activated_count: rows.filter((r) => r.status === 'active').length,
-        queued_count: rows.filter((r) => r.status === 'waiting').length,
+        habit_count: result.habits.length,
+        activated_count: result.habits.filter((h) => h.status === 'active').length,
+        queued_count: result.habits.filter((h) => h.status === 'waiting').length,
       });
       return true;
     } catch (err) {

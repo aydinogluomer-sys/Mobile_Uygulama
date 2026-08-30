@@ -158,8 +158,14 @@ describe('pagination reaches the user, not just the query', () => {
     // It used to filter the stores' in-memory arrays, which was only correct
     // while those arrays were the whole table.
     const code = stripComments(readFileSync(join(ROOT, 'components/CommandPalette.tsx'), 'utf8'));
+    // The four per-domain searches moved behind one service call, which also
+    // owns the per-source limit and the "a failed source contributes nothing"
+    // policy. The invariant is unchanged: the palette must not filter memory.
+    expect(code).toContain('searchEverything(');
+    expect(code).not.toMatch(/tasks\.filter\([^)]*toLowerCase/);
+    const svc = stripComments(readFileSync(join(ROOT, 'services/searchService.ts'), 'utf8'));
     for (const fn of ['searchTasks', 'searchNotes', 'searchProjects', 'searchHabits']) {
-      expect(code).toContain(fn);
+      expect(svc).toContain(fn);
     }
   });
 });

@@ -2,12 +2,15 @@ import { create } from 'zustand';
 import { supabase, Habit } from '../lib/supabase';
 import { scheduleHabitReminder, cancelHabitReminder } from '../lib/notifications';
 import {
+  activateHabit as activateHabitOp,
   archiveHabit as repoArchiveHabit,
-  fetchHabits as repoFetchHabits,
-  insertHabit as repoInsertHabit,
+  createHabit as repoInsertHabit,
+  listHabits as repoFetchHabits,
+  pauseHabit as pauseHabitOp,
+  patchHabit as repoUpdateHabit,
   purgeHabit as repoPurgeHabit,
-  updateHabit as repoUpdateHabit,
-} from '../repositories/habitRepository';
+  restoreHabit as repoRestoreHabit,
+} from '../services/habitService';
 // Static import (task Phase-1 CODER-F, W1). Was `await import('./willpowerStore')`
 // -- no circular dependency requires deferring it (willpowerStore.ts has no
 // import back on this file), and the dynamic form is unexecutable under this
@@ -133,7 +136,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
 
   // Geri al — arşivden çıkar, orijinal duruma döndür, listeye geri koy
   restoreHabit: async (habit) => {
-    const res = await repoUpdateHabit(habit.id, { status: habit.status });
+    const res = await repoRestoreHabit(habit);
     // Restoring is an undo: if the write fails the habit stays archived
     // rather than reappearing in the list as though it had come back.
     if (!res.ok) return;
@@ -159,18 +162,38 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
   // would UNDER-report load and wrongly permit an activation it shouldn't --
   // so this falls back to the legacy single-argument call in that case,
   // exactly as every other call site in this task does.
+  // Capacity check -> status write -> willpower charge, in that order, and
+  // in one place: `services/habitService.activateHabit`. The ordering is a
+  // domain rule (charging a budget for a habit that never activated is worse
+  // than the inverse), and it used to be split between this store and
+  // willpowerStore with each screen deciding whether to supply the capacity
+  // input at all.
   activateHabit: async (id, willpowerCost) => {
     const wp = useWillpowerStore.getState();
     const { habits, loading } = get();
     const target = habits.find((h) => h.id === id);
-    const capacityInput = !loading && target ? { habit: target, activeHabits: habits.filter((h) => h.status === 'active') } : undefined;
-    if (!wp.canActivate(willpowerCost, capacityInput)) return;
-    await get().updateHabit(id, { status: 'active' });
-    await wp.spend(willpowerCost);
+    if (!target) return;
+    const res = await activateHabitOp({
+      habit: target,
+      cost: willpowerCost,
+      willpower: { state: wp.state as never, stale: wp.isStale() },
+      activeHabits: habits.filter((h) => h.status === 'active'),
+      // A half-loaded habit list under-reports load, so the strict rule is
+      // only used once the set is known to be complete.
+      useCapacityRule: !loading,
+    });
+    if (!res.ok) return;
+    set((state) => ({ habits: state.habits.map((h) => (h.id === id ? res.habit : h)) }));
+    await wp.fetchToday();
   },
 
   pauseHabit: async (id, willpowerCost) => {
-    await get().updateHabit(id, { status: 'waiting' });
-    await useWillpowerStore.getState().refund(willpowerCost);
+    const wp = useWillpowerStore.getState();
+    const res = await pauseHabitOp({
+      habitId: id, cost: willpowerCost, willpower: { state: wp.state as never },
+    });
+    if (!res.ok) return;
+    set((state) => ({ habits: state.habits.map((h) => (h.id === id ? res.habit : h)) }));
+    await wp.fetchToday();
   },
 }));

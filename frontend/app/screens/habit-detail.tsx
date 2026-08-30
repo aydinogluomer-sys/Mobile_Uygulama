@@ -52,7 +52,7 @@ import {
   longestStreak,
   type Result,
 } from '../../lib/behaviorIntelligence';
-import { fetchHabitLogsForHabit, type HabitDetailLogRow } from '../../repositories/habitLogRepository';
+import { logsForHabit, type HabitDetailLogRow } from '../../services/habitService';
 import { LIFE_AREAS } from '../../store/lifeAreasStore';
 import { endConditionLabel } from '../../lib/triage';
 import { DOW_TR } from '../../lib/focusReport';
@@ -284,7 +284,7 @@ export default function HabitDetailScreen() {
       return;
     }
     setLoadingLogs(true);
-    fetchHabitLogsForHabit({ habitId: habit.id, start: sinceYmd, end: todayYmd }).then((res) => {
+    logsForHabit({ habitId: habit.id, start: sinceYmd, end: todayYmd }).then((res) => {
       if (cancelled) return;
       if (res.ok) setLogs(res.data);
       setLoadingLogs(false);

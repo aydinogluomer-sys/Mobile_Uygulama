@@ -12,10 +12,7 @@ import { useHabitStore } from '../store/habitStore';
 import { useTaskStore } from '../store/taskStore';
 import { useNoteStore } from '../store/noteStore';
 import { useProjectStore } from '../store/projectStore';
-import { searchTasks } from '../repositories/taskRepository';
-import { searchNotes } from '../repositories/noteRepository';
-import { searchProjects } from '../repositories/projectRepository';
-import { searchHabits } from '../repositories/habitRepository';
+import { searchEverything } from '../services/searchService';
 import { useDrawerStore } from '../store/drawerStore';
 
 const RECENTS_KEY = 'app_cmd_recents';
@@ -123,15 +120,16 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
     if (!q) { setRemote(null); return; }
     let alive = true;
     const timer = setTimeout(async () => {
-      const [t, n, p, h] = await Promise.all([
-        searchTasks(q, 5), searchNotes(q, 5), searchProjects(q, 5), searchHabits(q, 5),
-      ]);
+      // One service call. The per-source limit and the "a failed source
+      // contributes nothing rather than failing the search" policy live
+      // there, not next to the rendering.
+      const found = await searchEverything(q, 5);
       if (!alive) return;
       setRemote({
-        tasks: t.ok ? t.data : [],
-        notes: n.ok ? n.data : [],
-        projects: p.ok ? (p.data as typeof projects) : [],
-        habits: h.ok ? h.data : [],
+        tasks: found.tasks as typeof tasks,
+        notes: found.notes as typeof notes,
+        projects: found.projects as typeof projects,
+        habits: found.habits as typeof habits,
       });
     }, 220);
     return () => { alive = false; clearTimeout(timer); };

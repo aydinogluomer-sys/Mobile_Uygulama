@@ -1,7 +1,11 @@
 # ATLAS — IMPLEMENTATION_V2 FINAL PRE-MERGE AUDIT
 
-**Branch:** `phase/final-v2-hardening` · **HEAD:** `3f665ae` · 15 commits ahead of `main`, 0 behind
-**CI:** see §5 — re-run on this HEAD
+**Branch:** `phase/final-v2-hardening`
+**Audit generated from the tree at:** `6632402` (the commit this document's
+findings were measured against — the commit that *adds* this document has a
+different SHA by construction, so no self-reference is claimed here).
+**Final branch HEAD and its CI result:** see the terminal report, not this
+file.
 **Date:** 2026-08-30
 
 Status values are only `PASS`, `BLOCKED_EXTERNAL`, `FAIL`, or `NOT_DONE`.
@@ -19,14 +23,14 @@ the command, query or live request that produced it.
 | **§3** | Disconnect honesty | response discarded, state cleared unconditionally (Google **and** Spotify) | local state cleared only on server confirmation | 401/500/throw cases; mutations (2 red each) | **PASS** |
 | **§4** | Spotify security drift | canonical hardened, **production not** | canonical verified hardened; deploy NOT performed | deployed source read live: `crypto.randomUUID()`, no verify, **hardcoded client secret fallback** | **BLOCKED_EXTERNAL** |
 | **§5** | Google Calendar deployed | function absent, table absent | table created (49→50), canonical function written, client fails closed | migration verified; deploy pending secrets | **BLOCKED_EXTERNAL** (code complete) |
-| **§6** | Notion sync E2E | `success:true, synced_habits:0` forever | columns fixed, errors checked, honest partial reporting; **deployed v2** | live: v1 query → `42703`, v2 query → OK; function reachable + authenticating | **PASS** (full E2E needs Notion credentials) |
+| **§6** | Notion sync E2E | `success:true, synced_habits:0` forever | columns fixed, errors checked, honest partial reporting; **deployed v2** | code/schema/deploy sub-checks pass live (v1 query → `42703`, v2 → OK, function authenticating). A linked-account round trip needs Notion credentials | **BLOCKED_EXTERNAL** |
 | **§7** | Full RLS semantic audit | policy counting only | 127 live checks, 2 users + anon; 1 defect found and fixed | `docs/FINAL_RLS_MATRIX.md` | **PASS** |
-| **§8** | Repository/service boundary | **72** direct DB calls across 17 stores (the 34/11 figure was a mis-measurement — see §6) | all queries moved to `repositories/`; 18 repositories | **0** direct calls in `store/`, `app/`, `components/`; gate pins it | **PASS** |
+| **§8** | Repository **and service** boundary | **72** direct DB calls across 17 stores (the 34/11 figure was a mis-measurement — see §2b) | UI→Store→Service→Repository→Supabase. 10 services holding named domain rules, 21 repositories | 0 services touch supabase; 0 UI files import a repository; the 7 orchestrated stores reach the DB only through their service; the 10 CRUD-only stores are explicitly classified rather than left unaccounted for. `layerBoundary` pins each service's rule BY NAME; 4 mutations verified | **PASS** |
 | **§9** | Monthly review cloud persistence | AsyncStorage only | — | no `reviews` table created | **NOT_DONE** |
-| **§10** | Structural tests on current contract | `numeric` substring gate; navigation gate matched names not tabs; `reading_list` string gate | all three rewritten to pin real contracts, each mutation-verified | `run-tests.js` 144/144 | **PASS** (monthly-review gate still describes AsyncStorage, matching §9) |
+| **§10** | Structural tests on current contract | three shallow proxies | all three rewritten to pin real contracts, each mutation-verified | `run-tests.js` 144/144. The monthly-review gate still encodes AsyncStorage, which matches today's code but not the target | **NOT_DONE** (blocked on §9) |
 | **§11** | XP idempotency | assumed broken | **premise disproven** — see §3 below | 6/6 live: duplicate INSERT `23505`, replay ×4 adds 0 XP | **PASS** (idempotency) / reconstructibility **NOT_DONE** |
 | **§12** | Focus-Point charging atomicity | `spend_focus_points` error unchecked | — | not addressed | **NOT_DONE** |
-| **§13** | Pagination | unbounded reads across the data layer | keyset paging (`(column, id)` cursor), per-tab paging for reading list, server-side search for notes/tasks/projects/habits and the command palette, `LoadMoreFooter` in four screens | `repositoryBoundary` + `dataLayerBoundary` gates | **PASS** |
+| **§13** | Pagination | unbounded reads across the data layer | keyset paging, per-tab paging, server-side search, `LoadMoreFooter` in four screens | **The bounding gate is FILE-level**: a repository containing one bounded query passes even if a second query in the same file is unbounded. No runtime paging test exists (page boundaries, duplicates, tie-breaking) | **NOT_DONE** |
 | **§14** | Navigation IA | today/tasks/focus/timeline/stats | Bugün · Plan · Alışkanlıklar · İçgörüler · Profil; hubs compose the existing screens, old routes kept as `href: null` | `run-tests.js` parses visible vs hidden; 3 mutations verified | **PASS** |
 | **§15** | Legacy FastAPI retirement | 2 client call sites, `user_id="default"` | — | still 2 call sites | **NOT_DONE** |
 | **§16** | Dependency security | 2 critical, 16 high | `npm audit fix`, no `--force` | **0 critical, 9 high**, all build-time and **absent from the shipped bundle** (grep over `dist/`) | **PASS** |
@@ -38,17 +42,17 @@ the command, query or live request that produced it.
 | **§22** | Crash monitoring sink | dev console only | — | no DSN provided | **BLOCKED_EXTERNAL** |
 | **§23** | Offline queue account safety | one global key, no owner | per-account key + `userId` + replay filter + lossless migration | 6 behaviour tests; mutations (4 red / 1 red) | **PASS** |
 | **§24** | Recovery vocabulary | lossy v1/v2 adapter | — | unchanged | **NOT_DONE** |
-| **§25** | `at_most` semantics | reward inverted; two disagreeing scorers | ceiling contract in the engine, report delegates to it | 25 tests incl. every hostile input; mutations (18 red / 10 red) | **PASS** |
+| **§25** | Negative + measurable habits | reward inverted; two disagreeing scorers | scoring fixed and unified (25 tests, mutations 18/10 red) | **Scoring only.** `isDueOn` still returns false for every negative habit, so a negative measurable habit is excluded from due-day reports, analytics and the recovery backlog — pinned in `ceilingSemantics.test.ts` as G-2. Scoring without lifecycle is not the requirement | **NOT_DONE** |
 | **§26** | Auth lifecycle | — | partially (queue on sign-out) | register blocked, so the full cycle is untestable | **BLOCKED_EXTERNAL** |
-| **§27** | Cache isolation | sync queue global | queue scoped; two remaining keys assessed | `focus.settings.v1` correctly global; `atlas_notion_login_session` still global | **PASS** (with 1 recorded gap) |
+| **§27** | Cache isolation | sync queue global | queue scoped per account | `atlas_notion_login_session` is still global — one account can see another's Notion workspace name on a shared device | **NOT_DONE** |
 | **§28** | One canonical edge tree | two writable trees | `backend/supabase/functions/` removed | gate: duplicate tree absent, function list pinned | **PASS** |
-| **§29** | Edge error contract | silent success in 2 places | notion-sync + notionStore + both disconnects fixed | see §3/§6 | **PASS** (partial — not every function audited) |
+| **§29** | Edge error contract | silent success in 2 places | notion-sync, notionStore and both disconnects fixed | Not every client-called edge function has been audited for transport error / non-2xx / `success:false` / malformed JSON / timeout | **NOT_DONE** |
 | **§30** | Obsolete comments | "NOT APPLIED", "migration blocked" | corrected in migration, recovery, routineProposal | — | **PASS** |
-| **§31** | No hardcoded secrets | unknown | scanned | **repo clean**; deployed spotify-auth carries a literal client secret | **PASS** (repo) / **BLOCKED_EXTERNAL** (rotation) |
+| **§31** | No hardcoded secrets | unknown | scanned; repo is clean | The deployed `spotify-auth` carries a literal client secret as a `??` fallback. Rotation is the owner's | **BLOCKED_EXTERNAL** |
 | **§32** | Release env guards | guard depends on local state | stale DENIED link removed, guard PASSes clean | `predeploy_guard.sh` exit 0, no warning | **PASS** |
-| **§33** | Test quality | — | 11 new suites, all mutation-verified | 1156 tests, 80 suites | **PASS** (for what was built) |
-| **§34** | CI as merge gate | green | unchanged scope | see §5 | **PASS** (lint gate still narrow) |
-| **§35** | Full live smoke | — | partial | duration, ceilings, RLS, XP, notion-sync verified live; registration blocked | **BLOCKED_EXTERNAL** |
+| **§33** | Test quality | — | 11 new suites, all mutation-verified | 1156 tests, 80 suites. Covers what was built; the untouched requirements have no new coverage | **PASS** |
+| **§34** | CI as merge gate | green | unchanged scope | CI runs `expo lint`, whose scope is narrower than the repo — 3 errors live outside it. §17 requires full-repo 0/0, so CI does not yet gate the stated requirement | **NOT_DONE** (tied to §17) |
+| **§35** | Full live smoke | — | duration, ceilings, RLS, XP, notion-sync, child-row ownership verified live | Registration is the first step and is externally blocked, so the journey cannot run end to end | **BLOCKED_EXTERNAL** |
 | **§36** | Performance profiling | — | — | not done | **NOT_DONE** |
 | **§37** | main sync | — | 0 behind | `git rev-list --left-right --count origin/main...HEAD` → `0  15` | **PASS** |
 

@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { colors, fontFamily } from '../../lib/tokens';
 import { CompletedSession, useFocusStore } from '../../store/focusStore';
 import { FocusSessionRow, inRange, summary, byTask, buckets, fmtDuration, fmtHours } from '../../lib/focusReport';
-import { fetchFocusSessionsSince } from '../../repositories/focusSessionRepository';
+import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
 
 type Props = {
   visible: boolean;

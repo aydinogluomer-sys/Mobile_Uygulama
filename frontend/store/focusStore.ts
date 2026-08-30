@@ -2,13 +2,12 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import {
-  completeFocusTask as repoCompleteFocusTask,
-  deleteFocusTask as repoDeleteFocusTask,
-  fetchOpenFocusTasks,
-  insertFocusTask as repoInsertFocusTask,
-  setFocusTaskProgress,
-} from '../repositories/focusTaskRepository';
-import { insertFocusSession } from '../repositories/focusSessionRepository';
+  addTask as repoInsertFocusTask,
+  completeTask as repoCompleteFocusTask,
+  completeWorkPhase,
+  listOpenTasks as fetchOpenFocusTasks,
+  removeTask as repoDeleteFocusTask,
+} from '../services/focusService';
 import { haptic } from '../lib/haptics';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 
@@ -259,28 +258,24 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
       ? Math.min(plannedSeconds, Math.floor((Date.now() - new Date(sessionStartedAt).getTime()) / 1000))
       : plannedSeconds;
 
-    // Oturum kaydet
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user && phase === 'work') {
+    // Recording the session, crediting the task and auto-completing it are
+    // one domain operation with an ordering rule (a task is never credited
+    // for a session the database rejected) -- see
+    // `services/focusService.completeWorkPhase`.
+    if (phase === 'work') {
       const selectedTask = focusTasks.find((t) => t.id === selectedTaskId);
-      const sessionRes = await insertFocusSession({
-        taskId: selectedTaskId,
-        taskTitle: selectedTask?.title ?? null,
-        mode: phase,
-        startedAt: sessionStartedAt ?? new Date().toISOString(),
-        endedAt: new Date().toISOString(),
-        plannedSeconds: plannedSeconds,
-        completedSeconds: completedSeconds,
+      const outcome = await completeWorkPhase({
+        task: selectedTask as never,
+        plannedSeconds,
+        completedSeconds,
+        autoCheckTasks: settings.autoCheckTasks,
       });
-      const sessionError = sessionRes.ok ? null : { message: sessionRes.error };
 
-      // §22 `focus_completed`. The `focus_sessions` insert is what makes a
-      // session real, so the event is gated on it: a rejected insert leaves
-      // no row and must leave no event either. Note `task_title` IS written
-      // to the row above (the user's own data, their own table) and is
-      // deliberately NOT put on the event -- that is exactly the boundary
-      // §22 draws.
-      if (!sessionError) {
+      // §22 `focus_completed`. Gated on the session row existing: a rejected
+      // insert leaves no row and must leave no event either. `task_title` IS
+      // written to the row (the user's own data, their own table) and is
+      // deliberately NOT put on the event -- exactly the boundary §22 draws.
+      if (outcome.sessionRecorded) {
         emitAnalytics('focus_completed', {
           phase: PHASE_TOKEN[phase],
           planned_seconds: plannedSeconds,
@@ -291,17 +286,12 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
         });
       }
 
-      // Görev sayacını güncelle
       if (selectedTaskId) {
-        const newDone = (selectedTask?.completed_pomodoros ?? 0) + 1;
-        await setFocusTaskProgress({
-          id: selectedTaskId,
-          completedPomodoros: newDone,
-          totalFocusSeconds: (selectedTask?.total_focus_seconds ?? 0) + completedSeconds,
-        });
-        // Tahmini pomodoroya ulaşınca otomatik tamamla
-        if (settings.autoCheckTasks && newDone >= (selectedTask?.estimated_pomodoros ?? 1)) {
-          await get().completeFocusTask(selectedTaskId);
+        if (outcome.taskCompleted) {
+          set((s) => ({
+            focusTasks: s.focusTasks.filter((t) => t.id !== selectedTaskId),
+            selectedTaskId: null,
+          }));
         } else {
           await get().fetchFocusTasks();
         }
@@ -362,7 +352,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   addFocusTask: async (title, estimatedPomodoros = 1) => {
     const trimmed = title.trim();
     if (!trimmed) return;
-    const res = await repoInsertFocusTask({ title: trimmed, estimatedPomodoros });
+    const res = await repoInsertFocusTask(trimmed, estimatedPomodoros);
     if (!res.ok) return;
     set((s) => ({ focusTasks: [...s.focusTasks, res.data as FocusTask] }));
   },

@@ -11,7 +11,7 @@ import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 import { supabase } from '../../lib/supabase';
 import { useHabitStore } from '../../store/habitStore';
 import { useTaskStore } from '../../store/taskStore';
-import { fetchHabitLogsHeatmap, fetchHabitIdsCompletedSince } from '../../repositories/habitLogRepository';
+import { heatmapLogs as fetchHabitLogsHeatmap, habitIdsCompletedSince as fetchHabitIdsCompletedSince } from '../../services/habitService';
 import { LIFE_AREAS, AreaKey } from '../../store/lifeAreasStore';
 import AreaRadar from '../../components/AreaRadar';
 import HabitListView from '../../components/HabitListView';

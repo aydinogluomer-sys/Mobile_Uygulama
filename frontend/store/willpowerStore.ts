@@ -4,9 +4,12 @@ import { supabase, WillpowerState } from '../lib/supabase';
 import { todayLocal } from '../lib/date';
 import { canActivate as capacityCanActivate, dailyLoad, type HabitLoadInput } from '../lib/capacity';
 import {
-  fetchOrCreateWillpowerState,
-  updateWillpowerState,
-} from '../repositories/willpowerRepository';
+  evaluateActivation,
+  loadToday,
+  refund as capacityRefund,
+  spend as capacitySpend,
+} from '../services/capacityService';
+import type { WillpowerStateRow } from '../repositories/willpowerRepository';
 
 /**
  * W2 (task 1-D, Phase 1 wiring) seam: `canActivate`'s legacy fixed-slot rule
@@ -106,7 +109,7 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
 
     const today = todayLocal();
     set({ loading: true });
-    const res = await fetchOrCreateWillpowerState(today);
+    const res = await loadToday(today);
     if (res.ok) set({ state: res.data as WillpowerState });
     set({ loading: false });
   },
@@ -123,20 +126,17 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
   // and is unconditional -- it still applies either way. When no capacity
   // input is supplied, the legacy fixed-slot check runs exactly as before,
   // so this change is behaviour-preserving for every existing call site.
-  canActivate: (cost, capacityInput) => {
-    if (get().isStale()) return false;
-    const s = get().state;
-    if (!s) return false;
-    if (s.used + cost > s.daily_budget) return false;
-
-    if (!capacityInput) {
-      // Legacy fixed-slot rule -- unchanged default when no habit-load data
-      // is supplied (see `CanActivateCapacityInput`'s doc above).
-      return s.active_count < s.focus_capacity;
-    }
-    const currentLoad = dailyLoad({ habits: capacityInput.activeHabits ?? [] }).normalised;
-    return capacityCanActivate({ currentLoad, habit: capacityInput.habit, ceiling: capacityInput.ceiling });
-  },
+  // The RULE lives in `services/capacityService.evaluateActivation` -- it
+  // reads today's budget, the active-habit load and the candidate habit, and
+  // it is the same decision `habitService.activate` makes before writing.
+  // The store supplies today's row and reports the boolean the UI wants.
+  canActivate: (cost, capacityInput) =>
+    evaluateActivation({
+      state: get().state as unknown as WillpowerStateRow | null,
+      stale: get().isStale(),
+      cost,
+      capacityInput,
+    }).allowed,
 
   // Returns `null` when there is no usable reading -- no state, or a row from
   // a day that is no longer today.
@@ -165,13 +165,12 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
     // charge the wrong day.
     if (!s || s.state_date !== todayLocal()) return;
 
-    const updates = { used: s.used + cost, active_count: s.active_count + 1 };
-    const res = await updateWillpowerState(s.state_date, updates);
+    const res = await capacitySpend(s as unknown as WillpowerStateRow, cost);
     // Local state follows the server: showing willpower as spent when the
     // write was rejected would let the user over-commit against a budget the
     // database never debited.
     if (!res.ok) return;
-    set({ state: { ...s, ...updates } });
+    set({ state: res.data as unknown as WillpowerState });
   },
 
   refund: async (cost) => {
@@ -184,8 +183,8 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
       used: Math.max(0, s.used - cost),
       active_count: Math.max(0, s.active_count - 1),
     };
-    const res = await updateWillpowerState(s.state_date, updates);
+    const res = await capacityRefund(s as unknown as WillpowerStateRow, cost);
     if (!res.ok) return;
-    set({ state: { ...s, ...updates } });
+    set({ state: res.data as unknown as WillpowerState });
   },
 }));
