@@ -109,27 +109,13 @@ describe('the repository layer exists and is where the queries live', () => {
   });
 });
 
-describe('list reads are bounded', () => {
-  const repos = sourcesIn('repositories');
-
-  it('every repository that selects a collection bounds it', () => {
-    // A `.select()` that is neither paginated, single-row, windowed by date,
-    // nor explicitly limited is the unbounded read this refactor removed.
-    const unbounded: string[] = [];
-    for (const r of repos) {
-      if (r.path.endsWith('shared.ts')) continue;
-      if (!DB_CALL.test(r.code)) continue;
-      const bounded =
-        /\.limit\(/.test(r.code) ||
-        /fetchPage(<|\()/.test(r.code) ||
-        /\.single\(\)|\.maybeSingle\(\)/.test(r.code) ||
-        /\.gte\(/.test(r.code) ||
-        /count:\s*'exact'/.test(r.code);
-      if (!bounded) unbounded.push(r.path);
-    }
-    expect(unbounded).toEqual([]);
-  });
-});
+// The file-level bounding check that used to live here has been REMOVED and
+// replaced by `queryBounding.test.ts`, which classifies each query chain
+// individually. The old check asked whether a repository FILE contained a
+// bound, so a file with one paginated query and one unbounded query passed.
+// Demonstrated rather than assumed: adding an unbounded second query to
+// noteRepository turns the per-query gate red while the file-level gate stays
+// green. Keeping both would have left a check that grants false confidence.
 
 describe('pagination reaches the user, not just the query', () => {
   const screens = [

@@ -26,7 +26,10 @@ export async function fetchAllFocusTasks(): Promise<RepoResult<FocusTaskRow[]>> 
     .from('focus_tasks')
     .select('*')
     .eq('user_id', u.userId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    // Export reads the whole collection by design; the cap keeps "whole"
+    // finite, for the same reason as the session export.
+    .limit(2000);
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as FocusTaskRow[] };
 }

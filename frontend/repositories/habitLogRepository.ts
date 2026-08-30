@@ -156,11 +156,16 @@ const WRITE_COLS = 'id,habit_id,user_id,completed_at,value,is_completed,state,xp
 export async function fetchLogsForDate(dateStr: string): Promise<RepoResult<HabitLog[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
+  // One local day, so the row count is bounded by how many habits the user
+  // has. The explicit cap exists anyway: "bounded in practice" is not a bound,
+  // and a query that relies on the shape of today's data is one schema change
+  // from being unbounded.
   const { data, error } = await supabase
     .from('habit_logs')
     .select(WRITE_COLS)
     .eq('user_id', u.userId)
-    .eq('completed_at', dateStr);
+    .eq('completed_at', dateStr)
+    .limit(500);
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as unknown as HabitLog[] };
 }

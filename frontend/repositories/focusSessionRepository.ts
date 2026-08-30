@@ -60,7 +60,11 @@ export async function fetchAllFocusSessions(): Promise<RepoResult<FocusSessionFu
     .from('focus_sessions')
     .select('*')
     .eq('user_id', u.userId)
-    .order('started_at', { ascending: false });
+    .order('started_at', { ascending: false })
+    // Export reads the whole collection by design; the cap keeps "whole"
+    // finite. 5000 sessions is far beyond any real account, and an export
+    // that can grow without limit is a memory failure waiting for one user.
+    .limit(5000);
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as FocusSessionFullRow[] };
 }
