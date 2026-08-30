@@ -16,6 +16,22 @@ import { findRoutinePack, packToProposal, type RoutinePackKey } from '../lib/rou
 import { insertRoutineHabits, type InstallHabitRow } from '../repositories/habitRepository';
 import { computeWillpowerCost } from '../lib/triage';
 import type { HabitLoadInput } from '../lib/capacity';
+import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
+
+/**
+ * §22 analytics emission seam (task Phase-4 CODER-O) -- see the identical
+ * wrapper in `store/habitStore.ts` for the full rationale. In short: run the
+ * payload through `buildEvent` (which drops free text by shape, here, at the
+ * call site), hand the result to `lib/analytics.ts`'s sink funnel, and never
+ * let `buildEvent`'s deliberate throw escape into the user action.
+ */
+function emitAnalytics(name: AnalyticsEventName, props: Record<string, unknown>): void {
+  try {
+    emitEvent(buildEvent(name, props));
+  } catch {
+    /* §22: an analytics failure is never a product failure. */
+  }
+}
 
 /**
  * The AI/Routine Pack install gate.  (Phase 3, CODER-J, plan §13 / Gate D)
@@ -200,6 +216,18 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
         return;
       }
 
+      // §22 `ai_routine_generated`. THE single funnel: every AI response that
+      // survives the gate passes exactly this line, whether it lands in the
+      // `!adapted.complete` staging branch below or the fully-evaluated one
+      // after it, and nothing that failed `adapted.ok` reaches it. Reported
+      // here (generation), not at install -- an installed routine is a
+      // separate event. `proposal.title`/`goal` are AI prose and are
+      // deliberately not passed; only the shape of what came back is.
+      emitAnalytics('ai_routine_generated', {
+        habit_count: adapted.proposal.habits.length,
+        complete: adapted.complete,
+      });
+
       if (!adapted.complete) {
         // Accepted, but today's edge function never asks the AI for
         // difficulty/estimated_minutes -- staged here for the user to
@@ -308,7 +336,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
   // `evaluation.toActivate` habits install as 'active', everything else
   // (`evaluation.toQueue`) installs as 'waiting' -- never force-activated.
   confirmInstall: async () => {
-    const { proposal, evaluation, installing } = get();
+    const { proposal, evaluation, installing, proposalSource } = get();
     if (!proposal || !evaluation || installing) return false;
 
     set({ installing: true, installError: null });
@@ -356,6 +384,18 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
         proposal: null,
         evaluation: null,
         proposalErrors: null,
+      });
+      // §22 `routine_installed`. `confirmInstall` is the only function in
+      // this store that writes, and this is its only success exit -- both
+      // the AI and the Routine Pack entry points funnel through it, so one
+      // finished install is one event. Placed after `result.ok`, so a failed
+      // bulk insert (which returns above) is never reported as an install.
+      // Habit names live in `rows`/`result.data` and are never passed.
+      emitAnalytics('routine_installed', {
+        source: proposalSource,
+        habit_count: result.data.length,
+        activated_count: rows.filter((r) => r.status === 'active').length,
+        queued_count: rows.filter((r) => r.status === 'waiting').length,
       });
       return true;
     } catch (err) {

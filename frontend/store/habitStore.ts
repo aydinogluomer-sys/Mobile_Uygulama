@@ -12,6 +12,35 @@ import { scheduleHabitReminder, cancelHabitReminder } from '../lib/notifications
 // `activateHabit`'s W1 capacity wiring below provable by an executable test
 // instead of only a source-level one.
 import { useWillpowerStore } from './willpowerStore';
+import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
+
+/**
+ * §22 analytics emission seam (task Phase-4 CODER-O).
+ *
+ * `lib/analytics.ts` owns the vocabulary, the privacy filter and the sink;
+ * this wrapper adds the one thing a CALL SITE owes on top of them:
+ *
+ *  - `buildEvent` is what actually enforces §22, and it runs HERE, in the
+ *    store, before anything is handed on. A habit title or any other prose
+ *    is dropped by shape at this line, so the guarantee holds regardless of
+ *    what sink is attached later.
+ *  - `buildEvent` also THROWS, by design, on an undeclared event name (see
+ *    its doc -- `emitEvent`'s own guard deliberately does not cover that,
+ *    because it happens before `emitEvent` is reached). Catching it here is
+ *    what keeps a future rename from turning a successful habit creation
+ *    into a thrown user action.
+ *
+ * This same four-line wrapper is repeated in `recoveryStore`, `routineStore`
+ * and `focusStore` rather than shared, because a shared home for it belongs
+ * in `lib/analytics.ts`, which another task owns this round.
+ */
+function emitAnalytics(name: AnalyticsEventName, props: Record<string, unknown>): void {
+  try {
+    emitEvent(buildEvent(name, props));
+  } catch {
+    /* §22: an analytics failure is never a product failure. */
+  }
+}
 
 type HabitInsert = Omit<Habit, 'id' | 'created_at' | 'user_id'>;
 
@@ -62,6 +91,22 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
       if (h.reminders?.enabled && (h.status === 'active' || h.status === 'waiting')) {
         scheduleHabitReminder(h);
       }
+      // §22 `habit_created`. This is the store's single creation funnel --
+      // every screen, and `routineStore.confirmInstall`'s bulk path aside
+      // (which reports its own `routine_installed`), one habit row becomes
+      // one event here. Emitted from inside the `!error && data` branch, so
+      // a rejected insert can never be reported as a creation. `h.name` is
+      // deliberately absent: a habit title is user prose.
+      emitAnalytics('habit_created', {
+        habit_id: h.id,
+        behavior_type: h.behavior_type,
+        tracking_type: h.tracking_type,
+        status: h.status,
+        difficulty: h.difficulty,
+        estimated_minutes: h.estimated_minutes,
+        willpower_cost: h.willpower_cost,
+        has_reminder: !!h.reminders?.enabled,
+      });
       return h;
     }
     return null;

@@ -9,6 +9,22 @@ import {
   type TrackingTypeV2,
   type RecoveryOption,
 } from '../lib/recovery';
+import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
+
+/**
+ * §22 analytics emission seam (task Phase-4 CODER-O) -- see the identical
+ * wrapper in `store/habitStore.ts` for the full rationale. In short: run the
+ * payload through `buildEvent` (which drops free text by shape, here, at the
+ * call site), hand the result to `lib/analytics.ts`'s sink funnel, and never
+ * let `buildEvent`'s deliberate throw escape into the user action.
+ */
+function emitAnalytics(name: AnalyticsEventName, props: Record<string, unknown>): void {
+  try {
+    emitEvent(buildEvent(name, props));
+  } catch {
+    /* §22: an analytics failure is never a product failure. */
+  }
+}
 
 type AddPlanInput = {
   habitId: string;
@@ -111,13 +127,38 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
     if (plan.reminder_time) {
       scheduleRecoveryReminder(plan.id, input.habitName, plan.target_date, plan.reminder_time);
     }
+    // §22 `recovery_created`. Placed after the `error || !data` bail-out, so
+    // only a row that really exists is reported. `input.habitName` and
+    // `input.note` are deliberately NOT passed -- both are user prose.
+    emitAnalytics('recovery_created', {
+      plan_id: plan.id,
+      habit_id: plan.habit_id,
+      strategy: plan.strategy,
+      source_date: plan.source_date,
+      target_date: plan.target_date,
+      has_reminder: !!plan.reminder_time,
+    });
     return plan;
   },
 
   completePlan: async (id) => {
-    await supabase.from('recovery_plans').update({ status: 'done' }).eq('id', id);
+    // Read the plan BEFORE the local state drops it -- the event's habit_id
+    // and strategy come from here, never from a caller-supplied argument.
+    const plan = get().plans.find((p) => p.id === id);
+    const { error } = await supabase.from('recovery_plans').update({ status: 'done' }).eq('id', id);
     cancelRecoveryReminder(id);
     set((s) => ({ plans: s.plans.filter((p) => p.id !== id) }));
+    // §22 `recovery_completed`, gated on the update actually succeeding.
+    // (The local-state/reminder behaviour above is unchanged and still runs
+    // regardless -- only the event is new, and only the event is gated.)
+    if (!error) {
+      emitAnalytics('recovery_completed', {
+        plan_id: id,
+        habit_id: plan?.habit_id ?? null,
+        strategy: plan?.strategy ?? null,
+        target_date: plan?.target_date ?? null,
+      });
+    }
   },
 
   skipPlan: async (id) => {
