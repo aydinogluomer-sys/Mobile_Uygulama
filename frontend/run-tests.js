@@ -140,11 +140,28 @@ test('Supabase insert ile görev oluşturma', () => adhd.includes('supabase') &&
 test('taskStore Task tipi kullanılıyor', () => adhd.includes('taskStore'));
 
 // 11. Supabase & Env
+//
+// Bu bölüm eskiden `read('./.env')` yapıyordu. `.env` GITIGNORE'DA: CI'ın
+// temiz klonunda yok, dolayısıyla bu satır ENOENT ile TÜM betiği çökertiyordu
+// -- yerelde 142/142, CI'da çalışamadan ölüyordu.
+//
+// Bu, bu oturumda bulunan aynı sınıftan ÜÇÜNCÜ hata: bir geçidin, yalnızca
+// geliştirici makinesinde var olan bir dosyaya bağlı olması. İlk ikisi
+// `.expo/types/router.d.ts` (tsconfig include ediyor, .gitignore yok sayıyor)
+// ve jest'in TZ sabitlemesiydi. Üstelik teşhis zaten konmuştu:
+// `jest.config.js`'in kendi yorumu "Never read .env - the old run-tests.js
+// did, and a test that depends on a gitignored file is not reproducible"
+// diyor. Jest için çözülmüş, run-tests.js'te bırakılmıştı.
+//
+// Anlamlı ve YENIDEN URETILEBILIR değişmez, `.env` dosyasının içeriği değil
+// -- istemcinin doğru ortam değişkeni adlarından yapılandırılmasıdır. O bilgi
+// depoda, kodda duruyor. Eksik bir `.env` ise bir kurulum sorunudur;
+// uygulamanın çalışma anında yüzeye çıkardığı bir şeydir, yapısal bir geçidin
+// iddia edebileceği bir şey değil.
 console.log('\n🔌 11. Supabase & Env');
-const env = read('./.env');
-test('SUPABASE_URL tanımlı', () => env.includes('SUPABASE_URL') || env.includes('SUPABASE'));
-test('ANON_KEY tanımlı', () => env.includes('ANON_KEY') || env.includes('anon'));
 const sl = read('./lib/supabase.ts');
+test('SUPABASE_URL ortam değişkeninden okunuyor', () => sl.includes('EXPO_PUBLIC_SUPABASE_URL'));
+test('ANON_KEY ortam değişkeninden okunuyor', () => sl.includes('EXPO_PUBLIC_SUPABASE_ANON_KEY'));
 test('createClient çağrısı', () => sl.includes('createClient'));
 
 // 12. CommandPalette
