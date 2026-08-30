@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
@@ -223,56 +224,56 @@ export default function NotesScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
 
   searchRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    margin: 16, backgroundColor: '#1D1C17', borderRadius: 12,
-    padding: 12, borderWidth: 1, borderColor: '#383528',
+    margin: 16, backgroundColor: colors.surface, borderRadius: 12,
+    padding: 12, borderWidth: 1, borderColor: colors.border,
   },
-  searchInput: { flex: 1, fontSize: 14, color: '#fff' },
+  searchInput: { flex: 1, fontSize: 14, color: colors.white },
 
   row: { paddingHorizontal: 10, gap: 10 },
   listContent: { paddingHorizontal: 6, paddingBottom: 100 },
   // Yükleme yer tutucusu, gerçek kart ızgarasının geometrisini taklit eder.
   skeletonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 10 },
   card: {
-    flex: 1, backgroundColor: '#1D1C17', borderRadius: 14,
-    padding: 14, borderWidth: 1, borderColor: '#383528',
+    flex: 1, backgroundColor: colors.surface, borderRadius: 14,
+    padding: 14, borderWidth: 1, borderColor: colors.border,
     marginBottom: 10, minHeight: 100,
   },
-  cardTitle: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 6 },
-  cardContent: { fontSize: 13, color: '#BFBBAE', lineHeight: 18, flex: 1 },
-  cardDate: { fontSize: 10, color: '#56544B', marginTop: 8 },
+  cardTitle: { fontSize: 13, fontWeight: '700', color: colors.white, marginBottom: 6 },
+  cardContent: { fontSize: 13, color: colors.textDim, lineHeight: 18, flex: 1 },
+  cardDate: { fontSize: 10, color: colors.textGhost, marginTop: 8 },
 
   empty: { alignItems: 'center', paddingTop: 80, gap: 10 },
-  emptyText: { fontSize: 15, color: '#56544B' },
+  emptyText: { fontSize: 15, color: colors.textGhost },
 
   fab: {
     position: 'absolute', right: 20, bottom: 20,
-    width: 56, height: 56, borderRadius: 16, backgroundColor: '#BFBBAE',
+    width: 56, height: 56, borderRadius: 16, backgroundColor: colors.textDim,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
+    shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
   },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#1D1C17', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '90%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '90%' },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
   sheetActions: { flexDirection: 'row', gap: 8 },
   deleteBtn: { padding: 6 },
   closeBtn: { padding: 6 },
 
   titleInput: {
-    fontSize: 18, fontWeight: '600', color: '#fff',
-    borderBottomWidth: 1, borderBottomColor: '#383528',
+    fontSize: 18, fontWeight: '600', color: colors.white,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
     paddingVertical: 8, marginBottom: 12,
   },
   contentInput: {
-    fontSize: 14, color: '#EDEAE0', minHeight: 200,
+    fontSize: 14, color: colors.text, minHeight: 200,
     textAlignVertical: 'top', lineHeight: 22, marginBottom: 16,
   },
-  saveBtn: { backgroundColor: '#D97757', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  saveBtn: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
   saveBtnDisabled: { opacity: 0.4 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });

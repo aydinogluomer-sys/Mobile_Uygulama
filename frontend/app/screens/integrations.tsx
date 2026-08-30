@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
@@ -296,8 +297,8 @@ export default function IntegrationsScreen() {
                   {/* Ne yapacağını göster */}
                   <View style={s.oauthPreview}>
                     {[
-                      { icon: 'checkmark-circle-outline', color: '#87A678', label: 'Alışkanlık Takibi veritabanı' },
-                      { icon: 'list-outline', color: '#D97757', label: 'Görevler veritabanı' },
+                      { icon: 'checkmark-circle-outline', color: colors.success, label: 'Alışkanlık Takibi veritabanı' },
+                      { icon: 'list-outline', color: colors.accent, label: 'Görevler veritabanı' },
                       { icon: 'sync-outline', color: '#f97316', label: 'Günlük otomatik sync' },
                     ].map(f => (
                       <View key={f.label} style={s.previewRow}>
@@ -398,7 +399,7 @@ export default function IntegrationsScreen() {
                   <View style={s.oauthPreview}>
                     {[
                       { icon: 'calendar-outline', color: '#4285F4', label: 'Google Calendar erişimi' },
-                      { icon: 'checkmark-circle-outline', color: '#87A678', label: 'Habit bloklarını takvime ekle' },
+                      { icon: 'checkmark-circle-outline', color: colors.success, label: 'Habit bloklarını takvime ekle' },
                       { icon: 'sync-outline', color: '#f97316', label: 'Tek tuşla OAuth bağlanması' },
                     ].map(f => (
                       <View key={f.label} style={s.previewRow}>
@@ -447,55 +448,55 @@ export default function IntegrationsScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
   banner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     margin: 16, padding: 14, borderRadius: 14,
-    backgroundColor: '#1D1C17', borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
   },
   bannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  bannerTitle: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  bannerSub: { fontSize: 12, color: '#827E72', marginTop: 2 },
+  bannerTitle: { fontSize: 15, fontWeight: '700', color: colors.white },
+  bannerSub: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   bannerBadge: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#D9775720', alignItems: 'center', justifyContent: 'center' },
-  bannerBadgeText: { fontSize: 13, fontWeight: '700', color: '#D97757' },
+  bannerBadgeText: { fontSize: 13, fontWeight: '700', color: colors.accent },
   content: { paddingHorizontal: 16, paddingBottom: 40 },
 
   featureCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#1D1C17', borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: '#383528', marginBottom: 10,
+    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: colors.border, marginBottom: 10,
   },
   featureCardConnected: { borderColor: '#87A67830' },
   featureLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   featureIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   featureBody: { flex: 1 },
   featureRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  featureTitle: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  featureDesc: { fontSize: 12, color: '#827E72', lineHeight: 16 },
+  featureTitle: { fontSize: 15, fontWeight: '700', color: colors.white },
+  featureDesc: { fontSize: 12, color: colors.textFaint, lineHeight: 16 },
 
   badge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
   badgeAvailable: { backgroundColor: '#87A67818' },
   badgeConnected: { backgroundColor: '#87A67820' },
   badgeText: { fontSize: 10, fontWeight: '700' },
-  badgeTextAvailable: { color: '#87A678' },
-  badgeTextConnected: { color: '#87A678' },
+  badgeTextAvailable: { color: colors.success },
+  badgeTextConnected: { color: colors.success },
 
   hint: {
     flexDirection: 'row', gap: 8, alignItems: 'flex-start',
     marginTop: 4, padding: 12, borderRadius: 10,
-    backgroundColor: '#111', borderWidth: 1, borderColor: '#28261F',
+    backgroundColor: '#111', borderWidth: 1, borderColor: colors.borderSubtle,
   },
-  hintText: { flex: 1, fontSize: 12, color: '#56544B', lineHeight: 18 },
+  hintText: { flex: 1, fontSize: 12, color: colors.textGhost, lineHeight: 18 },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#1D1C17', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 },
   sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 20, paddingBottom: 16 },
   sheetIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   sheetTitleWrap: { flex: 1 },
-  sheetTitle: { fontSize: 17, fontWeight: '700', color: '#fff', marginBottom: 4 },
-  sheetDesc: { fontSize: 13, color: '#BFBBAE', lineHeight: 18 },
+  sheetTitle: { fontSize: 17, fontWeight: '700', color: colors.white, marginBottom: 4 },
+  sheetDesc: { fontSize: 13, color: colors.textDim, lineHeight: 18 },
   closeBtn: { padding: 4 },
-  divider: { height: 1, backgroundColor: '#383528' },
+  divider: { height: 1, backgroundColor: colors.border },
   itemList: { padding: 16 },
   stepList: { padding: 16, gap: 10 },
 
@@ -506,71 +507,71 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: '#87A67830', marginBottom: 4,
   },
   connectedIconWrap: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  connectedTitle: { fontSize: 15, fontWeight: '700', color: '#87A678' },
-  connectedSub: { fontSize: 12, color: '#827E72', marginTop: 2 },
+  connectedTitle: { fontSize: 15, fontWeight: '700', color: colors.success },
+  connectedSub: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   dbLinks: { gap: 8, marginBottom: 8 },
   dbLink: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#1D1C17', borderRadius: 10, padding: 12,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 10, padding: 12,
+    borderWidth: 1, borderColor: colors.border,
   },
-  dbLinkText: { flex: 1, fontSize: 14, color: '#EDEAE0', fontWeight: '500' },
+  dbLinkText: { flex: 1, fontSize: 14, color: colors.text, fontWeight: '500' },
 
   // Notion bağlanma
   oauthPreview: {
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: '#383528', gap: 12, marginBottom: 12,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: colors.border, gap: 12, marginBottom: 12,
   },
   previewRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  previewLabel: { flex: 1, fontSize: 14, color: '#EDEAE0' },
-  oauthNote: { fontSize: 12, color: '#827E72', lineHeight: 18, marginBottom: 16 },
+  previewLabel: { flex: 1, fontSize: 14, color: colors.text },
+  oauthNote: { fontSize: 12, color: colors.textFaint, lineHeight: 18, marginBottom: 16 },
 
   // Buttons
   primaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-    backgroundColor: '#D97757', borderRadius: 14, padding: 16, marginTop: 4,
+    backgroundColor: colors.accent, borderRadius: 14, padding: 16, marginTop: 4,
   },
-  primaryBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  primaryBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
   btnDisabled: { opacity: 0.55 },
   secondaryBtn: {
     marginTop: 10, paddingVertical: 13, borderRadius: 12,
-    backgroundColor: '#28261F', alignItems: 'center',
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.borderSubtle, alignItems: 'center',
+    borderWidth: 1, borderColor: colors.border,
   },
-  secondaryBtnText: { fontSize: 14, color: '#827E72', fontWeight: '600' },
+  secondaryBtnText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
 
   errorBox: {
     flexDirection: 'row', gap: 8, alignItems: 'flex-start',
     backgroundColor: '#C76A6A10', borderRadius: 10, padding: 12,
     borderWidth: 1, borderColor: '#C76A6A28', marginBottom: 8,
   },
-  errorText: { flex: 1, fontSize: 12, color: '#C76A6A', lineHeight: 17 },
+  errorText: { flex: 1, fontSize: 12, color: colors.error, lineHeight: 17 },
 
   // Obsidian
-  sectionLabel: { fontSize: 10, fontWeight: '700', color: '#56544B', letterSpacing: 1.2, marginTop: 4, marginBottom: 4 },
+  sectionLabel: { fontSize: 10, fontWeight: '700', color: colors.textGhost, letterSpacing: 1.2, marginTop: 4, marginBottom: 4 },
   featureChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: '#1D1C17', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: colors.border,
   },
   featureChip2: {},
-  featureChipText: { fontSize: 12, color: '#BFBBAE' },
+  featureChipText: { fontSize: 12, color: colors.textDim },
   stepCard: {
     flexDirection: 'row', gap: 12, alignItems: 'flex-start',
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: colors.border,
   },
-  stepNum: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#D97757', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  stepNumText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-  stepTitle: { fontSize: 14, fontWeight: '600', color: '#EDEAE0' },
-  stepDesc: { fontSize: 12, color: '#827E72', lineHeight: 17 },
-  pathBox: { backgroundColor: '#0a0a0a', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: '#28261F' },
-  pathLabel: { fontSize: 10, fontWeight: '700', color: '#56544B', letterSpacing: 1, marginBottom: 4 },
-  pathValue: { fontSize: 13, fontFamily: 'monospace', color: '#D97757' },
+  stepNum: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  stepNumText: { fontSize: 12, fontWeight: '700', color: colors.white },
+  stepTitle: { fontSize: 14, fontWeight: '600', color: colors.text },
+  stepDesc: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+  pathBox: { backgroundColor: '#0a0a0a', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.borderSubtle },
+  pathLabel: { fontSize: 10, fontWeight: '700', color: colors.textGhost, letterSpacing: 1, marginBottom: 4 },
+  pathValue: { fontSize: 13, fontFamily: 'monospace', color: colors.accent },
   docsBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: '#D9775710', borderRadius: 10, padding: 12,
     borderWidth: 1, borderColor: '#D9775730',
   },
-  docsBtnText: { fontSize: 13, color: '#D97757', fontWeight: '500' },
+  docsBtnText: { fontSize: 13, color: colors.accent, fontWeight: '500' },
 });

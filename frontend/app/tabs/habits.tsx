@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
@@ -196,11 +197,11 @@ export default function HabitsScreen() {
   };
 
   const getWpColor = () => {
-    if (!wp) return '#827E72';
+    if (!wp) return colors.textFaint;
     const ratio = wp.used / wp.daily_budget;
-    if (ratio < 0.5) return '#87A678';
-    if (ratio < 0.8) return '#D4A84A';
-    return '#C76A6A';
+    if (ratio < 0.5) return colors.success;
+    if (ratio < 0.8) return colors.warning;
+    return colors.error;
   };
 
   const renderHabitCard = (habit: Habit, isWaiting: boolean) => {
@@ -212,8 +213,8 @@ export default function HabitsScreen() {
     <View key={habit.id} style={[styles.habitCard, (isWaiting || isIdea) && styles.habitCardWaiting, isIdea && styles.habitCardIdea, isCompleted && styles.habitCardDone]}>
       <View style={styles.habitHeader}>
         <View style={styles.habitLeft}>
-          <View style={[styles.iconWrap, { backgroundColor: (habit.color ?? '#D97757') + '25' }]}>
-            <Ionicons name={(habit.icon ?? 'star-outline') as any} size={24} color={habit.color ?? '#D97757'} />
+          <View style={[styles.iconWrap, { backgroundColor: (habit.color ?? colors.accent) + '25' }]}>
+            <Ionicons name={(habit.icon ?? 'star-outline') as any} size={24} color={habit.color ?? colors.accent} />
           </View>
           <View style={styles.habitMeta}>
             <Text style={styles.habitName}>{habit.name}</Text>
@@ -383,7 +384,7 @@ export default function HabitsScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Ionicons name="bulb-outline" size={18} color="#827E72" />
-              <Text style={[styles.sectionTitle, { color: '#BFBBAE' }]}>Fikirler</Text>
+              <Text style={[styles.sectionTitle, { color: colors.textDim }]}>Fikirler</Text>
               <Text style={styles.sectionCount}>{ideaHabits.length}</Text>
             </View>
             <Text style={styles.sectionHint}>
@@ -398,7 +399,7 @@ export default function HabitsScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Ionicons name="checkmark-done-circle-outline" size={18} color="#87A678" />
-              <Text style={[styles.sectionTitle, { color: '#BFBBAE' }]}>Tamamlanan</Text>
+              <Text style={[styles.sectionTitle, { color: colors.textDim }]}>Tamamlanan</Text>
               <Text style={styles.sectionCount}>{completedHabits.length}</Text>
             </View>
             <Text style={styles.sectionHint}>Hedefine ulaştın — gerekirse geri açabilirsin</Text>
@@ -525,7 +526,7 @@ export default function HabitsScreen() {
                   <Text style={styles.capStatLabel}>Boş Slot</Text>
                 </View>
                 <View style={styles.capStat}>
-                  <Text style={[styles.capStatVal, { color: '#D4A84A' }]}>{capacityTarget.willpower_cost}</Text>
+                  <Text style={[styles.capStatVal, { color: colors.warning }]}>{capacityTarget.willpower_cost}</Text>
                   <Text style={styles.capStatLabel}>Gereken</Text>
                 </View>
               </View>
@@ -555,8 +556,8 @@ export default function HabitsScreen() {
               ) : (
                 activeHabits.map((h) => (
                   <View key={h.id} style={styles.capItem}>
-                    <View style={[styles.capItemIcon, { backgroundColor: (h.color ?? '#D97757') + '25' }]}>
-                      <Ionicons name={(h.icon ?? 'star-outline') as any} size={18} color={h.color ?? '#D97757'} />
+                    <View style={[styles.capItemIcon, { backgroundColor: (h.color ?? colors.accent) + '25' }]}>
+                      <Ionicons name={(h.icon ?? 'star-outline') as any} size={18} color={h.color ?? colors.accent} />
                     </View>
                     <Text style={styles.capItemName} numberOfLines={1}>{h.name}</Text>
                     <View style={styles.capItemCost}>
@@ -601,40 +602,40 @@ export default function HabitsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#15140F' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#15140F' },
+  container: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
   wpBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#28261F',
+    borderBottomColor: colors.borderSubtle,
   },
   wpLeft: { flexDirection: 'row', alignItems: 'center', gap: 4, width: 90 },
   wpText: { fontSize: 12, fontWeight: '600' },
   wpProgressTrack: {
-    flex: 1, height: 4, backgroundColor: '#383528', borderRadius: 2, overflow: 'hidden',
+    flex: 1, height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden',
   },
   wpProgressFill: { height: '100%', borderRadius: 2 },
-  wpCapacity: { fontSize: 12, color: '#BFBBAE' },
+  wpCapacity: { fontSize: 12, color: colors.textDim },
   scroll: { flex: 1 },
   section: { padding: 16 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  sectionTitle: { fontSize: 17, fontWeight: 'bold', color: '#fff', flex: 1 },
+  sectionTitle: { fontSize: 17, fontWeight: 'bold', color: colors.white, flex: 1 },
   sectionCount: {
-    fontSize: 12, color: '#BFBBAE', backgroundColor: '#383528',
+    fontSize: 12, color: colors.textDim, backgroundColor: colors.border,
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
   },
-  sectionHint: { fontSize: 12, color: '#827E72', marginBottom: 12, fontStyle: 'italic' },
+  sectionHint: { fontSize: 12, color: colors.textFaint, marginBottom: 12, fontStyle: 'italic' },
   empty: { alignItems: 'center', paddingVertical: 32 },
-  emptyText: { fontSize: 15, color: '#827E72', marginBottom: 4 },
-  emptyHint: { fontSize: 12, color: '#56544B' },
+  emptyText: { fontSize: 15, color: colors.textFaint, marginBottom: 4 },
+  emptyHint: { fontSize: 12, color: colors.textGhost },
   habitCard: {
-    backgroundColor: '#1D1C17', borderRadius: 14, padding: 14,
-    marginBottom: 12, borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
+    marginBottom: 12, borderWidth: 1, borderColor: colors.border,
   },
   habitCardWaiting: { opacity: 0.65 },
   habitCardIdea: { opacity: 0.5, borderStyle: 'dashed' },
@@ -643,13 +644,13 @@ const styles = StyleSheet.create({
   habitLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
   iconWrap: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   habitMeta: { flex: 1 },
-  habitName: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 4 },
+  habitName: { fontSize: 16, fontWeight: '600', color: colors.white, marginBottom: 4 },
   habitBadges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   wpCostBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 2,
     backgroundColor: '#D4A84A20', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
   },
-  wpCostText: { fontSize: 11, color: '#D4A84A', fontWeight: '600' },
+  wpCostText: { fontSize: 11, color: colors.warning, fontWeight: '600' },
   minBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 2,
     backgroundColor: '#14b8a620', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
@@ -661,13 +662,13 @@ const styles = StyleSheet.create({
   },
   remBadgeText: { fontSize: 11, color: '#a78bfa', fontWeight: '600' },
   cueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  cueText: { fontSize: 12, color: '#827E72', flex: 1 },
+  cueText: { fontSize: 12, color: colors.textFaint, flex: 1 },
   measurableBadge: {
     backgroundColor: '#D9775720', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
   },
-  measurableText: { fontSize: 11, color: '#D97757' },
+  measurableText: { fontSize: 11, color: colors.accent },
   behaviorBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  behaviorText: { fontSize: 11, color: '#BFBBAE' },
+  behaviorText: { fontSize: 11, color: colors.textDim },
   activateBtn: { padding: 2 },
   pauseIconBtn: { padding: 2 },
   iconBtn: { padding: 2 },
@@ -676,7 +677,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#D9775720', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
     borderWidth: 1, borderColor: '#D9775730',
   },
-  moveBtnText: { fontSize: 12, color: '#D97757', fontWeight: '600' },
+  moveBtnText: { fontSize: 12, color: colors.accent, fontWeight: '600' },
   impactChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1,
@@ -687,8 +688,8 @@ const styles = StyleSheet.create({
     position: 'absolute', right: 16,
     bottom: Platform.OS === 'ios' ? 100 : 80,
     width: 56, height: 56, borderRadius: 28,
-    backgroundColor: '#D97757', alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
+    shadowColor: colors.black, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
   },
   aiFab: {
@@ -701,10 +702,10 @@ const styles = StyleSheet.create({
   },
   xpToast: {
     position: 'absolute', top: '40%', alignSelf: 'center',
-    backgroundColor: '#D97757', paddingHorizontal: 24, paddingVertical: 14,
+    backgroundColor: colors.accent, paddingHorizontal: 24, paddingVertical: 14,
     borderRadius: 14,
   },
-  xpToastText: { fontSize: 28, fontWeight: 'bold', color: '#fff' },
+  xpToastText: { fontSize: 28, fontWeight: 'bold', color: colors.white },
 
   cardActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   trashBtn: {
@@ -716,54 +717,54 @@ const styles = StyleSheet.create({
     position: 'absolute', left: 16, right: 16,
     bottom: Platform.OS === 'ios' ? 100 : 80,
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#1D1C17', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
-    borderWidth: 1, borderColor: '#383528',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 10,
+    backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
+    borderWidth: 1, borderColor: colors.border,
+    shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 10,
   },
-  undoText: { flex: 1, fontSize: 14, color: '#EDEAE0' },
+  undoText: { flex: 1, fontSize: 14, color: colors.text },
   undoBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: '#D9775720', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
     borderWidth: 1, borderColor: '#D9775740',
   },
-  undoBtnText: { fontSize: 13, color: '#D97757', fontWeight: '700' },
+  undoBtnText: { fontSize: 13, color: colors.accent, fontWeight: '700' },
 
   // Silme nedeni modalı
   delOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 24 },
-  delSheet: { backgroundColor: '#1D1C17', borderRadius: 20, padding: 22, borderWidth: 1, borderColor: '#383528' },
+  delSheet: { backgroundColor: colors.surface, borderRadius: 20, padding: 22, borderWidth: 1, borderColor: colors.border },
   delIconWrap: {
     width: 52, height: 52, borderRadius: 16, backgroundColor: '#C76A6A18',
     alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 12,
   },
-  delTitle: { fontSize: 19, fontWeight: '800', color: '#fff', textAlign: 'center', marginBottom: 4 },
-  delSub: { fontSize: 13, color: '#BFBBAE', textAlign: 'center', marginBottom: 18, lineHeight: 18 },
+  delTitle: { fontSize: 19, fontWeight: '800', color: colors.white, textAlign: 'center', marginBottom: 4 },
+  delSub: { fontSize: 13, color: colors.textDim, textAlign: 'center', marginBottom: 18, lineHeight: 18 },
   reasonWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
   reasonChip: {
-    backgroundColor: '#1D1C17', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 1, borderColor: colors.border,
   },
-  reasonChipSel: { backgroundColor: '#C76A6A18', borderColor: '#C76A6A' },
-  reasonChipText: { fontSize: 13, color: '#BFBBAE' },
-  reasonChipTextSel: { color: '#C76A6A', fontWeight: '600' },
+  reasonChipSel: { backgroundColor: '#C76A6A18', borderColor: colors.error },
+  reasonChipText: { fontSize: 13, color: colors.textDim },
+  reasonChipTextSel: { color: colors.error, fontWeight: '600' },
   reasonInput: {
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 12, fontSize: 14, color: '#fff',
-    borderWidth: 1, borderColor: '#383528', marginBottom: 18,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 12, fontSize: 14, color: colors.white,
+    borderWidth: 1, borderColor: colors.border, marginBottom: 18,
   },
   delActions: { flexDirection: 'row', gap: 12 },
   delCancelBtn: {
-    flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: '#383528', alignItems: 'center',
+    flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.border, alignItems: 'center',
   },
-  delCancelText: { fontSize: 15, fontWeight: '600', color: '#EDEAE0' },
+  delCancelText: { fontSize: 15, fontWeight: '600', color: colors.text },
   delConfirmBtn: {
     flex: 1, flexDirection: 'row', gap: 6, paddingVertical: 13, borderRadius: 12,
-    backgroundColor: '#C76A6A', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.error, alignItems: 'center', justifyContent: 'center',
   },
-  delConfirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  delConfirmText: { fontSize: 15, fontWeight: '700', color: colors.white },
 
   // Kapasite yöneticisi
   capOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   capSheet: {
-    backgroundColor: '#1D1C17', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 24, maxHeight: '88%',
   },
   capHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
@@ -771,56 +772,56 @@ const styles = StyleSheet.create({
     width: 48, height: 48, borderRadius: 14, backgroundColor: '#C76A6A18',
     alignItems: 'center', justifyContent: 'center',
   },
-  capTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
-  capSub: { fontSize: 13, color: '#BFBBAE', marginTop: 2, lineHeight: 17 },
+  capTitle: { fontSize: 18, fontWeight: '800', color: colors.white },
+  capSub: { fontSize: 13, color: colors.textDim, marginTop: 2, lineHeight: 17 },
   capStatRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
   capStat: {
-    flex: 1, backgroundColor: '#1D1C17', borderRadius: 12, paddingVertical: 12,
-    alignItems: 'center', borderWidth: 1, borderColor: '#383528',
+    flex: 1, backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 12,
+    alignItems: 'center', borderWidth: 1, borderColor: colors.border,
   },
-  capStatVal: { fontSize: 20, fontWeight: '800', color: '#fff' },
-  capStatLabel: { fontSize: 11, color: '#827E72', marginTop: 2 },
+  capStatVal: { fontSize: 20, fontWeight: '800', color: colors.white },
+  capStatLabel: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   capAdviceBox: {
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 12, marginBottom: 14,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, padding: 12, marginBottom: 14,
+    borderWidth: 1, borderColor: colors.border,
   },
-  capAdviceFormula: { fontSize: 13, fontWeight: '700', color: '#D4A84A', marginBottom: 4 },
-  capAdviceMsg: { fontSize: 12, color: '#BFBBAE', lineHeight: 16 },
-  capListTitle: { fontSize: 11, fontWeight: '700', color: '#827E72', letterSpacing: 1, marginBottom: 10 },
+  capAdviceFormula: { fontSize: 13, fontWeight: '700', color: colors.warning, marginBottom: 4 },
+  capAdviceMsg: { fontSize: 12, color: colors.textDim, lineHeight: 16 },
+  capListTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
   capList: { maxHeight: 240 },
-  capEmpty: { fontSize: 13, color: '#827E72', textAlign: 'center', paddingVertical: 16 },
+  capEmpty: { fontSize: 13, color: colors.textFaint, textAlign: 'center', paddingVertical: 16 },
   capItem: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 10, marginBottom: 8,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, padding: 10, marginBottom: 8,
+    borderWidth: 1, borderColor: colors.border,
   },
   capItemIcon: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  capItemName: { flex: 1, fontSize: 14, color: '#EDEAE0', fontWeight: '500' },
+  capItemName: { flex: 1, fontSize: 14, color: colors.text, fontWeight: '500' },
   capItemCost: {
     flexDirection: 'row', alignItems: 'center', gap: 2,
     backgroundColor: '#D4A84A20', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
   },
-  capItemCostText: { fontSize: 11, color: '#D4A84A', fontWeight: '600' },
+  capItemCostText: { fontSize: 11, color: colors.warning, fontWeight: '600' },
   capMoveBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: '#383528', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
+    backgroundColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
   },
-  capMoveText: { fontSize: 12, color: '#BFBBAE', fontWeight: '600' },
+  capMoveText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
   capActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
   capCancelBtn: {
-    flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: '#383528', alignItems: 'center',
+    flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.border, alignItems: 'center',
   },
-  capCancelText: { fontSize: 14, fontWeight: '600', color: '#EDEAE0' },
+  capCancelText: { fontSize: 14, fontWeight: '600', color: colors.text },
   capWaitBtn: {
     flex: 1.4, flexDirection: 'row', gap: 6, paddingVertical: 13, borderRadius: 12,
     backgroundColor: '#D4A84A18', borderWidth: 1, borderColor: '#D4A84A40',
     alignItems: 'center', justifyContent: 'center',
   },
-  capWaitText: { fontSize: 14, fontWeight: '700', color: '#D4A84A' },
+  capWaitText: { fontSize: 14, fontWeight: '700', color: colors.warning },
   capActivateBtn: {
     flexDirection: 'row', gap: 8, paddingVertical: 15, borderRadius: 12, marginTop: 10,
-    backgroundColor: '#87A678', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center',
   },
   capActivateDisabled: { backgroundColor: '#1f3d33', opacity: 0.7 },
-  capActivateText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  capActivateText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });

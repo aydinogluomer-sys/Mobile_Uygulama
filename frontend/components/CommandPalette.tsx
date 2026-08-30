@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Modal, TextInput,
@@ -73,15 +74,15 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
   }
 
   const quickActions: QuickAction[] = [
-    { id: 'today', label: 'Bugüne git', icon: 'sunny-outline', color: '#D4A84A', route: '/tabs/today', action: () => go('/tabs/today', 'Bugüne git', 'sunny-outline', '#D4A84A') },
-    { id: 'focus', label: 'Odak Modu başlat', icon: 'timer-outline', color: '#7C97C5', route: '/tabs/focus', action: () => go('/tabs/focus', 'Odak Modu başlat', 'timer-outline', '#7C97C5') },
-    { id: 'tasks', label: 'Görevler', icon: 'list-outline', color: '#D97757', route: '/tabs/tasks', action: () => go('/tabs/tasks', 'Görevler', 'list-outline', '#D97757') },
-    { id: 'habits', label: 'Alışkanlıkları gör', icon: 'checkmark-circle-outline', color: '#87A678', route: '/tabs/timeline', action: () => go('/tabs/timeline', 'Alışkanlıkları gör', 'checkmark-circle-outline', '#87A678') },
-    { id: 'notes', label: 'Notlar', icon: 'document-text-outline', color: '#7C97C5', route: '/screens/notes', action: () => go('/screens/notes', 'Notlar', 'document-text-outline', '#7C97C5') },
-    { id: 'leaderboard', label: 'Sıralama', icon: 'podium-outline', color: '#D4A84A', route: '/screens/leaderboard', action: () => go('/screens/leaderboard', 'Sıralama', 'podium-outline', '#D4A84A') },
-    { id: 'new-habit', label: 'Yeni alışkanlık ekle', icon: 'add-circle-outline', color: '#D97757', action: () => { close(); onOpenHabitForm?.(); } },
+    { id: 'today', label: 'Bugüne git', icon: 'sunny-outline', color: colors.warning, route: '/tabs/today', action: () => go('/tabs/today', 'Bugüne git', 'sunny-outline', colors.warning) },
+    { id: 'focus', label: 'Odak Modu başlat', icon: 'timer-outline', color: colors.teal, route: '/tabs/focus', action: () => go('/tabs/focus', 'Odak Modu başlat', 'timer-outline', colors.teal) },
+    { id: 'tasks', label: 'Görevler', icon: 'list-outline', color: colors.accent, route: '/tabs/tasks', action: () => go('/tabs/tasks', 'Görevler', 'list-outline', colors.accent) },
+    { id: 'habits', label: 'Alışkanlıkları gör', icon: 'checkmark-circle-outline', color: colors.success, route: '/tabs/timeline', action: () => go('/tabs/timeline', 'Alışkanlıkları gör', 'checkmark-circle-outline', colors.success) },
+    { id: 'notes', label: 'Notlar', icon: 'document-text-outline', color: colors.teal, route: '/screens/notes', action: () => go('/screens/notes', 'Notlar', 'document-text-outline', colors.teal) },
+    { id: 'leaderboard', label: 'Sıralama', icon: 'podium-outline', color: colors.warning, route: '/screens/leaderboard', action: () => go('/screens/leaderboard', 'Sıralama', 'podium-outline', colors.warning) },
+    { id: 'new-habit', label: 'Yeni alışkanlık ekle', icon: 'add-circle-outline', color: colors.accent, action: () => { close(); onOpenHabitForm?.(); } },
     { id: 'ai-routine', label: 'AI Rutin oluştur', icon: 'sparkles-outline', color: '#8b5cf6', action: () => { close(); onOpenAIModal?.(); } },
-    { id: 'drawer', label: 'Menüyü aç', icon: 'menu-outline', color: '#BFBBAE', action: () => { close(); setTimeout(() => openDrawer(), 150); } },
+    { id: 'drawer', label: 'Menüyü aç', icon: 'menu-outline', color: colors.textDim, action: () => { close(); setTimeout(() => openDrawer(), 150); } },
   ];
 
   const q = query.trim().toLowerCase();
@@ -156,19 +157,19 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
   }
   if (filteredTasks.length > 0) {
     data.push({ type: 'section', label: 'Görevler' });
-    filteredTasks.forEach((t) => data.push({ type: 'go', id: 't:' + t.id, label: t.title, icon: 'list-outline', color: '#D97757', route: '/tabs/tasks' }));
+    filteredTasks.forEach((t) => data.push({ type: 'go', id: 't:' + t.id, label: t.title, icon: 'list-outline', color: colors.accent, route: '/tabs/tasks' }));
   }
   if (filteredNotes.length > 0) {
     data.push({ type: 'section', label: 'Notlar' });
-    filteredNotes.forEach((n) => data.push({ type: 'go', id: 'n:' + n.id, label: n.title || 'Başlıksız not', icon: 'document-text-outline', color: '#7C97C5', route: '/screens/notes' }));
+    filteredNotes.forEach((n) => data.push({ type: 'go', id: 'n:' + n.id, label: n.title || 'Başlıksız not', icon: 'document-text-outline', color: colors.teal, route: '/screens/notes' }));
   }
   if (filteredProjects.length > 0) {
     data.push({ type: 'section', label: 'Projeler' });
-    filteredProjects.forEach((p) => data.push({ type: 'go', id: 'p:' + p.id, label: p.name, icon: 'folder-outline', color: '#87A678', route: '/screens/projects' }));
+    filteredProjects.forEach((p) => data.push({ type: 'go', id: 'p:' + p.id, label: p.name, icon: 'folder-outline', color: colors.success, route: '/screens/projects' }));
   }
   if (filteredHabits.length > 0) {
     data.push({ type: 'section', label: 'Alışkanlıklar' });
-    filteredHabits.forEach((h) => data.push({ type: 'go', id: 'h:' + h.id, label: h.name, icon: h.icon ?? 'star-outline', color: h.color ?? '#D97757', route: '/tabs/timeline' }));
+    filteredHabits.forEach((h) => data.push({ type: 'go', id: 'h:' + h.id, label: h.name, icon: h.icon ?? 'star-outline', color: h.color ?? colors.accent, route: '/tabs/timeline' }));
   }
   if (data.length === 0) {
     data.push({ type: 'empty' });
@@ -248,10 +249,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: Platform.OS === 'ios' ? 80 : 60,
     left: 16, right: 16,
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
     overflow: 'hidden',
     maxHeight: 520,
   },
@@ -259,14 +260,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 10,
     paddingHorizontal: 16, paddingVertical: 14,
   },
-  input: { flex: 1, fontSize: 16, color: '#fff' },
-  divider: { height: 1, backgroundColor: '#383528' },
+  input: { flex: 1, fontSize: 16, color: colors.white },
+  divider: { height: 1, backgroundColor: colors.border },
   list: { maxHeight: 380 },
   sectionLabel: {
-    fontSize: 11, fontWeight: '700', color: '#827E72',
+    fontSize: 11, fontWeight: '700', color: colors.textFaint,
     letterSpacing: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4,
   },
-  emptyText: { fontSize: 14, color: '#827E72', textAlign: 'center', padding: 24 },
+  emptyText: { fontSize: 14, color: colors.textFaint, textAlign: 'center', padding: 24 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 12,
@@ -275,15 +276,15 @@ const styles = StyleSheet.create({
     width: 34, height: 34, borderRadius: 8,
     alignItems: 'center', justifyContent: 'center',
   },
-  rowLabel: { flex: 1, fontSize: 15, color: '#EDEAE0', fontWeight: '500' },
+  rowLabel: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '500' },
   closeRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    padding: 12, borderTopWidth: 1, borderTopColor: '#383528',
+    padding: 12, borderTopWidth: 1, borderTopColor: colors.border,
   },
-  closeText: { fontSize: 13, color: '#827E72' },
+  closeText: { fontSize: 13, color: colors.textFaint },
   escBadge: {
-    backgroundColor: '#383528', borderRadius: 6,
+    backgroundColor: colors.border, borderRadius: 6,
     paddingHorizontal: 6, paddingVertical: 2,
   },
-  escText: { fontSize: 11, color: '#827E72', fontWeight: '700' },
+  escText: { fontSize: 11, color: colors.textFaint, fontWeight: '700' },
 });

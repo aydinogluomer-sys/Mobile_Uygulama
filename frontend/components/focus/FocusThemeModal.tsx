@@ -80,7 +80,7 @@ const s = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 36, borderWidth: 1, borderColor: colors.border },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
-  title: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  title: { fontSize: 18, fontWeight: '700', color: colors.white },
 
   sectionLabel: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1, marginBottom: 12, marginTop: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
@@ -97,5 +97,5 @@ const s = StyleSheet.create({
   overlayBtnText: { fontSize: 12, fontWeight: '700', color: colors.textFaint },
 
   doneBtn: { marginTop: 16, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center' },
-  doneText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  doneText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });

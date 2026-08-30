@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { withEdgeDeadline } from '../../lib/edgeCall';
 import { newRequestId } from '../../services/focusPointService';
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -281,9 +282,9 @@ export default function AICoachScreen() {
               {summarizing ? (
                 <ActivityIndicator size="small" color="#ec4899" />
               ) : (
-                <Ionicons name="book-outline" size={16} color={hasConversation ? '#ec4899' : '#56544B'} />
+                <Ionicons name="book-outline" size={16} color={hasConversation ? '#ec4899' : colors.textGhost} />
               )}
-              <Text style={[s.headerBtnText, { color: hasConversation ? '#ec4899' : '#56544B' }]}>Günlüğe</Text>
+              <Text style={[s.headerBtnText, { color: hasConversation ? '#ec4899' : colors.textGhost }]}>Günlüğe</Text>
             </TouchableOpacity>
           ),
         }}
@@ -504,7 +505,7 @@ export default function AICoachScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
 
   headerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4 },
   headerBtnText: { fontSize: 13, fontWeight: '700' },
@@ -512,17 +513,17 @@ const s = StyleSheet.create({
   fpBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 14, paddingVertical: 8,
-    backgroundColor: '#1D1C17', borderBottomWidth: 1, borderBottomColor: '#28261F',
+    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
   },
   fpBarWarn: { backgroundColor: '#C76A6A12', borderBottomColor: '#C76A6A30' },
   fpLeft: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  fpText: { fontSize: 14, fontWeight: '700', color: '#D4A84A' },
-  fpSub: { fontSize: 11, color: '#827E72' },
+  fpText: { fontSize: 14, fontWeight: '700', color: colors.warning },
+  fpSub: { fontSize: 11, color: colors.textFaint },
   upgradeBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#D4A84A', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
+    backgroundColor: colors.warning, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
   },
-  upgradeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  upgradeText: { fontSize: 12, fontWeight: '700', color: colors.white },
 
   messages: { flex: 1 },
   messagesContent: { padding: 16, gap: 10, paddingBottom: 8 },
@@ -533,13 +534,13 @@ const s = StyleSheet.create({
   },
   bubbleUser: {
     alignSelf: 'flex-end',
-    backgroundColor: '#D97757',
-    borderColor: '#D97757',
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
   bubbleAssistant: {
     alignSelf: 'flex-start',
-    backgroundColor: '#1D1C17',
-    borderColor: '#383528',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,
   },
   bubbleError: {
@@ -552,43 +553,43 @@ const s = StyleSheet.create({
     backgroundColor: '#8b5cf620', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  bubbleText: { fontSize: 14, color: '#EDEAE0', lineHeight: 20, flex: 1 },
-  bubbleTextUser: { color: '#fff' },
-  bubbleTextError: { color: '#C76A6A' },
+  bubbleText: { fontSize: 14, color: colors.text, lineHeight: 20, flex: 1 },
+  bubbleTextUser: { color: colors.white },
+  bubbleTextError: { color: colors.error },
 
-  quickRow: { maxHeight: 44, borderTopWidth: 1, borderTopColor: '#1D1C17' },
+  quickRow: { maxHeight: 44, borderTopWidth: 1, borderTopColor: colors.surface },
   quickContent: { paddingHorizontal: 12, paddingVertical: 6, gap: 8 },
   quickBtn: {
-    backgroundColor: '#1D1C17', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6,
+    borderWidth: 1, borderColor: colors.border,
   },
-  quickText: { fontSize: 12, color: '#BFBBAE' },
+  quickText: { fontSize: 12, color: colors.textDim },
 
   inputRow: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 10,
-    padding: 12, borderTopWidth: 1, borderTopColor: '#1D1C17',
+    padding: 12, borderTopWidth: 1, borderTopColor: colors.surface,
   },
   input: {
-    flex: 1, backgroundColor: '#1D1C17', borderRadius: 14, padding: 12,
-    fontSize: 14, color: '#fff', borderWidth: 1, borderColor: '#383528',
+    flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: 12,
+    fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.border,
     maxHeight: 100,
   },
   sendBtn: {
     width: 42, height: 42, borderRadius: 21,
-    backgroundColor: '#D97757', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
   },
   sendBtnDisabled: { opacity: 0.4 },
 
   // Günlüğe özet modalı
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: '#1D1C17', borderRadius: 20, borderWidth: 1, borderColor: '#383528', padding: 18 },
+  modalCard: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 18 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   modalTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  modalTitle: { fontSize: 16, fontWeight: '700', color: '#EDEAE0' },
-  modalSub: { fontSize: 12.5, color: '#827E72', marginBottom: 12, lineHeight: 18 },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
+  modalSub: { fontSize: 12.5, color: colors.textFaint, marginBottom: 12, lineHeight: 18 },
   summaryInput: {
-    backgroundColor: '#15140F', borderRadius: 14, borderWidth: 1, borderColor: '#383528',
-    padding: 12, fontSize: 14, color: '#EDEAE0', lineHeight: 21,
+    backgroundColor: colors.bg, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
+    padding: 12, fontSize: 14, color: colors.text, lineHeight: 21,
     minHeight: 150, maxHeight: 280, marginBottom: 14,
   },
   modalFooter: { flexDirection: 'row', gap: 10, alignSelf: 'stretch' },
@@ -596,15 +597,15 @@ const s = StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, borderRadius: 12, paddingVertical: 12,
   },
-  modalBtnGhost: { backgroundColor: '#15140F', borderWidth: 1, borderColor: '#383528' },
-  modalBtnGhostText: { fontSize: 14, fontWeight: '600', color: '#BFBBAE' },
+  modalBtnGhost: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+  modalBtnGhostText: { fontSize: 14, fontWeight: '600', color: colors.textDim },
   modalBtnPrimary: { backgroundColor: '#ec4899' },
-  modalBtnPrimaryText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  modalBtnPrimaryText: { fontSize: 14, fontWeight: '700', color: colors.white },
   modalBtnDisabled: { opacity: 0.4 },
   savedBox: { alignItems: 'center', paddingTop: 6 },
   savedIcon: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: '#87A678',
+    width: 44, height: 44, borderRadius: 22, backgroundColor: colors.success,
     alignItems: 'center', justifyContent: 'center', marginBottom: 10,
   },
-  savedText: { fontSize: 14, color: '#EDEAE0', fontWeight: '600', marginBottom: 18 },
+  savedText: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 18 },
 });

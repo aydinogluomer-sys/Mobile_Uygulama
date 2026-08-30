@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -233,58 +234,58 @@ export default function JournalScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
 
   dateRow: { marginBottom: 20 },
   dateBtn: {
     alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10,
-    borderRadius: 14, borderWidth: 1, borderColor: '#383528',
-    backgroundColor: '#1D1C17', marginRight: 8, minWidth: 52, gap: 2,
+    borderRadius: 14, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface, marginRight: 8, minWidth: 52, gap: 2,
   },
   dateBtnActive: { backgroundColor: '#ec489920', borderColor: '#ec4899' },
-  dateDayName: { fontSize: 10, color: '#827E72', fontWeight: '600' },
+  dateDayName: { fontSize: 10, color: colors.textFaint, fontWeight: '600' },
   dateDayNameActive: { color: '#ec4899' },
-  dateDay: { fontSize: 18, fontWeight: '700', color: '#BFBBAE' },
-  dateDayActive: { color: '#fff' },
-  entryDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#56544B' },
+  dateDay: { fontSize: 18, fontWeight: '700', color: colors.textDim },
+  dateDayActive: { color: colors.white },
+  entryDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.textGhost },
   entryDotActive: { backgroundColor: '#ec4899' },
 
   moodSection: { marginBottom: 20 },
-  moodTitle: { fontSize: 14, color: '#BFBBAE', marginBottom: 12 },
+  moodTitle: { fontSize: 14, color: colors.textDim, marginBottom: 12 },
   moodRow: { flexDirection: 'row', justifyContent: 'space-between' },
   moodBtn: {
     alignItems: 'center', gap: 4, padding: 10, borderRadius: 12,
-    borderWidth: 1, borderColor: '#383528', flex: 1, marginHorizontal: 2,
+    borderWidth: 1, borderColor: colors.border, flex: 1, marginHorizontal: 2,
   },
   moodEmoji: { fontSize: 22 },
-  moodLabel: { fontSize: 10, color: '#827E72' },
+  moodLabel: { fontSize: 10, color: colors.textFaint },
 
-  writeCard: { backgroundColor: '#1D1C17', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#383528', marginBottom: 16 },
+  writeCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
   aiChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start',
     backgroundColor: '#ec489918', borderColor: '#ec489940', borderWidth: 1,
     borderRadius: 20, paddingHorizontal: 9, paddingVertical: 4, marginBottom: 10,
   },
   aiChipText: { fontSize: 11, color: '#ec4899', fontWeight: '700' },
-  promptText: { fontSize: 13, color: '#BFBBAE', fontStyle: 'italic', marginBottom: 12 },
-  textArea: { fontSize: 15, color: '#EDEAE0', minHeight: 160, lineHeight: 22 },
+  promptText: { fontSize: 13, color: colors.textDim, fontStyle: 'italic', marginBottom: 12 },
+  textArea: { fontSize: 15, color: colors.text, minHeight: 160, lineHeight: 22 },
 
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#ec4899', borderRadius: 14, paddingVertical: 14, marginBottom: 24 },
-  saveBtnDone: { backgroundColor: '#87A678' },
+  saveBtnDone: { backgroundColor: colors.success },
   saveBtnDisabled: { opacity: 0.4 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 
   archiveBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4 },
   archiveBtnText: { fontSize: 13, fontWeight: '700', color: '#ec4899' },
 
   insightsCard: {
-    backgroundColor: '#1D1C17', borderRadius: 16, padding: 16,
-    borderWidth: 1, borderColor: '#383528', marginBottom: 16,
+    backgroundColor: colors.surface, borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: colors.border, marginBottom: 16,
   },
   insightsTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   insightsTitle: { fontSize: 11, fontWeight: '800', color: '#a78bfa', letterSpacing: 1 },
-  insightsHint: { fontSize: 12, color: '#827E72', marginTop: 4, marginBottom: 12 },
+  insightsHint: { fontSize: 12, color: colors.textFaint, marginTop: 4, marginBottom: 12 },
   insightsRow: { flexDirection: 'row', gap: 8 },
   insightBtn: {
     flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12,
@@ -294,23 +295,23 @@ const s = StyleSheet.create({
 
   historySection: { marginTop: 8 },
   historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  historyTitle: { fontSize: 11, fontWeight: '700', color: '#827E72', letterSpacing: 1 },
+  historyTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1 },
   archiveLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   archiveLinkText: { fontSize: 12, fontWeight: '700', color: '#ec4899' },
   historyItem: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: '#383528', marginBottom: 8,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: colors.border, marginBottom: 8,
   },
   historyLeft: { flex: 1 },
   historyDateRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  historyDate: { fontSize: 11, color: '#827E72' },
+  historyDate: { fontSize: 11, color: colors.textFaint },
   aiChipSm: {
     flexDirection: 'row', alignItems: 'center', gap: 2,
     backgroundColor: '#ec489918', borderColor: '#ec489940', borderWidth: 1,
     borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1,
   },
   aiChipSmText: { fontSize: 9, color: '#ec4899', fontWeight: '800', letterSpacing: 0.3 },
-  historyPreview: { fontSize: 13, color: '#BFBBAE', lineHeight: 18 },
+  historyPreview: { fontSize: 13, color: colors.textDim, lineHeight: 18 },
   historyMood: { fontSize: 20 },
 });

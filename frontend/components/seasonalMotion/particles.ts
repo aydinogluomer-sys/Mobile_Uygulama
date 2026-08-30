@@ -1,5 +1,6 @@
 // Seasonal Ambient Motion — parçacık üretimi (contract §10–11)
 // Deterministik: ay+yoğunluğa göre seeded; render içinde Math.random YOK.
+import { colors } from '../../lib/tokens';
 import type {
   AmbientBand, AmbientParticle, ParticleKind, SeasonalDrift, SeasonalEffectType,
   SeasonalMotionConfig, SeasonalScene, SeasonalSpeed,
@@ -36,7 +37,7 @@ const EFFECT_KIND: Record<SeasonalEffectType, ParticleKind> = {
 };
 
 const EFFECT_COLOR: Record<SeasonalEffectType, string> = {
-  snow: '#FFFFFF', softSnow: '#FFFFFF', frostDust: '#D6EBFF', iceSparkle: '#D6EBFF',
+  snow: colors.white, softSnow: colors.white, frostDust: '#D6EBFF', iceSparkle: '#D6EBFF',
   pollenDrift: '#FFF5D2', waterGlint: '#B4DCEB', petalDrift: '#FFE0E8', softLightSpeck: '#FFFAEB',
   leafSway: '#96AA78', bloomShimmer: '#FFFAEB', pollenMotes: '#FFF5D2', summerAir: '#EAF6FF',
   waterShimmer: '#B4DCEB', seaSparkle: '#C8EBF5', subtleHeatShimmer: '#FFEBC8', goldenDust: '#F5D28C',

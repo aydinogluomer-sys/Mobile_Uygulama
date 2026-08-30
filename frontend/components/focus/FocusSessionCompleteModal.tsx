@@ -161,7 +161,7 @@ const s = StyleSheet.create({
 
   foot: { paddingTop: 12, paddingBottom: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle },
   primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: 14, marginBottom: 6 },
-  primaryText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  primaryText: { fontSize: 16, fontWeight: '700', color: colors.white },
   secondaryBtn: { paddingVertical: 11, alignItems: 'center' },
   secondaryText: { fontSize: 14, fontWeight: '600', color: colors.textFaint },
 });

@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { LIFE_AREAS, AreaKey } from '../store/lifeAreasStore';
 
@@ -7,7 +8,7 @@ const RINGS = [2, 4, 6, 8, 10];
 export default function AreaRadar({
   values,
   size = 260,
-  color = '#D97757',
+  color = colors.accent,
 }: {
   values: Record<AreaKey, number>;
   size?: number;

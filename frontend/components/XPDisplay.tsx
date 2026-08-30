@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,20 +47,20 @@ const s = StyleSheet.create({
   container: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 12,
-    backgroundColor: '#1D1C17', borderRadius: 16,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: colors.border,
   },
   levelBadge: {
     width: 48, height: 48, borderRadius: 24,
     alignItems: 'center', justifyContent: 'center',
   },
-  levelLabel: { fontSize: 9, fontWeight: '800', color: '#fff', opacity: 0.85 },
-  levelNumber: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  levelLabel: { fontSize: 9, fontWeight: '800', color: colors.white, opacity: 0.85 },
+  levelNumber: { fontSize: 18, fontWeight: '800', color: colors.white },
   info: { flex: 1, gap: 5 },
   rankRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   rankText: { fontSize: 13, fontWeight: '700' },
-  totalXp: { fontSize: 12, color: '#827E72', fontWeight: '600' },
-  barBg: { height: 8, backgroundColor: '#383528', borderRadius: 4, overflow: 'hidden' },
+  totalXp: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
+  barBg: { height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 4 },
-  xpText: { fontSize: 11, color: '#BFBBAE', fontWeight: '600' },
+  xpText: { fontSize: 11, color: colors.textDim, fontWeight: '600' },
 });

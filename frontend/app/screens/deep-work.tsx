@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -100,11 +101,11 @@ export default function DeepWorkScreen() {
           ) : (
             todaySessions.map((sess) => (
               <View key={sess.id} style={s.sessionRow}>
-                <View style={[s.sessionDot, { backgroundColor: '#7C97C5' }]} />
+                <View style={[s.sessionDot, { backgroundColor: colors.teal }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.sessionSubject}>{sess.subject}</Text>
                 </View>
-                <Text style={[s.sessionDuration, { color: '#7C97C5' }]}>{formatMins(sess.duration_minutes)}</Text>
+                <Text style={[s.sessionDuration, { color: colors.teal }]}>{formatMins(sess.duration_minutes)}</Text>
                 <TouchableOpacity
                   style={s.deleteBtn}
                   onPress={() => Alert.alert('Sil', 'Bu seans silinsin mi?', [
@@ -127,7 +128,7 @@ export default function DeepWorkScreen() {
             <Text style={s.sectionTitle}>GEÇMİŞ (30 GÜN)</Text>
             {pastSessions.slice(0, 20).map((sess) => (
               <View key={sess.id} style={s.sessionRow}>
-                <View style={[s.sessionDot, { backgroundColor: '#56544B' }]} />
+                <View style={[s.sessionDot, { backgroundColor: colors.textGhost }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.sessionSubject}>{sess.subject}</Text>
                   <Text style={s.sessionDate}>{sess.date}</Text>
@@ -208,65 +209,65 @@ export default function DeepWorkScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { padding: 16, paddingBottom: 40 },
 
   metrics: { flexDirection: 'row', gap: 10, marginBottom: 24 },
   metricCard: {
     flex: 1, alignItems: 'center', gap: 6, padding: 16,
-    backgroundColor: '#1D1C17', borderRadius: 14, borderWidth: 1,
+    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1,
   },
-  metricValue: { fontSize: 20, fontWeight: '700', color: '#fff' },
-  metricLabel: { fontSize: 11, color: '#827E72' },
+  metricValue: { fontSize: 20, fontWeight: '700', color: colors.white },
+  metricLabel: { fontSize: 11, color: colors.textFaint },
 
   section: { marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontSize: 11, fontWeight: '700', color: '#827E72', letterSpacing: 1 },
+  sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1 },
   addBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: '#7C97C515', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
   },
-  addBtnText: { fontSize: 13, color: '#7C97C5', fontWeight: '600' },
+  addBtnText: { fontSize: 13, color: colors.teal, fontWeight: '600' },
 
   sessionRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: '#383528', marginBottom: 6,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: colors.border, marginBottom: 6,
   },
   sessionDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
-  sessionSubject: { fontSize: 14, color: '#EDEAE0', fontWeight: '500' },
-  sessionDate: { fontSize: 11, color: '#827E72', marginTop: 2 },
-  sessionDuration: { fontSize: 13, color: '#BFBBAE', fontWeight: '600' },
+  sessionSubject: { fontSize: 14, color: colors.text, fontWeight: '500' },
+  sessionDate: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
+  sessionDuration: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
   deleteBtn: { padding: 4 },
 
   emptyCard: {
     alignItems: 'center', gap: 6, padding: 32,
-    backgroundColor: '#1D1C17', borderRadius: 14, borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
   },
-  emptyText: { fontSize: 14, color: '#56544B', fontWeight: '600' },
-  emptyHint: { fontSize: 12, color: '#56544B', textAlign: 'center' },
+  emptyText: { fontSize: 14, color: colors.textGhost, fontWeight: '600' },
+  emptyHint: { fontSize: 12, color: colors.textGhost, textAlign: 'center' },
 
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: '#1D1C17', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: '#383528' },
+  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: colors.border },
   modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
 
-  fieldLabel: { fontSize: 12, color: '#827E72', marginBottom: 8, fontWeight: '600' },
+  fieldLabel: { fontSize: 12, color: colors.textFaint, marginBottom: 8, fontWeight: '600' },
   input: {
     backgroundColor: '#111', borderRadius: 10, padding: 14,
-    fontSize: 15, color: '#fff', borderWidth: 1, borderColor: '#383528', marginBottom: 16,
+    fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 16,
   },
 
   quickRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   quickBtn: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: '#111', borderWidth: 1, borderColor: '#383528',
+    backgroundColor: '#111', borderWidth: 1, borderColor: colors.border,
   },
-  quickBtnActive: { backgroundColor: '#7C97C520', borderColor: '#7C97C5' },
-  quickBtnText: { fontSize: 13, color: '#827E72' },
-  quickBtnTextActive: { color: '#7C97C5', fontWeight: '700' },
+  quickBtnActive: { backgroundColor: '#7C97C520', borderColor: colors.teal },
+  quickBtnText: { fontSize: 13, color: colors.textFaint },
+  quickBtnTextActive: { color: colors.teal, fontWeight: '700' },
 
-  saveBtn: { backgroundColor: '#7C97C5', borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 4 },
+  saveBtn: { backgroundColor: colors.teal, borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 4 },
   saveBtnDisabled: { opacity: 0.4 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });

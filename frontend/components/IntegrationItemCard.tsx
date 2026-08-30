@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +14,7 @@ type IntegrationItemCardProps = {
 export default function IntegrationItemCard({
   item,
   onPress,
-  accentColor = '#D97757',
+  accentColor = colors.accent,
 }: IntegrationItemCardProps) {
   const { title, description, status, iconName = 'ellipse-outline' } = item;
   const isPressable = Boolean(onPress) && status === 'available';
@@ -76,12 +77,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   settingItemDisabled: {
     opacity: 0.85,
@@ -106,12 +107,12 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 4,
   },
   settingSubtitle: {
     fontSize: 13,
-    color: '#BFBBAE',
+    color: colors.textDim,
   },
   settingRight: {
     flexDirection: 'row',

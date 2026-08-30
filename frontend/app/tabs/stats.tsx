@@ -230,8 +230,8 @@ export default function StatsScreen() {
     if (ratio <= 0.2) return '#4A2A1B';
     if (ratio <= 0.4) return '#6E331C';
     if (ratio <= 0.6) return '#934628';
-    if (ratio <= 0.8) return '#B85C38';
-    return '#D97757';
+    if (ratio <= 0.8) return colors.primaryDeep;
+    return colors.accent;
   }
 
   function renderHeatmap() {
@@ -286,7 +286,7 @@ export default function StatsScreen() {
                         style={[s.heatmapCell, {
                           backgroundColor: ratioColor(ratio),
                           width: CELL_SIZE, height: CELL_SIZE, marginBottom: CELL_GAP,
-                          borderWidth: sel ? 1.5 : 0, borderColor: '#fff',
+                          borderWidth: sel ? 1.5 : 0, borderColor: colors.white,
                         }]}
                       />
                     );
@@ -309,7 +309,7 @@ export default function StatsScreen() {
 
         <View style={s.legend}>
           <Text style={s.legendText}>0%</Text>
-          {[colors.surfaceAlt, '#4A2A1B', '#6E331C', '#934628', '#B85C38', '#D97757'].map((c) => (
+          {[colors.surfaceAlt, '#4A2A1B', '#6E331C', '#934628', colors.primaryDeep, colors.accent].map((c) => (
             <View key={c} style={[s.legendCell, { backgroundColor: c }]} />
           ))}
           <Text style={s.legendText}>100%</Text>

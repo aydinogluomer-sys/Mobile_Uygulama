@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import { useTaskStore } from '../store/taskStore';
 import { useProjectStore } from '../store/projectStore';
 import { useHabitStore } from '../store/habitStore';
@@ -78,7 +79,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
         id: 'demo-project-1',
         user_id: demoUserId,
         name: 'Demo: Atlas Yol Haritasi',
-        color: '#D97757',
+        color: colors.accent,
         description: 'Uygulama test projesi',
         status: 'active',
         created_at: nowIso,
@@ -87,7 +88,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
         id: 'demo-project-2',
         user_id: demoUserId,
         name: 'Demo: Saglik ve Enerji',
-        color: '#87A678',
+        color: colors.success,
         description: 'Rutin ve enerji takibi',
         status: 'active',
         created_at: nowIso,
@@ -100,7 +101,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
         user_id: demoUserId,
         name: 'Demo: 30 dk yuruyus',
         icon: 'walk-outline',
-        color: '#87A678',
+        color: colors.success,
         behavior_type: 'positive',
         tracking_type: 'boolean',
         unit: null,
@@ -150,7 +151,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
         user_id: demoUserId,
         name: 'Demo: 15 dk okuma',
         icon: 'book-outline',
-        color: '#D4A84A',
+        color: colors.warning,
         behavior_type: 'positive',
         tracking_type: 'numeric',
         unit: 'dk',
@@ -294,7 +295,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
           estimated_pomodoros: 2,
           completed_pomodoros: 1,
           total_focus_seconds: 1500,
-          color: '#D97757',
+          color: colors.accent,
           created_at: nowIso,
         },
         {
@@ -306,7 +307,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
           estimated_pomodoros: 3,
           completed_pomodoros: 0,
           total_focus_seconds: 0,
-          color: '#87A678',
+          color: colors.success,
           created_at: nowIso,
         },
       ] as any,
@@ -398,8 +399,8 @@ export async function seedDemoData(): Promise<SeedSummary> {
   ]);
 
   const demoProjects = [
-    { name: 'Demo: Atlas Yol Haritasi', color: '#D97757', description: 'Uygulama test projesi' },
-    { name: 'Demo: Saglik ve Enerji', color: '#87A678', description: 'Rutin ve enerji takibi' },
+    { name: 'Demo: Atlas Yol Haritasi', color: colors.accent, description: 'Uygulama test projesi' },
+    { name: 'Demo: Saglik ve Enerji', color: colors.success, description: 'Rutin ve enerji takibi' },
   ];
 
   for (const p of demoProjects) {
@@ -417,7 +418,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
     {
       name: 'Demo: 30 dk yuruyus',
       icon: 'walk-outline',
-      color: '#87A678',
+      color: colors.success,
       behavior_type: 'positive' as const,
       tracking_type: 'boolean' as const,
       unit: null,
@@ -461,7 +462,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
     {
       name: 'Demo: 15 dk okuma',
       icon: 'book-outline',
-      color: '#D4A84A',
+      color: colors.warning,
       behavior_type: 'positive' as const,
       tracking_type: 'numeric' as const,
       unit: 'dk',

@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { currentUser } from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
@@ -323,7 +324,7 @@ export default function WeeklyReviewScreen() {
               accessibilityLabel="Sonraki hafta"
               accessibilityState={{ disabled: isCurrentWeek }}
             >
-              <Ionicons name="chevron-forward" size={18} color={isCurrentWeek ? '#56544B' : '#BFBBAE'} />
+              <Ionicons name="chevron-forward" size={18} color={isCurrentWeek ? colors.textGhost : colors.textDim} />
             </TouchableOpacity>
           </View>
         </View>
@@ -334,11 +335,11 @@ export default function WeeklyReviewScreen() {
             <Text style={s.metricLabel}>Görev{'\n'}Tamamlandı</Text>
           </View>
           <View style={s.metric}>
-            <Text style={[s.metricValue, { color: '#87A678' }]}>{habitCompletionRate}%</Text>
+            <Text style={[s.metricValue, { color: colors.success }]}>{habitCompletionRate}%</Text>
             <Text style={s.metricLabel}>Alışkanlık{'\n'}Oran</Text>
           </View>
           <View style={s.metric}>
-            <Text style={[s.metricValue, { color: '#D97757' }]}>{focusMinutes}</Text>
+            <Text style={[s.metricValue, { color: colors.accent }]}>{focusMinutes}</Text>
             <Text style={s.metricLabel}>Odak{'\n'}Dakika</Text>
           </View>
           <View style={s.metric}>
@@ -444,38 +445,38 @@ export default function WeeklyReviewScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
   hero: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
   heroIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#14b8a620', alignItems: 'center', justifyContent: 'center' },
-  heroTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  heroDates: { fontSize: 11, color: '#827E72', marginTop: 2 },
+  heroTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
+  heroDates: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   weekNav: { flexDirection: 'row', gap: 4 },
-  navBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#1D1C17', borderWidth: 1, borderColor: '#383528', alignItems: 'center', justifyContent: 'center' },
+  navBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   navBtnDisabled: { opacity: 0.3 },
   metricsRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
-  metric: { flex: 1, backgroundColor: '#1D1C17', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#383528', alignItems: 'center' },
-  metricValue: { fontSize: 20, fontWeight: '700', color: '#fff', marginBottom: 4 },
-  metricLabel: { fontSize: 10, color: '#827E72', textAlign: 'center', lineHeight: 14 },
-  badgeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#1D1C17', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#383528', marginBottom: 24 },
+  metric: { flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+  metricValue: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 4 },
+  metricLabel: { fontSize: 10, color: colors.textFaint, textAlign: 'center', lineHeight: 14 },
+  badgeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 24 },
   badgeEmoji: { fontSize: 20 },
-  badgeTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  badgeDesc: { fontSize: 11, color: '#827E72', marginTop: 2 },
+  badgeTitle: { fontSize: 14, fontWeight: '700', color: colors.white },
+  badgeDesc: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 11, fontWeight: '700', color: '#827E72', letterSpacing: 1, marginBottom: 10 },
+  sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
   autoMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  autoMetricTile: { width: '31.5%', backgroundColor: '#1D1C17', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: '#383528', alignItems: 'center', marginBottom: 8 },
-  autoMetricValue: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 3 },
-  autoMetricLabel: { fontSize: 9.5, color: '#827E72', textAlign: 'center', lineHeight: 12 },
-  taskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#1D1C17', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#383528', marginBottom: 6 },
-  taskTitle: { flex: 1, fontSize: 14, color: '#BFBBAE' },
-  moreText: { fontSize: 12, color: '#56544B', paddingLeft: 4, marginTop: 4 },
+  autoMetricTile: { width: '31.5%', backgroundColor: colors.surface, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', marginBottom: 8 },
+  autoMetricValue: { fontSize: 15, fontWeight: '700', color: colors.white, marginBottom: 3 },
+  autoMetricLabel: { fontSize: 9.5, color: colors.textFaint, textAlign: 'center', lineHeight: 12 },
+  taskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 6 },
+  taskTitle: { flex: 1, fontSize: 14, color: colors.textDim },
+  moreText: { fontSize: 12, color: colors.textGhost, paddingLeft: 4, marginTop: 4 },
   questionCard: { marginBottom: 14 },
-  questionLabel: { fontSize: 14, color: '#EDEAE0', fontWeight: '600', marginBottom: 8 },
-  questionInput: { backgroundColor: '#1D1C17', borderRadius: 12, padding: 14, fontSize: 14, color: '#fff', borderWidth: 1, borderColor: '#383528', minHeight: 80, textAlignVertical: 'top' },
+  questionLabel: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 8 },
+  questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#14b8a6', borderRadius: 14, paddingVertical: 15, marginTop: 8 },
   saveBtnLoading: { opacity: 0.7 },
-  saveBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  saveBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
   savedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#87A67810', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#87A67830' },
-  savedBadgeText: { fontSize: 13, color: '#87A678' },
+  savedBadgeText: { fontSize: 13, color: colors.success },
 });

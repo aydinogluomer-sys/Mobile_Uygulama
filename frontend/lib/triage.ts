@@ -1,6 +1,7 @@
 // Karar çerçeveleri çekirdeği — Etki-Şiddet + Eisenhower + Triaj + Kanban
 // HabitOnboarding ve habits.tsx tarafından paylaşılan tek kaynak.
 
+import { colors } from '../lib/tokens';
 import type { Habit, EndCondition } from './supabase';
 import { isMeasurableTracking } from './habitEngine';
 
@@ -75,7 +76,7 @@ export const TRIAGE_META: Record<Triage, {
     label: 'Planla',
     emoji: '📋',
     icon: 'calendar-outline',
-    color: '#D97757',
+    color: colors.accent,
     room: 'Bekleme Odası',
     roomDesc: 'Bekleme Odası\'na — zamanı gelince başla',
   },

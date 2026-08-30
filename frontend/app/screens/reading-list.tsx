@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -11,17 +12,17 @@ import { EmptyState, Skeleton } from '../../components/ui';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 
 const STATUS_TABS: { key: ReadingStatus; label: string; color: string }[] = [
-  { key: 'want_to_read', label: 'Okuyacak', color: '#827E72' },
-  { key: 'reading',      label: 'Okuyor',   color: '#D97757' },
-  { key: 'completed',    label: 'Bitti',     color: '#87A678' },
+  { key: 'want_to_read', label: 'Okuyacak', color: colors.textFaint },
+  { key: 'reading',      label: 'Okuyor',   color: colors.accent },
+  { key: 'completed',    label: 'Bitti',     color: colors.success },
 ];
 
 const TYPE_OPTIONS: { key: ReadingType; label: string; icon: string; color: string }[] = [
   { key: 'book',    label: 'Kitap',   icon: 'book-outline',         color: '#8b5cf6' },
-  { key: 'article', label: 'Makale',  icon: 'newspaper-outline',    color: '#7C97C5' },
-  { key: 'video',   label: 'Video',   icon: 'videocam-outline',     color: '#C76A6A' },
-  { key: 'podcast', label: 'Podcast', icon: 'headset-outline',      color: '#D4A84A' },
-  { key: 'other',   label: 'Diğer',   icon: 'ellipsis-horizontal-outline', color: '#BFBBAE' },
+  { key: 'article', label: 'Makale',  icon: 'newspaper-outline',    color: colors.teal },
+  { key: 'video',   label: 'Video',   icon: 'videocam-outline',     color: colors.error },
+  { key: 'podcast', label: 'Podcast', icon: 'headset-outline',      color: colors.warning },
+  { key: 'other',   label: 'Diğer',   icon: 'ellipsis-horizontal-outline', color: colors.textDim },
 ];
 
 const TYPE_MAP = Object.fromEntries(TYPE_OPTIONS.map((t) => [t.key, t]));
@@ -242,7 +243,7 @@ export default function ReadingListScreen() {
                   accessibilityLabel={`Tür: ${t.label}`}
                   accessibilityState={{ selected: type === t.key, checked: type === t.key }}
                 >
-                  <Ionicons name={t.icon as any} size={16} color={type === t.key ? t.color : '#827E72'} />
+                  <Ionicons name={t.icon as any} size={16} color={type === t.key ? t.color : colors.textFaint} />
                   <Text style={[s.typeBtnText, type === t.key && { color: t.color }]}>{t.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -276,56 +277,56 @@ export default function ReadingListScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
 
-  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#28261F' },
+  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.borderSubtle },
   tab: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabText: { fontSize: 13, fontWeight: '600', color: '#827E72' },
+  tabText: { fontSize: 13, fontWeight: '600', color: colors.textFaint },
   tabBadge: { width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  tabBadgeText: { fontSize: 10, color: '#fff', fontWeight: '700' },
+  tabBadgeText: { fontSize: 10, color: colors.white, fontWeight: '700' },
 
   content: { padding: 16, paddingBottom: 100 },
 
   empty: { alignItems: 'center', gap: 8, paddingTop: 60 },
-  emptyTitle: { fontSize: 16, color: '#56544B', fontWeight: '600' },
-  emptySub: { fontSize: 13, color: '#56544B' },
+  emptyTitle: { fontSize: 16, color: colors.textGhost, fontWeight: '600' },
+  emptySub: { fontSize: 13, color: colors.textGhost },
 
   card: {
     flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-    backgroundColor: '#1D1C17', borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: '#383528', marginBottom: 10,
+    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: colors.border, marginBottom: 10,
   },
   cardLeft: { flexDirection: 'row', gap: 12, flex: 1 },
   typeIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   cardBody: { flex: 1, gap: 3 },
-  cardTitle: { fontSize: 15, fontWeight: '600', color: '#EDEAE0', lineHeight: 20 },
-  cardAuthor: { fontSize: 12, color: '#827E72' },
+  cardTitle: { fontSize: 15, fontWeight: '600', color: colors.text, lineHeight: 20 },
+  cardAuthor: { fontSize: 12, color: colors.textFaint },
   cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
   typeBadge: { fontSize: 11, fontWeight: '600' },
 
   cardActions: { gap: 8, marginLeft: 8 },
   statusBtn: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  deleteBtn: { width: 30, height: 30, borderRadius: 8, backgroundColor: '#28261F', alignItems: 'center', justifyContent: 'center' },
+  deleteBtn: { width: 30, height: 30, borderRadius: 8, backgroundColor: colors.borderSubtle, alignItems: 'center', justifyContent: 'center' },
 
   fab: {
     position: 'absolute', bottom: 24, right: 20,
     width: 54, height: 54, borderRadius: 27,
-    backgroundColor: '#D97757', alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#D97757', shadowOpacity: 0.4, shadowRadius: 10, elevation: 8,
+    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
+    shadowColor: colors.accent, shadowOpacity: 0.4, shadowRadius: 10, elevation: 8,
   },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#1D1C17', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 16 },
-  input: { backgroundColor: '#1D1C17', borderRadius: 12, padding: 14, fontSize: 15, color: '#fff', borderWidth: 1, borderColor: '#383528', marginBottom: 12 },
-  fieldLabel: { fontSize: 11, fontWeight: '700', color: '#827E72', letterSpacing: 1, marginBottom: 8 },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 16 },
+  input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 12 },
+  fieldLabel: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 8 },
   typeRow: { flexDirection: 'row', gap: 6, marginBottom: 20, flexWrap: 'wrap' },
-  typeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: '#383528' },
-  typeBtnText: { fontSize: 12, fontWeight: '600', color: '#827E72' },
+  typeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border },
+  typeBtnText: { fontSize: 12, fontWeight: '600', color: colors.textFaint },
   sheetActions: { flexDirection: 'row', gap: 10 },
-  cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: '#383528', alignItems: 'center' },
-  cancelText: { fontSize: 15, color: '#BFBBAE', fontWeight: '600' },
-  confirmBtn: { flex: 2, paddingVertical: 13, borderRadius: 12, backgroundColor: '#D97757', alignItems: 'center' },
+  cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.border, alignItems: 'center' },
+  cancelText: { fontSize: 15, color: colors.textDim, fontWeight: '600' },
+  confirmBtn: { flex: 2, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center' },
   confirmDisabled: { opacity: 0.4 },
-  confirmText: { fontSize: 15, color: '#fff', fontWeight: '700' },
+  confirmText: { fontSize: 15, color: colors.white, fontWeight: '700' },
 });

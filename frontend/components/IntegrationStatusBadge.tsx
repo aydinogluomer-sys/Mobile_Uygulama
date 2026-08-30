@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { IntegrationStatus } from '../constants/integrations';
@@ -13,17 +14,17 @@ const STATUS_CONFIG: Record<
   available: {
     label: 'Kur',
     backgroundColor: '#D9775720',
-    color: '#D97757',
+    color: colors.accent,
   },
   connected: {
     label: 'Bağlı',
     backgroundColor: '#87A67820',
-    color: '#87A678',
+    color: colors.success,
   },
   comingSoon: {
     label: 'Yakında',
-    backgroundColor: '#1D1C17',
-    color: '#BFBBAE',
+    backgroundColor: colors.surface,
+    color: colors.textDim,
   },
 };
 
@@ -47,7 +48,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   badgeText: {
     fontSize: 12,

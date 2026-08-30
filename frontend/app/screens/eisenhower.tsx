@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -14,10 +15,10 @@ import { computeTriage, TRIAGE_META, type Triage } from '../../lib/triage';
 type Quadrant = { key: QuadrantType; label: string; action: string; color: string; icon: string };
 
 const QUADRANTS: Quadrant[] = [
-  { key: 'UI', label: 'YAP', action: 'Acil + Önemli', color: '#C76A6A', icon: 'flame-outline' },
-  { key: 'NI', label: 'PLANLA', action: 'Önemli, Acil Değil', color: '#D97757', icon: 'calendar-outline' },
-  { key: 'UN', label: 'DELEGE ET', action: 'Acil, Önemsiz', color: '#D4A84A', icon: 'people-outline' },
-  { key: 'NN', label: 'SİL', action: 'Ne Acil Ne Önemli', color: '#827E72', icon: 'trash-outline' },
+  { key: 'UI', label: 'YAP', action: 'Acil + Önemli', color: colors.error, icon: 'flame-outline' },
+  { key: 'NI', label: 'PLANLA', action: 'Önemli, Acil Değil', color: colors.accent, icon: 'calendar-outline' },
+  { key: 'UN', label: 'DELEGE ET', action: 'Acil, Önemsiz', color: colors.warning, icon: 'people-outline' },
+  { key: 'NN', label: 'SİL', action: 'Ne Acil Ne Önemli', color: colors.textFaint, icon: 'trash-outline' },
 ];
 
 // Alışkanlık matrisi — görev kadranlarıyla aynı 2×2 konumlar, triaj eşlemesi
@@ -29,7 +30,7 @@ const TRIAGE_CELLS: { key: Triage; action: string }[] = [
 ];
 
 const PRIORITY_COLOR: Record<string, string> = {
-  high: '#C76A6A', medium: '#D4A84A', low: '#87A678', none: '#56544B',
+  high: colors.error, medium: colors.warning, low: colors.success, none: colors.textGhost,
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -98,7 +99,7 @@ function HabitQuadrantBox({
             accessibilityLabel={`${h.name}, ${STATUS_LABEL[h.status] ?? h.status} — ${m.label}`}
             accessibilityHint="Alışkanlıklar sekmesini açar"
           >
-            <View style={[s.dot, { backgroundColor: h.color ?? '#D97757', borderRadius: 2 }]} />
+            <View style={[s.dot, { backgroundColor: h.color ?? colors.accent, borderRadius: 2 }]} />
             <View style={{ flex: 1 }}>
               <Text style={s.taskTitle} numberOfLines={1}>{h.name}</Text>
               <Text style={s.habitRoom}>{STATUS_LABEL[h.status] ?? h.status}</Text>
@@ -157,7 +158,7 @@ export default function EisenhowerScreen() {
                 accessibilityLabel={mk === 'tasks' ? 'Görev matrisi' : 'Alışkanlık matrisi'}
                 accessibilityState={{ selected: sel }}
               >
-                <Ionicons name={mk === 'tasks' ? 'checkbox-outline' : 'repeat-outline'} size={15} color={sel ? '#fff' : '#BFBBAE'} />
+                <Ionicons name={mk === 'tasks' ? 'checkbox-outline' : 'repeat-outline'} size={15} color={sel ? colors.white : colors.textDim} />
                 <Text style={[s.toggleText, sel && s.toggleTextSel]}>{mk === 'tasks' ? 'Görevler' : 'Alışkanlıklar'}</Text>
               </TouchableOpacity>
             );
@@ -305,39 +306,39 @@ export default function EisenhowerScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { padding: 16, paddingBottom: 40 },
 
   toggle: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   toggleBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: '#1D1C17', borderRadius: 12, paddingVertical: 10,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 10,
+    borderWidth: 1, borderColor: colors.border,
   },
-  toggleBtnSel: { backgroundColor: '#D97757', borderColor: '#D97757' },
-  toggleText: { fontSize: 14, color: '#BFBBAE', fontWeight: '600' },
-  toggleTextSel: { color: '#fff' },
-  modeHint: { fontSize: 12, color: '#827E72', marginBottom: 16, paddingHorizontal: 2 },
+  toggleBtnSel: { backgroundColor: colors.accent, borderColor: colors.accent },
+  toggleText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
+  toggleTextSel: { color: colors.white },
+  modeHint: { fontSize: 12, color: colors.textFaint, marginBottom: 16, paddingHorizontal: 2 },
 
   unassignedBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: '#D4A84A15', borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: '#D4A84A30', marginBottom: 16,
   },
-  unassignedText: { flex: 1, fontSize: 13, color: '#D4A84A' },
-  unassignedLink: { fontSize: 13, color: '#D4A84A', fontWeight: '700' },
+  unassignedText: { flex: 1, fontSize: 13, color: colors.warning },
+  unassignedLink: { fontSize: 13, color: colors.warning, fontWeight: '700' },
 
   matrix: { gap: 10 },
   row: { flexDirection: 'row', gap: 10 },
 
   quadrant: {
-    flex: 1, minHeight: 160, backgroundColor: '#1D1C17',
+    flex: 1, minHeight: 160, backgroundColor: colors.surface,
     borderRadius: 14, padding: 12, borderWidth: 1,
   },
   qHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   qLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
-  qAction: { fontSize: 10, color: '#827E72', marginBottom: 10 },
-  qEmpty: { fontSize: 11, color: '#56544B', textAlign: 'center', marginTop: 12 },
+  qAction: { fontSize: 10, color: colors.textFaint, marginBottom: 10 },
+  qEmpty: { fontSize: 11, color: colors.textGhost, textAlign: 'center', marginTop: 12 },
 
   taskChip: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
@@ -345,32 +346,32 @@ const s = StyleSheet.create({
   },
   dot: { width: 7, height: 7, borderRadius: 4, marginTop: 3, flexShrink: 0 },
   taskTitle: { flex: 1, fontSize: 12, color: '#d1d5db', lineHeight: 16 },
-  habitRoom: { fontSize: 9, color: '#827E72', marginTop: 1 },
+  habitRoom: { fontSize: 9, color: colors.textFaint, marginTop: 1 },
 
   axisRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingHorizontal: 4 },
-  axisLabel: { fontSize: 10, color: '#56544B' },
-  axisLabelCenter: { fontSize: 10, color: '#827E72', fontWeight: '700' },
-  mirrorNote: { fontSize: 11, color: '#56544B', marginTop: 14, lineHeight: 16, fontStyle: 'italic' },
+  axisLabel: { fontSize: 10, color: colors.textGhost },
+  axisLabelCenter: { fontSize: 10, color: colors.textFaint, fontWeight: '700' },
+  mirrorNote: { fontSize: 11, color: colors.textGhost, marginTop: 14, lineHeight: 16, fontStyle: 'italic' },
 
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: '#1D1C17', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#383528' },
+  modalCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.border },
   modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 16, fontWeight: '700', color: '#fff', flex: 1, marginBottom: 4 },
-  modalSub: { fontSize: 12, color: '#827E72', marginBottom: 12 },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: colors.white, flex: 1, marginBottom: 4 },
+  modalSub: { fontSize: 12, color: colors.textFaint, marginBottom: 12 },
   modalOption: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     padding: 12, borderRadius: 10, marginBottom: 8,
-    backgroundColor: '#111', borderWidth: 1, borderColor: '#383528',
+    backgroundColor: '#111', borderWidth: 1, borderColor: colors.border,
   },
-  modalOptionActive: { borderColor: '#D97757' },
+  modalOptionActive: { borderColor: colors.accent },
   modalOptionLabel: { fontSize: 13, fontWeight: '700' },
-  modalOptionSub: { fontSize: 11, color: '#827E72', marginTop: 1 },
+  modalOptionSub: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
   modalCancel: { alignItems: 'center', marginTop: 8, padding: 10 },
-  modalCancelText: { fontSize: 13, color: '#C76A6A' },
+  modalCancelText: { fontSize: 13, color: colors.error },
 
   pickRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#383528',
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  pickTitle: { flex: 1, fontSize: 14, color: '#EDEAE0' },
+  pickTitle: { flex: 1, fontSize: 14, color: colors.text },
 });

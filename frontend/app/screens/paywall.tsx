@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert,
@@ -185,58 +186,58 @@ export default function PaywallScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
 
   statusCard: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#1D1C17', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border,
   },
-  statusLabel: { fontSize: 12, color: '#827E72' },
+  statusLabel: { fontSize: 12, color: colors.textFaint },
   statusTier: { fontSize: 22, fontWeight: '800', marginTop: 2 },
   fpBox: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#D4A84A18', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
-  fpVal: { fontSize: 20, fontWeight: '800', color: '#D4A84A' },
-  fpUnit: { fontSize: 12, color: '#D4A84A', fontWeight: '600' },
+  fpVal: { fontSize: 20, fontWeight: '800', color: colors.warning },
+  fpUnit: { fontSize: 12, color: colors.warning, fontWeight: '600' },
   fpHintRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, marginBottom: 18, paddingHorizontal: 4 },
-  fpHint: { flex: 1, fontSize: 12, color: '#827E72' },
+  fpHint: { flex: 1, fontSize: 12, color: colors.textFaint },
   historyLink: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  historyLinkText: { fontSize: 12, color: '#D97757', fontWeight: '600' },
+  historyLinkText: { fontSize: 12, color: colors.accent, fontWeight: '600' },
 
   periodRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
   periodBtn: {
-    flex: 1, alignItems: 'center', backgroundColor: '#1D1C17', borderRadius: 12, paddingVertical: 10,
-    borderWidth: 1, borderColor: '#383528',
+    flex: 1, alignItems: 'center', backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 10,
+    borderWidth: 1, borderColor: colors.border,
   },
-  periodBtnSel: { backgroundColor: '#D9775720', borderColor: '#D97757' },
-  periodText: { fontSize: 13, color: '#BFBBAE', fontWeight: '600' },
-  periodTextSel: { color: '#D97757' },
-  periodBadge: { fontSize: 9, color: '#87A678', marginTop: 2 },
+  periodBtnSel: { backgroundColor: '#D9775720', borderColor: colors.accent },
+  periodText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
+  periodTextSel: { color: colors.accent },
+  periodBadge: { fontSize: 9, color: colors.success, marginTop: 2 },
 
-  planCard: { backgroundColor: '#1D1C17', borderRadius: 18, padding: 18, borderWidth: 1.5, marginBottom: 14 },
+  planCard: { backgroundColor: colors.surface, borderRadius: 18, padding: 18, borderWidth: 1.5, marginBottom: 14 },
   planFeatured: { borderWidth: 2 },
   ribbon: { position: 'absolute', top: -1, right: 16, borderBottomLeftRadius: 8, borderBottomRightRadius: 8, paddingHorizontal: 10, paddingVertical: 3 },
-  ribbonText: { fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  ribbonText: { fontSize: 10, fontWeight: '800', color: colors.white, letterSpacing: 0.5 },
   planHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, marginTop: 6 },
   planName: { fontSize: 20, fontWeight: '800' },
-  planTag: { fontSize: 12, color: '#827E72', marginTop: 2 },
+  planTag: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   priceCol: { alignItems: 'flex-end' },
-  planPrice: { fontSize: 24, fontWeight: '800', color: '#fff' },
-  planPer: { fontSize: 11, color: '#827E72' },
-  planNa: { fontSize: 11, color: '#827E72', textAlign: 'right' },
+  planPrice: { fontSize: 24, fontWeight: '800', color: colors.white },
+  planPer: { fontSize: 11, color: colors.textFaint },
+  planNa: { fontSize: 11, color: colors.textFaint, textAlign: 'right' },
 
   grantPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
     backgroundColor: '#D4A84A14', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 12,
   },
-  grantText: { fontSize: 12, color: '#D4A84A', fontWeight: '700' },
+  grantText: { fontSize: 12, color: colors.warning, fontWeight: '700' },
 
   featRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 7 },
-  featText: { fontSize: 13, color: '#EDEAE0', flex: 1 },
+  featText: { fontSize: 13, color: colors.text, flex: 1 },
 
   subBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 12 },
   subBtnDisabled: { opacity: 0.45 },
-  subBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  subBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 
-  mockNote: { flexDirection: 'row', gap: 8, backgroundColor: '#1D1C17', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#383528', marginTop: 6 },
-  mockText: { flex: 1, fontSize: 11, color: '#827E72', lineHeight: 16 },
+  mockNote: { flexDirection: 'row', gap: 8, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, marginTop: 6 },
+  mockText: { flex: 1, fontSize: 11, color: colors.textFaint, lineHeight: 16 },
 });

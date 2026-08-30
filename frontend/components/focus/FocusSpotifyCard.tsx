@@ -138,7 +138,7 @@ const s = StyleSheet.create({
   connectTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
   connectSub: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   connectBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20 },
-  connectBtnText: { fontSize: 13, fontWeight: '800', color: '#000' },
+  connectBtnText: { fontSize: 13, fontWeight: '800', color: colors.black },
   err: { fontSize: 11, color: colors.error, lineHeight: 16 },
 
   // Oynatıcı

@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, FlatList, Dimensions, TouchableOpacity,
@@ -96,7 +97,7 @@ export default function JournalReaderScreen() {
           accessibilityLabel="Daha yeni sayfa"
           accessibilityState={{ disabled: idx <= 0 }}
         >
-          <Ionicons name="chevron-back" size={18} color={idx <= 0 ? '#56544B' : '#D4A84A'} />
+          <Ionicons name="chevron-back" size={18} color={idx <= 0 ? colors.textGhost : colors.warning} />
           <Text style={[s.navText, idx <= 0 && s.navTextOff]}>Yeni</Text>
         </TouchableOpacity>
 
@@ -111,7 +112,7 @@ export default function JournalReaderScreen() {
           accessibilityState={{ disabled: idx >= entries.length - 1 }}
         >
           <Text style={[s.navText, idx >= entries.length - 1 && s.navTextOff]}>Eski</Text>
-          <Ionicons name="chevron-forward" size={18} color={idx >= entries.length - 1 ? '#56544B' : '#D4A84A'} />
+          <Ionicons name="chevron-forward" size={18} color={idx >= entries.length - 1 ? colors.textGhost : colors.warning} />
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -149,7 +150,7 @@ function Page({ entry }: { entry: JournalEntry }) {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
 
   pageWrap: { paddingHorizontal: 16, paddingVertical: 14 },
   paper: {
@@ -163,7 +164,7 @@ const s = StyleSheet.create({
   paperContent: { padding: 22, paddingLeft: 44, paddingBottom: 40 },
   dow: { fontSize: 13, color: '#A88E6A', fontWeight: '600' },
   dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
-  dateBig: { fontSize: 22, fontWeight: '800', color: '#EDEAE0' },
+  dateBig: { fontSize: 22, fontWeight: '800', color: colors.text },
   moodBig: { fontSize: 26 },
   hairline: { height: 1, backgroundColor: '#3A3026', marginVertical: 14 },
 
@@ -178,14 +179,14 @@ const s = StyleSheet.create({
   navBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 12,
-    borderTopWidth: 1, borderTopColor: '#28261F',
+    borderTopWidth: 1, borderTopColor: colors.borderSubtle,
   },
   navBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingVertical: 4, minWidth: 64 },
   navBtnOff: { opacity: 0.5 },
-  navText: { fontSize: 14, fontWeight: '700', color: '#D4A84A' },
-  navTextOff: { color: '#56544B' },
-  pageIndicator: { fontSize: 12, color: '#827E72', fontWeight: '600' },
+  navText: { fontSize: 14, fontWeight: '700', color: colors.warning },
+  navTextOff: { color: colors.textGhost },
+  pageIndicator: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 30 },
-  emptyText: { fontSize: 13, color: '#827E72', textAlign: 'center' },
+  emptyText: { fontSize: 13, color: colors.textFaint, textAlign: 'center' },
 });

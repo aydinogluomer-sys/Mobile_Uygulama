@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { withEdgeDeadline } from '../../lib/edgeCall';
 import { newRequestId } from '../../services/focusPointService';
 import { useEffect, useMemo, useState } from 'react';
@@ -199,64 +200,64 @@ export default function JournalInsightsScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
 
   fpBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 14, paddingVertical: 8,
-    backgroundColor: '#1D1C17', borderBottomWidth: 1, borderBottomColor: '#28261F',
+    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
   },
   fpBarWarn: { backgroundColor: '#C76A6A12', borderBottomColor: '#C76A6A30' },
   fpLeft: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  fpText: { fontSize: 14, fontWeight: '700', color: '#D4A84A' },
-  fpSub: { fontSize: 11, color: '#827E72' },
+  fpText: { fontSize: 14, fontWeight: '700', color: colors.warning },
+  fpSub: { fontSize: 11, color: colors.textFaint },
   upgradeBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#D4A84A', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
+    backgroundColor: colors.warning, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
   },
-  upgradeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  upgradeText: { fontSize: 12, fontWeight: '700', color: colors.white },
 
   tabs: { flexDirection: 'row', gap: 8, padding: 12, paddingBottom: 4 },
   tab: {
     flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 12,
-    borderWidth: 1, borderColor: '#383528', backgroundColor: '#1D1C17',
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
   },
   tabActive: { backgroundColor: '#8b5cf620', borderColor: '#8b5cf6' },
-  tabText: { fontSize: 13, fontWeight: '700', color: '#827E72' },
+  tabText: { fontSize: 13, fontWeight: '700', color: colors.textFaint },
   tabTextActive: { color: '#a78bfa' },
 
   content: { padding: 16, paddingBottom: 40 },
   metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  metaLabel: { fontSize: 15, fontWeight: '700', color: '#EDEAE0' },
-  metaCount: { fontSize: 12, color: '#827E72', fontWeight: '600' },
+  metaLabel: { fontSize: 15, fontWeight: '700', color: colors.text },
+  metaCount: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
 
   card: {
-    backgroundColor: '#1D1C17', borderRadius: 16, borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border,
     padding: 16, marginBottom: 12,
   },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   cardTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#EDEAE0' },
-  cardMeta: { fontSize: 11, color: '#827E72' },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+  cardMeta: { fontSize: 11, color: colors.textFaint },
   insightText: { fontSize: 14, color: '#E3DDD0', lineHeight: 22 },
-  placeholder: { fontSize: 13, color: '#827E72', lineHeight: 20, fontStyle: 'italic' },
+  placeholder: { fontSize: 13, color: colors.textFaint, lineHeight: 20, fontStyle: 'italic' },
   loadingBox: { alignItems: 'center', gap: 10, paddingVertical: 20 },
-  loadingText: { fontSize: 13, color: '#827E72' },
+  loadingText: { fontSize: 13, color: colors.textFaint },
 
   errorBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: '#C76A6A15', borderColor: '#C76A6A30', borderWidth: 1,
     borderRadius: 12, padding: 12, marginBottom: 12,
   },
-  errorText: { flex: 1, fontSize: 13, color: '#C76A6A' },
+  errorText: { flex: 1, fontSize: 13, color: colors.error },
 
   genBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: '#8b5cf6', borderRadius: 14, paddingVertical: 14,
   },
   genBtnOff: { opacity: 0.5 },
-  genBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  genBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 
   empty: { alignItems: 'center', gap: 12, paddingTop: 50, paddingHorizontal: 30 },
-  emptyText: { fontSize: 13, color: '#827E72', textAlign: 'center', lineHeight: 19 },
+  emptyText: { fontSize: 13, color: colors.textFaint, textAlign: 'center', lineHeight: 19 },
 });

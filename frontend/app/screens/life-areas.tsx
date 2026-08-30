@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -228,33 +229,33 @@ export default function LifeAreasScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { padding: 20, paddingBottom: 40, alignItems: 'center' },
 
   radarContainer: { alignItems: 'center', marginBottom: 8, position: 'relative' },
   avgBadge: {
     position: 'absolute', bottom: 24, right: 20,
-    backgroundColor: '#1D1C17', borderRadius: 10, padding: 8,
-    borderWidth: 1, borderColor: '#383528', alignItems: 'center',
+    backgroundColor: colors.surface, borderRadius: 10, padding: 8,
+    borderWidth: 1, borderColor: colors.border, alignItems: 'center',
   },
-  avgValue: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  avgLabel: { fontSize: 10, color: '#827E72' },
+  avgValue: { fontSize: 18, fontWeight: '700', color: colors.white },
+  avgLabel: { fontSize: 10, color: colors.textFaint },
 
   lastSaved: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 },
-  lastSavedText: { fontSize: 12, color: '#827E72' },
+  lastSavedText: { fontSize: 12, color: colors.textFaint },
 
   slidersCard: {
-    width: '100%', backgroundColor: '#1D1C17', borderRadius: 16,
-    padding: 16, borderWidth: 1, borderColor: '#383528', marginBottom: 20,
+    width: '100%', backgroundColor: colors.surface, borderRadius: 16,
+    padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 20,
     gap: 14,
   },
 
   saveBtn: {
     width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, backgroundColor: '#D97757', borderRadius: 14, padding: 15,
+    gap: 8, backgroundColor: colors.accent, borderRadius: 14, padding: 15,
   },
   saveBtnLoading: { opacity: 0.7 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });
 
 const sl = StyleSheet.create({
@@ -262,7 +263,7 @@ const sl = StyleSheet.create({
   label: { fontSize: 12, fontWeight: '700', width: 68 },
   sliderTrack: { flex: 1, flexDirection: 'row', gap: 3 },
   tick: {
-    flex: 1, height: 8, borderRadius: 4, backgroundColor: '#383528',
+    flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.border,
   },
-  valueText: { fontSize: 13, fontWeight: '700', color: '#fff', width: 16, textAlign: 'right' },
+  valueText: { fontSize: 13, fontWeight: '700', color: colors.white, width: 16, textAlign: 'right' },
 });

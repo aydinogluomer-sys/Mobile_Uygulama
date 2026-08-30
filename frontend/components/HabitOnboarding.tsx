@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import React, { useState } from 'react';
 import {
   View,
@@ -32,7 +33,7 @@ interface HabitOnboardingProps {
   willpowerState?: WillpowerState | null;
 }
 
-const COLORS = ['#D97757', '#87A678', '#3b82f6', '#D4A84A', '#C76A6A', '#ec4899', '#7C97C5', '#8b5cf6'];
+const COLORS = [colors.accent, colors.success, '#3b82f6', colors.warning, colors.error, '#ec4899', colors.teal, '#8b5cf6'];
 
 const ICONS = [
   'fitness-outline', 'book-outline', 'briefcase-outline', 'water-outline',
@@ -51,7 +52,7 @@ const WEEKDAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 const DEFAULT_FORM: HabitFormData = {
   name: '',
   icon: 'star-outline',
-  color: '#D97757',
+  color: colors.accent,
   behavior_type: 'positive',
   tracking_type: 'boolean',
   unit: null,
@@ -110,16 +111,16 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
   const plannedTriage = computeTriage(form.impact_level, form.urgency);
   const plannedStatus = triageToStatus(plannedTriage, canActivateNow); // 'active'|'waiting'|'idea'
   const DEST = {
-    active: { color: '#87A678', icon: 'flash', label: 'Aktif Olarak Ekle', room: 'Aktif Odak' },
-    waiting: { color: '#D4A84A', icon: 'time-outline', label: 'Beklemeye Ekle', room: 'Bekleme Odası' },
-    idea: { color: '#827E72', icon: 'bulb-outline', label: 'Fikir Olarak Sakla', room: 'Fikirler' },
-    paused: { color: '#BFBBAE', icon: 'pause', label: 'Ekle', room: 'Bekleme Odası' },
-    completed: { color: '#87A678', icon: 'checkmark', label: 'Ekle', room: 'Tamamlandı' },
-    archived: { color: '#827E72', icon: 'archive', label: 'Ekle', room: 'Arşiv' },
+    active: { color: colors.success, icon: 'flash', label: 'Aktif Olarak Ekle', room: 'Aktif Odak' },
+    waiting: { color: colors.warning, icon: 'time-outline', label: 'Beklemeye Ekle', room: 'Bekleme Odası' },
+    idea: { color: colors.textFaint, icon: 'bulb-outline', label: 'Fikir Olarak Sakla', room: 'Fikirler' },
+    paused: { color: colors.textDim, icon: 'pause', label: 'Ekle', room: 'Bekleme Odası' },
+    completed: { color: colors.success, icon: 'checkmark', label: 'Ekle', room: 'Tamamlandı' },
+    archived: { color: colors.textFaint, icon: 'archive', label: 'Ekle', room: 'Arşiv' },
   }[plannedStatus];
 
   const wpUsedRatio = willpowerState ? willpowerState.used / willpowerState.daily_budget : 0;
-  const wpBarColor = wpUsedRatio < 0.5 ? '#87A678' : wpUsedRatio < 0.8 ? '#D4A84A' : '#C76A6A';
+  const wpBarColor = wpUsedRatio < 0.5 ? colors.success : wpUsedRatio < 0.8 ? colors.warning : colors.error;
   // null = "okuma yok". Eskiden 100'e düşüyordu, yani kullanıcı hiç sahip
   // olmadığı dolu bir iradeyi görüyordu — S-01'de store'dan kaldırılan
   // uydurmanın aynısı.
@@ -437,8 +438,8 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
                   else setForm({ ...form, end_condition: { kind: 'amount', value: 30 } });
                 }}
               >
-                <Ionicons name={opt.icon as any} size={18} color={sel ? '#D97757' : '#BFBBAE'} />
-                <Text style={[styles.endKindText, sel && { color: '#D97757' }]}>{opt.label}</Text>
+                <Ionicons name={opt.icon as any} size={18} color={sel ? colors.accent : colors.textDim} />
+                <Text style={[styles.endKindText, sel && { color: colors.accent }]}>{opt.label}</Text>
               </TouchableOpacity>
             );
           })}
@@ -494,8 +495,8 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
               reminders: rem?.enabled ? { time: rem.time, enabled: false } : { time: rem?.time || '08:00', enabled: true },
             })}
           >
-            <Ionicons name={rem?.enabled ? 'notifications' : 'notifications-off-outline'} size={14} color={rem?.enabled ? '#fff' : '#BFBBAE'} />
-            <Text style={[styles.remToggleText, rem?.enabled && { color: '#fff' }]}>{rem?.enabled ? 'Açık' : 'Kapalı'}</Text>
+            <Ionicons name={rem?.enabled ? 'notifications' : 'notifications-off-outline'} size={14} color={rem?.enabled ? colors.white : colors.textDim} />
+            <Text style={[styles.remToggleText, rem?.enabled && { color: colors.white }]}>{rem?.enabled ? 'Açık' : 'Kapalı'}</Text>
           </TouchableOpacity>
         </View>
         {rem?.enabled && (
@@ -544,8 +545,8 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
                   else setForm({ ...form, cue_habit_id: null, cue_note: form.cue_note ?? '' });
                 }}
               >
-                <Ionicons name={opt.icon as any} size={18} color={sel ? '#D97757' : '#BFBBAE'} />
-                <Text style={[styles.endKindText, sel && { color: '#D97757' }]}>{opt.label}</Text>
+                <Ionicons name={opt.icon as any} size={18} color={sel ? colors.accent : colors.textDim} />
+                <Text style={[styles.endKindText, sel && { color: colors.accent }]}>{opt.label}</Text>
               </TouchableOpacity>
             );
           })}
@@ -565,8 +566,8 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
                       style={[styles.cueChip, sel && styles.cueChipSel]}
                       onPress={() => setForm({ ...form, cue_habit_id: h.id, cue_note: null })}
                     >
-                      <Ionicons name={(h.icon ?? 'star-outline') as any} size={14} color={sel ? '#D97757' : (h.color ?? '#BFBBAE')} />
-                      <Text style={[styles.cueChipText, sel && { color: '#D97757' }]} numberOfLines={1}>{h.name}</Text>
+                      <Ionicons name={(h.icon ?? 'star-outline') as any} size={14} color={sel ? colors.accent : (h.color ?? colors.textDim)} />
+                      <Text style={[styles.cueChipText, sel && { color: colors.accent }]} numberOfLines={1}>{h.name}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -656,7 +657,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
                 style={[styles.typeCard, sel && styles.typeCardSelected]}
                 onPress={() => setUrgency(u.key)}
               >
-                <Ionicons name={u.icon as any} size={22} color={sel ? '#D97757' : '#BFBBAE'} />
+                <Ionicons name={u.icon as any} size={22} color={sel ? colors.accent : colors.textDim} />
                 <Text style={[styles.typeLabel, { marginTop: 6 }]}>{u.label}</Text>
                 <Text style={styles.typeDesc}>{u.desc}</Text>
               </TouchableOpacity>
@@ -683,7 +684,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
                   key={c}
                   style={[
                     styles.matrixCell,
-                    { borderColor: active ? m.color : '#383528', backgroundColor: active ? m.color + '22' : '#1D1C17' },
+                    { borderColor: active ? m.color : colors.border, backgroundColor: active ? m.color + '22' : colors.surface },
                   ]}
                 >
                   <Text style={styles.matrixEmoji}>{m.emoji}</Text>
@@ -739,7 +740,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
                 style={[styles.typeCard, sel && { borderColor: d.color, backgroundColor: d.color + '18' }]}
                 onPress={() => setDifficulty(d.key)}
               >
-                <Ionicons name={d.icon as any} size={22} color={sel ? d.color : '#BFBBAE'} />
+                <Ionicons name={d.icon as any} size={22} color={sel ? d.color : colors.textDim} />
                 <Text style={[styles.typeLabel, { marginTop: 6 }, sel && { color: d.color }]}>{d.label}</Text>
                 <Text style={styles.typeDesc}>{d.desc}</Text>
               </TouchableOpacity>
@@ -820,10 +821,10 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
         {ICONS.map((icon) => (
           <TouchableOpacity
             key={icon}
-            style={[styles.iconBtn, form.icon === icon && { borderColor: form.color ?? '#D97757', borderWidth: 2 }]}
+            style={[styles.iconBtn, form.icon === icon && { borderColor: form.color ?? colors.accent, borderWidth: 2 }]}
             onPress={() => setForm({ ...form, icon })}
           >
-            <Ionicons name={icon as any} size={24} color={form.icon === icon ? (form.color ?? '#D97757') : '#BFBBAE'} />
+            <Ionicons name={icon as any} size={24} color={form.icon === icon ? (form.color ?? colors.accent) : colors.textDim} />
           </TouchableOpacity>
         ))}
       </View>
@@ -888,7 +889,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
       { icon: 'flame-outline', label: 'Etki', val: imp?.label ?? '—', color: imp?.color },
       { icon: form.urgency === 'urgent' ? 'flash' : 'time-outline', label: 'Aciliyet', val: form.urgency === 'urgent' ? 'Acil' : 'Acil Değil' },
       { icon: tmeta.icon, label: 'Karar', val: `${tmeta.emoji} ${tmeta.label}`, color: tmeta.color },
-      { icon: 'flash', label: 'İrade Maliyeti', val: `${form.willpower_cost}`, color: '#D4A84A' },
+      { icon: 'flash', label: 'İrade Maliyeti', val: `${form.willpower_cost}`, color: colors.warning },
     ];
 
     return (
@@ -898,8 +899,8 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
 
         {/* Başlık kartı */}
         <View style={styles.summaryHead}>
-          <View style={[styles.summaryIcon, { backgroundColor: (form.color ?? '#D97757') + '25' }]}>
-            <Ionicons name={(form.icon ?? 'star-outline') as any} size={26} color={form.color ?? '#D97757'} />
+          <View style={[styles.summaryIcon, { backgroundColor: (form.color ?? colors.accent) + '25' }]}>
+            <Ionicons name={(form.icon ?? 'star-outline') as any} size={26} color={form.color ?? colors.accent} />
           </View>
           <Text style={styles.summaryName}>{form.name || 'İsimsiz alışkanlık'}</Text>
         </View>
@@ -1026,148 +1027,148 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'flex-end' },
-  container: { backgroundColor: '#1D1C17', borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '92%' },
+  container: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '92%' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: 20, borderBottomWidth: 1, borderBottomColor: '#383528',
+    padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: colors.white },
   progressContainer: { flexDirection: 'row', justifyContent: 'center', padding: 16, gap: 8 },
-  progressDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#383528' },
-  progressDotActive: { backgroundColor: '#D97757', width: 28 },
+  progressDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.border },
+  progressDotActive: { backgroundColor: colors.accent, width: 28 },
   content: { flex: 1, padding: 20 },
   stepContent: { flex: 1 },
-  stepTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 6 },
-  stepSubtitle: { fontSize: 14, color: '#BFBBAE', marginBottom: 24 },
-  label: { fontSize: 15, fontWeight: '600', color: '#fff', marginBottom: 10 },
+  stepTitle: { fontSize: 24, fontWeight: 'bold', color: colors.white, marginBottom: 6 },
+  stepSubtitle: { fontSize: 14, color: colors.textDim, marginBottom: 24 },
+  label: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 10 },
   input: {
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 14, fontSize: 15,
-    color: '#fff', marginBottom: 14, borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15,
+    color: colors.white, marginBottom: 14, borderWidth: 1, borderColor: colors.border,
   },
   row: { flexDirection: 'row', gap: 12, marginBottom: 8 },
   typeCard: {
-    flex: 1, backgroundColor: '#1D1C17', borderRadius: 14, padding: 16,
-    alignItems: 'center', borderWidth: 2, borderColor: '#383528',
+    flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: 16,
+    alignItems: 'center', borderWidth: 2, borderColor: colors.border,
   },
-  typeCardSelected: { borderColor: '#D97757', backgroundColor: '#1a1f2e' },
-  typeCardSelectedRed: { borderColor: '#C76A6A', backgroundColor: '#1f1515' },
+  typeCardSelected: { borderColor: colors.accent, backgroundColor: '#1a1f2e' },
+  typeCardSelectedRed: { borderColor: colors.error, backgroundColor: '#1f1515' },
   typeEmoji: { fontSize: 28, marginBottom: 6 },
-  typeLabel: { fontSize: 15, fontWeight: '600', color: '#fff', marginBottom: 2 },
-  typeDesc: { fontSize: 12, color: '#BFBBAE', textAlign: 'center' },
+  typeLabel: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 2 },
+  typeDesc: { fontSize: 12, color: colors.textDim, textAlign: 'center' },
   measurableSection: { marginTop: 16 },
   dirBtn: {
-    flex: 1, backgroundColor: '#1D1C17', borderRadius: 12, padding: 14,
-    alignItems: 'center', borderWidth: 2, borderColor: '#383528',
+    flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+    alignItems: 'center', borderWidth: 2, borderColor: colors.border,
   },
-  dirBtnSelected: { borderColor: '#D97757', backgroundColor: '#1a1f2e' },
-  dirBtnText: { color: '#BFBBAE', fontSize: 14, fontWeight: '600' },
+  dirBtnSelected: { borderColor: colors.accent, backgroundColor: '#1a1f2e' },
+  dirBtnText: { color: colors.textDim, fontSize: 14, fontWeight: '600' },
   freqBtn: {
-    flex: 1, backgroundColor: '#1D1C17', borderRadius: 12, padding: 12,
-    alignItems: 'center', borderWidth: 2, borderColor: '#383528',
+    flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12,
+    alignItems: 'center', borderWidth: 2, borderColor: colors.border,
   },
-  freqBtnSelected: { borderColor: '#D97757', backgroundColor: '#1a1f2e' },
-  freqBtnText: { color: '#BFBBAE', fontSize: 13, fontWeight: '600' },
-  freqBtnTextSelected: { color: '#D97757' },
+  freqBtnSelected: { borderColor: colors.accent, backgroundColor: '#1a1f2e' },
+  freqBtnText: { color: colors.textDim, fontSize: 13, fontWeight: '600' },
+  freqBtnTextSelected: { color: colors.accent },
   daysRow: { flexDirection: 'row', gap: 6 },
   dayBtn: {
-    flex: 1, backgroundColor: '#1D1C17', borderRadius: 8, paddingVertical: 10,
-    alignItems: 'center', borderWidth: 1, borderColor: '#383528',
+    flex: 1, backgroundColor: colors.surface, borderRadius: 8, paddingVertical: 10,
+    alignItems: 'center', borderWidth: 1, borderColor: colors.border,
   },
-  dayBtnSelected: { backgroundColor: '#D97757', borderColor: '#D97757' },
-  dayBtnText: { fontSize: 11, color: '#BFBBAE', fontWeight: '600' },
-  dayBtnTextSelected: { color: '#fff' },
+  dayBtnSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+  dayBtnText: { fontSize: 11, color: colors.textDim, fontWeight: '600' },
+  dayBtnTextSelected: { color: colors.white },
   partBtn: {
-    flex: 1, backgroundColor: '#1D1C17', borderRadius: 12, padding: 14,
-    alignItems: 'center', borderWidth: 2, borderColor: '#383528',
+    flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+    alignItems: 'center', borderWidth: 2, borderColor: colors.border,
   },
-  partBtnSelected: { borderColor: '#D97757', backgroundColor: '#1a1f2e' },
+  partBtnSelected: { borderColor: colors.accent, backgroundColor: '#1a1f2e' },
   partEmoji: { fontSize: 24, marginBottom: 4 },
-  partLabel: { fontSize: 12, color: '#BFBBAE' },
+  partLabel: { fontSize: 12, color: colors.textDim },
   iconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
   iconBtn: {
-    width: 52, height: 52, backgroundColor: '#1D1C17', borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#383528',
+    width: 52, height: 52, backgroundColor: colors.surface, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border,
   },
   colorRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
   colorDot: {
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent',
   },
-  colorDotSelected: { borderColor: '#fff' },
+  colorDotSelected: { borderColor: colors.white },
   infoBox: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1D1C17',
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
     borderRadius: 10, padding: 12, gap: 10, marginBottom: 14,
   },
-  infoText: { flex: 1, fontSize: 13, color: '#BFBBAE' },
+  infoText: { flex: 1, fontSize: 13, color: colors.textDim },
   costRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   costBtn: {
-    width: 44, height: 44, backgroundColor: '#1D1C17', borderRadius: 10,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#383528',
+    width: 44, height: 44, backgroundColor: colors.surface, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border,
   },
-  costBtnSelected: { backgroundColor: '#D4A84A', borderColor: '#D4A84A' },
-  costBtnText: { fontSize: 14, fontWeight: '600', color: '#BFBBAE' },
-  costBtnTextSelected: { color: '#fff' },
+  costBtnSelected: { backgroundColor: colors.warning, borderColor: colors.warning },
+  costBtnText: { fontSize: 14, fontWeight: '600', color: colors.textDim },
+  costBtnTextSelected: { color: colors.white },
   footer: {
     flexDirection: 'row', padding: 20,
-    borderTopWidth: 1, borderTopColor: '#383528', gap: 12,
+    borderTopWidth: 1, borderTopColor: colors.border, gap: 12,
   },
   backButton: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 20, paddingVertical: 14, borderRadius: 12, backgroundColor: '#383528',
+    paddingHorizontal: 20, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.border,
   },
-  backButtonText: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  backButtonText: { fontSize: 15, fontWeight: '600', color: colors.white },
   nextButton: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 14, borderRadius: 12, backgroundColor: '#D97757',
+    gap: 8, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.accent,
   },
-  nextButtonText: { fontSize: 16, fontWeight: '600', color: '#fff' },
+  nextButtonText: { fontSize: 16, fontWeight: '600', color: colors.white },
   submitButton: {
     flex: 1, flexDirection: 'row', paddingVertical: 14, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center', gap: 8,
   },
-  submitButtonText: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
+  submitButtonText: { fontSize: 16, fontWeight: 'bold', color: colors.white },
   buttonDisabled: { opacity: 0.4 },
 
   wpBand: {
-    marginHorizontal: 20, marginTop: 8, backgroundColor: '#1D1C17',
-    borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#383528',
+    marginHorizontal: 20, marginTop: 8, backgroundColor: colors.surface,
+    borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border,
   },
   wpBandTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   wpBandLeft: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   wpBandLabel: { fontSize: 12, fontWeight: '600' },
   wpBandScore: { fontSize: 13, fontWeight: '700' },
-  wpBarBg: { height: 5, backgroundColor: '#383528', borderRadius: 3, marginBottom: 6 },
+  wpBarBg: { height: 5, backgroundColor: colors.border, borderRadius: 3, marginBottom: 6 },
   wpBarFill: { height: 5, borderRadius: 3 },
-  wpBandSub: { fontSize: 11, color: '#827E72' },
+  wpBandSub: { fontSize: 11, color: colors.textFaint },
 
   routingCard: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
     borderRadius: 12, padding: 12, borderWidth: 1, marginTop: 14,
   },
   routingTitle: { fontSize: 14, fontWeight: '700', marginBottom: 3 },
-  routingDesc: { fontSize: 12, color: '#BFBBAE', lineHeight: 16 },
+  routingDesc: { fontSize: 12, color: colors.textDim, lineHeight: 16 },
 
   // Strateji adımı (Step 4)
   impactRow: { flexDirection: 'row', gap: 8 },
   impactCard: {
-    flex: 1, backgroundColor: '#1D1C17', borderRadius: 12, paddingVertical: 12,
-    paddingHorizontal: 6, alignItems: 'center', borderWidth: 2, borderColor: '#383528',
+    flex: 1, backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 12,
+    paddingHorizontal: 6, alignItems: 'center', borderWidth: 2, borderColor: colors.border,
   },
   impactDot: { width: 14, height: 14, borderRadius: 7, marginBottom: 8 },
-  impactLabel: { fontSize: 13, fontWeight: '700', color: '#EDEAE0', marginBottom: 2 },
-  impactDesc: { fontSize: 9, color: '#BFBBAE', textAlign: 'center', lineHeight: 12 },
+  impactLabel: { fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 2 },
+  impactDesc: { fontSize: 9, color: colors.textDim, textAlign: 'center', lineHeight: 12 },
 
   matrixHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   matrixCorner: { width: 56 },
-  matrixColLabel: { flex: 1, fontSize: 11, color: '#BFBBAE', textAlign: 'center', fontWeight: '600' },
+  matrixColLabel: { flex: 1, fontSize: 11, color: colors.textDim, textAlign: 'center', fontWeight: '600' },
   matrixRow: { flexDirection: 'row', alignItems: 'stretch', marginBottom: 8, gap: 8 },
-  matrixRowLabel: { width: 56, fontSize: 11, color: '#BFBBAE', fontWeight: '600', alignSelf: 'center' },
+  matrixRowLabel: { width: 56, fontSize: 11, color: colors.textDim, fontWeight: '600', alignSelf: 'center' },
   matrixCell: {
     flex: 1, borderRadius: 10, borderWidth: 1.5, paddingVertical: 12,
     alignItems: 'center', justifyContent: 'center', gap: 3,
   },
   matrixEmoji: { fontSize: 18 },
-  matrixCellLabel: { fontSize: 11, color: '#827E72', fontWeight: '600' },
+  matrixCellLabel: { fontSize: 11, color: colors.textFaint, fontWeight: '600' },
 
   triageCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -1176,93 +1177,93 @@ const styles = StyleSheet.create({
   triageIconWrap: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   triageEmoji: { fontSize: 22 },
   triageTitle: { fontSize: 16, fontWeight: '800', marginBottom: 2 },
-  triageDesc: { fontSize: 12, color: '#BFBBAE', marginBottom: 3 },
-  triageCost: { fontSize: 11, color: '#827E72' },
+  triageDesc: { fontSize: 12, color: colors.textDim, marginBottom: 3 },
+  triageCost: { fontSize: 11, color: colors.textFaint },
 
   // İrade maliyeti dökümü (Step 5)
   costBreakdownCard: {
-    backgroundColor: '#1D1C17', borderRadius: 14, padding: 16,
-    borderWidth: 1, borderColor: '#383528', marginTop: 20,
+    backgroundColor: colors.surface, borderRadius: 14, padding: 16,
+    borderWidth: 1, borderColor: colors.border, marginTop: 20,
   },
   costHeadRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   costHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  costHeadLabel: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  costHeadLabel: { fontSize: 14, fontWeight: '700', color: colors.white },
   costBigBadge: {
     width: 44, height: 44, borderRadius: 12, backgroundColor: '#D4A84A22',
     alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#D4A84A55',
   },
-  costBigText: { fontSize: 22, fontWeight: '800', color: '#D4A84A' },
-  costDivider: { height: 1, backgroundColor: '#383528', marginVertical: 12 },
+  costBigText: { fontSize: 22, fontWeight: '800', color: colors.warning },
+  costDivider: { height: 1, backgroundColor: colors.border, marginVertical: 12 },
   costRowItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
-  costRowLabel: { fontSize: 13, color: '#BFBBAE' },
-  costRowVal: { fontSize: 13, fontWeight: '600', color: '#EDEAE0' },
-  costFormulaLabel: { fontSize: 13, fontWeight: '700', color: '#fff' },
-  costFormulaVal: { fontSize: 13, fontWeight: '700', color: '#D4A84A' },
-  costHint: { fontSize: 11, color: '#827E72', marginTop: 10, lineHeight: 15 },
+  costRowLabel: { fontSize: 13, color: colors.textDim },
+  costRowVal: { fontSize: 13, fontWeight: '600', color: colors.text },
+  costFormulaLabel: { fontSize: 13, fontWeight: '700', color: colors.white },
+  costFormulaVal: { fontSize: 13, fontWeight: '700', color: colors.warning },
+  costHint: { fontSize: 11, color: colors.textFaint, marginTop: 10, lineHeight: 15 },
 
   // Tahmini süre (Step 5)
   minsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   minsBtn: {
-    backgroundColor: '#1D1C17', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9,
+    borderWidth: 1, borderColor: colors.border,
   },
-  minsBtnSel: { backgroundColor: '#D9775720', borderColor: '#D97757' },
-  minsBtnText: { fontSize: 13, color: '#BFBBAE', fontWeight: '600' },
-  minsBtnTextSel: { color: '#D97757' },
+  minsBtnSel: { backgroundColor: '#D9775720', borderColor: colors.accent },
+  minsBtnText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
+  minsBtnTextSel: { color: colors.accent },
 
   // Bitiş koşulu (Step 3)
   endKindBtn: {
     flex: 1, flexDirection: 'column', alignItems: 'center', gap: 5,
-    backgroundColor: '#1D1C17', borderRadius: 12, paddingVertical: 12,
-    borderWidth: 2, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 12,
+    borderWidth: 2, borderColor: colors.border,
   },
-  endKindBtnSel: { borderColor: '#D97757', backgroundColor: '#1a1f2e' },
-  endKindText: { fontSize: 12, color: '#BFBBAE', fontWeight: '600' },
-  endHint: { fontSize: 12, color: '#D97757', marginTop: 10, fontWeight: '600' },
-  endUnit: { fontSize: 13, color: '#BFBBAE', marginLeft: 10 },
+  endKindBtnSel: { borderColor: colors.accent, backgroundColor: '#1a1f2e' },
+  endKindText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
+  endHint: { fontSize: 12, color: colors.accent, marginTop: 10, fontWeight: '600' },
+  endUnit: { fontSize: 13, color: colors.textDim, marginLeft: 10 },
 
   // Hatırlatıcı (Step 3)
   reminderHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   remToggle: {
     flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 20,
-    backgroundColor: '#1D1C17', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1, borderColor: colors.border,
   },
-  remToggleOn: { backgroundColor: '#D97757', borderColor: '#D97757' },
-  remToggleText: { fontSize: 13, color: '#BFBBAE', fontWeight: '600' },
+  remToggleOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  remToggleText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
 
   // Çağrışım (Step 3)
   cueChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5, maxWidth: 160,
-    backgroundColor: '#1D1C17', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+    borderWidth: 1, borderColor: colors.border,
   },
-  cueChipSel: { backgroundColor: '#D9775720', borderColor: '#D97757' },
-  cueChipText: { fontSize: 13, color: '#BFBBAE', fontWeight: '600' },
+  cueChipSel: { backgroundColor: '#D9775720', borderColor: colors.accent },
+  cueChipText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
 
   // Özet adımı (Step 7)
   summaryHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   summaryIcon: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  summaryName: { flex: 1, fontSize: 18, fontWeight: '700', color: '#fff' },
-  summaryTable: { backgroundColor: '#1D1C17', borderRadius: 14, borderWidth: 1, borderColor: '#383528', paddingHorizontal: 14 },
+  summaryName: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.white },
+  summaryTable: { backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14 },
   summaryRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#28261F',
+    paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
   },
   summaryRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  summaryRowLabel: { fontSize: 13, color: '#BFBBAE' },
-  summaryRowVal: { fontSize: 13, fontWeight: '700', color: '#EDEAE0', maxWidth: '55%', textAlign: 'right' },
+  summaryRowLabel: { fontSize: 13, color: colors.textDim },
+  summaryRowVal: { fontSize: 13, fontWeight: '700', color: colors.text, maxWidth: '55%', textAlign: 'right' },
   mirrorNoteRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, paddingHorizontal: 2 },
-  mirrorNoteText: { fontSize: 11, color: '#827E72', fontStyle: 'italic', flex: 1 },
+  mirrorNoteText: { fontSize: 11, color: colors.textFaint, fontStyle: 'italic', flex: 1 },
 
   // Yaşam alanı çipleri (Step 1)
-  areaHint: { fontSize: 11, color: '#827E72', marginTop: -4, marginBottom: 12, lineHeight: 16 },
+  areaHint: { fontSize: 11, color: colors.textFaint, marginTop: -4, marginBottom: 12, lineHeight: 16 },
   areaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   areaChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#1D1C17', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+    borderWidth: 1, borderColor: colors.border,
   },
   areaDot: { width: 9, height: 9, borderRadius: 5 },
-  areaChipText: { fontSize: 13, color: '#BFBBAE', fontWeight: '600' },
+  areaChipText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
 });

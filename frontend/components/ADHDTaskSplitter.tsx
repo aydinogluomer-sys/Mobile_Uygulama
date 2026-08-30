@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import React, { useState } from 'react';
 import {
   View,
@@ -297,7 +298,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   content: {
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -317,31 +318,31 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
   },
   description: {
     fontSize: 15,
-    color: '#BFBBAE',
+    color: colors.textDim,
     marginBottom: 20,
     lineHeight: 22,
   },
   taskCard: {
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   taskTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 4,
   },
   taskDescription: {
     fontSize: 14,
-    color: '#BFBBAE',
+    color: colors.textDim,
   },
   options: {
     gap: 12,
@@ -349,18 +350,18 @@ const styles = StyleSheet.create({
   optionsTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 8,
   },
   optionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     gap: 16,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   optionText: {
     flex: 1,
@@ -368,12 +369,12 @@ const styles = StyleSheet.create({
   optionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 4,
   },
   optionSubtitle: {
     fontSize: 13,
-    color: '#BFBBAE',
+    color: colors.textDim,
   },
   errorBox: {
     flexDirection: 'row',
@@ -389,7 +390,7 @@ const styles = StyleSheet.create({
   errorText: {
     flex: 1,
     fontSize: 13,
-    color: '#C76A6A',
+    color: colors.error,
     lineHeight: 18,
   },
   subtasks: {
@@ -398,14 +399,14 @@ const styles = StyleSheet.create({
   previewTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#D4A84A',
+    color: colors.warning,
     marginBottom: 14,
     textAlign: 'center',
   },
   subtasksTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#87A678',
+    color: colors.success,
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -415,35 +416,35 @@ const styles = StyleSheet.create({
   subtaskCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     gap: 12,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   subtaskNumber: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#D97757',
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   subtaskNumberText: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
   },
   subtaskTitle: {
     fontSize: 15,
-    color: '#fff',
+    color: colors.white,
     flex: 1,
   },
   subtaskDescription: {
     fontSize: 12,
-    color: '#827E72',
+    color: colors.textFaint,
     marginTop: 2,
   },
   previewActions: {
@@ -453,21 +454,21 @@ const styles = StyleSheet.create({
   },
   backButton: {
     flex: 1,
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   backButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#BFBBAE',
+    color: colors.textDim,
   },
   confirmButton: {
     flex: 2,
-    backgroundColor: '#D97757',
+    backgroundColor: colors.accent,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -478,10 +479,10 @@ const styles = StyleSheet.create({
   confirmButtonText: {
     fontSize: 15,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
   },
   doneButton: {
-    backgroundColor: '#D97757',
+    backgroundColor: colors.accent,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -490,6 +491,6 @@ const styles = StyleSheet.create({
   doneButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
   },
 });

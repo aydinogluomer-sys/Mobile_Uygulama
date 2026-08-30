@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../../store/themeStore';
-import { ACCENTS, type AccentKey } from '../../lib/tokens';
+import { colors, ACCENTS, type AccentKey } from '../../lib/tokens';
 import type { SeasonalMotionIntensity } from '../../components/seasonalMotion/types';
 import {
   listWebhooks, registerWebhook, removeWebhook,
@@ -156,7 +156,11 @@ export default function SettingsScreen() {
     title: string,
     subtitle: string,
     onPress: () => void,
-    color = '#D97757'
+    // `string`, not the inferred literal type of the default. `colors` is
+    // declared `as const`, so `color = colors.accent` typed this parameter as
+    // the single value "#D97757" and every other accent was a type error --
+    // invisible while every call site happened to pass the default.
+    color: string = colors.accent,
   ) => (
     <TouchableOpacity style={styles.settingItem} onPress={onPress}>
       <View style={styles.settingLeft}>
@@ -187,7 +191,7 @@ export default function SettingsScreen() {
                 <Ionicons
                   name={isDark ? 'moon-outline' : 'sunny-outline'}
                   size={20}
-                  color={isDark ? '#D97757' : '#D4A84A'}
+                  color={isDark ? colors.accent : colors.warning}
                 />
                 <View>
                   <Text style={styles.themeLabel}>{isDark ? 'Koyu Tema' : 'Açık Tema'}</Text>
@@ -199,8 +203,8 @@ export default function SettingsScreen() {
               <Switch
                 value={isDark}
                 onValueChange={toggleTheme}
-                trackColor={{ false: '#383528', true: '#D9775740' }}
-                thumbColor={isDark ? '#D97757' : '#BFBBAE'}
+                trackColor={{ false: colors.border, true: '#D9775740' }}
+                thumbColor={isDark ? colors.accent : colors.textDim}
               />
             </View>
 
@@ -354,7 +358,7 @@ export default function SettingsScreen() {
               'Bıraktığım Alışkanlıklar',
               'Tasarruf ve ilerlemenizi görün',
               () => setShowBadHabitsTracker(true),
-              '#C76A6A'
+              colors.error
             )}
           </View>
 
@@ -551,36 +555,36 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   themeRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: colors.border,
   },
   themeLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  themeLabel: { fontSize: 15, fontWeight: '600', color: '#fff' },
-  themeSubLabel: { fontSize: 12, color: '#827E72', marginTop: 2 },
+  themeLabel: { fontSize: 15, fontWeight: '600', color: colors.white },
+  themeSubLabel: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   motionBlock: {
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 14, marginTop: 12,
-    borderWidth: 1, borderColor: '#383528', gap: 12,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14, marginTop: 12,
+    borderWidth: 1, borderColor: colors.border, gap: 12,
   },
   motionHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   segRow: { flexDirection: 'row', gap: 8 },
   segBtn: {
     flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10,
-    borderWidth: 1, borderColor: '#383528', backgroundColor: '#15140F',
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg,
   },
-  segBtnOn: { backgroundColor: '#D9775722', borderColor: '#D97757' },
-  segText: { fontSize: 13, fontWeight: '700', color: '#827E72' },
-  segTextOn: { color: '#D97757' },
+  segBtnOn: { backgroundColor: '#D9775722', borderColor: colors.accent },
+  segText: { fontSize: 13, fontWeight: '700', color: colors.textFaint },
+  segTextOn: { color: colors.accent },
   accentRow: { flexDirection: 'row', gap: 8 },
   accentItem: { flex: 1, alignItems: 'center', gap: 6 },
   accentDot: {
     width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: 'transparent',
   },
-  accentDotOn: { borderColor: '#EDEAE0' },
-  accentLabel: { fontSize: 12, fontWeight: '600', color: '#827E72' },
+  accentDotOn: { borderColor: colors.text },
+  accentLabel: { fontSize: 12, fontWeight: '600', color: colors.textFaint },
   container: {
     flex: 1,
-    backgroundColor: '#15140F',
+    backgroundColor: colors.bg,
   },
   scrollView: {
     flex: 1,
@@ -591,12 +595,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 16,
-    color: '#BFBBAE',
+    color: colors.textDim,
     marginBottom: 24,
   },
   section: {
@@ -605,19 +609,19 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 12,
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   settingLeft: {
     flexDirection: 'row',
@@ -638,60 +642,60 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 4,
   },
   settingSubtitle: {
     fontSize: 13,
-    color: '#BFBBAE',
+    color: colors.textDim,
   },
   infoCard: {
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
     alignItems: 'center',
   },
   appName: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 4,
   },
   appVersion: {
     fontSize: 14,
-    color: '#D97757',
+    color: colors.accent,
     marginBottom: 12,
   },
   appDescription: {
     fontSize: 14,
-    color: '#BFBBAE',
+    color: colors.textDim,
     textAlign: 'center',
     lineHeight: 20,
   },
   featureSectionIntro: {
     fontSize: 13,
-    color: '#BFBBAE',
+    color: colors.textDim,
     marginBottom: 12,
     lineHeight: 18,
   },
   featureCard: {
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   featureGroupTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 8,
   },
   featureDivider: {
     height: 1,
-    backgroundColor: '#383528',
+    backgroundColor: colors.border,
     marginVertical: 12,
   },
   featureItem: {
@@ -713,12 +717,12 @@ const styles = StyleSheet.create({
   featureTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 2,
   },
   featureDescription: {
     fontSize: 13,
-    color: '#BFBBAE',
+    color: colors.textDim,
     lineHeight: 18,
   },
   modalOverlay: {
@@ -727,7 +731,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -742,23 +746,23 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
   },
   modalDescription: {
     fontSize: 14,
-    color: '#BFBBAE',
+    color: colors.textDim,
     marginBottom: 20,
     lineHeight: 20,
   },
   input: {
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     fontSize: 14,
-    color: '#fff',
+    color: colors.white,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   webhookList: {
     marginBottom: 20,
@@ -766,19 +770,19 @@ const styles = StyleSheet.create({
   webhookListTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#BFBBAE',
+    color: colors.textDim,
     marginBottom: 12,
   },
   webhookItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   webhookUrl: {
     fontSize: 12,
@@ -787,7 +791,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   addButton: {
-    backgroundColor: '#D97757',
+    backgroundColor: colors.accent,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -796,33 +800,33 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
   },
   helpText: {
     fontSize: 11,
-    color: '#827E72',
+    color: colors.textFaint,
     fontFamily: 'monospace',
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     padding: 12,
     borderRadius: 8,
     lineHeight: 16,
   },
   exportContainer: {
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   exportTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 4,
   },
   exportSubtitle: {
     fontSize: 13,
-    color: '#BFBBAE',
+    color: colors.textDim,
     marginBottom: 16,
   },
   exportButtons: {
@@ -835,12 +839,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 12,
     borderWidth: 2,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   exportButtonLoading: {
     opacity: 0.6,
@@ -848,7 +852,7 @@ const styles = StyleSheet.create({
   exportButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
   },
   seedBtnDisabled: {
     opacity: 0.7,

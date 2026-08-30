@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
@@ -134,16 +135,16 @@ export default function LeaderboardScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
 
   tabs: { flexDirection: 'row', gap: 8, padding: 12, paddingBottom: 4 },
   tab: {
     flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 12,
-    borderWidth: 1, borderColor: '#383528', backgroundColor: '#1D1C17',
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
   },
-  tabActive: { backgroundColor: '#D4A84A20', borderColor: '#D4A84A' },
-  tabText: { fontSize: 13, fontWeight: '700', color: '#827E72' },
-  tabTextActive: { color: '#D4A84A' },
+  tabActive: { backgroundColor: '#D4A84A20', borderColor: colors.warning },
+  tabText: { fontSize: 13, fontWeight: '700', color: colors.textFaint },
+  tabTextActive: { color: colors.warning },
 
   content: { padding: 12, paddingBottom: 40, gap: 8 },
 
@@ -153,30 +154,30 @@ const s = StyleSheet.create({
     padding: 14, marginBottom: 6,
   },
   meRankWrap: { alignItems: 'center', minWidth: 48 },
-  meRankLabel: { fontSize: 9, fontWeight: '800', color: '#827E72', letterSpacing: 1 },
-  meRank: { fontSize: 20, fontWeight: '800', color: '#D4A84A' },
-  meName: { fontSize: 15, fontWeight: '700', color: '#EDEAE0' },
+  meRankLabel: { fontSize: 9, fontWeight: '800', color: colors.textFaint, letterSpacing: 1 },
+  meRank: { fontSize: 20, fontWeight: '800', color: colors.warning },
+  meName: { fontSize: 15, fontWeight: '700', color: colors.text },
   meRankRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   meTier: { fontSize: 12, fontWeight: '700' },
-  meLevel: { fontSize: 12, color: '#827E72' },
-  meXp: { fontSize: 15, fontWeight: '800', color: '#D4A84A' },
+  meLevel: { fontSize: 12, color: colors.textFaint },
+  meXp: { fontSize: 15, fontWeight: '800', color: colors.warning },
 
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#1D1C17', borderRadius: 12, borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border,
     paddingVertical: 12, paddingHorizontal: 12,
   },
-  rowMe: { borderColor: '#D4A84A', backgroundColor: '#D4A84A12' },
+  rowMe: { borderColor: colors.warning, backgroundColor: '#D4A84A12' },
   rankCol: { width: 34, alignItems: 'center' },
-  rankNum: { fontSize: 15, fontWeight: '800', color: '#BFBBAE' },
+  rankNum: { fontSize: 15, fontWeight: '800', color: colors.textDim },
   rankTop: { fontSize: 20 },
-  name: { fontSize: 14, fontWeight: '600', color: '#EDEAE0' },
-  nameMe: { color: '#D4A84A' },
+  name: { fontSize: 14, fontWeight: '600', color: colors.text },
+  nameMe: { color: colors.warning },
   rankRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   tier: { fontSize: 11, fontWeight: '700' },
-  lvl: { fontSize: 11, color: '#827E72' },
-  xp: { fontSize: 14, fontWeight: '800', color: '#BFBBAE' },
+  lvl: { fontSize: 11, color: colors.textFaint },
+  xp: { fontSize: 14, fontWeight: '800', color: colors.textDim },
 
   empty: { alignItems: 'center', gap: 12, paddingTop: 60, paddingHorizontal: 30 },
-  emptyText: { fontSize: 13, color: '#827E72', textAlign: 'center', lineHeight: 19 },
+  emptyText: { fontSize: 13, color: colors.textFaint, textAlign: 'center', lineHeight: 19 },
 });

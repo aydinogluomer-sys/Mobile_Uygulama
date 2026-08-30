@@ -378,7 +378,7 @@ const s = StyleSheet.create({
   confirmCancel: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   confirmCancelText: { fontSize: 12.5, fontWeight: '700', color: colors.textDim },
   confirmYes: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: colors.error },
-  confirmYesText: { fontSize: 12.5, fontWeight: '800', color: '#fff' },
+  confirmYesText: { fontSize: 12.5, fontWeight: '800', color: colors.white },
 
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle },
   rowLabel: { fontSize: 14, color: colors.textDim, flex: 1 },
@@ -396,5 +396,5 @@ const s = StyleSheet.create({
   stepValue: { minWidth: 34, textAlign: 'center', fontSize: 15, fontWeight: '700' },
 
   toggle: { width: 42, height: 24, borderRadius: 12, padding: 3, justifyContent: 'center' },
-  knob: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' },
+  knob: { width: 18, height: 18, borderRadius: 9, backgroundColor: colors.white },
 });

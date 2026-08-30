@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -126,7 +127,7 @@ export default function ProfileScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40, gap: 14 },
 
   rankCard: {
@@ -134,39 +135,39 @@ const s = StyleSheet.create({
   },
   rankIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   rankName: { fontSize: 20, fontWeight: '800' },
-  rankSub: { fontSize: 12, color: '#827E72', textAlign: 'center' },
+  rankSub: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
 
   lbBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#1D1C17', borderRadius: 14, borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
     paddingHorizontal: 16, paddingVertical: 14,
   },
-  lbText: { flex: 1, fontSize: 15, fontWeight: '700', color: '#EDEAE0' },
+  lbText: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text },
 
   section: {
-    backgroundColor: '#1D1C17', borderRadius: 16, borderWidth: 1, borderColor: '#383528', padding: 16, gap: 8,
+    backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 8,
   },
-  sectionTitle: { fontSize: 11, fontWeight: '800', color: '#827E72', letterSpacing: 1 },
-  sectionHint: { fontSize: 12, color: '#827E72', lineHeight: 17 },
+  sectionTitle: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1 },
+  sectionHint: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
 
   nameRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
   nameInput: {
-    flex: 1, backgroundColor: '#15140F', borderRadius: 12, borderWidth: 1, borderColor: '#383528',
-    paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, color: '#EDEAE0',
+    flex: 1, backgroundColor: colors.bg, borderRadius: 12, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, color: colors.text,
   },
   saveBtn: {
     minWidth: 76, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#D4A84A', borderRadius: 12, paddingHorizontal: 16,
+    backgroundColor: colors.warning, borderRadius: 12, paddingHorizontal: 16,
   },
-  saveBtnDone: { backgroundColor: '#87A678' },
-  saveBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  saveBtnDone: { backgroundColor: colors.success },
+  saveBtnText: { fontSize: 14, fontWeight: '700', color: colors.white },
 
   badgeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
   badge: {
-    width: '47%', backgroundColor: '#15140F', borderRadius: 12, borderWidth: 1, borderColor: '#383528',
+    width: '47%', backgroundColor: colors.bg, borderRadius: 12, borderWidth: 1, borderColor: colors.border,
     padding: 12, gap: 3, alignItems: 'center',
   },
   badgeIcon: { fontSize: 26 },
-  badgeName: { fontSize: 12, fontWeight: '700', color: '#EDEAE0', textAlign: 'center' },
-  badgeDesc: { fontSize: 10, color: '#827E72', textAlign: 'center', lineHeight: 14 },
+  badgeName: { fontSize: 12, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  badgeDesc: { fontSize: 10, color: colors.textFaint, textAlign: 'center', lineHeight: 14 },
 });

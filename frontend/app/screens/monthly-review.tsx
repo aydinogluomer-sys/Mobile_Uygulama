@@ -392,7 +392,7 @@ export default function MonthlyReviewScreen() {
                 accessibilityLabel="Sonraki ay"
                 accessibilityState={{ disabled: isCurrentMonth }}
               >
-                <Ionicons name="chevron-forward" size={18} color={isCurrentMonth ? '#56544B' : '#BFBBAE'} />
+                <Ionicons name="chevron-forward" size={18} color={isCurrentMonth ? colors.textGhost : colors.textDim} />
               </TouchableOpacity>
             </View>
           </View>
@@ -405,11 +405,11 @@ export default function MonthlyReviewScreen() {
               <Text style={s.metricLabel}>Görev{'\n'}Tamamlandı</Text>
             </View>
             <View style={s.metric}>
-              <Text style={[s.metricValue, { color: '#87A678' }]}>{habitCompletionRate}%</Text>
+              <Text style={[s.metricValue, { color: colors.success }]}>{habitCompletionRate}%</Text>
               <Text style={s.metricLabel}>Alışkanlık{'\n'}Oran</Text>
             </View>
             <View style={s.metric}>
-              <Text style={[s.metricValue, { color: '#D97757' }]}>{focusMinutes}</Text>
+              <Text style={[s.metricValue, { color: colors.accent }]}>{focusMinutes}</Text>
               <Text style={s.metricLabel}>Odak{'\n'}Dakika</Text>
             </View>
             <View style={s.metric}>
@@ -593,7 +593,7 @@ export default function MonthlyReviewScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#15140F' },
+  root: { flex: 1, backgroundColor: colors.bg },
   safe: { flex: 1, backgroundColor: 'transparent' },
   content: { padding: 20, paddingBottom: 40 },
 
@@ -614,43 +614,43 @@ const s = StyleSheet.create({
 
   hero: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
   heroIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#D9775720', alignItems: 'center', justifyContent: 'center' },
-  heroTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  heroDates: { fontSize: 12, color: '#827E72', marginTop: 2 },
+  heroTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
+  heroDates: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   monthNav: { flexDirection: 'row', gap: 4 },
-  navBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#1D1C17', borderWidth: 1, borderColor: '#383528', alignItems: 'center', justifyContent: 'center' },
+  navBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   navBtnDisabled: { opacity: 0.3 },
   metricsRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
-  metric: { flex: 1, backgroundColor: '#1D1C17', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#383528', alignItems: 'center' },
-  metricValue: { fontSize: 20, fontWeight: '700', color: '#fff', marginBottom: 4 },
-  metricLabel: { fontSize: 10, color: '#827E72', textAlign: 'center', lineHeight: 14 },
-  badgeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#1D1C17', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#383528', marginBottom: 24 },
+  metric: { flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+  metricValue: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 4 },
+  metricLabel: { fontSize: 10, color: colors.textFaint, textAlign: 'center', lineHeight: 14 },
+  badgeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 24 },
   badgeEmoji: { fontSize: 20 },
-  badgeTitle: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  badgeDesc: { fontSize: 11, color: '#827E72', marginTop: 2 },
+  badgeTitle: { fontSize: 14, fontWeight: '700', color: colors.white },
+  badgeDesc: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 11, fontWeight: '700', color: '#827E72', letterSpacing: 1, marginBottom: 10 },
-  taskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#1D1C17', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#383528', marginBottom: 6 },
-  taskTitle: { flex: 1, fontSize: 14, color: '#BFBBAE' },
-  moreText: { fontSize: 12, color: '#56544B', paddingLeft: 4, marginTop: 4 },
+  sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
+  taskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 6 },
+  taskTitle: { flex: 1, fontSize: 14, color: colors.textDim },
+  moreText: { fontSize: 12, color: colors.textGhost, paddingLeft: 4, marginTop: 4 },
   habitRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   medal: { fontSize: 16, width: 22 },
   habitDot: { width: 8, height: 8, borderRadius: 4 },
-  habitName: { width: 84, fontSize: 13, color: '#EDEAE0' },
+  habitName: { width: 84, fontSize: 13, color: colors.text },
   habitBarWrap: { flex: 1 },
-  habitBarBg: { height: 5, backgroundColor: '#28261F', borderRadius: 3 },
+  habitBarBg: { height: 5, backgroundColor: colors.borderSubtle, borderRadius: 3 },
   habitBarFill: { height: 5, borderRadius: 3 },
-  habitCount: { fontSize: 11, color: '#827E72', minWidth: 40, textAlign: 'right' },
+  habitCount: { fontSize: 11, color: colors.textFaint, minWidth: 40, textAlign: 'right' },
   analysisRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-    backgroundColor: '#1D1C17', borderRadius: 10, borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border,
     paddingVertical: 10, paddingHorizontal: 12, marginBottom: 6,
   },
-  analysisLabel: { fontSize: 12, color: '#827E72', fontWeight: '600' },
-  analysisValue: { fontSize: 12, color: '#EDEAE0', fontWeight: '600', flexShrink: 1, textAlign: 'right' },
+  analysisLabel: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
+  analysisValue: { fontSize: 12, color: colors.text, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
   questionCard: { marginBottom: 14 },
-  questionLabel: { fontSize: 14, color: '#EDEAE0', fontWeight: '600', marginBottom: 8 },
-  questionInput: { backgroundColor: '#1D1C17', borderRadius: 12, padding: 14, fontSize: 14, color: '#fff', borderWidth: 1, borderColor: '#383528', minHeight: 80, textAlignVertical: 'top' },
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#D97757', borderRadius: 14, paddingVertical: 15, marginTop: 4 },
+  questionLabel: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 8 },
+  questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 15, marginTop: 4 },
   saveBtnLoading: { opacity: 0.7 },
-  saveBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  saveBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
 });

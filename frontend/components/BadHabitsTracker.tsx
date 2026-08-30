@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -264,7 +265,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#15140F',
+    backgroundColor: colors.bg,
   },
   header: {
     flexDirection: 'row',
@@ -272,14 +273,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     paddingTop: 50,
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#28261F',
+    borderBottomColor: colors.borderSubtle,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
   },
   loader: {
     marginTop: 40,
@@ -296,23 +297,23 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginTop: 16,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#827E72',
+    color: colors.textFaint,
     marginTop: 8,
   },
   habitCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   habitIcon: {
     width: 48,
@@ -329,12 +330,12 @@ const styles = StyleSheet.create({
   habitName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 4,
   },
   habitDate: {
     fontSize: 13,
-    color: '#BFBBAE',
+    color: colors.textDim,
   },
   modalOverlay: {
     flex: 1,
@@ -344,7 +345,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalContent: {
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 24,
     width: '100%',
@@ -352,18 +353,18 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 20,
   },
   input: {
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: '#fff',
+    color: colors.white,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   textArea: {
     height: 80,
@@ -381,23 +382,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelButton: {
-    backgroundColor: '#56544B',
+    backgroundColor: colors.textGhost,
   },
   cancelButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
   },
   saveButton: {
-    backgroundColor: '#D97757',
+    backgroundColor: colors.accent,
   },
   saveButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
   },
   savingsContent: {
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 24,
     width: '100%',
@@ -409,12 +410,12 @@ const styles = StyleSheet.create({
   savingsTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
     marginTop: 16,
   },
   savingsSubtitle: {
     fontSize: 14,
-    color: '#BFBBAE',
+    color: colors.textDim,
     marginTop: 4,
   },
   savingsStats: {
@@ -424,26 +425,26 @@ const styles = StyleSheet.create({
   },
   savingsStatCard: {
     flex: 1,
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   savingsStatValue: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
     marginTop: 8,
   },
   savingsStatLabel: {
     fontSize: 12,
-    color: '#BFBBAE',
+    color: colors.textDim,
     marginTop: 4,
   },
   closeButton: {
-    backgroundColor: '#D97757',
+    backgroundColor: colors.accent,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -451,6 +452,6 @@ const styles = StyleSheet.create({
   closeButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
+    color: colors.white,
   },
 });

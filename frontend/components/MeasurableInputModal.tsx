@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import { useState } from 'react';
 import {
   View, Text, StyleSheet, Modal, TextInput,
@@ -38,7 +39,7 @@ export default function MeasurableInputModal({ visible, habit, currentValue, onC
       >
         <View style={styles.card}>
           <View style={styles.header}>
-            <Ionicons name={(habit.icon ?? 'star-outline') as any} size={22} color={habit.color ?? '#D97757'} />
+            <Ionicons name={(habit.icon ?? 'star-outline') as any} size={22} color={habit.color ?? colors.accent} />
             <Text style={styles.title} numberOfLines={1}>{habit.name}</Text>
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={22} color="#BFBBAE" />
@@ -47,7 +48,7 @@ export default function MeasurableInputModal({ visible, habit, currentValue, onC
 
           <View style={styles.progress}>
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: habit.color ?? '#D97757' }]} />
+              <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: habit.color ?? colors.accent }]} />
             </View>
             <Text style={styles.progressText}>{pct}%</Text>
           </View>
@@ -74,7 +75,7 @@ export default function MeasurableInputModal({ visible, habit, currentValue, onC
               <Text style={styles.cancelText}>İptal</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.confirmBtn, { backgroundColor: habit.color ?? '#D97757' }]}
+              style={[styles.confirmBtn, { backgroundColor: habit.color ?? colors.accent }]}
               onPress={handleConfirm}
             >
               <Text style={styles.confirmText}>Kaydet</Text>
@@ -89,30 +90,30 @@ export default function MeasurableInputModal({ visible, habit, currentValue, onC
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   card: {
-    backgroundColor: '#1D1C17', borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     padding: 24, paddingBottom: 36,
   },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
-  title: { flex: 1, fontSize: 16, fontWeight: '600', color: '#fff' },
+  title: { flex: 1, fontSize: 16, fontWeight: '600', color: colors.white },
   progress: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  progressTrack: { flex: 1, height: 6, backgroundColor: '#383528', borderRadius: 3, overflow: 'hidden' },
+  progressTrack: { flex: 1, height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3 },
-  progressText: { fontSize: 12, color: '#BFBBAE', width: 36, textAlign: 'right' },
-  remaining: { fontSize: 13, color: '#BFBBAE', marginBottom: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: '#fff', marginBottom: 10 },
+  progressText: { fontSize: 12, color: colors.textDim, width: 36, textAlign: 'right' },
+  remaining: { fontSize: 13, color: colors.textDim, marginBottom: 20 },
+  label: { fontSize: 14, fontWeight: '600', color: colors.white, marginBottom: 10 },
   input: {
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 14, fontSize: 16,
-    color: '#fff', borderWidth: 1, borderColor: '#383528', marginBottom: 20,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 16,
+    color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 20,
   },
   actions: { flexDirection: 'row', gap: 12 },
   cancelBtn: {
-    flex: 1, backgroundColor: '#383528', borderRadius: 12,
+    flex: 1, backgroundColor: colors.border, borderRadius: 12,
     paddingVertical: 14, alignItems: 'center',
   },
-  cancelText: { fontSize: 15, color: '#BFBBAE', fontWeight: '600' },
+  cancelText: { fontSize: 15, color: colors.textDim, fontWeight: '600' },
   confirmBtn: {
     flex: 2, borderRadius: 12,
     paddingVertical: 14, alignItems: 'center',
   },
-  confirmText: { fontSize: 15, color: '#fff', fontWeight: '700' },
+  confirmText: { fontSize: 15, color: colors.white, fontWeight: '700' },
 });

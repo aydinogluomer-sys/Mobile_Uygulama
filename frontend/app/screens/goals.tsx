@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -9,9 +10,9 @@ import { useGoalStore, Goal, GoalKind } from '../../store/goalStore';
 import { EmptyState, Skeleton } from '../../components/ui';
 
 const TABS: { key: GoalKind; label: string; color: string }[] = [
-  { key: 'yearly', label: 'Yıllık', color: '#D97757' },
-  { key: 'quarterly', label: 'Çeyreklik', color: '#D4A84A' },
-  { key: 'monthly', label: 'Aylık', color: '#87A678' },
+  { key: 'yearly', label: 'Yıllık', color: colors.accent },
+  { key: 'quarterly', label: 'Çeyreklik', color: colors.warning },
+  { key: 'monthly', label: 'Aylık', color: colors.success },
 ];
 
 const NOW = new Date();
@@ -271,64 +272,64 @@ export default function GoalsScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
 
-  tabs: { flexDirection: 'row', backgroundColor: '#111', borderBottomWidth: 1, borderBottomColor: '#383528' },
+  tabs: { flexDirection: 'row', backgroundColor: '#111', borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabText: { fontSize: 14, color: '#827E72', fontWeight: '600' },
+  tabText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
 
   scroll: { padding: 16, paddingBottom: 80 },
 
   summary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  summaryText: { fontSize: 12, color: '#827E72' },
+  summaryText: { fontSize: 12, color: colors.textFaint },
   summaryPct: { fontSize: 13, fontWeight: '700' },
 
   goalCard: {
-    backgroundColor: '#1D1C17', borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: '#383528', marginBottom: 10,
+    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: colors.border, marginBottom: 10,
   },
   goalDone: { borderColor: '#87A67830', backgroundColor: '#87A67808' },
   goalRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
-  goalTitle: { flex: 1, fontSize: 15, color: '#EDEAE0', fontWeight: '500', lineHeight: 20 },
-  goalTitleDone: { textDecorationLine: 'line-through', color: '#827E72' },
+  goalTitle: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '500', lineHeight: 20 },
+  goalTitleDone: { textDecorationLine: 'line-through', color: colors.textFaint },
   goalPct: { fontSize: 15, fontWeight: '700' },
 
-  barBg: { height: 6, backgroundColor: '#383528', borderRadius: 3 },
+  barBg: { height: 6, backgroundColor: colors.border, borderRadius: 3 },
   barFill: { height: 6, borderRadius: 3 },
 
   emptyCard: {
     alignItems: 'center', gap: 8, padding: 40,
-    backgroundColor: '#1D1C17', borderRadius: 14, borderWidth: 1, borderColor: '#383528', marginTop: 20,
+    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginTop: 20,
   },
-  emptyText: { fontSize: 14, color: '#56544B', fontWeight: '600' },
-  emptyHint: { fontSize: 12, color: '#56544B', textAlign: 'center' },
+  emptyText: { fontSize: 14, color: colors.textGhost, fontWeight: '600' },
+  emptyHint: { fontSize: 12, color: colors.textGhost, textAlign: 'center' },
 
   fab: {
     position: 'absolute', bottom: 24, right: 20,
     width: 52, height: 52, borderRadius: 26,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
+    shadowColor: colors.black, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
   },
 
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: '#1D1C17', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: '#383528' },
+  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: colors.border },
   modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  editTitle: { fontSize: 15, color: '#EDEAE0', marginBottom: 16, lineHeight: 22 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
+  editTitle: { fontSize: 15, color: colors.text, marginBottom: 16, lineHeight: 22 },
 
-  fieldLabel: { fontSize: 12, color: '#827E72', marginBottom: 8, fontWeight: '600' },
+  fieldLabel: { fontSize: 12, color: colors.textFaint, marginBottom: 8, fontWeight: '600' },
   input: {
     backgroundColor: '#111', borderRadius: 10, padding: 14,
-    fontSize: 15, color: '#fff', borderWidth: 1, borderColor: '#383528', marginBottom: 16,
+    fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 16,
   },
   quickRow: { flexDirection: 'row', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
   quickBtn: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: '#111', borderWidth: 1, borderColor: '#383528',
+    backgroundColor: '#111', borderWidth: 1, borderColor: colors.border,
   },
-  quickText: { fontSize: 13, color: '#827E72' },
+  quickText: { fontSize: 13, color: colors.textFaint },
 
   saveBtn: { borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 4 },
   saveBtnDisabled: { opacity: 0.4 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });

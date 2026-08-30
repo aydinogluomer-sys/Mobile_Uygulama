@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -136,7 +137,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
 
   report: {
@@ -146,11 +147,11 @@ const s = StyleSheet.create({
   reportTitle: { fontSize: 11, fontWeight: '800', color: '#A88E6A', letterSpacing: 1.5, marginBottom: 12 },
   statRow: { flexDirection: 'row', justifyContent: 'space-between' },
   stat: { alignItems: 'center', flex: 1 },
-  statValue: { fontSize: 18, fontWeight: '800', color: '#EDEAE0' },
-  statLabel: { fontSize: 10, color: '#827E72', marginTop: 2 },
+  statValue: { fontSize: 18, fontWeight: '800', color: colors.text },
+  statLabel: { fontSize: 10, color: colors.textFaint, marginTop: 2 },
 
   section: { marginBottom: 18 },
-  sectionLabel: { fontSize: 11, fontWeight: '800', color: '#827E72', letterSpacing: 1.2, marginBottom: 10, paddingLeft: 2 },
+  sectionLabel: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1.2, marginBottom: 10, paddingLeft: 2 },
 
   page: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
@@ -161,8 +162,8 @@ const s = StyleSheet.create({
     alignItems: 'center', minWidth: 38,
     borderRightWidth: 1, borderRightColor: '#3A3026', paddingRight: 12,
   },
-  spineDay: { fontSize: 20, fontWeight: '800', color: '#D4A84A' },
-  spineDow: { fontSize: 10, color: '#827E72', fontWeight: '600' },
+  spineDay: { fontSize: 20, fontWeight: '800', color: colors.warning },
+  spineDow: { fontSize: 10, color: colors.textFaint, fontWeight: '600' },
   pageBody: { flex: 1, gap: 6 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   sourceChip: {
@@ -170,7 +171,7 @@ const s = StyleSheet.create({
     backgroundColor: '#D4A84A18', borderColor: '#D4A84A40', borderWidth: 1,
     borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
   },
-  sourceChipText: { fontSize: 10, color: '#D4A84A', fontWeight: '700' },
+  sourceChipText: { fontSize: 10, color: colors.warning, fontWeight: '700' },
   aiChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start',
     backgroundColor: '#ec489918', borderColor: '#ec489940', borderWidth: 1,
@@ -181,5 +182,5 @@ const s = StyleSheet.create({
   mood: { fontSize: 20 },
 
   empty: { alignItems: 'center', gap: 12, paddingTop: 50, paddingHorizontal: 30 },
-  emptyText: { fontSize: 13, color: '#827E72', textAlign: 'center', lineHeight: 19 },
+  emptyText: { fontSize: 13, color: colors.textFaint, textAlign: 'center', lineHeight: 19 },
 });

@@ -24,10 +24,10 @@ export default function ScreensLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: '#1D1C17' },
-        headerTintColor: '#ffffff',
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.white,
         headerBackTitle: 'Geri',
-        contentStyle: { backgroundColor: '#15140F' },
+        contentStyle: { backgroundColor: colors.bg },
       }}
     >
       <Stack.Screen name="calendar" options={{ title: 'Takvim', ...seasonalHeader }} />

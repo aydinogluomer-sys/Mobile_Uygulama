@@ -120,7 +120,7 @@ export default function FocusScreen() {
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: activePreset.bg }]} edges={['bottom']}>
       {settings.overlayOpacity > 0 && (
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: settings.overlayOpacity }]} />
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: colors.black, opacity: settings.overlayOpacity }]} />
       )}
       <ScrollView contentContainerStyle={s.content}>
 
@@ -236,7 +236,7 @@ export default function FocusScreen() {
                   </TouchableOpacity>
 
                   <TouchableOpacity style={s.taskBody} onPress={() => selectTask(isSelected ? null : task.id)}>
-                    <Text style={[s.taskTitle, isSelected && { color: '#fff', fontWeight: '600' }]} numberOfLines={1}>
+                    <Text style={[s.taskTitle, isSelected && { color: colors.white, fontWeight: '600' }]} numberOfLines={1}>
                       {task.title}
                     </Text>
                     <View style={s.taskMeta}>
@@ -383,7 +383,7 @@ const s = StyleSheet.create({
   resetBtn: { width: 52, height: 52, borderRadius: 14, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   startBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, height: 52, borderRadius: 14 },
   startBtnGated: { opacity: 0.55 },
-  startBtnText: { fontSize: 17, fontWeight: '700', color: '#fff' },
+  startBtnText: { fontSize: 17, fontWeight: '700', color: colors.white },
   startHint: { marginTop: -14, marginBottom: 18, textAlign: 'center', fontSize: 12.5, fontWeight: '600', color: '#E0A458' },
 
   taskSection: {},
@@ -408,10 +408,10 @@ const s = StyleSheet.create({
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, borderWidth: 1, borderColor: colors.border },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 16 },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 16 },
   settingsHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   settingsField: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  input: { backgroundColor: colors.bgElevated, borderRadius: 12, padding: 14, fontSize: 15, color: '#fff', borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
+  input: { backgroundColor: colors.bgElevated, borderRadius: 12, padding: 14, fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
   fieldLabel: { fontSize: 12, color: colors.textFaint, fontWeight: '600', marginBottom: 8, letterSpacing: 0.5, flex: 1 },
   pomRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
   pomBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border },
@@ -419,7 +419,7 @@ const s = StyleSheet.create({
   sheetActions: { flexDirection: 'row', gap: 10 },
   cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.border, alignItems: 'center' },
   cancelText: { fontSize: 15, color: colors.textDim, fontWeight: '600' },
-  confirmBtn: { flex: 2, paddingVertical: 13, borderRadius: 12, backgroundColor: '#D97757', alignItems: 'center' },
+  confirmBtn: { flex: 2, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center' },
   confirmBtnDisabled: { opacity: 0.4 },
-  confirmText: { fontSize: 15, color: '#fff', fontWeight: '700' },
+  confirmText: { fontSize: 15, color: colors.white, fontWeight: '700' },
 });

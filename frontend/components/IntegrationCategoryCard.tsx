@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,12 +50,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
   },
   settingLeft: {
     flexDirection: 'row',
@@ -76,12 +77,12 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 4,
   },
   settingSubtitle: {
     fontSize: 13,
-    color: '#BFBBAE',
+    color: colors.textDim,
   },
   settingRight: {
     flexDirection: 'row',
@@ -93,15 +94,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
-    backgroundColor: '#1D1C17',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#383528',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   countBadgeText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#BFBBAE',
+    color: colors.textDim,
   },
 });

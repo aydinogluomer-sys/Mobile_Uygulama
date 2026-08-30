@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, Modal, TextInput,
@@ -323,7 +324,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                         <Ionicons
                           name={he.fits ? 'checkmark-circle-outline' : 'time-outline'}
                           size={20}
-                          color={he.fits ? '#87A678' : '#D4A84A'}
+                          color={he.fits ? colors.success : colors.warning}
                         />
                       </View>
                       <View style={styles.itemInfo}>
@@ -387,15 +388,15 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#1D1C17', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: 20, borderBottomWidth: 1, borderBottomColor: '#383528',
+    padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  title: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  title: { fontSize: 18, fontWeight: '700', color: colors.white },
   betaBadge: { backgroundColor: '#D9775730', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  betaText: { fontSize: 10, color: '#D97757', fontWeight: '700', letterSpacing: 1 },
+  betaText: { fontSize: 10, color: colors.accent, fontWeight: '700', letterSpacing: 1 },
   body: { padding: 20 },
 
   errorBox: {
@@ -403,26 +404,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#C76A6A15', borderWidth: 1, borderColor: '#C76A6A30',
     borderRadius: 12, padding: 12, marginBottom: 16,
   },
-  errorText: { flex: 1, fontSize: 13, color: '#C76A6A', lineHeight: 18 },
+  errorText: { flex: 1, fontSize: 13, color: colors.error, lineHeight: 18 },
   upgradeRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: '#D4A84A', borderRadius: 10, paddingVertical: 10, marginBottom: 16,
+    backgroundColor: colors.warning, borderRadius: 10, paddingVertical: 10, marginBottom: 16,
   },
-  upgradeRowText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  upgradeRowText: { fontSize: 14, fontWeight: '700', color: colors.white },
   fpHintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 10 },
-  fpHintText: { fontSize: 12, color: '#BFBBAE' },
+  fpHintText: { fontSize: 12, color: colors.textDim },
 
   rejectBox: {
     backgroundColor: '#C76A6A10', borderWidth: 1, borderColor: '#C76A6A30',
     borderRadius: 14, padding: 16, marginBottom: 16,
   },
   rejectHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  rejectTitle: { fontSize: 15, fontWeight: '700', color: '#C76A6A' },
-  rejectSub: { fontSize: 12.5, color: '#BFBBAE', marginBottom: 8 },
-  rejectItem: { fontSize: 12, color: '#BFBBAE', lineHeight: 18, marginBottom: 2 },
+  rejectTitle: { fontSize: 15, fontWeight: '700', color: colors.error },
+  rejectSub: { fontSize: 12.5, color: colors.textDim, marginBottom: 8 },
+  rejectItem: { fontSize: 12, color: colors.textDim, lineHeight: 18, marginBottom: 2 },
   retryBtnWide: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: '#383528', borderRadius: 12, paddingVertical: 10, marginTop: 10,
+    backgroundColor: colors.border, borderRadius: 12, paddingVertical: 10, marginTop: 10,
   },
 
   completionBox: {
@@ -430,66 +431,66 @@ const styles = StyleSheet.create({
     borderRadius: 14, padding: 16, marginBottom: 16,
   },
   completionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  completionTitle: { fontSize: 15, fontWeight: '700', color: '#D4A84A' },
-  completionSub: { fontSize: 12.5, color: '#BFBBAE', lineHeight: 18, marginBottom: 14 },
+  completionTitle: { fontSize: 15, fontWeight: '700', color: colors.warning },
+  completionSub: { fontSize: 12.5, color: colors.textDim, lineHeight: 18, marginBottom: 14 },
   completionCard: {
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+    marginBottom: 10, borderWidth: 1, borderColor: colors.border,
   },
-  completionHabitName: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 10 },
-  completionLabel: { fontSize: 11.5, color: '#827E72', fontWeight: '600', marginBottom: 6 },
+  completionHabitName: { fontSize: 14, fontWeight: '700', color: colors.white, marginBottom: 10 },
+  completionLabel: { fontSize: 11.5, color: colors.textFaint, fontWeight: '600', marginBottom: 6 },
   completionRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   completionInput: {
-    backgroundColor: '#15140F', borderRadius: 10, padding: 10, fontSize: 14,
-    color: '#fff', borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.bg, borderRadius: 10, padding: 10, fontSize: 14,
+    color: colors.white, borderWidth: 1, borderColor: colors.border,
   },
 
-  tagline: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 8, lineHeight: 26 },
-  hint: { fontSize: 13, color: '#BFBBAE', marginBottom: 20, lineHeight: 19 },
+  tagline: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 8, lineHeight: 26 },
+  hint: { fontSize: 13, color: colors.textDim, marginBottom: 20, lineHeight: 19 },
   inputWrap: { marginBottom: 16 },
   textarea: {
-    backgroundColor: '#1D1C17', borderRadius: 14, padding: 14, fontSize: 15,
-    color: '#fff', borderWidth: 1, borderColor: '#383528', minHeight: 100,
+    backgroundColor: colors.surface, borderRadius: 14, padding: 14, fontSize: 15,
+    color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 100,
   },
-  charCount: { fontSize: 11, color: '#827E72', textAlign: 'right', marginTop: 4 },
+  charCount: { fontSize: 11, color: colors.textFaint, textAlign: 'right', marginTop: 4 },
   generateBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#D97757', borderRadius: 14, paddingVertical: 15, marginBottom: 16,
+    backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 15, marginBottom: 16,
   },
   generateBtnDisabled: { opacity: 0.4 },
-  generateBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  generateBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
   loadingMsg: { gap: 10, marginTop: 8, marginBottom: 16 },
-  skeletonLine: { height: 14, backgroundColor: '#383528', borderRadius: 7, width: '100%' },
+  skeletonLine: { height: 14, backgroundColor: colors.border, borderRadius: 7, width: '100%' },
 
   packsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  packsHeaderText: { fontSize: 12, color: '#827E72', fontWeight: '600' },
+  packsHeaderText: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
   packCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 12,
-    marginBottom: 10, borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, padding: 12,
+    marginBottom: 10, borderWidth: 1, borderColor: colors.border,
   },
   packIcon: {
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: '#D9775715', alignItems: 'center', justifyContent: 'center',
   },
-  packTitle: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 2 },
-  packGoal: { fontSize: 12, color: '#BFBBAE', marginBottom: 2 },
-  packMeta: { fontSize: 11, color: '#827E72' },
+  packTitle: { fontSize: 14, fontWeight: '700', color: colors.white, marginBottom: 2 },
+  packGoal: { fontSize: 12, color: colors.textDim, marginBottom: 2 },
+  packMeta: { fontSize: 11, color: colors.textFaint },
 
   resultHeader: { marginBottom: 12 },
-  resultName: { fontSize: 20, fontWeight: '700', color: '#fff', marginBottom: 4 },
-  resultDesc: { fontSize: 13, color: '#BFBBAE', lineHeight: 18 },
+  resultName: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 4 },
+  resultDesc: { fontSize: 13, color: colors.textDim, lineHeight: 18 },
 
   capacityBox: {
     backgroundColor: '#D4A84A10', borderWidth: 1, borderColor: '#D4A84A30',
     borderRadius: 12, padding: 12, marginBottom: 14,
   },
-  capacityLine: { fontSize: 13, fontWeight: '700', color: '#D4A84A', marginBottom: 4 },
-  capacitySub: { fontSize: 12, color: '#BFBBAE', lineHeight: 17 },
+  capacityLine: { fontSize: 13, fontWeight: '700', color: colors.warning, marginBottom: 4 },
+  capacitySub: { fontSize: 12, color: colors.textDim, lineHeight: 17 },
 
   itemCard: {
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+    marginBottom: 10, borderWidth: 1, borderColor: colors.border,
   },
   itemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   itemIcon: {
@@ -498,31 +499,31 @@ const styles = StyleSheet.create({
   },
   itemIconQueued: { backgroundColor: '#D4A84A15' },
   itemInfo: { flex: 1 },
-  itemName: { fontSize: 15, fontWeight: '600', color: '#fff', marginBottom: 4 },
-  itemStatus: { fontSize: 11.5, color: '#87A678' },
-  itemStatusQueued: { color: '#D4A84A' },
+  itemName: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 4 },
+  itemStatus: { fontSize: 11.5, color: colors.success },
+  itemStatusQueued: { color: colors.warning },
 
   resultActions: { flexDirection: 'row', gap: 10, marginTop: 6, marginBottom: 32 },
   retryBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#383528', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
+    backgroundColor: colors.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
   },
-  retryText: { fontSize: 14, color: '#BFBBAE' },
+  retryText: { fontSize: 14, color: colors.textDim },
   addAllBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: '#87A678', borderRadius: 12, paddingVertical: 12,
+    backgroundColor: colors.success, borderRadius: 12, paddingVertical: 12,
   },
-  addAllText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  addAllText: { fontSize: 15, fontWeight: '700', color: colors.white },
 
   successMsg: {
     alignItems: 'center', gap: 10,
     backgroundColor: '#87A67815', borderRadius: 12, padding: 20,
     marginTop: 16, marginBottom: 32,
   },
-  successText: { fontSize: 13, color: '#87A678', lineHeight: 19, textAlign: 'center' },
+  successText: { fontSize: 13, color: colors.success, lineHeight: 19, textAlign: 'center' },
   closeSuccessBtn: {
     marginTop: 4, backgroundColor: '#87A67830', borderRadius: 10,
     paddingHorizontal: 20, paddingVertical: 8,
   },
-  closeSuccessText: { fontSize: 14, fontWeight: '600', color: '#87A678' },
+  closeSuccessText: { fontSize: 14, fontWeight: '600', color: colors.success },
 });

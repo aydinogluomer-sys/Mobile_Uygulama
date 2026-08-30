@@ -1,3 +1,4 @@
+import { colors } from '../lib/tokens';
 import { eachDayOfInterval, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from 'date-fns';
 import { type Habit, type HabitLog } from './supabase';
 import { type FocusSessionRow } from './focusReport';
@@ -179,7 +180,7 @@ export function summarizeHabitProgress(
       return {
         id: habit.id,
         name: habit.name,
-        color: habit.color ?? '#D97757',
+        color: habit.color ?? colors.accent,
         percent: days.length > 0 ? Math.round(scoreTotal / days.length) : 0,
         completedDays,
         possibleDays: days.length,
@@ -199,18 +200,18 @@ export function reportBadge(params: {
   completedTasks: number;
 }): ReportBadge {
   if (params.habitRate >= 85 && params.focusMinutes >= 180 && params.completedTasks >= 8) {
-    return { level: 'gold', label: 'Altın Rapor Rozeti', emoji: '🏆', color: '#D4A84A' };
+    return { level: 'gold', label: 'Altın Rapor Rozeti', emoji: '🏆', color: colors.warning };
   }
 
   if (params.habitRate >= 65 && params.focusMinutes >= 90 && params.completedTasks >= 4) {
-    return { level: 'silver', label: 'Gümüş Rapor Rozeti', emoji: '🥈', color: '#BFBBAE' };
+    return { level: 'silver', label: 'Gümüş Rapor Rozeti', emoji: '🥈', color: colors.textDim };
   }
 
   if (params.habitRate > 0 || params.focusMinutes > 0 || params.completedTasks > 0) {
-    return { level: 'bronze', label: 'Bronz Rapor Rozeti', emoji: '🥉', color: '#C76A6A' };
+    return { level: 'bronze', label: 'Bronz Rapor Rozeti', emoji: '🥉', color: colors.error };
   }
 
-  return { level: 'bronze', label: 'Başlangıç Rapor Rozeti', emoji: '✨', color: '#87A678' };
+  return { level: 'bronze', label: 'Başlangıç Rapor Rozeti', emoji: '✨', color: colors.success };
 }
 
 export function buildArchiveReflection(params: {

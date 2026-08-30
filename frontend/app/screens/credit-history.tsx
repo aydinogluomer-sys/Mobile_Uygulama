@@ -1,3 +1,4 @@
+import { colors } from '../../lib/tokens';
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
@@ -88,12 +89,12 @@ export default function CreditHistoryScreen() {
           </View>
           <View style={s.sumCard}>
             <Ionicons name="add-circle-outline" size={16} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-            <Text style={[s.sumVal, { color: '#87A678' }]}>{earned}</Text>
+            <Text style={[s.sumVal, { color: colors.success }]}>{earned}</Text>
             <Text style={s.sumLabel}>Kazanılan</Text>
           </View>
           <View style={s.sumCard}>
             <Ionicons name="remove-circle-outline" size={16} color="#C76A6A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-            <Text style={[s.sumVal, { color: '#C76A6A' }]}>{spent}</Text>
+            <Text style={[s.sumVal, { color: colors.error }]}>{spent}</Text>
             <Text style={s.sumLabel}>Harcanan</Text>
           </View>
         </View>
@@ -110,15 +111,15 @@ export default function CreditHistoryScreen() {
             const positive = t.delta > 0;
             return (
               <View key={t.id} style={s.row}>
-                <View style={[s.rowIcon, { backgroundColor: (positive ? '#87A678' : '#C76A6A') + '18' }]}>
-                  <Ionicons name={m.icon as any} size={16} color={positive ? '#87A678' : '#C76A6A'} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                <View style={[s.rowIcon, { backgroundColor: (positive ? colors.success : colors.error) + '18' }]}>
+                  <Ionicons name={m.icon as any} size={16} color={positive ? colors.success : colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.rowLabel}>{m.label}</Text>
                   <Text style={s.rowDate}>{format(new Date(t.created_at), 'dd.MM.yyyy HH:mm')}</Text>
                 </View>
                 <View style={s.rowRight}>
-                  <Text style={[s.rowDelta, { color: positive ? '#87A678' : '#C76A6A' }]}>
+                  <Text style={[s.rowDelta, { color: positive ? colors.success : colors.error }]}>
                     {positive ? '+' : ''}{t.delta} FP
                   </Text>
                   {t.balance_after != null && <Text style={s.rowBal}>bakiye {t.balance_after}</Text>}
@@ -133,31 +134,31 @@ export default function CreditHistoryScreen() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#15140F' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#15140F' },
+  safe: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
 
   summary: { flexDirection: 'row', gap: 10, marginBottom: 18 },
   sumCard: {
-    flex: 1, backgroundColor: '#1D1C17', borderRadius: 14, paddingVertical: 14,
-    alignItems: 'center', borderWidth: 1, borderColor: '#383528', gap: 3,
+    flex: 1, backgroundColor: colors.surface, borderRadius: 14, paddingVertical: 14,
+    alignItems: 'center', borderWidth: 1, borderColor: colors.border, gap: 3,
   },
-  sumVal: { fontSize: 20, fontWeight: '800', color: '#D4A84A' },
-  sumLabel: { fontSize: 11, color: '#827E72' },
+  sumVal: { fontSize: 20, fontWeight: '800', color: colors.warning },
+  sumLabel: { fontSize: 11, color: colors.textFaint },
 
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#1D1C17', borderRadius: 12, padding: 12, marginBottom: 8,
-    borderWidth: 1, borderColor: '#383528',
+    backgroundColor: colors.surface, borderRadius: 12, padding: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: colors.border,
   },
   rowIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  rowLabel: { fontSize: 14, color: '#EDEAE0', fontWeight: '600' },
-  rowDate: { fontSize: 11, color: '#827E72', marginTop: 2 },
+  rowLabel: { fontSize: 14, color: colors.text, fontWeight: '600' },
+  rowDate: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   rowRight: { alignItems: 'flex-end' },
   rowDelta: { fontSize: 15, fontWeight: '800' },
-  rowBal: { fontSize: 10, color: '#827E72', marginTop: 2 },
+  rowBal: { fontSize: 10, color: colors.textFaint, marginTop: 2 },
 
   empty: { alignItems: 'center', paddingTop: 60, gap: 8 },
-  emptyText: { fontSize: 16, color: '#BFBBAE', fontWeight: '600' },
-  emptyHint: { fontSize: 12, color: '#827E72', textAlign: 'center' },
+  emptyText: { fontSize: 16, color: colors.textDim, fontWeight: '600' },
+  emptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
 });
