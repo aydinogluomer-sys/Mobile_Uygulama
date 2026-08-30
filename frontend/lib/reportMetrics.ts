@@ -2,7 +2,7 @@ import { eachDayOfInterval, endOfMonth, endOfWeek, format, startOfMonth, startOf
 import { type Habit, type HabitLog } from './supabase';
 import { type FocusSessionRow } from './focusReport';
 import { isDueOn } from './habitSchedule';
-import { isMeasurableTracking } from './habitEngine';
+import { isMeasurableTracking, completionRatio, type HabitLogState } from './habitEngine';
 import { parseLocalDate, ymd } from './date';
 
 export type ReportRange = 'week' | 'month';
@@ -48,18 +48,22 @@ function habitLogPercent(
   // Süreli alışkanlık da sayısal bir hedef taşır (dakika); burada 'numeric'
   // ile birebir karşılaştırmak onun kaydedilmiş dakikalarını çöpe atardı.
   if (isMeasurableTracking(habit.tracking_type)) {
-    if (typeof log.value === 'number' && habit.daily_goal && habit.daily_goal > 0) {
-      // AC-H05 / AC-H06 — yön önemli.
-      // `at_most` bir ÜST SINIRDIR ("günde en fazla 5 sigara"). Ham
-      // value/goal oranı burada ödülü TERSE çevirir: 20 sigara %100'e
-      // tavanlanır, 1 sigara %20 alır. Daha kötü davranış daha yüksek puan.
-      if (habit.target_direction === 'at_most') {
-        if (log.value <= habit.daily_goal) return 100; // sınırda olmak başarıdır
-        // Sınırın üstünde: aşım büyüdükçe puan düşer, 2× sınırda sıfırlanır.
-        const overshoot = (log.value - habit.daily_goal) / habit.daily_goal;
-        return clamp(100 - overshoot * 100, 0, 100);
-      }
-      return clamp((log.value / habit.daily_goal) * 100, 0, 100);
+    // AC-H05 / AC-H06 — yön önemli. `at_most` bir ÜST SINIRDIR ("günde en
+    // fazla 5 sigara"); ham value/goal oranı ödülü TERSE çevirir.
+    //
+    // Bu mantık eskiden BURADA, elle yazılmıştı ve `lib/habitEngine.ts`'teki
+    // `completionRatio` yönü hiç bilmiyordu. Yani aynı gün iki farklı yerde
+    // iki farklı puan alıyordu: rapor doğru, motor (ve dolayısıyla XP ile
+    // durum türetme) yanlış. Tek kaynak artık motor.
+    if (typeof log.value === 'number' && habit.daily_goal != null && habit.daily_goal >= 0) {
+      const ratio = completionRatio({
+        trackingType: habit.tracking_type === 'duration' ? 'duration' : 'numeric',
+        state: log.state as HabitLogState,
+        value: log.value,
+        target: habit.daily_goal,
+        direction: habit.target_direction,
+      });
+      return clamp(ratio * 100, 0, 100);
     }
     if (log.state === 'done') return 100;
     if (log.state === 'partial') return 50;

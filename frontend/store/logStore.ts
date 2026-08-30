@@ -48,6 +48,12 @@ type LogStore = {
     value?: number;
     targetValue?: number;
     baseXp?: number;
+    /**
+     * Which side of `targetValue` counts as success. Absent means
+     * `at_least`, preserving the behaviour of every caller written before
+     * ceilings were expressible.
+     */
+    targetDirection?: 'at_least' | 'at_most';
   }) => Promise<LogResult>;
   getLogForHabit: (habitId: string, date?: Date | string) => HabitLog | undefined;
   getRemainingValue: (habitId: string, targetValue: number, date: Date) => number;
@@ -103,11 +109,22 @@ type LogStore = {
  * already had before this change. This is deliberately the smallest change
  * to `logStore`'s public surface, per this task's brief.
  */
-function calcXp(baseXp: number, value: number | undefined, targetValue: number | undefined, state: HabitLog['state']): number {
+function calcXp(
+  baseXp: number,
+  value: number | undefined,
+  targetValue: number | undefined,
+  state: HabitLog['state'],
+  targetDirection?: 'at_least' | 'at_most',
+): number {
   if (state === 'done') return baseXp;
   if (state === 'partial') {
     const trackingType: TrackingType = targetValue != null && targetValue > 0 ? 'numeric' : 'binary';
-    const ratio = completionRatio({ trackingType, state, value, target: targetValue });
+    // `direction` matters here: for a ceiling ("at most 2"), the at_least
+    // ratio clamps any overshoot to 1 and would award FULL XP for exceeding
+    // the limit. `completionRatio` decays it instead.
+    const ratio = completionRatio({
+      trackingType, state, value, target: targetValue, direction: targetDirection,
+    });
     return Math.round(baseXp * ratio);
   }
   return 0;
@@ -117,7 +134,7 @@ function toPatch(intent: HabitLogIntent): Patch {
   return {
     state: intent.state,
     value: intent.value ?? null,
-    xp: calcXp(intent.baseXp ?? 30, intent.value, intent.targetValue, intent.state),
+    xp: calcXp(intent.baseXp ?? 30, intent.value, intent.targetValue, intent.state, intent.targetDirection),
     is_completed: intent.state === 'done',
   };
 }
@@ -518,10 +535,10 @@ export const useLogStore = create<LogStore>((set, get) => {
       set({ loading: false });
     },
 
-    logHabit: ({ habitId, date, state, value, targetValue, baseXp = 30 }) => {
+    logHabit: ({ habitId, date, state, value, targetValue, baseXp = 30, targetDirection }) => {
       const dateStr = ymd(date);
       const key = `${habitId}|${dateStr}`;
-      const intent: HabitLogIntent = { state, value, targetValue, baseXp };
+      const intent: HabitLogIntent = { state, value, targetValue, baseXp, targetDirection };
       const patch = toPatch(intent);
 
       // 1) Optimistic local update -- synchronous, no I/O. Plan §18: "local

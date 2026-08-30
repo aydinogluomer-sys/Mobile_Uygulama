@@ -29,7 +29,7 @@ import { syncAllReminders } from '../../lib/notifications';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { WillpowerBand, SectionHeader, EmptyState, ProgressBar } from '../../components/ui';
-import { isMeasurableTracking } from '../../lib/habitEngine';
+import { isMeasurableTracking, deriveState, adaptTrackingType } from '../../lib/habitEngine';
 
 const DELETE_REASONS = [
   'Artık ihtiyacım yok',
@@ -96,14 +96,29 @@ export default function TimelineScreen() {
 
   const handleMeasurableSubmit = async (value: number) => {
     if (!measureHabit) return;
-    const remaining = getRemainingValue(measureHabit.id, measureHabit.daily_goal ?? 0, selectedDate);
-    const isDone = value >= remaining;
+    const direction = measureHabit.target_direction ?? 'at_least';
+    // `remaining` is a FLOOR concept ("how much is still missing"), so it is
+    // meaningless for a ceiling: for "at most 2", entering 0 is a complete
+    // day and `value >= remaining` would call it partial. The state comes
+    // from the domain function, which knows the direction.
+    const state =
+      direction === 'at_most'
+        ? deriveState({
+            trackingType: adaptTrackingType(measureHabit),
+            value,
+            target: measureHabit.daily_goal,
+            direction,
+          })
+        : value >= getRemainingValue(measureHabit.id, measureHabit.daily_goal ?? 0, selectedDate)
+          ? 'done'
+          : 'partial';
     const res = await logHabit({
       habitId: measureHabit.id,
       date: selectedDate,
-      state: isDone ? 'done' : 'partial',
+      state,
       value,
       targetValue: measureHabit.daily_goal ?? 0,
+      targetDirection: direction,
     });
     if (!res.ok) {
       Alert.alert('Kaydedilemedi', res.error);

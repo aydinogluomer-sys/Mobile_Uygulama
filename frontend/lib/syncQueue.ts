@@ -47,6 +47,16 @@ export type HabitLogIntent = {
   value?: number;
   targetValue?: number;
   baseXp?: number;
+  /**
+   * Which side of `targetValue` counts as success. Absent means `at_least`,
+   * which is what every log written before this field existed meant, so
+   * queued ops persisted by an older build replay unchanged.
+   *
+   * It has to travel with the intent rather than be looked up at replay time:
+   * a queued op is replayed later, possibly after the habit's target or
+   * direction has been edited, and it must be scored as the day it describes.
+   */
+  targetDirection?: 'at_least' | 'at_most';
 };
 
 export type SyncOpStatus = 'pending' | 'dead';

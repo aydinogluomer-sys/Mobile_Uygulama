@@ -272,7 +272,7 @@ export default function RecoveryScreen() {
     const value = state === 'partial' && h && isMeasurableTracking(h.tracking_type) && h.daily_goal
       ? Math.max(1, Math.round(h.daily_goal * (plan.strategy === 'half' ? 0.5 : 0.25)))
       : undefined;
-    const res = await logHabit({ habitId: plan.habit_id, date: logDate, state, value, targetValue: h?.daily_goal ?? undefined });
+    const res = await logHabit({ habitId: plan.habit_id, date: logDate, state, value, targetValue: h?.daily_goal ?? undefined, targetDirection: h?.target_direction ?? undefined });
     // Kayıt yazılmadıysa planı TAMAMLANDI işaretleme. Eskiden koşulsuzdu, yani
     // başarısız bir yazma sonrası plan "tamam" görünüyor ama karşılığında hiçbir
     // habit_log yok — ikisi kalıcı olarak çelişiyordu (bulgu N-04).

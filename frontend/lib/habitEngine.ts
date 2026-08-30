@@ -96,13 +96,61 @@ export function adaptTrackingType(habit: Pick<Habit, 'tracking_type' | 'behavior
   }
 }
 
+/**
+ * Which side of the target counts as success.
+ *
+ * `at_least` — a floor. "8000 steps" succeeds by reaching or passing it.
+ * `at_most`  — a CEILING. "at most 2 cigarettes" succeeds by staying at or
+ *              under it, and zero is the best possible day.
+ *
+ * Scoring a ceiling with a floor's arithmetic inverts the reward: under
+ * `min(value / target, 1)`, smoking 0 of a 2-cigarette limit scores 0% and is
+ * classified `miss`, while smoking 2 scores 100%. The better the behaviour,
+ * the worse the number. That was unreachable while `behavior_type` forced
+ * every negative habit to `abstinence`; making negative+numeric expressible
+ * is what exposed it.
+ */
+export type TargetDirection = 'at_least' | 'at_most';
+
 export type CompletionRatioInput = {
   trackingType: TrackingType;
   /** The already-decided outcome for this log, when one exists. */
   state: HabitLogState;
   value?: number | null;
   target?: number | null;
+  /** Defaults to `at_least`, which is what an unset column has always meant. */
+  direction?: TargetDirection | null;
 };
+
+/**
+ * Ratio for a measured habit against a CEILING.
+ *
+ * Contract, stated rather than implied:
+ *
+ *   value <= target              -> 1    (success, including value = 0)
+ *   target = 0, value > 0        -> 0    (zero tolerance, exceeded)
+ *   value > target               -> 1 - (value - target) / target,
+ *                                   clamped to [0, 1] — so the score decays
+ *                                   with the overshoot and reaches 0 at
+ *                                   twice the limit.
+ *
+ * `value == null` returns `null`, meaning "no answer": nothing was recorded,
+ * and an absent number is NOT evidence of having stayed under a limit. The
+ * caller falls back to the logged state rather than crediting a perfect day
+ * to a user who simply did not log.
+ */
+function ceilingRatio(value: number | null | undefined, target: number): number | null {
+  if (value == null || Number.isNaN(value)) return null;
+  const v = value < 0 ? 0 : value;
+  if (v <= target) return 1;
+  if (target === 0) return 0;
+  const r = 1 - (v - target) / target;
+  return Number.isFinite(r) ? Math.min(Math.max(r, 0), 1) : 0;
+}
+
+/** A target usable by `at_most`. Unlike `at_least`, zero is meaningful here. */
+const ceilingTargetOk = (t: number | null | undefined): t is number =>
+  t != null && Number.isFinite(t) && t >= 0;
 
 /**
  * Converts a single log into a completion ratio in `[0, 1]` (§8.6).
@@ -192,7 +240,7 @@ export type CompletionRatioInput = {
  * and stays out of this module.
  */
 export function completionRatio(input: CompletionRatioInput): number {
-  const { trackingType, state, value, target } = input;
+  const { trackingType, state, value, target, direction } = input;
 
   if (state === 'skip') return 0; // bkz. yukarıdaki not — 0 burada "ceza" değil, dışlanması gereken bir sinyalin yer tutucusudur.
 
@@ -203,6 +251,11 @@ export function completionRatio(input: CompletionRatioInput): number {
 
     case 'numeric':
     case 'duration': {
+      if (direction === 'at_most') {
+        if (!ceilingTargetOk(target)) return state === 'done' ? 1 : 0;
+        const r = ceilingRatio(value, target);
+        return r ?? (state === 'done' ? 1 : 0);
+      }
       if (target == null || !Number.isFinite(target) || target <= 0) {
         return state === 'done' ? 1 : 0;
       }
@@ -223,6 +276,8 @@ export type DeriveStateInput = {
   trackingType: TrackingType;
   value?: number | null;
   target?: number | null;
+  /** Defaults to `at_least`. See `TargetDirection`. */
+  direction?: TargetDirection | null;
 };
 
 /**
@@ -273,10 +328,21 @@ export type DeriveStateInput = {
  * would change the answer.
  */
 export function deriveState(input: DeriveStateInput): 'done' | 'partial' | 'miss' {
-  const { trackingType, value, target } = input;
+  const { trackingType, value, target, direction } = input;
 
   if (trackingType === 'binary' || trackingType === 'abstinence') {
     return value != null && value > 0 ? 'done' : 'miss';
+  }
+
+  // A ceiling: staying at or under the limit is a completed day, and 0 is the
+  // best one. The at_least branch below would call that same day a `miss`.
+  if (direction === 'at_most') {
+    if (!ceilingTargetOk(target)) return value != null && value > 0 ? 'done' : 'miss';
+    const r = ceilingRatio(value, target);
+    // Nothing recorded is not evidence of having stayed under the limit.
+    if (r == null) return 'miss';
+    if (r >= 1) return 'done';
+    return r > 0 ? 'partial' : 'miss';
   }
 
   // numeric / duration
