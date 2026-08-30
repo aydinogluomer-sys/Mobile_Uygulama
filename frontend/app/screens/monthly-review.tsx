@@ -1,10 +1,16 @@
+import {
+  loadMonthlyReflection,
+  saveMonthlyDraft,
+  saveMonthlyReflection,
+  logsForPeriod,
+  recoveryForPeriod,
+} from '../../services/reviewService';
 import { currentUser } from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format, startOfMonth, endOfMonth, subMonths, subWeeks, eachDayOfInterval } from 'date-fns';
 import type { Habit } from '../../lib/supabase';
 import { useTaskStore, type Task } from '../../store/taskStore';
@@ -24,12 +30,10 @@ import {
   type Trend, type Result,
 } from '../../lib/behaviorIntelligence';
 import { fromLegacyRecoveryPlan } from '../../lib/recovery';
-import { logsForPeriod, recoveryForPeriod } from '../../services/reviewService';
 import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
 import { EmptyState } from '../../components/ui';
 
 const MONTHS_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-const REFLECT_KEY = (monthKey: string) => `monthly_review_${monthKey}`;
 
 const REVIEW_QUESTIONS = [
   { key: 'wins', label: '🏆 Bu ayın kazanımları nelerdi?', placeholder: 'Bu ay başardıklarını yaz...' },
@@ -143,6 +147,9 @@ export default function MonthlyReviewScreen() {
   const [analysis, setAnalysis] = useState<MonthlyAnalysis>(EMPTY_ANALYSIS);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  // Ekranda gorunen metin buluta HENUZ yazilmadi: kaydedilmemis taslak ya
+  // da tasima oncesi kalmis yerel kayit.
+  const [unsavedDraft, setUnsavedDraft] = useState(false);
 
   // Defter sayfası animasyonu: girişte "açılma", ay değişiminde yön bazlı "sayfa çevirme" (bkz. calendar.tsx).
   const reduceMotion = useReducedMotion();
@@ -205,21 +212,13 @@ export default function MonthlyReviewScreen() {
   // Ekran odağa gelince defter "açılır" (bkz. calendar.tsx)
   useEffect(() => { if (isFocused) animatePage(0); }, [isFocused]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Bulut kaynak, AsyncStorage yalnizca taslak. Sira ve gerekcesi
+  // services/reviewService.loadMonthlyReflection icinde.
   async function loadReflection() {
-    try {
-      const raw = await AsyncStorage.getItem(REFLECT_KEY(monthKey));
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setAnswers(parsed.answers ?? {});
-        setSavedAt(parsed.savedAt ?? null);
-      } else {
-        setAnswers({});
-        setSavedAt(null);
-      }
-    } catch {
-      setAnswers({});
-      setSavedAt(null);
-    }
+    const r = await loadMonthlyReflection(monthKey);
+    setAnswers(r.answers);
+    setSavedAt(r.savedAt ? format(new Date(r.savedAt), 'dd.MM.yyyy') : null);
+    setUnsavedDraft(r.source === 'draft' || r.source === 'legacy');
   }
 
   async function loadMonthMetrics() {
@@ -306,8 +305,13 @@ export default function MonthlyReviewScreen() {
   async function handleSave() {
     setSaving(true);
     try {
-      const stamp = format(new Date(), 'dd.MM.yyyy');
-      await AsyncStorage.setItem(REFLECT_KEY(monthKey), JSON.stringify({ answers, savedAt: stamp }));
+      // Once cloud write, sonra arsiv kopyasi. Sira onemli: arsiv kaydi
+      // render edilmis bir OZET, cevaplarin kendisi degil -- once o yazilip
+      // asil kayit basarisiz olursa geri getirilemeyen sey kaybolurdu.
+      const saved = await saveMonthlyReflection(monthKey, answers);
+      if (!saved.ok) throw new Error(saved.error);
+      const stamp = format(new Date(saved.savedAt), 'dd.MM.yyyy');
+      setUnsavedDraft(false);
       await appendEntry(
         format(new Date(), 'yyyy-MM-dd'),
         buildArchiveReflection({
@@ -539,7 +543,16 @@ export default function MonthlyReviewScreen() {
                   placeholderTextColor="#56544B"
                   multiline
                   value={answers[question.key] ?? ''}
-                  onChangeText={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
+                  onChangeText={(value) => {
+                    setAnswers((current) => {
+                      const next = { ...current, [question.key]: value };
+                      // Taslak yerelde, hesap kapsamli. Yazarken sinyal
+                      // giderse paragraf kaybolmasin diye; buluta yazmaz.
+                      void saveMonthlyDraft(monthKey, next);
+                      return next;
+                    });
+                    setUnsavedDraft(true);
+                  }}
                   textAlignVertical="top"
                 />
               </View>
@@ -552,12 +565,17 @@ export default function MonthlyReviewScreen() {
             onPress={handleSave}
             disabled={saving}
             accessibilityRole="button"
-            accessibilityLabel={saving ? 'Aylık rapor kaydediliyor' : savedAt ? `Kaydedildi, ${savedAt}` : 'Aylık raporu kaydet'}
+            accessibilityLabel={
+              saving ? 'Aylık rapor kaydediliyor'
+              : unsavedDraft ? 'Kaydedilmemiş değişiklikler var, aylık raporu kaydet'
+              : savedAt ? `Kaydedildi, ${savedAt}`
+              : 'Aylık raporu kaydet'
+            }
             accessibilityState={{ disabled: saving, busy: saving }}
           >
             {saving ? (
               <ActivityIndicator color="#fff" size="small" />
-            ) : savedAt ? (
+            ) : savedAt && !unsavedDraft ? (
               <>
                 <Ionicons name="checkmark" size={18} color="#fff" />
                 <Text style={s.saveBtnText}>Kaydedildi ({savedAt})</Text>

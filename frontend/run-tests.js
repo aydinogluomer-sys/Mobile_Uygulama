@@ -179,7 +179,25 @@ test('Ay navigatörü (önceki/sonraki)', () => mr.includes('setMonthOffset') &&
 test('Metrik özeti (görev/oran/odak/aktif)', () => mr.includes('metricsRow') && mr.includes('Tamamlandı') && mr.includes('habitCompletionRate'));
 test('Bu ay tamamlananlar', () => mr.includes('BU AY TAMAMLANANLAR') && mr.includes('completedTasks'));
 test('Alışkanlık performansı', () => mr.includes('ALIŞKANLIK PERFORMANSI') && mr.includes('habitStats'));
-test('Aylık yansıma kaydedilir (AsyncStorage)', () => mr.includes('AYLIK YANSIMA') && mr.includes('monthly_review_') && mr.includes('AsyncStorage'));
+// Bu iddia BULUTA TASINDI. Eskiden `monthly_review_` + `AsyncStorage`
+// ariyordu; o anahtarda hesap yoktu, yani paylasilan cihazda bir sonraki
+// kullanici oncekinin yansimalarini okuyordu. Artik kaynak `monthly_reviews`
+// tablosu; AsyncStorage yalnizca hesap kapsamli taslak. Bu yuzden iddia
+// KALICILIK YERINI sabitliyor ve ekranin dogrudan AsyncStorage'a
+// dokunmadigini da dogruluyor -- eski yol geri gelirse kirmizi olur.
+test('Aylık yansıma buluta kaydedilir (kaynak: monthly_reviews)', () =>
+  mr.includes('AYLIK YANSIMA')
+  && mr.includes('saveMonthlyReflection')
+  && mr.includes('loadMonthlyReflection')
+  // Ciplak 'AsyncStorage' kelimesi degil IMPORT araniyor: bu dosya yorumda
+  // ondan bahsediyor ve run-tests okuyucusu yorum ayiklamiyor. Onemli olan
+  // ekranin depoya dogrudan erisip erismedigi.
+  && !mr.includes("from '@react-native-async-storage/async-storage'")
+  && !mr.includes('monthly_review_'));
+test('Taslak yerelde tutulur ama kaynak degildir', () =>
+  mr.includes('saveMonthlyDraft')
+  && read('./services/reviewService.ts').includes('monthly_review:')
+  && read('./repositories/monthlyReviewRepository.ts').includes("from('monthly_reviews')"));
 
 // 10. ADHDTaskSplitter - Legacy temizlik
 console.log('\n🧹 10. ADHDTaskSplitter — Legacy Temizlik');

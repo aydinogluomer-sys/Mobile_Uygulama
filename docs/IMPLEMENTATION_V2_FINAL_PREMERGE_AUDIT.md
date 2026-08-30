@@ -26,7 +26,7 @@ the command, query or live request that produced it.
 | **§6** | Notion sync E2E | `success:true, synced_habits:0` forever | columns fixed, errors checked, honest partial reporting; **deployed v2** | code/schema/deploy sub-checks pass live (v1 query → `42703`, v2 → OK, function authenticating). A linked-account round trip needs Notion credentials | **BLOCKED_EXTERNAL** |
 | **§7** | Full RLS semantic audit | policy counting only | 127 live checks, 2 users + anon; 1 defect found and fixed | `docs/FINAL_RLS_MATRIX.md` | **PASS** |
 | **§8** | Repository **and service** boundary | **72** direct DB calls across 17 stores (the 34/11 figure was a mis-measurement — see §2b) | UI→Store→Service→Repository→Supabase. 10 services holding named domain rules, 21 repositories | 0 services touch supabase; 0 UI files import a repository; the 7 orchestrated stores reach the DB only through their service; the 10 CRUD-only stores are explicitly classified rather than left unaccounted for. `layerBoundary` pins each service's rule BY NAME; 4 mutations verified | **PASS** |
-| **§9** | Monthly review cloud persistence | AsyncStorage only | — | no `reviews` table created | **NOT_DONE** |
+| **§9** | Monthly review cloud persistence | `monthly_review_<YYYY-MM>` in AsyncStorage — no account in the key, one device, unrecoverable | `monthly_reviews` table (owner RLS, unique per month, jsonb answers with a DB-enforced shape); AsyncStorage demoted to a per-account draft | 15 behaviour tests on precedence + lossless migration; 7 live constraint probes; 3 mutations red (global draft key, draft cleared before the write is confirmed, legacy adopted over cloud content). The old structural assertion was migrated, not deleted, and mutation-checked | **PASS** |
 | **§10** | Structural tests on current contract | three shallow proxies | all three rewritten to pin real contracts, each mutation-verified | `run-tests.js` 144/144. The monthly-review gate still encodes AsyncStorage, which matches today's code but not the target | **NOT_DONE** (blocked on §9) |
 | **§11** | XP idempotency | assumed broken | **premise disproven** — see §3 below | 6/6 live: duplicate INSERT `23505`, replay ×4 adds 0 XP | **PASS** (idempotency) / reconstructibility **NOT_DONE** |
 | **§12** | Focus-Point charging atomicity | read balance -> call Anthropic -> debit, with the RPC's `ok` flag never read and its `error` never destructured: a refused debit returned the UN-debited balance as success (free AI output), a failed RPC returned a fabricated `balance - cost`, and a retry charged twice | debit FIRST through `spend_focus_points_v2` (idempotent on `(user_id, request_id)`), refund on every AI failure path, real balance returned | 7 live DB probes (spend / replay / insufficient / exact / empty / refund / double-refund / reused-refunded-key / zero / negative amount) + 20 source assertions on ordering. 3 mutations red: debit moved after the AI client, one refund path deleted, balance fabricated again. Edge deployed v12 ACTIVE | **PASS** |
@@ -161,7 +161,7 @@ fixed.
 
 ### P1 — not done on this branch
 
-Monthly review cloud persistence (§9) ·
+
 design tokens (§19) ·
 branding (§20) · widget (§21) · recovery vocabulary (§24) · performance
 profiling (§36).

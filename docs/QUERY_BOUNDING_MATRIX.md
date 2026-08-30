@@ -43,6 +43,8 @@ query is unbounded; this does not.
 | `journalRepository.ts` | `upsertJournalEntry` | `journal_entries` | no | WRITE | — |
 | `lifeAreaRepository.ts` | `fetchRecentLifeAreaLogs` | `life_area_logs` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `lifeAreaRepository.ts` | `upsertLifeAreaLogs` | `life_area_logs` | no | WRITE | — |
+| `monthlyReviewRepository.ts` | `fetchMonthlyReview` | `monthly_reviews` | no | SINGLE_ROW | yes |
+| `monthlyReviewRepository.ts` | `upsertMonthlyReview` | `monthly_reviews` | no | WRITE | — |
 | `noteRepository.ts` | `fetchNotesPage` | `notes` | yes | KEYSET_PAGE | yes |
 | `noteRepository.ts` | `insertNote` | `notes` | no | WRITE | — |
 | `noteRepository.ts` | `searchNotes` | `notes` | yes | BOUNDED_DOMAIN_WINDOW | yes |
@@ -79,12 +81,12 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **68**
+- queries: **70**
 - collection SELECTs: **34**
 - KEYSET_PAGE: **6**
 - DATE_WINDOW: **9**
 - BOUNDED_SEARCH: **3**
 - EXACT_COUNT: **1**
 - BOUNDED_DOMAIN_WINDOW: **15**
-- SINGLE_ROW: **7**
+- SINGLE_ROW: **8**
 - **UNCLASSIFIED: 0**
