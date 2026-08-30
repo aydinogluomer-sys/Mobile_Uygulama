@@ -1181,3 +1181,279 @@ prevented, `dead` must be visibly distinct from `pending` (a permanently-failed 
 looks queued is silent data loss from the user's side), and events must be emitted from the
 store layer — a screen can be bypassed.
 
+
+---
+
+## SESSION 2 — 2026-08-30 (Orchestrator resumes at PHASE 4)
+
+### Orchestrator verification of prior state (Rule 7: real code is truth)
+
+Prior phases were re-verified by reading production files, not by trusting the log.
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | **PASS** — exit 0 |
+| `node run-tests.js` | **PASS** — 142/142 |
+| Phases 0–3 marked DONE in log | accepted; gate evidence present and consistent with live tsc/run-tests |
+
+### PHASE 4 — measured item-by-item audit (not from the log)
+
+| §24 Phase 4 item | Verified evidence | Verdict |
+|---|---|---|
+| notifications | `lib/notifications.ts`; call sites in `store/habitStore.ts`, `store/recoveryStore.ts`, `app/tabs/timeline.tsx`; `expo-notifications` plugin present in `app.json` | **DONE** |
+| haptics | `lib/haptics.ts`; 12 call sites across tabs, screens and components | **DONE** |
+| skeleton states | `components/ui/Skeleton.tsx` (commit `1808f8d`) | **DONE** |
+| animations | `components/seasonalMotion/*` (native driver), Skeleton pulse | **DONE (scope met)** |
+| offline sync | `lib/syncQueue.ts` + `logStore.hydrateSyncQueue`/`flushPendingSync` fully implemented and tested | **CODE DONE / INERT** — grep proves the only callers are the test file. Nothing calls them at boot or on foreground. |
+| analytics events | `lib/analytics.ts` complete + `__tests__/repo/analyticsNoFreeText.test.ts` | **CODE DONE / INERT** — grep proves **zero** emission sites in `app/`, `store/`, `components/`. |
+| crash reporting | grep for `Sentry|crashlytics|ErrorBoundary|captureException` across `frontend/` | **ABSENT** — zero matches. No error boundary at all; any render throw is a white screen. |
+| empty states | `components/ui/EmptyState.tsx` used in 6 files; repo has 33 routes | **PARTIAL** |
+| accessibility | 46 `accessibilityLabel`/`accessibilityRole` occurrences across 13 source files; most of the 25 `app/screens/*` have none | **PARTIAL** |
+| onboarding | `components/HabitOnboarding.tsx` is a *habit-creation wizard*, not first-run product onboarding | **ABSENT (first-run)** |
+| store assets | `app.json` splash plugin points at `./assets/images/splash-icon.png` — **file does not exist** (real file is `splash-image.png`). `icon/adaptive-icon/favicon` are byte-identical 255,372-byte Expo template placeholders. | **DEFECT + PLACEHOLDER** |
+| performance audit | no measurement artefact in repo | **NOT STARTED** |
+| widgets | no widget target, no config plugin, no native dirs | **NOT STARTED** |
+
+### Assumptions recorded this session
+
+- **A-05** — **Widgets are deferred, with cause.** iOS WidgetKit / Android
+  App Widgets require a native target plus a config plugin and can only be
+  built and verified through a custom dev build; this repo is Expo-managed
+  with no `ios/`/`android/` directories, and no gate in the plan can observe a
+  widget. Writing an unverifiable native target would be code that cannot be
+  proven to work — the opposite of what Rule 5 asks. Reported as deliberately
+  deferred with the reason, not silently skipped.
+- **A-06** — **Store assets: the broken reference is fixed, the artwork is not
+  invented.** The missing `splash-icon.png` reference is a genuine build-facing
+  defect and is in scope. Producing real brand icon artwork is a design
+  deliverable, not a coding one; the placeholders are reported, not replaced.
+- **A-07** — **Supabase project `kbcuolhjjnmhjaarxxmu` remains unreachable/paused**
+  (carried from A-02). No migration is applied. Live Gate B verification stays
+  blocked on a repo-owner action.
+
+### PHASE 4 — work dispatched this session
+
+| Unit | Owner | Scope | Files owned (disjoint by design) |
+|---|---|---|---|
+| N | Coder | offline sync lifecycle + `logStore` analytics emission | `app/_layout.tsx`, `store/logStore.ts`, `lib/analytics.ts`, `components/ui/SyncStatusBadge.tsx`, `components/ui/index.ts`, `app/tabs/today.tsx`\|`habits.tsx` |
+| O | Coder | analytics emission in the remaining stores | `store/habitStore.ts`, `recoveryStore.ts`, `routineStore.ts`, `focusStore.ts` |
+| P | Coder | 25 secondary screens: loading states, empty states, accessibility | `app/screens/*.tsx` |
+| — | Orchestrator | crash reporting + store-asset defect | `lib/crashReporting.ts`, `components/ui/ErrorBoundary.tsx`, `app.json` |
+
+#### Orchestrator → store-asset defect (§24 "store assets")
+
+`app.json`'s splash plugin pointed at `./assets/images/splash-icon.png` — **a file
+that has never existed in this repository** (`git log --all -- <path>` returns
+nothing). The real asset is `splash-image.png`.
+
+**Why nothing caught it, which is the part worth recording:** `tsc` does not read
+`app.json`; `expo lint` does not read `app.json`; `npx expo config --type prebuild`
+exits **0** and echoes the broken path straight back, because config resolution
+never stats the file; and jest had never opened `app.json`. A missing store asset
+was invisible to *every* gate this project runs, and would have first surfaced as a
+build artefact with no splash screen.
+
+Fixed, and guarded by `__tests__/repo/appConfigAssetsExist.test.ts`, which walks
+`app.json` generically for `./`-prefixed asset paths rather than checking four
+known keys — a hardcoded list would pass forever the day a fifth asset is added,
+which is the same "green because it never looked" failure the missing splash
+already demonstrated. The suite includes a `refs.length >= 4` assertion so that a
+walker returning `[]` cannot make every other assertion vacuously true.
+
+Mutation: restoring the broken path fails **exactly 2 of 7** (the parameterised row
+and the named splash assertion), the other 5 stay green.
+
+#### Orchestrator → crash reporting (§24 "crash reporting", §27 "crash monitoring")
+
+Before this: **nothing**. Grep for `Sentry|crashlytics|ErrorBoundary|captureException`
+across `frontend/` returned **zero matches**. Any render throw unmounted the whole
+app to a blank screen with no diagnostic.
+
+**No SDK was added, deliberately.** Wiring Sentry means committing a vendor
+dependency plus a DSN for an account that does not exist, and user error data would
+start leaving the device immediately. That is a repo-owner decision, not something to
+include inside a "polish" commit. What was built is the seam: one capture funnel
+(`reportError`), one swappable sink (`setCrashSink`), chained global handlers, and an
+`ErrorBoundary`.
+
+**The design problem that took the actual work — and the mistake worth recording.**
+`lib/analytics.ts` can allowlist value *shape* because it authors its own payloads. A
+crash report cannot: its message comes from whatever threw, and error messages quote
+the offending value back — `JSON.parse` of a journal entry puts that entry verbatim
+into a `SyntaxError`; PostgREST puts a habit title into a query string. §22 forbids
+sending that.
+
+The first implementation used a **"looks like prose" heuristic** — redact any run of
+3+ space-separated words. **Its own tests killed it immediately:** it redacted
+`undefined is not an object` and `JSON object requested from habits`, i.e. it
+destroyed the diagnostic value of essentially every real error while adding no
+protection the structural rules did not already give. The lesson generalises: user
+text is not identifiable by *shape* — a word-count rule cannot separate an English
+error sentence from a Turkish journal sentence. It is identifiable by **position**:
+user content arrives inside a delimiter, because that is how it was interpolated
+(runtime-quoted, quoted by our own throws — every interpolating throw in this repo
+does it, e.g. `lib/recovery.ts:153` — or in a URL query value).
+
+So the scrubber is structural and high-precision (quoted literals, query values,
+emails, tokens) plus a length cap as backstop. The **known gap is documented rather
+than papered over**: an undelimited interpolation (`'x: ' + title`) is not caught,
+the fix belongs at the throw site, and no such call site exists in the repo today.
+
+A second real bug the tests caught: the Windows path scrubber used `[^\s)]+`, which
+**stops at a space** — so `C:\Users\Trade Bilisim\...` left the OS user name in the
+report. Personal data riding along in something nobody thinks of as a payload.
+
+**`__tests__/lib/errorBoundary.test.tsx` is the repo's first `.test.tsx`.** It is a
+real render test, on purpose: an ErrorBoundary is the *worst* possible candidate for
+this repo's source-text instrument, because the only thing worth asserting is a
+runtime React behaviour. `getDerivedStateFromError` can look correct and still fail
+to catch. The helper `textOf` had to walk `tree.toJSON()` — `root.findAllByType(Text)`
+returns test *instances*, not strings, and silently yields `''`, which would have made
+every `not.toContain` assertion pass. That asymmetry is exactly the silent-false-pass
+family this run keeps meeting.
+
+**Mutation results — 10 mutations, each isolating its own assertion:**
+
+| # | Mutation | Red |
+|---|---|---|
+| M1 | remove quoted-literal rule | journal excerpt leaks — 1 |
+| M2 | remove query-value rule | habit title leaks — 1 |
+| M3 | remove install-once guard | double-report — 1 |
+| M4 | remove `reportError` try/catch | throwing sink escapes — 1 |
+| M5 | remove context shape gate | user text smuggled via `context` — 1 |
+| M6 | remove length cap | runaway message uncapped — 1 |
+| E1 | `getDerivedStateFromError` stops latching | 5 red, "renders children" correctly stays green |
+| E2 | remove `resetKeys` recovery | boundary latches forever — 1 |
+| E3 | always reset | infinite throw/catch loop — 1 |
+| E4 | remove `reportError` from `componentDidCatch` | crash unreported — 1 |
+
+New suites: `crashReporting` 22/22, `errorBoundary` 6/6, `appConfigAssetsExist` 7/7.
+
+**Still to wire (blocked on Coder N, who owns `app/_layout.tsx`):**
+`installGlobalErrorHandlers()` at boot and `<ErrorBoundary>` around the navigator.
+The subsystem is complete and tested but, until that wiring lands, **inert** — the
+same condition this session found the sync queue and analytics layer in.
+
+#### Orchestrator → **CI has been RED the entire time** (Rule 5 violation, found this session)
+
+The single most important finding of this session, and it invalidates part of the
+previous session's gate reporting.
+
+`gh run list` shows the CI workflow **failing on every push**, for every commit of
+the previous session — including the ones that closed Phase 1, Phase 2 and Phase 3.
+The prior log recorded CI as "the single criterion that cannot be observed locally"
+and closed Gate A on that basis. It was observable; it was simply never observed.
+Plan **Rule 5** says a phase whose tests do not pass cannot be marked DONE.
+
+**The failing step and why local runs disagreed:**
+
+```
+app/_layout.tsx(102,16): error TS2493: Tuple type '[string]' of length '1' has no element at index '1'.
+app/_layout.tsx(102,53): error TS2493: Tuple type '[string]' of length '1' has no element at index '1'.
+```
+
+Line 102 is ordinary pre-existing auth routing:
+`segments[1] === 'forgot-password' || segments[1] === 'reset-password'`.
+
+Root cause, verified rather than inferred:
+
+- `frontend/tsconfig.json` includes `.expo/types/**/*.ts`.
+- `.expo/types/router.d.ts` is expo-router's **generated** typed-routes declaration.
+- `frontend/.gitignore:7` ignores `.expo/`.
+
+So on a developer machine the declaration exists and `useSegments()` resolves to a
+union of real route tuples — `segments[1]` typechecks. In CI's fresh clone it is
+absent, `useSegments()` degrades to the 1-tuple `[string]`, and the index is a
+tuple out-of-range error. **`npx tsc --noEmit` was checking a different program in
+the two places, and the local one was the weaker.**
+
+Reproduced deterministically: moving `.expo/types/router.d.ts` aside locally
+produces those exact two errors; restoring it makes them vanish.
+
+Also established, because it changes the fix: **CI can never have that file.**
+`npx expo export` does not emit it (tested directly — the types directory comes
+back empty). Typed routes are written by the dev server only. Therefore the source
+must typecheck *without* typed routes; typed routes are a local nicety and must
+never be a load-bearing input to a gate.
+
+**Fixes applied (Orchestrator):**
+
+1. `frontend/tsconfig.ci.json` — same config minus `.expo/types` — plus a
+   `typecheck:ci` npm script. `npm run typecheck:ci` now reproduces CI's exact view
+   on any machine, so the divergence cannot recur invisibly.
+2. `.github/workflows/ci.yml` typecheck step now runs `npm run typecheck:ci`, so
+   what CI checks is stated explicitly instead of depending on the accidental
+   absence of a gitignored artefact.
+3. `react-test-renderer` + `@types/react-test-renderer` promoted to explicit
+   devDependencies. A **second** CI-only failure: the new `errorBoundary.test.tsx`
+   imported `react-test-renderer`, which was present transitively but undeclared
+   and untyped (`TS7016`). Relying on a transitive dependency was a genuine mistake
+   in the Orchestrator's own unit, caught by running under CI conditions.
+4. The `segments[1]` fix itself is delegated to Coder N, who owns `app/_layout.tsx`
+   this round, with the reproduction and the verification procedure.
+
+**Consequence for the record:** Gates A–D were closed against a green local
+typecheck while the CI gate was red. The code they certified is not thereby wrong —
+`tsc`, jest, `run-tests.js` and both exports really did pass locally — but "CI PASS"
+in Gate A was **not** established. It is being established now, for the first time,
+as part of the Phase 4 gate.
+
+#### Coder O → §22 analytics emission from the store layer — commit `b2a70d9`
+
+Six of the eleven declared events now actually fire. **Orchestrator verification:**
+commit contains exactly the 8 claimed files (disjoint from the other coders), and
+the four new suites run **39/39 green** on an independent run.
+
+| Event | Funnel | Why there |
+|---|---|---|
+| `habit_created` | `habitStore.addHabit`, inside `!error && data` | the only single-habit creation path |
+| `recovery_created` | `recoveryStore.addPlan`, past the `error \|\| !data` bail-out | the only place a plan row is born |
+| `recovery_completed` | `completePlan`, gated on the UPDATE | the UPDATE is what makes it done |
+| `routine_installed` | `routineStore.confirmInstall`, its single success exit | AI path and Routine Pack path both funnel through it |
+| `ai_routine_generated` | `generateRoutine`, just past the `adapted.ok` gate | one line covers both accepted branches |
+| `focus_started` | `focusStore.start`, **only on `idle → running`** | see below |
+| `focus_completed` | `nextPhase`, gated on the `focus_sessions` insert | the row is what makes a session real |
+
+**Three findings that are more than wiring:**
+
+1. **`start()` is also the resume path.** `focus.tsx` calls the same `start()` for
+   "Başla" and "Devam Et". An unconditional emit would have inflated session counts
+   by one per pause/resume — an analytics layer that lies about its headline metric.
+   Gated on the `idle → running` transition.
+2. **`nextPhase`'s auto-start inlined `status:'running'`**, so an auto-chaining
+   pomodoro would have produced `focus_completed` events **with no matching
+   `focus_started`**. Rerouted through `start()`; resulting state identical.
+3. **`PHASE_TOKEN`.** The `Phase` union is camelCase, and raw `'shortBreak'` fails
+   `buildEvent`'s `ENUM_RE` — it would have been **silently dropped**, leaving every
+   focus event without its most important dimension. This is the privacy filter
+   working as designed and biting a legitimate caller; mapped to
+   `work`/`short_break`/`long_break`.
+
+**Two pre-existing bugs discovered, not caused:** `recoveryStore.completePlan` and
+`focusStore.nextPhase` both **discarded the Postgrest result entirely**, so a
+rejected write still updated local state. "Do not emit when the action fails" was
+not even expressible until the error was captured. The error is now captured and
+gates only the event; prior behaviour is unchanged and asserted unchanged.
+
+**15/15 mutations red for the expected reason.** All tests are behavioural: the mock
+keeps the **real** `buildEvent` via `requireActual` and replaces only `emitEvent`, so
+every assertion exercises the shipping privacy filter against a real
+`AnalyticsEvent`. No source-text matching anywhere — the right instrument for this job.
+
+**The shallow-match trap appeared a FIFTH time, and the Coder caught it themselves:**
+a loose `grep -l "review" store/` reported a hit on `routineStore.ts` — the substring
+came from the word "p*review*" in a comment. The anchored check
+(`weekly.review|reviewRepository`) returns zero. Same lesson, fifth form: anchor the
+scope, not the pattern.
+
+**Deliberately left unwired, with reasoning — `weekly_review_completed`.** There is
+no weekly-review store; the save path is `app/screens/weekly-review.tsx:244` →
+`repositories/reviewRepository.ts::upsertWeeklyReview`. The repository is the only
+honest non-screen funnel, and it was not this coder's to edit. Monthly review is
+worse — screen-level AsyncStorage. **Caveat for whoever wires it:** the function is
+an **upsert**, so a user editing their review a second time would fire a second
+"completed"; it needs an insert-vs-update distinction.
+
+**Recorded risk:** `b2a70d9` does not compile standalone — it needs Coder N's
+`emitEvent`/`setAnalyticsSink` export, which was still uncommitted when it was
+pushed. Harmless once N lands, but the branch is briefly non-bisectable.

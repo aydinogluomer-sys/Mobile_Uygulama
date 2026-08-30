@@ -41,8 +41,20 @@ jobs:
       - name: Install dependencies (npm ci)
         run: npm ci
 
-      - name: Typecheck (tsc --noEmit)
-        run: npx tsc --noEmit
+      # Uses tsconfig.ci.json, NOT the default tsconfig.json. See that file's
+      # header for the full reasoning; the short version is that
+      # `tsconfig.json` includes `.expo/types/**/*.ts`, which holds
+      # expo-router's generated typed-routes declaration. That directory is
+      # gitignored and is only ever produced by the Expo dev server, so it is
+      # absent here and present on every developer machine — meaning plain
+      # `npx tsc --noEmit` checked a different program in the two places. This
+      # step used to be exactly that command, and it failed on every push of an
+      # entire phase while local runs reported 0 errors.
+      #
+      # `npm run typecheck:ci` is runnable locally and reproduces this step
+      # byte for byte, so the divergence cannot come back invisibly.
+      - name: Typecheck (CI parity — see tsconfig.ci.json)
+        run: npm run typecheck:ci
 
       - name: Lint (expo lint)
         run: npx expo lint

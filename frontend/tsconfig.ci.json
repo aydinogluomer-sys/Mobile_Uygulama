@@ -1,0 +1,35 @@
+// CI-parity typecheck config.
+//
+// WHY THIS FILE EXISTS.
+//
+// `tsconfig.json` includes `.expo/types/**/*.ts`, which is where expo-router
+// writes its GENERATED typed-routes declaration (`router.d.ts`). That
+// directory is gitignored (`frontend/.gitignore:7`), and it is produced by the
+// Expo dev server — `npx expo export` does NOT emit it (verified).
+//
+// The consequence, which cost this project a silently red CI for an entire
+// phase: `npx tsc --noEmit` on a developer machine checks a DIFFERENT PROGRAM
+// than the same command in CI. Locally `useSegments()` resolves to a union of
+// real route tuples; in CI's fresh clone the declaration is absent and it
+// degrades to `[string]`, so an ordinary `segments[1]` read becomes
+// `TS2493: Tuple type '[string]' of length '1' has no element at index '1'`.
+// Local said 0 errors, CI said 2, and three phase gates were closed on the
+// local number.
+//
+// This config removes `.expo/types` from the include list, so
+// `npm run typecheck:ci` reproduces CI's exact view on any machine, with or
+// without a dev server having ever run. CI uses it too — not because CI needs
+// the file (the declaration is absent there regardless) but so that what CI
+// checks is stated explicitly instead of depending on the accidental absence
+// of a gitignored artefact.
+//
+// The rule this implies for source code: application code must typecheck
+// WITHOUT typed routes. Typed routes stay a local developer nicety, never a
+// load-bearing input to the gate.
+//
+// Maintenance note: `include` is overridden wholesale rather than inherited,
+// so a new entry added to `tsconfig.json`'s `include` must be mirrored here.
+{
+  "extends": "./tsconfig.json",
+  "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts"]
+}
