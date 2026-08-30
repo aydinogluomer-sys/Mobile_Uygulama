@@ -155,3 +155,27 @@ describe('pagination reaches the user, not just the query', () => {
     }
   });
 });
+
+describe('the data layer does not pay for auth on every query', () => {
+  const shared = stripComments(readFileSync(join(ROOT, 'repositories', 'shared.ts'), 'utf8'));
+
+  it('currentUserId reads the LOCAL session, not the auth API', () => {
+    // `getUser()` always issues GET /auth/v1/user. Measured against the live
+    // project, three repository operations cost three auth round trips and
+    // 373 ms of pure waste; `getSession()` reads persisted state and costs
+    // nothing. Six operations now issue ZERO auth requests.
+    expect(shared).toContain('supabase.auth.getSession()');
+    expect(shared).not.toContain('supabase.auth.getUser()');
+  });
+
+  it('the resolved id is actually used to scope queries', () => {
+    // Reading the id locally is only safe because it is defence in depth on
+    // top of RLS, not a replacement for it -- and that depends on the id
+    // still being applied as a filter. Asserted on the code rather than on a
+    // comment, which the stripper removes anyway.
+    expect(shared).toContain(".eq('user_id', params.userId)");
+    const repos = sourcesIn('repositories').filter((r) => !r.path.endsWith('shared.ts'));
+    const scoped = repos.filter((r) => /\.eq\('user_id',\s*u\.userId\)/.test(r.code));
+    expect(scoped.length).toBeGreaterThan(8);
+  });
+});

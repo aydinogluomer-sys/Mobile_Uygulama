@@ -14,7 +14,15 @@ const mockDb = {
 jest.mock('../../lib/supabase', () => {
   return {
     supabase: {
-      auth: { getUser: jest.fn(async () => ({ data: { user: mockDb.user }, error: null })) },
+      auth: {
+      // The data layer resolves the user id from the LOCAL session -- see
+      // `repositories/shared.currentUserId`. Derived from this mock's own
+      // getUser so the two can never disagree.
+      getSession: async function (this: any) {
+        const r = await this.getUser();
+        return { data: { session: r.data.user ? { user: r.data.user, access_token: 'test-jwt' } : null } };
+      },
+       getUser: jest.fn(async () => ({ data: { user: mockDb.user }, error: null })) },
       from: () => ({
         select: () => {
           const filters: Record<string, unknown> = {};

@@ -32,7 +32,15 @@ void _typeGuardCanActivateSingleArgStillAssignable;
 
 jest.mock('../../lib/supabase', () => ({
   supabase: {
-    auth: { getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'u1' } } }) },
+    auth: {
+      // The data layer resolves the user id from the LOCAL session -- see
+      // `repositories/shared.currentUserId`. Derived from this mock's own
+      // getUser so the two can never disagree.
+      getSession: async function (this: any) {
+        const r = await this.getUser();
+        return { data: { session: r.data.user ? { user: r.data.user, access_token: 'test-jwt' } : null } };
+      },
+       getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'u1' } } }) },
   },
 }));
 

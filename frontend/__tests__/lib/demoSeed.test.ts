@@ -24,6 +24,13 @@ const mockSupabaseCalls: string[] = [];
 jest.mock('../../lib/supabase', () => ({
   supabase: {
     auth: {
+      getSession: async function (this: any) {
+        // The repository layer resolves the user id from the LOCAL session
+        // rather than paying a network round trip per query. Derived from
+        // this mock's own getUser so both stay in step.
+        const r = await this.getUser();
+        return { data: { session: r.data.user ? { user: r.data.user, access_token: 'test-jwt' } : null } };
+      },
       getUser: jest.fn(async () => {
         mockSupabaseCalls.push('auth.getUser');
         return { data: { user: { id: 'u1' } } };
