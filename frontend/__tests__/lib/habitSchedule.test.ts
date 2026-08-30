@@ -99,9 +99,26 @@ describe('AC-H03 — weekly with count and no days', () => {
 });
 
 describe('isDueOn — guards still hold', () => {
-  it('negative habits are never due', () => {
+  /**
+   * CONTRACT CHANGE. This asserted that a negative habit is due on no day,
+   * which meant a habit like "at most 2 cigarettes" was skipped by every
+   * due-day report, by the completion average and by the missed-day backlog
+   * that feeds recovery — logged faithfully, scored correctly, reported
+   * nowhere.
+   *
+   * `behavior_type` says which direction counts as success; the SCHEDULE
+   * comes from `frequency_config`. The two are orthogonal, and the real
+   * asymmetry moved to `isMissedOn` / `countsTowardAverage`, which have their
+   * own tests below.
+   */
+  it('a negative habit follows its schedule like any other', () => {
     const h = habit({ behavior_type: 'negative', frequency_config: { kind: 'weekly', count: 3 } });
-    expect(WEEK.some((d) => isDueOn(h, d))).toBe(false);
+    expect(WEEK.filter((d) => isDueOn(h, d)).length).toBe(3);
+  });
+
+  it('a negative daily habit is due every day', () => {
+    const h = habit({ behavior_type: 'negative', frequency_config: { kind: 'daily' } });
+    expect(WEEK.every((d) => isDueOn(h, d))).toBe(true);
   });
 
   it('not due before created_at', () => {

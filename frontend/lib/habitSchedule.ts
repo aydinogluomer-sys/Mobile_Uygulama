@@ -10,14 +10,30 @@ export function weekdayIndex(date: Date): number {
 
 /**
  * Alışkanlık belirli bir günde "yapılması gereken" (due) mi?
- * Telafi/kaçırma tespiti için kullanılır. Yalnız POZİTİF (kurulan) alışkanlıklar için
- * anlamlıdır — negatif (kaçınma) alışkanlıkları telafi mantığına girmez.
  * Belirsiz frekanslar (haftalık-günsüz, aylık) güvenli tarafta `false` döner; böylece
  * yanlış "kaçırıldı" üretilmez (aşırı sayım yerine eksik sayım tercih edilir).
  */
+/**
+ * Is this habit scheduled on `date`?
+ *
+ * ## Why `behavior_type` is not consulted
+ *
+ * This used to open with `if (habit.behavior_type !== 'positive') return
+ * false`, so a negative habit was due on NO day — and everything built on due
+ * days skipped it: the completion average, the weekly and monthly reports,
+ * and the missed-day backlog that feeds recovery. A user could create "at
+ * most 2 cigarettes", log it faithfully, have it scored correctly by the
+ * engine, and see it reported nowhere.
+ *
+ * That conflated two orthogonal things. `behavior_type` says which DIRECTION
+ * counts as success; the schedule comes from `frequency_config`. A habit you
+ * are trying to quit is due every day you committed to it, exactly like one
+ * you are trying to build.
+ *
+ * The asymmetry that IS real lives in `isMissedOn` below: for a negative
+ * habit, the absence of a log is not evidence of failure.
+ */
 export function isDueOn(habit: Habit, date: Date): boolean {
-  if (habit.behavior_type !== 'positive') return false;
-
   const ds = ymd(date);
   // Oluşturulmadan önceki günlerde due değil
   if (habit.created_at && ymd(new Date(habit.created_at)) > ds) return false;
@@ -298,4 +314,44 @@ export function streakBroken(
   if (logForDay?.state === 'skip') return false; // skip cezasız (§8.5)
   const hasCompletion = logForDay ? (logForDay.state === 'done' || logForDay.state === 'partial') : false;
   return !hasCompletion;
+}
+
+/**
+ * Did the user MISS this habit on a due day?
+ *
+ * The rule is deliberately asymmetric, and the asymmetry is the whole point
+ * of separating this from `isDueOn`:
+ *
+ *   positive habit  — no log means missed. You either did the thing or you
+ *                     did not, and not recording it is not doing it.
+ *   negative habit  — no log means UNKNOWN, not missed. "At most 2
+ *                     cigarettes" with nothing recorded says nothing about
+ *                     the day; treating it as a failure would fill the
+ *                     recovery backlog with days the user simply did not
+ *                     open the app, and would drag the completion average
+ *                     down for behaviour that may well have been perfect.
+ *
+ * A negative habit is missed only when there IS a log saying so — an explicit
+ * `miss`, or a value over its ceiling, which `deriveState` already resolves.
+ */
+export function isMissedOn(
+  habit: Pick<Habit, 'behavior_type'>,
+  log: { state: string } | undefined,
+): boolean {
+  if (!log) return habit.behavior_type !== 'negative';
+  return log.state === 'miss';
+}
+
+/**
+ * Should this due day count towards a completion average?
+ *
+ * Mirrors `isMissedOn`: an unlogged day for a negative habit is excluded from
+ * the denominator rather than scored zero, because scoring it zero is the
+ * same claim — that nothing recorded means it went badly.
+ */
+export function countsTowardAverage(
+  habit: Pick<Habit, 'behavior_type'>,
+  log: { state: string } | undefined,
+): boolean {
+  return !!log || habit.behavior_type !== 'negative';
 }

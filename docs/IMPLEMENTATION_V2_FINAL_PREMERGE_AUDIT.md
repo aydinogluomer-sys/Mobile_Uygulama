@@ -42,7 +42,7 @@ the command, query or live request that produced it.
 | **§22** | Crash monitoring sink | dev console only | — | no DSN provided | **BLOCKED_EXTERNAL** |
 | **§23** | Offline queue account safety | one global key, no owner | per-account key + `userId` + replay filter + lossless migration | 6 behaviour tests; mutations (4 red / 1 red) | **PASS** |
 | **§24** | Recovery vocabulary | lossy v1/v2 adapter | — | unchanged | **NOT_DONE** |
-| **§25** | Negative + measurable habits | reward inverted; two disagreeing scorers | scoring fixed and unified (25 tests, mutations 18/10 red) | **Scoring only.** `isDueOn` still returns false for every negative habit, so a negative measurable habit is excluded from due-day reports, analytics and the recovery backlog — pinned in `ceilingSemantics.test.ts` as G-2. Scoring without lifecycle is not the requirement | **NOT_DONE** |
+| **§25** | Negative + measurable habits | reward inverted; two disagreeing scorers; negative habits due on no day | ceiling scoring unified AND the lifecycle closed: `isDueOn` no longer reads `behavior_type`; `isMissedOn`/`countsTowardAverage` carry the real asymmetry (absence of a log is not failure for a negative habit) | reports, analytics and the recovery backlog now include negative measurable habits; 3 mutations red (7/1/1). Also fixed: an explicit `miss` log landed in the done set, so a day the user recorded as failed could never be offered a make-up | **PASS** |
 | **§26** | Auth lifecycle | — | partially (queue on sign-out) | register blocked, so the full cycle is untestable | **BLOCKED_EXTERNAL** |
 | **§27** | Cache isolation | sync queue global | queue scoped per account | `atlas_notion_login_session` is still global — one account can see another's Notion workspace name on a shared device | **NOT_DONE** |
 | **§28** | One canonical edge tree | two writable trees | `backend/supabase/functions/` removed | gate: duplicate tree absent, function list pinned | **PASS** |
@@ -174,7 +174,7 @@ Completed since the first version of this document: the repository boundary
 | # | Gap | Evidence |
 |---|---|---|
 | G-1 | `profiles.total_xp` not reconstructible; one real account already drifted −30 | §3.2 |
-| G-2 | `isDueOn` excludes negative habits from every due-day report and the recovery backlog | pinned in `ceilingSemantics.test.ts` |
+| G-2 | ~~`isDueOn` excludes negative habits~~ — **CLOSED**, see §25 | `ceilingSemantics.test.ts` now pins the fixed behaviour |
 | G-3 | `atlas_notion_login_session` is global — one account can see another's Notion workspace name | §27 |
 | G-4 | `weekly_xp` / `boss_contributors` readable by any authenticated user; the client never uses them | `FINAL_RLS_MATRIX.md` O-1/O-2 |
 | G-5 | `tasks` has 3 overlapping ALL policies | O-3 |

@@ -1,7 +1,7 @@
 import { eachDayOfInterval, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from 'date-fns';
 import { type Habit, type HabitLog } from './supabase';
 import { type FocusSessionRow } from './focusReport';
-import { isDueOn } from './habitSchedule';
+import { countsTowardAverage, isDueOn } from './habitSchedule';
 import { isMeasurableTracking, completionRatio, type HabitLogState } from './habitEngine';
 import { parseLocalDate, ymd } from './date';
 
@@ -121,8 +121,12 @@ export function habitAveragePercent(params: {
       const dateObj = parseLocalDate(day);
       if (!dateObj) continue;
       if (!isDueOn(habit as Habit, dateObj)) continue;
-      dueCount += 1;
       const log = logMap.get(`${habit.id}|${day}`);
+      // An unlogged day for a NEGATIVE habit is unknown, not a zero. Scoring
+      // it zero would claim the user failed on every day they did not open
+      // the app -- see `countsTowardAverage`.
+      if (!countsTowardAverage(habit, log)) continue;
+      dueCount += 1;
       total += log ? habitLogPercent(habit, log) : 0;
     }
   }

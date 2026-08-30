@@ -13,7 +13,7 @@ import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import { useRecoveryStore } from '../../store/recoveryStore';
 import { deficitFor, type TrackingTypeV2 } from '../../lib/recovery';
-import { isDueOn } from '../../lib/habitSchedule';
+import { isDueOn, isMissedOn } from '../../lib/habitSchedule';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton } from '../../components/ui';
@@ -54,6 +54,8 @@ export default function RecoveryScreen() {
   // Geçmiş günlerde tamamlanmış/kısmi günler — "habitId|yyyy-mm-dd" anahtarlı
   const [doneSet, setDoneSet] = useState<Set<string>>(new Set());
   const [partialSet, setPartialSet] = useState<Set<string>>(new Set());
+  /** Days the user explicitly logged as missed — distinct from never logged. */
+  const [missedSet, setMissedSet] = useState<Set<string>>(new Set());
   // Kısmi günün GERÇEK değeri — "habitId|yyyy-mm-dd" -> value. Plan §9'un
   // başlığı (10.000 hedef / 8.000 fiili -> 2.000 eksik) bu olmadan çalışmaz.
   const [valueMap, setValueMap] = useState<Record<string, number>>({});
@@ -92,7 +94,13 @@ export default function RecoveryScreen() {
       const key = `${h.id}|${d}`;
       if (doneSet.has(key)) continue;
       if (plans.some((p) => p.habit_id === h.id && p.source_date === d)) continue;
-      backlogEntries.push({ habit: h, date: d, kind: partialSet.has(key) ? 'partial' : 'missed' });
+      const isPartial = partialSet.has(key);
+      // Negative habits are due like any other now, but an UNLOGGED day is
+      // not a missed one for them: nothing recorded says nothing about the
+      // day, and treating it as failure would fill this backlog with every
+      // day the user did not open the app. A logged failure still counts.
+      if (!isPartial && !isMissedOn(h, missedSet.has(key) ? { state: 'miss' } : undefined)) continue;
+      backlogEntries.push({ habit: h, date: d, kind: isPartial ? 'partial' : 'missed' });
     }
   }
   backlogEntries.sort((a, b) => b.date.localeCompare(a.date));
@@ -150,15 +158,24 @@ export default function RecoveryScreen() {
     // Geçmiş gün set'leri — kaçırma/kısmi tespiti backlog için bunları kullanır
     const done = new Set<string>();
     const partial = new Set<string>();
+    const missed = new Set<string>();
     const vals: Record<string, number> = {};
     for (const l of data) {
       const k = `${l.habit_id}|${l.completed_at}`;
+      // Split by STATE. This used to be `partial ? partial : done`, so an
+      // explicit `miss` — and a `skip` — landed in the done set and the
+      // backlog skipped the day entirely: a day the user recorded as failed
+      // could never be offered a make-up.
       if (l.state === 'partial') partial.add(k);
-      else done.add(k);
+      else if (l.state === 'miss') missed.add(k);
+      else if (l.state === 'done') done.add(k);
+      // `skip` is deliberately in none of them: it means "not today, on
+      // purpose", which is neither a completion nor a failure.
       if (typeof l.value === 'number') vals[k] = l.value;
     }
     setDoneSet(done);
     setPartialSet(partial);
+    setMissedSet(missed);
     setValueMap(vals);
   }, []);
 

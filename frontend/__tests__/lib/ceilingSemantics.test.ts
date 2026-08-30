@@ -29,6 +29,7 @@
  */
 import { completionRatio, deriveState, completionPercent } from '../../lib/habitEngine';
 import { calculateHabitCompletionRate } from '../../lib/reportMetrics';
+import { isMissedOn } from '../../lib/habitSchedule';
 import type { Habit, HabitLog } from '../../lib/supabase';
 
 const ceiling = (value: number | null | undefined, target: number | null | undefined) =>
@@ -155,9 +156,10 @@ describe('at_most — duration ceilings behave identically', () => {
 describe('the engine and the report now agree', () => {
   // The whole point of routing habitLogPercent through completionRatio.
   //
-  // The fixture is a POSITIVE habit with a ceiling ("at most 30 minutes of
-  // screen time"), not a negative one, because `isDueOn` excludes negative
-  // habits outright — see the describe block below, which pins that.
+  // A POSITIVE habit with a ceiling ("at most 30 minutes of screen time") —
+  // a real combination, and the one that keeps this block about scoring
+  // rather than about scheduling. Negative habits have their own block below,
+  // now that they reach the reports at all.
   const habit = (overrides: Partial<Habit> = {}) => ({
     id: 'h1', name: 'Ekran süresi', color: '#000', status: 'active',
     tracking_type: 'numeric', daily_goal: 2, target_direction: 'at_most',
@@ -189,24 +191,12 @@ describe('the engine and the report now agree', () => {
   });
 });
 
-describe('KNOWN GAP — negative habits are excluded from due-day reporting', () => {
+describe('negative measurable habits reach the reports (gap CLOSED)', () => {
   /**
-   * `habitSchedule.isDueOn` opens with `if (habit.behavior_type !== 'positive')
-   * return false`, so a negative habit is never due on any day. Everything
-   * built on due days therefore skips it entirely: `habitAveragePercent`,
-   * `calculateHabitCompletionRate`, and the missed-day backlog that feeds
-   * recovery (`app/screens/recovery.tsx` filters on the same predicate).
-   *
-   * That was invisible while negative habits could only be `abstinence`
-   * flags. Now that "at most 2 cigarettes" is expressible, a user can create
-   * a habit that is tracked, scored correctly by the engine, and reported
-   * nowhere.
-   *
-   * This is pinned as CURRENT BEHAVIOUR rather than fixed here: changing
-   * `isDueOn` alters streaks, capacity, recovery backlog and every report at
-   * once, which is a product decision with a far wider blast radius than
-   * ceiling scoring. Recorded in the pre-merge audit as an open gap so it is
-   * visible rather than inferred from a missing test.
+   * `isDueOn` used to return false for every negative habit, so "at most 2
+   * cigarettes" was logged, scored correctly by the engine, and reported
+   * nowhere. That was recorded here as a known gap; it is now fixed, and
+   * these tests pin the fix in both directions.
    */
   const negative = {
     id: 'n1', name: 'Sigara', color: '#000', status: 'active',
@@ -215,10 +205,68 @@ describe('KNOWN GAP — negative habits are excluded from due-day reporting', ()
     created_at: '2026-01-01T00:00:00Z', end_condition: null,
   } as unknown as Habit;
 
-  it('scores 0 in due-day reports regardless of a perfect day', () => {
-    const perfectDay = [{ habit_id: 'n1', completed_at: '2026-08-30', state: 'done' as const, value: 0 }];
-    expect(calculateHabitCompletionRate([negative], perfectDay, '2026-08-30', '2026-08-30')).toBe(0);
-    // …while the engine scores the same day correctly.
+  const day = (state: 'done' | 'partial' | 'miss', value: number) =>
+    [{ habit_id: 'n1', completed_at: '2026-08-30', state, value }];
+
+  it('a perfect day is reported as 100%, not 0%', () => {
+    expect(calculateHabitCompletionRate([negative], day('done', 0), '2026-08-30', '2026-08-30')).toBe(100);
     expect(ceiling(0, 2)).toBe(1);
+  });
+
+  it.each([
+    [0, 100],
+    [2, 100],
+    [3, 50],
+    [4, 0],
+  ])('smoking %i against a limit of 2 reports %i%%', (value, expected) => {
+    const state = value <= 2 ? 'done' : 'partial';
+    expect(
+      calculateHabitCompletionRate([negative], day(state as 'done' | 'partial', value), '2026-08-30', '2026-08-30'),
+    ).toBe(expected);
+  });
+
+  it('an UNLOGGED day is excluded from the average, not scored zero', () => {
+    // A logged perfect day next to an unlogged one still reads 100%: the
+    // unlogged day is not dragging it down, because nothing recorded says
+    // nothing about the day.
+    const oneGoodDay = [{ habit_id: 'n1', completed_at: '2026-08-30', state: 'done' as const, value: 0 }];
+    expect(calculateHabitCompletionRate([negative], oneGoodDay, '2026-08-29', '2026-08-30')).toBe(100);
+  });
+
+  it('a positive habit still scores an unlogged due day as zero', () => {
+    // The asymmetry is deliberate and must not leak the other way.
+    const positive = {
+      ...negative, id: 'p1', behavior_type: 'positive',
+      target_direction: 'at_least', daily_goal: 10,
+    } as unknown as Habit;
+    const logged = [{ habit_id: 'p1', completed_at: '2026-08-30', state: 'done' as const, value: 10 }];
+    expect(calculateHabitCompletionRate([positive], logged, '2026-08-29', '2026-08-30')).toBe(50);
+  });
+});
+
+describe('missed-day semantics are asymmetric on purpose', () => {
+  const neg = { behavior_type: 'negative' as const };
+  const pos = { behavior_type: 'positive' as const };
+
+  it('a positive habit with no log is missed', () => {
+    expect(isMissedOn(pos, undefined)).toBe(true);
+  });
+
+  it('a negative habit with no log is NOT missed — absence is not failure', () => {
+    // Otherwise the recovery backlog fills with every day the user did not
+    // open the app.
+    expect(isMissedOn(neg, undefined)).toBe(false);
+  });
+
+  it('either kind is missed when the log says so', () => {
+    expect(isMissedOn(pos, { state: 'miss' })).toBe(true);
+    expect(isMissedOn(neg, { state: 'miss' })).toBe(true);
+  });
+
+  it('a completed or partial day is never missed', () => {
+    for (const h of [pos, neg]) {
+      expect(isMissedOn(h, { state: 'done' })).toBe(false);
+      expect(isMissedOn(h, { state: 'partial' })).toBe(false);
+    }
   });
 });
