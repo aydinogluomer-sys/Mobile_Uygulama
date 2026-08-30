@@ -1,3 +1,4 @@
+import { withEdgeDeadline } from '../../lib/edgeCall';
 import { newRequestId } from '../../services/focusPointService';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
@@ -151,7 +152,9 @@ export default function AICoachScreen() {
       const activeHabits = analyticsHabits ?? habits.filter((h) => h.status === 'active').map((h) => h.name);
       const pendingTasks = tasks.filter((t) => !t.completed).length;
 
-      const { data, error } = await supabase.functions.invoke('generate-routine', {
+      const { data, error } = await withEdgeDeadline('AI Koç', (signal) =>
+        supabase.functions.invoke('generate-routine', {
+        signal,
         body: {
           message: msg,
           context: {
@@ -175,7 +178,7 @@ export default function AICoachScreen() {
           mode: 'coach',
           request_id: requestId,
         },
-      });
+      }));
 
       if (error) {
         // Sunucunun döndürdüğü gerçek hata mesajını çek (kredi, rate limit, vb.)
@@ -215,9 +218,11 @@ export default function AICoachScreen() {
     // charge instead of paying twice. See newRequestId().
     const requestId = newRequestId();
     try {
-      const { data, error } = await supabase.functions.invoke('generate-routine', {
+      const { data, error } = await withEdgeDeadline('AI Koç', (signal) =>
+        supabase.functions.invoke('generate-routine', {
+        signal,
         body: { mode: 'summarize', transcript, request_id: requestId },
-      });
+      }));
 
       if (error) {
         const { msg, code, balance } = await extractInvokeError(error);

@@ -1,3 +1,4 @@
+import { withEdgeDeadline } from '../lib/edgeCall';
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import * as WebBrowser from 'expo-web-browser';
@@ -44,9 +45,9 @@ export const useGoogleCalendarStore = create<GoogleCalendarStore>((set, get) => 
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     try {
-      const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/google-auth?action=status`, {
+      const res = await withEdgeDeadline('Google Takvim', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/google-auth?action=status`, { signal,
         headers: { Authorization: `Bearer ${session.access_token}` },
-      });
+      }));
       // A 404 means the function is not deployed at all -- which is exactly
       // what shipped for months. Treat it as unavailable, not as "idle".
       if (res.status === 404) {
@@ -84,10 +85,9 @@ export const useGoogleCalendarStore = create<GoogleCalendarStore>((set, get) => 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Oturum açmanız gerekiyor');
 
-      const urlRes = await fetch(
-        `${SUPABASE_FUNCTIONS_URL}/google-auth?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
-        { headers: { Authorization: `Bearer ${session.access_token}` } }
-      );
+      const urlRes = await withEdgeDeadline('Google Takvim', (signal) => fetch(
+        `${SUPABASE_FUNCTIONS_URL}/google-auth?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`, { signal, headers: { Authorization: `Bearer ${session.access_token}` } }
+      ));
       if (urlRes.status === 404) {
         set({ available: false });
         throw new Error('Google Takvim bu kurulumda kullanılamıyor (sunucu bileşeni yayında değil).');
@@ -121,14 +121,14 @@ export const useGoogleCalendarStore = create<GoogleCalendarStore>((set, get) => 
       if (!code) throw new Error('Yetkilendirme kodu alınamadı');
       if (!returnedState) throw new Error('OAuth state alınamadı');
 
-      const callbackRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/google-auth?action=callback`, {
+      const callbackRes = await withEdgeDeadline('Google Takvim', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/google-auth?action=callback`, { signal,
         method: 'POST',
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ code, redirect_uri: REDIRECT_URI, state: returnedState }),
-      });
+      }));
 
       const callbackData = await callbackRes.json();
       if (!callbackRes.ok) throw new Error(callbackData.error ?? 'Bağlantı kurulamadı');
@@ -158,10 +158,10 @@ export const useGoogleCalendarStore = create<GoogleCalendarStore>((set, get) => 
     // google_calendar_integrations — the app asserting a revocation that had
     // not happened, with no remaining affordance to retry it.
     try {
-      const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/google-auth?action=disconnect`, {
+      const res = await withEdgeDeadline('Google Takvim', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/google-auth?action=disconnect`, { signal,
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}` },
-      });
+      }));
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         set({

@@ -27,6 +27,7 @@
  * and 8-week fragility windows `behaviorIntelligence` uses), via existing
  * repository functions -- no new repository code needed for this screen.
  */
+import { withEdgeDeadline } from '../../lib/edgeCall';
 import { newRequestId } from '../../services/focusPointService';
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
@@ -204,9 +205,11 @@ function AiCommentaryPanel({ digest, label }: { digest: Digest; label: string })
     const requestId = newRequestId();
     try {
       const message = `${label} alışkanlık verilerimi analiz et, kısa bir yorum ve somut bir tavsiye ver:\n${formatDigestForPrompt(digest)}`;
-      const { data, error: invokeError } = await supabase.functions.invoke('generate-routine', {
+      const { data, error: invokeError } = await withEdgeDeadline('AI analizi', (signal) =>
+        supabase.functions.invoke('generate-routine', {
+        signal,
         body: { message, mode: 'coach', request_id: requestId },
-      });
+      }));
       if (invokeError) {
         const { msg } = await extractInvokeError(invokeError);
         setError(msg);

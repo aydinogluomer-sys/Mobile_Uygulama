@@ -1,3 +1,4 @@
+import { withEdgeDeadline } from '../lib/edgeCall';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
@@ -82,7 +83,7 @@ export const useNotionSessionStore = create<NotionLoginStore>((set, get) => ({
   login: async () => {
     set({ loading: true, error: null });
     try {
-      const urlRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`);
+      const urlRes = await withEdgeDeadline('Notion oturumu', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`, { signal }));
       const urlData = await urlRes.json();
       if (!urlRes.ok || !urlData.url || !urlData.state) throw new Error(urlData.error ?? 'Notion bağlantı URL’i alınamadı');
 
@@ -108,11 +109,11 @@ export const useNotionSessionStore = create<NotionLoginStore>((set, get) => ({
       // istemci saldırganın kontrolündedir, dolayısıyla o kontrol koruma değil
       // dekordu. İmza, son kullanma ve uid bağı callback'te doğrulanır.
 
-      const callbackRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=callback`, {
+      const callbackRes = await withEdgeDeadline('Notion oturumu', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=callback`, { signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, redirect_uri: REDIRECT_URI, state: returnedState }),
-      });
+      }));
       const callbackData = (await callbackRes.json()) as NotionAuthCallback;
       if (!callbackRes.ok || !callbackData.success) {
         throw new Error(callbackData.error ?? 'Notion bağlantısı kurulamadı');

@@ -1,3 +1,4 @@
+import { withEdgeDeadline } from '../lib/edgeCall';
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import * as WebBrowser from 'expo-web-browser';
@@ -42,14 +43,14 @@ const REDIRECT_URI = Linking.createURL('spotify-callback');
 async function callFn(action: string, body?: Record<string, unknown>): Promise<any> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Oturum açmanız gerekiyor');
-  const res = await fetch(`${FN_URL}?action=${action}`, {
+  const res = await withEdgeDeadline('Spotify', (signal) => fetch(`${FN_URL}?action=${action}`, { signal,
     method: 'POST',
     headers: {
       Authorization: `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body ?? {}),
-  });
+  }));
   const parsed = await res.json().catch(() => ({}));
   // The HTTP status was previously discarded, so a 401/500 came back looking
   // exactly like a successful empty body and every caller read it as success.
@@ -88,10 +89,9 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Oturum açmanız gerekiyor');
 
-      const urlRes = await fetch(
-        `${FN_URL}?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
-        { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: '{}' }
-      );
+      const urlRes = await withEdgeDeadline('Spotify', (signal) => fetch(
+        `${FN_URL}?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`, { signal, method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: '{}' }
+      ));
       const { url: oauthUrl, error } = await urlRes.json();
       if (!oauthUrl) throw new Error(error ?? 'OAuth URL alınamadı');
 

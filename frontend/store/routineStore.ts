@@ -1,3 +1,4 @@
+import { withEdgeDeadline } from '../lib/edgeCall';
 import { newRequestId } from '../services/focusPointService';
 import { create } from 'zustand';
 import { supabase, Routine } from '../lib/supabase';
@@ -175,9 +176,11 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
     });
     const requestId = newRequestId();
     try {
-      const { data, error } = await supabase.functions.invoke('generate-routine', {
+      const { data, error } = await withEdgeDeadline('AI rutin', (signal) =>
+        supabase.functions.invoke('generate-routine', {
+        signal,
         body: { prompt, request_id: requestId },
-      });
+      }));
 
       if (error) {
         // FunctionsHttpError içinden sunucunun döndürdüğü mesajı çek

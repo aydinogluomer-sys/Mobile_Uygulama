@@ -1,3 +1,4 @@
+import { withEdgeDeadline } from '../lib/edgeCall';
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import * as WebBrowser from 'expo-web-browser';
@@ -41,10 +42,9 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       
-      const res = await fetch(
-        `${SUPABASE_FUNCTIONS_URL}/notion-auth?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
-        { headers: { Authorization: `Bearer ${session.access_token}` } }
-      );
+      const res = await withEdgeDeadline('Notion', (signal) => fetch(
+        `${SUPABASE_FUNCTIONS_URL}/notion-auth?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`, { signal, headers: { Authorization: `Bearer ${session.access_token}` } }
+      ));
       
       if (!res.ok) return; // Başarısız olsa da connect() üretecek
       
@@ -66,9 +66,9 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
         return;
       }
       
-      const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=status`, {
+      const res = await withEdgeDeadline('Notion', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=status`, { signal,
         headers: { Authorization: `Bearer ${session.access_token}` },
-      });
+      }));
       
       if (!res.ok) {
         const errorData = await res.json();
@@ -107,10 +107,9 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
       // Önceden çekilen URL varsa kullan, yoksa şimdi çek
       let oauthUrl = get()._pendingOAuthUrl;
       if (!oauthUrl) {
-        const urlRes = await fetch(
-          `${SUPABASE_FUNCTIONS_URL}/notion-auth?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
-          { headers: { Authorization: `Bearer ${session.access_token}` } }
-        );
+        const urlRes = await withEdgeDeadline('Notion', (signal) => fetch(
+          `${SUPABASE_FUNCTIONS_URL}/notion-auth?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`, { signal, headers: { Authorization: `Bearer ${session.access_token}` } }
+        ));
         if (!urlRes.ok) {
           const error = await urlRes.json();
           throw new Error(error.error ?? 'OAuth URL alınamadı');
@@ -138,14 +137,14 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
       if (!returnedState) throw new Error('OAuth state alınamadı');
 
       // Code'u token ile değiştir ve veritabanları kur
-      const callbackRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=callback`, {
+      const callbackRes = await withEdgeDeadline('Notion', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=callback`, { signal,
         method: 'POST',
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ code, redirect_uri: REDIRECT_URI, state: returnedState }),
-      });
+      }));
       
       if (!callbackRes.ok) {
         const errorData = await callbackRes.json();
@@ -184,10 +183,10 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
         return;
       }
       
-      const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=disconnect`, {
+      const res = await withEdgeDeadline('Notion', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=disconnect`, { signal,
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}` },
-      });
+      }));
       
       if (!res.ok) {
         const errorData = await res.json();
@@ -213,9 +212,11 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
     
     set({ status: 'syncing', error: null });
     try {
-      const { data, error } = await supabase.functions.invoke('notion-sync', {
+      const { data, error } = await withEdgeDeadline('Notion', (signal) =>
+        supabase.functions.invoke('notion-sync', {
+        signal,
         body: { date },
-      });
+      }));
       
       if (error) {
         throw new Error(error.message || 'Senkronizasyon hatası');

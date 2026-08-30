@@ -1,3 +1,4 @@
+import { withEdgeDeadline } from '../../lib/edgeCall';
 import { newRequestId } from '../../services/focusPointService';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -68,9 +69,11 @@ export default function JournalInsightsScreen() {
       .slice(0, 7000);
 
     try {
-      const { data, error: invErr } = await supabase.functions.invoke('generate-routine', {
+      const { data, error: invErr } = await withEdgeDeadline('Günlük içgörüsü', (signal) =>
+        supabase.functions.invoke('generate-routine', {
+        signal,
         body: { mode: 'insights', period, entries: text, request_id: requestId },
-      });
+      }));
 
       if (invErr) {
         const { msg, code, balance } = await extractInvokeError(invErr);
