@@ -12,8 +12,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
-import { badHabitAPI } from '../utils/api';
-import { BadHabit } from '../types';
+import {
+  listBadHabits, createBadHabit, savingsFor, type Savings,
+} from '../services/badHabitService';
+import type { BadHabitRow } from '../repositories/badHabitRepository';
 
 interface BadHabitsTrackerProps {
   visible: boolean;
@@ -21,11 +23,12 @@ interface BadHabitsTrackerProps {
 }
 
 export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerProps) {
-  const [badHabits, setBadHabits] = useState<BadHabit[]>([]);
+  const [badHabits, setBadHabits] = useState<BadHabitRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedHabit, setSelectedHabit] = useState<BadHabit | null>(null);
-  const [savings, setSavings] = useState<any>(null);
+  const [selectedHabit, setSelectedHabit] = useState<BadHabitRow | null>(null);
+  const [savings, setSavings] = useState<Savings | null>(null);
   const [newHabit, setNewHabit] = useState({
     name: '',
     description: '',
@@ -40,46 +43,44 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
   }, [visible]);
 
   const loadBadHabits = async () => {
-    try {
-      setLoading(true);
-      const data = await badHabitAPI.getAll();
-      setBadHabits(data);
-    } catch (error) {
-      console.error('Kötü alışkanlıklar yüklenirken hata:', error);
-    } finally {
-      setLoading(false);
+    setLoading(true);
+    const res = await listBadHabits(null, 100);
+    setLoading(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
     }
+    setError(null);
+    setBadHabits(res.data.rows);
   };
 
   const handleAddBadHabit = async () => {
-    try {
-      if (!newHabit.name.trim()) return;
+    const name = newHabit.name.trim();
+    if (!name) return;
 
-      await badHabitAPI.create({
-        name: newHabit.name,
-        description: newHabit.description,
-        quit_date: new Date().toISOString(),
-        cost_per_day: parseFloat(newHabit.cost_per_day) || 0,
-        time_wasted_per_day: parseInt(newHabit.time_wasted_per_day) || 0,
-      });
-
-      setShowAddModal(false);
-      setNewHabit({ name: '', description: '', cost_per_day: '', time_wasted_per_day: '' });
-      await loadBadHabits();
-    } catch (error) {
-      console.error('Kötü alışkanlık eklenirken hata:', error);
+    const res = await createBadHabit({
+      name,
+      description: newHabit.description.trim() || null,
+      quitDate: new Date().toISOString(),
+      costPerDay: parseFloat(newHabit.cost_per_day) || 0,
+      timeWastedPerDay: parseInt(newHabit.time_wasted_per_day, 10) || 0,
+    });
+    if (!res.ok) {
+      setError(res.error);
+      return;
     }
+
+    setShowAddModal(false);
+    setNewHabit({ name: '', description: '', cost_per_day: '', time_wasted_per_day: '' });
+    await loadBadHabits();
   };
 
-  const viewSavings = async (habit: BadHabit) => {
-    try {
-      if (!habit._id) return;
-      const data = await badHabitAPI.getSavings(habit._id);
-      setSavings(data);
-      setSelectedHabit(habit);
-    } catch (error) {
-      console.error('Tasarruf hesaplanırken hata:', error);
-    }
+  // Derived, not fetched. The endpoint this replaces was a round trip to
+  // multiply two numbers by a day count -- and it returned a NEGATIVE saving
+  // for a quit date in the future. See services/badHabitService.ts.
+  const viewSavings = (habit: BadHabitRow) => {
+    setSavings(savingsFor(habit));
+    setSelectedHabit(habit);
   };
 
   return (
@@ -100,7 +101,13 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
           </TouchableOpacity>
         </View>
 
-        {loading ? (
+        {error ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="cloud-offline-outline" size={64} color="#C76A6A" />
+            <Text style={styles.emptyText}>Liste yüklenemedi</Text>
+            <Text style={styles.emptySubtext}>{error}</Text>
+          </View>
+        ) : loading ? (
           <ActivityIndicator size="large" color="#D97757" style={styles.loader} />
         ) : (
           <ScrollView style={styles.content}>
@@ -113,7 +120,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
             ) : (
               badHabits.map((habit) => (
                 <TouchableOpacity
-                  key={habit._id}
+                  key={habit.id}
                   style={styles.habitCard}
                   onPress={() => viewSavings(habit)}
                 >
@@ -219,19 +226,19 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                 <View style={styles.savingsStats}>
                   <View style={styles.savingsStatCard}>
                     <Ionicons name="calendar" size={32} color="#D97757" />
-                    <Text style={styles.savingsStatValue}>{savings.days_since_quit}</Text>
+                    <Text style={styles.savingsStatValue}>{savings.daysSinceQuit}</Text>
                     <Text style={styles.savingsStatLabel}>Gün</Text>
                   </View>
 
                   <View style={styles.savingsStatCard}>
                     <Ionicons name="cash" size={32} color="#87A678" />
-                    <Text style={styles.savingsStatValue}>₺{savings.money_saved}</Text>
+                    <Text style={styles.savingsStatValue}>₺{savings.moneySaved}</Text>
                     <Text style={styles.savingsStatLabel}>Tasarruf</Text>
                   </View>
 
                   <View style={styles.savingsStatCard}>
                     <Ionicons name="time" size={32} color="#D4A84A" />
-                    <Text style={styles.savingsStatValue}>{savings.time_saved_hours}sa</Text>
+                    <Text style={styles.savingsStatValue}>{savings.timeSavedHours}sa</Text>
                     <Text style={styles.savingsStatLabel}>Zaman</Text>
                   </View>
                 </View>

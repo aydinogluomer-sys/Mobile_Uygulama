@@ -21,6 +21,7 @@
  * in one exported function makes that structural rather than a convention
  * two code paths happen to follow.
  */
+import { notify } from './webhookService';
 import type { Habit, HabitLog } from '../lib/supabase';
 import {
   adaptTrackingType,
@@ -145,6 +146,23 @@ export type PersistResult =
  * against `UNIQUE (habit_id, completed_at)` whether or not this process has
  * ever seen the row.
  */
+/**
+ * Tells the user's own automations that a habit was completed.
+ *
+ * Only for `done`. A partial or a miss is not a completion, and the legacy
+ * service fired on the same condition, so an existing n8n flow keeps its
+ * meaning. Never awaited -- see `notify` in webhookService.
+ */
+function announce(habitId: string, dateStr: string, log: HabitLog): void {
+  if (log.state !== 'done') return;
+  notify('habit_completed', {
+    habit_id: habitId,
+    date: dateStr,
+    state: log.state,
+    value: log.value ?? null,
+  });
+}
+
 export async function persistCompletion(params: {
   habitId: string;
   dateStr: string;
@@ -153,7 +171,9 @@ export async function persistCompletion(params: {
 }): Promise<PersistResult> {
   if (params.confirmedId) {
     const updated = await repoUpdateHabitLog(params.confirmedId, params.patch as Record<string, unknown>);
-    return updated.ok ? { ok: true, log: updated.data } : { ok: false, error: updated.error };
+    if (!updated.ok) return { ok: false, error: updated.error };
+    announce(params.habitId, params.dateStr, updated.data);
+    return { ok: true, log: updated.data };
   }
 
   const inserted = await repoInsertHabitLog({
@@ -161,13 +181,18 @@ export async function persistCompletion(params: {
     dateStr: params.dateStr,
     patch: params.patch as Record<string, unknown>,
   });
-  if (inserted.ok) return { ok: true, log: inserted.data };
+  if (inserted.ok) {
+    announce(params.habitId, params.dateStr, inserted.data);
+    return { ok: true, log: inserted.data };
+  }
 
   if (inserted.code === '23505') {
     const found = await repoFindHabitLog({ habitId: params.habitId, dateStr: params.dateStr });
     if (found.ok && found.data) {
       const updated = await repoUpdateHabitLog(found.data.id, params.patch as Record<string, unknown>);
-      return updated.ok ? { ok: true, log: updated.data } : { ok: false, error: updated.error };
+      if (!updated.ok) return { ok: false, error: updated.error };
+      announce(params.habitId, params.dateStr, updated.data);
+      return { ok: true, log: updated.data };
     }
   }
 

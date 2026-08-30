@@ -78,13 +78,6 @@ function formatTrend(t: Result<Trend>): string {
   return `${trendLabel(t.value.direction)} · ${pts >= 0 ? '+' : ''}${pts} puan${t.value.partialWindow ? ` (${t.value.weeksUsed}/${t.value.weeksRequested} hafta)` : ''}`;
 }
 
-const BAND_COLOR: Record<string, string> = {
-  dusuk: colors.success,
-  dengeli: colors.info,
-  yuksek: colors.warning,
-  asiri: colors.error,
-};
-
 /**
  * How many days in `[start, end]` had a `dailyLoad` band of `aşırı` -- same
  * composition `weekly-review.tsx`/`monthly-review.tsx` use (screen-local,
@@ -298,7 +291,6 @@ export default function InsightsScreen() {
       setLoading(false);
     });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [since, todayYmd]);
 
   const activeHabits = habits.filter((h) => h.status === 'active');

@@ -18,6 +18,7 @@ import {
   updateTask as repoUpdate,
 } from '../repositories/taskRepository';
 import type { Cursor } from '../repositories/shared';
+import { notify } from './webhookService';
 
 export const listTasks = (cursor?: Cursor | null, limit?: number) => fetchTasksPage(cursor, limit);
 export const searchTasks = (q: string, limit?: number) => repoSearch(q, limit);
@@ -29,12 +30,18 @@ export const removeTask = (id: string) => repoDelete(id);
  * Sets completion, keeping `completed`, `status` and `completed_at`
  * consistent — the invariant, in one place.
  */
-export function setCompleted(id: string, completed: boolean) {
-  return repoUpdate(id, {
+export async function setCompleted(id: string, completed: boolean) {
+  const res = await repoUpdate(id, {
     completed,
     status: completed ? 'completed' : 'pending',
     completed_at: completed ? new Date().toISOString() : null,
   } as Partial<Task>);
+  // Only for a write the database accepted, and only in the completing
+  // direction -- un-ticking a task is not a completion event.
+  if (res.ok && completed) {
+    notify('task_completed', { task_id: id, title: res.data?.title ?? null });
+  }
+  return res;
 }
 
 /** Archiving is a status change, not a delete — the row stays for reports. */

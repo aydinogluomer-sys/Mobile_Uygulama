@@ -45,24 +45,11 @@ export interface Completion {
   mood?: number;
 }
 
-export interface Webhook {
-  _id?: string;
-  url: string;
-  event_types: string[];
-  headers?: Record<string, string>;
-  enabled: boolean;
-  created_at: string;
-}
-
-export interface BadHabit {
-  _id?: string;
-  name: string;
-  description?: string;
-  quit_date: string;
-  cost_per_day: number;
-  time_wasted_per_day: number;
-  created_at: string;
-}
+// `Webhook` and `BadHabit` used to live here, shaped by the FastAPI service
+// (`_id`, snake_case). Both features are on Supabase now and their row types
+// come from their repositories, so the shape is defined once, next to the
+// query that produces it: `repositories/webhookRepository.ts` and
+// `repositories/badHabitRepository.ts`.
 
 export interface HeatmapData {
   [date: string]: number;

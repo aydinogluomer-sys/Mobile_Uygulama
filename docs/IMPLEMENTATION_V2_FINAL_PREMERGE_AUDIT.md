@@ -32,7 +32,7 @@ the command, query or live request that produced it.
 | **§12** | Focus-Point charging atomicity | `spend_focus_points` error unchecked | — | not addressed | **NOT_DONE** |
 | **§13** | Pagination | unbounded reads across the data layer | keyset paging, per-tab paging, server-side search, `LoadMoreFooter` in four screens; 3 further unbounded queries found and bounded | Bounding is now checked PER QUERY (`queryBounding`), generating `docs/QUERY_BOUNDING_MATRIX.md`: 64 queries, 32 collection SELECTs, **0 UNCLASSIFIED**. Runtime paging proven with 65 rows at page size 30 — no duplicates, nothing missing, stable under insert/delete, id tie-breaker exercised. 3 mutations each turn it red | **PASS** |
 | **§14** | Navigation IA | today/tasks/focus/timeline/stats | Bugün · Plan · Alışkanlıklar · İçgörüler · Profil; hubs compose the existing screens, old routes kept as `href: null` | `run-tests.js` parses visible vs hidden; 3 mutations verified | **PASS** |
-| **§15** | Legacy FastAPI retirement | 2 client call sites, `user_id="default"` | — | still 2 call sites | **NOT_DONE** |
+| **§15** | Legacy FastAPI retirement | 3 features on an UNAUTHENTICATED service (`grep -c` for Depends/jwt/Authorization/verify_token = 0) where every row is `user_id = "default"`; `GET /api/export` returned every user's habits, tasks, completions and webhooks to any caller, and settings.tsx opened the Excel/CSV variants in the system browser | webhooks + bad habits on Supabase with owner RLS; export assembled on the device from the repositories; `utils/api.ts` and `axios` gone | 50 tests. 4 mutations red: re-reading `EXPO_PUBLIC_BACKEND_URL`, re-adding axios, un-stripping webhook headers from the backup, restoring the negative-savings bug. Live probes: `http://` refused, unknown event type refused, negative cost refused, blank name refused, `https://` accepted | **PASS** |
 | **§16** | Dependency security | 2 critical, 16 high | `npm audit fix`, no `--force` | **0 critical, 9 high**, all build-time and **absent from the shipped bundle** (grep over `dist/`) | **PASS** |
 | **§17** | Lint zero | 0 err / 73 warn (CI scope) | — | unchanged; full repo 3 err / 163 warn | **NOT_DONE** |
 | **§18** | Package manager | `yarn@1.22.22`, no yarn.lock | `npm@11.16.0`; CI comment corrected | manifest/lockfile/CI all name npm | **PASS** |
@@ -161,7 +161,7 @@ fixed.
 
 ### P1 — not done on this branch
 
-Monthly review cloud persistence (§9) · legacy FastAPI retirement (§15) ·
+Monthly review cloud persistence (§9) ·
 Focus-Point charging atomicity (§12) · lint zero (§17) · design tokens (§19) ·
 branding (§20) · widget (§21) · recovery vocabulary (§24) · performance
 profiling (§36).

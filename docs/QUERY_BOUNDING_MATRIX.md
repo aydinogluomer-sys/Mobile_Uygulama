@@ -8,6 +8,8 @@ query is unbounded; this does not.
 
 | Repository | Operation | Table | Collection? | Bound | User scoped |
 |---|---|---|---|---|---|
+| `badHabitRepository.ts` | `fetchBadHabitsPage` | `bad_habits` | yes | KEYSET_PAGE | yes |
+| `badHabitRepository.ts` | `insertBadHabit` | `bad_habits` | no | WRITE | — |
 | `creditRepository.ts` | `fetchCreditTransactions` | `credit_transactions` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `deepWorkRepository.ts` | `fetchDeepWorkSince` | `deep_work_sessions` | yes | DATE_WINDOW | yes |
 | `deepWorkRepository.ts` | `insertDeepWorkSession` | `deep_work_sessions` | no | WRITE | — |
@@ -69,18 +71,20 @@ query is unbounded; this does not.
 | `taskRepository.ts` | `insertSplitTasks` | `tasks` | no | WRITE | — |
 | `taskRepository.ts` | `insertTask` | `tasks` | no | WRITE | — |
 | `taskRepository.ts` | `searchTasks` | `tasks` | yes | BOUNDED_SEARCH | yes |
+| `webhookRepository.ts` | `fetchWebhooks` | `webhooks` | yes | BOUNDED_DOMAIN_WINDOW | yes |
+| `webhookRepository.ts` | `insertWebhook` | `webhooks` | no | WRITE | — |
 | `willpowerRepository.ts` | `fetchOrCreateWillpowerState` | `willpower_state` | no | SINGLE_ROW | yes |
 | `willpowerRepository.ts` | `fetchOrCreateWillpowerState` | `willpower_state` | no | WRITE | — |
 | `willpowerRepository.ts` | `updateWillpowerState` | `willpower_state` | no | WRITE | yes |
 
 ## Totals
 
-- queries: **64**
-- collection SELECTs: **32**
-- KEYSET_PAGE: **5**
+- queries: **68**
+- collection SELECTs: **34**
+- KEYSET_PAGE: **6**
 - DATE_WINDOW: **9**
 - BOUNDED_SEARCH: **3**
 - EXACT_COUNT: **1**
-- BOUNDED_DOMAIN_WINDOW: **14**
+- BOUNDED_DOMAIN_WINDOW: **15**
 - SINGLE_ROW: **7**
 - **UNCLASSIFIED: 0**

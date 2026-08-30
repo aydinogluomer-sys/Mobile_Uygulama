@@ -1,3 +1,4 @@
+import { resetWebhookCache } from '../services/webhookService';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, View, type AppStateStatus } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -72,6 +73,11 @@ export default function RootLayout() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      // Webhook kayıtları oturum boyunca bellekte tutuluyor (tamamlama yolu
+      // her tik'te PostgREST'e gitmesin diye). Hesap değişince o liste artık
+      // yanlış sahibe ait; bırakılırsa A'nın uç noktasına B'nin tamamlaması
+      // gider. Bir sonraki gönderimde yeniden okunur.
+      resetWebhookCache();
     });
 
     return () => {

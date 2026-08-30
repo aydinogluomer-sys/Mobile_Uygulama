@@ -102,6 +102,15 @@ describe('services exist and hold real work', () => {
       anchors: ['status: completed ?', 'completed_at: completed ?'] },
     { service: 'focusService.ts', rule: 'a task is credited only for a session the database accepted',
       anchors: ['if (!session.ok)', 'sessionRecorded: false', 'setFocusTaskProgress('] },
+    // The three below have no store: settings.tsx and BadHabitsTracker.tsx
+    // use them directly. That is still inside the contract -- the rule the
+    // UI must not break is reaching PAST a service to a repository.
+    { service: 'webhookService.ts', rule: 'a side channel can never fail the completion that triggered it',
+      anchors: ['new AbortController()', 'resetWebhookCache', '.catch(() => undefined)'] },
+    { service: 'badHabitService.ts', rule: 'a future quit date is zero days, not a negative saving',
+      anchors: ['elapsed <= 0', 'Math.floor('] },
+    { service: 'exportService.ts', rule: 'pages are drained to the end, and an incomplete backup says so',
+      anchors: ['truncated', 'nextCursor', 'headers: _omitted'] },
   ];
 
   it.each(RULES)('$service owns its rule: $rule', ({ service, anchors }) => {

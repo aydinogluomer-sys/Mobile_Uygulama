@@ -18,14 +18,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../../store/themeStore';
 import { ACCENTS, type AccentKey } from '../../lib/tokens';
 import type { SeasonalMotionIntensity } from '../../components/seasonalMotion/types';
-import { webhookAPI, exportAPI } from '../../utils/api';
+import {
+  listWebhooks, registerWebhook, removeWebhook,
+  type WebhookRow,
+} from '../../services/webhookService';
+import { buildBackup, renderBackup, type ExportFormat } from '../../services/exportService';
 
 const SEASONAL_OPTIONS: { v: SeasonalMotionIntensity; l: string }[] = [
   { v: 'off', l: 'Kapalı' },
   { v: 'subtle', l: 'Hafif' },
   { v: 'normal', l: 'Normal' },
 ];
-import { Webhook } from '../../types';
 import BadHabitsTracker from '../../components/BadHabitsTracker';
 import { seedDemoData, isSeedingAllowed } from '../../lib/demoSeed';
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
@@ -48,72 +51,58 @@ export default function SettingsScreen() {
   );
   const [categoryDetailVisible, setCategoryDetailVisible] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
-  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [webhooks, setWebhooks] = useState<WebhookRow[]>([]);
   const [showBadHabitsTracker, setShowBadHabitsTracker] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
   const [seedingDemo, setSeedingDemo] = useState(false);
 
   const loadWebhooks = async () => {
-    try {
-      const data = await webhookAPI.getAll();
-      setWebhooks(data);
-    } catch (error) {
-      console.error('Webhook\'lar yüklenirken hata:', error);
+    const res = await listWebhooks();
+    if (!res.ok) {
+      // A failed read was previously swallowed into console.error, so the
+      // list rendered empty and read as "you have none registered".
+      Alert.alert('Hata', `Webhook'lar yüklenemedi: ${res.error}`);
+      return;
     }
+    setWebhooks(res.data);
   };
 
   const handleAddWebhook = async () => {
-    try {
-      if (!webhookUrl.trim()) {
-        Alert.alert('Hata', 'Lütfen geçerli bir URL girin');
-        return;
-      }
-
-      await webhookAPI.create({
-        url: webhookUrl,
-        event_types: ['habit_completed', 'task_completed'],
-      });
-
-      Alert.alert('Başarılı', 'Webhook eklendi!');
-      setWebhookUrl('');
-      setShowWebhookModal(false);
-      await loadWebhooks();
-    } catch (error) {
-      Alert.alert('Hata', 'Webhook eklenirken bir hata oluştu');
-      console.error('Webhook eklenirken hata:', error);
+    const res = await registerWebhook({ url: webhookUrl });
+    if (!res.ok) {
+      Alert.alert('Hata', res.error);
+      return;
     }
+    setWebhookUrl('');
+    setShowWebhookModal(false);
+    await loadWebhooks();
+    Alert.alert('Başarılı', 'Webhook eklendi!');
   };
 
-  const handleExportData = async (format: 'json' | 'excel' | 'csv') => {
+  const handleExportData = async (format: ExportFormat) => {
     try {
       setExportingFormat(format);
-      
-      if (format === 'json') {
-        const data = await exportAPI.exportAll();
-        const jsonString = JSON.stringify(data, null, 2);
-        await Share.share({
-          message: jsonString,
-          title: 'Atlas Veri Yedeği',
-        });
-      } else {
-        // For Excel and CSV, open download URL
-        const baseURL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-        const endpoint = format === 'excel' ? '/api/data/export/excel' : '/api/data/export/csv';
-        const url = `${baseURL}${endpoint}`;
-        
-        // On web, it will download automatically
-        // On mobile, open in browser
-        const supported = await Linking.canOpenURL(url);
-        if (supported) {
-          await Linking.openURL(url);
-          Alert.alert(
-            'Başarılı',
-            `${format.toUpperCase()} dosyanız hazırlanıyor. İndirmeler klasörünüze kaydedilecek.`
-          );
-        } else {
-          Alert.alert('Hata', 'URL açılamadı');
-        }
+
+      // Built on the device from this account's own repositories. The three
+      // endpoints this replaces read the entire database with no user filter
+      // on a service with no authentication, and the Excel/CSV pair were
+      // opened in the system browser -- see services/exportService.ts.
+      const backup = await buildBackup();
+
+      if (backup.failed.length > 0) {
+        Alert.alert(
+          'Yedek eksik',
+          `Şu bölümler okunamadı: ${backup.failed.map((f) => f.collection).join(', ')}.
+
+` +
+            'Yine de paylaşabilirsiniz; dosya hangi bölümlerin eksik olduğunu yazıyor.',
+        );
       }
+
+      await Share.share({
+        message: renderBackup(backup, format),
+        title: `Atlas Veri Yedeği (${format.toUpperCase()})`,
+      });
     } catch (error) {
       Alert.alert('Hata', 'Veriler dışa aktarılırken bir hata oluştu');
       console.error('Export hatası:', error);
@@ -452,16 +441,20 @@ export default function SettingsScreen() {
               <View style={styles.webhookList}>
                 <Text style={styles.webhookListTitle}>{`Mevcut Webhook'lar:`}</Text>
                 {webhooks.map((webhook) => (
-                  <View key={webhook._id} style={styles.webhookItem}>
+                  <View key={webhook.id} style={styles.webhookItem}>
                     <Text style={styles.webhookUrl} numberOfLines={1}>
                       {webhook.url}
                     </Text>
                     <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel={`${webhook.url} webhook'unu sil`}
                       onPress={async () => {
-                        if (webhook._id) {
-                          await webhookAPI.delete(webhook._id);
-                          await loadWebhooks();
+                        const res = await removeWebhook(webhook.id);
+                        if (!res.ok) {
+                          Alert.alert('Hata', res.error);
+                          return;
                         }
+                        await loadWebhooks();
                       }}
                     >
                       <Ionicons name="trash-outline" size={20} color="#C76A6A" />
