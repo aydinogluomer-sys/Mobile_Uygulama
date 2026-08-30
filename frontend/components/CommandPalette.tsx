@@ -12,6 +12,10 @@ import { useHabitStore } from '../store/habitStore';
 import { useTaskStore } from '../store/taskStore';
 import { useNoteStore } from '../store/noteStore';
 import { useProjectStore } from '../store/projectStore';
+import { searchTasks } from '../repositories/taskRepository';
+import { searchNotes } from '../repositories/noteRepository';
+import { searchProjects } from '../repositories/projectRepository';
+import { searchHabits } from '../repositories/habitRepository';
 import { useDrawerStore } from '../store/drawerStore';
 
 const RECENTS_KEY = 'app_cmd_recents';
@@ -89,22 +93,54 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
     () => (!q ? quickActions : quickActions.filter((a) => a.label.toLowerCase().includes(q))),
     [q]
   );
-  const filteredTasks = useMemo(
-    () => (!q ? [] : tasks.filter((t) => !t.completed && t.title.toLowerCase().includes(q)).slice(0, 5)),
-    [q, tasks]
-  );
-  const filteredNotes = useMemo(
-    () => (!q ? [] : notes.filter((n) => n.title.toLowerCase().includes(q)).slice(0, 5)),
-    [q, notes]
-  );
-  const filteredProjects = useMemo(
-    () => (!q ? [] : projects.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 5)),
-    [q, projects]
-  );
-  const filteredHabits = useMemo(
-    () => (!q ? [] : habits.filter((h) => h.name.toLowerCase().includes(q)).slice(0, 5)),
-    [q, habits]
-  );
+  /**
+   * Search runs on the SERVER, debounced. (§30)
+   *
+   * These four lists used to be `tasks.filter(...)` over the store's arrays,
+   * which was only ever correct because each store held its entire table.
+   * Now that the collections are paginated, filtering memory would search
+   * whichever page happened to be loaded and silently miss the rest — the
+   * worst kind of wrong answer, because an empty result looks identical to
+   * "you have nothing matching".
+   *
+   * The loaded rows are still used as an INSTANT first answer while the
+   * request is in flight, so typing stays responsive; the server result
+   * replaces it. That is the "bounded recent cache + server-side search"
+   * shape rather than either one alone.
+   */
+  const local = useMemo(() => ({
+    tasks: !q ? [] : tasks.filter((t) => !t.completed && t.title.toLowerCase().includes(q)).slice(0, 5),
+    notes: !q ? [] : notes.filter((n) => n.title.toLowerCase().includes(q)).slice(0, 5),
+    projects: !q ? [] : projects.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 5),
+    habits: !q ? [] : habits.filter((h) => h.name.toLowerCase().includes(q)).slice(0, 5),
+  }), [q, tasks, notes, projects, habits]);
+
+  const [remote, setRemote] = useState<{
+    tasks: typeof tasks; notes: typeof notes; projects: typeof projects; habits: typeof habits;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!q) { setRemote(null); return; }
+    let alive = true;
+    const timer = setTimeout(async () => {
+      const [t, n, p, h] = await Promise.all([
+        searchTasks(q, 5), searchNotes(q, 5), searchProjects(q, 5), searchHabits(q, 5),
+      ]);
+      if (!alive) return;
+      setRemote({
+        tasks: t.ok ? t.data : [],
+        notes: n.ok ? n.data : [],
+        projects: p.ok ? (p.data as typeof projects) : [],
+        habits: h.ok ? h.data : [],
+      });
+    }, 220);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [q]);
+
+  const filteredTasks = remote ? remote.tasks.slice(0, 5) : local.tasks;
+  const filteredNotes = remote ? remote.notes.slice(0, 5) : local.notes;
+  const filteredProjects = remote ? remote.projects.slice(0, 5) : local.projects;
+  const filteredHabits = remote ? remote.habits.slice(0, 5) : local.habits;
 
   function handleClose() {
     setQuery('');

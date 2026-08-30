@@ -7,9 +7,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNoteStore, type Note } from '../../store/noteStore';
 import { EmptyState, Skeleton } from '../../components/ui';
+import LoadMoreFooter from '../../components/LoadMoreFooter';
 
 export default function NotesScreen() {
-  const { notes, loading, fetchNotes, addNote, updateNote, removeNote, search } = useNoteStore();
+  const { notes, loading, loadingMore, hasMore, loadMore, fetchNotes, addNote, updateNote, removeNote, search } = useNoteStore();
   const [query, setQuery] = useState('');
   const [showEdit, setShowEdit] = useState(false);
   const [editing, setEditing] = useState<Note | null>(null);
@@ -98,6 +99,14 @@ export default function NotesScreen() {
       </View>
 
       <FlatList
+        onEndReachedThreshold={0.4}
+        onEndReached={() => { if (!results) loadMore(); }}
+        ListFooterComponent={
+          // Suppressed while a search is showing: those results are a bounded
+          // server query, not a page of the list, so "load more" would be
+          // continuing something the user is not looking at.
+          results ? null : <LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />
+        }
         data={visible}
         keyExtractor={(n) => n.id}
         numColumns={2}

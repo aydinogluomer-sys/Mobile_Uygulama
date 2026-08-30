@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useReadingListStore, ReadingType, ReadingStatus, ReadingItem } from '../../store/readingListStore';
 import { EmptyState, Skeleton } from '../../components/ui';
+import LoadMoreFooter from '../../components/LoadMoreFooter';
 
 const STATUS_TABS: { key: ReadingStatus; label: string; color: string }[] = [
   { key: 'want_to_read', label: 'Okuyacak', color: '#827E72' },
@@ -185,6 +186,8 @@ export default function ReadingListScreen() {
             );
           })
         )}
+
+        <LoadMoreFooter hasMore={tab.hasMore} loading={tab.loadingMore} onPress={() => loadMore(activeTab)} />
       </ScrollView>
 
       {/* FAB */}

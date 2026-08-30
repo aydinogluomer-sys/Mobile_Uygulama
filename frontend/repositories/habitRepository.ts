@@ -163,3 +163,22 @@ export async function insertHabit(
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: data as unknown as Habit };
 }
+
+/** Server-side name search — see `taskRepository.searchTasks` for why. */
+export async function searchHabits(query: string, limit = 8): Promise<RepoResult<Habit[]>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const term = query.trim();
+  if (!term) return { ok: true, data: [] };
+  const safe = term.replace(/[,()%]/g, ' ');
+  const { data, error } = await supabase
+    .from('habits')
+    .select(HABIT_COLUMNS)
+    .eq('user_id', u.userId)
+    .not('status', 'eq', 'archived')
+    .ilike('name', `%${safe}%`)
+    .order('created_at', { ascending: false })
+    .limit(Math.min(limit, 25));
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as unknown as Habit[] };
+}

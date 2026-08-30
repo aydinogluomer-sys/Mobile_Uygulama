@@ -82,3 +82,22 @@ export async function deleteProject(id: string): Promise<RepoResult<true>> {
   if (!u.ok) return u;
   return deleteOwned({ table: 'projects', id, userId: u.userId });
 }
+
+/** Server-side name search — see `taskRepository.searchTasks` for why. */
+export async function searchProjects(query: string, limit = 8): Promise<RepoResult<ProjectRow[]>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const term = query.trim();
+  if (!term) return { ok: true, data: [] };
+  const safe = term.replace(/[,()%]/g, ' ');
+  const { data, error } = await supabase
+    .from('projects')
+    .select(COLS)
+    .eq('user_id', u.userId)
+    .neq('status', 'archived')
+    .ilike('name', `%${safe}%`)
+    .order('created_at', { ascending: false })
+    .limit(Math.min(limit, 25));
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as unknown as ProjectRow[] };
+}

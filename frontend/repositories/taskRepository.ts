@@ -100,3 +100,29 @@ export async function deleteTask(id: string): Promise<RepoResult<true>> {
   if (!u.ok) return u;
   return deleteOwned({ table: 'tasks', id, userId: u.userId });
 }
+
+/**
+ * Server-side title search. (§30)
+ *
+ * The command palette filtered the in-memory `tasks` array, which searched
+ * whatever page happened to be loaded — a design that only looked correct
+ * while the store held the entire table. Bounded here rather than by loading
+ * everything into memory to filter it.
+ */
+export async function searchTasks(query: string, limit = 8): Promise<RepoResult<Task[]>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const term = query.trim();
+  if (!term) return { ok: true, data: [] };
+  const safe = term.replace(/[,()%]/g, ' ');
+  const { data, error } = await supabase
+    .from('tasks')
+    .select(TASK_COLS)
+    .eq('user_id', u.userId)
+    .eq('completed', false)
+    .ilike('title', `%${safe}%`)
+    .order('created_at', { ascending: false })
+    .limit(Math.min(limit, 25));
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as unknown as Task[] };
+}

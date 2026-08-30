@@ -11,6 +11,7 @@ import { colors, space } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import InlineComposer from '../../components/InlineComposer';
 import { todayLocal } from '../../lib/date';
+import LoadMoreFooter from '../../components/LoadMoreFooter';
 
 const TABS: { key: ListType | 'done'; label: string }[] = [
   { key: 'inbox', label: 'Gelen' },
@@ -33,7 +34,7 @@ export default function TasksScreen() {
   const [priority, setPriority] = useState<TaskPriority>('none');
   const [listType, setListType] = useState<ListType>('inbox');
 
-  const { tasks, loading, fetchTasks, addTask, toggleDone, removeTask, archiveTask, byList } = useTaskStore();
+  const { tasks, loading, loadingMore, hasMore, loadMore, fetchTasks, addTask, toggleDone, removeTask, archiveTask, byList } = useTaskStore();
   const { projects, fetchProjects } = useProjectStore();
 
   useEffect(() => { fetchTasks(); fetchProjects(); }, []);
@@ -94,6 +95,9 @@ export default function TasksScreen() {
       <FlatList
         data={visibleTasks}
         keyExtractor={(t) => t.id}
+        onEndReachedThreshold={0.4}
+        onEndReached={loadMore}
+        ListFooterComponent={<LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />}
         style={s.list}
         contentContainerStyle={s.listContent}
         ListHeaderComponent={

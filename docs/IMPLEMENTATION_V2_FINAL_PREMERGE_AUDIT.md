@@ -1,7 +1,7 @@
 # ATLAS — IMPLEMENTATION_V2 FINAL PRE-MERGE AUDIT
 
-**Branch:** `phase/final-v2-hardening` · **HEAD:** `28cf512` · 12 commits ahead of `main`, 0 behind
-**CI:** run `33319921172` — **completed / success** on this HEAD
+**Branch:** `phase/final-v2-hardening` · **HEAD:** `3f665ae` · 15 commits ahead of `main`, 0 behind
+**CI:** see §5 — re-run on this HEAD
 **Date:** 2026-08-30
 
 Status values are only `PASS`, `BLOCKED_EXTERNAL`, `FAIL`, or `NOT_DONE`.
@@ -21,13 +21,13 @@ the command, query or live request that produced it.
 | **§5** | Google Calendar deployed | function absent, table absent | table created (49→50), canonical function written, client fails closed | migration verified; deploy pending secrets | **BLOCKED_EXTERNAL** (code complete) |
 | **§6** | Notion sync E2E | `success:true, synced_habits:0` forever | columns fixed, errors checked, honest partial reporting; **deployed v2** | live: v1 query → `42703`, v2 query → OK; function reachable + authenticating | **PASS** (full E2E needs Notion credentials) |
 | **§7** | Full RLS semantic audit | policy counting only | 127 live checks, 2 users + anon; 1 defect found and fixed | `docs/FINAL_RLS_MATRIX.md` | **PASS** |
-| **§8** | Repository/service architecture | 34 store DB calls, no `services/` | — | measured: still 34, `services/` absent | **NOT_DONE** |
+| **§8** | Repository/service boundary | **72** direct DB calls across 17 stores (the 34/11 figure was a mis-measurement — see §6) | all queries moved to `repositories/`; 18 repositories | **0** direct calls in `store/`, `app/`, `components/`; gate pins it | **PASS** |
 | **§9** | Monthly review cloud persistence | AsyncStorage only | — | no `reviews` table created | **NOT_DONE** |
-| **§10** | Structural tests on current contract | `numeric` substring gate | routing pinned instead; mutation verified | `run-tests.js` 142/142 | **PASS** (partial — navigation/monthly gates unchanged) |
+| **§10** | Structural tests on current contract | `numeric` substring gate; navigation gate matched names not tabs; `reading_list` string gate | all three rewritten to pin real contracts, each mutation-verified | `run-tests.js` 144/144 | **PASS** (monthly-review gate still describes AsyncStorage, matching §9) |
 | **§11** | XP idempotency | assumed broken | **premise disproven** — see §3 below | 6/6 live: duplicate INSERT `23505`, replay ×4 adds 0 XP | **PASS** (idempotency) / reconstructibility **NOT_DONE** |
 | **§12** | Focus-Point charging atomicity | `spend_focus_points` error unchecked | — | not addressed | **NOT_DONE** |
-| **§13** | Pagination | 4 unbounded stores | — | still unbounded | **NOT_DONE** |
-| **§14** | Navigation IA | 5 visible tabs, wrong set | — | still today/tasks/focus/timeline/stats | **NOT_DONE** |
+| **§13** | Pagination | unbounded reads across the data layer | keyset paging (`(column, id)` cursor), per-tab paging for reading list, server-side search for notes/tasks/projects/habits and the command palette, `LoadMoreFooter` in four screens | `repositoryBoundary` + `dataLayerBoundary` gates | **PASS** |
+| **§14** | Navigation IA | today/tasks/focus/timeline/stats | Bugün · Plan · Alışkanlıklar · İçgörüler · Profil; hubs compose the existing screens, old routes kept as `href: null` | `run-tests.js` parses visible vs hidden; 3 mutations verified | **PASS** |
 | **§15** | Legacy FastAPI retirement | 2 client call sites, `user_id="default"` | — | still 2 call sites | **NOT_DONE** |
 | **§16** | Dependency security | 2 critical, 16 high | `npm audit fix`, no `--force` | **0 critical, 9 high**, all build-time and **absent from the shipped bundle** (grep over `dist/`) | **PASS** |
 | **§17** | Lint zero | 0 err / 73 warn (CI scope) | — | unchanged; full repo 3 err / 163 warn | **NOT_DONE** |
@@ -46,11 +46,11 @@ the command, query or live request that produced it.
 | **§30** | Obsolete comments | "NOT APPLIED", "migration blocked" | corrected in migration, recovery, routineProposal | — | **PASS** |
 | **§31** | No hardcoded secrets | unknown | scanned | **repo clean**; deployed spotify-auth carries a literal client secret | **PASS** (repo) / **BLOCKED_EXTERNAL** (rotation) |
 | **§32** | Release env guards | guard depends on local state | stale DENIED link removed, guard PASSes clean | `predeploy_guard.sh` exit 0, no warning | **PASS** |
-| **§33** | Test quality | — | 8 new suites, all mutation-verified | 1135 tests, 78 suites | **PASS** (for what was built) |
-| **§34** | CI as merge gate | green | unchanged scope | run `33319921172` success, all 10 steps | **PASS** (lint gate still narrow) |
+| **§33** | Test quality | — | 11 new suites, all mutation-verified | 1156 tests, 80 suites | **PASS** (for what was built) |
+| **§34** | CI as merge gate | green | unchanged scope | see §5 | **PASS** (lint gate still narrow) |
 | **§35** | Full live smoke | — | partial | duration, ceilings, RLS, XP, notion-sync verified live; registration blocked | **BLOCKED_EXTERNAL** |
 | **§36** | Performance profiling | — | — | not done | **NOT_DONE** |
-| **§37** | main sync | — | 0 behind | `git rev-list --left-right --count origin/main...HEAD` → `0  12` | **PASS** |
+| **§37** | main sync | — | 0 behind | `git rev-list --left-right --count origin/main...HEAD` → `0  15` | **PASS** |
 
 ---
 
@@ -70,6 +70,29 @@ Each was found by looking at the running system, not at documentation.
 | 8 | **`habit_logs` accepted foreign habit ids** — any user could attach logs to another user's habit. | Live cross-user RLS matrix | live: insert accepted → after fix `42501` |
 | 9 | **The offline queue was shared by every account** on a device — A's writes drained through B's session. | Reading the replay path's user resolution | mutations: 4 red / 1 red |
 | 10 | **`notion-auth` canonical was undeployable** — it had dropped `createAtlasDatabases` and wrote null database ids, which would break new connections *and* wipe working ones via upsert. | Comparing canonical to deployed before deleting the duplicate tree | gate: 3 assertions |
+
+---
+
+## 2b. A measurement I got wrong, and corrected
+
+The first pass reported **34 direct database calls across 11 stores**. That
+was produced by grepping `supabase\.from\(`, which does not match the
+multi-line form this codebase mostly uses:
+
+```ts
+const { data } = await supabase
+  .from('habits')
+```
+
+Re-measured with a whitespace-tolerant pattern and comments stripped, the real
+figure on `main` was **72 calls across 17 stores** — more than half the call
+sites were invisible to the original count, including `journalStore`,
+`profileStore`, `willpowerStore`, `logStore`, `insightsStore` and
+`lifeAreasStore`, none of which appeared in the first survey at all.
+
+Recorded rather than quietly replaced, because the same class of error —
+a pattern that looks like it measures the thing and does not — is what this
+audit keeps finding elsewhere.
 
 ---
 
@@ -134,9 +157,13 @@ fixed.
 
 ### P1 — not done on this branch
 
-Repository/service layer (§8) · monthly review cloud persistence (§9) ·
-pagination (§13) · navigation IA (§14) · legacy FastAPI retirement (§15) ·
-Focus-Point charging atomicity (§12) · lint zero (§17).
+Monthly review cloud persistence (§9) · legacy FastAPI retirement (§15) ·
+Focus-Point charging atomicity (§12) · lint zero (§17) · design tokens (§19) ·
+branding (§20) · widget (§21) · recovery vocabulary (§24) · performance
+profiling (§36).
+
+Completed since the first version of this document: the repository boundary
+(§8), pagination (§13) and the navigation IA (§14).
 
 ### P2 — recorded gaps
 
@@ -158,8 +185,8 @@ Focus-Point charging atomicity (§12) · lint zero (§17).
 
 ```
 npm run typecheck:ci                exit 0
-npx jest --ci                       exit 0    1135/1135, 78 suites
-node run-tests.js                   exit 0    142/142
+npx jest --ci                       exit 0    1156/1156, 80 suites
+node run-tests.js                   exit 0    144/144
 npx expo lint                       exit 0    0 errors, 73 warnings
 npx eslint . --ext .ts,.tsx                   3 errors, 163 warnings (outside CI scope)
 npx expo export --platform android  exit 0
@@ -173,6 +200,9 @@ GitHub Actions 33319921172          success   all 10 steps
 3 profiles, 6 habits, 13 habit_logs, 0 recovery_plans. Every disposable user
 created during this audit was removed.
 
-Two additive migrations applied, both policy/table only, no row touched:
-`20260830_google_calendar_integrations` (49→50 tables) and
-`20260830_habit_logs_ownership_check` (5→4 policies, 13 rows unchanged).
+Three additive migrations applied, all policy/table only, no row touched:
+`20260830_google_calendar_integrations` (49→50 tables),
+`20260830_habit_logs_ownership_check` (5→4 policies, 13 rows unchanged) and
+`20260830_child_row_ownership` (recovery_plans + key_results now require the
+parent row to belong to the caller; verified live with two users, including
+that owners can still write their own).

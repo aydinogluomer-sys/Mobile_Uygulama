@@ -10,6 +10,7 @@ import { useProjectStore, type Project } from '../../store/projectStore';
 import { useTaskStore } from '../../store/taskStore';
 import InlineComposer from '../../components/InlineComposer';
 import { EmptyState } from '../../components/ui';
+import LoadMoreFooter from '../../components/LoadMoreFooter';
 import { colors } from '../../lib/tokens';
 
 const PRESET_COLORS = [
@@ -19,7 +20,7 @@ const PRESET_COLORS = [
 
 export default function ProjectsScreen() {
   const router = useRouter();
-  const { projects, fetchProjects, addProject, removeProject } = useProjectStore();
+  const { projects, hasMore, loadingMore, loadMore, fetchProjects, addProject, removeProject } = useProjectStore();
   const { tasks, fetchTasks, toggleDone, addTask } = useTaskStore();
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
@@ -55,6 +56,9 @@ export default function ProjectsScreen() {
       <FlatList
         data={projects}
         keyExtractor={(p) => p.id}
+        onEndReachedThreshold={0.4}
+        onEndReached={loadMore}
+        ListFooterComponent={<LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />}
         style={s.list}
         contentContainerStyle={s.listContent}
         ListEmptyComponent={

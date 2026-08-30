@@ -4,10 +4,17 @@
  *     UI ──▶ store ──▶ repository ──▶ supabase
  *
  * A companion to `rule4NoDirectDbInUi`, which already pinned the UI half.
- * This pins the store half, which was the larger violation: eleven stores
- * held 34 direct `supabase.from(...)` calls between them, most of them
- * unbounded reads with no `user_id` filter and mutations keyed on `id` alone
- * whose results were discarded.
+ * This pins the store half, which was the larger violation: **17 stores held
+ * 72 direct `supabase.from(...)` calls** between them, most of them unbounded
+ * reads with no `user_id` filter and mutations keyed on `id` alone whose
+ * results were discarded.
+ *
+ * (An earlier count said 34 across 11. It was taken with the pattern
+ * `supabase\.from\(`, which misses the multi-line form this codebase mostly
+ * uses -- `await supabase
+  .from('habits')`. More than half the call sites
+ * were invisible to it. The regex below is whitespace-tolerant for exactly
+ * that reason.)
  *
  * ## Comments are stripped first, and that is not a detail
  *
@@ -121,5 +128,38 @@ describe('list reads are bounded', () => {
       if (!bounded) unbounded.push(r.path);
     }
     expect(unbounded).toEqual([]);
+  });
+});
+
+describe('pagination reaches the user, not just the query', () => {
+  const screens = [
+    { path: 'app/screens/notes.tsx', store: 'store/noteStore.ts' },
+    { path: 'app/screens/projects.tsx', store: 'store/projectStore.ts' },
+    { path: 'app/tabs/tasks.tsx', store: 'store/taskStore.ts' },
+    { path: 'app/screens/reading-list.tsx', store: 'store/readingListStore.ts' },
+  ];
+
+  it.each(screens)('$path offers a way to load the next page', ({ path }) => {
+    // A paginated list with no affordance to continue is indistinguishable
+    // from a list that simply ends — which is the exact failure a bare
+    // `.limit()` would have introduced, dressed up as a fix.
+    const code = stripComments(readFileSync(join(ROOT, path), 'utf8'));
+    expect(code).toContain('LoadMoreFooter');
+    expect(code).toMatch(/loadMore/);
+  });
+
+  it.each(screens)('$store exposes hasMore and loadMore', ({ store }) => {
+    const code = stripComments(readFileSync(join(ROOT, store), 'utf8'));
+    expect(code).toMatch(/hasMore/);
+    expect(code).toMatch(/loadMore/);
+  });
+
+  it('the command palette searches the server, not the loaded page', () => {
+    // It used to filter the stores' in-memory arrays, which was only correct
+    // while those arrays were the whole table.
+    const code = stripComments(readFileSync(join(ROOT, 'components/CommandPalette.tsx'), 'utf8'));
+    for (const fn of ['searchTasks', 'searchNotes', 'searchProjects', 'searchHabits']) {
+      expect(code).toContain(fn);
+    }
   });
 });
