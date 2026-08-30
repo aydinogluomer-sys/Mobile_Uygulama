@@ -9,6 +9,7 @@
 module.exports = {
   preset: 'jest-expo',
   roots: ['<rootDir>/__tests__'],
+  globalSetup: '<rootDir>/jest.globalSetup.js',
   setupFiles: ['<rootDir>/jest.setup.js'],
   testMatch: ['**/*.test.ts', '**/*.test.tsx'],
   // Never read .env - the old run-tests.js did, and a test that depends on a
