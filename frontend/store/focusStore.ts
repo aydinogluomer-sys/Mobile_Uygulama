@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import {
+  completeFocusTask as repoCompleteFocusTask,
+  deleteFocusTask as repoDeleteFocusTask,
+  fetchOpenFocusTasks,
+  insertFocusTask as repoInsertFocusTask,
+  setFocusTaskProgress,
+} from '../repositories/focusTaskRepository';
+import { insertFocusSession } from '../repositories/focusSessionRepository';
 import { haptic } from '../lib/haptics';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 
@@ -255,17 +263,16 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     const { data: { user } } = await supabase.auth.getUser();
     if (user && phase === 'work') {
       const selectedTask = focusTasks.find((t) => t.id === selectedTaskId);
-      const { error: sessionError } = await supabase.from('focus_sessions').insert({
-        user_id: user.id,
-        task_id: selectedTaskId,
-        task_title: selectedTask?.title ?? null,
+      const sessionRes = await insertFocusSession({
+        taskId: selectedTaskId,
+        taskTitle: selectedTask?.title ?? null,
         mode: phase,
-        started_at: sessionStartedAt ?? new Date().toISOString(),
-        ended_at: new Date().toISOString(),
-        planned_seconds: plannedSeconds,
-        completed_seconds: completedSeconds,
-        completed: true,
+        startedAt: sessionStartedAt ?? new Date().toISOString(),
+        endedAt: new Date().toISOString(),
+        plannedSeconds: plannedSeconds,
+        completedSeconds: completedSeconds,
       });
+      const sessionError = sessionRes.ok ? null : { message: sessionRes.error };
 
       // §22 `focus_completed`. The `focus_sessions` insert is what makes a
       // session real, so the event is gated on it: a rejected insert leaves
@@ -287,13 +294,11 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
       // Görev sayacını güncelle
       if (selectedTaskId) {
         const newDone = (selectedTask?.completed_pomodoros ?? 0) + 1;
-        await supabase
-          .from('focus_tasks')
-          .update({
-            completed_pomodoros: newDone,
-            total_focus_seconds: (selectedTask?.total_focus_seconds ?? 0) + completedSeconds,
-          })
-          .eq('id', selectedTaskId);
+        await setFocusTaskProgress({
+          id: selectedTaskId,
+          completedPomodoros: newDone,
+          totalFocusSeconds: (selectedTask?.total_focus_seconds ?? 0) + completedSeconds,
+        });
         // Tahmini pomodoroya ulaşınca otomatik tamamla
         if (settings.autoCheckTasks && newDone >= (selectedTask?.estimated_pomodoros ?? 1)) {
           await get().completeFocusTask(selectedTaskId);
@@ -349,33 +354,22 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
 
   fetchFocusTasks: async () => {
     set({ loadingTasks: true });
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      set({ loadingTasks: false });
-      return;
-    }
-    const { data } = await supabase
-      .from('focus_tasks')
-      .select('*')
-      .eq('completed', false)
-      .order('created_at', { ascending: true });
-    if (data) set({ focusTasks: data as FocusTask[] });
-    set({ loadingTasks: false });
+    const res = await fetchOpenFocusTasks();
+    if (!res.ok) { set({ loadingTasks: false }); return; }
+    set({ focusTasks: res.data as FocusTask[], loadingTasks: false });
   },
 
   addFocusTask: async (title, estimatedPomodoros = 1) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !title.trim()) return;
-    const { data } = await supabase
-      .from('focus_tasks')
-      .insert({ user_id: user.id, title: title.trim(), estimated_pomodoros: estimatedPomodoros })
-      .select()
-      .single();
-    if (data) set((s) => ({ focusTasks: [...s.focusTasks, data as FocusTask] }));
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    const res = await repoInsertFocusTask({ title: trimmed, estimatedPomodoros });
+    if (!res.ok) return;
+    set((s) => ({ focusTasks: [...s.focusTasks, res.data as FocusTask] }));
   },
 
   removeFocusTask: async (id) => {
-    await supabase.from('focus_tasks').delete().eq('id', id);
+    const res = await repoDeleteFocusTask(id);
+    if (!res.ok) return;
     set((s) => ({
       focusTasks: s.focusTasks.filter((t) => t.id !== id),
       selectedTaskId: s.selectedTaskId === id ? null : s.selectedTaskId,
@@ -383,7 +377,10 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   },
 
   completeFocusTask: async (id) => {
-    await supabase.from('focus_tasks').update({ completed: true }).eq('id', id);
+    const res = await repoCompleteFocusTask(id);
+    // A failed write leaves the task in the list instead of removing it for a
+    // completion the server never accepted.
+    if (!res.ok) return;
     set((s) => ({
       focusTasks: s.focusTasks.filter((t) => t.id !== id),
       selectedTaskId: s.selectedTaskId === id ? null : s.selectedTaskId,

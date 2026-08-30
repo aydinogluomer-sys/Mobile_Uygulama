@@ -7,7 +7,10 @@
  */
 import { supabase } from '../lib/supabase';
 import type { Task } from '../store/taskStore';
-import { currentUserId, RepoResult } from './shared';
+import {
+  currentUserId, deleteOwned, fetchPage, updateOwned,
+  type Cursor, type Page, type RepoResult,
+} from './shared';
 
 export type SplitTaskInput = {
   title: string;
@@ -31,4 +34,69 @@ export async function insertSplitTasks(rows: SplitTaskInput[]): Promise<RepoResu
   const { data, error } = await supabase.from('tasks').insert(payload).select();
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as Task[] };
+}
+
+// ---------------------------------------------------------------------------
+// Full CRUD. (§8 — moved out of store/taskStore.ts)
+//
+// The store's own calls had the same three problems as every other store's:
+// `fetchTasks` was unbounded and unscoped, `updateTask`/`removeTask` matched
+// on `id` alone, and `removeTask` discarded its result.
+// ---------------------------------------------------------------------------
+
+const TASK_COLS =
+  'id,user_id,title,description,category,due_date,time_block_start,time_block_end,' +
+  'completed,completed_at,is_subtask,parent_task_id,created_at,updated_at,list_name,' +
+  'status,priority,list_type,project_id,notes_text,quadrant';
+
+export async function fetchTasksPage(
+  cursor?: Cursor | null,
+  limit?: number,
+): Promise<RepoResult<Page<Task>>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  return fetchPage<Task>({
+    table: 'tasks', columns: TASK_COLS, orderBy: 'created_at',
+    userId: u.userId, cursor, limit,
+    // Cancelled tasks are hidden, as the store did with `.neq`.
+    not: { status: 'cancelled' },
+  });
+}
+
+export async function insertTask(input: Partial<Task>): Promise<RepoResult<Task>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert({
+      user_id: u.userId,
+      title: input.title ?? '',
+      status: input.status ?? 'pending',
+      priority: input.priority ?? 'none',
+      list_type: input.list_type ?? 'inbox',
+      due_date: input.due_date ?? null,
+      project_id: input.project_id ?? null,
+      description: input.description ?? null,
+      notes_text: input.notes_text ?? null,
+      completed: false,
+    })
+    .select(TASK_COLS)
+    .single();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: data as unknown as Task };
+}
+
+export async function updateTask(id: string, patch: Partial<Task>): Promise<RepoResult<Task>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  return updateOwned<Task>({
+    table: 'tasks', id, userId: u.userId,
+    patch: patch as Record<string, unknown>, columns: TASK_COLS,
+  });
+}
+
+export async function deleteTask(id: string): Promise<RepoResult<true>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  return deleteOwned({ table: 'tasks', id, userId: u.userId });
 }

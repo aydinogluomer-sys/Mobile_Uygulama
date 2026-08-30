@@ -1,15 +1,17 @@
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
+import {
+  fetchJournalEntries,
+  fetchJournalEntry,
+  upsertJournalEntry,
+  type JournalEntryRow,
+} from '../repositories/journalRepository';
 
-export type JournalEntry = {
-  id: string;
-  user_id: string;
-  date: string;
-  content: string;
-  mood: number | null;
-  ai_summary: boolean;
-  created_at: string;
-};
+/**
+ * Re-exported from the repository so there is one definition of the row.
+ * The local copy typed `ai_summary` as a plain boolean, which the column is
+ * not — it is nullable, and an entry saved without an AI summary has null.
+ */
+export type JournalEntry = JournalEntryRow;
 
 type JournalStore = {
   entries: JournalEntry[];
@@ -26,39 +28,15 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
 
   fetchEntries: async () => {
     set({ loading: true });
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      set({ loading: false });
-      return;
-    }
-    const { data } = await supabase
-      .from('journal_entries')
-      .select('*')
-      .order('date', { ascending: false })
-      .limit(365);
-    if (data) set({ entries: data as JournalEntry[] });
-    set({ loading: false });
+    const res = await fetchJournalEntries();
+    if (!res.ok) { set({ loading: false }); return; }
+    set({ entries: res.data, loading: false });
   },
 
   saveEntry: async (date, content, mood) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase
-      .from('journal_entries')
-      .upsert({ user_id: user.id, date, content, mood }, { onConflict: 'user_id,date' })
-      .select()
-      .single();
-    if (data) {
-      set((s) => {
-        const existing = s.entries.findIndex((e) => e.date === date);
-        if (existing >= 0) {
-          const updated = [...s.entries];
-          updated[existing] = data as JournalEntry;
-          return { entries: updated };
-        }
-        return { entries: [data as JournalEntry, ...s.entries] };
-      });
-    }
+    const res = await upsertJournalEntry({ date, content, mood });
+    if (!res.ok) return;
+    set((s) => mergeEntry(s.entries, res.data));
   },
 
   // Var olan günlük kaydının altına metin ekler (üzerine yazmaz).
@@ -67,40 +45,34 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
   appendEntry: async (date, text) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
 
-    const { data: existing } = await supabase
-      .from('journal_entries')
-      .select('content, mood')
-      .eq('user_id', user.id)
-      .eq('date', date)
-      .maybeSingle();
+    // Reads the CURRENT entry from the database rather than from local state:
+    // this is called from screens (AI Coach) that never fetched the journal,
+    // and appending to a stale local copy would drop whatever was written in
+    // between.
+    const existing = await fetchJournalEntry(date);
+    if (!existing.ok) return;
 
-    const prev = existing?.content?.trim() ?? '';
-    const merged = prev ? `${prev}\n\n${trimmed}` : trimmed;
+    const prev = existing.data?.content?.trim() ?? '';
+    const merged = prev ? `${prev}
 
-    const { data } = await supabase
-      .from('journal_entries')
-      .upsert(
-        { user_id: user.id, date, content: merged, mood: existing?.mood ?? null, ai_summary: true },
-        { onConflict: 'user_id,date' }
-      )
-      .select()
-      .single();
+${trimmed}` : trimmed;
 
-    if (data) {
-      set((s) => {
-        const idx = s.entries.findIndex((e) => e.date === date);
-        if (idx >= 0) {
-          const updated = [...s.entries];
-          updated[idx] = data as JournalEntry;
-          return { entries: updated };
-        }
-        return { entries: [data as JournalEntry, ...s.entries] };
-      });
-    }
+    const res = await upsertJournalEntry({
+      date, content: merged, mood: existing.data?.mood ?? null, aiSummary: true,
+    });
+    if (!res.ok) return;
+    set((s) => mergeEntry(s.entries, res.data));
   },
 
   getByDate: (date) => get().entries.find((e) => e.date === date),
 }));
+
+/** Replaces the entry for a date, or prepends it when it is new. */
+function mergeEntry(entries: JournalEntry[], row: JournalEntryRow): { entries: JournalEntry[] } {
+  const idx = entries.findIndex((e) => e.date === row.date);
+  if (idx < 0) return { entries: [row as JournalEntry, ...entries] };
+  const next = [...entries];
+  next[idx] = row as JournalEntry;
+  return { entries: next };
+}

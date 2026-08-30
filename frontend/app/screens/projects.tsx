@@ -10,6 +10,7 @@ import { useProjectStore, type Project } from '../../store/projectStore';
 import { useTaskStore } from '../../store/taskStore';
 import InlineComposer from '../../components/InlineComposer';
 import { EmptyState } from '../../components/ui';
+import { colors } from '../../lib/tokens';
 
 const PRESET_COLORS = [
   '#D97757','#8b5cf6','#ec4899','#C76A6A','#f97316',
@@ -74,7 +75,7 @@ export default function ProjectsScreen() {
             accessibilityLabel={`${item.name}, ${taskCount(item.id)} açık görev`}
             accessibilityHint="Açmak için dokun, silmek için uzun bas"
           >
-            <View style={[s.colorDot, { backgroundColor: item.color }]} />
+            <View style={[s.colorDot, { backgroundColor: item.color ?? colors.primary }]} />
             <View style={s.rowBody}>
               <Text style={s.rowName}>{item.name}</Text>
               {item.description ? <Text style={s.rowDesc} numberOfLines={1}>{item.description}</Text> : null}
@@ -164,7 +165,7 @@ export default function ProjectsScreen() {
             {detailProject && (
               <>
                 <View style={s.detailHead}>
-                  <View style={[s.colorDot, { backgroundColor: detailProject.color, width: 16, height: 16, borderRadius: 8 }]} />
+                  <View style={[s.colorDot, { backgroundColor: detailProject.color ?? colors.primary, width: 16, height: 16, borderRadius: 8 }]} />
                   <Text style={s.detailTitle} numberOfLines={1}>{detailProject.name}</Text>
                   <TouchableOpacity
                     onPress={() => setDetailId(null)}
@@ -182,7 +183,7 @@ export default function ProjectsScreen() {
                   <Text style={s.progressPct}>{Math.round(detailPct * 100)}%</Text>
                 </View>
                 <View style={s.progressTrack}>
-                  <View style={[s.progressFill, { width: `${detailPct * 100}%`, backgroundColor: detailProject.color }]} />
+                  <View style={[s.progressFill, { width: `${detailPct * 100}%`, backgroundColor: detailProject.color ?? colors.primary }]} />
                 </View>
 
                 <View style={{ marginTop: 14, marginBottom: 8 }}>
@@ -214,7 +215,7 @@ export default function ProjectsScreen() {
                       accessibilityLabel={item.title}
                       accessibilityState={{ checked: item.completed }}
                     >
-                      <View style={[s.taskCheck, item.completed && { backgroundColor: detailProject.color, borderColor: detailProject.color }]}>
+                      <View style={[s.taskCheck, item.completed && { backgroundColor: detailProject.color ?? colors.primary, borderColor: detailProject.color ?? colors.primary }]}>
                         {item.completed && <Ionicons name="checkmark" size={12} color="#fff" />}
                       </View>
                       <Text style={[s.taskTitle, item.completed && s.taskTitleDone]} numberOfLines={1}>{item.title}</Text>

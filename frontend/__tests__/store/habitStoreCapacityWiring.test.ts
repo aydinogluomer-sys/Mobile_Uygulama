@@ -29,10 +29,20 @@ jest.mock('../../lib/supabase', () => ({
       // exactly when the caller actually `await`s the chain -- regardless
       // of how many `.eq()` links precede it.
       update: (patch: unknown) => {
-        const q: { eq: () => typeof q; then: (onOk: (v: unknown) => unknown) => Promise<unknown> } = {
+        const record = () => { mockCalls.push({ table, patch }); };
+        const q: any = {
           eq: () => q,
-          then: (onOk) => {
-            mockCalls.push({ table, patch });
+          // `habitRepository.updateHabit` reads the row back through
+          // `.select(cols).maybeSingle()` so a rejected write is visible
+          // instead of assumed; the recorded call is unchanged.
+          select: () => ({
+            maybeSingle: async () => {
+              record();
+              return { data: { id: 'h1', ...(patch as Record<string, unknown>) }, error: null };
+            },
+          }),
+          then: (onOk: (v: unknown) => unknown) => {
+            record();
             return Promise.resolve({ data: null, error: null }).then(onOk);
           },
         };

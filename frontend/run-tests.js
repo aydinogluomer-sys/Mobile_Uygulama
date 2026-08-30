@@ -127,7 +127,17 @@ test('Alert silme onayı', () => rl.includes('Alert') && rl.includes('Sil'));
 test('FAB ekle butonu', () => rl.includes('fab'));
 const rls = read('./store/readingListStore.ts');
 test('readingListStore metodları', () => ['fetchItems','addItem','updateStatus','updateRating','removeItem'].every(m => rls.includes(m)));
-test('Supabase reading_list tablosu', () => rls.includes('reading_list'));
+// Bu assertion eskiden store dosyasında `reading_list` metnini arıyordu.
+// Veri erişimi repository katmanına taşınınca tablo adı store'dan çıktı ve
+// assertion kırmızıya döndü -- oysa kod DAHA doğru hale gelmişti (sorgular
+// artık kullanıcı kapsamlı, sayfalı ve sonucu kontrol ediliyor). Sığ metin
+// eşleşmesini gevşetmek yerine gerçek sınırı sabitliyoruz: store repository
+// üzerinden gider, tablo adı yalnız repository'de geçer.
+const rlRepo = read('./repositories/readingListRepository.ts');
+test('reading_list repository üzerinden', () =>
+  rls.includes('repositories/readingListRepository')
+  && !/supabase\s*\.\s*from\s*\(/.test(rls)
+  && rlRepo.includes("from('reading_list')"));
 
 // 9. Aylık Özet (gerçek aylık rapor — Haftalık Rapor modeli)
 console.log('\n🗓️  9. Aylık Özet (rapor)');

@@ -1,5 +1,8 @@
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
+import {
+  fetchRecentLifeAreaLogs,
+  upsertLifeAreaLogs,
+} from '../repositories/lifeAreaRepository';
 import { todayLocal } from '../lib/date';
 
 export const LIFE_AREAS = [
@@ -40,21 +43,11 @@ export const useLifeAreasStore = create<LifeAreasStore>((set, get) => ({
 
   loadLatest: async () => {
     set({ loading: true });
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { set({ loading: false }); return; }
-
-    const { data } = await supabase
-      .from('life_area_logs')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: false })
-      .limit(8);
-
-    if (data && data.length > 0) {
-      const latestDate = data[0].date as string;
-      const dayRows = data.filter((r: any) => r.date === latestDate);
+    const res = await fetchRecentLifeAreaLogs();
+    if (res.ok && res.data.length > 0) {
+      const latestDate = res.data[0].date;
       const vals: Partial<AreaValues> = {};
-      for (const row of dayRows) {
+      for (const row of res.data.filter((r) => r.date === latestDate)) {
         vals[row.area as AreaKey] = row.value;
       }
       set({ values: { ...DEFAULT_VALUES, ...vals }, lastSavedDate: latestDate });
@@ -68,21 +61,14 @@ export const useLifeAreasStore = create<LifeAreasStore>((set, get) => ({
 
   save: async () => {
     set({ saving: true });
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { set({ saving: false }); return; }
     const today = todayLocal();
     const { values } = get();
+    const payload = Object.fromEntries(LIFE_AREAS.map((a) => [a.key, values[a.key]]));
 
-    const rows = LIFE_AREAS.map((a) => ({
-      user_id: user.id,
-      date: today,
-      area: a.key,
-      value: values[a.key],
-    }));
-
-    await supabase
-      .from('life_area_logs')
-      .upsert(rows, { onConflict: 'user_id,date,area' });
+    const res = await upsertLifeAreaLogs(today, payload);
+    // A failed save no longer records a `lastSavedDate`, which is what the
+    // UI reads to tell the user their check-in was stored.
+    if (!res.ok) { set({ saving: false }); return; }
 
     set({ lastSavedDate: today, saving: false });
   },

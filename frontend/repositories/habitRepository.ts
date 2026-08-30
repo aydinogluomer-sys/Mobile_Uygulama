@@ -20,7 +20,7 @@
  */
 import { supabase } from '../lib/supabase';
 import type { Habit, FrequencyConfig } from '../lib/supabase';
-import { currentUserId, RepoResult } from './shared';
+import { currentUserId, deleteOwned, updateOwned, type RepoResult } from './shared';
 
 /** Column list mirrors `store/habitStore.ts`'s `addHabit`/`fetchHabits` --
  *  same table, same shape, kept consistent rather than reinvented. */
@@ -83,4 +83,83 @@ export async function insertRoutineHabits(rows: InstallHabitRow[]): Promise<Repo
     .select(HABIT_COLUMNS);
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as Habit[] };
+}
+
+// ---------------------------------------------------------------------------
+// Habit mutations. (§8 — moved out of store/habitStore.ts, where all four
+// matched on `id` alone and three discarded their result.)
+// ---------------------------------------------------------------------------
+
+export async function updateHabit(
+  id: string,
+  updates: Partial<Habit>,
+): Promise<RepoResult<Habit>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  return updateOwned<Habit>({
+    table: 'habits', id, userId: u.userId,
+    patch: updates as Record<string, unknown>, columns: HABIT_COLUMNS,
+  });
+}
+
+/** Soft delete — archiving, which is what `removeHabit` always did. */
+export async function archiveHabit(id: string): Promise<RepoResult<Habit>> {
+  return updateHabit(id, { status: 'archived' } as Partial<Habit>);
+}
+
+/**
+ * Permanent delete, with the reason recorded first.
+ *
+ * Order matters and is deliberate: the audit row is written BEFORE the habit
+ * is removed. `habit_deletions.habit_id` references a row that is about to
+ * disappear, so writing it afterwards would either fail or record nothing —
+ * and the previous version ignored the insert's result entirely, so a failed
+ * audit write was invisible while the delete went ahead regardless.
+ */
+export async function purgeHabit(
+  habit: Pick<Habit, 'id' | 'name'>,
+  reason: string | null,
+): Promise<RepoResult<true>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+
+  const audit = await supabase.from('habit_deletions').insert({
+    user_id: u.userId,
+    habit_id: habit.id,
+    habit_name: habit.name,
+    reason: reason || null,
+  });
+  if (audit.error) return { ok: false, error: `Silme kaydı yazılamadı: ${audit.error.message}` };
+
+  return deleteOwned({ table: 'habits', id: habit.id, userId: u.userId });
+}
+
+/** All non-archived habits for the current user, newest first. */
+export async function fetchHabits(limit = 500): Promise<RepoResult<Habit[]>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('habits')
+    .select(HABIT_COLUMNS)
+    .eq('user_id', u.userId)
+    .not('status', 'eq', 'archived')
+    .order('created_at', { ascending: false })
+    .limit(Math.max(1, Math.min(limit, 2000)));
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as unknown as Habit[] };
+}
+
+/** Creates one habit, attaching `user_id` here rather than from the caller. */
+export async function insertHabit(
+  habit: Omit<Habit, 'id' | 'created_at' | 'user_id'>,
+): Promise<RepoResult<Habit>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('habits')
+    .insert({ ...habit, user_id: u.userId })
+    .select(HABIT_COLUMNS)
+    .single();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: data as unknown as Habit };
 }

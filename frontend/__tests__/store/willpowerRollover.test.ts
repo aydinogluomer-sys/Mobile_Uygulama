@@ -44,13 +44,20 @@ jest.mock('../../lib/supabase', () => ({
     from: () => ({
       select: () => {
         const f: Record<string, unknown> = {};
-        const q = {
+        const q: any = {
           eq(col: string, val: unknown) { f[col] = val; return q; },
           async single() {
             const row = mockDb.rows.find((r) => r.state_date === f.state_date);
             return row
               ? { data: row, error: null }
               : { data: null, error: { code: 'PGRST116', message: 'no rows' } };
+          },
+          // `willpowerRepository.fetchOrCreateWillpowerState` uses
+          // `maybeSingle()`: an absent row is a normal outcome (a new day),
+          // not the PGRST116 error `single()` raises.
+          async maybeSingle() {
+            const row = mockDb.rows.find((r) => r.state_date === f.state_date);
+            return { data: row ?? null, error: null };
           },
         };
         return q;
@@ -68,7 +75,18 @@ jest.mock('../../lib/supabase', () => ({
       },
       update(patch: Record<string, unknown>) {
         const f: Record<string, unknown> = {};
-        const u = {
+        const apply = () => {
+          // Recorded here, not only in `then()`: the repository terminates
+          // with `.select().maybeSingle()`, so this is the path the store
+          // actually takes now and the assertions read `mockDb.updates`.
+          mockDb.updates.push({ state_date: String(f.state_date), patch });
+          const row = mockDb.rows.find((r) => Object.entries(f)
+            .every(([k, v]) => (r as Record<string, unknown>)[k] === v));
+          if (row) Object.assign(row, patch);
+          return row ?? null;
+        };
+        const u: any = {
+          select: () => ({ maybeSingle: async () => ({ data: apply(), error: null }) }),
           eq(col: string, val: unknown) { f[col] = val; return u; },
           then(onOk: (v: unknown) => unknown) {
             mockDb.updates.push({ state_date: String(f.state_date), patch });

@@ -3,6 +3,10 @@ import { AppState } from 'react-native';
 import { supabase, WillpowerState } from '../lib/supabase';
 import { todayLocal } from '../lib/date';
 import { canActivate as capacityCanActivate, dailyLoad, type HabitLoadInput } from '../lib/capacity';
+import {
+  fetchOrCreateWillpowerState,
+  updateWillpowerState,
+} from '../repositories/willpowerRepository';
 
 /**
  * W2 (task 1-D, Phase 1 wiring) seam: `canActivate`'s legacy fixed-slot rule
@@ -100,36 +104,10 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
       }
     });
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
     const today = todayLocal();
     set({ loading: true });
-
-    const { data } = await supabase
-      .from('willpower_state')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('state_date', today)
-      .single();
-
-    if (data) {
-      set({ state: data as WillpowerState });
-    } else {
-      const newState = {
-        user_id: user.id,
-        state_date: today,
-        daily_budget: 15,
-        used: 0,
-        focus_capacity: 3,
-        active_count: 0,
-      };
-      const { data: inserted } = await supabase
-        .from('willpower_state')
-        .upsert(newState)
-        .select()
-        .single();
-      if (inserted) set({ state: inserted as WillpowerState });
-    }
+    const res = await fetchOrCreateWillpowerState(today);
+    if (res.ok) set({ state: res.data as WillpowerState });
     set({ loading: false });
   },
 
@@ -188,11 +166,11 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
     if (!s || s.state_date !== todayLocal()) return;
 
     const updates = { used: s.used + cost, active_count: s.active_count + 1 };
-    await supabase
-      .from('willpower_state')
-      .update(updates)
-      .eq('user_id', s.user_id)
-      .eq('state_date', s.state_date);
+    const res = await updateWillpowerState(s.state_date, updates);
+    // Local state follows the server: showing willpower as spent when the
+    // write was rejected would let the user over-commit against a budget the
+    // database never debited.
+    if (!res.ok) return;
     set({ state: { ...s, ...updates } });
   },
 
@@ -206,11 +184,8 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
       used: Math.max(0, s.used - cost),
       active_count: Math.max(0, s.active_count - 1),
     };
-    await supabase
-      .from('willpower_state')
-      .update(updates)
-      .eq('user_id', s.user_id)
-      .eq('state_date', s.state_date);
+    const res = await updateWillpowerState(s.state_date, updates);
+    if (!res.ok) return;
     set({ state: { ...s, ...updates } });
   },
 }));

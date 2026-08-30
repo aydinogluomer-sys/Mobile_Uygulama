@@ -1,102 +1,115 @@
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
+import {
+  deleteKeyResult,
+  deleteObjective,
+  fetchOkrs,
+  insertKeyResult,
+  insertObjective,
+  updateKeyResultValue,
+  type KeyResultRow,
+  type OkrRow,
+} from '../repositories/okrRepository';
 
-export type KeyResult = {
-  id: string;
-  okr_id: string;
-  title: string;
-  current_value: number;
-  target_value: number;
-  unit: string | null;
-  created_at: string;
-};
+export type KeyResult = KeyResultRow;
+export type OKR = OkrRow & { key_results: KeyResult[] };
 
-export type OKR = {
-  id: string;
-  user_id: string;
-  objective: string;
-  year: number;
-  quarter: number;
-  created_at: string;
-  key_results: KeyResult[];
-};
-
+/**
+ * OKRs.
+ *
+ * ## What the move fixed
+ *
+ * This store had the most direct database calls of any (5) and the loosest
+ * ones. `loadOKRs` fetched both `okrs` and `key_results` with **no user
+ * filter and no bound** — every row RLS would hand back, forever. The four
+ * mutations matched on `id` alone and discarded their results.
+ *
+ * `addKeyResult` also attached a key result to an arbitrary `okrId` without
+ * checking that the objective belonged to the caller. That is the same shape
+ * of gap the live RLS audit found on `habit_logs`, and the repository now
+ * verifies ownership before inserting.
+ *
+ * The two tables load together because they are one aggregate; the objective
+ * list is bounded by quarter count, which is the natural window for this
+ * screen (there is no "load more objectives" gesture).
+ */
 type OKRStore = {
   okrs: OKR[];
   loading: boolean;
-  loadOKRs: () => Promise<void>;
-  addObjective: (objective: string, year: number, quarter: number) => Promise<void>;
-  addKeyResult: (okrId: string, title: string, target: number, unit: string | null) => Promise<void>;
-  updateKRValue: (krId: string, current: number) => Promise<void>;
-  removeObjective: (id: string) => Promise<void>;
-  removeKR: (id: string) => Promise<void>;
+  error: string | null;
+  loadOKRs: (quarters?: number) => Promise<void>;
+  addObjective: (objective: string, year: number, quarter: number) => Promise<boolean>;
+  addKeyResult: (okrId: string, title: string, target: number, unit: string | null) => Promise<boolean>;
+  updateKRValue: (krId: string, current: number) => Promise<boolean>;
+  removeObjective: (id: string) => Promise<boolean>;
+  removeKR: (id: string) => Promise<boolean>;
 };
 
-export const useOKRStore = create<OKRStore>((set, get) => ({
+export const useOKRStore = create<OKRStore>((set) => ({
   okrs: [],
   loading: false,
+  error: null,
 
-  loadOKRs: async () => {
-    set({ loading: true });
-    const [{ data: objs }, { data: krs }] = await Promise.all([
-      supabase.from('okrs').select('*').order('year', { ascending: false }).order('quarter', { ascending: false }),
-      supabase.from('key_results').select('*').order('created_at', { ascending: true }),
-    ]);
+  loadOKRs: async (quarters) => {
+    set({ loading: true, error: null });
+    const res = await fetchOkrs({ quarters });
+    if (!res.ok) return set({ loading: false, error: res.error });
     const byOkr: Record<string, KeyResult[]> = {};
-    (krs ?? []).forEach((k) => {
-      (byOkr[k.okr_id] ??= []).push(k as KeyResult);
+    for (const kr of res.data.keyResults) (byOkr[kr.okr_id] ??= []).push(kr);
+    set({
+      okrs: res.data.okrs.map((o) => ({ ...o, key_results: byOkr[o.id] ?? [] })),
+      loading: false,
     });
-    const merged: OKR[] = (objs ?? []).map((o) => ({ ...(o as any), key_results: byOkr[o.id] ?? [] }));
-    set({ okrs: merged, loading: false });
   },
 
   addObjective: async (objective, year, quarter) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !objective.trim()) return;
-    const { data } = await supabase
-      .from('okrs')
-      .insert({ user_id: user.id, objective: objective.trim(), year, quarter })
-      .select()
-      .single();
-    if (data) set((s) => ({ okrs: [{ ...(data as any), key_results: [] }, ...s.okrs] }));
+    const text = objective.trim();
+    if (!text) return false;
+    const res = await insertObjective({ objective: text, year, quarter });
+    if (!res.ok) { set({ error: res.error }); return false; }
+    set((s) => ({ okrs: [{ ...res.data, key_results: [] }, ...s.okrs], error: null }));
+    return true;
   },
 
   addKeyResult: async (okrId, title, target, unit) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !title.trim() || !(target > 0)) return;
-    const { data } = await supabase
-      .from('key_results')
-      .insert({ okr_id: okrId, user_id: user.id, title: title.trim(), target_value: target, unit: unit?.trim() || null })
-      .select()
-      .single();
-    if (data) {
-      set((s) => ({
-        okrs: s.okrs.map((o) => (o.id === okrId ? { ...o, key_results: [...o.key_results, data as KeyResult] } : o)),
-      }));
-    }
+    const text = title.trim();
+    if (!text || !(target > 0)) return false;
+    const res = await insertKeyResult({ okrId, title: text, targetValue: target, unit: unit?.trim() || null });
+    if (!res.ok) { set({ error: res.error }); return false; }
+    set((s) => ({
+      okrs: s.okrs.map((o) => (o.id === okrId ? { ...o, key_results: [...o.key_results, res.data] } : o)),
+      error: null,
+    }));
+    return true;
   },
 
   updateKRValue: async (krId, current) => {
-    const val = Math.max(0, current);
-    await supabase.from('key_results').update({ current_value: val }).eq('id', krId);
+    const res = await updateKeyResultValue(krId, current);
+    if (!res.ok) { set({ error: res.error }); return false; }
     set((s) => ({
       okrs: s.okrs.map((o) => ({
         ...o,
-        key_results: o.key_results.map((k) => (k.id === krId ? { ...k, current_value: val } : k)),
+        key_results: o.key_results.map((k) => (k.id === krId ? res.data : k)),
       })),
+      error: null,
     }));
+    return true;
   },
 
   removeObjective: async (id) => {
-    await supabase.from('okrs').delete().eq('id', id);
-    set((s) => ({ okrs: s.okrs.filter((o) => o.id !== id) }));
+    const res = await deleteObjective(id);
+    if (!res.ok) { set({ error: res.error }); return false; }
+    set((s) => ({ okrs: s.okrs.filter((o) => o.id !== id), error: null }));
+    return true;
   },
 
   removeKR: async (id) => {
-    await supabase.from('key_results').delete().eq('id', id);
+    const res = await deleteKeyResult(id);
+    if (!res.ok) { set({ error: res.error }); return false; }
     set((s) => ({
       okrs: s.okrs.map((o) => ({ ...o, key_results: o.key_results.filter((k) => k.id !== id) })),
+      error: null,
     }));
+    return true;
   },
 }));
 

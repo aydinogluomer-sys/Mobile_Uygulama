@@ -35,7 +35,7 @@ jest.mock('../../lib/supabase', () => ({
     from: () => ({
       select: () => {
         const f: Record<string, unknown> = {};
-        const q = {
+        const q: any = {
           eq(col: string, val: unknown) { f[col] = val; return q; },
           async single() {
             mockDb.selects += 1;
@@ -43,6 +43,13 @@ jest.mock('../../lib/supabase', () => ({
             return row
               ? { data: row, error: null }
               : { data: null, error: { code: 'PGRST116', message: 'no rows' } };
+          },
+          // The repository uses maybeSingle(): a missing row for a new day is
+          // an expected outcome, not the PGRST116 error single() raises.
+          async maybeSingle() {
+            mockDb.selects += 1;
+            const row = mockDb.rows.find((r) => r.state_date === f.state_date);
+            return { data: row ?? null, error: null };
           },
         };
         return q;

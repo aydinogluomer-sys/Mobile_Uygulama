@@ -18,7 +18,26 @@ export default function NotesScreen() {
 
   useEffect(() => { fetchNotes(); }, []);
 
-  const visible = query.trim() ? search(query) : notes;
+  // Search is SERVER-side now, so it cannot be computed during render. The
+  // previous `search(query)` filtered the in-memory array, which only ever
+  // searched the rows that happened to be loaded -- and paginating the list
+  // made that strictly worse. Debounced so typing does not issue a request
+  // per keystroke.
+  const [results, setResults] = useState<Note[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  useEffect(() => {
+    const term = query.trim();
+    if (!term) { setResults(null); setSearching(false); return; }
+    setSearching(true);
+    let alive = true;
+    const t = setTimeout(async () => {
+      const found = await search(term);
+      if (alive) { setResults(found); setSearching(false); }
+    }, 250);
+    return () => { alive = false; clearTimeout(t); };
+  }, [query, search]);
+
+  const visible = results ?? notes;
 
   function openNew() {
     setEditing(null);

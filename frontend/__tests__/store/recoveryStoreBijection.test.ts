@@ -45,6 +45,9 @@ jest.mock('../../lib/supabase', () => ({
         const q = {
           eq(col: string, val: unknown) { filters[col] = val; return q; },
           order() { return q; },
+          // The repository bounds its list reads, so the chain now ends in
+          // `.limit()` -- an unbounded fetch is exactly what it removed.
+          limit() { return q; },
           then(onOk: (v: unknown) => unknown) {
             const rows = mockDb.rows.filter((r) =>
               Object.entries(filters).every(
@@ -68,8 +71,17 @@ jest.mock('../../lib/supabase', () => ({
       },
       update(patch: Record<string, unknown>) {
         const filters: Record<string, unknown> = {};
-        const u = {
+        const u: any = {
           eq(col: string, val: unknown) { filters[col] = val; return u; },
+          // The repository layer scopes by owner and then reads the row back:
+          // `.eq('id').eq('user_id').select(cols).maybeSingle()`.
+          select: () => ({
+            maybeSingle: async () => {
+              const row = mockDb.rows.find((r: any) => r.id === filters.id);
+              if (row) Object.assign(row, patch);
+              return { data: row ?? null, error: null };
+            },
+          }),
           then(onOk: (v: unknown) => unknown) {
             const row = mockDb.rows.find((r) => r.id === filters.id);
             if (row) Object.assign(row, patch);
@@ -80,8 +92,15 @@ jest.mock('../../lib/supabase', () => ({
       },
       delete() {
         const filters: Record<string, unknown> = {};
-        const d = {
+        const d: any = {
           eq(col: string, val: unknown) { filters[col] = val; return d; },
+          select: () => ({
+            then: (onOk: (v: unknown) => unknown) => {
+              const hit = mockDb.rows.filter((r: any) => r.id === filters.id);
+              mockDb.rows = mockDb.rows.filter((r: any) => r.id !== filters.id);
+              return Promise.resolve({ data: hit, error: null }).then(onOk);
+            },
+          }),
           then(onOk: (v: unknown) => unknown) {
             mockDb.rows = mockDb.rows.filter((r) => r.id !== filters.id);
             return Promise.resolve({ data: null, error: null }).then(onOk);

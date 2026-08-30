@@ -1,22 +1,32 @@
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
-import { todayLocal, ymd, weekStartYmd } from '../lib/date';
+import {
+  deleteDeepWorkSession,
+  fetchDeepWorkSince,
+  insertDeepWorkSession,
+  type DeepWorkRow,
+} from '../repositories/deepWorkRepository';
+import { todayLocal, weekStartYmd } from '../lib/date';
 
-export type DeepWorkSession = {
-  id: string;
-  user_id: string;
-  subject: string;
-  duration_minutes: number;
-  date: string;
-  created_at: string;
-};
+export type DeepWorkSession = DeepWorkRow;
 
+/**
+ * Deep work sessions.
+ *
+ * Direct calls moved to `repositories/deepWorkRepository`. The list is
+ * windowed by date rather than paginated on purpose: both consumers
+ * (`todayMinutes`, `weekMinutes`) are sums over a period, and a partial page
+ * would produce a partial total that still reads as a total.
+ *
+ * `removeSession` previously deleted by `id` alone and dropped the row from
+ * local state whether or not the delete succeeded.
+ */
 type DeepWorkStore = {
   sessions: DeepWorkSession[];
   loading: boolean;
-  loadSessions: () => Promise<void>;
-  addSession: (subject: string, minutes: number, date?: string) => Promise<void>;
-  removeSession: (id: string) => Promise<void>;
+  error: string | null;
+  loadSessions: (days?: number) => Promise<void>;
+  addSession: (subject: string, minutes: number, date?: string) => Promise<boolean>;
+  removeSession: (id: string) => Promise<boolean>;
   todayMinutes: () => number;
   weekMinutes: () => number;
 };
@@ -24,52 +34,40 @@ type DeepWorkStore = {
 export const useDeepWorkStore = create<DeepWorkStore>((set, get) => ({
   sessions: [],
   loading: false,
+  error: null,
 
-  loadSessions: async () => {
-    set({ loading: true });
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { set({ loading: false }); return; }
-    const since = new Date();
-    since.setDate(since.getDate() - 30);
-    const { data } = await supabase
-      .from('deep_work_sessions')
-      .select('*')
-      .eq('user_id', user.id)
-      .gte('date', ymd(since))
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: false });
-    if (data) set({ sessions: data as DeepWorkSession[] });
-    set({ loading: false });
+  loadSessions: async (days = 30) => {
+    set({ loading: true, error: null });
+    const res = await fetchDeepWorkSince(days);
+    if (!res.ok) return set({ loading: false, error: res.error });
+    set({ sessions: res.data, loading: false });
   },
 
   addSession: async (subject, minutes, date) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const today = todayLocal();
-    const row = { user_id: user.id, subject, duration_minutes: minutes, date: date ?? today };
-    const { data } = await supabase.from('deep_work_sessions').insert(row).select().single();
-    if (data) set((s) => ({ sessions: [data as DeepWorkSession, ...s.sessions] }));
+    const res = await insertDeepWorkSession({ subject, minutes, date: date ?? todayLocal() });
+    if (!res.ok) { set({ error: res.error }); return false; }
+    set((s) => ({ sessions: [res.data, ...s.sessions], error: null }));
+    return true;
   },
 
   removeSession: async (id) => {
-    await supabase.from('deep_work_sessions').delete().eq('id', id);
-    set((s) => ({ sessions: s.sessions.filter((x) => x.id !== id) }));
+    const res = await deleteDeepWorkSession(id);
+    if (!res.ok) { set({ error: res.error }); return false; }
+    set((s) => ({ sessions: s.sessions.filter((x) => x.id !== id), error: null }));
+    return true;
   },
 
   todayMinutes: () => {
     const today = todayLocal();
     return get().sessions
       .filter((s) => s.date === today)
-      .reduce((acc, s) => acc + s.duration_minutes, 0);
+      .reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
   },
 
   weekMinutes: () => {
-    // Hafta siniri YEREL Pazartesi gece yarisidir. toISOString() burada UTC
-    // Pazartesi'yi veriyordu: UTC+3'te Pazartesi 00:00-03:00 arasinda hafta
-    // basi bir gun geriye kayiyor, onceki haftanin Pazar seanslari sizmiyordu.
-    const weekStart = weekStartYmd();
+    const start = weekStartYmd();
     return get().sessions
-      .filter((s) => s.date >= weekStart)
-      .reduce((acc, s) => acc + s.duration_minutes, 0);
+      .filter((s) => s.date >= start)
+      .reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
   },
 }));

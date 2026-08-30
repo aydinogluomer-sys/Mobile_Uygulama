@@ -49,13 +49,28 @@ type MockQuery = {
 };
 
 jest.mock('../../lib/supabase', () => {
+  // The repository layer terminates its chains explicitly -- `.limit()` on a
+  // bounded read, `.select().maybeSingle()` on a scoped write -- so the mock
+  // has to offer those links as well as being thenable.
   const thenable = (result: () => unknown): MockQuery => {
-    const q: MockQuery = {
+    const q: any = {
       eq: () => q,
       order: () => q,
-      then: (onOk) => Promise.resolve(result()).then(onOk),
+      limit: () => q,
+      select: () => ({
+        maybeSingle: async () => {
+          const r = result() as { data: unknown; error: unknown };
+          return { data: r.error ? null : { id: 'ft1' }, error: r.error };
+        },
+        single: async () => {
+          const r = result() as { data: unknown; error: unknown };
+          return { data: r.error ? null : { id: 'ft1' }, error: r.error };
+        },
+        then: (onOk: (v: unknown) => unknown) => Promise.resolve(result()).then(onOk),
+      }),
+      then: (onOk: (v: unknown) => unknown) => Promise.resolve(result()).then(onOk),
     };
-    return q;
+    return q as MockQuery;
   };
   return {
     supabase: {

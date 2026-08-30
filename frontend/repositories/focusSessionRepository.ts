@@ -76,3 +76,35 @@ export async function deleteAllFocusSessions(): Promise<RepoResult<void>> {
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: undefined };
 }
+
+/**
+ * Records one completed focus session. (§8 — moved out of store/focusStore.ts.)
+ *
+ * `user_id` is attached here rather than trusted from the caller, matching
+ * every other write in this layer.
+ */
+export async function insertFocusSession(input: {
+  taskId: string | null;
+  taskTitle: string | null;
+  mode: string;
+  startedAt: string;
+  endedAt: string;
+  plannedSeconds: number;
+  completedSeconds: number;
+}): Promise<RepoResult<true>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { error } = await supabase.from('focus_sessions').insert({
+    user_id: u.userId,
+    task_id: input.taskId,
+    task_title: input.taskTitle,
+    mode: input.mode,
+    started_at: input.startedAt,
+    ended_at: input.endedAt,
+    planned_seconds: input.plannedSeconds,
+    completed_seconds: input.completedSeconds,
+    completed: true,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: true };
+}

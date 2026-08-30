@@ -18,6 +18,12 @@ import {
   type HabitLogIntent,
 } from '../lib/syncQueue';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
+import {
+  fetchLogsForDate as repoFetchLogsForDate,
+  findHabitLog as repoFindHabitLog,
+  insertHabitLog as repoInsertHabitLog,
+  updateHabitLog as repoUpdateHabitLog,
+} from '../repositories/habitLogRepository';
 
 /**
  * What a write actually did. The previous signature was `Promise<void>` and
@@ -318,17 +324,9 @@ type SetState = (fn: (s: { logs: HabitLog[] }) => Partial<{ logs: HabitLog[] }>)
 type GetState = () => { logs: HabitLog[]; getLogForHabit: (habitId: string, date?: Date | string) => HabitLog | undefined };
 
 async function applyUpdate(set: SetState, id: string, patch: Patch): Promise<LogResult> {
-  const { data, error } = await supabase
-    .from('habit_logs')
-    .update(patch)
-    .eq('id', id)
-    .select(COLS)
-    .single();
-
-  if (error || !data) {
-    return { ok: false, error: error?.message ?? 'Kayıt güncellenemedi.' };
-  }
-  const log = data as HabitLog;
+  const res = await repoUpdateHabitLog(id, patch as Record<string, unknown>);
+  if (!res.ok) return { ok: false, error: res.error };
+  const log = res.data;
   set((s) => replaceLogForKey(s, log.habit_id, log.completed_at, log));
   return { ok: true, log };
 }
@@ -355,21 +353,16 @@ async function attemptWrite(
   dateStr: string,
   patch: Patch,
 ): Promise<LogResult> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: 'Oturum bulunamadı.' };
-
   const existing = get().getLogForHabit(habitId, dateStr);
   const confirmed = existing && !isLocalPlaceholder(existing) ? existing : undefined;
   if (confirmed) return applyUpdate(set, confirmed.id, patch);
 
-  const { data, error } = await supabase
-    .from('habit_logs')
-    .insert({ habit_id: habitId, user_id: user.id, completed_at: dateStr, ...patch })
-    .select(COLS)
-    .single();
+  const inserted = await repoInsertHabitLog({
+    habitId, dateStr, patch: patch as Record<string, unknown>,
+  });
 
-  if (!error && data) {
-    const log = data as HabitLog;
+  if (inserted.ok) {
+    const log = inserted.data;
     set((s) => replaceLogForKey(s, log.habit_id, log.completed_at, log));
     return { ok: true, log };
   }
@@ -379,18 +372,12 @@ async function attemptWrite(
   // (plan §18) a previous session's write reached the server before the app
   // was killed and this is that same intent replaying. Recover the row and
   // update it rather than dropping the tap or duplicating the row.
-  if (error?.code === '23505') {
-    const { data: found } = await supabase
-      .from('habit_logs')
-      .select(COLS)
-      .eq('habit_id', habitId)
-      .eq('user_id', user.id)
-      .eq('completed_at', dateStr)
-      .maybeSingle();
-    if (found) return applyUpdate(set, (found as HabitLog).id, patch);
+  if (inserted.code === '23505') {
+    const found = await repoFindHabitLog({ habitId, dateStr });
+    if (found.ok && found.data) return applyUpdate(set, found.data.id, patch);
   }
 
-  return { ok: false, error: error?.message ?? 'Kayıt oluşturulamadı.' };
+  return { ok: false, error: inserted.error };
 }
 
 export const useLogStore = create<LogStore>((set, get) => {
@@ -539,16 +526,8 @@ export const useLogStore = create<LogStore>((set, get) => {
     fetchLogsForDate: async (date) => {
       set({ loading: true });
       const dateStr = typeof date === 'string' ? date : ymd(date);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { set({ loading: false }); return; }
-
-      const { data, error } = await supabase
-        .from('habit_logs')
-        .select(COLS)
-        .eq('user_id', user.id)
-        .eq('completed_at', dateStr);
-
-      if (!error && data) set({ logs: data as HabitLog[] });
+      const res = await repoFetchLogsForDate(dateStr);
+      if (res.ok) set({ logs: res.data });
       set({ loading: false });
     },
 

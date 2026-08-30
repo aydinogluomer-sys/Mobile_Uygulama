@@ -2,6 +2,12 @@ import { create } from 'zustand';
 import { supabase, type RecoveryPlan, type RecoveryStrategy, type HabitLog } from '../lib/supabase';
 import { scheduleRecoveryReminder, cancelRecoveryReminder } from '../lib/notifications';
 import {
+  deleteRecoveryPlan,
+  fetchPlannedRecoveryPlans,
+  insertRecoveryPlan,
+  setRecoveryPlanStatus,
+} from '../repositories/recoveryRepository';
+import {
   deficitFor,
   recoveryOptions,
   toLegacyRecoveryPlan,
@@ -92,37 +98,22 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
 
   fetchPlans: async () => {
     set({ loading: true });
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { set({ loading: false }); return; }
-    const { data, error } = await supabase
-      .from('recovery_plans')
-      .select(SELECT)
-      .eq('user_id', user.id)
-      .eq('status', 'planned')
-      .order('target_date', { ascending: true });
-    if (!error && data) set({ plans: (data as RecoveryPlan[]).map(roundTripLegacy) });
+    const res = await fetchPlannedRecoveryPlans();
+    if (res.ok) set({ plans: res.data.map(roundTripLegacy) });
     set({ loading: false });
   },
 
   addPlan: async (input) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const { data, error } = await supabase
-      .from('recovery_plans')
-      .insert({
-        user_id: user.id,
-        habit_id: input.habitId,
-        source_date: input.sourceDate,
-        target_date: input.targetDate,
-        strategy: input.strategy,
-        note: input.note ?? null,
-        reminder_time: input.reminderTime ?? null,
-        status: 'planned',
-      })
-      .select(SELECT)
-      .single();
-    if (error || !data) return null;
-    const plan = roundTripLegacy(data as RecoveryPlan);
+    const res = await insertRecoveryPlan({
+      habitId: input.habitId,
+      sourceDate: input.sourceDate,
+      targetDate: input.targetDate,
+      strategy: input.strategy,
+      note: input.note ?? null,
+      reminderTime: input.reminderTime ?? null,
+    });
+    if (!res.ok) return null;
+    const plan = roundTripLegacy(res.data);
     set((s) => ({ plans: [...s.plans, plan].sort((a, b) => a.target_date.localeCompare(b.target_date)) }));
     if (plan.reminder_time) {
       scheduleRecoveryReminder(plan.id, input.habitName, plan.target_date, plan.reminder_time);
@@ -145,7 +136,8 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
     // Read the plan BEFORE the local state drops it -- the event's habit_id
     // and strategy come from here, never from a caller-supplied argument.
     const plan = get().plans.find((p) => p.id === id);
-    const { error } = await supabase.from('recovery_plans').update({ status: 'done' }).eq('id', id);
+    const res = await setRecoveryPlanStatus(id, 'done');
+    const error = res.ok ? null : { message: res.error };
     cancelRecoveryReminder(id);
     set((s) => ({ plans: s.plans.filter((p) => p.id !== id) }));
     // §22 `recovery_completed`, gated on the update actually succeeding.
@@ -162,13 +154,17 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
   },
 
   skipPlan: async (id) => {
-    await supabase.from('recovery_plans').update({ status: 'skipped' }).eq('id', id);
+    const res = await setRecoveryPlanStatus(id, 'skipped');
+    // A failed write leaves the plan in place rather than clearing it from
+    // the list and cancelling its reminder for a change that did not happen.
+    if (!res.ok) return;
     cancelRecoveryReminder(id);
     set((s) => ({ plans: s.plans.filter((p) => p.id !== id) }));
   },
 
   deletePlan: async (id) => {
-    await supabase.from('recovery_plans').delete().eq('id', id);
+    const res = await deleteRecoveryPlan(id);
+    if (!res.ok) return;
     cancelRecoveryReminder(id);
     set((s) => ({ plans: s.plans.filter((p) => p.id !== id) }));
   },

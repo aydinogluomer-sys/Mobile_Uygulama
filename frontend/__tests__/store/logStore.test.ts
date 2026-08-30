@@ -106,6 +106,18 @@ jest.mock('../../lib/supabase', () => {
                 Object.assign(row, payload);
                 return { data: row, error: null };
               },
+              maybeSingle: async () => {
+                mockDb.calls.push('update');
+                await pause();
+                if (mockDb.updateError) {
+                  const e = mockDb.updateError; mockDb.updateError = null;
+                  return { data: null, error: e };
+                }
+                const row = mockDb.rows.find((r) => r.id === filters.id);
+                if (!row) return { data: null, error: { message: 'no row' } };
+                Object.assign(row, payload);
+                return { data: row, error: null };
+              },
             }),
           };
           return u;

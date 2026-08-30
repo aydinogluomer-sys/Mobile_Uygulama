@@ -44,7 +44,10 @@ function StarRating({ value, onChange }: { value: number | null; onChange: (n: n
 }
 
 export default function ReadingListScreen() {
-  const { items, loading, fetchItems, addItem, updateStatus, updateRating, removeItem } = useReadingListStore();
+  // Each tab owns its own page and cursor now: the store no longer holds one
+  // unbounded array that the screen slices. See store/readingListStore.ts.
+  const { tabs, counts, fetchItems, loadMore, addItem, updateStatus, updateRating, removeItem } =
+    useReadingListStore();
   const [activeTab, setActiveTab] = useState<ReadingStatus>('want_to_read');
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState('');
@@ -52,9 +55,13 @@ export default function ReadingListScreen() {
   const [url, setUrl] = useState('');
   const [type, setType] = useState<ReadingType>('book');
 
-  useEffect(() => { fetchItems(); }, []);
+  // Load the tab the user is actually looking at, and re-load when it
+  // changes -- filtering happens server-side, so switching tabs is a fetch.
+  useEffect(() => { fetchItems(activeTab); }, [activeTab, fetchItems]);
 
-  const filtered = items.filter((i) => i.status === activeTab);
+  const tab = tabs[activeTab];
+  const filtered = tab.items;
+  const loading = tab.loading;
 
   async function handleAdd() {
     if (!title.trim()) return;
@@ -76,11 +83,6 @@ export default function ReadingListScreen() {
     return 'want_to_read';
   }
 
-  const counts = {
-    want_to_read: items.filter((i) => i.status === 'want_to_read').length,
-    reading: items.filter((i) => i.status === 'reading').length,
-    completed: items.filter((i) => i.status === 'completed').length,
-  };
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -109,7 +111,7 @@ export default function ReadingListScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.content}>
-        {loading && items.length === 0 ? (
+        {loading && filtered.length === 0 ? (
           // Kart şekli sabit: tür ikonu + başlık + yazar + tür rozeti. Boş
           // durumu göstermek yanıltıcı olurdu, veri henüz yolda.
           [0, 1, 2].map((i) => (

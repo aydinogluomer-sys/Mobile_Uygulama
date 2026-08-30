@@ -1,5 +1,10 @@
 import { create } from 'zustand';
 import { supabase, Profile, ProfileBadge, LeaderboardRow } from '../lib/supabase';
+import {
+  fetchBadges as repoFetchBadges,
+  fetchOrCreateProfile,
+  updateUsername,
+} from '../repositories/profileRepository';
 
 export type LeaderboardScope = 'global' | 'weekly';
 
@@ -29,52 +34,20 @@ export const useProfileStore = create<ProfileStore>((set, get) => ({
   lbLoading: false,
 
   fetchProfile: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
     set({ loading: true });
-
-    let { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    // Profil yoksa (eski kullanıcı / trigger öncesi) oluştur
-    if (!data) {
-      const { data: inserted } = await supabase
-        .from('profiles')
-        .insert({ id: user.id, email: user.email })
-        .select('*')
-        .single();
-      data = inserted;
-    }
-
-    if (data) set({ profile: data as Profile });
+    const res = await fetchOrCreateProfile<Profile>();
+    if (res.ok) set({ profile: res.data });
     set({ loading: false });
   },
 
   fetchBadges: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase
-      .from('profile_badges')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('earned_at', { ascending: false });
-    if (data) set({ badges: data as ProfileBadge[] });
+    const res = await repoFetchBadges<ProfileBadge>();
+    if (res.ok) set({ badges: res.data });
   },
 
   setUsername: async (name) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const trimmed = name.trim().slice(0, 24);
-    const { data } = await supabase
-      .from('profiles')
-      .update({ username: trimmed || null })
-      .eq('id', user.id)
-      .select('*')
-      .single();
-    if (data) set({ profile: data as Profile });
+    const res = await updateUsername<Profile>(name);
+    if (res.ok) set({ profile: res.data });
   },
 
   fetchLeaderboard: async (scope) => {

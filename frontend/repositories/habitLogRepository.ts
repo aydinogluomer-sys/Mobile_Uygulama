@@ -10,7 +10,7 @@
  */
 import { supabase } from '../lib/supabase';
 import type { HabitLog } from '../lib/supabase';
-import { currentUserId, RepoResult } from './shared';
+import { currentUserId, updateOwned, type RepoResult } from './shared';
 
 export type ReviewLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
 export type HeatmapLogRow = Pick<HabitLog, 'completed_at' | 'state'>;
@@ -138,4 +138,84 @@ export async function fetchHabitLogsForHabit(params: {
     .order('completed_at', { ascending: true });
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as HabitDetailLogRow[] };
+}
+
+// ---------------------------------------------------------------------------
+// Write path. (§8 — moved out of store/logStore.ts.)
+//
+// These are the queries only; the ORCHESTRATION around them — optimistic
+// state, the offline queue, the serialise() chain, the 23505 recovery
+// decision — stays in the store, because that is genuine domain logic rather
+// than data access. Splitting it out would have produced a repository that
+// knew about Zustand.
+// ---------------------------------------------------------------------------
+
+const WRITE_COLS = 'id,habit_id,user_id,completed_at,value,is_completed,state,xp,created_at';
+
+/** Every log for one local day. */
+export async function fetchLogsForDate(dateStr: string): Promise<RepoResult<HabitLog[]>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('habit_logs')
+    .select(WRITE_COLS)
+    .eq('user_id', u.userId)
+    .eq('completed_at', dateStr);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as unknown as HabitLog[] };
+}
+
+/**
+ * Inserts a log. The caller needs to distinguish a unique-violation from any
+ * other failure — that is what drives the recovery branch — so the error
+ * CODE is carried through rather than flattened to a message.
+ */
+export async function insertHabitLog(params: {
+  habitId: string;
+  dateStr: string;
+  patch: Record<string, unknown>;
+}): Promise<RepoResult<HabitLog> & { code?: string }> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('habit_logs')
+    .insert({
+      habit_id: params.habitId,
+      user_id: u.userId,
+      completed_at: params.dateStr,
+      ...params.patch,
+    })
+    .select(WRITE_COLS)
+    .single();
+  if (error) return { ok: false, error: error.message, code: error.code };
+  return { ok: true, data: data as unknown as HabitLog };
+}
+
+/** The existing row for a (habit, day), used to recover from a 23505. */
+export async function findHabitLog(params: {
+  habitId: string;
+  dateStr: string;
+}): Promise<RepoResult<HabitLog | null>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('habit_logs')
+    .select(WRITE_COLS)
+    .eq('habit_id', params.habitId)
+    .eq('user_id', u.userId)
+    .eq('completed_at', params.dateStr)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? null) as HabitLog | null };
+}
+
+export async function updateHabitLog(
+  id: string,
+  patch: Record<string, unknown>,
+): Promise<RepoResult<HabitLog>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  return updateOwned<HabitLog>({
+    table: 'habit_logs', id, userId: u.userId, patch, columns: WRITE_COLS,
+  });
 }

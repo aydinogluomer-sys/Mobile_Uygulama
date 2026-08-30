@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { supabase, Habit } from '../lib/supabase';
 import { scheduleHabitReminder, cancelHabitReminder } from '../lib/notifications';
+import {
+  archiveHabit as repoArchiveHabit,
+  fetchHabits as repoFetchHabits,
+  insertHabit as repoInsertHabit,
+  purgeHabit as repoPurgeHabit,
+  updateHabit as repoUpdateHabit,
+} from '../repositories/habitRepository';
 // Static import (task Phase-1 CODER-F, W1). Was `await import('./willpowerStore')`
 // -- no circular dependency requires deferring it (willpowerStore.ts has no
 // import back on this file), and the dynamic form is unexecutable under this
@@ -63,30 +70,15 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
 
   fetchHabits: async () => {
     set({ loading: true });
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      set({ loading: false });
-      return;
-    }
-    const { data, error } = await supabase
-      .from('habits')
-      .select('id,user_id,name,icon,color,behavior_type,tracking_type,unit,daily_goal,target_direction,frequency_config,willpower_cost,status,impact_level,urgency,difficulty,estimated_minutes,reminders,cue_habit_id,cue_note,life_area,end_condition,created_at')
-      .not('status', 'eq', 'archived')
-      .order('created_at', { ascending: false });
-    if (!error && data) set({ habits: data as Habit[] });
+    const res = await repoFetchHabits();
+    if (res.ok) set({ habits: res.data });
     set({ loading: false });
   },
 
   addHabit: async (habitData) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const { data, error } = await supabase
-      .from('habits')
-      .insert({ ...habitData, user_id: user.id })
-      .select('id,user_id,name,icon,color,behavior_type,tracking_type,unit,daily_goal,target_direction,frequency_config,willpower_cost,status,impact_level,urgency,difficulty,estimated_minutes,reminders,cue_habit_id,cue_note,life_area,end_condition,created_at')
-      .single();
-    if (!error && data) {
-      const h = data as Habit;
+    const res = await repoInsertHabit(habitData);
+    if (res.ok) {
+      const h = res.data;
       set((state) => ({ habits: [h, ...state.habits] }));
       if (h.reminders?.enabled && (h.status === 'active' || h.status === 'waiting')) {
         scheduleHabitReminder(h);
@@ -113,8 +105,8 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
   },
 
   updateHabit: async (id, updates) => {
-    const { error } = await supabase.from('habits').update(updates).eq('id', id);
-    if (!error) {
+    const res = await repoUpdateHabit(id, updates);
+    if (res.ok) {
       let merged: Habit | undefined;
       set((state) => ({
         habits: state.habits.map((h) => {
@@ -133,14 +125,18 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
   },
 
   removeHabit: async (id) => {
-    await supabase.from('habits').update({ status: 'archived' }).eq('id', id);
+    const res = await repoArchiveHabit(id);
+    if (!res.ok) return;
     cancelHabitReminder(id);
     set((state) => ({ habits: state.habits.filter((h) => h.id !== id) }));
   },
 
   // Geri al — arşivden çıkar, orijinal duruma döndür, listeye geri koy
   restoreHabit: async (habit) => {
-    await supabase.from('habits').update({ status: habit.status }).eq('id', habit.id);
+    const res = await repoUpdateHabit(habit.id, { status: habit.status });
+    // Restoring is an undo: if the write fails the habit stays archived
+    // rather than reappearing in the list as though it had come back.
+    if (!res.ok) return;
     set((state) => ({ habits: [habit, ...state.habits.filter((h) => h.id !== habit.id)] }));
     if (habit.reminders?.enabled && (habit.status === 'active' || habit.status === 'waiting')) {
       scheduleHabitReminder(habit);
@@ -149,16 +145,8 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
 
   // Kalıcı sil — sebebi logla, satırı (ve cascade ile loglarını) kalıcı sil
   purgeHabit: async (habit, reason) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase.from('habit_deletions').insert({
-        user_id: user.id,
-        habit_id: habit.id,
-        habit_name: habit.name,
-        reason: reason || null,
-      });
-    }
-    await supabase.from('habits').delete().eq('id', habit.id);
+    const res = await repoPurgeHabit(habit, reason || null);
+    if (!res.ok) return;
     cancelHabitReminder(habit.id);
     set((state) => ({ habits: state.habits.filter((h) => h.id !== habit.id) }));
   },

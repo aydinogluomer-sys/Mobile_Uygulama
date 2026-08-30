@@ -53,8 +53,19 @@ jest.mock('../../lib/supabase', () => ({
         }),
       }),
       update: (patch: Record<string, unknown>) => {
-        const q = {
+        // `recoveryRepository.setRecoveryPlanStatus` scopes by owner and then
+        // reads the row back, so a rejected update is a value the store can
+        // see rather than a discarded result. `mockState.updateError` still
+        // drives the rejection path -- it now surfaces through `.select()`.
+        const q: any = {
           eq: () => q,
+          select: () => ({
+            maybeSingle: async () => {
+              mockState.updates.push(patch);
+              if (mockState.updateError) return { data: null, error: mockState.updateError };
+              return { data: { id: PLAN_ID, ...patch }, error: null };
+            },
+          }),
           then: (onOk: (v: unknown) => unknown) => {
             mockState.updates.push(patch);
             return Promise.resolve({ data: null, error: mockState.updateError }).then(onOk);

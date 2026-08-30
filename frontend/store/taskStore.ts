@@ -1,5 +1,12 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import {
+  deleteTask as repoDeleteTask,
+  fetchTasksPage,
+  insertTask,
+  updateTask as repoUpdateTask,
+} from '../repositories/taskRepository';
+import type { Cursor } from '../repositories/shared';
 import { todayLocal } from '../lib/date';
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
@@ -29,7 +36,12 @@ export type Task = {
 type TaskStore = {
   tasks: Task[];
   loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+  error: string | null;
+  cursor: Cursor | null;
   fetchTasks: () => Promise<void>;
+  loadMore: () => Promise<void>;
   addTask: (t: Partial<Task>) => Promise<Task | null>;
   updateTask: (id: string, patch: Partial<Task>) => Promise<void>;
   removeTask: (id: string) => Promise<void>;
@@ -46,54 +58,60 @@ type TaskStore = {
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   loading: false,
+  loadingMore: false,
+  hasMore: false,
+  error: null,
+  cursor: null,
 
   fetchTasks: async () => {
-    set({ loading: true });
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      set({ loading: false });
-      return;
-    }
-    const { data } = await supabase
-      .from('tasks')
-      .select('*')
-      .neq('status', 'cancelled')
-      .order('created_at', { ascending: false });
-    if (data) set({ tasks: data as Task[] });
-    set({ loading: false });
+    set({ loading: true, error: null });
+    const res = await fetchTasksPage(null);
+    if (!res.ok) return set({ loading: false, error: res.error });
+    set({
+      tasks: res.data.rows,
+      cursor: res.data.nextCursor,
+      hasMore: res.data.hasMore,
+      loading: false,
+    });
+  },
+
+  loadMore: async () => {
+    const { cursor, hasMore, loadingMore, loading } = get();
+    if (!hasMore || !cursor || loadingMore || loading) return;
+    set({ loadingMore: true });
+    const res = await fetchTasksPage(cursor);
+    if (!res.ok) return set({ loadingMore: false, error: res.error });
+    set((s) => {
+      const seen = new Set(s.tasks.map((t) => t.id));
+      const fresh = res.data.rows.filter((t) => !seen.has(t.id));
+      return {
+        tasks: [...s.tasks, ...fresh],
+        cursor: res.data.nextCursor,
+        hasMore: res.data.hasMore,
+        loadingMore: false,
+      };
+    });
   },
 
   addTask: async (t) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const row = {
-      user_id: user.id,
-      title: t.title ?? '',
-      status: t.status ?? 'pending',
-      priority: t.priority ?? 'none',
-      list_type: t.list_type ?? 'inbox',
-      due_date: t.due_date ?? null,
-      project_id: t.project_id ?? null,
-      description: t.description ?? null,
-      notes_text: t.notes_text ?? null,
-      completed: false,
-    };
-    const { data, error } = await supabase.from('tasks').insert(row).select().single();
-    if (error || !data) return null;
-    set((s) => ({ tasks: [data as Task, ...s.tasks] }));
-    return data as Task;
+    const res = await insertTask(t);
+    if (!res.ok) { set({ error: res.error }); return null; }
+    set((s) => ({ tasks: [res.data, ...s.tasks], error: null }));
+    return res.data;
   },
 
   updateTask: async (id, patch) => {
-    const { error } = await supabase.from('tasks').update(patch).eq('id', id);
-    if (!error) {
-      set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
-    }
+    const res = await repoUpdateTask(id, patch);
+    if (!res.ok) { set({ error: res.error }); return; }
+    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? res.data : t)), error: null }));
   },
 
   removeTask: async (id) => {
-    await supabase.from('tasks').delete().eq('id', id);
-    set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
+    const res = await repoDeleteTask(id);
+    // A failed delete leaves the row on screen; removing it regardless is how
+    // the previous version reported something that had not happened.
+    if (!res.ok) { set({ error: res.error }); return; }
+    set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id), error: null }));
   },
 
   toggleDone: async (id) => {

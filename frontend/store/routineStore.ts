@@ -17,6 +17,7 @@ import { insertRoutineHabits, type InstallHabitRow } from '../repositories/habit
 import { computeWillpowerCost } from '../lib/triage';
 import type { HabitLoadInput } from '../lib/capacity';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
+import { fetchRoutines as repoFetchRoutines } from '../repositories/routineRepository';
 
 /**
  * §22 analytics emission seam (task Phase-4 CODER-O) -- see the identical
@@ -136,8 +137,8 @@ function activeHabitLoadInputs(): HabitLoadInput[] {
 export const useRoutineStore = create<RoutineStore>((set, get) => ({
   routines: [],
   fetchRoutines: async () => {
-    const { data } = await supabase.from('routines').select('*').order('id');
-    if (data) set({ routines: data as Routine[] });
+    const res = await repoFetchRoutines<Routine>();
+    if (res.ok) set({ routines: res.data });
   },
 
   generating: false,

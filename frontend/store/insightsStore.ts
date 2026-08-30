@@ -1,5 +1,8 @@
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
+import {
+  fetchJournalInsight,
+  upsertJournalInsight,
+} from '../repositories/journalInsightRepository';
 import type { InsightPeriod } from '../lib/journalStats';
 
 export type JournalInsight = {
@@ -28,33 +31,15 @@ export const useInsightsStore = create<InsightsStore>((set, get) => ({
   get: (period, key) => get().cache[ck(period, key)],
 
   fetchInsight: async (period, key) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase
-      .from('journal_insights')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('period', period)
-      .eq('period_key', key)
-      .maybeSingle();
-    if (data) {
-      set((s) => ({ cache: { ...s.cache, [ck(period, key)]: data as JournalInsight } }));
+    const res = await fetchJournalInsight<JournalInsight>(period, key);
+    if (res.ok && res.data) {
+      set((s) => ({ cache: { ...s.cache, [ck(period, key)]: res.data as JournalInsight } }));
     }
   },
 
   saveInsight: async (period, key, content, entryCount) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase
-      .from('journal_insights')
-      .upsert(
-        { user_id: user.id, period, period_key: key, content, entry_count: entryCount, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id,period,period_key' }
-      )
-      .select('*')
-      .single();
-    if (data) {
-      set((s) => ({ cache: { ...s.cache, [ck(period, key)]: data as JournalInsight } }));
-    }
+    const res = await upsertJournalInsight<JournalInsight>({ period, key, content, entryCount });
+    if (!res.ok) return;
+    set((s) => ({ cache: { ...s.cache, [ck(period, key)]: res.data } }));
   },
 }));
