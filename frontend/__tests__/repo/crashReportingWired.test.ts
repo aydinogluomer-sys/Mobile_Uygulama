@@ -25,15 +25,9 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-const ROOT = join(__dirname, '..', '..');
+import { stripComments } from '../helpers/sourceText';
 
-function stripComments(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split('\n')
-    .map((l) => l.replace(/(^|[^:])\/\/.*$/, '$1'))
-    .join('\n');
-}
+const ROOT = join(__dirname, '..', '..');
 
 const read = (p: string) => stripComments(readFileSync(join(ROOT, p), 'utf8'));
 

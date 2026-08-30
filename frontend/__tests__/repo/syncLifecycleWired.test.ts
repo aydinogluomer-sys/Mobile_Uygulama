@@ -38,35 +38,13 @@
  */
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+// `stripComments`/`at` are shared rather than copied — that duplication is
+// what let a CRLF defect survive in two of the four gates. See the helper.
+import { stripComments, at } from '../helpers/sourceText';
 
 const ROOT = join(__dirname, '..', '..');
 
-/**
- * Removes block comments and line comments. The `[^:]` before `//` keeps a
- * URL (`https://…`) from being treated as a comment start.
- */
-function stripComments(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split('\n')
-    .map((l) => l.replace(/(^|[^:])\/\/.*$/, '$1'))
-    .join('\n');
-}
-
 const read = (p: string) => stripComments(readFileSync(join(ROOT, p), 'utf8'));
-
-/**
- * `indexOf` returns -1 for "absent", and -1 is less than every real index —
- * so `expect(a.indexOf(x)).toBeGreaterThan(a.indexOf(y))` PASSES when `y` was
- * deleted outright. A mutation run caught exactly that here: removing the
- * hydration call left two ordering assertions green. Every ordering check
- * below therefore goes through this, which fails on absence first.
- */
-function at(haystack: string, needle: string): number {
-  const i = haystack.indexOf(needle);
-  if (i < 0) throw new Error(`expected to find ${JSON.stringify(needle)}, but it is absent`);
-  return i;
-}
 
 const layout = read('app/_layout.tsx');
 const store = read('store/logStore.ts');
@@ -101,6 +79,16 @@ describe('the comment stripper actually works (everything below depends on it)',
 
   it('does not mistake a URL for a comment', () => {
     expect(stripComments("const u = 'https://x.dev/a';")).toContain('https://x.dev/a');
+  });
+
+  it('strips comments from CRLF source exactly as it does from LF source', () => {
+    // The bug this pins: `.` does not match `\r`, so with CRLF endings the
+    // line-comment pattern never matched and stripping became a no-op — which
+    // made every assertion in this file read comments as if they were code.
+    const lf = ['// calls hydrateSyncQueue() at boot', 'const x = 1;'].join('\n');
+    const crlf = lf.replace(/\n/g, '\r\n');
+    expect(stripComments(crlf)).not.toContain('hydrateSyncQueue()');
+    expect(stripComments(crlf)).toBe(stripComments(lf));
   });
 
   it('the production files really do discuss these calls in comments — so stripping matters', () => {

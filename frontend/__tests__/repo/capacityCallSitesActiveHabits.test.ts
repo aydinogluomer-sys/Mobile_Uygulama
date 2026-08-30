@@ -14,6 +14,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { stripComments } from '../helpers/sourceText';
 
 const ROOT = join(__dirname, '..', '..');
 
@@ -52,9 +53,10 @@ function extractCanActivateCalls(text: string): string[] {
  * inside a doc comment (this codebase has one, in HabitOnboarding.tsx) can
  * never masquerade as a real call site.
  */
-function stripComments(text: string): string {
-  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-}
+// Was a fourth private copy of this helper. Its regex happened to be
+// CRLF-safe where two of the others were not, which is exactly why the defect
+// survived: fixing only the copy that failed would have left the rest broken.
+// One implementation now, in `__tests__/helpers/sourceText.ts`.
 
 /**
  * `activeHabits` itself, plus any local variable whose declaration's RHS
