@@ -1777,3 +1777,129 @@ Two DoD items need a qualifier rather than a tick:
    "RLS tested / cross-user isolation proven" therefore cannot be claimed from this
    run — it needs the project restored and the migration applied, which is a
    repo-owner action deliberately out of scope.
+
+#### Coder Q → `components/ui` accessibility contract — commit `56bbee8`
+
+14 files, +810/−45, 38 new render assertions. **Nine of fourteen** primitives had
+closed prop types, not the two the brief named.
+
+**The uniform contract:** props became `AccessibilityProps & {…}` (the accessibility
+surface only, not all of `TouchableOpacityProps`), rest-spread as `...a11y`, and in
+JSX **defaults are written first, `{...a11y}` second** — so a caller-supplied
+role or label always wins. Owned state merges last as
+`{...owned, ...a11y.accessibilityState}`: the component's truth is the base, the
+caller wins on a conflicting key. M2 (moving the spread before the defaults) locks
+the ordering in.
+
+**Two defects the brief did not anticipate, both worse than the ones it named:**
+
+1. **`SyncStatusBadge` had a carefully written `accessibilityLabel` that was never
+   read** — the container lacked `accessible`, so the two pill texts were announced
+   separately and the label was inert. The casualty was the `dead`-op recovery
+   sentence ("tekrar dokun"), i.e. **the one genuinely actionable accessibility
+   string in the app reached nobody.** Ironically this was the badge built one unit
+   earlier in this same session, whose whole design rationale was that a
+   permanently-failed write must not look like a queued one.
+2. **Every input on every auth screen was nameless.** `FloatingLabelInput` floats
+   its label as a *sibling* `<Text>` and sets `placeholder=""` deliberately, so a
+   screen reader had nothing to announce. Login, register, forgot-password and
+   reset-password were all affected.
+
+**Judgement calls worth keeping:**
+- **`Chip` emits `accessibilityState={{selected}}` only when `selected` was actually
+  passed.** Always emitting it would announce "not selected" on a static label chip —
+  a new lie replacing an old silence. M6 locks this in.
+- **`Card` gets no default label.** Its children are text and `TouchableOpacity`
+  already aggregates them; a synthesised label would *replace* that aggregation and
+  lose information.
+- **`ProgressBar`/`ProgressRing` have two modes:** unlabelled → hidden as decorative
+  (every current caller already has adjacent text stating the number, so announcing
+  it again context-free is noise); labelled → `role="progressbar"` with a clamped
+  `accessibilityValue`. `ProgressRing`'s `<Svg>` is always hidden but its `children`
+  deliberately are not — the text in the middle of the ring is its only meaningful
+  output.
+- **`SectionHeader` was deliberately NOT widened** with `AccessibilityProps`: it
+  *contains* a pressable but is not one, so "which element do these apply to?" would
+  be ambiguous. It got explicit `actionAccessibilityLabel`/`Hint` props instead.
+
+**18 mutations — and M18 is the one worth recording, because it stayed GREEN.**
+It disproved a claim the Coder had written in a comment (that an extra
+`setTimeout(0)` tick was load-bearing), and they **deleted the redundant line rather
+than keep an unearned claim**. They then found the sharper mutation:
+`await act(async …)` → `act(() => …)` leaves the whole file green — because the icon
+font is already loaded by the time later tests run — but fails with
+`Received length: 0` when the icon test is the *first* render in the process. The
+comment now states exactly that, including that the mutation is invisible in a
+whole-file run.
+
+**A new trap for this repo's collection, specific to component tests:**
+`@expo/vector-icons` renders a props-less `<Text />` until its font resolves, so a
+naive "the decorative icon is hidden" assertion **passes even with the fix fully
+deleted**. Anyone writing component tests here needs to wait for the font first.
+
+Also: a first-draft assertion that `accessibilityState` is `undefined` on a pressable
+`Card` failed, because RN's own Pressability always synthesises
+`{selected: undefined, disabled: undefined, …}` on a touchable. Retargeted to the
+`selected` key on the pressable branch and object-absence only on the plain-`View`
+branch. Every negative assertion in the file is paired with a positive that would
+fail if the tree were empty.
+
+---
+
+## PHASE 4 — GATE (plan Rule 4 + §24 checklist + §28 Quality Gates)
+
+Run on `phase/1-core-engine` HEAD after all five units landed.
+
+| Rule 4 requirement | Result | Evidence |
+|---|---|---|
+| `npx tsc --noEmit` | **PASS** | 0 errors |
+| `npm run typecheck:ci` (CI parity) | **PASS** | 0 errors — new this session |
+| `npx expo lint` | **PASS** | 0 errors, 73 warnings |
+| `npx jest` under `TZ=UTC` | **PASS** | **1041 / 1041, 71 suites** |
+| `node run-tests.js` | **PASS** | 142 / 142 |
+| Android export | **PASS** | in CI |
+| iOS export | **PASS** | in CI |
+| **CI** | **PASS** | run `33291446570`, 3m13s, all seven steps — **first green CI in this project's recorded history** |
+
+Baseline at session start: 813 tests / 54 suites. Net **+228 tests, +17 suites**, all
+green, and green under CI's conditions rather than only this machine's.
+
+### §24 Phase 4 checklist — item by item
+
+| Item | Status | Note |
+|---|---|---|
+| notifications | **DONE** | pre-existing; verified genuinely wired (schedule on create/activate, cancel on delete/deactivate), not stubbed |
+| widgets | **DEFERRED (A-05)** | needs a native target + config plugin; no gate in this plan can observe one, and this is an Expo-managed repo with no `ios/`/`android/`. Writing unverifiable native code would violate Rule 5 |
+| animations | **DONE** | pre-existing `seasonalMotion` + `Skeleton` pulse, native driver, reduce-motion honoured |
+| haptics | **DONE** | pre-existing, 12+ call sites |
+| accessibility | **DONE** | screens: 0 → 134 roles / 118 Turkish labels / 48 states (Coder P). Primitives: 9 of 14 had closed prop types, now a uniform contract (Coder Q) |
+| empty states | **DONE** | `EmptyState` in 17 files under `app/` |
+| skeleton states | **DONE** | primitive from the prior session, now applied; `Skeleton` in 11 files |
+| offline sync | **DONE + WIRED** | was complete, tested, and **called by nothing** |
+| crash reporting | **DONE + WIRED** | was **entirely absent** — zero matches for `Sentry\|ErrorBoundary\|captureException` |
+| analytics events | **DONE** | **11 / 11** declared events emit, all from store/repository funnels, none from a screen. Was zero call sites |
+| performance audit | **DONE** | `docs/PERFORMANCE_AUDIT_V2.md`; one waterfall fixed, one criterion passed, four findings reported not fixed |
+| onboarding | **DONE** | verified: the existing 7-step wizard already meets §25's named flow, including capacity preview and activate/queue |
+| store assets | **DONE (defect) / REPORTED (art)** | splash pointed at a file that never existed; fixed + guarded. Icon art is still Expo placeholder — a design deliverable, not a coding one |
+
+### §28 Quality Gates
+
+| Gate | Verdict |
+|---|---|
+| No blocking dashboard query waterfall | **PASS** — one violation found and fixed (`stats.tsx`, 4 round trips → 2) |
+| No unbounded chart render | **PASS** — every chart input structurally capped |
+| No unnecessary full-data fetch | **FINDINGS OPEN** — 4 stores fetch every row ever created; fixing needs pagination UI, not a silent `.limit()` |
+| Offline habit completion / retry on sync / no duplicate logs | **PASS** — reconciled against the real `UNIQUE` constraint, proven by a genuine cold-start test |
+| RLS tested / cross-user isolation proven | **NOT ESTABLISHED** — 8 policies authored across migrations, but the Phase 1 migration is unapplied (project paused). Requires a repo-owner action |
+| Secrets server-only | **PASS** — no AI key on the client; `run-tests.js` no longer reads `.env` at all |
+
+**PHASE 4 STATUS: `DONE` (2026-08-30)** — commits `e406ece`, `d778b41`, `b2a70d9`,
+`635a209`, `47a2484`, `5738b8a`, `4b5d4ae`, `99ced94`, `69c8459`, `56bbee8`.
+
+### PHASE 5 — deliberately not started
+
+The plan itself gates Phase 5 behind *"Ancak retention kanıtlandıktan sonra"* (only
+after retention is proven) and states that global leaderboard is explicitly not a
+P0/P1 feature. Retention cannot be proven from a repository — it needs shipped users
+and the §29 metrics. Recorded as **deferred by the plan's own precondition**
+(assumption A-04), not as incomplete work.
