@@ -2048,3 +2048,122 @@ they stayed **green** and taught something: one disproved a claim a coder had wr
 in a comment (the line was deleted rather than kept unearned), and one showed a
 structural assertion that only a behavioural test could catch — the correct division
 of labour, recorded rather than papered over.
+
+---
+
+## GATE B — LIVE VERIFICATION (2026-08-30)
+
+The blocker recorded since the first session (assumptions A-02 / A-07) is cleared.
+Gate B was previously "code-complete, live-verification blocked". It has now been
+run against the live canonical database.
+
+### What was done, in order
+
+1. **Restored** the paused project `kbcuolhjjnmhjaarxxmu` ("Alışkanlık Uygulaması").
+   `INACTIVE` → `COMING_UP` → `ACTIVE_HEALTHY`.
+   *A reading taken mid-restore showed 0 tables / 0 users and was nearly reported as
+   data loss. Waiting for `ACTIVE_HEALTHY` showed the truth: **48 tables, 3 users,
+   16 MB, intact.** Recorded because the near-miss is the lesson — a restore in
+   progress is indistinguishable from an empty database if you sample it too early.*
+
+2. **Found a live misconfiguration.** `frontend/.env` pointed at
+   `zdqiujpeewtyhtcqhdcj` — "Mas Technic Site", an unrelated manufacturing ERP with
+   3 real users and live business data (customers, orders, financial_documents).
+   The repo's own `supabase/predeploy_guard.sh` names that exact ref as **DENIED**
+   and pins the canonical one, so a previous session had already anticipated this
+   hazard; the dev machine was violating it. Repointed to the canonical project
+   after backing the file up (`.env.backup-before-repoint`, gitignored via `*.env.*`).
+
+3. **Applied** `20260825_phase1_core_engine.sql` — with the user's explicit approval,
+   after a pre-flight that checked exactly the two things the migration's own header
+   warns about:
+
+   | Pre-flight | Result |
+   |---|---|
+   | rows violating the widened `tracking_type` CHECK | **0** (live values: `boolean`, `numeric`) |
+   | duplicate `(habit_id, source_date)` in `recovery_plans` | **0** (table empty) |
+
+   | | PRE | POST |
+   |---|---|---|
+   | habits / habit_logs rows | 6 / 13 | **6 / 13 — unchanged** |
+   | public tables | 48 | **49** (+`daily_capacity`) |
+   | `recovery_plans` columns | 10 | **15** |
+   | `daily_capacity` | absent | present, **RLS enabled, 1 policy** |
+
+   No data was read, written, moved or deleted by the migration — as its
+   "ADDITIVE ONLY" header promised.
+
+### The journey, step by step
+
+Run over HTTPS against PostgREST with a real user JWT — the same path the app takes,
+with RLS enforced. Not SQL with admin privileges, which would have proved nothing
+about policies.
+
+| Gate B step | Result | Evidence |
+|---|---|---|
+| Register | **FAIL — see finding below** | `signUp()` → *"Error sending confirmation email"* |
+| Create numeric habit | **PASS** | `tracking_type=numeric` |
+| Set 10.000 target | **PASS** | `daily_goal=10000` |
+| Enter 8.000 | **PASS** | `value=8000, state=partial` |
+| See 80% | **PASS** | read back from the DB: `8000/10000 = 80%` |
+| Create 2.000 recovery | **PASS** | `deficit_value=2000, deficit_type=numeric, source_log_id` linked |
+| Complete recovery | **PASS** | `status=completed`, `completed_at` set |
+| Analytics update | **PASS** | `recovery_rate=1.0`, `recovered=2000` |
+
+**The recovery step failed first, for a reason the migration had predicted.**
+`strategy: 'yarin_telafi'` was rejected by `recovery_plans_strategy_check`. The
+migration's header states explicitly that it does **not** widen the strategy
+vocabulary and that `frontend/lib/recovery.ts` adapts between v1 and v2 in the
+meantime. Reading that adapter gives the real mapping — `push_tomorrow` →
+`'reschedule'` — and with the value the app would actually write, the step passes.
+The constraint was right and the invented value was wrong.
+
+### §28 "RLS tested / cross-user isolation proven" — now CLOSED
+
+Previously recorded as *not established*. Proven directly:
+
+| Check | Result |
+|---|---|
+| anonymous request (apikey, no JWT) | `42501 permission denied for table habits`, HTTP 401 — the `anon` role has no table grant at all, **stricter** than RLS returning zero rows |
+| authenticated user vs. other users' habits | DB holds **6** habits from other users; test user sees **1** (its own) — 0 leaked |
+| authenticated user vs. other users' logs | DB holds **13** logs from other users; test user sees **1** — 0 leaked |
+
+*The first check initially read as a FAIL. The assertion expected "0 rows"; the
+database returned an error instead, because isolation is enforced one level lower
+than assumed. The test was wrong, not the security.*
+
+### Teardown — the database was left as found
+
+Every row created was deleted through the authenticated user (HTTP 204 ×3), and the
+provisioned test user and its identity removed.
+
+| | Before verification | After teardown |
+|---|---|---|
+| auth users | 3 | **3** |
+| habits / habit_logs / recovery_plans | 6 / 13 / 0 | **6 / 13 / 0** |
+
+The only persistent changes are the intended schema additions.
+
+### New finding — registration is broken on this project
+
+`signUp()` fails with **"Error sending confirmation email"**. Email confirmation is
+required and no working SMTP is configured (Supabase's built-in sender is heavily
+rate-limited and unsuitable for production). 2 of the 3 existing users are confirmed,
+so registration worked at some point — this is an environment/SMTP problem, not
+application code.
+
+**This makes Gate B's literal first step unverifiable through the public API**, and
+more importantly means **no new user can register today**. The journey was verified by
+provisioning a confirmed account directly, so everything downstream of registration is
+proven; registration itself is not.
+
+Fix: configure a real SMTP provider in Auth settings, or disable email confirmation
+for non-production. Repo-owner decision — an auth-configuration change, not code.
+
+### Still open
+
+- `backend/supabase/.temp/` still links to the denied `zdqiujpeewtyhtcqhdcj`. The
+  predeploy guard warns about it on every run and names it as task OPS-0B-001.
+- The `strategy` vocabulary remains v1 (`full|half|mini|reschedule`) with a documented
+  lossy adapter in `lib/recovery.ts`. Widening it is the migration's own named
+  follow-up.
