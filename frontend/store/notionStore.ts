@@ -224,18 +224,43 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
       if (!data) {
         throw new Error('Senkronizasyon sonuç alınamadı');
       }
-      
+
+      // `invoke` yalnız TAŞIMA hatasında `error` döndürür. Fonksiyon 200 ile
+      // "hiçbir şey senkronize edilemedi" diyebilir -- deployed v1 tam olarak
+      // bunu yapıyordu: habit_logs sorgusu var olmayan iki sütun istediği için
+      // patlıyor, hata yutuluyor ve `{success:true, synced_habits:0}` dönüyordu.
+      // Burada koşulsuz 'success' set etmek o sessiz hatayı kullanıcıya
+      // "senkronize edildi" diye gösteren ikinci halkaydı. Artık gövdedeki
+      // sonuç okunuyor.
+      const habits = data.habits?.synced ?? data.synced_habits ?? 0;
+      const tasks = data.tasks?.synced ?? data.synced_tasks ?? 0;
+      const habitsFailed = data.habits?.failed ?? 0;
+      const tasksFailed = data.tasks?.failed ?? 0;
+
+      if (data.success === false || habitsFailed > 0 || tasksFailed > 0) {
+        const parts: string[] = [];
+        if (habitsFailed > 0) parts.push(`${habitsFailed} alışkanlık`);
+        if (tasksFailed > 0) parts.push(`${tasksFailed} görev`);
+        const detail = data.habits?.error ?? data.tasks?.error ?? data.error ?? null;
+        const summary = parts.length
+          ? `${parts.join(' ve ')} aktarılamadı`
+          : 'Senkronizasyon tamamlanamadı';
+        set({
+          status: 'error',
+          error: detail ? `${summary}: ${detail}` : summary,
+          lastSynced: get().lastSynced,
+        });
+        return { habits, tasks };
+      }
+
       const now = new Date().toLocaleString('tr-TR');
-      set({ 
-        status: 'success', 
-        lastSynced: now, 
-        error: null 
+      set({
+        status: 'success',
+        lastSynced: now,
+        error: null,
       });
-      
-      return { 
-        habits: data.synced_habits || 0, 
-        tasks: data.synced_tasks || 0 
-      };
+
+      return { habits, tasks };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       set({ status: 'error', error: msg });

@@ -1,10 +1,12 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.27.0';
 
-const MAX_TOKENS = 400;   // Çıktı token limiti (maliyet kontrolü)
+const MAX_TOKENS = 400;          // Varsayılan çıktı token limiti (maliyet kontrolü)
+const INSIGHTS_MAX_TOKENS = 500; // İçgörü biraz daha uzun olabilir
 
 // Aksiyon başına Focus Point maliyeti
-const COST = { coach: 5, routine: 25 } as const;
+const COST = { coach: 5, routine: 25, summarize: 3, insights: 5 } as const;
+type Mode = keyof typeof COST;
 
 const SYSTEM_PROMPT = `Sen bir alışkanlık koçusun. Kullanıcının hedefine uygun rutin oluşturuyorsun.
 
@@ -18,6 +20,24 @@ const COACH_SYSTEM_PROMPT = `Sen "Atlas AI Coach"sun — alışkanlık, görev v
 Tarz: ADHD dostu, yargılamayan, motive edici ama gerçekçi. Türkçe konuş. Kısa ve net ol (en fazla 4-5 cümle ya da 3-4 madde). Somut, uygulanabilir öneri ver; gerektiğinde kullanıcının mevcut alışkanlıklarına atıfta bulun. Tıbbi/psikiyatrik tanı koyma.
 
 Sadece düz metin yanıt ver — JSON, markdown başlığı veya kod bloğu KULLANMA.`;
+
+const SUMMARY_SYSTEM_PROMPT = `Sen bir günlük yazma asistanısın. Kullanıcının "Atlas AI Coach" ile yaptığı sohbeti, kullanıcının kendi günlüğüne ekleyebileceği, birinci tekil şahıs ("ben") ağzından kısa bir özet/yansıma haline getiriyorsun.
+
+Tarz: Sıcak, içe dönük, Türkçe. En fazla 5-6 cümle ya da 4 madde. Sohbette konuşulan ana konuları, fark ettiğim şeyleri, aldığım kararları ve eyleme dönük çıkarımları vurgula. Selamlaşmaları ve dolgu cümlelerini atla. Yeni bilgi uydurma — yalnızca sohbette geçenleri özetle.
+
+Sadece düz metin döndür — markdown başlığı, JSON veya kod bloğu KULLANMA.`;
+
+const INSIGHTS_SYSTEM_PROMPT = `Sen bir günlük analiz asistanısın. Kullanıcının belirli bir dönemdeki (haftalık/aylık/yıllık) günlük kayıtlarını okuyup ona içgörü dolu, sıcak bir geri bildirim veriyorsun.
+
+Tarz: Destekleyici, yargılamayan, Türkçe, ikinci tekil ("sen") ağzından. Şunlara odaklan: tekrar eden temalar ve duygular, ruh hali eğilimi, ilerleme/büyüme işaretleri, dikkat çeken zorluklar ve nazik + uygulanabilir bir-iki öneri. Özellikle kötü/negatif alışkanlıklarla mücadele ve duygusal dalgalanma örüntülerini fark et. Genelleme yapma; yalnızca kayıtlarda geçenlere dayan. Veri azsa bunu nazikçe belirt.
+
+En fazla 6-8 cümle ya da birkaç kısa madde. Sadece düz metin döndür — markdown başlığı, JSON veya kod bloğu KULLANMA.`;
+
+const PERIOD_LABEL: Record<string, string> = {
+  weekly: 'son bir hafta',
+  monthly: 'son bir ay',
+  yearly: 'son bir yıl',
+};
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -38,8 +58,12 @@ Deno.serve(async (req: Request) => {
     if (authError || !user) return json({ error: 'Kimlik doğrulama hatası' }, 401);
 
     const body = await req.json();
-    const mode = body?.mode === 'coach' ? 'coach' : 'routine';
-    const cost = mode === 'coach' ? COST.coach : COST.routine;
+    const mode: Mode =
+      body?.mode === 'coach' ? 'coach'
+      : body?.mode === 'summarize' ? 'summarize'
+      : body?.mode === 'insights' ? 'insights'
+      : 'routine';
+    const cost = COST[mode];
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!apiKey) return json({ error: 'Sunucu yapılandırma hatası' }, 500);
@@ -47,9 +71,19 @@ Deno.serve(async (req: Request) => {
     // Girdi doğrulama
     let userMsg = '';
     let prompt = '';
+    let transcript = '';
+    let entriesText = '';
+    let periodLabel = '';
     if (mode === 'coach') {
       userMsg = (body?.message ?? '').toString().trim().slice(0, 500);
       if (userMsg.length < 3) return json({ error: 'Geçersiz mesaj' }, 400);
+    } else if (mode === 'summarize') {
+      transcript = (body?.transcript ?? '').toString().trim().slice(0, 6000);
+      if (transcript.length < 10) return json({ error: 'Özetlenecek yeterli sohbet yok.' }, 400);
+    } else if (mode === 'insights') {
+      entriesText = (body?.entries ?? '').toString().trim().slice(0, 8000);
+      if (entriesText.length < 10) return json({ error: 'Bu dönemde içgörü üretecek yeterli günlük kaydı yok.' }, 400);
+      periodLabel = PERIOD_LABEL[body?.period] ?? 'bu dönem';
     } else {
       prompt = (body?.prompt ?? '').toString().trim().slice(0, 150);
       if (prompt.length < 3) return json({ error: 'Geçersiz prompt' }, 400);
@@ -91,6 +125,26 @@ Deno.serve(async (req: Request) => {
       const reply = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
       if (!reply) return json({ error: 'Yanıt alınamadı, tekrar deneyin.' }, 500);
       payload = { reply };
+    } else if (mode === 'summarize') {
+      const message = await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: MAX_TOKENS,
+        system: SUMMARY_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: `Aşağıdaki AI koçluk sohbetini günlüğe eklenebilecek bir özet/yansıma haline getir:\n\n${transcript}` }],
+      });
+      const summary = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+      if (!summary) return json({ error: 'Özet oluşturulamadı, tekrar deneyin.' }, 500);
+      payload = { summary };
+    } else if (mode === 'insights') {
+      const message = await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: INSIGHTS_MAX_TOKENS,
+        system: INSIGHTS_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: `Dönem: ${periodLabel}. Aşağıdaki günlük kayıtlarını analiz edip içgörü ver:\n\n${entriesText}` }],
+      });
+      const insight = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+      if (!insight) return json({ error: 'İçgörü oluşturulamadı, tekrar deneyin.' }, 500);
+      payload = { insight };
     } else {
       const message = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
