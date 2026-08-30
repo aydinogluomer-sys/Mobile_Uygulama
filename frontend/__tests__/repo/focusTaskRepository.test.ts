@@ -14,12 +14,16 @@ jest.mock('../../lib/supabase', () => {
     const eqFilters: Record<string, unknown> = {};
     let orderCol: string | null = null;
     let orderAsc = true;
+    let limitN: number | null = null;
 
     const q: any = {
       eq(col: string, val: unknown) { eqFilters[col] = val; return q; },
       order(col: string, opts?: { ascending?: boolean }) {
         orderCol = col; orderAsc = opts?.ascending ?? true; return q;
       },
+      // The export reads are capped now -- "read everything" without a bound
+      // is one large account away from a memory failure.
+      limit(n: number) { limitN = n; return q; },
       then(onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) {
         if (mockDb.error) return Promise.resolve({ data: null, error: mockDb.error }).then(onOk, onErr);
         let rows = mockDb.rows.filter((r) => {

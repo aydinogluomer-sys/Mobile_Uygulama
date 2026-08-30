@@ -26,6 +26,7 @@ jest.mock('../../lib/supabase', () => {
     const rangeFilters: { col: string; op: 'gte' | 'lte'; val: unknown }[] = [];
     let orderCol: string | null = null;
     let orderAsc = true;
+    let limitN: number | null = null;
 
     const q: any = {
       eq(col: string, val: unknown) { eqFilters[col] = val; return q; },
@@ -34,6 +35,9 @@ jest.mock('../../lib/supabase', () => {
       order(col: string, opts?: { ascending?: boolean }) {
         orderCol = col; orderAsc = opts?.ascending ?? true; return q;
       },
+      // The export reads are capped now -- "read everything" without a bound
+      // is one large account away from a memory failure.
+      limit(n: number) { limitN = n; return q; },
       then(onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) {
         if (mockDb.error) return Promise.resolve({ data: null, error: mockDb.error }).then(onOk, onErr);
         let rows = mockDb.rows.filter((r) => {
@@ -53,7 +57,8 @@ jest.mock('../../lib/supabase', () => {
             return orderAsc ? cmp : -cmp;
           });
         }
-        return Promise.resolve({ data: rows.map((r) => project(r, cols)), error: null }).then(onOk, onErr);
+        const capped = limitN == null ? rows : rows.slice(0, limitN);
+        return Promise.resolve({ data: capped.map((r) => project(r, cols)), error: null }).then(onOk, onErr);
       },
     };
     return q;
