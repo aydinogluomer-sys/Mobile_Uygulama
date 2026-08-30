@@ -14,6 +14,42 @@ the command, query or live request that produced it.
 
 ---
 
+## 0. One thing to decide before anything else: the live schema is ahead of `main`
+
+`20260831_recovery_vocabulary` is applied to the live project. It narrows
+`recovery_plans.strategy` and `.status` to the v2 vocabulary, and **`main`
+still writes the legacy words**. Probed against the live database as an
+ordinary caller:
+
+| what `main` does | live result |
+|---|---|
+| create a plan with `strategy: 'full'` | **rejected** (check constraint) |
+| complete a plan with `status: 'done'` | **rejected** |
+| skip a plan with `status: 'skipped'` | **rejected** |
+
+So the recovery feature on `main` cannot create, complete or skip a plan
+against this database today. That is a consequence of applying the migration,
+not of anything in the branch, and it does not fix itself by leaving the
+branch unmerged.
+
+There are two ways out, and both are the owner's call:
+
+1. **merge this branch** — the code and the schema then agree; or
+2. **roll the migration back** — restore the two CHECK expressions, which the
+   migration file quotes verbatim for exactly this reason, and `main` works
+   again while the branch waits.
+
+`recovery_plans` holds zero rows, so neither direction risks data.
+
+The other migrations from this pass are additive or restrictive in ways
+`main` does not exercise: new tables (`bad_habits`, `webhooks`,
+`monthly_reviews`), new functions (`spend_focus_points_v2`,
+`refund_focus_points`, `xp_drift`, `rebuild_profile_xp`), and the
+`profiles` column-grant narrowing — `main` writes only `username`, which is
+still granted. They were checked, not assumed.
+
+---
+
 ## 1. Requirement matrix
 
 | ID | Requirement | Before | Change | Verification | Status |
