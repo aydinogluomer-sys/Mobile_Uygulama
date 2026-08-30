@@ -97,7 +97,7 @@ export const useGoogleCalendarStore = create<GoogleCalendarStore>((set, get) => 
         set({ available: false });
         throw new Error(urlBody.error ?? 'Google Takvim yapılandırılmamış.');
       }
-      const { url: oauthUrl, state } = urlBody;
+      const { url: oauthUrl } = urlBody;
       if (!oauthUrl) throw new Error(urlBody.error ?? 'OAuth URL alınamadı');
 
       const result = await WebBrowser.openAuthSessionAsync(oauthUrl, REDIRECT_URI);
@@ -108,25 +108,26 @@ export const useGoogleCalendarStore = create<GoogleCalendarStore>((set, get) => 
 
       const parsed = Linking.parse(result.url);
       const code = parsed.queryParams?.code as string;
+      // The state Google reflected back. Verification happens on the SERVER.
+      //
+      // Only the PROVIDER's value may be forwarded. An earlier version wrote
+      // `parsed.queryParams?.state ?? state`, falling back to the state this
+      // client had just been handed when the callback carried none — which
+      // hands the server a value that always verifies and defeats the check
+      // entirely. A callback without a state is a failed callback; the whole
+      // point of the parameter is that it made the round trip through the
+      // provider.
+      const returnedState = parsed.queryParams?.state as string | undefined;
       if (!code) throw new Error('Yetkilendirme kodu alınamadı');
+      if (!returnedState) throw new Error('OAuth state alınamadı');
 
-      // The `state` must go BACK to the callback so the server can verify it.
-      // The previous version dropped it, which is why CSRF protection could
-      // not have worked even once the server started checking: the client was
-      // never returning the value being checked. The server is the only place
-      // this comparison counts -- comparing it here would be the attacker's
-      // own client checking itself.
       const callbackRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/google-auth?action=callback`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          code,
-          redirect_uri: REDIRECT_URI,
-          state: (parsed.queryParams?.state as string) ?? state,
-        }),
+        body: JSON.stringify({ code, redirect_uri: REDIRECT_URI, state: returnedState }),
       });
 
       const callbackData = await callbackRes.json();
@@ -151,12 +152,31 @@ export const useGoogleCalendarStore = create<GoogleCalendarStore>((set, get) => 
   disconnect: async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
-    await fetch(`${SUPABASE_FUNCTIONS_URL}/google-auth?action=disconnect`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-      },
-    });
+    // The response was previously discarded and the local connection cleared
+    // unconditionally. A 401 or a 500 therefore produced a UI that said
+    // "not connected" while the Google refresh token was still sitting in
+    // google_calendar_integrations — the app asserting a revocation that had
+    // not happened, with no remaining affordance to retry it.
+    try {
+      const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/google-auth?action=disconnect`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        set({
+          status: 'error',
+          error: body.error ?? `Bağlantı kesilemedi (HTTP ${res.status}). Bağlantı hâlâ etkin.`,
+        });
+        return;
+      }
+    } catch (e) {
+      set({
+        status: 'error',
+        error: `Bağlantı kesilemedi: ${e instanceof Error ? e.message : String(e)}. Bağlantı hâlâ etkin.`,
+      });
+      return;
+    }
     set({ connection: null, status: 'idle', error: null });
   },
 }));

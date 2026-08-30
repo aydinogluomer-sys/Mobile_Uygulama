@@ -50,7 +50,12 @@ async function callFn(action: string, body?: Record<string, unknown>): Promise<a
     },
     body: JSON.stringify(body ?? {}),
   });
-  return res.json().catch(() => ({}));
+  const parsed = await res.json().catch(() => ({}));
+  // The HTTP status was previously discarded, so a 401/500 came back looking
+  // exactly like a successful empty body and every caller read it as success.
+  // Carried rather than thrown, because the playback actions legitimately
+  // tolerate soft failures (`no_active_device`) — but `disconnect` must not.
+  return { ...parsed, __ok: res.ok, __status: res.status };
 }
 
 export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
@@ -116,7 +121,21 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
   },
 
   disconnect: async () => {
-    try { await callFn('disconnect'); } catch { /* yoksay */ }
+    // Local state is cleared ONLY when the server confirms the row is gone.
+    // Clearing it regardless told the user "disconnected" while their Spotify
+    // refresh token was still stored server-side — the UI asserted a
+    // revocation that had not happened, and there was no longer any button to
+    // retry it with.
+    try {
+      const r = await callFn('disconnect');
+      if (!r?.__ok) {
+        set({ status: 'error', error: r?.error ?? `Bağlantı kesilemedi (HTTP ${r?.__status ?? '?'})` });
+        return;
+      }
+    } catch (e) {
+      set({ status: 'error', error: e instanceof Error ? e.message : String(e) });
+      return;
+    }
     set({ connection: null, status: 'idle', error: null, nowPlaying: null });
   },
 
