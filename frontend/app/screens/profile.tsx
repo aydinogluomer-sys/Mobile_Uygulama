@@ -17,7 +17,7 @@ export default function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { fetchProfile(); fetchBadges(); }, []);
+  useEffect(() => { fetchProfile(); fetchBadges(); }, [fetchProfile, fetchBadges]);
   useEffect(() => { setName(profile?.username ?? ''); }, [profile?.username]);
 
   async function save() {

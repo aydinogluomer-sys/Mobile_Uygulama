@@ -12,7 +12,6 @@ import {
 } from '../../lib/subscription';
 
 const PERIODS: BillingPeriod[] = ['weekly', 'monthly', 'yearly'];
-const PAID_TIERS: Exclude<Tier, 'free'>[] = ['plus', 'pro'];
 
 export default function PaywallScreen() {
   const router = useRouter();
@@ -20,7 +19,7 @@ export default function PaywallScreen() {
   const [period, setPeriod] = useState<BillingPeriod>('yearly');
   const [activating, setActivating] = useState<Tier | null>(null);
 
-  useEffect(() => { if (!loaded) fetch(); }, []);
+  useEffect(() => { if (!loaded) fetch(); }, [loaded, fetch]);
 
   const summary = creditsSummary(focusPoints);
 

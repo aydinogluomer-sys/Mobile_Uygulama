@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useProjectStore, type Project } from '../../store/projectStore';
 import { useTaskStore } from '../../store/taskStore';
 import InlineComposer from '../../components/InlineComposer';
@@ -19,7 +18,6 @@ const PRESET_COLORS = [
 ];
 
 export default function ProjectsScreen() {
-  const router = useRouter();
   const { projects, hasMore, loadingMore, loadMore, fetchProjects, addProject, removeProject } = useProjectStore();
   const { tasks, fetchTasks, toggleDone, addTask } = useTaskStore();
   const [showAdd, setShowAdd] = useState(false);
@@ -33,7 +31,7 @@ export default function ProjectsScreen() {
   const detailDone = detailTasks.filter((t) => t.completed).length;
   const detailPct = detailTasks.length > 0 ? detailDone / detailTasks.length : 0;
 
-  useEffect(() => { fetchProjects(); fetchTasks(); }, []);
+  useEffect(() => { fetchProjects(); fetchTasks(); }, [fetchProjects, fetchTasks]);
 
   async function handleAdd() {
     if (!name.trim()) return;

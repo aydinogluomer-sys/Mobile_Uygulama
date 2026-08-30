@@ -52,7 +52,7 @@ export default function HabitsScreen() {
     fetchHabits();
     fetchToday();
     return () => { if (deleteTimer.current) clearTimeout(deleteTimer.current); };
-  }, []);
+  }, [fetchHabits, fetchToday]);
 
   const onRefresh = async () => {
     setRefreshing(true);

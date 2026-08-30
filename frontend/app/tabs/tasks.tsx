@@ -34,10 +34,10 @@ export default function TasksScreen() {
   const [priority, setPriority] = useState<TaskPriority>('none');
   const [listType, setListType] = useState<ListType>('inbox');
 
-  const { tasks, loading, loadingMore, hasMore, loadMore, fetchTasks, addTask, toggleDone, removeTask, archiveTask, byList } = useTaskStore();
+  const { tasks, loadingMore, hasMore, loadMore, fetchTasks, addTask, toggleDone, removeTask, byList } = useTaskStore();
   const { projects, fetchProjects } = useProjectStore();
 
-  useEffect(() => { fetchTasks(); fetchProjects(); }, []);
+  useEffect(() => { fetchTasks(); fetchProjects(); }, [fetchTasks, fetchProjects]);
 
   const visibleTasks = activeTab === 'done'
     ? tasks.filter((t) => t.completed || t.status === 'cancelled')

@@ -35,7 +35,7 @@ export default function FocusScreen() {
   const {
     phase, status, secondsLeft, sessionsCompleted, selectedTaskId,
     focusTasks, settings, justCompleted,
-    start, pause, reset, tick, setPhase,
+    start, pause, reset, setPhase,
     fetchFocusTasks, addFocusTask, removeFocusTask, completeFocusTask, selectTask,
     updateSettings, loadSettings, clearJustCompleted,
   } = useFocusStore();
@@ -63,7 +63,7 @@ export default function FocusScreen() {
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
 
-  useEffect(() => { fetchFocusTasks(); loadSettings(); }, []);
+  useEffect(() => { fetchFocusTasks(); loadSettings(); }, [fetchFocusTasks, loadSettings]);
 
   const stopInterval = useCallback(() => {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }

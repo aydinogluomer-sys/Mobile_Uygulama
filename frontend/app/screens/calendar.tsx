@@ -39,7 +39,7 @@ export default function CalendarScreen() {
 
   const { tasks, fetchTasks } = useTaskStore();
   const { habits, fetchHabits } = useHabitStore();
-  const { fetchLogsForDate, logs } = useLogStore();
+  const { fetchLogsForDate } = useLogStore();
 
   // Defter sayfası animasyonu: girişte "açılma", ay değişiminde yön bazlı "sayfa çevirme".
   const reduceMotion = useReducedMotion();
@@ -58,8 +58,8 @@ export default function CalendarScreen() {
     }).start();
   }
 
-  useEffect(() => { fetchTasks(); fetchHabits(); }, []);
-  useEffect(() => { if (selected) fetchLogsForDate(selected); }, [selected]);
+  useEffect(() => { fetchTasks(); fetchHabits(); }, [fetchTasks, fetchHabits]);
+  useEffect(() => { if (selected) fetchLogsForDate(selected); }, [selected, fetchLogsForDate]);
   // Ekran odağa gelince defter "açılır"
   useEffect(() => { if (isFocused) animatePage(0); }, [isFocused]); // eslint-disable-line react-hooks/exhaustive-deps
 

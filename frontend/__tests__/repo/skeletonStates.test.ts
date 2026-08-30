@@ -14,6 +14,7 @@
  * Regexes are anchored to real lines: a previous coder's assertion false-passed
  * because a comment merely contained the matched text.
  */
+import { execSync } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
@@ -57,7 +58,6 @@ describe('§24 Phase 4 — skeleton states', () => {
   });
 
   it('is actually consumed by at least one screen', () => {
-    const { execSync } = require('child_process');
     const out = execSync(
       'grep -rl "Skeleton" app --include=*.tsx || true',
       { cwd: root, encoding: 'utf8' },

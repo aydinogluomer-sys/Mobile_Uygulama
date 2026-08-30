@@ -34,7 +34,7 @@ the command, query or live request that produced it.
 | **§14** | Navigation IA | today/tasks/focus/timeline/stats | Bugün · Plan · Alışkanlıklar · İçgörüler · Profil; hubs compose the existing screens, old routes kept as `href: null` | `run-tests.js` parses visible vs hidden; 3 mutations verified | **PASS** |
 | **§15** | Legacy FastAPI retirement | 3 features on an UNAUTHENTICATED service (`grep -c` for Depends/jwt/Authorization/verify_token = 0) where every row is `user_id = "default"`; `GET /api/export` returned every user's habits, tasks, completions and webhooks to any caller, and settings.tsx opened the Excel/CSV variants in the system browser | webhooks + bad habits on Supabase with owner RLS; export assembled on the device from the repositories; `utils/api.ts` and `axios` gone | 50 tests. 4 mutations red: re-reading `EXPO_PUBLIC_BACKEND_URL`, re-adding axios, un-stripping webhook headers from the backup, restoring the negative-savings bug. Live probes: `http://` refused, unknown event type refused, negative cost refused, blank name refused, `https://` accepted | **PASS** |
 | **§16** | Dependency security | 2 critical, 16 high | `npm audit fix`, no `--force` | **0 critical, 9 high**, all build-time and **absent from the shipped bundle** (grep over `dist/`) | **PASS** |
-| **§17** | Lint zero | 0 err / 73 warn (CI scope) | — | unchanged; full repo 3 err / 163 warn | **NOT_DONE** |
+| **§17** | Lint zero | full repo 3 err / 183 warn; `expo lint` saw only 73 of them | **0 / 0 across the whole repository** | 3 errors were an eslint env gap (`jest`, `__dirname` undeclared), not defects — declared rather than silenced. 42 hook-dependency warnings fixed on their merits, not suppressed: 30 by naming stable store actions, the rest by restructuring (clock read inside the loader, filter moved into the effect, latest-ref in the two review screens). A new test pins the zustand identity assumption the 30 rely on | **PASS** |
 | **§18** | Package manager | `yarn@1.22.22`, no yarn.lock | `npm@11.16.0`; CI comment corrected | manifest/lockfile/CI all name npm | **PASS** |
 | **§19** | Design tokens | 1727 hex | — | 1728 | **NOT_DONE** |
 | **§20** | Branding / store assets | Expo template | — | unchanged | **NOT_DONE** |
@@ -51,7 +51,7 @@ the command, query or live request that produced it.
 | **§31** | No hardcoded secrets | unknown | scanned; repo is clean | The deployed `spotify-auth` carries a literal client secret as a `??` fallback. Rotation is the owner's | **BLOCKED_EXTERNAL** |
 | **§32** | Release env guards | guard depends on local state | stale DENIED link removed, guard PASSes clean | `predeploy_guard.sh` exit 0, no warning | **PASS** |
 | **§33** | Test quality | — | 11 new suites, all mutation-verified | 1156 tests, 80 suites. Covers what was built; the untouched requirements have no new coverage | **PASS** |
-| **§34** | CI as merge gate | green | unchanged scope | CI runs `expo lint`, whose scope is narrower than the repo — 3 errors live outside it. §17 requires full-repo 0/0, so CI does not yet gate the stated requirement | **NOT_DONE** (tied to §17) |
+| **§34** | CI as merge gate | `npx expo lint`: app dirs only, warnings advisory (exit 0 on 73) | `npm run lint:ci` = `eslint . --max-warnings=0` | Gates the whole repo, warning = failure. 3 mutations red: an unused variable, a removed hook dependency, an undefined global in a script | **PASS** |
 | **§35** | Full live smoke | — | duration, ceilings, RLS, XP, notion-sync, child-row ownership verified live | Registration is the first step and is externally blocked, so the journey cannot run end to end | **BLOCKED_EXTERNAL** |
 | **§36** | Performance profiling | `currentUserId` issued `GET /auth/v1/user` before EVERY repository operation | resolved from the local session instead | Measured live: 3 ops cost 3 auth requests / 373 ms (total 1779 ms) before, **0 auth requests** after; 6 sequential ops now issue none. Screen-level render profiling on a device is still not done | **NOT_DONE** (auth cost fixed; render profiling outstanding) |
 | **§37** | main sync | — | 0 behind | `git rev-list --left-right --count origin/main...HEAD` → `0  15` | **PASS** |
@@ -162,7 +162,7 @@ fixed.
 ### P1 — not done on this branch
 
 Monthly review cloud persistence (§9) ·
-Focus-Point charging atomicity (§12) · lint zero (§17) · design tokens (§19) ·
+Focus-Point charging atomicity (§12) · design tokens (§19) ·
 branding (§20) · widget (§21) · recovery vocabulary (§24) · performance
 profiling (§36).
 

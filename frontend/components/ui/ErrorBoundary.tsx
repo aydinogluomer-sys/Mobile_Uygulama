@@ -53,7 +53,7 @@ export default class ErrorBoundary extends Component<Props, State> {
     // logged raw.
     reportError(error, 'render', this.props.context);
     if (__DEV__ && info?.componentStack) {
-      // eslint-disable-next-line no-console
+       
       console.error('[crash:render] component stack', info.componentStack);
     }
   }

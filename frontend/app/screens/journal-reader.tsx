@@ -25,7 +25,7 @@ export default function JournalReaderScreen() {
   const listRef = useRef<FlatList<JournalEntry>>(null);
   const positioned = useRef(false);
 
-  useEffect(() => { if (entries.length === 0) fetchEntries(); }, []);
+  useEffect(() => { if (entries.length === 0) fetchEntries(); }, [entries.length, fetchEntries]);
 
   const startIndex = useMemo(
     () => Math.max(0, entries.findIndex((e) => e.date === date)),

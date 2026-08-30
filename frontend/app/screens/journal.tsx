@@ -33,14 +33,14 @@ export default function JournalScreen() {
   const todayEntry = getByDate(selectedDate);
   const randomPrompt = PROMPTS[new Date().getDay() % PROMPTS.length];
 
-  useEffect(() => { fetchEntries(); }, []);
+  useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
   useEffect(() => {
     const e = getByDate(selectedDate);
     setContent(e?.content ?? '');
     setMood(e?.mood ?? null);
     setSaved(false);
-  }, [selectedDate, entries]);
+  }, [selectedDate, entries, getByDate]);
 
   async function handleSave() {
     await saveEntry(selectedDate, content, mood);

@@ -14,7 +14,6 @@ import {
 } from '../lib/routineProposal';
 import { findRoutinePack, packToProposal, type RoutinePackKey } from '../lib/routinePacks';
 import { installProposal, listRoutines as repoFetchRoutines } from '../services/routineService';
-import { computeWillpowerCost } from '../lib/triage';
 import type { HabitLoadInput } from '../lib/capacity';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 

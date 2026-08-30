@@ -28,12 +28,12 @@ export default function IntegrationsScreen() {
   const isConnected = !!connection;
   const isGoogleConnected = !!googleConnection;
 
-  useEffect(() => { fetchStatus(); fetchGoogleStatus(); }, []);
+  useEffect(() => { fetchStatus(); fetchGoogleStatus(); }, [fetchStatus, fetchGoogleStatus]);
 
   // Notion modalı açılınca OAuth URL'ini önceden çek → buton anında açılır
   useEffect(() => {
     if (notionModal && !isConnected) prefetchAuthUrl();
-  }, [notionModal]);
+  }, [notionModal, isConnected, prefetchAuthUrl]);
 
   const connectedCount = INTEGRATION_CATEGORIES.flatMap(c => c.items).filter(i => i.status === 'connected').length + (isConnected ? 1 : 0) + (isGoogleConnected ? 1 : 0);
 

@@ -233,7 +233,7 @@ export function windowFor(habit: Habit, date: Date): ScheduleWindow | null {
  */
 function completedCountInWindow(
   habit: Habit,
-  logs: Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>>,
+  logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>[],
   window: { start: Date; end: Date },
 ): number {
   const startYmd = ymd(window.start);
@@ -258,7 +258,7 @@ function completedCountInWindow(
  */
 export function isWindowSatisfied(
   habit: Habit,
-  logs: Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>>,
+  logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>[],
   date: Date,
 ): boolean {
   const window = windowFor(habit, date);
@@ -287,7 +287,7 @@ export function isWindowSatisfied(
  */
 export function streakBroken(
   habit: Habit,
-  logs: Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>>,
+  logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>[],
   date: Date,
 ): boolean {
   const sk = scheduleKind(habit);

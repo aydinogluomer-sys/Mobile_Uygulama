@@ -1,4 +1,4 @@
-import { View, Text, StyleProp, ViewStyle, type AccessibilityProps } from 'react-native';
+import { Text, StyleProp, ViewStyle, type AccessibilityProps } from 'react-native';
 import { colors, space, font } from '../../lib/tokens';
 import Card from './Card';
 import ProgressBar from './ProgressBar';

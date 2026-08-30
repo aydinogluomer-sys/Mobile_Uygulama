@@ -153,7 +153,7 @@ describe('deriveState', () => {
     expect(deriveState({ trackingType: 'abstinence', value: null, target: null })).toBe('miss');
   });
   it('never returns skip — skip is a user action, not a derived value', () => {
-    const combos: Array<{ trackingType: 'binary' | 'numeric' | 'duration' | 'abstinence'; value: number | null; target: number | null }> = [
+    const combos: { trackingType: 'binary' | 'numeric' | 'duration' | 'abstinence'; value: number | null; target: number | null }[] = [
       { trackingType: 'binary', value: 1, target: null },
       { trackingType: 'numeric', value: 5, target: 10 },
       { trackingType: 'duration', value: 0, target: 20 },

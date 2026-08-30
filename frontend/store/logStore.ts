@@ -36,7 +36,6 @@ export type LogResult =
 /** UI-facing sync status for one (habit, day) key -- see `getSyncStatusFor`. */
 export type HabitSyncStatus = 'synced' | 'pending' | 'dead';
 
-const COLS = 'id,habit_id,user_id,completed_at,value,is_completed,state,xp,created_at';
 
 type LogStore = {
   logs: HabitLog[];

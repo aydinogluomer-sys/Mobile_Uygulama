@@ -181,9 +181,24 @@ export default function MonthlyReviewScreen() {
     loadGoals();
   }, [fetchTasks, fetchHabits, loadGoals]);
 
+  // ── Why a ref rather than a dependency ────────────────────────────────
+  //
+  // The two loaders are plain functions re-created on every render, so
+  // naming them as dependencies would re-run this effect on every render —
+  // an unbounded fetch loop on the heaviest screen in the app. Wrapping
+  // them in useCallback does not help either: they close over `now`,
+  // `targetDate` and freshly filtered arrays, so their identity would still
+  // change every time.
+  //
+  // Their identity was never the trigger. The trigger is the listed inputs.
+  // A ref says exactly that: run when those change, and call whatever
+  // version of the loaders exists at that moment.
+  const loaders = useRef({ loadReflection, loadMonthMetrics });
+  loaders.current = { loadReflection, loadMonthMetrics };
+
   useEffect(() => {
-    void loadReflection();
-    void loadMonthMetrics();
+    void loaders.current.loadReflection();
+    void loaders.current.loadMonthMetrics();
   }, [monthOffset, habits.length, tasks.length, goals.length]);
 
   // Ekran odağa gelince defter "açılır" (bkz. calendar.tsx)

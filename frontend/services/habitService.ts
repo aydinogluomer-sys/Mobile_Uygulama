@@ -28,10 +28,10 @@ import {
   fetchHabitLogsHeatmap,
   type HabitDetailLogRow,
 } from '../repositories/habitLogRepository';
-
-export type { HabitDetailLogRow };
 import { evaluateActivation, refund, spend, type ActivationVerdict } from './capacityService';
 import type { WillpowerStateRow } from '../repositories/willpowerRepository';
+
+export type { HabitDetailLogRow };
 
 export type HabitInsert = Omit<Habit, 'id' | 'created_at' | 'user_id'>;
 

@@ -229,7 +229,7 @@ export type CrashSink = (report: CrashReport) => void;
  */
 const consoleSink: CrashSink = (report) => {
   if (!__DEV__) return;
-  // eslint-disable-next-line no-console
+   
   console.error(`[crash:${report.source}] ${report.name}: ${report.message}`, report.stack ?? '');
 };
 

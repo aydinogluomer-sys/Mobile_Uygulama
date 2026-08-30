@@ -38,7 +38,7 @@ export default function CreditHistoryScreen() {
     const res = await listTransactions(80);
     setTxs(res.ok ? res.data : []);
     await refresh();
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     setLoading(true);

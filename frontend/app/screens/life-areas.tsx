@@ -133,7 +133,7 @@ function ValueSlider({ area, value, onChange }: {
 export default function LifeAreasScreen() {
   const { values, lastSavedDate, loading, saving, loadLatest, setValue, save } = useLifeAreasStore();
 
-  useEffect(() => { loadLatest(); }, []);
+  useEffect(() => { loadLatest(); }, [loadLatest]);
 
   const avg = Math.round(
     Object.values(values).reduce((a, b) => a + b, 0) / LIFE_AREAS.length * 10

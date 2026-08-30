@@ -13,7 +13,7 @@
  *
  * Source-text + type invariant, same instrument as `rule4NoDirectDbInUi.test.ts`.
  */
-import { readFileSync, existsSync } from 'fs';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { ANALYTICS_EVENTS, buildEvent, type AnalyticsEventName } from '../../lib/analytics';
 

@@ -21,7 +21,7 @@ export default function LeaderboardScreen() {
     fetchProfile();
     fetchMyRank();
     fetchLeaderboard('global');
-  }, []);
+  }, [fetchProfile, fetchMyRank, fetchLeaderboard]);
 
   function switchScope(s: LeaderboardScope) {
     if (s !== scope) fetchLeaderboard(s);

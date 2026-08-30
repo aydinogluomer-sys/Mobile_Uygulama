@@ -27,7 +27,7 @@ export default function JournalArchiveScreen() {
   const router = useRouter();
   const { entries, fetchEntries } = useJournalStore();
 
-  useEffect(() => { fetchEntries(); }, []);
+  useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
   const stats = useMemo(() => computeJournalStats(entries), [entries]);
 

@@ -128,6 +128,7 @@ jest.mock('../../lib/supabase', () => {
 });
 
 import { useLogStore } from '../../store/logStore';
+import { enqueue, emptyQueueState, saveSyncQueue } from '../../lib/syncQueue';
 
 const DAY = new Date(2026, 7, 4);
 const DATE_STR = '2026-08-04';
@@ -217,7 +218,6 @@ describe('AC-A04 / AC-A05 — offline counts once, replay does not count again',
   });
 
   it('a cold-start replay of a queue this session never tapped emits nothing at all', async () => {
-    const { enqueue, emptyQueueState, saveSyncQueue } = require('../../lib/syncQueue');
     const persisted = enqueue(emptyQueueState(), HABIT, DATE_STR, { state: 'done', baseXp: 30 });
     await saveSyncQueue(persisted.state, 'u1');
     await useLogStore.getState().hydrateSyncQueue();

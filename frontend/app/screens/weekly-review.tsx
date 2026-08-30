@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -159,9 +159,24 @@ export default function WeeklyReviewScreen() {
     fetchHabits();
   }, [fetchTasks, fetchHabits]);
 
+  // ── Why a ref rather than a dependency ────────────────────────────────
+  //
+  // The two loaders are plain functions re-created on every render, so
+  // naming them as dependencies would re-run this effect on every render —
+  // an unbounded fetch loop on the heaviest screen in the app. Wrapping
+  // them in useCallback does not help either: they close over `now`,
+  // `targetDate` and freshly filtered arrays, so their identity would still
+  // change every time.
+  //
+  // Their identity was never the trigger. The trigger is the listed inputs.
+  // A ref says exactly that: run when those change, and call whatever
+  // version of the loaders exists at that moment.
+  const loaders = useRef({ loadReview, loadWeekMetrics });
+  loaders.current = { loadReview, loadWeekMetrics };
+
   useEffect(() => {
-    void loadReview();
-    void loadWeekMetrics();
+    void loaders.current.loadReview();
+    void loaders.current.loadWeekMetrics();
   }, [weekOffset, habits.length, tasks.length]);
 
   async function loadReview() {

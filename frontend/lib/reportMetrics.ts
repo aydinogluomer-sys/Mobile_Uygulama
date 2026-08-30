@@ -1,4 +1,4 @@
-import { eachDayOfInterval, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from 'date-fns';
+import { eachDayOfInterval, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from 'date-fns';
 import { type Habit, type HabitLog } from './supabase';
 import { type FocusSessionRow } from './focusReport';
 import { countsTowardAverage, isDueOn } from './habitSchedule';
@@ -90,10 +90,10 @@ export function getMonthBounds(anchor: Date = new Date()): { start: string; end:
 }
 
 export function habitAveragePercent(params: {
-  habits: Array<Pick<Habit, 'id' | 'status' | 'tracking_type' | 'daily_goal'
+  habits: Pick<Habit, 'id' | 'status' | 'tracking_type' | 'daily_goal'
     | 'target_direction' | 'frequency_config' | 'behavior_type'
-    | 'created_at' | 'end_condition'>>;
-  logs: Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>>;
+    | 'created_at' | 'end_condition'>[];
+  logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>[];
   start: string;
   end: string;
 }): number {
@@ -136,10 +136,10 @@ export function habitAveragePercent(params: {
 }
 
 export function calculateHabitCompletionRate(
-  habits: Array<Pick<Habit, 'id' | 'status' | 'tracking_type' | 'daily_goal'
+  habits: Pick<Habit, 'id' | 'status' | 'tracking_type' | 'daily_goal'
     | 'target_direction' | 'frequency_config' | 'behavior_type'
-    | 'created_at' | 'end_condition'>>,
-  logs: Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>>,
+    | 'created_at' | 'end_condition'>[],
+  logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>[],
   start: string,
   end: string,
 ): number {
@@ -148,7 +148,7 @@ export function calculateHabitCompletionRate(
 
 export function summarizeHabitProgress(
   habits: Habit[],
-  logs: Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>>,
+  logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>[],
   start: string,
   end: string,
 ): HabitProgressRow[] {
@@ -188,7 +188,7 @@ export function summarizeHabitProgress(
     .sort((left, right) => right.percent - left.percent);
 }
 
-export function focusMinutesFromSessions(sessions: Array<Pick<FocusSessionRow, 'completed_seconds'>>): number {
+export function focusMinutesFromSessions(sessions: Pick<FocusSessionRow, 'completed_seconds'>[]): number {
   const totalSeconds = sessions.reduce((sum, session) => sum + (session.completed_seconds || 0), 0);
   return Math.round(totalSeconds / 60);
 }

@@ -143,7 +143,7 @@ const noopSink: AnalyticsSink = () => {};
 
 /** Opt-in developer sink. Never attached automatically — see `noopSink`. */
 export const consoleAnalyticsSink: AnalyticsSink = (event) => {
-  // eslint-disable-next-line no-console
+   
   console.log(`[analytics] ${event.name}`, event.props, event.dropped);
 };
 

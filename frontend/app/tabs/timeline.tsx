@@ -26,7 +26,7 @@ import type { Habit } from '../../lib/supabase';
 import { computeTriage, triageToStatus, impactMeta, TRIAGE_META, cueLabel } from '../../lib/triage';
 import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS } from '../../lib/capacity';
 import { syncAllReminders } from '../../lib/notifications';
-import { colors, space, radius, font, hexA } from '../../lib/tokens';
+import { colors, radius, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { WillpowerBand, SectionHeader, EmptyState, ProgressBar } from '../../components/ui';
 import { isMeasurableTracking, deriveState, adaptTrackingType } from '../../lib/habitEngine';
@@ -71,7 +71,7 @@ export default function TimelineScreen() {
     await Promise.all([fetchHabits(), fetchLogsForDate(selectedDate), fetchToday()]);
     // Bildirim hatırlatıcılarını mevcut alışkanlıklarla senkronla
     syncAllReminders(useHabitStore.getState().habits);
-  }, [selectedDate]);
+  }, [selectedDate, fetchHabits, fetchLogsForDate, fetchToday]);
 
   useEffect(() => {
     setLoading(true);
@@ -269,7 +269,10 @@ export default function TimelineScreen() {
       <TouchableOpacity
         key={habit.id}
         style={[styles.habitRow, isDone && styles.habitRowDone]}
-        onPress={() => { isMeasurableTracking(habit.tracking_type) ? setMeasureHabit(habit) : handleYesNoTap(habit); }}
+        onPress={() => {
+          if (isMeasurableTracking(habit.tracking_type)) setMeasureHabit(habit);
+          else handleYesNoTap(habit);
+        }}
         activeOpacity={0.7}
       >
         <View style={styles.habitRowLeft}>

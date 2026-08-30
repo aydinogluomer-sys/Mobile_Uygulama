@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase, Habit } from '../lib/supabase';
+import type { Habit } from '../lib/supabase';
 import { scheduleHabitReminder, cancelHabitReminder } from '../lib/notifications';
 import {
   activateHabit as activateHabitOp,

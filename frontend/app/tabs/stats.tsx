@@ -18,7 +18,7 @@ import HabitListView from '../../components/HabitListView';
 import { colors, space, radius, font, hexA, fontFamily } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import {
-  Card, StatTile, SectionHeader, ProgressBar, ProgressRing, IconCircle, EmptyState, Button,
+  Card, StatTile, SectionHeader, ProgressBar, ProgressRing, EmptyState, Button,
 } from '../../components/ui';
 
 const { width } = Dimensions.get('window');
@@ -84,11 +84,9 @@ export default function StatsScreen() {
   const [monthCompletions, setMonthCompletions] = useState(0);
 
   const { habits, fetchHabits, updateHabit } = useHabitStore();
-  const { tasks, fetchTasks } = useTaskStore();
+  const { fetchTasks } = useTaskStore();
 
   const now = new Date();
-  const todayStr = format(now, 'yyyy-MM-dd');
-  const monthPrefix = format(now, 'yyyy-MM');
   const monthName = MONTHS_TR[now.getMonth()];
   const daysInCurrentMonth = getDaysInMonth(now);
   const dayOfMonth = now.getDate();
@@ -145,6 +143,11 @@ export default function StatsScreen() {
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
+    // Read the clock when the load RUNS, not when the component last
+    // rendered -- see the note above about 00:01 refreshes.
+    const now = new Date();
+    const todayStr = format(now, 'yyyy-MM-dd');
+    const monthPrefix = format(now, 'yyyy-MM');
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
@@ -208,9 +211,9 @@ export default function StatsScreen() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [fetchHabits, fetchTasks]);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
   const onRefresh = useCallback(async () => {
     haptic.light();

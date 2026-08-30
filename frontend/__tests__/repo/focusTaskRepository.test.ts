@@ -38,6 +38,7 @@ jest.mock('../../lib/supabase', () => {
             return orderAsc ? cmp : -cmp;
           });
         }
+        if (limitN != null) rows = rows.slice(0, limitN);
         return Promise.resolve({ data: rows, error: null }).then(onOk, onErr);
       },
     };

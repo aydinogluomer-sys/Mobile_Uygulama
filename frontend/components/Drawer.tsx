@@ -6,7 +6,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../lib/supabase';
 import { useDrawerStore } from '../store/drawerStore';
 import { fontFamily, colors } from '../lib/tokens';
 
@@ -90,17 +89,12 @@ export default function Drawer() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [isOpen]);
+  }, [isOpen, translateX, backdropOpacity]);
 
   function navigate(route: string) {
     const base = route.split('?')[0];
     close();
     setTimeout(() => router.push(base as any), 100);
-  }
-
-  async function handleUser() {
-    const { data } = await supabase.auth.getUser();
-    return data.user;
   }
 
   if (!isOpen && Platform.OS !== 'web') return null;

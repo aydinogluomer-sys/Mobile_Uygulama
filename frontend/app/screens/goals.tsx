@@ -66,7 +66,7 @@ export default function GoalsScreen() {
   const [title, setTitle] = useState('');
   const [progress, setProgress] = useState('0');
 
-  useEffect(() => { loadGoals(); }, []);
+  useEffect(() => { loadGoals(); }, [loadGoals]);
 
   const tabInfo = TABS.find((t) => t.key === activeTab)!;
   const filtered = goals.filter((g) => g.kind === activeTab);

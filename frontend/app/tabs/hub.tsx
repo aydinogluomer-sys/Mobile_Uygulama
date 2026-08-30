@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTaskStore } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
-import { colors, space, radius, font, hexA } from '../../lib/tokens';
+import { colors, space, radius, font } from '../../lib/tokens';
 import { IconCircle } from '../../components/ui';
 import { todayLocal } from '../../lib/date';
 

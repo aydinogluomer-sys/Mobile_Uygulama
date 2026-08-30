@@ -25,13 +25,13 @@ export default function FocusSpotifyCard() {
   }
 
   // Durum + now-playing yoklaması
-  useEffect(() => { fetchStatus(); }, []);
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
   useEffect(() => {
     if (!connection) return;
     fetchNowPlaying();
     const id = setInterval(fetchNowPlaying, 8000);
     return () => clearInterval(id);
-  }, [connection]);
+  }, [connection, fetchNowPlaying]);
   useEffect(() => () => { if (hintTimer.current) clearTimeout(hintTimer.current); }, []);
 
   async function onPlaylist(p: FocusPlaylist) {

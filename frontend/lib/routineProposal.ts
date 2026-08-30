@@ -727,7 +727,7 @@ export function adaptEdgeRoutineResponse(raw: unknown): AdaptResult {
   // Every error is EXACTLY "difficulty/estimated_minutes absent" on an
   // otherwise fully-valid proposal -- safe to build the incomplete shape by
   // hand, re-reading only fields the strict pass already proved valid.
-  const shapedHabits = shaped.habits as Array<Record<string, unknown>>;
+  const shapedHabits = shaped.habits as Record<string, unknown>[];
   const missingPaths = new Set(strict.errors.map((e) => e.path));
   const habits: AdaptedProposalHabit[] = shapedHabits.map((h, i) => ({
     name: (h.name as string).trim(),

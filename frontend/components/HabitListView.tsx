@@ -58,7 +58,7 @@ export default function HabitListView() {
   const [showPanel, setShowPanel] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<StatusKey>>(new Set());
 
-  useEffect(() => { fetchHabits(); }, []);
+  useEffect(() => { fetchHabits(); }, [fetchHabits]);
 
   function animate() {
     LayoutAnimation.configureNext(
@@ -68,15 +68,15 @@ export default function HabitListView() {
 
   function toggleStatus(st: StatusKey) {
     haptic.select();
-    setStatusFilter((prev) => { const n = new Set(prev); n.has(st) ? n.delete(st) : n.add(st); return n; });
+    setStatusFilter((prev) => { const n = new Set(prev); if (n.has(st)) n.delete(st); else n.add(st); return n; });
   }
   function toggleImpact(i: ImpactLevel) {
     haptic.select();
-    setImpactFilter((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
+    setImpactFilter((prev) => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
   }
   function toggleCollapse(st: StatusKey) {
     haptic.select(); animate();
-    setCollapsed((prev) => { const n = new Set(prev); n.has(st) ? n.delete(st) : n.add(st); return n; });
+    setCollapsed((prev) => { const n = new Set(prev); if (n.has(st)) n.delete(st); else n.add(st); return n; });
   }
   function clearAll() {
     haptic.light();

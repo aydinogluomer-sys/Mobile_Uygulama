@@ -26,7 +26,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 let mockUserId: string | null = 'userA';
-const inserted: Array<Record<string, unknown>> = [];
+const inserted: Record<string, unknown>[] = [];
 
 jest.mock('../../lib/supabase', () => {
   const chain = (table: string) => ({

@@ -17,7 +17,6 @@ import {
   habitAveragePercent, summarizeHabitProgress, calculateHabitCompletionRate,
 } from '../../lib/reportMetrics';
 
-type H = Habit;
 type L = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
 
 function h(over: Partial<Habit> = {}): Habit {

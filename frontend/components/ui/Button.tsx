@@ -1,6 +1,6 @@
-import { Text, TouchableOpacity, ActivityIndicator, ViewStyle, StyleProp, View, type AccessibilityProps } from 'react-native';
+import { Text, TouchableOpacity, ActivityIndicator, ViewStyle, StyleProp, type AccessibilityProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, space, hexA, shadow } from '../../lib/tokens';
+import { colors, radius, hexA, shadow } from '../../lib/tokens';
 import { useAccent } from '../../lib/useAccent';
 
 type Variant = 'primary' | 'tonal' | 'ghost' | 'danger';

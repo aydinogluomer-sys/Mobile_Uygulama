@@ -10,11 +10,8 @@
  * an owner filter, `ORDER BY (key DESC, id DESC)`, and the compound cursor
  * predicate `key < k OR (key = k AND id < i)`.
  */
-import { createMockDb, type MockDb } from '../helpers/supabaseMock';
 
 type Row = { id: string; user_id: string; updated_at: string; title: string };
-
-let db: MockDb = createMockDb();
 
 /**
  * A `from()` that understands ordering, the compound cursor and `limit`.
@@ -125,7 +122,6 @@ async function drain(limit = 30) {
 }
 
 beforeEach(() => {
-  db = createMockDb();
   rows = makeRows(65);
   mock = pagingMock(rows);
 });

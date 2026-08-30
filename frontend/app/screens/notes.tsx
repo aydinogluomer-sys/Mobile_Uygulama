@@ -17,7 +17,7 @@ export default function NotesScreen() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
 
-  useEffect(() => { fetchNotes(); }, []);
+  useEffect(() => { fetchNotes(); }, [fetchNotes]);
 
   // Search is SERVER-side now, so it cannot be computed during render. The
   // previous `search(query)` filtered the in-memory array, which only ever
@@ -116,7 +116,7 @@ export default function NotesScreen() {
           // `loading` bugüne kadar okunmuyordu: getirme sürerken liste boş
           // olduğu için "Henüz not yok" yanıp sönüyordu — kullanıcıya olmayan
           // bir gerçeği söyleyen boş durum. Önce gelen ızgaranın şeklini kur.
-          loading ? (
+          loading || searching ? (
             <View style={s.skeletonGrid}>
               {Array.from({ length: 4 }, (_, i) => (
                 <Skeleton key={i} width="47%" height={100} />

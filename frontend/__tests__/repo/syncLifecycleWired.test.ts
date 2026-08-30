@@ -36,6 +36,7 @@
  * AC-W08  `SyncStatusBadge` is exported from the ui barrel and MOUNTED in the
  *         screen where habit completion happens
  */
+import { execSync } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 // `stripComments`/`at` are shared rather than copied — that duplication is
@@ -238,7 +239,6 @@ describe('AC-W07 — the §22 event is emitted from logHabit and nowhere else', 
   });
 
   it('no screen emits directly — a screen can be bypassed', () => {
-    const { execSync } = require('child_process');
     const out = execSync(
       'grep -rl "buildEvent\\|emitEvent" app components --include=*.tsx || true',
       { cwd: ROOT, encoding: 'utf8' },

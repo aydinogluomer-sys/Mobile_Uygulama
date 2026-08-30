@@ -170,7 +170,7 @@ describe('the engine and the report now agree', () => {
 
   const logFor = (value: number, state: HabitLog['state'] = 'partial') => ([{
     habit_id: 'h1', completed_at: '2026-08-30', state, value,
-  }] as Array<Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>>);
+  }] as Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>[]);
 
   it.each([
     [0, 100],

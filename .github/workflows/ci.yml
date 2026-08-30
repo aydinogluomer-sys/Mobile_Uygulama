@@ -58,8 +58,14 @@ jobs:
       - name: Typecheck (CI parity — see tsconfig.ci.json)
         run: npm run typecheck:ci
 
-      - name: Lint (expo lint)
-        run: npx expo lint
+      # `expo lint` walks only the app directories and reports warnings as
+      # advice, so it exited 0 on 73 of them and never saw scripts/,
+      # jest.setup.js or __tests__/ at all. This runs the whole repository and
+      # treats a warning as a failure -- an unused variable or a missing hook
+      # dependency is a defect that has not been triaged yet, and a gate that
+      # prints it and passes is not a gate.
+      - name: Lint (whole repo, warnings are failures)
+        run: npm run lint:ci
 
       - name: Unit tests (jest --ci)
         run: npx jest --ci

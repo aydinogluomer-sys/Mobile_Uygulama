@@ -19,7 +19,6 @@ import { haptic } from '../../lib/haptics';
 import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton } from '../../components/ui';
 import { todayLocal } from '../../lib/date';
 import { logsForHabitsSince as fetchHabitLogsForHabitsSince } from '../../services/habitService';
-import { isMeasurableTracking } from '../../lib/habitEngine';
 import { completePlanWithMakeup } from '../../services/recoveryService';
 
 // Telafi gününü hesaplayan hızlı seçenekler (date-picker dep yok)
@@ -46,8 +45,8 @@ export const STRATEGY_META: Record<RecoveryStrategy, { label: string; desc: stri
 export default function RecoveryScreen() {
   const { tasks, fetchTasks, toggleDone, moveToList } = useTaskStore();
   const { habits, fetchHabits } = useHabitStore();
-  const { fetchLogsForDate, getLogForHabit, logHabit } = useLogStore();
-  const { plans, fetchPlans, addPlan, completePlan, skipPlan, deletePlan, planForHabit, recoveryOptionsFor } = useRecoveryStore();
+  const { fetchLogsForDate, logHabit } = useLogStore();
+  const { plans, fetchPlans, addPlan, skipPlan, deletePlan, planForHabit, recoveryOptionsFor } = useRecoveryStore();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [streaks, setStreaks] = useState<StreakMap>({});
@@ -181,13 +180,14 @@ export default function RecoveryScreen() {
 
   const load = useCallback(async () => {
     await Promise.all([fetchTasks(), fetchHabits(), fetchLogsForDate(today), fetchPlans()]);
-  }, [today]);
+  }, [today, fetchTasks, fetchHabits, fetchLogsForDate, fetchPlans]);
 
-  useEffect(() => { load().finally(() => setLoading(false)); }, []);
+  useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
 
   useEffect(() => {
-    if (activeHabits.length > 0) computeStreaks(activeHabits.map((h) => h.id));
-  }, [habits]);
+    const active = habits.filter((h) => h.status === 'active');
+    if (active.length > 0) computeStreaks(active.map((h) => h.id));
+  }, [habits, computeStreaks]);
 
   async function onRefresh() {
     haptic.light();

@@ -11,7 +11,7 @@ import { rankMeta } from '../lib/ranks';
 export default function XPDisplay() {
   const { profile, fetchProfile } = useProfileStore();
 
-  useEffect(() => { fetchProfile(); }, []);
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
   if (!profile) return null;
 

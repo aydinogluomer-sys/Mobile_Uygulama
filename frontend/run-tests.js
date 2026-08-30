@@ -134,9 +134,18 @@ test('Haftalık takvim', () => tl.includes('weekCal') || tl.includes('renderWeek
 // DAHA doğru hale gelmişti (artık 'duration' da ölçülebilir sayılıyor). Sığ
 // eşleşmeyi gevşetmek yerine gerçek kararı sabitliyoruz: dokunma olayı
 // ölçülebilir alışkanlığı modala, diğerini evet/hayır akışına yönlendirmeli.
+// Bu iddia ikinci kez, aynı sebeple kırıldı: ternary bir ifade-olarak-deyim
+// olduğu için lint (`no-unused-expressions`) haklı olarak uyardı, if/else'e
+// çevrildi ve literal yine kayboldu. Karar değişmedi, yazımı değişti. Bu yüzden
+// artık BİÇİMİ değil KARARI sabitliyoruz: ölçülebilir olan modala, olmayan
+// evet/hayır akışına gitmeli -- her iki yazım da kabul.
+const tlFlat = tl.replace(/\s+/g, ' ');
+const routesByMeasurability =
+  /isMeasurableTracking\(habit\.tracking_type\) \? setMeasureHabit\(habit\) : handleYesNoTap\(habit\)/.test(tlFlat)
+  || (/if \(isMeasurableTracking\(habit\.tracking_type\)\) setMeasureHabit\(habit\);/.test(tlFlat)
+      && /else handleYesNoTap\(habit\);/.test(tlFlat));
 test('Ölçülebilir alışkanlık + MeasurableInputModal', () =>
-  tl.includes('isMeasurableTracking(habit.tracking_type) ? setMeasureHabit(habit) : handleYesNoTap(habit)')
-  && tl.includes('MeasurableInputModal'));
+  routesByMeasurability && tl.includes('MeasurableInputModal'));
 test('XP gösterimi', () => tl.includes('xp'));
 test('Willpower bandı', () => tl.includes('wp') && tl.includes('daily_budget'));
 test('Aktif alışkanlık boş durumu', () => tl.includes('Aktif alışkanlık yok') && tl.includes('EmptyState'));

@@ -17,7 +17,7 @@ export default function DeepWorkScreen() {
   const [subject, setSubject] = useState('');
   const [minutes, setMinutes] = useState('60');
 
-  useEffect(() => { loadSessions(); }, []);
+  useEffect(() => { loadSessions(); }, [loadSessions]);
 
   async function handleAdd() {
     const m = parseInt(minutes, 10);

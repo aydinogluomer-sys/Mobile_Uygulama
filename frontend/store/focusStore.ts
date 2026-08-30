@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../lib/supabase';
 import {
   addTask as repoInsertFocusTask,
   completeTask as repoCompleteFocusTask,

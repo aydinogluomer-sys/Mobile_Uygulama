@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { AppState } from 'react-native';
-import { supabase, WillpowerState } from '../lib/supabase';
+import type { WillpowerState } from '../lib/supabase';
 import { todayLocal } from '../lib/date';
-import { canActivate as capacityCanActivate, dailyLoad, type HabitLoadInput } from '../lib/capacity';
+import type { HabitLoadInput } from '../lib/capacity';
 import {
   evaluateActivation,
   loadToday,
@@ -179,10 +179,6 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
     const s = get().state;
     if (!s || s.state_date !== todayLocal()) return;
 
-    const updates = {
-      used: Math.max(0, s.used - cost),
-      active_count: Math.max(0, s.active_count - 1),
-    };
     const res = await capacityRefund(s as unknown as WillpowerStateRow, cost);
     if (!res.ok) return;
     set({ state: res.data as unknown as WillpowerState });

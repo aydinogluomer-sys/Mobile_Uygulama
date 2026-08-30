@@ -55,7 +55,7 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
     if (tasks.length === 0) fetchTasks();
     if (notes.length === 0) fetchNotes();
     if (projects.length === 0) fetchProjects();
-  }, [visible]);
+  }, [visible, habits.length, tasks.length, notes.length, projects.length, fetchHabits, fetchTasks, fetchNotes, fetchProjects]);
 
   function recordRecent(entry: RecentEntry) {
     setRecents((prev) => {
@@ -86,10 +86,9 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
 
   const q = query.trim().toLowerCase();
 
-  const filteredActions = useMemo(
-    () => (!q ? quickActions : quickActions.filter((a) => a.label.toLowerCase().includes(q))),
-    [q]
-  );
+  const filteredActions = !q
+    ? quickActions
+    : quickActions.filter((a) => a.label.toLowerCase().includes(q));
   /**
    * Search runs on the SERVER, debounced. (§30)
    *

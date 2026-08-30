@@ -14,11 +14,11 @@
  *
  * Mocking follows the exact pattern `routineInstallGate.test.ts` established.
  */
-let mockInsertResult: { data: Array<Record<string, unknown>>; error: { message: string } | null } = {
+let mockInsertResult: { data: Record<string, unknown>[]; error: { message: string } | null } = {
   data: [],
   error: null,
 };
-const mockInsertCalls: { table: string; rows: Array<Record<string, unknown>> }[] = [];
+const mockInsertCalls: { table: string; rows: Record<string, unknown>[] }[] = [];
 
 jest.mock('../../lib/supabase', () => ({
   supabase: {
@@ -28,7 +28,7 @@ jest.mock('../../lib/supabase', () => ({
     },
     functions: { invoke: jest.fn() },
     from: (table: string) => ({
-      insert: (rows: Array<Record<string, unknown>>) => ({
+      insert: (rows: Record<string, unknown>[]) => ({
         select: () => {
           mockInsertCalls.push({ table, rows });
           return Promise.resolve(mockInsertResult);

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Modal,
@@ -76,14 +76,14 @@ export default function AICoachScreen() {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [messages]);
 
-  useEffect(() => { fetchToday(); fetchSub(); loadAnalyticsSummary(); }, []);
-
   // Deliberately a one-shot, not re-run when `habits` changes later in the
   // session -- same intentional "fetch once on mount" scope as `fetchToday`/
   // `fetchSub` above.
-  async function loadAnalyticsSummary() {
+  const loadAnalyticsSummary = useCallback(async () => {
     try {
-      const activeHabitRows = habits.filter((h) => h.status === 'active');
+      // Imperative read, not the `habits` binding from render: this is a
+      // one-shot and must not gain a dependency that re-runs it.
+      const activeHabitRows = useHabitStore.getState().habits.filter((h) => h.status === 'active');
       if (activeHabitRows.length === 0) return;
 
       const today = new Date();
@@ -126,7 +126,9 @@ export default function AICoachScreen() {
     } catch {
       // best-effort -- see field doc above
     }
-  }
+  }, []);
+
+  useEffect(() => { fetchToday(); fetchSub(); loadAnalyticsSummary(); }, [fetchToday, fetchSub, loadAnalyticsSummary]);
 
   async function send(text?: string) {
     const msg = (text ?? input).trim();

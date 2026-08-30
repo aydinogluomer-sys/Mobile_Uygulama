@@ -10,7 +10,6 @@ import {
   Alert,
   Share,
   ActivityIndicator,
-  Linking,
   Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,12 +22,6 @@ import {
   type WebhookRow,
 } from '../../services/webhookService';
 import { buildBackup, renderBackup, type ExportFormat } from '../../services/exportService';
-
-const SEASONAL_OPTIONS: { v: SeasonalMotionIntensity; l: string }[] = [
-  { v: 'off', l: 'Kapalı' },
-  { v: 'subtle', l: 'Hafif' },
-  { v: 'normal', l: 'Normal' },
-];
 import BadHabitsTracker from '../../components/BadHabitsTracker';
 import { seedDemoData, isSeedingAllowed } from '../../lib/demoSeed';
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
@@ -38,6 +31,12 @@ import {
   type IntegrationCategoryId,
 } from '../../constants/integrations';
 import { CURRENT_FEATURES, UPCOMING_FEATURES, type FeatureHighlight } from '../../constants/features';
+
+const SEASONAL_OPTIONS: { v: SeasonalMotionIntensity; l: string }[] = [
+  { v: 'off', l: 'Kapalı' },
+  { v: 'subtle', l: 'Hafif' },
+  { v: 'normal', l: 'Normal' },
+];
 
 export default function SettingsScreen() {
   const { isDark, toggle: toggleTheme } = useThemeStore();

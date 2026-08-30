@@ -62,7 +62,7 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
       if (active) { setRows(res.ok ? res.data : []); setLoading(false); }
     })();
     return () => { active = false; };
-  }, [visible]);
+  }, [visible, settings.defaultReportRange]);
 
   const sessions = useMemo(() => inRange(rows, range), [rows, range]);
   const sum = useMemo(() => summary(sessions), [sessions]);

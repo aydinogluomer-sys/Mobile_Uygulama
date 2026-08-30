@@ -12,7 +12,8 @@
     "postinstall": "node ./scripts/fix-expo-tsconfig.js",
     "test": "jest",
     "typecheck": "tsc --noEmit",
-    "typecheck:ci": "tsc --noEmit -p tsconfig.ci.json"
+    "typecheck:ci": "tsc --noEmit -p tsconfig.ci.json",
+    "lint:ci": "eslint . --ext .ts,.tsx --max-warnings=0"
   },
   "dependencies": {
     "@expo/ngrok": "^4.1.3",

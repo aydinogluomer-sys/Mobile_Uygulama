@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase, type RecoveryPlan, type RecoveryStrategy, type HabitLog } from '../lib/supabase';
+import type { RecoveryPlan, RecoveryStrategy, HabitLog } from '../lib/supabase';
 import { scheduleRecoveryReminder, cancelRecoveryReminder } from '../lib/notifications';
 import {
   completePlan as svcCompletePlan,
@@ -68,7 +68,6 @@ type RecoveryStore = {
   }) => RecoveryOption[];
 };
 
-const SELECT = 'id,user_id,habit_id,source_date,target_date,strategy,note,reminder_time,status,created_at';
 
 /**
  * Round-trips a persisted row through the `RecoveryPlanV2` model at the

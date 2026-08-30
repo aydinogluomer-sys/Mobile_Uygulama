@@ -50,7 +50,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
   const [completions, setCompletions] = useState<Record<number, { difficulty?: 1 | 3 | 5; estimated_minutes?: number }>>({});
   const [minutesText, setMinutesText] = useState<Record<number, string>>({});
 
-  useEffect(() => { if (visible) fetchSub(); }, [visible]);
+  useEffect(() => { if (visible) fetchSub(); }, [visible, fetchSub]);
 
   // Yeni bir eksik öneri geldiğinde (yeni bir AI çağrısı) formu sıfırla --
   // ama başarısız bir "Devam Et" denemesinden sonra (pendingProposal AYNI

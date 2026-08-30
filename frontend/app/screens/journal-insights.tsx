@@ -44,8 +44,8 @@ export default function JournalInsightsScreen() {
   );
   const cached = getCached(period, win.key);
 
-  useEffect(() => { fetchEntries(); fetchSub(); }, []);
-  useEffect(() => { fetchInsight(period, win.key); setError(null); setLowCredits(false); }, [period]);
+  useEffect(() => { fetchEntries(); fetchSub(); }, [fetchEntries, fetchSub]);
+  useEffect(() => { fetchInsight(period, win.key); setError(null); setLowCredits(false); }, [period, win.key, fetchInsight]);
 
   async function generate() {
     if (loading || periodEntries.length === 0) return;

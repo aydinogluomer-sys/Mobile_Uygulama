@@ -118,7 +118,7 @@ export default function EisenhowerScreen() {
   const [assignModal, setAssignModal] = useState<Task | null>(null);
   const [pickModal, setPickModal] = useState(false);
 
-  useEffect(() => { fetchTasks(); fetchHabits(); }, []);
+  useEffect(() => { fetchTasks(); fetchHabits(); }, [fetchTasks, fetchHabits]);
 
   const activeTasks = tasks.filter((t) => !t.completed && t.status !== 'cancelled');
   const unassigned = activeTasks.filter((t) => !t.quadrant);

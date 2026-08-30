@@ -28,7 +28,7 @@ export default function OKRScreen() {
   const [editKr, setEditKr] = useState<KeyResult | null>(null);
   const [editVal, setEditVal] = useState('');
 
-  useEffect(() => { loadOKRs(); }, []);
+  useEffect(() => { loadOKRs(); }, [loadOKRs]);
 
   async function submitObjective() {
     if (!objText.trim()) return;
