@@ -1903,3 +1903,148 @@ after retention is proven) and states that global leaderboard is explicitly not 
 P0/P1 feature. Retention cannot be proven from a repository — it needs shipped users
 and the §29 metrics. Recorded as **deferred by the plan's own precondition**
 (assumption A-04), not as incomplete work.
+
+---
+
+# OVERALL SUMMARY REPORT — IMPLEMENTATION_V2 execution
+
+Compiled 2026-08-30 on `phase/1-core-engine` @ `aac7cb6`.
+
+## Phases
+
+| Phase | Status | Gate evidence |
+|---|---|---|
+| 0 — Recovery & Architecture | **DONE** (prior session) | Gate A criteria; the four §32 documents verified present this session |
+| 1 — Core Engine | **CODE-COMPLETE** (prior session) | Gate B's journey is computable and wired end to end; **live verification still blocked** — see Open Issue 1 |
+| 2 — Intelligence | **DONE** (prior session) | Gate C exactness verified against raw samples |
+| 3 — Routines & AI | **DONE** (prior session) | Gate D: AI cannot write to the DB; core works with AI failing |
+| 4 — Product Polish | **DONE** (this session) | full gate below |
+| 5 — Growth | **DEFERRED BY THE PLAN** | §24 gates it behind *"ancak retention kanıtlandıktan sonra"*; retention needs shipped users, not a repository |
+
+## Test status
+
+| Gate | Session start | Session end |
+|---|---|---|
+| `npx tsc --noEmit` | 0 errors | **0 errors** |
+| `npm run typecheck:ci` (CI parity) | *did not exist* | **0 errors** |
+| `npx expo lint` | 0 errors | **0 errors**, 73 warnings |
+| `npx jest` | 813 / 54 suites | **1041 / 1041, 71 suites** |
+| same, under `TZ=UTC` | *would have failed* | **1041 / 1041** |
+| `node run-tests.js` | 142 / 142 | **142 / 142** |
+| Android + iOS export | pass | **pass** |
+| **CI** | **RED on every push** | **GREEN, twice consecutively** |
+
+Net **+228 tests / +17 suites**, and — the part that matters more — the suite now
+passes under CI's conditions rather than only on this machine.
+
+## The single most important finding
+
+**CI had been red on every push of the previous session**, including the commits that
+closed Gates A, B, C and D. The log recorded CI as "the single criterion that cannot
+be observed locally"; it was observable, and simply was never observed. Plan **Rule 5**
+forbids marking a phase DONE while its tests fail.
+
+Behind it sat **one bug class, found three separate times**: a gate silently depending
+on something only the developer's machine has.
+
+| # | Gate | Hidden local dependency | Why it was invisible |
+|---|---|---|---|
+| 1 | `tsc --noEmit` | `.expo/types/router.d.ts` — tsconfig **includes** it, `.gitignore` **excludes** it | expo-router's generated typed-routes file exists locally, never in CI. `useSegments()` degraded to a 1-tuple, so `segments[1]` was `TS2493`. Local checked a *weaker program* than CI |
+| 2 | `jest` TZ pin | none — but the dev machine **is** Europe/Istanbul | `setupFiles` runs inside an already-started worker, after Node cached the zone. The pin had **never worked**; the machine's own timezone masked it |
+| 3 | `run-tests.js` | `.env` | `read('./.env')` threw `ENOENT` in a clean clone, killing the script before a single assertion |
+
+The third is the sharpest lesson: the diagnosis had **already been written down** —
+`jest.config.js`'s own comment reads *"Never read .env - the old run-tests.js did, and
+a test that depends on a gitignored file is not reproducible."* It was fixed for jest
+and left in place in `run-tests.js`.
+
+All three are now fixed, and each fix makes CI's view **reproducible locally**
+(`npm run typecheck:ci`, `jest.globalSetup.js`, and asserting the code-level env
+contract instead of a developer's file).
+
+## The second theme: finished work that nothing called
+
+Three subsystems were complete, documented, unit-tested — and **unreachable from the
+running app**:
+
+- the offline sync queue (`hydrateSyncQueue`/`flushPendingSync` — only callers were tests),
+- the analytics layer (`lib/analytics.ts` — **zero** emission sites),
+- crash reporting (which did not exist at all: zero matches for `Sentry|ErrorBoundary|captureException`).
+
+All three are now wired and guarded by tests that assert the *call sites*, not just the
+behaviour — because no behavioural test can catch this failure mode: it calls the
+module directly and passes whether or not production ever does.
+
+## What was built this session
+
+| Area | Before | After |
+|---|---|---|
+| Crash reporting | nothing | capture funnel, swappable sink, chained global handlers, `ErrorBoundary` on the navigator, privacy scrubber |
+| Offline sync | inert | hydrated before first render, flushed on boot + foreground, re-entrancy guarded, `dead` visibly distinct from `pending` |
+| Analytics | inert | **11 / 11** declared events emitting from store/repository funnels, **none from a screen** |
+| Accessibility (screens) | **literally zero** | 310 accessibility props across 25 screens |
+| Accessibility (primitives) | 9 of 14 had closed prop types | uniform contract: defaults first, caller always wins |
+| Performance | unmeasured | audit published; Stats waterfall 4 round trips → 2 |
+| Store assets | splash pointed at a nonexistent file | fixed + guarded by a generic asset-path test |
+
+## Known open issues
+
+1. **Supabase project `kbcuolhjjnmhjaarxxmu` is paused/unreachable.** Blocks: live
+   Gate B verification, applying `supabase/migrations/20260825_phase1_core_engine.sql`,
+   and §28's *"RLS tested / cross-user isolation proven"* (8 policies are authored;
+   none is proven live). **Repo-owner action** — deliberately out of scope, since
+   applying a migration to production is irreversible.
+2. **Four unbounded queries** — `noteStore`, `taskStore`, `projectStore`,
+   `readingListStore` fetch every row a user has ever created. **Reported, not fixed
+   on purpose:** adding `.limit(n)` without pagination UI would not make the app
+   faster, it would silently hide the user's older data — a worse defect. Needs a
+   feature-shaped unit with its own acceptance criteria.
+3. **Monthly review reflections are device-local.** `monthly-review.tsx` writes
+   straight to `AsyncStorage`; there is no table, repository or store. Answers are lost
+   on reinstall while the UI says "Kaydedildi". Fix the product defect first, *then*
+   add `monthly_review_completed` — an event whose funnel is device-local storage
+   measures devices, not reviews.
+4. **`duration` habits are expressible but unreachable.** `TrackingType` includes it
+   and the engine is tested for it, but `adaptTrackingType` never produces it: the
+   schema has no field distinguishing a duration unit. Documented in
+   `habitEngine.ts:44-48`. §27's DoD box is not honestly tickable until the schema
+   carries the distinction.
+5. **Widgets not started (A-05).** Needs a native target + config plugin in an
+   Expo-managed repo with no `ios/`/`android/`; no gate in this plan can observe one.
+   Writing unverifiable native code would violate Rule 5.
+6. **Store icon artwork is still the Expo placeholder.** `icon`, `adaptive-icon` and
+   `favicon` are byte-identical template files. A design deliverable, not a coding one.
+7. **Four edge-function defects, reported not fixed** (deploy is a repo-owner action):
+   no server-side schema validation in `generate-routine`; `message` truncated at 500
+   chars against a ~586-char digest; `mode:'summarize'` routed to the wrong branch;
+   `context.analytics` never read.
+8. **73 lint warnings** (0 errors) — mostly `react-hooks/exhaustive-deps`. Left alone:
+   changing dependency arrays alters runtime behaviour and is not polish.
+
+## Methodology note — the shallow-match trap, six forms
+
+Every source-text invariant test in this repo has been bitten by an assertion matching
+too loosely and producing **silent false confidence**. The six forms found so far:
+
+| # | Form |
+|---|---|
+| 1 | a grep census reported 1 violation instead of 16 |
+| 2 | a body-slicer cut before the target — red for the wrong reason |
+| 3 | a pattern matched `return;` inside a **comment** |
+| 4 | a file-scoped assertion satisfied by a **different component** in the same file |
+| 5 | `grep -l "review"` matched the word "p**review**" in a comment |
+| 6 | `expect(a.indexOf(x)).toBeGreaterThan(a.indexOf(y))` **passes when `y` is absent**, because `indexOf` returns `-1` |
+
+Standing guidance, now applied throughout: **strip comments before matching, anchor
+the scope rather than the pattern, and make absence fail first.** A seventh, specific
+to component tests, was added this session: `@expo/vector-icons` renders a props-less
+`<Text />` until its font loads, so a naive "the decorative icon is hidden" assertion
+passes even with the fix fully deleted.
+
+Every unit this session was **mutation-verified**: production code was broken one
+invariant at a time and the expected test had to go red for the expected reason.
+Roughly 70 mutations across the five units. Two of them are worth remembering because
+they stayed **green** and taught something: one disproved a claim a coder had written
+in a comment (the line was deleted rather than kept unearned), and one showed a
+structural assertion that only a behavioural test could catch — the correct division
+of labour, recorded rather than papered over.
