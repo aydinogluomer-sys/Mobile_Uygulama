@@ -110,6 +110,12 @@ export default function SyncStatusBadge({ pending, dead, style }: Props) {
   return (
     <View
       style={[s.row, style]}
+      // `accessible` olmadan bu etiket ATIL kalıyordu: kap erişilebilirlik
+      // öğesi olmadığı için ekran okuyucu içindeki iki pill metnini ayrı ayrı
+      // ("1 eşitlenemedi", "3 bekliyor") okuyor, yukarıdaki kurtarma cümlesini
+      // hiç söylemiyordu — yani `dead`in tek eyleme dönüştürülebilir kısmı
+      // duyulmuyordu. Gruplayınca etiket gerçekten okunur.
+      accessible
       accessibilityRole="text"
       accessibilityLabel={syncBadgeA11yLabel(pending, dead)}
     >

@@ -1,9 +1,16 @@
-import { View, Text, StyleProp, ViewStyle } from 'react-native';
+import { View, Text, StyleProp, ViewStyle, type AccessibilityProps } from 'react-native';
 import { colors, space, font } from '../../lib/tokens';
 import Card from './Card';
 import ProgressBar from './ProgressBar';
 
-type Props = {
+/**
+ * `AccessibilityProps` ile genişletildi ve doğrudan `Card`'a aktarılıyor:
+ * `onPress` verilen bir StatTile artık Card üzerinden `button` rolü alıyor,
+ * ve çağıran "Seri: 12 gün" gibi tek parça bir etiket geçebiliyor.
+ * İçerideki `ProgressBar` etiketsiz olduğu için kendiliğinden gizli kalır —
+ * değeri zaten üstteki metin söylüyor.
+ */
+type Props = AccessibilityProps & {
   value: string | number;
   label: string;
   sub?: string;
@@ -18,10 +25,10 @@ type Props = {
 
 /** Metrik kartı — büyük tabular değer + label (+ opsiyonel sub / progress bar). */
 export default function StatTile({
-  value, label, sub, subColor, progress, progressColor = colors.primary, accent, onPress, style,
+  value, label, sub, subColor, progress, progressColor = colors.primary, accent, onPress, style, ...a11y
 }: Props) {
   return (
-    <Card onPress={onPress} padding="lg" style={[{ flex: 1 }, style]}>
+    <Card onPress={onPress} padding="lg" style={[{ flex: 1 }, style]} {...a11y}>
       <Text style={{ ...font.overline, color: colors.textFaint, marginBottom: space.sm }}>{label}</Text>
       <Text style={{ ...font.metric, color: accent ?? colors.text, marginBottom: typeof progress === 'number' ? space.sm : 0 }}>{value}</Text>
       {sub && <Text style={{ fontSize: 11, color: subColor ?? colors.textGhost, marginTop: 3 }}>{sub}</Text>}

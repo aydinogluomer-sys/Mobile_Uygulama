@@ -44,7 +44,15 @@ export default function EmptyState({
           backgroundColor: hexA(color, 0.1), alignItems: 'center', justifyContent: 'center',
         }}
       >
-        <Ionicons name={icon} size={compact ? 26 : 32} color={hexA(color, 0.8)} />
+        {/* Süsleme: hemen altındaki başlık + ipucu metni durumu zaten anlatıyor;
+            ikon glifi ekran okuyucuda anlamsız bir durak üretirdi. */}
+        <Ionicons
+          name={icon}
+          size={compact ? 26 : 32}
+          color={hexA(color, 0.8)}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
       </View>
       <View style={{ alignItems: 'center', gap: 4 }}>
         <Text style={{ ...font.title, fontSize: 20, color: colors.text }}>{title}</Text>

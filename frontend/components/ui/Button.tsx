@@ -1,4 +1,4 @@
-import { Text, TouchableOpacity, ActivityIndicator, ViewStyle, StyleProp, View } from 'react-native';
+import { Text, TouchableOpacity, ActivityIndicator, ViewStyle, StyleProp, View, type AccessibilityProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, space, hexA, shadow } from '../../lib/tokens';
 import { useAccent } from '../../lib/useAccent';
@@ -6,7 +6,14 @@ import { useAccent } from '../../lib/useAccent';
 type Variant = 'primary' | 'tonal' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
 
-type Props = {
+/**
+ * `AccessibilityProps` ile genişletilmesinin sebebi: prop tipi kapalıyken
+ * çağıran taraf `accessibilityLabel`/`accessibilityHint` geçemiyordu, dolayısıyla
+ * ekran bazlı erişilebilirlik çalışması bu butona hiç ulaşamıyordu. Yalnızca
+ * erişilebilirlik yüzeyi açılıyor — `TouchableOpacityProps`'un tamamı değil —
+ * böylece bileşenin API'si (variant/size/full) anlamlı kalıyor.
+ */
+type Props = AccessibilityProps & {
   label: string;
   onPress?: () => void;
   variant?: Variant;
@@ -28,7 +35,7 @@ const SIZES: Record<Size, { h: number; px: number; fs: number; icon: number; gap
 /** Tutarlı aksiyon butonu — primary/tonal/ghost/danger × sm/md/lg. */
 export default function Button({
   label, onPress, variant = 'primary', size = 'md', icon,
-  loading, disabled, color, full, style,
+  loading, disabled, color, full, style, ...a11y
 }: Props) {
   const sz = SIZES[size];
   const accentTheme = useAccent();
@@ -51,6 +58,16 @@ export default function Button({
       activeOpacity={0.8}
       onPress={onPress}
       disabled={isDisabled}
+      // Varsayılanlar ÖNCE gelir, `...a11y` sonra: çağıranın verdiği rol/etiket
+      // her zaman kazanır. Etiketin varsayılan olması ayrıca `loading`
+      // durumunda buton metninin yerini ActivityIndicator alınca butonun
+      // tamamen sessizleşmesini önler.
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      {...a11y}
+      // Sahip olunan durum her koşulda duyurulur; çağıran ek anahtar
+      // (örn. `selected`) ekleyebilir ve çakışan anahtarda üstün gelir.
+      accessibilityState={{ disabled: !!isDisabled, busy: !!loading, ...a11y.accessibilityState }}
       style={[
         {
           height: sz.h,

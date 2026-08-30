@@ -1,8 +1,14 @@
-import { Text, View, ViewStyle, StyleProp } from 'react-native';
+import { Text, View, ViewStyle, StyleProp, type AccessibilityProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, hexA } from '../../lib/tokens';
 
-type Props = {
+/**
+ * `AccessibilityProps` ile genişletildi: rozet metni çoğu zaman kısaltmadır
+ * ("5 dk", "3 irade") ve çağıranın bunu açık bir etiketle değiştirebilmesi
+ * gerekir. Rozetin kendisi dokunulabilir değil ve bir durum sahibi değil,
+ * bu yüzden varsayılan rol/etiket UYDURULMUYOR — içindeki `Text` zaten okunur.
+ */
+type Props = AccessibilityProps & {
   label: string | number;
   color?: string;
   icon?: keyof typeof Ionicons.glyphMap;
@@ -10,9 +16,10 @@ type Props = {
 };
 
 /** Küçük tonal rozet (örn. irade maliyeti, dk, hatırlatıcı). Chip'ten daha kompakt. */
-export default function Badge({ label, color = colors.textDim, icon, style }: Props) {
+export default function Badge({ label, color = colors.textDim, icon, style, ...a11y }: Props) {
   return (
     <View
+      {...a11y}
       style={[
         {
           flexDirection: 'row', alignItems: 'center', gap: 2,
@@ -22,7 +29,16 @@ export default function Badge({ label, color = colors.textDim, icon, style }: Pr
         style,
       ]}
     >
-      {icon && <Ionicons name={icon} size={10} color={color} />}
+      {/* İkon süsleme: rozetin metni aynı bilgiyi zaten taşıyor. */}
+      {icon && (
+        <Ionicons
+          name={icon}
+          size={10}
+          color={color}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
+      )}
       <Text style={{ fontSize: 11, color, fontWeight: '700' }}>{label}</Text>
     </View>
   );

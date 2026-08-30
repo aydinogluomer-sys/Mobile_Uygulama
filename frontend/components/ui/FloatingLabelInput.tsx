@@ -55,6 +55,12 @@ export default function FloatingLabelInput({
           value={value}
           placeholder=""
           placeholderTextColor="transparent"
+          // Yüzen etiket ayrı bir `Animated.Text` olduğu için alanın KENDİSİ
+          // etiketsizdi: `placeholder` bilerek boş, yani ekran okuyucu odağı
+          // alana geldiğinde ne istendiğini söyleyen hiçbir şey yoktu
+          // (auth ekranlarındaki e-posta/şifre alanlarının tamamı böyleydi).
+          // Çağıran açıkça bir etiket verirse o kazanır.
+          accessibilityLabel={props.accessibilityLabel ?? label}
           style={[s.input, style]}
           onFocus={(event) => {
             setFocused(true);
