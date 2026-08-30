@@ -399,6 +399,16 @@ export const useLogStore = create<LogStore>((set, get) => {
   // mutated by every `logHabit`/`flushPendingSync` write attempt, and
   // persisted after every mutation so `pending sync` survives a restart.
   let queueState: SyncQueueState = emptyQueueState();
+  /**
+   * The account whose queue is currently loaded.
+   *
+   * The queue is persisted per account (`lib/syncQueue.ts`), and the replay
+   * path resolves the user at FLUSH time. Without an owner recorded here, a
+   * queue built by one account drains through whichever session happens to be
+   * signed in later. Set by `hydrateSyncQueue`; `null` means nothing has been
+   * hydrated yet and there is no account to persist against.
+   */
+  let queueOwnerId: string | null = null;
 
   /**
    * RE-ENTRANCY GUARD for `flushPendingSync`.
@@ -469,12 +479,12 @@ export const useLogStore = create<LogStore>((set, get) => {
       queueState = result.ok
         ? markOpSynced(queueState, op.id)
         : markOpFailed(queueState, op.id, 'rejected', { error: result.error, now });
-      await saveSyncQueue(queueState);
+      await saveSyncQueue(queueState, queueOwnerId ?? '');
       publishSyncCounts();
       return result;
     } catch {
       queueState = markOpFailed(queueState, op.id, 'network', { now });
-      await saveSyncQueue(queueState);
+      await saveSyncQueue(queueState, queueOwnerId ?? '');
       publishSyncCounts();
       throw new Error('__offline__'); // caller distinguishes network from a real result
     }
@@ -487,7 +497,14 @@ export const useLogStore = create<LogStore>((set, get) => {
    * the replay loop.
    */
   async function runFlushPass(now?: number): Promise<LogResult[]> {
-    const ready = orderedPending(queueState, now);
+    const all = orderedPending(queueState, now);
+    // Second line of defence behind the per-account storage key: an op that
+    // names a different owner is never replayed, whatever is in memory. The
+    // write path resolves the user at flush time, so replaying a foreign op
+    // would attribute one account's offline work to another.
+    const ready = queueOwnerId
+      ? all.filter((op) => !op.userId || op.userId === queueOwnerId)
+      : [];
     const results: LogResult[] = [];
     for (const op of ready) {
       const patch = toPatch(op.intent);
@@ -556,7 +573,7 @@ export const useLogStore = create<LogStore>((set, get) => {
       const enq = enqueueOp(queueState, habitId, dateStr, intent);
       queueState = enq.state;
       publishSyncCounts();
-      const persisted = saveSyncQueue(queueState);
+      const persisted = saveSyncQueue(queueState, queueOwnerId ?? '');
 
       // 3) Attempt to sync now, through the EXISTING serialise() chain,
       //    unchanged -- this is what still gives a same-session double-tap
@@ -611,7 +628,17 @@ export const useLogStore = create<LogStore>((set, get) => {
     },
 
     hydrateSyncQueue: async () => {
-      queueState = await loadSyncQueue();
+      const { data: { user } } = await supabase.auth.getUser();
+      // No session means no account to load a queue for. Loading the previous
+      // account's queue here is exactly the cross-account bug this guards.
+      if (!user) {
+        queueOwnerId = null;
+        queueState = emptyQueueState();
+        publishSyncCounts();
+        return;
+      }
+      queueOwnerId = user.id;
+      queueState = await loadSyncQueue(user.id);
       publishSyncCounts();
     },
 

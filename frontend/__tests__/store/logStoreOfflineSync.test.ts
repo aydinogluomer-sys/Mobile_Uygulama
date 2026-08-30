@@ -209,7 +209,7 @@ describe('AC-O02 -- cold start: persisted queue replays without duplicating', ()
 
     // A previous session persisted its intent before being killed.
     const persisted = enqueueOp(emptyQueueState(), habitId, DATE_STR, { state: 'done', baseXp: 30 });
-    await saveSyncQueue(persisted.state);
+    await saveSyncQueue(persisted.state, 'u1');
 
     // True cold start: reload the queue from disk into a fresh store.
     await useLogStore.getState().hydrateSyncQueue();
@@ -229,7 +229,7 @@ describe('AC-O02 -- cold start: persisted queue replays without duplicating', ()
   it('inserts exactly once when no remote row exists yet', async () => {
     const habitId = 'cold-2';
     const persisted = enqueueOp(emptyQueueState(), habitId, DATE_STR, { state: 'done', baseXp: 30 });
-    await saveSyncQueue(persisted.state);
+    await saveSyncQueue(persisted.state, 'u1');
 
     await useLogStore.getState().hydrateSyncQueue();
     const results = await useLogStore.getState().flushPendingSync();

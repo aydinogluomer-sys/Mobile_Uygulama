@@ -84,6 +84,16 @@ export type SyncOp = {
   /** Not eligible for `orderedPending` before this time -- backoff after a rejection. */
   readyAt?: number;
   lastError?: string;
+  /**
+   * The account that enqueued this op.
+   *
+   * The replay path resolves the user at FLUSH time, not at enqueue time, so
+   * without this an op created by one account is written as whoever happens
+   * to be signed in when it finally drains. Optional because ops persisted
+   * before this field existed have none; `loadSyncQueue` stamps those with
+   * the adopting account.
+   */
+  userId?: string;
 };
 
 export type SyncQueueState = {
@@ -289,7 +299,31 @@ export function orderedPending(state: SyncQueueState, now: number = Date.now()):
 // default, never allowed to crash boot), `save` is best-effort.
 // ---------------------------------------------------------------------------
 
-const STORAGE_KEY = 'atlas_sync_queue_v1';
+/**
+ * Legacy, UNSCOPED key. Everything written before the queue was made
+ * account-aware lives here. Read once, adopted, then deleted — see
+ * `loadSyncQueue`.
+ */
+const LEGACY_STORAGE_KEY = 'atlas_sync_queue_v1';
+
+/**
+ * The queue is stored PER ACCOUNT.
+ *
+ * It used to be one global key. A queued op carries a `habitId` and a logged
+ * value but no owner, and the replay path writes with whatever session is
+ * current — `logStore`'s replay reads `supabase.auth.getUser()` at flush
+ * time, not at enqueue time. So on a device where user A logged habits
+ * offline, signed out, and user B signed in, B's first foreground flush
+ * attempted A's writes as B, and A's pending work was consumed from B's
+ * session. A's habit ids and values were also sitting in storage that B's
+ * session read.
+ *
+ * Scoping the key means B never loads A's queue at all. `SyncOp.userId` below
+ * is the second line of defence for ops already in memory.
+ */
+function storageKeyFor(userId: string): string {
+  return `atlas_sync_queue_v1:${userId}`;
+}
 
 function isValidOp(x: unknown): x is SyncOp {
   if (!x || typeof x !== 'object') return false;
@@ -317,20 +351,50 @@ function isValidQueueState(x: unknown): x is SyncQueueState {
  * (a corrupt payload is discarded rather than allowed to crash boot or
  * silently wedge the app with garbage ops).
  */
-export async function loadSyncQueue(): Promise<SyncQueueState> {
+export async function loadSyncQueue(userId: string): Promise<SyncQueueState> {
+  if (!userId) return emptyQueueState();
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyQueueState();
-    const parsed: unknown = JSON.parse(raw);
-    return isValidQueueState(parsed) ? parsed : emptyQueueState();
+    const raw = await AsyncStorage.getItem(storageKeyFor(userId));
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      return isValidQueueState(parsed) ? stampOwner(parsed, userId) : emptyQueueState();
+    }
+
+    // ── One-time migration off the unscoped key ────────────────────────────
+    // The legacy queue carries no owner, so it cannot be attributed with
+    // certainty. It is adopted by the first account to load after the
+    // upgrade and the legacy key is then deleted, which on a single-account
+    // device (the ordinary case) is both correct and lossless — discarding it
+    // instead would silently drop writes the user is still owed.
+    //
+    // On a shared device the adopting account may be the wrong one. That is
+    // not a regression: the unscoped queue was ALREADY shared by every
+    // account, so this is strictly narrower, it happens once, and a
+    // mis-attributed op is now rejected by the database anyway — habit_logs
+    // requires the habit to belong to the caller (migration
+    // 20260830_habit_logs_ownership_check).
+    const legacy = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!legacy) return emptyQueueState();
+    await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
+    const parsedLegacy: unknown = JSON.parse(legacy);
+    if (!isValidQueueState(parsedLegacy)) return emptyQueueState();
+    const adopted = stampOwner(parsedLegacy, userId);
+    await saveSyncQueue(adopted, userId);
+    return adopted;
   } catch {
     return emptyQueueState();
   }
 }
 
-export async function saveSyncQueue(state: SyncQueueState): Promise<void> {
+/** Attributes every op in a loaded queue to the account that loaded it. */
+function stampOwner(state: SyncQueueState, userId: string): SyncQueueState {
+  return { ...state, ops: state.ops.map((o) => (o.userId ? o : { ...o, userId })) };
+}
+
+export async function saveSyncQueue(state: SyncQueueState, userId: string): Promise<void> {
+  if (!userId) return;
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    await AsyncStorage.setItem(storageKeyFor(userId), JSON.stringify(state));
   } catch {
     // Best-effort, same posture as themeStore's persistence calls -- the
     // in-memory queue remains correct for this session even if the disk

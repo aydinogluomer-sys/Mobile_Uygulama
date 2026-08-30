@@ -193,7 +193,7 @@ describe('AC-Q07 -- persistence round-trips and survives corruption', () => {
   });
 
   it('loadSyncQueue returns an empty queue when nothing is stored', async () => {
-    const s = await loadSyncQueue();
+    const s = await loadSyncQueue('u1');
     expect(s).toEqual(emptyQueueState());
   });
 
@@ -202,21 +202,57 @@ describe('AC-Q07 -- persistence round-trips and survives corruption', () => {
     ({ state: s } = enqueue(s, 'h1', '2026-08-04', DONE));
     ({ state: s } = enqueue(s, 'h2', '2026-08-05', PARTIAL3, { now: 42 }));
 
-    await saveSyncQueue(s);
-    const loaded = await loadSyncQueue();
+    await saveSyncQueue(s, 'u1');
+    const loaded = await loadSyncQueue('u1');
 
-    expect(loaded).toEqual(s);
+    // The queue is now stored per account, and loading stamps every op with
+    // the account that owns it — the replay path resolves the user at flush
+    // time, so an unowned op would drain through whoever is signed in then.
+    expect(loaded.nextSeq).toBe(s.nextSeq);
+    expect(loaded.ops).toEqual(s.ops.map((o) => ({ ...o, userId: 'u1' })));
+  });
+
+  it('stores per account — one user cannot load another user queue', async () => {
+    let s = emptyQueueState();
+    ({ state: s } = enqueue(s, 'h1', '2026-08-04', DONE));
+    await saveSyncQueue(s, 'userA');
+
+    expect((await loadSyncQueue('userB')).ops).toEqual([]);
+    expect((await loadSyncQueue('userA')).ops).toHaveLength(1);
+  });
+
+  it('adopts a legacy unscoped queue once, then removes it', async () => {
+    let s = emptyQueueState();
+    ({ state: s } = enqueue(s, 'legacy-habit', '2026-08-04', DONE));
+    await AsyncStorage.setItem('atlas_sync_queue_v1', JSON.stringify(s));
+
+    // Adopted rather than discarded: dropping it would silently lose writes
+    // the user is still owed on a single-account device.
+    const first = await loadSyncQueue('u1');
+    expect(first.ops).toHaveLength(1);
+    expect(first.ops[0].userId).toBe('u1');
+    expect(await AsyncStorage.getItem('atlas_sync_queue_v1')).toBeNull();
+
+    // And only once — a second account gets nothing.
+    expect((await loadSyncQueue('u2')).ops).toEqual([]);
+  });
+
+  it('an empty user id loads nothing and saves nothing', async () => {
+    let s = emptyQueueState();
+    ({ state: s } = enqueue(s, 'h1', '2026-08-04', DONE));
+    await saveSyncQueue(s, '');
+    expect((await loadSyncQueue('')).ops).toEqual([]);
   });
 
   it('discards an unparseable stored payload instead of throwing', async () => {
-    await AsyncStorage.setItem('atlas_sync_queue_v1', '{{{ not json');
-    const s = await loadSyncQueue();
+    await AsyncStorage.setItem('atlas_sync_queue_v1:u1', '{{{ not json');
+    const s = await loadSyncQueue('u1');
     expect(s).toEqual(emptyQueueState());
   });
 
   it('discards a well-formed JSON payload of the wrong shape', async () => {
-    await AsyncStorage.setItem('atlas_sync_queue_v1', JSON.stringify({ hello: 'world' }));
-    const s = await loadSyncQueue();
+    await AsyncStorage.setItem('atlas_sync_queue_v1:u1', JSON.stringify({ hello: 'world' }));
+    const s = await loadSyncQueue('u1');
     expect(s).toEqual(emptyQueueState());
   });
 
@@ -229,8 +265,8 @@ describe('AC-Q07 -- persistence round-trips and survives corruption', () => {
         attempts: 0, status: 'pending', seq: 1, createdAt: 1, updatedAt: 1,
       }],
     };
-    await AsyncStorage.setItem('atlas_sync_queue_v1', JSON.stringify(corrupt));
-    const s = await loadSyncQueue();
+    await AsyncStorage.setItem('atlas_sync_queue_v1:u1', JSON.stringify(corrupt));
+    const s = await loadSyncQueue('u1');
     expect(s).toEqual(emptyQueueState());
   });
 });

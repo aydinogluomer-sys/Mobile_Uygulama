@@ -114,7 +114,7 @@ const writeCalls = () => mockDb.calls.filter((c) => c === 'insert' || c === 'upd
 
 async function queueOne(habitId: string, date: string) {
   const persisted = enqueueOp(emptyQueueState(), habitId, date, { state: 'done', baseXp: 30 });
-  await saveSyncQueue(persisted.state);
+  await saveSyncQueue(persisted.state, 'u1');
   await useLogStore.getState().hydrateSyncQueue();
 }
 
@@ -152,7 +152,7 @@ describe('AC-G01 / AC-G02 — two overlapping flushes make one pass', () => {
   it('three overlapping flushes over two queued ops still write each op once', async () => {
     let state = enqueueOp(emptyQueueState(), 'guard-2', DATE_STR, { state: 'done', baseXp: 30 }).state;
     state = enqueueOp(state, 'guard-3', OTHER_DATE, { state: 'done', baseXp: 30 }).state;
-    await saveSyncQueue(state);
+    await saveSyncQueue(state, 'u1');
     await useLogStore.getState().hydrateSyncQueue();
 
     await Promise.all([

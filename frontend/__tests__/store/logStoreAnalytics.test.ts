@@ -212,7 +212,7 @@ describe('AC-A04 / AC-A05 — offline counts once, replay does not count again',
   it('a cold-start replay of a queue this session never tapped emits nothing at all', async () => {
     const { enqueue, emptyQueueState, saveSyncQueue } = require('../../lib/syncQueue');
     const persisted = enqueue(emptyQueueState(), HABIT, DATE_STR, { state: 'done', baseXp: 30 });
-    await saveSyncQueue(persisted.state);
+    await saveSyncQueue(persisted.state, 'u1');
     await useLogStore.getState().hydrateSyncQueue();
 
     await useLogStore.getState().flushPendingSync();
