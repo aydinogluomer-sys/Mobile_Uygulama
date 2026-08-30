@@ -4,12 +4,14 @@ name: CI
 #
 # NOTE on package manager: IMPLEMENTATION_V2.md §0.A specifies `yarn install
 # --frozen-lockfile`. Per plan Rule 7 ("where the plan and the real repository
-# disagree, the real production code is correct"), the repository actually
-# ships `frontend/package-lock.json` and no `yarn.lock` — so this workflow
-# uses `npm ci`, not yarn. `frontend/package.json` also still declares
-# `"packageManager": "yarn@1.22.22"`, which is itself stale (tracked as a P2
-# finding in docs/audit/01_REPOSITORY_HYGIENE_AND_SECURITY.md §8); npm is the
-# tool that actually matches the committed lockfile.
+# disagree, the real production code is correct"), the repository ships
+# `frontend/package-lock.json` and no `yarn.lock`, so this workflow uses
+# `npm ci`.
+#
+# The split-brain that used to sit here is resolved: `frontend/package.json`
+# declared `"packageManager": "yarn@1.22.22"` while every lockfile, this
+# workflow and every documented command used npm. It now declares
+# `npm@11.16.0`, so the manifest, the lockfile and CI name one tool.
 #
 # Scope: build/verify only. No secrets, no Supabase step, no deploy/publish
 # step is defined here — this gate proves the app compiles, lints, tests and

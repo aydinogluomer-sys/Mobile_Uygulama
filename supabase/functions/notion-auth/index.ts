@@ -59,6 +59,131 @@ async function getUser(req: Request) {
   return user;
 }
 
+/**
+ * Creates the Atlas page and the two databases inside the user's workspace,
+ * and returns their ids.
+ *
+ * ## Why this had to come back
+ *
+ * The hardened rewrite of this function dropped it and wrote
+ * `habits_database_id: null` / `tasks_database_id: null` instead. That makes
+ * the function undeployable in two separate ways, neither of them obvious
+ * from reading it:
+ *
+ *  1. `notion-sync` reads those ids to know where to write. With nulls, a
+ *     freshly connected workspace can never sync anything.
+ *  2. The write is an `upsert` on `user_id`, so an ALREADY-CONNECTED user who
+ *     re-links would have their working database ids overwritten with null —
+ *     the deploy would break accounts that were fine.
+ *
+ * So "canonicalise the tree" could not mean "ship what was in the tree": the
+ * canonical copy had the security fixes and the deployed copy had the
+ * behaviour, and only the union of the two is correct.
+ */
+async function createAtlasDatabases(token: string, workspaceName: string) {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Notion-Version': NOTION_VERSION,
+    'Content-Type': 'application/json',
+  };
+
+  const pageRes = await fetch('https://api.notion.com/v1/pages', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      parent: { type: 'workspace', workspace: true },
+      icon: { type: 'emoji', emoji: '🗂️' },
+      properties: { title: { title: [{ text: { content: 'Atlas' } }] } },
+      children: [{
+        object: 'block',
+        type: 'callout',
+        callout: {
+          rich_text: [{ text: { content: `Atlas — ${workspaceName} workspace'i ile senkronlandı.` } }],
+          icon: { type: 'emoji', emoji: '⚡' },
+          color: 'purple_background',
+        },
+      }],
+    }),
+  });
+  const page = await pageRes.json();
+  if (!pageRes.ok) throw new Error(`Sayfa oluşturulamadı: ${JSON.stringify(page)}`);
+  const parentPageId = page.id;
+
+  const habitsRes = await fetch('https://api.notion.com/v1/databases', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      parent: { type: 'page_id', page_id: parentPageId },
+      icon: { type: 'emoji', emoji: '✅' },
+      title: [{ type: 'text', text: { content: 'Alışkanlık Takibi' } }],
+      properties: {
+        'Tarih': { title: {} },
+        'Alışkanlık': { rich_text: {} },
+        'Durum': {
+          select: {
+            options: [
+              { name: 'Tamamlandı', color: 'green' },
+              { name: 'Kısmi', color: 'yellow' },
+              { name: 'Kaçırıldı', color: 'red' },
+              { name: 'Atlandı', color: 'gray' },
+            ],
+          },
+        },
+        'XP': { number: { format: 'number' } },
+        'Değer': { number: { format: 'number' } },
+        'Hedef': { number: { format: 'number' } },
+        'Birim': { rich_text: {} },
+      },
+    }),
+  });
+  const habitsDb = await habitsRes.json();
+  if (!habitsRes.ok) throw new Error(`Alışkanlık veritabanı oluşturulamadı: ${JSON.stringify(habitsDb)}`);
+
+  const tasksRes = await fetch('https://api.notion.com/v1/databases', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      parent: { type: 'page_id', page_id: parentPageId },
+      icon: { type: 'emoji', emoji: '📋' },
+      title: [{ type: 'text', text: { content: 'Görevler' } }],
+      properties: {
+        'Görev': { title: {} },
+        'Durum': {
+          select: {
+            options: [
+              { name: 'Bekliyor', color: 'gray' },
+              { name: 'Devam Ediyor', color: 'blue' },
+              { name: 'Tamamlandı', color: 'green' },
+              { name: 'İptal', color: 'red' },
+            ],
+          },
+        },
+        'Öncelik': {
+          select: {
+            options: [
+              { name: 'Yüksek', color: 'red' },
+              { name: 'Orta', color: 'yellow' },
+              { name: 'Düşük', color: 'green' },
+            ],
+          },
+        },
+        'Bitiş Tarihi': { date: {} },
+        'Tamamlandı': { checkbox: {} },
+      },
+    }),
+  });
+  const tasksDb = await tasksRes.json();
+  if (!tasksRes.ok) throw new Error(`Görev veritabanı oluşturulamadı: ${JSON.stringify(tasksDb)}`);
+
+  return {
+    parentPageId,
+    habitsDbId: habitsDb.id as string,
+    habitsUrl: habitsDb.url as string,
+    tasksDbId: tasksDb.id as string,
+    tasksUrl: tasksDb.url as string,
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -134,29 +259,44 @@ serve(async (req) => {
     });
     const me = await meRes.json().catch(() => ({}));
 
+    const workspaceName = tokenData.workspace_name ?? me?.workspace_name ?? 'Notion';
+
+    let dbs: Awaited<ReturnType<typeof createAtlasDatabases>> | null = null;
     if (user) {
+      try {
+        dbs = await createAtlasDatabases(accessToken, workspaceName);
+      } catch (e) {
+        // Report it. Storing the token with null database ids and answering
+        // `success: true` is how this integration silently produced accounts
+        // that could never sync -- the same shape of failure notion-sync had.
+        return json({ error: `Notion veritabanları oluşturulamadı: ${e instanceof Error ? e.message : String(e)}` }, 502);
+      }
+
       const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-      await admin.from('notion_integrations').upsert({
+      const { error: upsertError } = await admin.from('notion_integrations').upsert({
         user_id: user.id,
         access_token: accessToken,
         workspace_id: tokenData.workspace_id ?? null,
-        workspace_name: tokenData.workspace_name ?? me?.workspace_name ?? 'Notion',
+        workspace_name: workspaceName,
         workspace_icon: tokenData.workspace_icon ?? me?.workspace_icon ?? null,
         bot_id: tokenData.bot_id ?? null,
-        habits_database_id: null,
-        tasks_database_id: null,
-        habits_url: null,
-        tasks_url: null,
+        habits_database_id: dbs.habitsDbId,
+        tasks_database_id: dbs.tasksDbId,
+        habits_url: dbs.habitsUrl,
+        tasks_url: dbs.tasksUrl,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
+      if (upsertError) return json({ error: `Bağlantı kaydedilemedi: ${upsertError.message}` }, 500);
     }
 
     return json({
       success: true,
-      workspace_name: tokenData.workspace_name ?? me?.workspace_name ?? 'Notion',
+      workspace_name: workspaceName,
       workspace_icon: tokenData.workspace_icon ?? me?.workspace_icon ?? null,
       workspace_id: tokenData.workspace_id ?? null,
       bot_id: tokenData.bot_id ?? null,
+      habits_url: dbs?.habitsUrl ?? null,
+      tasks_url: dbs?.tasksUrl ?? null,
     });
   }
 

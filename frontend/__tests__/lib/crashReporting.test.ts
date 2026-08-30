@@ -52,7 +52,7 @@ describe('scrubMessage — user content must not survive', () => {
 
   it('redacts emails and bearer-style tokens', () => {
     const { text } = scrubMessage(
-      'auth failed for aydinogluomer@gmail.com with eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
+      'auth failed for owner@example.com with eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',
     );
     expect(text).not.toContain('@gmail.com');
     expect(text).not.toContain('eyJhbGciOi');
