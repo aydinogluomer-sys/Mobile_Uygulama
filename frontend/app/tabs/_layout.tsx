@@ -106,22 +106,13 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="tasks"
+          name="plan"
           options={{
-            title: 'Görevler',
+            title: 'Plan',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="list-outline" size={size} color={color} />
+              <Ionicons name="calendar-outline" size={size} color={color} />
             ),
             tabBarBadge: inboxCount > 0 ? inboxCount : undefined,
-          }}
-        />
-        <Tabs.Screen
-          name="focus"
-          options={{
-            title: 'Odak',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="timer-outline" size={size} color={color} />
-            ),
           }}
         />
         <Tabs.Screen
@@ -134,16 +125,37 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="stats"
+          name="insights"
           options={{
-            title: 'İstatistikler',
+            title: 'İçgörüler',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="stats-chart-outline" size={size} color={color} />
+              <Ionicons name="analytics-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profil',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="person-circle-outline" size={size} color={color} />
             ),
           }}
         />
 
-        {/* Gizlenen sekmeler */}
+        {/*
+          Hidden, NOT deleted.
+
+          `tasks`, `focus` and `stats` are now surfaces inside Plan and
+          İçgörüler, but every one of them is still a real route: the drawer
+          links to some of them, `today.tsx` pushes `/tabs/timeline`, and
+          `/tabs/habits?ai=true` is a deep link. Removing the routes to tidy
+          the tab bar would have turned each of those into a dead end, which
+          is the failure mode an IA change is most likely to introduce.
+        */}
+        <Tabs.Screen name="tasks" options={{ href: null }} />
+        <Tabs.Screen name="focus" options={{ href: null }} />
+        <Tabs.Screen name="stats" options={{ href: null }} />
         <Tabs.Screen name="habits" options={{ href: null }} />
         <Tabs.Screen name="hub" options={{ href: null }} />
         <Tabs.Screen name="settings" options={{ href: null }} />

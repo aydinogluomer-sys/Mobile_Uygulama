@@ -53,11 +53,35 @@ console.log('\n📁 2. Dosya Varlığı');
 // 3. Navigasyon
 console.log('\n🗺️  3. Navigasyon Mimarisi');
 const layout = read('./app/tabs/_layout.tsx');
-test('5 görünür tab', () =>
-  ['today','tasks','focus','timeline','stats'].every(t => layout.includes('name="' + t + '"'))
-);
-test('Hub gizli (href: null)', () => layout.includes('hub') && layout.includes('href: null'));
-test('Habits gizli (href: null)', () => layout.includes('habits') && layout.includes('href: null'));
+// Bu assertion eskiden yalnız isimlerin dosyada GEÇTİĞİNİ arıyordu, ki gizli
+// route'lar da geçtiği için hedef IA'ya geçildiğinde bile yeşil kalırdı --
+// yani ölçmesi gereken şeyi ölçmüyordu. Artık görünür ve gizli kümeler ayrı
+// ayrı çözümleniyor: `href: null` taşıyan bir <Tabs.Screen> tab bar'da yoktur.
+function parseTabs() {
+  const visible = [], hidden = [];
+  const re = /<Tabs\.Screen\s+name="([a-z]+)"([\s\S]*?)\/>/g;
+  let m;
+  while ((m = re.exec(layout))) (m[2].includes('href: null') ? hidden : visible).push(m[1]);
+  return { visible, hidden };
+}
+test('tam olarak 5 görünür tab', () => parseTabs().visible.length === 5);
+test('hedef IA sırası: today/plan/timeline/insights/profile', () =>
+  parseTabs().visible.join(',') === 'today,plan,timeline,insights,profile');
+test('tab başlıkları Bugün/Plan/Alışkanlıklar/İçgörüler/Profil', () =>
+  ['Bugün','Plan','Alışkanlıklar','İçgörüler','Profil'].every(t => layout.includes("title: '" + t + "'")));
+// Eski sekmeler SİLİNMEDİ, gizlendi: drawer ve deep-link'ler hâlâ onlara gider.
+test('eski sekmeler route olarak korunuyor', () => {
+  const { hidden } = parseTabs();
+  return ['tasks','focus','stats','habits','hub','settings'].every(t => hidden.includes(t));
+});
+test('hub ekranları eski ekranları yeniden kullanıyor (kopya yok)', () => {
+  const plan = read('./app/tabs/plan.tsx');
+  const ins = read('./app/tabs/insights.tsx');
+  const prof = read('./app/tabs/profile.tsx');
+  return plan.includes("from './tasks'") && plan.includes("from './focus'")
+    && ins.includes("from './stats'") && ins.includes('weekly-review')
+    && prof.includes("from './settings'") && prof.includes('integrations');
+});
 test('Drawer render ediliyor', () => layout.includes('<Drawer />'));
 test('HamburgerButton headerLeft', () => layout.includes('HamburgerButton'));
 test('Arama/komut girişi headerRight', () => layout.includes('headerRight') && layout.includes('HeaderActions') && layout.includes('useCommandStore'));
