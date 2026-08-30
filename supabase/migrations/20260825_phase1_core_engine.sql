@@ -1,14 +1,38 @@
 -- ============================================================
 -- Phase 1 -- Capacity Engine V1 + Recovery Engine V1: schema catch-up.
 --
--- *** NOT APPLIED. ***
--- Authored during the Supabase outage (project kbcuolhjjnmhjaarxxmu was
--- unreachable for the entirety of this task) so the reviewable SQL exists
--- alongside the domain logic it supports (frontend/lib/capacity.ts,
--- frontend/lib/recovery.ts). This file has NOT been run against any
--- database -- no `supabase db push`, no `execute_sql`, nothing. It requires
--- repo-owner review and a manual `supabase db push` once the project is
--- reachable again.
+-- *** APPLIED to the canonical project kbcuolhjjnmhjaarxxmu on 2026-08-30. ***
+--
+-- History, kept because it explains the file's shape: this was authored during
+-- a Supabase outage (the project was unreachable for the whole of that task),
+-- so the reviewable SQL would exist alongside the domain logic it supports
+-- (frontend/lib/capacity.ts, frontend/lib/recovery.ts). It carried a
+-- "NOT APPLIED" banner for that reason. The project was later restored and the
+-- migration was run with the repo owner's explicit approval.
+--
+-- Preconditions verified immediately before applying -- exactly the two risks
+-- this file's own scope notes call out:
+--   * rows violating the widened tracking_type CHECK ........ 0
+--     (live values at the time: 'boolean', 'numeric')
+--   * duplicate (habit_id, source_date) in recovery_plans ... 0
+--     (table was empty, so the new UNIQUE constraint could not reject data)
+--
+-- Observed result:
+--                          | BEFORE | AFTER
+--   habits / habit_logs     |  6/13  |  6/13  (unchanged -- no data touched)
+--   public tables           |   48   |   49   (+ daily_capacity)
+--   recovery_plans columns  |   10   |   15
+--   daily_capacity          | absent | present, RLS enabled, 1 policy
+--
+-- A duration habit was persisted end to end through PostgREST with a real user
+-- JWT on 2026-08-30 (20 min target / 12 logged -> reads back as 60%), together
+-- with negative+numeric and explicit abstinence rows, confirming the widened
+-- CHECK accepts all four values in the app's own path and not just under
+-- admin privileges. Those rows were removed afterwards.
+--
+-- Do not re-run this expecting it to be a no-op review artifact: every
+-- statement is idempotent, so re-running is safe, but the schema it describes
+-- is already live.
 --
 -- Written against the LIVE schema as documented in
 -- docs/audit/07_ARCHITECTURE_AND_DATA_MODEL_REVIEW.md (48 live tables, all

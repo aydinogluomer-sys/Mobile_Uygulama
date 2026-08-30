@@ -167,14 +167,14 @@ describe('Gate D 2 -- a schema-invalid AI response is rejected, nothing is writt
     expect(mockInsertCalls).toEqual([]);
   });
 
-  it('rejects a proposal using a blocked (unpersistable) tracking_type, citing the blocked migration', async () => {
+  it('rejects a proposal using a blocked (unpersistable) tracking_type, citing a specific not-persistable reason', async () => {
     (supabase.functions.invoke as jest.Mock).mockResolvedValue({
       data: {
         name: 'Odak Rutini',
         description: 'test',
         // difficulty/estimated_minutes ARE present here -- isolates the
         // failure to tracking_type alone, so this test actually proves the
-        // "blocked migration" reason path, not a missing-field rejection.
+        // blocked-tracking-type reason path, not a missing-field rejection.
         items: [{ name: 'Sigara içmemek', tracking_type: 'abstinence', difficulty: 3, estimated_minutes: 0 }],
       },
       error: null,
@@ -182,7 +182,7 @@ describe('Gate D 2 -- a schema-invalid AI response is rejected, nothing is writt
     await useRoutineStore.getState().generateRoutine('odak');
     const s = useRoutineStore.getState();
     expect(s.proposal).toBeNull();
-    expect(s.proposalErrors!.some((m) => /cannot be persisted/.test(m) && /migration/i.test(m))).toBe(true);
+    expect(s.proposalErrors!.some((m) => /cannot be persisted/.test(m) && !/unknown tracking_type/.test(m))).toBe(true);
     expect(mockInsertCalls).toEqual([]);
   });
 });

@@ -163,13 +163,13 @@ describe('adaptEdgeRoutineResponse -- still rejects hostile input exactly like v
     expect(result.errors.some((e) => /unknown tracking_type/.test(e.message))).toBe(true);
   });
 
-  it("rejects a blocked tracking_type ('abstinence') with the specific not-persistable/migration reason, distinct from 'unknown'", () => {
+  it("rejects a blocked tracking_type ('abstinence') with the specific not-persistable reason, distinct from 'unknown'", () => {
     const raw = realEdgeResponse();
     raw.items[0].tracking_type = 'abstinence';
     const result = adaptEdgeRoutineResponse(raw);
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected ok:false');
-    expect(result.errors.some((e) => /cannot be persisted/.test(e.message) && /migration/i.test(e.message))).toBe(true);
+    expect(result.errors.some((e) => /cannot be persisted/.test(e.message) && !/unknown tracking_type/.test(e.message))).toBe(true);
   });
 
   it('rejects an empty items array', () => {

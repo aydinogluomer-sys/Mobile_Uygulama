@@ -82,20 +82,31 @@ import { DIFFICULTY_LEVELS } from './triage';
  *  brief's own absurd examples (`0`, `99`) along with every other non-member. */
 export const VALID_DIFFICULTIES: readonly number[] = DIFFICULTY_LEVELS.map((d) => d.key);
 
-/** Tracking types the DB can persist TODAY (`Habit.tracking_type` is only
- *  `'boolean' | 'numeric'` — see `lib/supabase.ts`). Expressed in the V2
- *  vocabulary the proposal schema itself uses. */
+/** Tracking types an AI-generated ROUTINE PROPOSAL may contain. Expressed in
+ *  the V2 vocabulary the proposal schema itself uses. */
 export const PERSISTABLE_TRACKING_TYPES: readonly TrackingType[] = ['binary', 'numeric'];
 
-/** Real V2 tracking types that CANNOT be persisted yet — the
- *  `duration`/`abstinence` migration is authored but unapplied (Supabase
- *  project PAUSED). Writing either would fail at runtime, so the validator
- *  refuses them up front instead of letting that failure surface later as a
- *  confusing insert error. */
+/** Tracking types this validator refuses in an AI proposal.
+ *
+ *  NOTE — the reason changed on 2026-08-30 and the old one was wrong. It used
+ *  to read "the migration is authored but unapplied (Supabase project is
+ *  PAUSED)". That migration was applied on 2026-08-30: the database accepts
+ *  all four values, and the app persists duration and abstinence through
+ *  onboarding today.
+ *
+ *  The restriction survives for a different and still-real reason: the edge
+ *  function's own SYSTEM_PROMPT instructs the model to emit
+ *  `tracking_type: boolean veya numeric`, so anything else coming back is a
+ *  model that ignored its contract, not a feature. Refusing it here keeps a
+ *  drifting prompt from quietly installing habits nobody specified.
+ *
+ *  Widening this is a two-sided change: the edge prompt must ask for the new
+ *  vocabulary first, otherwise loosening the validator only widens what an
+ *  off-contract response can slip through. */
 export const BLOCKED_TRACKING_TYPES: readonly TrackingType[] = ['duration', 'abstinence'];
 
 const BLOCKED_TRACKING_TYPE_REASON =
-  'the tracking_type migration that would add duration/abstinence support is authored but unapplied (Supabase project is paused) — only \'binary\' or \'numeric\' can be written today';
+  'the AI routine contract only emits \'binary\' or \'numeric\' — a proposal asking for duration/abstinence is an off-contract response, not a supported request (the database itself accepts all four)';
 
 /** A full calendar day. No habit's own daily time estimate can sanely exceed
  *  this — anything larger (e.g. the brief's own `10^6` example) is not a

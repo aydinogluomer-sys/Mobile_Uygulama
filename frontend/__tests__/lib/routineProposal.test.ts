@@ -212,8 +212,15 @@ describe('validateRoutineProposal -- tracking_type', () => {
     expect(err.message).toMatch(/unknown tracking_type/);
   });
 
+  // The assertion here used to be `toMatch(/migration/i)`. That was a proxy
+  // for "the reason is specific", and it went stale: the migration it named
+  // was applied on 2026-08-30, so the message had to stop claiming duration
+  // is unpersistable. Pinning the word instead of the property meant a
+  // truthful message failed the test. The property itself -- a specific
+  // reason, distinguishable from the generic 'unknown' error -- is what
+  // matters and is what is asserted now.
   it.each(BLOCKED_TRACKING_TYPES)(
-    "rejects '%s' with a SPECIFIC not-persistable reason naming the blocked migration -- distinct from 'unknown'",
+    "rejects '%s' with a SPECIFIC reason, distinct from 'unknown tracking_type'",
     (blocked) => {
       const raw = validRaw();
       raw.habits[0].tracking_type = blocked;
@@ -222,8 +229,10 @@ describe('validateRoutineProposal -- tracking_type', () => {
       if (result.ok) throw new Error('expected ok:false');
       const err = result.errors.find((e) => e.path === 'habits[0].tracking_type')!;
       expect(err.message).toMatch(/cannot be persisted/);
-      expect(err.message).toMatch(/migration/i);
+      expect(err.message).toContain(blocked);
       expect(err.message).not.toMatch(/unknown tracking_type/);
+      // Specific, not a bare restatement of the rule.
+      expect(err.message.length).toBeGreaterThan(`'${blocked}' cannot be persisted`.length + 20);
     }
   );
 
