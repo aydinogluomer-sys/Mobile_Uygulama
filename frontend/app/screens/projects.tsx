@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { useProjectStore, type Project } from '../../store/projectStore';
 import { useTaskStore } from '../../store/taskStore';
 import InlineComposer from '../../components/InlineComposer';
+import { EmptyState } from '../../components/ui';
 
 const PRESET_COLORS = [
   '#D97757','#8b5cf6','#ec4899','#C76A6A','#f97316',
@@ -56,16 +57,23 @@ export default function ProjectsScreen() {
         style={s.list}
         contentContainerStyle={s.listContent}
         ListEmptyComponent={
-          <View style={s.empty}>
-            <Ionicons name="folder-open-outline" size={40} color="#383528" />
-            <Text style={s.emptyText}>Henüz proje yok</Text>
-            <TouchableOpacity onPress={() => setShowAdd(true)} style={s.emptyAdd}>
-              <Text style={s.emptyAddText}>+ Yeni Proje</Text>
-            </TouchableOpacity>
-          </View>
+          <EmptyState
+            icon="folder-open-outline"
+            title="Henüz proje yok"
+            hint="Görevlerini bir projede toplamak için ilk projeni oluştur."
+            ctaLabel="Yeni Proje"
+            onCta={() => setShowAdd(true)}
+          />
         }
         renderItem={({ item }) => (
-          <TouchableOpacity style={s.row} onPress={() => setDetailId(item.id)} onLongPress={() => confirmDelete(item)}>
+          <TouchableOpacity
+            style={s.row}
+            onPress={() => setDetailId(item.id)}
+            onLongPress={() => confirmDelete(item)}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.name}, ${taskCount(item.id)} açık görev`}
+            accessibilityHint="Açmak için dokun, silmek için uzun bas"
+          >
             <View style={[s.colorDot, { backgroundColor: item.color }]} />
             <View style={s.rowBody}>
               <Text style={s.rowName}>{item.name}</Text>
@@ -79,7 +87,12 @@ export default function ProjectsScreen() {
         )}
       />
 
-      <TouchableOpacity style={s.fab} onPress={() => setShowAdd(true)}>
+      <TouchableOpacity
+        style={s.fab}
+        onPress={() => setShowAdd(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Yeni proje ekle"
+      >
         <Ionicons name="add" size={26} color="#fff" />
       </TouchableOpacity>
 
@@ -111,6 +124,9 @@ export default function ProjectsScreen() {
                   key={c}
                   style={[s.colorBtn, { backgroundColor: c }, color === c && s.colorSelected]}
                   onPress={() => setColor(c)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`Proje rengi ${PRESET_COLORS.indexOf(c) + 1}`}
+                  accessibilityState={{ selected: color === c, checked: color === c }}
                 >
                   {color === c && <Ionicons name="checkmark" size={16} color="#fff" />}
                 </TouchableOpacity>
@@ -118,13 +134,21 @@ export default function ProjectsScreen() {
             </View>
 
             <View style={s.actions}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setShowAdd(false)}>
+              <TouchableOpacity
+                style={s.cancelBtn}
+                onPress={() => setShowAdd(false)}
+                accessibilityRole="button"
+                accessibilityLabel="İptal"
+              >
                 <Text style={s.cancelText}>İptal</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.addBtn, { backgroundColor: color }, !name.trim() && s.addBtnDisabled]}
                 onPress={handleAdd}
                 disabled={!name.trim()}
+                accessibilityRole="button"
+                accessibilityLabel="Projeyi oluştur"
+                accessibilityState={{ disabled: !name.trim() }}
               >
                 <Text style={s.addBtnText}>Oluştur</Text>
               </TouchableOpacity>
@@ -142,7 +166,11 @@ export default function ProjectsScreen() {
                 <View style={s.detailHead}>
                   <View style={[s.colorDot, { backgroundColor: detailProject.color, width: 16, height: 16, borderRadius: 8 }]} />
                   <Text style={s.detailTitle} numberOfLines={1}>{detailProject.name}</Text>
-                  <TouchableOpacity onPress={() => setDetailId(null)}>
+                  <TouchableOpacity
+                    onPress={() => setDetailId(null)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Proje detayını kapat"
+                  >
                     <Ionicons name="close" size={22} color="#827E72" />
                   </TouchableOpacity>
                 </View>
@@ -168,9 +196,24 @@ export default function ProjectsScreen() {
                   data={detailTasks}
                   keyExtractor={(t) => t.id}
                   style={{ maxHeight: 320 }}
-                  ListEmptyComponent={<Text style={s.detailEmpty}>Henüz görev yok</Text>}
+                  ListEmptyComponent={
+                    <EmptyState
+                      variant="editorial"
+                      compact
+                      icon="checkbox-outline"
+                      title="Henüz görev yok"
+                      hint="Yukarıdaki alandan bu projeye ilk görevini ekle."
+                    />
+                  }
                   renderItem={({ item }) => (
-                    <TouchableOpacity style={s.taskRow} onPress={() => toggleDone(item.id)} activeOpacity={0.7}>
+                    <TouchableOpacity
+                      style={s.taskRow}
+                      onPress={() => toggleDone(item.id)}
+                      activeOpacity={0.7}
+                      accessibilityRole="checkbox"
+                      accessibilityLabel={item.title}
+                      accessibilityState={{ checked: item.completed }}
+                    >
                       <View style={[s.taskCheck, item.completed && { backgroundColor: detailProject.color, borderColor: detailProject.color }]}>
                         {item.completed && <Ionicons name="checkmark" size={12} color="#fff" />}
                       </View>

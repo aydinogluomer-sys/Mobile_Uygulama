@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useReadingListStore, ReadingType, ReadingStatus, ReadingItem } from '../../store/readingListStore';
+import { EmptyState, Skeleton } from '../../components/ui';
 
 const STATUS_TABS: { key: ReadingStatus; label: string; color: string }[] = [
   { key: 'want_to_read', label: 'Okuyacak', color: '#827E72' },
@@ -28,7 +29,13 @@ function StarRating({ value, onChange }: { value: number | null; onChange: (n: n
   return (
     <View style={{ flexDirection: 'row', gap: 4 }}>
       {[1, 2, 3, 4, 5].map((n) => (
-        <TouchableOpacity key={n} onPress={() => onChange(n)}>
+        <TouchableOpacity
+          key={n}
+          onPress={() => onChange(n)}
+          accessibilityRole="radio"
+          accessibilityLabel={`${n} yıldız ver`}
+          accessibilityState={{ selected: n === value, checked: n === value }}
+        >
           <Ionicons name={n <= (value ?? 0) ? 'star' : 'star-outline'} size={18} color="#D4A84A" />
         </TouchableOpacity>
       ))}
@@ -85,6 +92,9 @@ export default function ReadingListScreen() {
             key={tab.key}
             style={[s.tab, activeTab === tab.key && { borderBottomColor: tab.color, borderBottomWidth: 2 }]}
             onPress={() => setActiveTab(tab.key)}
+            accessibilityRole="tab"
+            accessibilityLabel={`${tab.label}${counts[tab.key] > 0 ? `, ${counts[tab.key]} kayıt` : ''}`}
+            accessibilityState={{ selected: activeTab === tab.key }}
           >
             <Text style={[s.tabText, activeTab === tab.key && { color: tab.color }]}>
               {tab.label}
@@ -99,15 +109,33 @@ export default function ReadingListScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.content}>
-        {filtered.length === 0 ? (
-          <View style={s.empty}>
-            <Ionicons name="book-outline" size={40} color="#383528" />
-            <Text style={s.emptyTitle}>
-              {activeTab === 'want_to_read' ? 'Okuma listeniz boş' :
-               activeTab === 'reading' ? 'Şu an okunan yok' : 'Tamamlanan yok'}
-            </Text>
-            <Text style={s.emptySub}>+ butonuyla ekleyin</Text>
-          </View>
+        {loading && items.length === 0 ? (
+          // Kart şekli sabit: tür ikonu + başlık + yazar + tür rozeti. Boş
+          // durumu göstermek yanıltıcı olurdu, veri henüz yolda.
+          [0, 1, 2].map((i) => (
+            <View key={i} style={s.card}>
+              <View style={s.cardLeft}>
+                <Skeleton width={40} height={40} />
+                <View style={s.cardBody}>
+                  <Skeleton width="75%" height={15} />
+                  <Skeleton width="40%" height={12} />
+                  <Skeleton width={54} height={11} style={{ marginTop: 4 }} />
+                </View>
+              </View>
+            </View>
+          ))
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon="book-outline"
+            title={
+              activeTab === 'want_to_read' ? 'Okuma listeniz boş' :
+              activeTab === 'reading' ? 'Şu an okunan yok' : 'Tamamlanan yok'
+            }
+            hint="Kitap, makale, video ya da podcast ekleyip buradan takip et."
+            ctaLabel="Listeye ekle"
+            onCta={() => setShowAdd(true)}
+            color={STATUS_TABS.find((t) => t.key === activeTab)?.color}
+          />
         ) : (
           filtered.map((item) => {
             const typeInfo = TYPE_MAP[item.type];
@@ -115,7 +143,7 @@ export default function ReadingListScreen() {
               <View key={item.id} style={s.card}>
                 <View style={s.cardLeft}>
                   <View style={[s.typeIcon, { backgroundColor: typeInfo.color + '20' }]}>
-                    <Ionicons name={typeInfo.icon as any} size={18} color={typeInfo.color} />
+                    <Ionicons name={typeInfo.icon as any} size={18} color={typeInfo.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                   </View>
                   <View style={s.cardBody}>
                     <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text>
@@ -130,6 +158,11 @@ export default function ReadingListScreen() {
                   <TouchableOpacity
                     style={[s.statusBtn, { backgroundColor: STATUS_TABS.find(t => t.key === nextStatus(item.status))?.color + '20' }]}
                     onPress={() => updateStatus(item.id, nextStatus(item.status))}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      `${item.title}: ` +
+                      `${STATUS_TABS.find((t) => t.key === nextStatus(item.status))?.label} durumuna taşı`
+                    }
                   >
                     <Ionicons
                       name={item.status === 'completed' ? 'refresh-outline' : 'arrow-forward-outline'}
@@ -137,7 +170,12 @@ export default function ReadingListScreen() {
                       color={STATUS_TABS.find(t => t.key === nextStatus(item.status))?.color}
                     />
                   </TouchableOpacity>
-                  <TouchableOpacity style={s.deleteBtn} onPress={() => handleDelete(item)}>
+                  <TouchableOpacity
+                    style={s.deleteBtn}
+                    onPress={() => handleDelete(item)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Listeden kaldır: ${item.title}`}
+                  >
                     <Ionicons name="trash-outline" size={14} color="#56544B" />
                   </TouchableOpacity>
                 </View>
@@ -148,7 +186,12 @@ export default function ReadingListScreen() {
       </ScrollView>
 
       {/* FAB */}
-      <TouchableOpacity style={s.fab} onPress={() => setShowAdd(true)}>
+      <TouchableOpacity
+        style={s.fab}
+        onPress={() => setShowAdd(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Okuma listesine yeni kayıt ekle"
+      >
         <Ionicons name="add" size={26} color="#fff" />
       </TouchableOpacity>
 
@@ -190,6 +233,9 @@ export default function ReadingListScreen() {
                   key={t.key}
                   style={[s.typeBtn, type === t.key && { backgroundColor: t.color + '25', borderColor: t.color }]}
                   onPress={() => setType(t.key)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`Tür: ${t.label}`}
+                  accessibilityState={{ selected: type === t.key, checked: type === t.key }}
                 >
                   <Ionicons name={t.icon as any} size={16} color={type === t.key ? t.color : '#827E72'} />
                   <Text style={[s.typeBtnText, type === t.key && { color: t.color }]}>{t.label}</Text>
@@ -198,13 +244,21 @@ export default function ReadingListScreen() {
             </View>
 
             <View style={s.sheetActions}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setShowAdd(false)}>
+              <TouchableOpacity
+                style={s.cancelBtn}
+                onPress={() => setShowAdd(false)}
+                accessibilityRole="button"
+                accessibilityLabel="İptal"
+              >
                 <Text style={s.cancelText}>İptal</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.confirmBtn, !title.trim() && s.confirmDisabled]}
                 onPress={handleAdd}
                 disabled={!title.trim()}
+                accessibilityRole="button"
+                accessibilityLabel="Listeye ekle"
+                accessibilityState={{ disabled: !title.trim() }}
               >
                 <Text style={s.confirmText}>Ekle</Text>
               </TouchableOpacity>

@@ -39,7 +39,7 @@ import { supabase } from '../../lib/supabase';
 import type { Habit, RecoveryPlan } from '../../lib/supabase';
 import type { FocusSessionRow } from '../../lib/focusReport';
 import { colors, space, font } from '../../lib/tokens';
-import { Card, SectionHeader, EmptyState, IconCircle } from '../../components/ui';
+import { Card, SectionHeader, EmptyState, IconCircle, Skeleton, SkeletonLines } from '../../components/ui';
 import { ymd, ymdFromIso, parseLocalDate, addDaysLocal } from '../../lib/date';
 import { isDueOn } from '../../lib/habitSchedule';
 import { dailyLoad, LOAD_BANDS, type TaskLoadItem } from '../../lib/capacity';
@@ -244,7 +244,14 @@ function AiCommentaryPanel({ digest, label }: { digest: Digest; label: string })
       {reply ? (
         <Text style={s.aiReply}>{reply}</Text>
       ) : (
-        <TouchableOpacity style={s.aiButton} onPress={ask} disabled={loading}>
+        <TouchableOpacity
+          style={s.aiButton}
+          onPress={ask}
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel={loading ? 'AI yorumu hazırlanıyor' : `${label} yorumunu iste`}
+          accessibilityState={{ disabled: loading, busy: loading }}
+        >
           {loading ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : (
@@ -386,9 +393,24 @@ export default function InsightsScreen() {
   if (loading) {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
-        <View style={s.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
+        <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+          <Skeleton width={96} height={11} style={{ marginBottom: space.md }} />
+          <Card padding="lg" style={s.heroCard}>
+            <Skeleton width={72} height={11} />
+            <Skeleton width={132} height={40} style={{ marginTop: space.xs, marginBottom: space.sm }} />
+            <SkeletonLines count={3} />
+          </Card>
+          <Skeleton width={64} height={11} style={{ marginTop: space.xl, marginBottom: space.md }} />
+          {[0, 1, 2].map((i) => (
+            <Card key={i} padding="md" style={s.insightCard}>
+              <View style={s.insightHead}>
+                <Skeleton width={34} height={34} circle />
+                <Skeleton width="55%" height={13} />
+              </View>
+              <Skeleton width="40%" height={15} />
+            </Card>
+          ))}
+        </ScrollView>
       </SafeAreaView>
     );
   }

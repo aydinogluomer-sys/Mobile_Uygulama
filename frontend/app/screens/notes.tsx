@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNoteStore, type Note } from '../../store/noteStore';
+import { EmptyState, Skeleton } from '../../components/ui';
 
 export default function NotesScreen() {
   const { notes, loading, fetchNotes, addNote, updateNote, removeNote, search } = useNoteStore();
@@ -58,7 +59,7 @@ export default function NotesScreen() {
     <SafeAreaView style={s.safe} edges={['bottom']}>
       {/* Arama */}
       <View style={s.searchRow}>
-        <Ionicons name="search-outline" size={16} color="#827E72" />
+        <Ionicons name="search-outline" size={16} color="#827E72" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         <TextInput
           style={s.searchInput}
           placeholder="Notlarda ara..."
@@ -67,7 +68,11 @@ export default function NotesScreen() {
           onChangeText={setQuery}
         />
         {query.length > 0 && (
-          <TouchableOpacity onPress={() => setQuery('')}>
+          <TouchableOpacity
+            onPress={() => setQuery('')}
+            accessibilityRole="button"
+            accessibilityLabel="Aramayı temizle"
+          >
             <Ionicons name="close-circle" size={16} color="#827E72" />
           </TouchableOpacity>
         )}
@@ -80,13 +85,38 @@ export default function NotesScreen() {
         columnWrapperStyle={s.row}
         contentContainerStyle={s.listContent}
         ListEmptyComponent={
-          <View style={s.empty}>
-            <Ionicons name="document-text-outline" size={40} color="#383528" />
-            <Text style={s.emptyText}>{query ? 'Sonuç bulunamadı' : 'Henüz not yok'}</Text>
-          </View>
+          // `loading` bugüne kadar okunmuyordu: getirme sürerken liste boş
+          // olduğu için "Henüz not yok" yanıp sönüyordu — kullanıcıya olmayan
+          // bir gerçeği söyleyen boş durum. Önce gelen ızgaranın şeklini kur.
+          loading ? (
+            <View style={s.skeletonGrid}>
+              {Array.from({ length: 4 }, (_, i) => (
+                <Skeleton key={i} width="47%" height={100} />
+              ))}
+            </View>
+          ) : query ? (
+            <EmptyState
+              icon="search-outline"
+              title="Sonuç bulunamadı"
+              hint={`"${query}" ile eşleşen not yok. Başka bir kelime dene.`}
+            />
+          ) : (
+            <EmptyState
+              icon="document-text-outline"
+              title="Henüz not yok"
+              hint="Aklına takılanı hemen yaz — sağ alttaki artı ile başla."
+            />
+          )
         }
         renderItem={({ item }) => (
-          <TouchableOpacity style={s.card} onPress={() => openEdit(item)} onLongPress={() => confirmDelete(item)}>
+          <TouchableOpacity
+            style={s.card}
+            onPress={() => openEdit(item)}
+            onLongPress={() => confirmDelete(item)}
+            accessibilityRole="button"
+            accessibilityLabel={item.title || item.content.slice(0, 60) || 'Boş not'}
+            accessibilityHint="Düzenlemek için dokun, silmek için basılı tut"
+          >
             {item.title ? <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text> : null}
             <Text style={s.cardContent} numberOfLines={6}>{item.content}</Text>
             <Text style={s.cardDate}>{formatDate(item.updated_at)}</Text>
@@ -94,7 +124,12 @@ export default function NotesScreen() {
         )}
       />
 
-      <TouchableOpacity style={s.fab} onPress={openNew}>
+      <TouchableOpacity
+        style={s.fab}
+        onPress={openNew}
+        accessibilityRole="button"
+        accessibilityLabel="Yeni not"
+      >
         <Ionicons name="add" size={26} color="#fff" />
       </TouchableOpacity>
 
@@ -102,14 +137,24 @@ export default function NotesScreen() {
         <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={s.sheet}>
             <View style={s.sheetHeader}>
-              <Text style={s.sheetTitle}>{editing ? 'Notu Düzenle' : 'Yeni Not'}</Text>
+              <Text style={s.sheetTitle} accessibilityRole="header">{editing ? 'Notu Düzenle' : 'Yeni Not'}</Text>
               <View style={s.sheetActions}>
                 {editing && (
-                  <TouchableOpacity onPress={() => { confirmDelete(editing); setShowEdit(false); }} style={s.deleteBtn}>
+                  <TouchableOpacity
+                    onPress={() => { confirmDelete(editing); setShowEdit(false); }}
+                    style={s.deleteBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Notu sil"
+                  >
                     <Ionicons name="trash-outline" size={18} color="#C76A6A" />
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={() => setShowEdit(false)} style={s.closeBtn}>
+                <TouchableOpacity
+                  onPress={() => setShowEdit(false)}
+                  style={s.closeBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Kapat"
+                >
                   <Ionicons name="close" size={20} color="#BFBBAE" />
                 </TouchableOpacity>
               </View>
@@ -136,6 +181,9 @@ export default function NotesScreen() {
               style={[s.saveBtn, (!title.trim() && !content.trim()) && s.saveBtnDisabled]}
               onPress={handleSave}
               disabled={!title.trim() && !content.trim()}
+              accessibilityRole="button"
+              accessibilityLabel="Kaydet"
+              accessibilityState={{ disabled: !title.trim() && !content.trim() }}
             >
               <Text style={s.saveBtnText}>Kaydet</Text>
             </TouchableOpacity>
@@ -158,6 +206,8 @@ const s = StyleSheet.create({
 
   row: { paddingHorizontal: 10, gap: 10 },
   listContent: { paddingHorizontal: 6, paddingBottom: 100 },
+  // Yükleme yer tutucusu, gerçek kart ızgarasının geometrisini taklit eder.
+  skeletonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 10 },
   card: {
     flex: 1, backgroundColor: '#1D1C17', borderRadius: 14,
     padding: 14, borderWidth: 1, borderColor: '#383528',

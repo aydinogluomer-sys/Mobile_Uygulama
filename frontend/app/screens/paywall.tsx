@@ -62,7 +62,7 @@ export default function PaywallScreen() {
             <Text style={[s.statusTier, { color: TIERS[tier].color }]}>{TIERS[tier].name}</Text>
           </View>
           <View style={s.fpBox}>
-            <Ionicons name="flash" size={16} color="#D4A84A" />
+            <Ionicons name="flash" size={16} color="#D4A84A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.fpVal}>{focusPoints}</Text>
             <Text style={s.fpUnit}>FP</Text>
           </View>
@@ -71,7 +71,12 @@ export default function PaywallScreen() {
           <Text style={s.fpHint}>
             ≈ {summary.coach} koç sohbeti ya da {summary.routine} AI rutin · her ay yenilenir
           </Text>
-          <TouchableOpacity style={s.historyLink} onPress={() => router.push('/screens/credit-history')}>
+          <TouchableOpacity
+            style={s.historyLink}
+            onPress={() => router.push('/screens/credit-history')}
+            accessibilityRole="link"
+            accessibilityLabel="Kredi geçmişini aç"
+          >
             <Ionicons name="receipt-outline" size={13} color="#D97757" />
             <Text style={s.historyLinkText}>Geçmiş</Text>
           </TouchableOpacity>
@@ -82,7 +87,14 @@ export default function PaywallScreen() {
           {PERIODS.map((p) => {
             const sel = period === p;
             return (
-              <TouchableOpacity key={p} style={[s.periodBtn, sel && s.periodBtnSel]} onPress={() => setPeriod(p)}>
+              <TouchableOpacity
+                key={p}
+                style={[s.periodBtn, sel && s.periodBtnSel]}
+                onPress={() => setPeriod(p)}
+                accessibilityRole="tab"
+                accessibilityLabel={p === 'yearly' ? `${PERIOD_LABEL[p]} — en avantajlı` : PERIOD_LABEL[p]}
+                accessibilityState={{ selected: sel }}
+              >
                 <Text style={[s.periodText, sel && s.periodTextSel]}>{PERIOD_LABEL[p]}</Text>
                 {p === 'yearly' && <Text style={s.periodBadge}>en avantajlı</Text>}
               </TouchableOpacity>
@@ -122,13 +134,13 @@ export default function PaywallScreen() {
               </View>
 
               <View style={s.grantPill}>
-                <Ionicons name="flash" size={13} color="#D4A84A" />
+                <Ionicons name="flash" size={13} color="#D4A84A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 <Text style={s.grantText}>Aylık {cfg.grant} Focus Point</Text>
               </View>
 
               {cfg.features.map((f) => (
                 <View key={f} style={s.featRow}>
-                  <Ionicons name="checkmark-circle" size={16} color={cfg.color} />
+                  <Ionicons name="checkmark-circle" size={16} color={cfg.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                   <Text style={s.featText}>{f}</Text>
                 </View>
               ))}
@@ -137,6 +149,17 @@ export default function PaywallScreen() {
                 style={[s.subBtn, { backgroundColor: cfg.color }, (isCurrent || activating === t) && s.subBtnDisabled]}
                 onPress={() => handleActivate(t)}
                 disabled={isCurrent || activating === t}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  activating === t
+                    ? `${cfg.name} aboneliği etkinleştiriliyor`
+                    : isCurrent
+                      ? `${cfg.name}: mevcut planın`
+                      : available
+                        ? `${cfg.name} planına abone ol, ${price} ${PERIOD_LABEL[period].toLowerCase()}`
+                        : `${cfg.name} aylık plana geç`
+                }
+                accessibilityState={{ disabled: isCurrent || activating === t, busy: activating === t }}
               >
                 {activating === t ? (
                   <ActivityIndicator color="#fff" size="small" />
@@ -152,7 +175,7 @@ export default function PaywallScreen() {
 
         {/* Mock notu */}
         <View style={s.mockNote}>
-          <Ionicons name="information-circle-outline" size={16} color="#827E72" />
+          <Ionicons name="information-circle-outline" size={16} color="#827E72" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <Text style={s.mockText}>
             Test modu: Abone Ol şu an krediyi hemen yükler. Gerçek ödeme (App Store / Google Play / Stripe) entegrasyonu yayına çıkmadan eklenecek.
           </Text>

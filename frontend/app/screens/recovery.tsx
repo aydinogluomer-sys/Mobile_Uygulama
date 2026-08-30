@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
   Modal, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +16,7 @@ import { deficitFor, type TrackingTypeV2 } from '../../lib/recovery';
 import { isDueOn } from '../../lib/habitSchedule';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip } from '../../components/ui';
+import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton } from '../../components/ui';
 import { todayLocal } from '../../lib/date';
 import { fetchHabitLogsForHabitsSince } from '../../repositories/habitLogRepository';
 
@@ -288,10 +288,26 @@ export default function RecoveryScreen() {
   const neverMissTwice = activeHabits.filter((h) => consecutiveMissedDue(h) >= 2 && !planForHabit(h.id));
   const allClear = backlogEntries.length === 0 && totalOverdue === 0 && totalPlans === 0;
 
+  // Yükleme yer tutucusu: hero + 3'lü özet şeridi + kart listesi — aşağıdaki
+  // gerçek içeriğin geometrisi. Spinner yerine bu, yüklenince sıçrama olmuyor.
   if (loading) {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
-        <View style={s.center}><ActivityIndicator size="large" color={colors.warning} /></View>
+        <View style={s.content}>
+          <View style={s.hero}>
+            <Skeleton width={64} height={64} circle />
+            <Skeleton width={120} height={22} />
+            <Skeleton width={240} height={12} />
+          </View>
+          <View style={s.summaryStrip}>
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} height={78} style={{ flex: 1 }} />
+            ))}
+          </View>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} height={112} style={{ marginBottom: space.sm }} />
+          ))}
+        </View>
       </SafeAreaView>
     );
   }
@@ -313,17 +329,17 @@ export default function RecoveryScreen() {
         {/* Özet şerit */}
         <View style={s.summaryStrip}>
           <Card padding="md" style={s.stripCard}>
-            <Ionicons name="pulse-outline" size={18} color={totalMissed > 0 ? colors.warning : colors.success} />
+            <Ionicons name="pulse-outline" size={18} color={totalMissed > 0 ? colors.warning : colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={[s.stripNum, { color: totalMissed > 0 ? colors.warning : colors.success }]}>{totalMissed}</Text>
             <Text style={s.stripLabel}>Kaçırılan</Text>
           </Card>
           <Card padding="md" style={s.stripCard}>
-            <Ionicons name="contrast-outline" size={18} color={totalPartial > 0 ? colors.info : colors.success} />
+            <Ionicons name="contrast-outline" size={18} color={totalPartial > 0 ? colors.info : colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={[s.stripNum, { color: totalPartial > 0 ? colors.info : colors.success }]}>{totalPartial}</Text>
             <Text style={s.stripLabel}>Kısmi</Text>
           </Card>
           <Card padding="md" style={s.stripCard}>
-            <Ionicons name="time-outline" size={18} color={totalOverdue > 0 ? colors.error : colors.success} />
+            <Ionicons name="time-outline" size={18} color={totalOverdue > 0 ? colors.error : colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={[s.stripNum, { color: totalOverdue > 0 ? colors.error : colors.success }]}>{totalOverdue}</Text>
             <Text style={s.stripLabel}>Gecikmiş İş</Text>
           </Card>
@@ -362,7 +378,12 @@ export default function RecoveryScreen() {
                         {overdue && <Badge label="gecikti" icon="alert-circle" color={colors.error} />}
                       </View>
                     </View>
-                    <TouchableOpacity onPress={() => { haptic.warning(); deletePlan(p.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => { haptic.warning(); deletePlan(p.id); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${h?.name ?? 'Alışkanlık'} telafi planını sil`}
+                    >
                       <Ionicons name="trash-outline" size={16} color={colors.textGhost} />
                     </TouchableOpacity>
                   </View>
@@ -379,8 +400,8 @@ export default function RecoveryScreen() {
 
         {/* Never miss twice uyarısı */}
         {neverMissTwice.length > 0 && (
-          <View style={s.warnBanner}>
-            <Ionicons name="warning" size={18} color={colors.error} />
+          <View style={s.warnBanner} accessibilityRole="alert">
+            <Ionicons name="warning" size={18} color={colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <View style={{ flex: 1 }}>
               <Text style={s.warnTitle}>İki kez kaçırma!</Text>
               <Text style={s.warnText}>
@@ -461,7 +482,12 @@ export default function RecoveryScreen() {
                   {planTarget?.name}{planSource ? ` · ${pastLabel(planSource)} kaçtı` : ''}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setPlanTarget(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={() => setPlanTarget(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Telafi planlamayı kapat"
+              >
                 <Ionicons name="close" size={22} color={colors.textDim} />
               </TouchableOpacity>
             </View>
@@ -501,14 +527,24 @@ export default function RecoveryScreen() {
                 })}
               </View>
               <View style={s.stepper}>
-                <TouchableOpacity style={s.stepBtn} onPress={() => { haptic.select(); setWhenOffset((o) => Math.max(0, o - 1)); }}>
+                <TouchableOpacity
+                  style={s.stepBtn}
+                  onPress={() => { haptic.select(); setWhenOffset((o) => Math.max(0, o - 1)); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Telafi gününü bir gün geri al"
+                >
                   <Ionicons name="remove" size={18} color={colors.text} />
                 </TouchableOpacity>
                 <View style={s.stepInfo}>
                   <Text style={s.stepDate}>{format(addDays(new Date(), whenOffset), 'd MMMM EEEE', { locale: tr })}</Text>
                   <Text style={s.stepSub}>{whenOffset === 0 ? 'bugün' : whenOffset === 1 ? 'yarın' : `${whenOffset} gün sonra`}</Text>
                 </View>
-                <TouchableOpacity style={s.stepBtn} onPress={() => { haptic.select(); setWhenOffset((o) => Math.min(30, o + 1)); }}>
+                <TouchableOpacity
+                  style={s.stepBtn}
+                  onPress={() => { haptic.select(); setWhenOffset((o) => Math.min(30, o + 1)); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Telafi gününü bir gün ileri al"
+                >
                   <Ionicons name="add" size={18} color={colors.text} />
                 </TouchableOpacity>
               </View>
@@ -524,6 +560,9 @@ export default function RecoveryScreen() {
                       key={k}
                       style={[s.stratCard, sel && { borderColor: m.color, backgroundColor: hexA(m.color, 0.1) }]}
                       onPress={() => { haptic.select(); setStrategy(k); }}
+                      accessibilityRole="radio"
+                      accessibilityLabel={`${m.label} — ${m.desc}`}
+                      accessibilityState={{ checked: sel, selected: sel }}
                     >
                       <Ionicons name={m.icon} size={18} color={m.color} />
                       <Text style={[s.stratLabel, sel && { color: m.color }]}>{m.label}</Text>
@@ -542,10 +581,18 @@ export default function RecoveryScreen() {
                 value={note}
                 onChangeText={setNote}
                 multiline
+                accessibilityLabel="Telafi notu"
               />
 
               {/* HATIRLATICI */}
-              <TouchableOpacity style={s.remToggle} activeOpacity={0.7} onPress={() => { haptic.select(); setReminderOn((v) => !v); }}>
+              <TouchableOpacity
+                style={s.remToggle}
+                activeOpacity={0.7}
+                onPress={() => { haptic.select(); setReminderOn((v) => !v); }}
+                accessibilityRole="switch"
+                accessibilityLabel="Hatırlatıcı"
+                accessibilityState={{ checked: reminderOn }}
+              >
                 <Ionicons name={reminderOn ? 'notifications' : 'notifications-off-outline'} size={18} color={reminderOn ? colors.accent : colors.textFaint} />
                 <Text style={[s.remLabel, reminderOn && { color: colors.text }]}>Hatırlatıcı</Text>
                 <View style={[s.switchTrack, reminderOn && { backgroundColor: colors.accent }]}>
@@ -554,7 +601,7 @@ export default function RecoveryScreen() {
               </TouchableOpacity>
               {reminderOn && (
                 <View style={s.timeRow}>
-                  <Ionicons name="time-outline" size={16} color={colors.textFaint} />
+                  <Ionicons name="time-outline" size={16} color={colors.textFaint} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                   <TextInput
                     style={s.timeInput}
                     value={reminderTime}
@@ -562,6 +609,7 @@ export default function RecoveryScreen() {
                     placeholder="20:00"
                     placeholderTextColor={colors.textGhost}
                     maxLength={5}
+                    accessibilityLabel="Hatırlatıcı saati"
                   />
                   <Text style={s.timeHint}>SS:DD</Text>
                 </View>

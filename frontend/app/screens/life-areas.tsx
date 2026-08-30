@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { useLifeAreasStore, LIFE_AREAS, AreaKey } from '../../store/lifeAreasStore';
+import { Skeleton } from '../../components/ui';
 
 const SIZE = 260;
 const CENTER = SIZE / 2;
@@ -112,10 +113,15 @@ function ValueSlider({ area, value, onChange }: {
       <Text style={[sl.label, { color: area.color }]}>{area.label}</Text>
       <View style={sl.sliderTrack}>
         {Array.from({ length: 10 }, (_, i) => i + 1).map((v) => (
+          // Kutucuklar tamamen görsel; etiket olmadan ekran okuyucuya hiç
+          // görünmezler. Her biri "bu alana v puan ver" anlamına gelir.
           <TouchableOpacity
             key={v}
             style={[sl.tick, v <= value && { backgroundColor: area.color }]}
             onPress={() => onChange(v)}
+            accessibilityRole="radio"
+            accessibilityLabel={`${area.label}: ${v} puan ver`}
+            accessibilityState={{ selected: v === value, checked: v === value }}
           />
         ))}
       </View>
@@ -134,10 +140,27 @@ export default function LifeAreasScreen() {
   ) / 10;
 
   if (loading) {
+    // Ekranın şekli sabit: radar + her yaşam alanı için bir kaydırıcı satırı +
+    // kaydet düğmesi. Bu şekli göstermek beklemeyi kısaltır ve veri gelince
+    // düzen zıplamaz.
     return (
-      <View style={{ flex: 1, backgroundColor: '#15140F', alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color="#D97757" />
-      </View>
+      <SafeAreaView style={s.safe} edges={['bottom']}>
+        <View style={s.scroll}>
+          <View style={s.radarContainer}>
+            <Skeleton width={SIZE} height={SIZE} circle />
+          </View>
+          <View style={s.slidersCard}>
+            {LIFE_AREAS.map((area) => (
+              <View key={area.key} style={sl.row}>
+                <Skeleton width={68} height={12} />
+                <View style={sl.sliderTrack}><Skeleton height={8} /></View>
+                <Skeleton width={16} height={13} />
+              </View>
+            ))}
+          </View>
+          <Skeleton height={50} style={{ width: '100%' }} />
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -157,7 +180,13 @@ export default function LifeAreasScreen() {
         {/* Son kayıt */}
         {lastSavedDate && (
           <View style={s.lastSaved}>
-            <Ionicons name="checkmark-circle" size={14} color="#87A678" />
+            <Ionicons
+              name="checkmark-circle"
+              size={14}
+              color="#87A678"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
             <Text style={s.lastSavedText}>Son kayıt: {lastSavedDate}</Text>
           </View>
         )}
@@ -179,6 +208,9 @@ export default function LifeAreasScreen() {
           style={[s.saveBtn, saving && s.saveBtnLoading]}
           onPress={save}
           disabled={saving}
+          accessibilityRole="button"
+          accessibilityLabel={saving ? 'Kaydediliyor' : 'Yaşam alanı puanlarını kaydet'}
+          accessibilityState={{ disabled: saving, busy: saving }}
         >
           {saving ? (
             <ActivityIndicator color="#fff" size="small" />

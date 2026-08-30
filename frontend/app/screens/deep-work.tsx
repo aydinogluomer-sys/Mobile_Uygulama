@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Skeleton } from '../../components/ui';
 import { useDeepWorkStore } from '../../store/deepWorkStore';
 import { todayLocal } from '../../lib/date';
 
@@ -48,17 +49,17 @@ export default function DeepWorkScreen() {
         {/* Özet kartları */}
         <View style={s.metrics}>
           <View style={[s.metricCard, { borderColor: '#7C97C540' }]}>
-            <Ionicons name="today-outline" size={18} color="#7C97C5" />
+            <Ionicons name="today-outline" size={18} color="#7C97C5" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.metricValue}>{formatMins(todayM)}</Text>
             <Text style={s.metricLabel}>Bugün</Text>
           </View>
           <View style={[s.metricCard, { borderColor: '#D9775740' }]}>
-            <Ionicons name="calendar-outline" size={18} color="#D97757" />
+            <Ionicons name="calendar-outline" size={18} color="#D97757" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.metricValue}>{formatMins(weekM)}</Text>
             <Text style={s.metricLabel}>Bu Hafta</Text>
           </View>
           <View style={[s.metricCard, { borderColor: '#87A67840' }]}>
-            <Ionicons name="layers-outline" size={18} color="#87A678" />
+            <Ionicons name="layers-outline" size={18} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.metricValue}>{todaySessions.length}</Text>
             <Text style={s.metricLabel}>Seans</Text>
           </View>
@@ -68,15 +69,31 @@ export default function DeepWorkScreen() {
         <View style={s.section}>
           <View style={s.sectionHeader}>
             <Text style={s.sectionTitle}>BUGÜN</Text>
-            <TouchableOpacity style={s.addBtn} onPress={() => setModal(true)}>
+            <TouchableOpacity
+              style={s.addBtn}
+              onPress={() => setModal(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Seans ekle"
+            >
               <Ionicons name="add" size={16} color="#7C97C5" />
               <Text style={s.addBtnText}>Seans Ekle</Text>
             </TouchableOpacity>
           </View>
 
-          {todaySessions.length === 0 ? (
+          {loading ? (
+            // `loading` bugüne kadar okunmuyordu: seanslar gelene kadar
+            // "Henüz seans yok" görünüyordu. Seans satırlarının şekli sabit,
+            // o yüzden boş durum yerine önce o geometriyi kur.
+            Array.from({ length: 3 }, (_, i) => (
+              <View key={i} style={s.sessionRow}>
+                <Skeleton width={8} height={8} circle />
+                <View style={{ flex: 1 }}><Skeleton width="60%" height={13} /></View>
+                <Skeleton width={44} height={12} />
+              </View>
+            ))
+          ) : todaySessions.length === 0 ? (
             <View style={s.emptyCard}>
-              <Ionicons name="flash-outline" size={28} color="#383528" />
+              <Ionicons name="flash-outline" size={28} color="#383528" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
               <Text style={s.emptyText}>Henüz seans yok</Text>
               <Text style={s.emptyHint}>Derin çalışma seanslarını buraya kaydet</Text>
             </View>
@@ -94,6 +111,8 @@ export default function DeepWorkScreen() {
                     { text: 'İptal' },
                     { text: 'Sil', style: 'destructive', onPress: () => removeSession(sess.id) },
                   ])}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${sess.subject} seansını sil`}
                 >
                   <Ionicons name="trash-outline" size={14} color="#56544B" />
                 </TouchableOpacity>
@@ -125,8 +144,12 @@ export default function DeepWorkScreen() {
         <View style={s.modalBg}>
           <View style={s.modalCard}>
             <View style={s.modalHead}>
-              <Text style={s.modalTitle}>Seans Ekle</Text>
-              <TouchableOpacity onPress={() => setModal(false)}>
+              <Text style={s.modalTitle} accessibilityRole="header">Seans Ekle</Text>
+              <TouchableOpacity
+                onPress={() => setModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Kapat"
+              >
                 <Ionicons name="close" size={20} color="#827E72" />
               </TouchableOpacity>
             </View>
@@ -148,6 +171,9 @@ export default function DeepWorkScreen() {
                   key={d}
                   style={[s.quickBtn, minutes === String(d) && s.quickBtnActive]}
                   onPress={() => setMinutes(String(d))}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${d} dakika`}
+                  accessibilityState={{ selected: minutes === String(d) }}
                 >
                   <Text style={[s.quickBtnText, minutes === String(d) && s.quickBtnTextActive]}>
                     {d}dk
@@ -168,6 +194,9 @@ export default function DeepWorkScreen() {
               style={[s.saveBtn, (!subject.trim() || !minutes) && s.saveBtnDisabled]}
               onPress={handleAdd}
               disabled={!subject.trim() || !minutes}
+              accessibilityRole="button"
+              accessibilityLabel="Kaydet"
+              accessibilityState={{ disabled: !subject.trim() || !minutes }}
             >
               <Text style={s.saveBtnText}>Kaydet</Text>
             </TouchableOpacity>

@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useGoalStore, Goal, GoalKind } from '../../store/goalStore';
+import { EmptyState, Skeleton } from '../../components/ui';
 
 const TABS: { key: GoalKind; label: string; color: string }[] = [
   { key: 'yearly', label: 'Yıllık', color: '#D97757' },
@@ -32,12 +33,22 @@ function GoalCard({ goal, color, onEdit, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   return (
-    <TouchableOpacity style={[s.goalCard, goal.progress >= 100 && s.goalDone]} onPress={() => onEdit(goal)}>
+    <TouchableOpacity
+      style={[s.goalCard, goal.progress >= 100 && s.goalDone]}
+      onPress={() => onEdit(goal)}
+      accessibilityRole="button"
+      accessibilityLabel={`${goal.title}, yüzde ${goal.progress} tamamlandı`}
+      accessibilityHint="İlerlemeyi güncellemek için aç"
+    >
       <View style={s.goalRow}>
         <Text style={[s.goalTitle, goal.progress >= 100 && s.goalTitleDone]} numberOfLines={2}>{goal.title}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={[s.goalPct, { color }]}>{goal.progress}%</Text>
-          <TouchableOpacity onPress={() => onDelete(goal.id)}>
+          <TouchableOpacity
+            onPress={() => onDelete(goal.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`Hedefi sil: ${goal.title}`}
+          >
             <Ionicons name="trash-outline" size={14} color="#56544B" />
           </TouchableOpacity>
         </View>
@@ -111,6 +122,9 @@ export default function GoalsScreen() {
             key={t.key}
             style={[s.tab, activeTab === t.key && { borderBottomColor: t.color, borderBottomWidth: 2 }]}
             onPress={() => setActiveTab(t.key)}
+            accessibilityRole="tab"
+            accessibilityLabel={`${t.label} hedefler`}
+            accessibilityState={{ selected: activeTab === t.key }}
           >
             <Text style={[s.tabText, activeTab === t.key && { color: t.color }]}>{t.label}</Text>
           </TouchableOpacity>
@@ -131,16 +145,31 @@ export default function GoalsScreen() {
           )}
         </View>
 
-        {filtered.length === 0 ? (
-          <View style={s.emptyCard}>
-            <Ionicons name="trophy-outline" size={32} color="#383528" />
-            <Text style={s.emptyText}>Henüz hedef yok</Text>
-            <Text style={s.emptyHint}>
-              {activeTab === 'yearly' ? 'Bu yıl için hedeflerini ekle' :
-               activeTab === 'quarterly' ? 'Bu çeyrek için hedeflerini ekle' :
-               'Bu ay için hedeflerini ekle'}
-            </Text>
-          </View>
+        {loading && goals.length === 0 ? (
+          // Hedefler yolda. Gelen şekil sabit: başlık satırı + yüzde + ilerleme
+          // çubuğu. Boş durumu göstermek yanıltıcı olurdu — henüz bilmiyoruz.
+          [0, 1, 2].map((i) => (
+            <View key={i} style={s.goalCard}>
+              <View style={s.goalRow}>
+                <View style={{ flex: 1 }}><Skeleton width="70%" height={15} /></View>
+                <Skeleton width={34} height={15} />
+              </View>
+              <Skeleton height={6} />
+            </View>
+          ))
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon="trophy-outline"
+            title="Henüz hedef yok"
+            hint={
+              activeTab === 'yearly' ? 'Bu yıl için hedeflerini ekle.' :
+              activeTab === 'quarterly' ? 'Bu çeyrek için hedeflerini ekle.' :
+              'Bu ay için hedeflerini ekle.'
+            }
+            ctaLabel={`${tabInfo.label} hedef ekle`}
+            onCta={openAdd}
+            color={tabInfo.color}
+          />
         ) : (
           filtered.map((g) => (
             <GoalCard
@@ -155,7 +184,12 @@ export default function GoalsScreen() {
       </ScrollView>
 
       {/* FAB */}
-      <TouchableOpacity style={[s.fab, { backgroundColor: tabInfo.color }]} onPress={openAdd}>
+      <TouchableOpacity
+        style={[s.fab, { backgroundColor: tabInfo.color }]}
+        onPress={openAdd}
+        accessibilityRole="button"
+        accessibilityLabel={`Yeni ${tabInfo.label.toLowerCase()} hedef ekle`}
+      >
         <Ionicons name="add" size={24} color="#fff" />
       </TouchableOpacity>
 
@@ -165,7 +199,11 @@ export default function GoalsScreen() {
           <View style={s.modalCard}>
             <View style={s.modalHead}>
               <Text style={s.modalTitle}>{editGoal ? 'Hedefi Güncelle' : 'Yeni Hedef'}</Text>
-              <TouchableOpacity onPress={() => setModal(false)}>
+              <TouchableOpacity
+                onPress={() => setModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Kapat"
+              >
                 <Ionicons name="close" size={20} color="#827E72" />
               </TouchableOpacity>
             </View>
@@ -196,6 +234,9 @@ export default function GoalsScreen() {
                   key={p}
                   style={[s.quickBtn, progress === String(p) && { backgroundColor: tabInfo.color + '20', borderColor: tabInfo.color }]}
                   onPress={() => setProgress(String(p))}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`İlerlemeyi yüzde ${p} yap`}
+                  accessibilityState={{ selected: progress === String(p), checked: progress === String(p) }}
                 >
                   <Text style={[s.quickText, progress === String(p) && { color: tabInfo.color }]}>
                     {p}%
@@ -216,6 +257,9 @@ export default function GoalsScreen() {
               style={[s.saveBtn, { backgroundColor: tabInfo.color }, !title.trim() && !editGoal && s.saveBtnDisabled]}
               onPress={handleSave}
               disabled={!title.trim() && !editGoal}
+              accessibilityRole="button"
+              accessibilityLabel={editGoal ? 'Hedefi kaydet' : 'Hedefi ekle'}
+              accessibilityState={{ disabled: !title.trim() && !editGoal }}
             >
               <Text style={s.saveBtnText}>{editGoal ? 'Kaydet' : 'Ekle'}</Text>
             </TouchableOpacity>

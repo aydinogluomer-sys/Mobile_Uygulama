@@ -26,6 +26,7 @@ import { fromLegacyRecoveryPlan } from '../../lib/recovery';
 import { fetchHabitLogsForReview } from '../../repositories/habitLogRepository';
 import { fetchFocusSessionsSince } from '../../repositories/focusSessionRepository';
 import { fetchRecoveryPlansForReview } from '../../repositories/recoveryRepository';
+import { EmptyState } from '../../components/ui';
 
 const MONTHS_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const REFLECT_KEY = (monthKey: string) => `monthly_review_${monthKey}`;
@@ -349,20 +350,28 @@ export default function MonthlyReviewScreen() {
 
           <View style={s.hero}>
             <View style={s.heroIcon}>
-              <Ionicons name="calendar-number-outline" size={28} color="#D97757" />
+              <Ionicons name="calendar-number-outline" size={28} color="#D97757" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={s.heroTitle}>Aylık Rapor</Text>
+              <Text style={s.heroTitle} accessibilityRole="header">Aylık Rapor</Text>
               <Text style={s.heroDates}>{MONTHS_TR[month]} {year}</Text>
             </View>
             <View style={s.monthNav}>
-              <TouchableOpacity onPress={() => { setMonthOffset((offset) => offset + 1); animatePage(-1); }} style={s.navBtn}>
+              <TouchableOpacity
+                onPress={() => { setMonthOffset((offset) => offset + 1); animatePage(-1); }}
+                style={s.navBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Önceki ay"
+              >
                 <Ionicons name="chevron-back" size={18} color="#BFBBAE" />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => { setMonthOffset((offset) => Math.max(0, offset - 1)); animatePage(1); }}
                 style={[s.navBtn, isCurrentMonth && s.navBtnDisabled]}
                 disabled={isCurrentMonth}
+                accessibilityRole="button"
+                accessibilityLabel="Sonraki ay"
+                accessibilityState={{ disabled: isCurrentMonth }}
               >
                 <Ionicons name="chevron-forward" size={18} color={isCurrentMonth ? '#56544B' : '#BFBBAE'} />
               </TouchableOpacity>
@@ -400,23 +409,35 @@ export default function MonthlyReviewScreen() {
             </View>
           )}
 
-          {completedTasks.length > 0 && (
-            <View style={s.section}>
-              <Text style={s.sectionTitle}>BU AY TAMAMLANANLAR</Text>
-              {completedTasks.slice(0, 6).map((task) => (
-                <View key={task.id} style={s.taskItem}>
-                  <Ionicons name="checkmark-circle" size={16} color="#87A678" />
-                  <Text style={s.taskTitle} numberOfLines={1}>{task.title}</Text>
-                </View>
-              ))}
-              {completedTasks.length > 6 && <Text style={s.moreText}>+{completedTasks.length - 6} daha...</Text>}
-            </View>
-          )}
+          {/* Bölüm boşken tamamen kaybolmak yerine neden boş olduğunu söylüyor */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>BU AY TAMAMLANANLAR</Text>
+            {completedTasks.length === 0 ? (
+              <EmptyState icon="checkmark-done-outline" title="Bu ay tamamlanan görev yok" compact color="#87A678" />
+            ) : (
+              <>
+                {completedTasks.slice(0, 6).map((task) => (
+                  <View key={task.id} style={s.taskItem}>
+                    <Ionicons name="checkmark-circle" size={16} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                    <Text style={s.taskTitle} numberOfLines={1}>{task.title}</Text>
+                  </View>
+                ))}
+                {completedTasks.length > 6 && <Text style={s.moreText}>+{completedTasks.length - 6} daha...</Text>}
+              </>
+            )}
+          </View>
 
-          {habitStats.length > 0 && (
-            <View style={s.section}>
-              <Text style={s.sectionTitle}>ALIŞKANLIK PERFORMANSI</Text>
-              {habitStats.slice(0, 6).map((habit, index) => {
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>ALIŞKANLIK PERFORMANSI</Text>
+            {habitStats.length === 0 ? (
+              <EmptyState
+                icon="bar-chart-outline"
+                title="Bu ay ölçülecek alışkanlık yok"
+                hint="Aktif bir alışkanlık ekledikten sonra aylık performansı burada görünür."
+                compact
+              />
+            ) : (
+              habitStats.slice(0, 6).map((habit, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 return (
                   <View key={habit.id} style={s.habitRow}>
@@ -431,9 +452,9 @@ export default function MonthlyReviewScreen() {
                     <Text style={s.habitCount}>{habit.completedDays}/{habit.possibleDays}</Text>
                   </View>
                 );
-              })}
-            </View>
-          )}
+              })
+            )}
+          </View>
 
           {/* §12 -- "Trend" (4/12 haftalık, lib/behaviorIntelligence.completionTrend) */}
           <View style={s.section}>
@@ -510,7 +531,15 @@ export default function MonthlyReviewScreen() {
             ))}
           </View>
 
-          <TouchableOpacity style={[s.saveBtn, saving && s.saveBtnLoading]} onPress={handleSave} disabled={saving}>
+          {/* Kaydederken içerik yalnızca spinner'a düşüyor — etiketi durumdan üretiyoruz */}
+          <TouchableOpacity
+            style={[s.saveBtn, saving && s.saveBtnLoading]}
+            onPress={handleSave}
+            disabled={saving}
+            accessibilityRole="button"
+            accessibilityLabel={saving ? 'Aylık rapor kaydediliyor' : savedAt ? `Kaydedildi, ${savedAt}` : 'Aylık raporu kaydet'}
+            accessibilityState={{ disabled: saving, busy: saving }}
+          >
             {saving ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : savedAt ? (

@@ -26,7 +26,7 @@
  * array; switching ranges or tabs never re-fetches.
  */
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
@@ -217,7 +217,8 @@ function trendIcon(direction: 'improving' | 'declining' | 'flat'): keyof typeof 
 function InfoRow({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
   return (
     <View style={s.infoRow}>
-      <Ionicons name={icon} size={15} color={colors.textFaint} />
+      {/* süs ikonu — etiket/değer zaten okunuyor, ekran okuyucuda tekrar etmesin */}
+      <Ionicons name={icon} size={15} color={colors.textFaint} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
       <Text style={s.infoLabel}>{label}</Text>
       <Text style={s.infoValue} numberOfLines={1}>{value}</Text>
     </View>
@@ -295,17 +296,36 @@ export default function HabitDetailScreen() {
   if (!habit) {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
-        <View style={s.center}>
-          {loadingLogs ? (
-            <ActivityIndicator size="large" color={colors.primary} />
-          ) : (
+        {loadingLogs ? (
+          // Gelen ekranın iskeleti: başlık bloğu + sekme şeridi + 2x2 metrik ızgarası.
+          // Ortalanmış bir spinner yerine gerçek yerleşimin şeklini göstermek,
+          // içerik yerine oturduğunda layout'un zıplamasını önler.
+          <View style={s.scroll}>
+            <Skeleton width="62%" height={22} />
+            <View style={{ marginTop: space.sm }}>
+              <SkeletonLines count={2} />
+            </View>
+            <View style={{ flexDirection: 'row', gap: space.xs, marginTop: space.lg }}>
+              {TABS.map((t) => <Skeleton key={t.key} width={72} height={30} />)}
+            </View>
+            <View style={{ flexDirection: 'row', gap: space.md, marginTop: space.lg }}>
+              <Skeleton width="48%" height={62} />
+              <Skeleton width="48%" height={62} />
+            </View>
+            <View style={{ flexDirection: 'row', gap: space.md, marginTop: space.md }}>
+              <Skeleton width="48%" height={62} />
+              <Skeleton width="48%" height={62} />
+            </View>
+          </View>
+        ) : (
+          <View style={s.center}>
             <EmptyState
               icon="alert-circle-outline"
               title="Alışkanlık bulunamadı"
               hint="Bu alışkanlık silinmiş olabilir ya da bağlantı geçersiz."
             />
-          )}
-        </View>
+          </View>
+        )}
       </SafeAreaView>
     );
   }
@@ -360,7 +380,7 @@ export default function HabitDetailScreen() {
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         {/* Header block -- plan §11: name + Strength/Current/Best/Completion, visible on every tab */}
         <View style={s.header}>
-          <Text style={s.habitName}>{habit.name}</Text>
+          <Text style={s.habitName} accessibilityRole="header">{habit.name}</Text>
           <Text style={s.headerMetrics}>
             Strength {strength} · Current {curStreak} gün · Best {bestStreak} gün · Completion{' '}
             {overallCompletion.ok ? `%${completionPercent(overallCompletion.value)}` : '—'}
@@ -376,6 +396,8 @@ export default function HabitDetailScreen() {
                 key={t.key}
                 style={[s.tabBtn, sel && s.tabBtnSel]}
                 onPress={() => { haptic.select(); setTab(t.key); }}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: sel }}
               >
                 <Ionicons name={t.icon} size={14} color={sel ? colors.primaryBright : colors.textFaint} />
                 <Text style={[s.tabLabel, sel && s.tabLabelSel]}>{t.label}</Text>
@@ -472,11 +494,21 @@ export default function HabitDetailScreen() {
         {tab === 'takvim' && (
           <View style={s.tabBody}>
             <View style={s.calNav}>
-              <TouchableOpacity onPress={prevMonth} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={prevMonth}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Önceki ay"
+              >
                 <Ionicons name="chevron-back" size={20} color={colors.textDim} />
               </TouchableOpacity>
               <Text style={s.calNavLabel}>{MONTHS_TR[calMonth]} {calYear}</Text>
-              <TouchableOpacity onPress={nextMonth} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={nextMonth}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Sonraki ay"
+              >
                 <Ionicons name="chevron-forward" size={20} color={colors.textDim} />
               </TouchableOpacity>
             </View>

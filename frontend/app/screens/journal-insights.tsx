@@ -13,6 +13,7 @@ import { ACTION_COST } from '../../lib/subscription';
 import { periodWindow, InsightPeriod } from '../../lib/journalStats';
 import { moodMeta } from '../../lib/journalMoods';
 import { extractInvokeError } from '../../lib/aiInvoke';
+import { EmptyState } from '../../components/ui';
 
 const PERIODS: { key: InsightPeriod; label: string }[] = [
   { key: 'weekly', label: 'Haftalık' },
@@ -92,11 +93,16 @@ export default function JournalInsightsScreen() {
       {/* FP barı */}
       <View style={[s.fpBar, lowCredits && s.fpBarWarn]}>
         <View style={s.fpLeft}>
-          <Ionicons name="flash" size={15} color="#D4A84A" />
+          <Ionicons name="flash" size={15} color="#D4A84A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <Text style={s.fpText}>{focusPoints} FP</Text>
           <Text style={s.fpSub}>· içgörü {COST} FP</Text>
         </View>
-        <TouchableOpacity style={s.upgradeBtn} onPress={() => router.push('/screens/paywall' as any)}>
+        <TouchableOpacity
+          style={s.upgradeBtn}
+          onPress={() => router.push('/screens/paywall' as any)}
+          accessibilityRole="button"
+          accessibilityLabel="Üyeliği yükselt"
+        >
           <Ionicons name="diamond-outline" size={13} color="#fff" />
           <Text style={s.upgradeText}>Yükselt</Text>
         </TouchableOpacity>
@@ -109,6 +115,8 @@ export default function JournalInsightsScreen() {
             key={p.key}
             style={[s.tab, period === p.key && s.tabActive]}
             onPress={() => setPeriod(p.key)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: period === p.key }}
           >
             <Text style={[s.tabText, period === p.key && s.tabTextActive]}>{p.label}</Text>
           </TouchableOpacity>
@@ -122,20 +130,20 @@ export default function JournalInsightsScreen() {
         </View>
 
         {periodEntries.length === 0 ? (
-          <View style={s.empty}>
-            <Ionicons name="bulb-outline" size={40} color="#56544B" />
-            <Text style={s.emptyText}>
-              Bu dönemde günlük kaydın yok. Birkaç gün yazdıktan sonra AI sana içgörü sunabilir.
-            </Text>
-          </View>
+          <EmptyState
+            icon="bulb-outline"
+            title="Bu dönemde günlük kaydın yok"
+            hint="Birkaç gün yazdıktan sonra AI sana içgörü sunabilir."
+            color="#8b5cf6"
+          />
         ) : (
           <>
             {/* İçgörü kartı */}
             <View style={s.card}>
               <View style={s.cardHead}>
                 <View style={s.cardTitleWrap}>
-                  <Ionicons name="sparkles" size={15} color="#8b5cf6" />
-                  <Text style={s.cardTitle}>AI İçgörüsü</Text>
+                  <Ionicons name="sparkles" size={15} color="#8b5cf6" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                  <Text style={s.cardTitle} accessibilityRole="header">AI İçgörüsü</Text>
                 </View>
                 {cached && (
                   <Text style={s.cardMeta}>{cached.entry_count} kayıttan</Text>
@@ -157,7 +165,8 @@ export default function JournalInsightsScreen() {
             </View>
 
             {error && (
-              <View style={s.errorBox}>
+              // Hata sonradan belirdiği için ekran okuyucuya tek parça uyarı olarak duyurulur
+              <View style={s.errorBox} accessible accessibilityRole="alert" accessibilityLabel={`Hata: ${error}`}>
                 <Ionicons name="alert-circle-outline" size={15} color="#C76A6A" />
                 <Text style={s.errorText}>{error}</Text>
               </View>
@@ -167,6 +176,9 @@ export default function JournalInsightsScreen() {
               style={[s.genBtn, loading && s.genBtnOff]}
               onPress={generate}
               disabled={loading}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: loading }}
+              accessibilityHint={`${COST} odak puanı harcar`}
             >
               <Ionicons name={cached ? 'refresh' : 'sparkles'} size={16} color="#fff" />
               <Text style={s.genBtnText}>

@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, RefreshControl,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useProfileStore, LeaderboardScope } from '../../store/profileStore';
 import { rankMeta } from '../../lib/ranks';
+import { EmptyState, Skeleton } from '../../components/ui';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -43,6 +43,9 @@ export default function LeaderboardScreen() {
             key={sc}
             style={[s.tab, scope === sc && s.tabActive]}
             onPress={() => switchScope(sc)}
+            accessibilityRole="tab"
+            accessibilityLabel={`${sc === 'global' ? 'Global' : 'Bu haftanın'} sıralaması`}
+            accessibilityState={{ selected: scope === sc }}
           >
             <Text style={[s.tabText, scope === sc && s.tabTextActive]}>
               {sc === 'global' ? 'Global' : 'Bu Hafta'}
@@ -68,7 +71,7 @@ export default function LeaderboardScreen() {
               </Text>
               {myTier && (
                 <View style={s.meRankRow}>
-                  <Ionicons name={myTier.icon} size={13} color={myTier.color} />
+                  <Ionicons name={myTier.icon} size={13} color={myTier.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                   <Text style={[s.meTier, { color: myTier.color }]}>{myTier.name}</Text>
                   <Text style={s.meLevel}>· Lv {profile.level}</Text>
                 </View>
@@ -79,14 +82,24 @@ export default function LeaderboardScreen() {
         )}
 
         {lbLoading && leaderboard.length === 0 ? (
-          <ActivityIndicator style={{ marginTop: 40 }} color="#D4A84A" />
+          // Sıra satırlarının geometrisi sabit — spinner yerine o şekli kur.
+          Array.from({ length: 6 }, (_, i) => (
+            <View key={i} style={s.row}>
+              <View style={s.rankCol}><Skeleton width={18} height={14} /></View>
+              <View style={{ flex: 1, gap: 6 }}>
+                <Skeleton width="55%" height={13} />
+                <Skeleton width="35%" height={10} />
+              </View>
+              <Skeleton width={54} height={13} />
+            </View>
+          ))
         ) : leaderboard.length === 0 ? (
-          <View style={s.empty}>
-            <Ionicons name="trophy-outline" size={40} color="#56544B" />
-            <Text style={s.emptyText}>
-              Henüz sıralamada kimse yok. Alışkanlıklarını tamamlayıp XP kazan!
-            </Text>
-          </View>
+          <EmptyState
+            icon="trophy-outline"
+            title="Sıralama henüz boş"
+            hint="Alışkanlıklarını tamamlayıp XP kazandığında burada görünürsün."
+            color="#D4A84A"
+          />
         ) : (
           leaderboard.map((row) => {
             const tier = rankMeta(row.willpower_rank, row.level);
@@ -105,7 +118,7 @@ export default function LeaderboardScreen() {
                     {row.username}{isMe ? ' (sen)' : ''}
                   </Text>
                   <View style={s.rankRow}>
-                    <Ionicons name={tier.icon} size={11} color={tier.color} />
+                    <Ionicons name={tier.icon} size={11} color={tier.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                     <Text style={[s.tier, { color: tier.color }]}>{tier.name}</Text>
                     <Text style={s.lvl}>· Lv {row.level}</Text>
                   </View>

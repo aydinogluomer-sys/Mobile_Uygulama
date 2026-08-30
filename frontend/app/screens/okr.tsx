@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal,
-  ActivityIndicator, Alert, Platform,
+  Alert, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useOKRStore, krProgress, objectiveProgress, type KeyResult, type OKR } from '../../store/okrStore';
+import { EmptyState, Skeleton } from '../../components/ui';
 
 const now = new Date();
 const CUR_Q = Math.floor(now.getMonth() / 3) + 1;
@@ -54,18 +55,47 @@ export default function OKRScreen() {
   }
 
   if (loading && okrs.length === 0) {
-    return <View style={s.center}><ActivityIndicator size="large" color="#D97757" /></View>;
+    // Gelen içerik biliniyor: çeyrek rozeti + objective satırı + ilerleme çubuğu
+    // + birkaç KR. Şeklini göster ki gerçek kartlar geldiğinde düzen zıplamasın.
+    return (
+      <SafeAreaView style={s.safe} edges={['bottom']}>
+        <View style={s.content}>
+          {[0, 1].map((i) => (
+            <View key={i} style={s.objCard}>
+              <View style={s.objHead}><Skeleton width={54} height={18} /></View>
+              <Skeleton width="80%" height={16} style={{ marginBottom: 12 }} />
+              <View style={s.objProgRow}>
+                <View style={{ flex: 1 }}><Skeleton height={8} /></View>
+                <Skeleton width={42} height={13} />
+              </View>
+              {[0, 1].map((k) => (
+                <View key={k} style={s.krRow}>
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <Skeleton width="65%" height={14} />
+                    <Skeleton height={5} />
+                  </View>
+                  <View style={s.krRight}><Skeleton width={60} height={12} /></View>
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={s.content}>
         {okrs.length === 0 ? (
-          <View style={s.empty}>
-            <Ionicons name="flag-outline" size={48} color="#56544B" />
-            <Text style={s.emptyText}>Henüz hedef yok</Text>
-            <Text style={s.emptyHint}>+ ile bir Objective ekle, altına Key Results bağla</Text>
-          </View>
+          <EmptyState
+            icon="flag-outline"
+            title="Henüz hedef yok"
+            hint="Bir Objective ekle, altına ölçülebilir Key Results bağla."
+            ctaLabel="Objective ekle"
+            onCta={() => { setObjYear(CUR_Y); setObjQuarter(CUR_Q); setObjModal(true); }}
+            color="#D97757"
+          />
         ) : (
           okrs.map((o) => {
             const prog = objectiveProgress(o);
@@ -73,7 +103,13 @@ export default function OKRScreen() {
               <View key={o.id} style={s.objCard}>
                 <View style={s.objHead}>
                   <View style={s.qBadge}><Text style={s.qBadgeText}>{o.year} Ç{o.quarter}</Text></View>
-                  <TouchableOpacity onPress={() => confirmRemoveObj(o)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => confirmRemoveObj(o)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Objective sil: ${o.objective}`}
+                    accessibilityHint="Bu hedefi ve tüm anahtar sonuçlarını siler"
+                  >
                     <Ionicons name="trash-outline" size={16} color="#C76A6A" />
                   </TouchableOpacity>
                 </View>
@@ -95,6 +131,9 @@ export default function OKRScreen() {
                       onPress={() => { setEditKr(k); setEditVal(String(k.current_value)); }}
                       onLongPress={() => removeKR(k.id)}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${k.title}. ${k.current_value} / ${k.target_value}${k.unit ? ` ${k.unit}` : ''}, yüzde ${p}`}
+                      accessibilityHint="Değeri güncellemek için dokun, silmek için uzun bas"
                     >
                       <View style={{ flex: 1 }}>
                         <Text style={s.krTitle}>{k.title}</Text>
@@ -110,7 +149,12 @@ export default function OKRScreen() {
                   );
                 })}
 
-                <TouchableOpacity style={s.addKrBtn} onPress={() => setKrFor(o.id)}>
+                <TouchableOpacity
+                  style={s.addKrBtn}
+                  onPress={() => setKrFor(o.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Key Result ekle: ${o.objective}`}
+                >
                   <Ionicons name="add" size={15} color="#D97757" />
                   <Text style={s.addKrText}>Key Result ekle</Text>
                 </TouchableOpacity>
@@ -121,7 +165,12 @@ export default function OKRScreen() {
         <Text style={s.tip}>İpucu: bir KR&apos;ye dokun → değeri güncelle · uzun bas → sil</Text>
       </ScrollView>
 
-      <TouchableOpacity style={s.fab} onPress={() => { setObjYear(CUR_Y); setObjQuarter(CUR_Q); setObjModal(true); }}>
+      <TouchableOpacity
+        style={s.fab}
+        onPress={() => { setObjYear(CUR_Y); setObjQuarter(CUR_Q); setObjModal(true); }}
+        accessibilityRole="button"
+        accessibilityLabel="Yeni Objective ekle"
+      >
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
@@ -134,7 +183,14 @@ export default function OKRScreen() {
             <Text style={s.label}>Yıl</Text>
             <View style={s.row}>
               {[CUR_Y - 1, CUR_Y, CUR_Y + 1].map((y) => (
-                <TouchableOpacity key={y} style={[s.chip, objYear === y && s.chipSel]} onPress={() => setObjYear(y)}>
+                <TouchableOpacity
+                  key={y}
+                  style={[s.chip, objYear === y && s.chipSel]}
+                  onPress={() => setObjYear(y)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${y} yılı`}
+                  accessibilityState={{ selected: objYear === y, checked: objYear === y }}
+                >
                   <Text style={[s.chipText, objYear === y && s.chipTextSel]}>{y}</Text>
                 </TouchableOpacity>
               ))}
@@ -142,14 +198,35 @@ export default function OKRScreen() {
             <Text style={s.label}>Çeyrek</Text>
             <View style={s.row}>
               {[1, 2, 3, 4].map((q) => (
-                <TouchableOpacity key={q} style={[s.chip, objQuarter === q && s.chipSel]} onPress={() => setObjQuarter(q)}>
+                <TouchableOpacity
+                  key={q}
+                  style={[s.chip, objQuarter === q && s.chipSel]}
+                  onPress={() => setObjQuarter(q)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${q}. çeyrek`}
+                  accessibilityState={{ selected: objQuarter === q, checked: objQuarter === q }}
+                >
                   <Text style={[s.chipText, objQuarter === q && s.chipTextSel]}>Ç{q}</Text>
                 </TouchableOpacity>
               ))}
             </View>
             <View style={s.actions}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setObjModal(false)}><Text style={s.cancelText}>Vazgeç</Text></TouchableOpacity>
-              <TouchableOpacity style={[s.okBtn, !objText.trim() && s.okBtnDisabled]} onPress={submitObjective} disabled={!objText.trim()}>
+              <TouchableOpacity
+                style={s.cancelBtn}
+                onPress={() => setObjModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Vazgeç"
+              >
+                <Text style={s.cancelText}>Vazgeç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.okBtn, !objText.trim() && s.okBtnDisabled]}
+                onPress={submitObjective}
+                disabled={!objText.trim()}
+                accessibilityRole="button"
+                accessibilityLabel="Objective ekle"
+                accessibilityState={{ disabled: !objText.trim() }}
+              >
                 <Text style={s.okText}>Ekle</Text>
               </TouchableOpacity>
             </View>
@@ -168,8 +245,22 @@ export default function OKRScreen() {
               <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="Birim (ops.)" placeholderTextColor="#56544B" value={krUnit} onChangeText={setKrUnit} />
             </View>
             <View style={s.actions}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setKrFor(null)}><Text style={s.cancelText}>Vazgeç</Text></TouchableOpacity>
-              <TouchableOpacity style={[s.okBtn, !(krTitle.trim() && parseFloat(krTarget) > 0) && s.okBtnDisabled]} onPress={submitKR} disabled={!(krTitle.trim() && parseFloat(krTarget) > 0)}>
+              <TouchableOpacity
+                style={s.cancelBtn}
+                onPress={() => setKrFor(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Vazgeç"
+              >
+                <Text style={s.cancelText}>Vazgeç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.okBtn, !(krTitle.trim() && parseFloat(krTarget) > 0) && s.okBtnDisabled]}
+                onPress={submitKR}
+                disabled={!(krTitle.trim() && parseFloat(krTarget) > 0)}
+                accessibilityRole="button"
+                accessibilityLabel="Key Result ekle"
+                accessibilityState={{ disabled: !(krTitle.trim() && parseFloat(krTarget) > 0) }}
+              >
                 <Text style={s.okText}>Ekle</Text>
               </TouchableOpacity>
             </View>
@@ -187,8 +278,22 @@ export default function OKRScreen() {
               placeholder="0" placeholderTextColor="#56544B" />
             <Text style={s.editTarget}>Hedef: {editKr?.target_value}{editKr?.unit ? ` ${editKr.unit}` : ''}</Text>
             <View style={s.actions}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setEditKr(null)}><Text style={s.cancelText}>Vazgeç</Text></TouchableOpacity>
-              <TouchableOpacity style={s.okBtn} onPress={submitEdit}><Text style={s.okText}>Kaydet</Text></TouchableOpacity>
+              <TouchableOpacity
+                style={s.cancelBtn}
+                onPress={() => setEditKr(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Vazgeç"
+              >
+                <Text style={s.cancelText}>Vazgeç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.okBtn}
+                onPress={submitEdit}
+                accessibilityRole="button"
+                accessibilityLabel="İlerlemeyi kaydet"
+              >
+                <Text style={s.okText}>Kaydet</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>

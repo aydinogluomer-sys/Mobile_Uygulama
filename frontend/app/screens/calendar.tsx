@@ -113,11 +113,11 @@ export default function CalendarScreen() {
           {/* Ajanda kapak başlığı — cam YOK; mevsim sahnesi + hareketi burada açıkça görünür */}
           <View style={s.hero}>
             <View style={s.heroNavRow}>
-              <TouchableOpacity style={s.heroArrow} onPress={prevMonth}>
+              <TouchableOpacity style={s.heroArrow} onPress={prevMonth} accessibilityRole="button" accessibilityLabel="Önceki ay">
                 <Ionicons name="chevron-back" size={22} color={colors.white} />
               </TouchableOpacity>
-              <Text style={s.heroMonth}>{MONTHS[month]}</Text>
-              <TouchableOpacity style={s.heroArrow} onPress={nextMonth}>
+              <Text style={s.heroMonth} accessibilityRole="header">{MONTHS[month]}</Text>
+              <TouchableOpacity style={s.heroArrow} onPress={nextMonth} accessibilityRole="button" accessibilityLabel="Sonraki ay">
                 <Ionicons name="chevron-forward" size={22} color={colors.white} />
               </TouchableOpacity>
             </View>
@@ -147,6 +147,9 @@ export default function CalendarScreen() {
                     key={day}
                     style={[s.dayCell, isSelected && s.dayCellSelected, isToday && !isSelected && s.dayCellToday]}
                     onPress={() => setSelected(ds)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${day} ${MONTHS[month]} ${year}${isToday ? ', bugün' : ''}${hasDot ? ', görev var' : ''}`}
+                    accessibilityState={{ selected: isSelected }}
                   >
                     <Text style={[s.dayText, isSelected && s.dayTextSelected, isToday && !isSelected && s.dayTextToday]}>
                       {day}
@@ -161,7 +164,7 @@ export default function CalendarScreen() {
 
           {/* Seçili gün görevleri */}
           <GlassPanel style={s.panel}>
-            <Text style={s.sectionTitle}>
+            <Text style={s.sectionTitle} accessibilityRole="header">
               {selected === todayStr ? 'BUGÜN' : selected} — GÖREVLER
             </Text>
             {selectedTasks.length === 0 ? (
@@ -178,13 +181,13 @@ export default function CalendarScreen() {
 
           {/* Seçili gün alışkanlıkları */}
           <GlassPanel style={s.panelLast}>
-            <Text style={s.sectionTitle}>AKTIF ALIŞKANLIKLAR</Text>
+            <Text style={s.sectionTitle} accessibilityRole="header">AKTIF ALIŞKANLIKLAR</Text>
             {selectedHabitLogs.length === 0 ? (
               <Text style={s.noItem}>Aktif alışkanlık yok</Text>
             ) : (
               selectedHabitLogs.slice(0, 5).map((h) => (
                 <View key={h.id} style={s.item}>
-                  <Ionicons name={(h.icon ?? 'star-outline') as any} size={14} color={h.color ?? colors.primary} />
+                  <Ionicons name={(h.icon ?? 'star-outline') as any} size={14} color={h.color ?? colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                   <Text style={s.itemText}>{h.name}</Text>
                 </View>
               ))
@@ -196,7 +199,12 @@ export default function CalendarScreen() {
       {/* DEV: mevsimsel hareket önizleme (yalnızca geliştirme) */}
       {__DEV__ && (
         <>
-          <TouchableOpacity style={s.devBtn} onPress={() => setShowMotionPreview(true)}>
+          <TouchableOpacity
+            style={s.devBtn}
+            onPress={() => setShowMotionPreview(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Mevsimsel hareket önizlemesi"
+          >
             <Ionicons name="sparkles-outline" size={16} color={colors.white} />
           </TouchableOpacity>
           <SeasonalMotionPreview visible={showMotionPreview} onClose={() => setShowMotionPreview(false)} />

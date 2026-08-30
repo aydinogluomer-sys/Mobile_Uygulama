@@ -261,6 +261,10 @@ export default function AICoachScreen() {
               disabled={!hasConversation || summarizing || loading}
               style={s.headerBtn}
               hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Konuşmayı günlüğe özetle"
+              accessibilityHint="Özeti önizleme penceresinde açar, düzenleyip bugünün günlüğüne ekleyebilirsin"
+              accessibilityState={{ disabled: !hasConversation || summarizing || loading, busy: summarizing }}
             >
               {summarizing ? (
                 <ActivityIndicator size="small" color="#ec4899" />
@@ -281,11 +285,16 @@ export default function AICoachScreen() {
         {/* Focus Point barı */}
         <View style={[s.fpBar, insufficientCredits && s.fpBarWarn]}>
           <View style={s.fpLeft}>
-            <Ionicons name="flash" size={15} color="#D4A84A" />
+            <Ionicons name="flash" size={15} color="#D4A84A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.fpText}>{focusPoints} FP</Text>
             <Text style={s.fpSub}>· mesaj {ACTION_COST.coach} FP</Text>
           </View>
-          <TouchableOpacity style={s.upgradeBtn} onPress={() => router.push('/screens/paywall')}>
+          <TouchableOpacity
+            style={s.upgradeBtn}
+            onPress={() => router.push('/screens/paywall')}
+            accessibilityRole="button"
+            accessibilityLabel="Üyeliği yükselt"
+          >
             <Ionicons name="diamond-outline" size={13} color="#fff" />
             <Text style={s.upgradeText}>Yükselt</Text>
           </TouchableOpacity>
@@ -305,10 +314,11 @@ export default function AICoachScreen() {
                 m.role === 'user' ? s.bubbleUser : s.bubbleAssistant,
                 m.role === 'error' && s.bubbleError,
               ]}
+              accessibilityRole={m.role === 'error' ? 'alert' : undefined}
             >
               {m.role === 'assistant' && (
                 <View style={s.assistantIcon}>
-                  <Ionicons name="sparkles" size={12} color="#8b5cf6" />
+                  <Ionicons name="sparkles" size={12} color="#8b5cf6" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 </View>
               )}
               <Text style={[
@@ -321,7 +331,9 @@ export default function AICoachScreen() {
             </View>
           ))}
           {loading && (
-            <View style={[s.bubble, s.bubbleAssistant]}>
+            // Yanıtın uzunluğu/şekli önceden bilinmiyor — burada iskelet değil,
+            // "yazıyor" göstergesi doğru olan. Ekran okuyucuya da duyurulur.
+            <View style={[s.bubble, s.bubbleAssistant]} accessibilityRole="progressbar" accessibilityLabel="Koç yanıt yazıyor">
               <ActivityIndicator size="small" color="#8b5cf6" />
             </View>
           )}
@@ -335,7 +347,15 @@ export default function AICoachScreen() {
           contentContainerStyle={s.quickContent}
         >
           {QUICK_PROMPTS.map((p) => (
-            <TouchableOpacity key={p} style={s.quickBtn} onPress={() => send(p)} disabled={loading}>
+            <TouchableOpacity
+              key={p}
+              style={s.quickBtn}
+              onPress={() => send(p)}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityHint="Bu soruyu koça gönderir"
+              accessibilityState={{ disabled: loading }}
+            >
               <Text style={s.quickText}>{p}</Text>
             </TouchableOpacity>
           ))}
@@ -353,11 +373,15 @@ export default function AICoachScreen() {
             maxLength={500}
             onSubmitEditing={() => send()}
             blurOnSubmit
+            accessibilityLabel="Koça mesajın"
           />
           <TouchableOpacity
             style={[s.sendBtn, (!input.trim() || loading) && s.sendBtnDisabled]}
             onPress={() => send()}
             disabled={!input.trim() || loading}
+            accessibilityRole="button"
+            accessibilityLabel="Gönder"
+            accessibilityState={{ disabled: !input.trim() || loading }}
           >
             <Ionicons name="send" size={18} color="#fff" />
           </TouchableOpacity>
@@ -379,10 +403,15 @@ export default function AICoachScreen() {
           <View style={s.modalCard}>
             <View style={s.modalHeader}>
               <View style={s.modalTitleWrap}>
-                <Ionicons name="sparkles" size={15} color="#ec4899" />
-                <Text style={s.modalTitle}>Günlüğe Özet</Text>
+                <Ionicons name="sparkles" size={15} color="#ec4899" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                <Text style={s.modalTitle} accessibilityRole="header">Günlüğe Özet</Text>
               </View>
-              <TouchableOpacity onPress={() => setSummaryModal(false)} hitSlop={8}>
+              <TouchableOpacity
+                onPress={() => setSummaryModal(false)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Kapat"
+              >
                 <Ionicons name="close" size={20} color="#827E72" />
               </TouchableOpacity>
             </View>
@@ -390,16 +419,23 @@ export default function AICoachScreen() {
             {summarySaved ? (
               <View style={s.savedBox}>
                 <View style={s.savedIcon}>
-                  <Ionicons name="checkmark" size={22} color="#fff" />
+                  <Ionicons name="checkmark" size={22} color="#fff" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 </View>
                 <Text style={s.savedText}>Bugünün günlüğüne eklendi</Text>
                 <View style={s.modalFooter}>
-                  <TouchableOpacity style={[s.modalBtn, s.modalBtnGhost]} onPress={() => setSummaryModal(false)}>
+                  <TouchableOpacity
+                    style={[s.modalBtn, s.modalBtnGhost]}
+                    onPress={() => setSummaryModal(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Kapat"
+                  >
                     <Text style={s.modalBtnGhostText}>Kapat</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[s.modalBtn, s.modalBtnPrimary]}
                     onPress={() => { setSummaryModal(false); router.push('/screens/journal' as any); }}
+                    accessibilityRole="link"
+                    accessibilityLabel="Günlüğü aç"
                   >
                     <Ionicons name="arrow-forward" size={15} color="#fff" />
                     <Text style={s.modalBtnPrimaryText}>Günlüğü Aç</Text>
@@ -417,15 +453,24 @@ export default function AICoachScreen() {
                   textAlignVertical="top"
                   placeholder="Özet..."
                   placeholderTextColor="#56544B"
+                  accessibilityLabel="Günlüğe eklenecek özet"
                 />
                 <View style={s.modalFooter}>
-                  <TouchableOpacity style={[s.modalBtn, s.modalBtnGhost]} onPress={() => setSummaryModal(false)}>
+                  <TouchableOpacity
+                    style={[s.modalBtn, s.modalBtnGhost]}
+                    onPress={() => setSummaryModal(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="İptal"
+                  >
                     <Text style={s.modalBtnGhostText}>İptal</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[s.modalBtn, s.modalBtnPrimary, (!summaryText.trim() || summarySaving) && s.modalBtnDisabled]}
                     onPress={saveSummaryToJournal}
                     disabled={!summaryText.trim() || summarySaving}
+                    accessibilityRole="button"
+                    accessibilityLabel="Günlüğe ekle"
+                    accessibilityState={{ disabled: !summaryText.trim() || summarySaving, busy: summarySaving }}
                   >
                     {summarySaving ? (
                       <ActivityIndicator size="small" color="#fff" />

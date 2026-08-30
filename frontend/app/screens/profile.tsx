@@ -42,7 +42,7 @@ export default function ProfileScreen() {
         {tier && profile && (
           <View style={[s.rankCard, { borderColor: tier.color + '50', backgroundColor: tier.color + '12' }]}>
             <View style={[s.rankIcon, { backgroundColor: tier.color + '25' }]}>
-              <Ionicons name={tier.icon} size={28} color={tier.color} />
+              <Ionicons name={tier.icon} size={28} color={tier.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             </View>
             <Text style={[s.rankName, { color: tier.color }]}>{tier.name}</Text>
             <Text style={s.rankSub}>
@@ -54,7 +54,12 @@ export default function ProfileScreen() {
         )}
 
         {/* Sıralama linki */}
-        <TouchableOpacity style={s.lbBtn} onPress={() => router.push('/screens/leaderboard' as any)}>
+        <TouchableOpacity
+          style={s.lbBtn}
+          onPress={() => router.push('/screens/leaderboard' as any)}
+          accessibilityRole="link"
+          accessibilityLabel="Sıralamayı gör"
+        >
           <Ionicons name="podium-outline" size={18} color="#D4A84A" />
           <Text style={s.lbText}>Sıralamayı Gör</Text>
           <Ionicons name="chevron-forward" size={16} color="#827E72" />
@@ -73,11 +78,15 @@ export default function ProfileScreen() {
               placeholderTextColor="#56544B"
               maxLength={24}
               autoCapitalize="none"
+              accessibilityLabel="Kullanıcı adı"
             />
             <TouchableOpacity
               style={[s.saveBtn, saved && s.saveBtnDone]}
               onPress={save}
               disabled={saving}
+              accessibilityRole="button"
+              accessibilityLabel={saved ? 'Kullanıcı adı kaydedildi' : 'Kullanıcı adını kaydet'}
+              accessibilityState={{ disabled: saving, busy: saving }}
             >
               {saving ? (
                 <ActivityIndicator size="small" color="#fff" />

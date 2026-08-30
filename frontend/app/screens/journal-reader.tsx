@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import { useJournalStore, JournalEntry } from '../../store/journalStore';
 import { moodMeta } from '../../lib/journalMoods';
+import { EmptyState } from '../../components/ui';
 
 const DAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -54,8 +55,13 @@ export default function JournalReaderScreen() {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
         <View style={s.empty}>
-          <Ionicons name="book-outline" size={40} color="#56544B" />
-          <Text style={s.emptyText}>Okunacak günlük sayfası yok.</Text>
+          {/* Defter tonuna uyan editöryel boş durum */}
+          <EmptyState
+            variant="editorial"
+            icon="book-outline"
+            title="Okunacak günlük sayfası yok"
+            hint="Günlük sekmesinde bir şeyler yazdığında sayfaların burada okunabilir olacak."
+          />
         </View>
       </SafeAreaView>
     );
@@ -81,7 +87,15 @@ export default function JournalReaderScreen() {
 
       {/* Sayfa çevirme barı */}
       <View style={s.navBar}>
-        <TouchableOpacity style={[s.navBtn, idx <= 0 && s.navBtnOff]} onPress={() => go(-1)} disabled={idx <= 0}>
+        {/* "Yeni"/"Eski" tek başına yön belirtmiyor — ekran okuyucuya açık etiket veriyoruz */}
+        <TouchableOpacity
+          style={[s.navBtn, idx <= 0 && s.navBtnOff]}
+          onPress={() => go(-1)}
+          disabled={idx <= 0}
+          accessibilityRole="button"
+          accessibilityLabel="Daha yeni sayfa"
+          accessibilityState={{ disabled: idx <= 0 }}
+        >
           <Ionicons name="chevron-back" size={18} color={idx <= 0 ? '#56544B' : '#D4A84A'} />
           <Text style={[s.navText, idx <= 0 && s.navTextOff]}>Yeni</Text>
         </TouchableOpacity>
@@ -92,6 +106,9 @@ export default function JournalReaderScreen() {
           style={[s.navBtn, idx >= entries.length - 1 && s.navBtnOff]}
           onPress={() => go(1)}
           disabled={idx >= entries.length - 1}
+          accessibilityRole="button"
+          accessibilityLabel="Daha eski sayfa"
+          accessibilityState={{ disabled: idx >= entries.length - 1 }}
         >
           <Text style={[s.navText, idx >= entries.length - 1 && s.navTextOff]}>Eski</Text>
           <Ionicons name="chevron-forward" size={18} color={idx >= entries.length - 1 ? '#56544B' : '#D4A84A'} />
@@ -112,14 +129,14 @@ function Page({ entry }: { entry: JournalEntry }) {
         <ScrollView contentContainerStyle={s.paperContent} showsVerticalScrollIndicator={false}>
           <Text style={s.dow}>{DAYS[dt.getDay()]}</Text>
           <View style={s.dateRow}>
-            <Text style={s.dateBig}>{dt.getDate()} {MONTHS[dt.getMonth()]} {dt.getFullYear()}</Text>
+            <Text style={s.dateBig} accessibilityRole="header">{dt.getDate()} {MONTHS[dt.getMonth()]} {dt.getFullYear()}</Text>
             {m && <Text style={s.moodBig}>{m.emoji}</Text>}
           </View>
           <View style={s.hairline} />
 
           {entry.ai_summary && (
             <View style={s.aiChip}>
-              <Ionicons name="sparkles" size={11} color="#ec4899" />
+              <Ionicons name="sparkles" size={11} color="#ec4899" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
               <Text style={s.aiChipText}>AI&apos;dan özetlenmiştir</Text>
             </View>
           )}

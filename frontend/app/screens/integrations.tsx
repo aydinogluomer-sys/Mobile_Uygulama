@@ -76,7 +76,7 @@ export default function IntegrationsScreen() {
       {/* Özet bant */}
       <View style={s.banner}>
         <View style={s.bannerLeft}>
-          <Ionicons name="git-network-outline" size={20} color="#D97757" />
+          <Ionicons name="git-network-outline" size={20} color="#D97757" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <View>
             <Text style={s.bannerTitle}>Entegrasyonlar</Text>
             <Text style={s.bannerSub}>
@@ -95,7 +95,13 @@ export default function IntegrationsScreen() {
         ))}
 
         {/* Notion öne çıkan kart */}
-        <TouchableOpacity style={[s.featureCard, isConnected && s.featureCardConnected]} onPress={() => setNotionModal(true)}>
+        <TouchableOpacity
+          style={[s.featureCard, isConnected && s.featureCardConnected]}
+          onPress={() => setNotionModal(true)}
+          accessibilityRole="button"
+          accessibilityLabel={isConnected ? 'Notion, bağlı' : 'Notion, bağlanmaya hazır'}
+          accessibilityHint="Notion entegrasyon ayarlarını açar"
+        >
           <View style={s.featureLeft}>
             <View style={[s.featureIcon, { backgroundColor: '#f9731620' }]}>
               <Ionicons name="document-text-outline" size={22} color="#f97316" />
@@ -118,7 +124,13 @@ export default function IntegrationsScreen() {
         </TouchableOpacity>
 
 {/* Google Calendar öne çıkan kart */}
-        <TouchableOpacity style={[s.featureCard, isGoogleConnected && s.featureCardConnected]} onPress={() => setGoogleModal(true)}>
+        <TouchableOpacity
+          style={[s.featureCard, isGoogleConnected && s.featureCardConnected]}
+          onPress={() => setGoogleModal(true)}
+          accessibilityRole="button"
+          accessibilityLabel={isGoogleConnected ? 'Takvim, bağlı' : 'Takvim, bağlanmaya hazır'}
+          accessibilityHint="Google Calendar entegrasyon ayarlarını açar"
+        >
           <View style={s.featureLeft}>
             <View style={[s.featureIcon, { backgroundColor: '#4285F420' }]}> 
               <Ionicons name="calendar-outline" size={22} color="#4285F4" />
@@ -141,7 +153,7 @@ export default function IntegrationsScreen() {
 
 
         <View style={s.hint}>
-          <Ionicons name="information-circle-outline" size={16} color="#56544B" />
+          <Ionicons name="information-circle-outline" size={16} color="#56544B" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <Text style={s.hintText}>Notion ve Google Calendar bağlantısı hazır. Diğer entegrasyonlar yakında geliyor.</Text>
         </View>
       </ScrollView>
@@ -154,13 +166,18 @@ export default function IntegrationsScreen() {
               <>
                 <View style={s.sheetHeader}>
                   <View style={[s.sheetIcon, { backgroundColor: selected.accentColor + '20' }]}>
-                    <Ionicons name={selected.iconName as any} size={24} color={selected.accentColor} />
+                    <Ionicons name={selected.iconName as any} size={24} color={selected.accentColor} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                   </View>
                   <View style={s.sheetTitleWrap}>
                     <Text style={s.sheetTitle}>{selected.title}</Text>
                     <Text style={s.sheetDesc} numberOfLines={2}>{selected.description}</Text>
                   </View>
-                  <TouchableOpacity onPress={() => setSelected(null)} style={s.closeBtn}>
+                  <TouchableOpacity
+                    onPress={() => setSelected(null)}
+                    style={s.closeBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Kapat"
+                  >
                     <Ionicons name="close" size={22} color="#827E72" />
                   </TouchableOpacity>
                 </View>
@@ -187,13 +204,18 @@ export default function IntegrationsScreen() {
           <View style={[s.sheet, { maxHeight: '70%' }]}>
             <View style={s.sheetHeader}>
               <View style={[s.sheetIcon, { backgroundColor: '#f9731620' }]}>
-                <Ionicons name="document-text-outline" size={24} color="#f97316" />
+                <Ionicons name="document-text-outline" size={24} color="#f97316" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
               </View>
               <View style={s.sheetTitleWrap}>
                 <Text style={s.sheetTitle}>Notion</Text>
                 <Text style={s.sheetDesc}>{isConnected ? connection!.workspaceName : 'Hesabınızla bağlayın'}</Text>
               </View>
-              <TouchableOpacity onPress={() => setNotionModal(false)} style={s.closeBtn}>
+              <TouchableOpacity
+                onPress={() => setNotionModal(false)}
+                style={s.closeBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Kapat"
+              >
                 <Ionicons name="close" size={22} color="#827E72" />
               </TouchableOpacity>
             </View>
@@ -205,7 +227,7 @@ export default function IntegrationsScreen() {
                 <>
                   <View style={s.connectedBanner}>
                     <View style={s.connectedIconWrap}>
-                      <Ionicons name="checkmark-circle" size={28} color="#87A678" />
+                      <Ionicons name="checkmark-circle" size={28} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.connectedTitle}>{connection!.workspaceName}</Text>
@@ -214,12 +236,22 @@ export default function IntegrationsScreen() {
                   </View>
 
                   <View style={s.dbLinks}>
-                    <TouchableOpacity style={s.dbLink} onPress={() => Linking.openURL(connection!.habitsUrl)}>
+                    <TouchableOpacity
+                      style={s.dbLink}
+                      onPress={() => Linking.openURL(connection!.habitsUrl)}
+                      accessibilityRole="link"
+                      accessibilityLabel="Alışkanlık Takibi veritabanını Notion'da aç"
+                    >
                       <Ionicons name="checkmark-circle-outline" size={16} color="#87A678" />
                       <Text style={s.dbLinkText}>Alışkanlık Takibi</Text>
                       <Ionicons name="open-outline" size={14} color="#56544B" />
                     </TouchableOpacity>
-                    <TouchableOpacity style={s.dbLink} onPress={() => Linking.openURL(connection!.tasksUrl)}>
+                    <TouchableOpacity
+                      style={s.dbLink}
+                      onPress={() => Linking.openURL(connection!.tasksUrl)}
+                      accessibilityRole="link"
+                      accessibilityLabel="Görevler veritabanını Notion'da aç"
+                    >
                       <Ionicons name="list-outline" size={16} color="#D97757" />
                       <Text style={s.dbLinkText}>Görevler</Text>
                       <Ionicons name="open-outline" size={14} color="#56544B" />
@@ -227,8 +259,8 @@ export default function IntegrationsScreen() {
                   </View>
 
                   {notionStatus === 'error' && notionError && (
-                    <View style={s.errorBox}>
-                      <Ionicons name="warning-outline" size={15} color="#C76A6A" />
+                    <View style={s.errorBox} accessibilityRole="alert">
+                      <Ionicons name="warning-outline" size={15} color="#C76A6A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       <Text style={s.errorText}>{notionError}</Text>
                     </View>
                   )}
@@ -237,6 +269,9 @@ export default function IntegrationsScreen() {
                     style={[s.primaryBtn, notionStatus === 'syncing' && s.btnDisabled]}
                     onPress={handleSync}
                     disabled={notionStatus === 'syncing'}
+                    accessibilityRole="button"
+                    accessibilityLabel={notionStatus === 'syncing' ? 'Senkronlanıyor' : 'Bugünü Notion ile senkronla'}
+                    accessibilityState={{ disabled: notionStatus === 'syncing', busy: notionStatus === 'syncing' }}
                   >
                     {notionStatus === 'syncing'
                       ? <ActivityIndicator size="small" color="#fff" />
@@ -246,7 +281,12 @@ export default function IntegrationsScreen() {
                     </Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={s.secondaryBtn} onPress={handleDisconnect}>
+                  <TouchableOpacity
+                    style={s.secondaryBtn}
+                    onPress={handleDisconnect}
+                    accessibilityRole="button"
+                    accessibilityLabel="Notion bağlantısını kes"
+                  >
                     <Text style={s.secondaryBtnText}>Bağlantıyı Kes</Text>
                   </TouchableOpacity>
                 </>
@@ -261,9 +301,9 @@ export default function IntegrationsScreen() {
                       { icon: 'sync-outline', color: '#f97316', label: 'Günlük otomatik sync' },
                     ].map(f => (
                       <View key={f.label} style={s.previewRow}>
-                        <Ionicons name={f.icon as any} size={18} color={f.color} />
+                        <Ionicons name={f.icon as any} size={18} color={f.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                         <Text style={s.previewLabel}>{f.label}</Text>
-                        <Ionicons name="checkmark" size={14} color="#56544B" />
+                        <Ionicons name="checkmark" size={14} color="#56544B" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       </View>
                     ))}
                   </View>
@@ -273,8 +313,8 @@ export default function IntegrationsScreen() {
                   </Text>
 
                   {notionStatus === 'error' && notionError && (
-                    <View style={s.errorBox}>
-                      <Ionicons name="warning-outline" size={15} color="#C76A6A" />
+                    <View style={s.errorBox} accessibilityRole="alert">
+                      <Ionicons name="warning-outline" size={15} color="#C76A6A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       <Text style={s.errorText}>{notionError}</Text>
                     </View>
                   )}
@@ -283,6 +323,9 @@ export default function IntegrationsScreen() {
                     style={[s.primaryBtn, { backgroundColor: '#f97316' }, notionStatus === 'connecting' && s.btnDisabled]}
                     onPress={handleConnect}
                     disabled={notionStatus === 'connecting'}
+                    accessibilityRole="button"
+                    accessibilityLabel={notionStatus === 'connecting' ? 'Notion’a bağlanılıyor' : 'Notion ile bağlan'}
+                    accessibilityState={{ disabled: notionStatus === 'connecting', busy: notionStatus === 'connecting' }}
                   >
                     {notionStatus === 'connecting'
                       ? <ActivityIndicator size="small" color="#fff" />
@@ -304,13 +347,18 @@ export default function IntegrationsScreen() {
           <View style={[s.sheet, { maxHeight: '70%' }]}> 
             <View style={s.sheetHeader}>
               <View style={[s.sheetIcon, { backgroundColor: '#4285F420' }]}> 
-                <Ionicons name="calendar-outline" size={24} color="#4285F4" />
+                <Ionicons name="calendar-outline" size={24} color="#4285F4" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
               </View>
               <View style={s.sheetTitleWrap}>
                 <Text style={s.sheetTitle}>Google Calendar</Text>
                 <Text style={s.sheetDesc}>{isGoogleConnected ? googleConnection?.calendarName : 'Hesabınızla bağlayın'}</Text>
               </View>
-              <TouchableOpacity onPress={() => setGoogleModal(false)} style={s.closeBtn}>
+              <TouchableOpacity
+                onPress={() => setGoogleModal(false)}
+                style={s.closeBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Kapat"
+              >
                 <Ionicons name="close" size={22} color="#827E72" />
               </TouchableOpacity>
             </View>
@@ -321,7 +369,7 @@ export default function IntegrationsScreen() {
                 <>
                   <View style={s.connectedBanner}>
                     <View style={s.connectedIconWrap}>
-                      <Ionicons name="checkmark-circle" size={28} color="#87A678" />
+                      <Ionicons name="checkmark-circle" size={28} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.connectedTitle}>{googleConnection?.calendarName}</Text>
@@ -330,13 +378,18 @@ export default function IntegrationsScreen() {
                   </View>
 
                   {googleStatus === 'error' && googleError && (
-                    <View style={s.errorBox}>
-                      <Ionicons name="warning-outline" size={15} color="#C76A6A" />
+                    <View style={s.errorBox} accessibilityRole="alert">
+                      <Ionicons name="warning-outline" size={15} color="#C76A6A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       <Text style={s.errorText}>{googleError}</Text>
                     </View>
                   )}
 
-                  <TouchableOpacity style={s.secondaryBtn} onPress={handleGoogleDisconnect}>
+                  <TouchableOpacity
+                    style={s.secondaryBtn}
+                    onPress={handleGoogleDisconnect}
+                    accessibilityRole="button"
+                    accessibilityLabel="Google Calendar bağlantısını kes"
+                  >
                     <Text style={s.secondaryBtnText}>Bağlantıyı Kes</Text>
                   </TouchableOpacity>
                 </>
@@ -349,9 +402,9 @@ export default function IntegrationsScreen() {
                       { icon: 'sync-outline', color: '#f97316', label: 'Tek tuşla OAuth bağlanması' },
                     ].map(f => (
                       <View key={f.label} style={s.previewRow}>
-                        <Ionicons name={f.icon as any} size={18} color={f.color} />
+                        <Ionicons name={f.icon as any} size={18} color={f.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                         <Text style={s.previewLabel}>{f.label}</Text>
-                        <Ionicons name="checkmark" size={14} color="#56544B" />
+                        <Ionicons name="checkmark" size={14} color="#56544B" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       </View>
                     ))}
                   </View>
@@ -361,8 +414,8 @@ export default function IntegrationsScreen() {
                   </Text>
 
                   {googleStatus === 'error' && googleError && (
-                    <View style={s.errorBox}>
-                      <Ionicons name="warning-outline" size={15} color="#C76A6A" />
+                    <View style={s.errorBox} accessibilityRole="alert">
+                      <Ionicons name="warning-outline" size={15} color="#C76A6A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       <Text style={s.errorText}>{googleError}</Text>
                     </View>
                   )}
@@ -371,6 +424,9 @@ export default function IntegrationsScreen() {
                     style={[s.primaryBtn, { backgroundColor: '#4285F4' }, googleStatus === 'connecting' && s.btnDisabled]}
                     onPress={handleGoogleConnect}
                     disabled={googleStatus === 'connecting'}
+                    accessibilityRole="button"
+                    accessibilityLabel={googleStatus === 'connecting' ? 'Google Calendar’a bağlanılıyor' : 'Google Calendar ile bağlan'}
+                    accessibilityState={{ disabled: googleStatus === 'connecting', busy: googleStatus === 'connecting' }}
                   >
                     {googleStatus === 'connecting'
                       ? <ActivityIndicator size="small" color="#fff" />

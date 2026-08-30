@@ -17,6 +17,10 @@ const PROMPTS = [
   'Bugünün en iyi anı ne oldu?',
 ];
 
+// Tarih düğmeleri ekranda "Paz 24" gibi kısaltılmış görünür; ekran okuyucu için
+// günün tam adı gerekir.
+const DAY_NAMES_TR = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+
 export default function JournalScreen() {
   const router = useRouter();
   const today = todayLocal();
@@ -56,6 +60,8 @@ export default function JournalScreen() {
               onPress={() => router.push('/screens/journal-archive' as any)}
               style={s.archiveBtn}
               hitSlop={8}
+              accessibilityRole="link"
+              accessibilityLabel="Günlük arşivini aç"
             >
               <Ionicons name="library-outline" size={16} color="#ec4899" />
               <Text style={s.archiveBtnText}>Arşiv</Text>
@@ -77,6 +83,12 @@ export default function JournalScreen() {
                   key={d}
                   style={[s.dateBtn, isSelected && s.dateBtnActive]}
                   onPress={() => setSelectedDate(d)}
+                  accessibilityRole="tab"
+                  accessibilityLabel={
+                    `${DAY_NAMES_TR[dt.getDay()]} ${dt.getDate()}` +
+                    (hasEntry ? ', kayıt var' : ', kayıt yok')
+                  }
+                  accessibilityState={{ selected: isSelected }}
                 >
                   <Text style={[s.dateDayName, isSelected && s.dateDayNameActive]}>
                     {['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'][dt.getDay()]}
@@ -97,6 +109,9 @@ export default function JournalScreen() {
                   key={m.value}
                   style={[s.moodBtn, mood === m.value && { backgroundColor: m.color + '25', borderColor: m.color }]}
                   onPress={() => setMood(mood === m.value ? null : m.value)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`Ruh hali: ${m.label}`}
+                  accessibilityState={{ selected: mood === m.value, checked: mood === m.value }}
                 >
                   <Text style={s.moodEmoji}>{m.emoji}</Text>
                   <Text style={[s.moodLabel, mood === m.value && { color: m.color }]}>{m.label}</Text>
@@ -109,7 +124,7 @@ export default function JournalScreen() {
           <View style={s.writeCard}>
             {todayEntry?.ai_summary && (
               <View style={s.aiChip}>
-                <Ionicons name="sparkles" size={11} color="#ec4899" />
+                <Ionicons name="sparkles" size={11} color="#ec4899" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 <Text style={s.aiChipText}>AI özeti içeriyor</Text>
               </View>
             )}
@@ -130,6 +145,9 @@ export default function JournalScreen() {
             style={[s.saveBtn, saved && s.saveBtnDone, !content.trim() && s.saveBtnDisabled]}
             onPress={handleSave}
             disabled={!content.trim()}
+            accessibilityRole="button"
+            accessibilityLabel={saved ? 'Günlük kaydedildi' : 'Günlüğü kaydet'}
+            accessibilityState={{ disabled: !content.trim() }}
           >
             {saved ? (
               <>
@@ -144,7 +162,7 @@ export default function JournalScreen() {
           {/* AI İçgörüleri — dönem butonları */}
           <View style={s.insightsCard}>
             <View style={s.insightsTop}>
-              <Ionicons name="bulb-outline" size={15} color="#8b5cf6" />
+              <Ionicons name="bulb-outline" size={15} color="#8b5cf6" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
               <Text style={s.insightsTitle}>AI İÇGÖRÜLERİ</Text>
             </View>
             <Text style={s.insightsHint}>Yazdıklarından dönemsel içgörü al</Text>
@@ -155,6 +173,8 @@ export default function JournalScreen() {
                     key={key}
                     style={s.insightBtn}
                     onPress={() => router.push(`/screens/journal-insights?period=${key}` as any)}
+                    accessibilityRole="link"
+                    accessibilityLabel={`${label} AI içgörülerini aç`}
                   >
                     <Text style={s.insightBtnText}>{label}</Text>
                   </TouchableOpacity>
@@ -171,6 +191,8 @@ export default function JournalScreen() {
                 <TouchableOpacity
                   style={s.archiveLink}
                   onPress={() => router.push('/screens/journal-archive' as any)}
+                  accessibilityRole="link"
+                  accessibilityLabel="Tüm günlük arşivini aç"
                 >
                   <Ionicons name="library-outline" size={13} color="#ec4899" />
                   <Text style={s.archiveLinkText}>Tüm arşiv</Text>
@@ -181,13 +203,16 @@ export default function JournalScreen() {
                   key={e.id}
                   style={s.historyItem}
                   onPress={() => setSelectedDate(e.date)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${e.date} kaydını aç`}
+                  accessibilityHint="Bu günün girdisini düzenlemek için açar"
                 >
                   <View style={s.historyLeft}>
                     <View style={s.historyDateRow}>
                       <Text style={s.historyDate}>{e.date}</Text>
                       {e.ai_summary && (
                         <View style={s.aiChipSm}>
-                          <Ionicons name="sparkles" size={9} color="#ec4899" />
+                          <Ionicons name="sparkles" size={9} color="#ec4899" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                           <Text style={s.aiChipSmText}>AI</Text>
                         </View>
                       )}

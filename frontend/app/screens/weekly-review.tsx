@@ -281,20 +281,28 @@ export default function WeeklyReviewScreen() {
       <ScrollView contentContainerStyle={s.content}>
         <View style={s.hero}>
           <View style={s.heroIcon}>
-            <Ionicons name="bar-chart-outline" size={28} color="#14b8a6" />
+            <Ionicons name="bar-chart-outline" size={28} color="#14b8a6" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.heroTitle}>Haftalık Rapor</Text>
+            <Text style={s.heroTitle} accessibilityRole="header">Haftalık Rapor</Text>
             <Text style={s.heroDates}>{start} - {end}</Text>
           </View>
           <View style={s.weekNav}>
-            <TouchableOpacity onPress={() => setWeekOffset((offset) => offset + 1)} style={s.navBtn}>
+            <TouchableOpacity
+              onPress={() => setWeekOffset((offset) => offset + 1)}
+              style={s.navBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Önceki hafta"
+            >
               <Ionicons name="chevron-back" size={18} color="#BFBBAE" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setWeekOffset((offset) => Math.max(0, offset - 1))}
               style={[s.navBtn, isCurrentWeek && s.navBtnDisabled]}
               disabled={isCurrentWeek}
+              accessibilityRole="button"
+              accessibilityLabel="Sonraki hafta"
+              accessibilityState={{ disabled: isCurrentWeek }}
             >
               <Ionicons name="chevron-forward" size={18} color={isCurrentWeek ? '#56544B' : '#BFBBAE'} />
             </TouchableOpacity>
@@ -357,7 +365,7 @@ export default function WeeklyReviewScreen() {
             <Text style={s.sectionTitle}>BU HAFTA TAMAMLANANLAR</Text>
             {completedTasks.slice(0, 5).map((task) => (
               <View key={task.id} style={s.taskItem}>
-                <Ionicons name="checkmark-circle" size={16} color="#87A678" />
+                <Ionicons name="checkmark-circle" size={16} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 <Text style={s.taskTitle} numberOfLines={1}>{task.title}</Text>
               </View>
             ))}
@@ -384,7 +392,14 @@ export default function WeeklyReviewScreen() {
         </View>
 
         {isCurrentWeek && (
-          <TouchableOpacity style={[s.saveBtn, saving && s.saveBtnLoading]} onPress={handleSave} disabled={saving}>
+          <TouchableOpacity
+            style={[s.saveBtn, saving && s.saveBtnLoading]}
+            onPress={handleSave}
+            disabled={saving}
+            accessibilityRole="button"
+            accessibilityLabel={saving ? 'Rapor kaydediliyor' : savedAt ? `Raporu güncelle, son kayıt ${savedAt}` : 'Raporu kaydet'}
+            accessibilityState={{ disabled: saving, busy: saving }}
+          >
             {saving ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : savedAt ? (
@@ -400,7 +415,7 @@ export default function WeeklyReviewScreen() {
 
         {!isCurrentWeek && savedAt && (
           <View style={s.savedBadge}>
-            <Ionicons name="checkmark-circle" size={16} color="#87A678" />
+            <Ionicons name="checkmark-circle" size={16} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.savedBadgeText}>Bu hafta kaydedildi - {savedAt}</Text>
           </View>
         )}

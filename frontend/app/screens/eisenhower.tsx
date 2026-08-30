@@ -46,7 +46,7 @@ function QuadrantBox({
   return (
     <View style={[s.quadrant, { borderColor: q.color + '40' }]}>
       <View style={s.qHeader}>
-        <Ionicons name={q.icon as any} size={14} color={q.color} />
+        <Ionicons name={q.icon as any} size={14} color={q.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         <Text style={[s.qLabel, { color: q.color }]}>{q.label}</Text>
       </View>
       <Text style={s.qAction}>{q.action}</Text>
@@ -54,7 +54,14 @@ function QuadrantBox({
         <Text style={s.qEmpty}>— boş —</Text>
       ) : (
         tasks.map((t) => (
-          <TouchableOpacity key={t.id} style={s.taskChip} onPress={() => onAssign(t)}>
+          <TouchableOpacity
+            key={t.id}
+            style={s.taskChip}
+            onPress={() => onAssign(t)}
+            accessibilityRole="button"
+            accessibilityLabel={`${t.title} — ${q.label} kadranında`}
+            accessibilityHint="Kadranı değiştirmek için aç"
+          >
             <View style={[s.dot, { backgroundColor: PRIORITY_COLOR[t.priority] }]} />
             <Text style={s.taskTitle} numberOfLines={2}>{t.title}</Text>
           </TouchableOpacity>
@@ -83,7 +90,14 @@ function HabitQuadrantBox({
         <Text style={s.qEmpty}>— boş —</Text>
       ) : (
         habits.map((h) => (
-          <TouchableOpacity key={h.id} style={s.taskChip} onPress={onTap}>
+          <TouchableOpacity
+            key={h.id}
+            style={s.taskChip}
+            onPress={onTap}
+            accessibilityRole="button"
+            accessibilityLabel={`${h.name}, ${STATUS_LABEL[h.status] ?? h.status} — ${m.label}`}
+            accessibilityHint="Alışkanlıklar sekmesini açar"
+          >
             <View style={[s.dot, { backgroundColor: h.color ?? '#D97757', borderRadius: 2 }]} />
             <View style={{ flex: 1 }}>
               <Text style={s.taskTitle} numberOfLines={1}>{h.name}</Text>
@@ -135,7 +149,14 @@ export default function EisenhowerScreen() {
           {(['tasks', 'habits'] as const).map((mk) => {
             const sel = mode === mk;
             return (
-              <TouchableOpacity key={mk} style={[s.toggleBtn, sel && s.toggleBtnSel]} onPress={() => setMode(mk)}>
+              <TouchableOpacity
+                key={mk}
+                style={[s.toggleBtn, sel && s.toggleBtnSel]}
+                onPress={() => setMode(mk)}
+                accessibilityRole="tab"
+                accessibilityLabel={mk === 'tasks' ? 'Görev matrisi' : 'Alışkanlık matrisi'}
+                accessibilityState={{ selected: sel }}
+              >
                 <Ionicons name={mk === 'tasks' ? 'checkbox-outline' : 'repeat-outline'} size={15} color={sel ? '#fff' : '#BFBBAE'} />
                 <Text style={[s.toggleText, sel && s.toggleTextSel]}>{mk === 'tasks' ? 'Görevler' : 'Alışkanlıklar'}</Text>
               </TouchableOpacity>
@@ -150,7 +171,12 @@ export default function EisenhowerScreen() {
 
         {/* Sınıflandırılmamış görev banner — yalnız görev modu */}
         {isTasks && unassigned.length > 0 && (
-          <TouchableOpacity style={s.unassignedBanner} onPress={() => setPickModal(true)}>
+          <TouchableOpacity
+            style={s.unassignedBanner}
+            onPress={() => setPickModal(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`${unassigned.length} görev sınıflandırılmadı, yerleştir`}
+          >
             <Ionicons name="alert-circle-outline" size={16} color="#D4A84A" />
             <Text style={s.unassignedText}>{unassigned.length} görev sınıflandırılmadı</Text>
             <Text style={s.unassignedLink}>Yerleştir →</Text>
@@ -212,6 +238,12 @@ export default function EisenhowerScreen() {
                 key={q.key}
                 style={[s.modalOption, assignModal?.quadrant === q.key && s.modalOptionActive]}
                 onPress={() => assignModal && assign(assignModal, q.key)}
+                accessibilityRole="radio"
+                accessibilityLabel={`${q.label} — ${q.action}`}
+                accessibilityState={{
+                  selected: assignModal?.quadrant === q.key,
+                  checked: assignModal?.quadrant === q.key,
+                }}
               >
                 <Ionicons name={q.icon as any} size={16} color={q.color} />
                 <View style={{ flex: 1 }}>
@@ -226,6 +258,8 @@ export default function EisenhowerScreen() {
             <TouchableOpacity
               style={s.modalCancel}
               onPress={() => assignModal && assign(assignModal, null)}
+              accessibilityRole="button"
+              accessibilityLabel="Sınıflandırmayı kaldır"
             >
               <Text style={s.modalCancelText}>Sınıflandırmayı Kaldır</Text>
             </TouchableOpacity>
@@ -239,7 +273,11 @@ export default function EisenhowerScreen() {
           <View style={[s.modalCard, { maxHeight: '80%' }]}>
             <View style={s.modalHead}>
               <Text style={s.modalTitle}>Sınıflandırılmamış Görevler</Text>
-              <TouchableOpacity onPress={() => setPickModal(false)}>
+              <TouchableOpacity
+                onPress={() => setPickModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Kapat"
+              >
                 <Ionicons name="close" size={20} color="#827E72" />
               </TouchableOpacity>
             </View>
@@ -247,7 +285,12 @@ export default function EisenhowerScreen() {
               data={unassigned}
               keyExtractor={(i) => i.id}
               renderItem={({ item }) => (
-                <TouchableOpacity style={s.pickRow} onPress={() => { setPickModal(false); setAssignModal(item); }}>
+                <TouchableOpacity
+                  style={s.pickRow}
+                  onPress={() => { setPickModal(false); setAssignModal(item); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.title} görevini kadrana yerleştir`}
+                >
                   <View style={[s.dot, { backgroundColor: PRIORITY_COLOR[item.priority] }]} />
                   <Text style={s.pickTitle} numberOfLines={1}>{item.title}</Text>
                   <Ionicons name="chevron-forward" size={14} color="#56544B" />

@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { useJournalStore, JournalEntry } from '../../store/journalStore';
 import { moodMeta } from '../../lib/journalMoods';
 import { computeJournalStats } from '../../lib/journalStats';
+import { EmptyState } from '../../components/ui';
 
 const DAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -62,12 +63,13 @@ export default function JournalArchiveScreen() {
         </View>
 
         {entries.length === 0 ? (
-          <View style={s.empty}>
-            <Ionicons name="book-outline" size={40} color="#56544B" />
-            <Text style={s.emptyText}>
-              Henüz günlük kaydın yok. Bir şeyler yazdıkça eski sayfaların burada birikecek.
-            </Text>
-          </View>
+          // Defterin sakin tonuna uyan editöryel boş durum (ikon kabı yok, serif italik)
+          <EmptyState
+            variant="editorial"
+            icon="book-outline"
+            title="Henüz günlük kaydın yok"
+            hint="Bir şeyler yazdıkça eski sayfaların burada birikecek."
+          />
         ) : (
           sections.map((sec) => (
             <View key={sec.key} style={s.section}>
@@ -82,6 +84,13 @@ export default function JournalArchiveScreen() {
                     style={s.page}
                     activeOpacity={0.8}
                     onPress={() => router.push(`/screens/journal-reader?date=${e.date}` as any)}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      `${dt.getDate()} ${MONTHS[dt.getMonth()]} ${dt.getFullYear()} kaydı` +
+                      (m ? `, ${m.label}` : '') +
+                      (e.ai_summary ? ', AI özeti var' : '')
+                    }
+                    accessibilityHint="Bu günün defter sayfasını açar"
                   >
                     {/* sol tarih şeridi */}
                     <View style={s.spine}>

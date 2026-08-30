@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl,
+  View, Text, StyleSheet, ScrollView, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { fetchCreditTransactions } from '../../repositories/creditRepository';
+import { EmptyState, Skeleton } from '../../components/ui';
 
 type Tx = {
   id: string;
@@ -53,8 +54,23 @@ export default function CreditHistoryScreen() {
   const earned = txs.filter((t) => t.delta > 0).reduce((a, t) => a + t.delta, 0);
   const spent = txs.filter((t) => t.delta < 0).reduce((a, t) => a + Math.abs(t.delta), 0);
 
+  // Gelen içeriğin şekli belli: 3'lü özet şeridi + işlem satırları.
+  // Spinner yerine aynı geometriyi kuran yer tutucu → yükleme bitince sıçrama olmuyor.
   if (loading) {
-    return <View style={s.center}><ActivityIndicator size="large" color="#D97757" /></View>;
+    return (
+      <SafeAreaView style={s.safe} edges={['bottom']}>
+        <View style={s.content}>
+          <View style={s.summary}>
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} height={74} style={{ flex: 1 }} />
+            ))}
+          </View>
+          {Array.from({ length: 6 }, (_, i) => (
+            <Skeleton key={i} height={58} style={{ marginBottom: 8 }} />
+          ))}
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -66,28 +82,28 @@ export default function CreditHistoryScreen() {
         {/* Özet */}
         <View style={s.summary}>
           <View style={s.sumCard}>
-            <Ionicons name="flash" size={16} color="#D4A84A" />
+            <Ionicons name="flash" size={16} color="#D4A84A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.sumVal}>{focusPoints}</Text>
             <Text style={s.sumLabel}>Mevcut</Text>
           </View>
           <View style={s.sumCard}>
-            <Ionicons name="add-circle-outline" size={16} color="#87A678" />
+            <Ionicons name="add-circle-outline" size={16} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={[s.sumVal, { color: '#87A678' }]}>{earned}</Text>
             <Text style={s.sumLabel}>Kazanılan</Text>
           </View>
           <View style={s.sumCard}>
-            <Ionicons name="remove-circle-outline" size={16} color="#C76A6A" />
+            <Ionicons name="remove-circle-outline" size={16} color="#C76A6A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={[s.sumVal, { color: '#C76A6A' }]}>{spent}</Text>
             <Text style={s.sumLabel}>Harcanan</Text>
           </View>
         </View>
 
         {txs.length === 0 ? (
-          <View style={s.empty}>
-            <Ionicons name="receipt-outline" size={44} color="#56544B" />
-            <Text style={s.emptyText}>Henüz işlem yok</Text>
-            <Text style={s.emptyHint}>AI kullandıkça veya abonelik aldıkça burada görünür</Text>
-          </View>
+          <EmptyState
+            icon="receipt-outline"
+            title="Henüz işlem yok"
+            hint="AI kullandıkça veya abonelik aldıkça burada görünür"
+          />
         ) : (
           txs.map((t) => {
             const m = reasonMeta(t.reason);
@@ -95,7 +111,7 @@ export default function CreditHistoryScreen() {
             return (
               <View key={t.id} style={s.row}>
                 <View style={[s.rowIcon, { backgroundColor: (positive ? '#87A678' : '#C76A6A') + '18' }]}>
-                  <Ionicons name={m.icon as any} size={16} color={positive ? '#87A678' : '#C76A6A'} />
+                  <Ionicons name={m.icon as any} size={16} color={positive ? '#87A678' : '#C76A6A'} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.rowLabel}>{m.label}</Text>
