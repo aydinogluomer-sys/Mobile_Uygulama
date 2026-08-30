@@ -1,3 +1,4 @@
+import { currentUser } from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -5,7 +6,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format, startOfMonth, endOfMonth, subMonths, subWeeks, eachDayOfInterval } from 'date-fns';
-import { supabase, type Habit } from '../../lib/supabase';
+import type { Habit } from '../../lib/supabase';
 import { useTaskStore, type Task } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore } from '../../store/journalStore';
@@ -222,7 +223,7 @@ export default function MonthlyReviewScreen() {
   }
 
   async function loadMonthMetrics() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await currentUser();
     if (!user) {
       setHabitCompletionRate(0);
       setFocusMinutes(0);

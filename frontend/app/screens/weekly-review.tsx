@@ -1,9 +1,10 @@
+import { currentUser } from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, startOfWeek, endOfWeek, subWeeks, eachDayOfInterval } from 'date-fns';
-import { supabase, type Habit } from '../../lib/supabase';
+import type { Habit } from '../../lib/supabase';
 import { useTaskStore, type Task } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore } from '../../store/journalStore';
@@ -180,7 +181,7 @@ export default function WeeklyReviewScreen() {
   }, [weekOffset, habits.length, tasks.length]);
 
   async function loadReview() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await currentUser();
     if (!user) {
       setAnswers({});
       setSavedAt(null);
@@ -204,7 +205,7 @@ export default function WeeklyReviewScreen() {
   }
 
   async function loadWeekMetrics() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await currentUser();
     if (!user) {
       setHabitCompletionRate(0);
       setFocusMinutes(0);
@@ -256,7 +257,7 @@ export default function WeeklyReviewScreen() {
   async function handleSave() {
     setSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await currentUser();
       if (!user) throw new Error('Oturum bulunamadı');
 
       const res = await upsertWeeklyReview({

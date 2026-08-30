@@ -1,9 +1,11 @@
 import { create } from 'zustand';
-import { supabase, Profile, ProfileBadge, LeaderboardRow } from '../lib/supabase';
+import type { Profile, ProfileBadge, LeaderboardRow } from '../lib/supabase';
 import {
   fetchBadges as repoFetchBadges,
   fetchOrCreateProfile,
   updateUsername,
+  fetchLeaderboard as repoFetchLeaderboard,
+  fetchMyRank as repoFetchMyRank,
 } from '../repositories/profileRepository';
 
 export type LeaderboardScope = 'global' | 'weekly';
@@ -53,16 +55,14 @@ export const useProfileStore = create<ProfileStore>((set, get) => ({
   fetchLeaderboard: async (scope) => {
     const s = scope ?? get().scope;
     set({ lbLoading: true, scope: s });
-    const fn = s === 'weekly' ? 'get_weekly_leaderboard' : 'get_global_leaderboard';
-    const { data } = await supabase.rpc(fn, { limit_val: 50 });
-    set({ leaderboard: (data as LeaderboardRow[]) ?? [], lbLoading: false });
+    const res = await repoFetchLeaderboard<LeaderboardRow>(s);
+    // A failed read used to render as an empty board -- indistinguishable
+    // from "nobody has any XP yet". The previous list is kept instead.
+    set(res.ok ? { leaderboard: res.data, lbLoading: false } : { lbLoading: false });
   },
 
   fetchMyRank: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data } = await supabase.rpc('get_user_rank', { target_user_id: user.id });
-    const row = Array.isArray(data) ? data[0] : null;
-    set({ myRank: row?.rank ?? null });
+    const res = await repoFetchMyRank();
+    if (res.ok) set({ myRank: res.data });
   },
 }));

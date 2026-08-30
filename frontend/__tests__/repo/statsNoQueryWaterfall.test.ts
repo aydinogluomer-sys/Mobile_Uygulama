@@ -80,12 +80,16 @@ describe('§28 stats dashboard does not waterfall its queries', () => {
     expect(strays).toEqual([]);
   });
 
-  it('the only sequential await before the batch is the auth gate', () => {
-    // `getUser()` legitimately comes first — it is a guard, and everything
-    // after it is pointless if there is no session. One round trip, on purpose.
+  it('the only sequential await before the batch is the session gate', () => {
+    // The guard legitimately comes first — everything after it is pointless
+    // with no session. It used to be `supabase.auth.getUser()`, which issues
+    // GET /auth/v1/user on every call; it is now `currentUser()`, which reads
+    // the persisted session locally. The invariant this test protects is
+    // unchanged (exactly ONE sequential await ahead of the batch) and the
+    // round trip it used to cost is gone. See lib/session.ts.
     const beforeBatch = body.slice(0, body.indexOf('Promise.all(['));
     const awaits = beforeBatch.match(/await\s+[A-Za-z.]+\(/g) ?? [];
-    expect(awaits).toEqual(['await supabase.auth.getUser(']);
+    expect(awaits).toEqual(['await currentUser(']);
   });
 
   describe('scanner sanity — these defences actually defend', () => {

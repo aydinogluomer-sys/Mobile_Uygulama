@@ -1,5 +1,5 @@
+import { getOrInitSubscription, mockActivateSubscription } from '../repositories/subscriptionRepository';
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
 import type { Tier, BillingPeriod } from '../lib/subscription';
 
 type SubRow = {
@@ -55,14 +55,14 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
 
   fetch: async () => {
     set({ loading: true });
-    const { data, error } = await supabase.rpc('get_or_init_subscription');
-    if (!error && data) apply(set, data as SubRow);
+    const res = await getOrInitSubscription();
+    if (res.ok) apply(set, res.data as unknown as SubRow);
     set({ loading: false, loaded: true });
   },
 
   refresh: async () => {
-    const { data, error } = await supabase.rpc('get_or_init_subscription');
-    if (!error && data) apply(set, data as SubRow);
+    const res = await getOrInitSubscription();
+    if (res.ok) apply(set, res.data as unknown as SubRow);
   },
 
   // AI çağrısı bakiyeyi döndürünce anlık güncelle (ekstra RPC'siz)
@@ -79,12 +79,9 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   // activate_subscription (service-role only).
   activateMock: async (tier, period) => {
     if (!__DEV__) return false;
-    const { data, error } = await supabase.rpc('mock_activate_subscription', {
-      p_tier: tier,
-      p_period: period,
-    });
-    if (error || !data) return false;
-    apply(set, data as SubRow);
+    const res = await mockActivateSubscription(tier, period);
+    if (!res.ok) return false;
+    apply(set, res.data as unknown as SubRow);
     return true;
   },
 }));

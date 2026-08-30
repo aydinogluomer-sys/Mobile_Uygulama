@@ -1,5 +1,6 @@
+import { currentUser } from '../lib/session';
 import { create } from 'zustand';
-import { supabase, HabitLog } from '../lib/supabase';
+import type { HabitLog } from '../lib/supabase';
 import { ymd } from '../lib/date';
 import {
   emptyQueueState,
@@ -547,7 +548,7 @@ export const useLogStore = create<LogStore>((set, get) => {
     },
 
     hydrateSyncQueue: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await currentUser();
       // No session means no account to load a queue for. Loading the previous
       // account's queue here is exactly the cross-account bug this guards.
       if (!user) {

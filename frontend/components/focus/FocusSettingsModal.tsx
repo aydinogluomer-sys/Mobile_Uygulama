@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { supabase } from '../../lib/supabase';
+import { currentUser } from '../../lib/session';
 import { colors } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import {
@@ -59,7 +59,7 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
     if (!visible) return;
     setTab('general');
     setFlash('');
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ''));
+    currentUser().then((u) => setEmail(u?.email ?? ''));
   }, [visible]);
 
   useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
@@ -70,7 +70,7 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
   }
 
   async function exportAll(fmt: ExportFmt) {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await currentUser();
     if (!user) return;
     const [tasksRes, sessionsRes] = await Promise.all([
       fetchAllFocusTasks(),
@@ -123,7 +123,7 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
   }
 
   async function doClearReports() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await currentUser();
     if (!user) return;
     await deleteAllFocusSessions();
     try { haptic.success(); } catch { /* yoksay */ }

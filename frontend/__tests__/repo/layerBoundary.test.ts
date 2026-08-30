@@ -27,7 +27,11 @@ const read = (rel: string) => stripComments(readFileSync(join(ROOT, rel), 'utf8'
 
 /** A VALUE import from `repositories/`. `import type` is erased and harmless. */
 const VALUE_REPO_IMPORT = /import\s+(?!type\s)\{[^}]*\}\s*from\s*['"][^'"]*repositories\//;
-const DB_CALL = /supabase\s*\.\s*from\s*\(/;
+// `.from(` was the whole check, and it missed five `supabase.rpc(...)`
+// calls across profileStore and subscriptionStore -- so this gate reported
+// the layering complete while two stores talked to the database directly.
+// An RPC is a database call.
+const DB_CALL = /supabase\s*\.\s*(from|rpc)\s*\(/;
 
 /**
  * Stores whose domain has real orchestration. Each must reach the database
@@ -58,11 +62,14 @@ const CRUD_ONLY = new Set([
   'noteStore.ts', 'projectStore.ts', 'goalStore.ts', 'okrStore.ts',
   'deepWorkStore.ts', 'readingListStore.ts', 'journalStore.ts',
   'insightsStore.ts', 'lifeAreasStore.ts', 'profileStore.ts',
+  // Was listed UI_ONLY -- "no persistence at all" -- while reading and
+  // writing the user's tier and Focus-Point balance through three RPCs.
+  'subscriptionStore.ts',
 ]);
 
 /** No persistence at all — UI preference or transient state. */
 const UI_ONLY = new Set([
-  'themeStore.ts', 'drawerStore.ts', 'commandStore.ts', 'subscriptionStore.ts',
+  'themeStore.ts', 'drawerStore.ts', 'commandStore.ts',
   'notionStore.ts', 'notionSessionStore.ts', 'spotifyStore.ts',
   'googleCalendarStore.ts', 'lifeAreasStore.ts',
 ]);

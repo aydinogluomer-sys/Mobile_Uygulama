@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { format, subDays, getDaysInMonth } from 'date-fns';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
-import { supabase } from '../../lib/supabase';
+import { currentUser } from '../../lib/session';
 import { useHabitStore } from '../../store/habitStore';
 import { useTaskStore } from '../../store/taskStore';
 import { heatmapLogs as fetchHabitLogsHeatmap, habitIdsCompletedSince as fetchHabitIdsCompletedSince } from '../../services/habitService';
@@ -149,7 +149,7 @@ export default function StatsScreen() {
     const todayStr = format(now, 'yyyy-MM-dd');
     const monthPrefix = format(now, 'yyyy-MM');
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await currentUser();
       if (!user) { setLoading(false); return; }
 
       // Plan §28: "No blocking dashboard query waterfall".

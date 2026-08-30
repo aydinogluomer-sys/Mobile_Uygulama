@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subDays, addDays } from 'date-fns';
 import { tr } from 'date-fns/locale';
-import { supabase } from '../../lib/supabase';
+import { currentUser } from '../../lib/session';
 import type { Habit, RecoveryStrategy } from '../../lib/supabase';
 import { useTaskStore } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
@@ -134,7 +134,7 @@ export default function RecoveryScreen() {
   const computeStreaks = useCallback(async (habitIds: string[]) => {
     if (habitIds.length === 0) return;
     const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await currentUser();
     if (!user) return;
     const res = await fetchHabitLogsForHabitsSince({ habitIds, since });
     if (!res.ok) return;

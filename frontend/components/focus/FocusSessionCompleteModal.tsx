@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase';
+import { currentUser } from '../../lib/session';
 import { colors, fontFamily } from '../../lib/tokens';
 import { CompletedSession, useFocusStore } from '../../store/focusStore';
 import { FocusSessionRow, inRange, summary, byTask, buckets, fmtDuration, fmtHours } from '../../lib/focusReport';
@@ -28,7 +28,7 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
     setRows([]);
     let active = true;
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await currentUser();
       if (!user) return;
       const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 8);
       // focus_sessions okunur — bkz. repositories/focusSessionRepository.ts

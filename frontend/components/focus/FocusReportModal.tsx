@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase';
+import { currentUser } from '../../lib/session';
 import { colors, fontFamily } from '../../lib/tokens';
 import { useFocusStore } from '../../store/focusStore';
 import { todayLocal } from '../../lib/date';
@@ -54,7 +54,7 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
     let active = true;
     (async () => {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await currentUser();
       if (!user) { setLoading(false); return; }
       const yearAgo = new Date();
       yearAgo.setFullYear(yearAgo.getFullYear() - 1);
