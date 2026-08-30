@@ -1,12 +1,12 @@
 # ATLAS — IMPLEMENTATION_V2 FINAL PRE-MERGE AUDIT
 
 **Branch:** `phase/final-v2-hardening`
-**Audit generated from the tree at:** `6632402` (the commit this document's
-findings were measured against — the commit that *adds* this document has a
-different SHA by construction, so no self-reference is claimed here).
+**Audit measured against the tree at:** `e4d2073` — the parent of the commit
+that carries this revision. A document cannot state its own SHA, so the commit
+adding these rows is by construction not the one they were measured on.
 **Final branch HEAD and its CI result:** see the terminal report, not this
-file.
-**Date:** 2026-08-30
+file. Nothing here claims a CI run it cannot have observed.
+**Date:** 2026-08-31
 
 Status values are only `PASS`, `BLOCKED_EXTERNAL`, `FAIL`, or `NOT_DONE`.
 Nothing here is marked from a document or a commit message; every `PASS` names
@@ -36,7 +36,7 @@ the command, query or live request that produced it.
 | **§16** | Dependency security | 2 critical, 16 high | `npm audit fix`, no `--force` | **0 critical, 9 high** — all in the build toolchain (metro, @expo/cli, image-size, postcss). Absence from the shipped bundle is now PROVEN, not asserted: string search over the 6.5 MB Hermes bundle with a positive control (`supabase` 15, `generate-routine` 1, `monthly_reviews` 1 — so the search works on `.hbc`), and `node_modules/image-size` / `require('image-size')` = 0. The one raw `image-size` hit is the Ionicons glyph `image-size-select-small` | **PASS** |
 | **§17** | Lint zero | full repo 3 err / 183 warn; `expo lint` saw only 73 of them | **0 / 0 across the whole repository** | 3 errors were an eslint env gap (`jest`, `__dirname` undeclared), not defects — declared rather than silenced. 42 hook-dependency warnings fixed on their merits, not suppressed: 30 by naming stable store actions, the rest by restructuring (clock read inside the loader, filter moved into the effect, latest-ref in the two review screens). A new test pins the zustand identity assumption the 30 rely on | **PASS** |
 | **§18** | Package manager | `yarn@1.22.22`, no yarn.lock | `npm@11.16.0`; CI comment corrected | manifest/lockfile/CI all name npm | **PASS** |
-| **§19** | Design tokens | 1572 hex literals in 56 files against a token table that already held most of them | 1139 replaced with the token holding that exact colour, in 51 files | Colour-preserving, checked not asserted: 50 files, 1690 colour terms, **0 files changed a colour**. 385 remain because they have NO token — inventing `grey5` is not a design system; they are grouped and explained in `docs/DESIGN_TOKENS.md` and capped by a ratchet. Mutation red: writing a tokened hex back out | **PASS** (the mechanical half; the 385 naming decisions are a person's call, tracked and capped) |
+| **§19** | Design tokens | 1572 hex literals in 56 files against a token table that already held most of them | 1139 replaced with the token holding that exact colour, in 51 files | Colour-preserving, checked not asserted: 50 files, 1690 colour terms, **0 files changed a colour**. 385 remain because they have NO token — inventing `grey5` is not a design system; they are grouped and explained in `docs/DESIGN_TOKENS.md` and capped by a ratchet. Mutation red: writing a tokened hex back out. NOT_DONE because 385 literals remain: the requirement is hardcoded-hex elimination and naming a token for each is a design decision, so it is not mine to close | **NOT_DONE** |
 | **§20** | Branding / store assets | installs as "frontend" with Expo's blue "e"; three icons byte-identical; deep-links as `frontend://`; launch on `#000` against a `#15140F` app; notification tint an indigo from no palette | named Atlas, own scheme, generated mark from `colors.bg`/`colors.accent`, launch colours read from tokens, 6 dead template assets deleted (1056 KB -> 18 KB) | 12 tests, mutation red on the template name returning. `docs/BRANDING.md` records the two things NOT done and why: bundle identifiers (tied to the owner's developer accounts — a guess can collide with a real listing) and real artwork (a design deliverable) | **NOT_DONE** (config and template residue fixed; bundle identifiers and artwork are the owner's) |
 | **§21** | Widget | absent | — | absent. A home-screen widget is native code — a WidgetKit extension (Swift) or an AppWidgetProvider (Kotlin) — plus a config plugin or `expo prebuild`, and it cannot run in Expo Go. This repo is managed workflow with no `ios/` or `android/` directory. I cannot build or run either platform here, so any widget I wrote would be unverified native code presented as working | **NOT_DONE** (needs a native build; deliberately not attempted rather than shipped unverified) |
 | **§22** | Crash monitoring sink | dev console only | — | no DSN provided | **BLOCKED_EXTERNAL** |
