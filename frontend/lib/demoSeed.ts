@@ -322,7 +322,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
           habit_id: 'demo-habit-1',
           source_date: ymd(plusDays(today, -1)),
           target_date: ymd(plusDays(today, 1)),
-          strategy: 'full',
+          strategy: 'complete_today',
           note: 'Demo telafi plani',
           reminder_time: '19:00',
           status: 'planned',
@@ -604,7 +604,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
         habitName: walkHabit.name,
         sourceDate: ymd(plusDays(today, -1)),
         targetDate: ymd(plusDays(today, 1)),
-        strategy: 'full',
+        strategy: 'complete_today',
         note: 'Demo telafi plani',
         reminderTime: '19:00',
       });

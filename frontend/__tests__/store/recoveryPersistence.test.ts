@@ -1,15 +1,18 @@
 /**
  * `recoveryStore` <-> `lib/recovery.ts` V2 wiring tests.  (task 1-D, W3/W4)
  *
- * AC-R01  `addPlan` still persists ONLY today's real `recovery_plans`
- *         columns -- none of the plan's new-but-unapplied-migration columns
- *         (`source_log_id`, `deficit_type`, `deficit_value`,
- *         `distributed_days`, `completed_at`) are ever sent to Supabase.
- * AC-R02  the `toLegacyRecoveryPlan`/`fromLegacyRecoveryPlan` round trip
- *         applied at the store's read/write boundary is lossless for every
- *         legacy strategy/status value -- the store's external shape is
- *         byte-identical to what was persisted (no regression from routing
- *         through the V2 adapter).
+ * AC-R01  `addPlan` PERSISTS the deficit and the day distribution.
+ *
+ *         This acceptance criterion is the inverse of the one it replaces.
+ *         The original read: "none of the plan's new-but-unapplied-migration
+ *         columns are ever sent to Supabase", and it passed — while the five
+ *         columns had existed since migration 20260825. The test was pinning
+ *         the data loss as correct behaviour, which is why nobody noticed
+ *         that a saved plan could not say what it was answering.
+ * AC-R02  there is no round trip to be lossless about. The table speaks the
+ *         domain's vocabulary (20260831_recovery_vocabulary), so a row IS a
+ *         plan; the adapter that translated `complete_today <-> full` and
+ *         `skip <-> mini` is gone.
  * AC-R03  every existing exported action keeps its current external
  *         behaviour: `addPlan` still schedules a reminder when
  *         `reminder_time` is set, `completePlan`/`skipPlan`/`deletePlan`
@@ -25,9 +28,12 @@
  * used elsewhere in this suite.
  */
 type Row = {
-  id: string; user_id: string; habit_id: string; source_date: string;
-  target_date: string; strategy: string; note: string | null;
-  reminder_time: string | null; status: string; created_at: string;
+  id: string; user_id: string; habit_id: string; source_log_id: string | null;
+  source_date: string; target_date: string;
+  deficit_type: string | null; deficit_value: number | null;
+  strategy: string; distributed_days: { date: string; value: number }[] | null;
+  note: string | null; reminder_time: string | null; status: string;
+  completed_at: string | null; created_at: string;
 };
 
 const mockDb = {
@@ -136,48 +142,75 @@ beforeEach(() => {
   useRecoveryStore.setState({ plans: [], loading: false });
 });
 
-describe('AC-R01 -- addPlan writes only real, existing columns', () => {
-  it('never sends the unapplied-migration columns to Supabase', async () => {
+describe('AC-R01 -- addPlan persists what the plan is answering', () => {
+  it('writes the deficit and the day distribution, not just the timing', async () => {
     await useRecoveryStore.getState().addPlan({
       habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04',
-      strategy: 'half', note: 'not', reminderTime: '09:00',
+      strategy: 'split_two_days', note: 'not', reminderTime: '09:00',
+      sourceLogId: 'log-1', deficitType: 'numeric', deficitValue: 2000,
+      distributedDays: [{ date: '2026-08-04', value: 1000 }, { date: '2026-08-05', value: 1000 }],
     });
+
     expect(mockDb.inserts).toHaveLength(1);
-    const payload = mockDb.inserts[0];
-    for (const forbidden of ['source_log_id', 'deficit_type', 'deficit_value', 'distributed_days', 'completed_at']) {
-      expect(Object.prototype.hasOwnProperty.call(payload, forbidden)).toBe(false);
-    }
-    expect(Object.keys(payload).sort()).toEqual(
-      ['habit_id', 'note', 'reminder_time', 'source_date', 'status', 'strategy', 'target_date', 'user_id'].sort()
-    );
+    expect(mockDb.inserts[0]).toMatchObject({
+      source_log_id: 'log-1',
+      deficit_type: 'numeric',
+      deficit_value: 2000,
+      distributed_days: [{ date: '2026-08-04', value: 1000 }, { date: '2026-08-05', value: 1000 }],
+    });
+  });
+
+  it('omits completed_at, which the table refuses on a plan that is not done', async () => {
+    await useRecoveryStore.getState().addPlan({
+      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04',
+      strategy: 'complete_today',
+    });
+    expect(Object.prototype.hasOwnProperty.call(mockDb.inserts[0], 'completed_at')).toBe(false);
+  });
+
+  it('a plan created without a known deficit stores nulls, not absent keys', async () => {
+    // Nulls say "we did not know"; missing keys would let a later reader
+    // guess. Both are honest only if they are consistent.
+    await useRecoveryStore.getState().addPlan({
+      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04',
+      strategy: 'push_tomorrow',
+    });
+    expect(mockDb.inserts[0]).toMatchObject({
+      source_log_id: null, deficit_type: null, deficit_value: null, distributed_days: null,
+    });
   });
 });
 
-describe('AC-R02 -- the V2 round trip at the store boundary is lossless', () => {
-  it.each(['full', 'half', 'mini', 'reschedule'] as const)(
-    'round-trips strategy %s unchanged through addPlan',
+describe('AC-R02 -- a row is a plan, with nothing translated away', () => {
+  it.each(['complete_today', 'push_tomorrow', 'split_two_days', 'skip'] as const)(
+    'keeps strategy %s exactly as written',
     async (strategy) => {
       const plan = await useRecoveryStore.getState().addPlan({
         habitId: 'h1', habitName: 'X', sourceDate: '2026-08-03', targetDate: '2026-08-04', strategy,
       });
       expect(plan?.strategy).toBe(strategy);
-    }
+    },
   );
 
-  it('round-trips a fetched plan (status planned) unchanged', async () => {
+  it('a fetched plan arrives with its deficit intact', async () => {
+    // Under the adapter this row came back with deficit_value stripped to
+    // null, so the recovery screen could not show what was owed.
     mockDb.rows.push({
-      id: 'p1', user_id: 'u1', habit_id: 'h1', source_date: '2026-08-01',
-      target_date: '2026-08-02', strategy: 'mini', note: null,
-      reminder_time: null, status: 'planned', created_at: 'now',
-    });
+      id: 'p1', user_id: 'u1', habit_id: 'h1', source_log_id: 'log-9',
+      source_date: '2026-08-01', target_date: '2026-08-02',
+      deficit_type: 'numeric', deficit_value: 2000,
+      strategy: 'split_two_days',
+      distributed_days: [{ date: '2026-08-02', value: 1000 }],
+      note: null, reminder_time: null, status: 'planned',
+      completed_at: null, created_at: 'now',
+    } as unknown as Row);
+
     await useRecoveryStore.getState().fetchPlans();
-    expect(useRecoveryStore.getState().plans).toEqual([
-      {
-        id: 'p1', user_id: 'u1', habit_id: 'h1', source_date: '2026-08-01',
-        target_date: '2026-08-02', strategy: 'mini', note: null,
-        reminder_time: null, status: 'planned', created_at: 'now',
-      },
-    ]);
+    const [plan] = useRecoveryStore.getState().plans;
+    expect(plan.deficit_value).toBe(2000);
+    expect(plan.deficit_type).toBe('numeric');
+    expect(plan.source_log_id).toBe('log-9');
+    expect(plan.distributed_days).toEqual([{ date: '2026-08-02', value: 1000 }]);
   });
 });
 
@@ -185,21 +218,21 @@ describe('AC-R03 -- existing actions keep their external behaviour', () => {
   it('schedules a reminder when reminder_time is set', async () => {
     const plan = await useRecoveryStore.getState().addPlan({
       habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04',
-      strategy: 'full', reminderTime: '08:30',
+      strategy: 'complete_today', reminderTime: '08:30',
     });
     expect(scheduleRecoveryReminder).toHaveBeenCalledWith(plan!.id, 'Koşu', '2026-08-04', '08:30');
   });
 
   it('does not schedule a reminder when reminder_time is absent', async () => {
     await useRecoveryStore.getState().addPlan({
-      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04', strategy: 'full',
+      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04', strategy: 'complete_today',
     });
     expect(scheduleRecoveryReminder).not.toHaveBeenCalled();
   });
 
   it('completePlan removes the plan locally and cancels its reminder', async () => {
     const plan = await useRecoveryStore.getState().addPlan({
-      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04', strategy: 'full',
+      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04', strategy: 'complete_today',
     });
     await useRecoveryStore.getState().completePlan(plan!.id);
     expect(useRecoveryStore.getState().plans).toHaveLength(0);
@@ -208,7 +241,7 @@ describe('AC-R03 -- existing actions keep their external behaviour', () => {
 
   it('skipPlan removes the plan locally and cancels its reminder', async () => {
     const plan = await useRecoveryStore.getState().addPlan({
-      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04', strategy: 'full',
+      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04', strategy: 'complete_today',
     });
     await useRecoveryStore.getState().skipPlan(plan!.id);
     expect(useRecoveryStore.getState().plans).toHaveLength(0);
@@ -217,7 +250,7 @@ describe('AC-R03 -- existing actions keep their external behaviour', () => {
 
   it('deletePlan removes the plan locally and cancels its reminder', async () => {
     const plan = await useRecoveryStore.getState().addPlan({
-      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04', strategy: 'full',
+      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04', strategy: 'complete_today',
     });
     await useRecoveryStore.getState().deletePlan(plan!.id);
     expect(useRecoveryStore.getState().plans).toHaveLength(0);
@@ -226,7 +259,7 @@ describe('AC-R03 -- existing actions keep their external behaviour', () => {
 
   it('planForHabit still finds only planned plans for the given habit', async () => {
     await useRecoveryStore.getState().addPlan({
-      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04', strategy: 'full',
+      habitId: 'h1', habitName: 'Koşu', sourceDate: '2026-08-03', targetDate: '2026-08-04', strategy: 'complete_today',
     });
     expect(useRecoveryStore.getState().planForHabit('h1')?.habit_id).toBe('h1');
     expect(useRecoveryStore.getState().planForHabit('h-none')).toBeUndefined();

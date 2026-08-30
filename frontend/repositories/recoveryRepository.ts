@@ -21,10 +21,13 @@
  * domain logic of its own.
  */
 import { supabase } from '../lib/supabase';
-import type { RecoveryPlan } from '../lib/supabase';
+import type { RecoveryPlan, RecoveryStatus, RecoveryStrategy } from '../lib/supabase';
 import { currentUserId, deleteOwned, updateOwned, type RepoResult } from './shared';
 
-const SELECT = 'id,user_id,habit_id,source_date,target_date,strategy,note,reminder_time,status,created_at';
+// All fifteen columns. The previous list stopped at `created_at` and
+// omitted the five the adapter used to drop, so a plan read back had no
+// deficit and no day distribution even once they were stored.
+const SELECT = 'id,user_id,habit_id,source_log_id,source_date,target_date,deficit_type,deficit_value,strategy,distributed_days,note,reminder_time,status,completed_at,created_at';
 
 /**
  * Every recovery plan (any status) whose `target_date` falls within
@@ -61,13 +64,21 @@ export async function fetchRecoveryPlansForReview(params: {
  */
 export async function setRecoveryPlanStatus(
   id: string,
-  status: 'done' | 'skipped' | 'completed' | 'planned',
+  status: RecoveryStatus,
 ): Promise<RepoResult<{ id: string; status: string }>> {
   const u = await currentUserId();
   if (!u.ok) return u;
+  // `completed_at` is not decoration: the table refuses a 'completed' row
+  // without one, and refuses a non-completed row that has one. Setting it
+  // here keeps the pair consistent no matter which caller flips the status,
+  // rather than leaving each of them to remember.
+  const patch: Record<string, unknown> = {
+    status,
+    completed_at: status === 'completed' ? new Date().toISOString() : null,
+  };
   return updateOwned<{ id: string; status: string }>({
     table: 'recovery_plans', id, userId: u.userId,
-    patch: { status }, columns: 'id,status',
+    patch, columns: 'id,status',
   });
 }
 
@@ -77,8 +88,9 @@ export async function deleteRecoveryPlan(id: string): Promise<RepoResult<true>> 
   return deleteOwned({ table: 'recovery_plans', id, userId: u.userId });
 }
 
-const PLAN_COLS =
-  'id,user_id,habit_id,source_date,target_date,strategy,note,reminder_time,status,created_at';
+// Was a SECOND, shorter column list. Two lists meant the fifteen-column
+// read was only true for whichever query happened to use the longer one.
+const PLAN_COLS = SELECT;
 
 /** Planned (not yet done/skipped) recovery plans, soonest target first. */
 export async function fetchPlannedRecoveryPlans(limit = 200): Promise<RepoResult<RecoveryPlan[]>> {
@@ -99,9 +111,21 @@ export async function insertRecoveryPlan(input: {
   habitId: string;
   sourceDate: string;
   targetDate: string;
-  strategy: string;
+  strategy: RecoveryStrategy;
   note?: string | null;
   reminderTime?: string | null;
+  /**
+   * What the plan is answering, and how much of it.
+   *
+   * Optional because the recovery screen can create a plan from a day the
+   * user picked rather than from a specific log. Written when known — which
+   * is the whole point of retiring the adapter: these five were computed by
+   * `lib/recovery.deficitFor` and then discarded on the way to the database.
+   */
+  sourceLogId?: string | null;
+  deficitType?: 'numeric' | 'binary' | null;
+  deficitValue?: number | null;
+  distributedDays?: { date: string; value: number }[] | null;
 }): Promise<RepoResult<RecoveryPlan>> {
   const u = await currentUserId();
   if (!u.ok) return u;
@@ -122,6 +146,12 @@ export async function insertRecoveryPlan(input: {
       note: input.note ?? null,
       reminder_time: input.reminderTime ?? null,
       status: 'planned',
+      source_log_id: input.sourceLogId ?? null,
+      deficit_type: input.deficitType ?? null,
+      deficit_value: input.deficitValue ?? null,
+      distributed_days: input.distributedDays ?? null,
+      // `completed_at` is deliberately absent: the table's CHECK requires it
+      // to be null unless the status is 'completed', and a new plan is not.
     })
     .select(PLAN_COLS)
     .single();

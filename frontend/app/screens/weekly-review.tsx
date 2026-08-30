@@ -16,7 +16,7 @@ import { ymdFromIso, ymd, parseLocalDate, type Ymd } from '../../lib/date';
 import { dailyLoad, type TaskLoadItem } from '../../lib/capacity';
 import { isDueOn } from '../../lib/habitSchedule';
 import { recoverySuccessRate, type Result } from '../../lib/behaviorIntelligence';
-import { fromLegacyRecoveryPlan } from '../../lib/recovery';
+import { planFromRow } from '../../lib/recovery';
 import {
   logsForPeriod,
   recoveryForPeriod,
@@ -240,7 +240,7 @@ export default function WeeklyReviewScreen() {
       ? Math.round((completedTasks.length / weekTasks.length) * 100)
       : null;
     const recoveryCompletion: Result<number> = recoveryRes.ok
-      ? recoverySuccessRate(recoveryRes.data.map(fromLegacyRecoveryPlan))
+      ? recoverySuccessRate(recoveryRes.data.map(planFromRow))
       : { ok: false, reason: 'Telafi verisi yüklenemedi.' };
     const overloadDays = countOverloadDays({
       start, end, activeHabits, allTasks: tasks, focusSessions: weekSessions,

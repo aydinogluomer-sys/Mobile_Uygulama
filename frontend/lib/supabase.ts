@@ -163,18 +163,36 @@ export type Routine = {
 };
 
 // Telafi planı — kaçırılan/kısmi alışkanlık için "nasıl + ne zaman" telafisi
-export type RecoveryStrategy = 'full' | 'half' | 'mini' | 'reschedule';
-export type RecoveryStatus = 'planned' | 'done' | 'skipped';
+//
+// Bu tip artık ALAN sözlüğünün kendisi. Daha önce satır tipi legacy
+// ('full'|'half'|'mini'|'reschedule'), alan tipi v2 ('complete_today'|...)
+// idi ve aradaki adaptör her kayıtta beş alanı sessizce düşürüyordu --
+// `deficit_value`, `distributed_days`, `source_log_id`, `deficit_type`,
+// `completed_at`. Gerekçesi "henüz sütunları yok" idi; oysa hepsi
+// 20260825'te eklenmişti. Sözlük 20260831_recovery_vocabulary ile tek'e
+// indirildi ve adaptör kaldırıldı.
+export type RecoveryStrategy = 'complete_today' | 'push_tomorrow' | 'split_two_days' | 'skip';
+export type RecoveryStatus = 'planned' | 'completed' | 'expired' | 'cancelled';
+export type RecoveryDeficitType = 'numeric' | 'binary';
 
 export type RecoveryPlan = {
   id: string;
   user_id: string;
   habit_id: string;
+  /** `habit_logs.id` bu telafinin yanıt verdiği kayıt. */
+  source_log_id: string | null;
   source_date: string;     // kaçırılan/kısmi gün 'yyyy-MM-dd'
   target_date: string;     // planlanan telafi günü 'yyyy-MM-dd'
+  /** Ne kadar borçlanıldı (lib/recovery.deficitFor). */
+  deficit_type: RecoveryDeficitType | null;
+  deficit_value: number | null;
   strategy: RecoveryStrategy;
+  /** `split_two_days` için günlere dağıtım. */
+  distributed_days: { date: string; value: number }[] | null;
   note: string | null;
   reminder_time: string | null;  // 'HH:mm'
   status: RecoveryStatus;
+  /** Yalnızca `status = 'completed'` iken dolu -- DB CHECK bunu zorunlu kılar. */
+  completed_at: string | null;
   created_at: string;
 };

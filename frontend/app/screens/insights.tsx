@@ -53,7 +53,7 @@ import {
   completionTrend, mostRecoveredHabit, recoverySuccessRate, habitCompletionRate,
   type Result, type Trend,
 } from '../../lib/behaviorIntelligence';
-import { fromLegacyRecoveryPlan } from '../../lib/recovery';
+import { planFromRow } from '../../lib/recovery';
 import {
   weeklyDigest, monthlyDigest, formatDigestForPrompt, MAX_HABIT_ENTRIES, type Digest,
 } from '../../lib/insightDigest';
@@ -336,7 +336,7 @@ export default function InsightsScreen() {
   });
 
   // ---- Telafi -----------------------------------------------------------
-  const recoveryPlansV2 = recoveryPlans.map(fromLegacyRecoveryPlan);
+  const recoveryPlansV2 = recoveryPlans.map(planFromRow);
   const mostRecovered = mostRecoveredHabit(recoveryPlansV2);
   const recoveryRate = recoverySuccessRate(recoveryPlansV2);
 

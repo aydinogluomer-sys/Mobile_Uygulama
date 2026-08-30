@@ -18,9 +18,24 @@ import { completionRatio, completionPercent, deriveState } from '../../lib/habit
 import { habitStrength, type StrengthLog } from '../../lib/habitStrength';
 import { streakBroken, windowFor, isWindowSatisfied } from '../../lib/habitSchedule';
 import { bandFor, dailyLoad, canActivate, habitLoad, type HabitLoadInput } from '../../lib/capacity';
-import { toLegacyRecoveryPlan, fromLegacyRecoveryPlan, type RecoveryPlanV2 } from '../../lib/recovery';
+import { planFromRow, type RecoveryStrategyV2 } from '../../lib/recovery';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { stripComments } from '../helpers/sourceText';
+
 import { addDaysLocal, ymd } from '../../lib/date';
-import type { Habit, HabitLog, RecoveryPlan } from '../../lib/supabase';
+import type { Habit, HabitLog, RecoveryPlan, RecoveryStrategy } from '../../lib/supabase';
+
+/** A persisted row, for the assertions below. */
+const recoveryRow = (over: Partial<RecoveryPlan> = {}) => ({
+  id: 'p1', user_id: 'u1', habit_id: 'h1', source_log_id: null,
+  source_date: '2026-08-04', target_date: '2026-08-05',
+  deficit_type: null, deficit_value: null,
+  strategy: 'complete_today' as RecoveryStrategy, distributed_days: null,
+  note: null, reminder_time: null, status: 'planned' as const,
+  completed_at: null, created_at: '2026-08-04T10:00:00.000Z',
+  ...over,
+});
 
 // ===========================================================================
 // habitEngine — inputs the Coders' own suite did not try
@@ -439,82 +454,6 @@ describe('canActivate — 5 easy vs 3 heavy holds from a REALISTIC non-zero base
 // recovery — the legacy adapter round-trip
 // ===========================================================================
 
-function v2Plan(over: Partial<RecoveryPlanV2> = {}): RecoveryPlanV2 {
-  return {
-    id: 'p1', user_id: 'u1', habit_id: 'h1', source_log_id: null,
-    source_date: '2026-08-04', target_date: '2026-08-05',
-    deficit_type: null, deficit_value: null,
-    strategy: 'complete_today', scheduled_for: ['2026-08-04'], distributed_days: null,
-    note: null, reminder_time: null, status: 'planned',
-    completed_at: null, created_at: '2026-08-04T10:00:00.000Z',
-    ...over,
-  };
-}
-
-describe('recovery — legacy adapter round-trip is now a BIJECTION for strategy (FINDING A-03 fixed — was a semantic inversion, not just lossy)', () => {
-  // Before the fix, `strategyFromLegacy('mini')` returned 'complete_today',
-  // while `strategyToLegacy('skip')` returned 'mini' — so 'skip' (the user
-  // explicitly declined to recover — "Telafi etme") round-tripped through
-  // today's legacy column and back out as 'complete_today', a materially
-  // different, opposite-in-spirit meaning ("I completed the recovery" vs "I
-  // chose not to recover"). The fix repoints `strategyFromLegacy('mini')` at
-  // 'skip', making `skip <-> mini` a genuine bijection alongside the other
-  // three pairs, so every value now round-trips to itself in both
-  // directions — see the doc comments on `strategyToLegacy`/
-  // `strategyFromLegacy` in `lib/recovery.ts` for the full reasoning
-  // (including why `mini <-> skip` is still an honest re-interpretation of
-  // `'mini'`'s original meaning, just no longer an inverting one).
-  it('v2 "skip" -> legacy -> v2 now comes back as "skip", not "complete_today" (inversion fixed)', () => {
-    const original = v2Plan({ strategy: 'skip' });
-    const legacy = toLegacyRecoveryPlan(original);
-    expect(legacy.strategy).toBe('mini'); // unchanged: skip -> mini
-
-    const roundTripRow: RecoveryPlan = {
-      id: original.id, created_at: original.created_at,
-      user_id: legacy.user_id, habit_id: legacy.habit_id,
-      source_date: legacy.source_date, target_date: legacy.target_date,
-      strategy: legacy.strategy, note: legacy.note,
-      reminder_time: legacy.reminder_time, status: legacy.status,
-    };
-    const roundTripped = fromLegacyRecoveryPlan(roundTripRow);
-    expect(roundTripped.strategy).toBe('skip'); // FIXED: no longer 'complete_today'
-    expect(roundTripped.strategy).toBe(original.strategy); // round-trips to itself
-  });
-
-  it('legacy "mini" -> v2 -> legacy now comes back as "mini", not "full" (the reverse direction is fixed too)', () => {
-    const legacyRow: RecoveryPlan = {
-      id: 'p1', user_id: 'u1', habit_id: 'h1', source_date: '2026-08-04',
-      target_date: '2026-08-05', strategy: 'mini', note: null, reminder_time: null,
-      status: 'planned', created_at: '2026-08-04T10:00:00.000Z',
-    };
-    const v2 = fromLegacyRecoveryPlan(legacyRow);
-    expect(v2.strategy).toBe('skip'); // FIXED: no longer 'complete_today'
-
-    const backToLegacy = toLegacyRecoveryPlan(v2);
-    expect(backToLegacy.strategy).toBe('mini'); // FIXED: no longer 'full'
-    expect(backToLegacy.strategy).toBe(legacyRow.strategy); // round-trips to itself
-  });
-
-  it('all four v2 strategies round trip losslessly through the legacy shape (full bijection, not just the other three)', () => {
-    for (const strategy of ['complete_today', 'push_tomorrow', 'split_two_days', 'skip'] as const) {
-      const original = v2Plan({ strategy });
-      const legacy = toLegacyRecoveryPlan(original);
-      const row: RecoveryPlan = {
-        id: original.id, created_at: original.created_at,
-        user_id: legacy.user_id, habit_id: legacy.habit_id,
-        source_date: legacy.source_date, target_date: legacy.target_date,
-        strategy: legacy.strategy, note: legacy.note,
-        reminder_time: legacy.reminder_time, status: legacy.status,
-      };
-      const roundTripped = fromLegacyRecoveryPlan(row);
-      expect(roundTripped.strategy).toBe(strategy); // FIXED: now all four round-trip, including 'skip'
-    }
-  });
-});
-
-// ===========================================================================
-// NEW COVERAGE — CODER-C, PHASE 1 fix verification (A-01, A-02, A-03)
-// ===========================================================================
 
 describe('completionRatio / completionPercent — full non-finite sweep (new coverage, FINDING A-01 fixed)', () => {
   const NON_FINITE = [NaN, Infinity, -Infinity] as const;
@@ -564,46 +503,64 @@ describe('completionRatio / completionPercent — full non-finite sweep (new cov
   });
 });
 
-describe('recovery — legacy adapter bijection (new coverage, FINDING A-03 fixed)', () => {
-  it('every v2 strategy round-trips to itself via toLegacyRecoveryPlan -> fromLegacyRecoveryPlan', () => {
+describe('recovery — FINDING A-03 is now structurally impossible (the adapter is gone)', () => {
+  /**
+   * A-03 was a semantic INVERSION: `strategyFromLegacy('mini')` returned
+   * `'complete_today'` while `strategyToLegacy('skip')` returned `'mini'`, so
+   * a user who explicitly declined to recover came back out of the database
+   * reading as "I completed the recovery". It was fixed by making the pairing
+   * a bijection, and the tests that used to live here exercised that
+   * bijection in both directions.
+   *
+   * The bijection no longer exists, because the translation no longer exists.
+   * `20260831_recovery_vocabulary` made `recovery_plans.strategy` accept the
+   * domain's own four words, so there is nothing to map and no direction to
+   * get backwards.
+   *
+   * A test of a deleted function would be noise. What is worth keeping is the
+   * PROPERTY A-03 violated — that a stored strategy means what it says — and
+   * the only way to break it now is to reintroduce a mapping. So that is what
+   * these assert.
+   */
+  it('the persisted vocabulary IS the domain vocabulary', () => {
+    // `RecoveryStrategy` (the row) and `RecoveryStrategyV2` (the domain) are
+    // the same type. If someone reintroduces a second spelling, this file
+    // stops compiling rather than silently translating again.
+    const domain: RecoveryStrategyV2[] = ['complete_today', 'push_tomorrow', 'split_two_days', 'skip'];
+    const row: RecoveryStrategy[] = domain;
+    expect(row).toEqual(domain);
+  });
+
+  it('lib/recovery.ts contains no strategy or status translation', () => {
+    const src = readFileSync(join(__dirname, '..', '..', 'lib', 'recovery.ts'), 'utf8');
+    for (const gone of ['strategyToLegacy', 'strategyFromLegacy', 'statusToLegacy', 'statusFromLegacy',
+                        'toLegacyRecoveryPlan', 'fromLegacyRecoveryPlan']) {
+      expect(src).not.toContain(gone);
+    }
+  });
+
+  it('no legacy strategy word survives anywhere in the recovery path', () => {
+    // The words themselves are the tell. `'mini'` in particular meant a size
+    // v2 has no concept of, so any reappearance is a translation coming back.
+    for (const rel of [['lib', 'recovery.ts'], ['services', 'recoveryService.ts'],
+                       ['repositories', 'recoveryRepository.ts'], ['store', 'recoveryStore.ts']]) {
+      const src = stripComments(readFileSync(join(__dirname, '..', '..', ...rel), 'utf8'));
+      for (const legacy of ["'full'", "'half'", "'mini'", "'reschedule'"]) {
+        expect({ file: rel.join('/'), legacy, found: src.includes(legacy) })
+          .toEqual({ file: rel.join('/'), legacy, found: false });
+      }
+    }
+  });
+
+  it('a plan keeps the strategy it was given, with no round trip to lose it', () => {
     for (const strategy of ['complete_today', 'push_tomorrow', 'split_two_days', 'skip'] as const) {
-      const original = v2Plan({ strategy });
-      const legacy = toLegacyRecoveryPlan(original);
-      const row: RecoveryPlan = {
-        id: original.id, created_at: original.created_at,
-        user_id: legacy.user_id, habit_id: legacy.habit_id,
-        source_date: legacy.source_date, target_date: legacy.target_date,
-        strategy: legacy.strategy, note: legacy.note,
-        reminder_time: legacy.reminder_time, status: legacy.status,
-      };
-      expect(fromLegacyRecoveryPlan(row).strategy).toBe(strategy);
+      expect(planFromRow(recoveryRow({ strategy })).strategy).toBe(strategy);
     }
   });
 
-  it('every legacy strategy round-trips to itself via fromLegacyRecoveryPlan -> toLegacyRecoveryPlan', () => {
-    for (const strategy of ['full', 'reschedule', 'half', 'mini'] as const) {
-      const legacyRow: RecoveryPlan = {
-        id: 'p1', user_id: 'u1', habit_id: 'h1', source_date: '2026-08-04',
-        target_date: '2026-08-05', strategy, note: null, reminder_time: null,
-        status: 'planned', created_at: '2026-08-04T10:00:00.000Z',
-      };
-      const v2 = fromLegacyRecoveryPlan(legacyRow);
-      expect(toLegacyRecoveryPlan(v2).strategy).toBe(strategy);
-    }
-  });
-
-  it('explicitly: "skip" no longer becomes "complete_today" on a round trip through the legacy shape', () => {
-    const original = v2Plan({ strategy: 'skip' });
-    const legacy = toLegacyRecoveryPlan(original);
-    const row: RecoveryPlan = {
-      id: original.id, created_at: original.created_at,
-      user_id: legacy.user_id, habit_id: legacy.habit_id,
-      source_date: legacy.source_date, target_date: legacy.target_date,
-      strategy: legacy.strategy, note: legacy.note,
-      reminder_time: legacy.reminder_time, status: legacy.status,
-    };
-    const roundTripped = fromLegacyRecoveryPlan(row);
-    expect(roundTripped.strategy).not.toBe('complete_today');
-    expect(roundTripped.strategy).toBe('skip');
+  it('"skip" cannot become "complete_today"', () => {
+    // The exact inversion A-03 was, asserted against the path that exists now.
+    expect(planFromRow(recoveryRow({ strategy: 'skip' })).strategy).toBe('skip');
   });
 });
+

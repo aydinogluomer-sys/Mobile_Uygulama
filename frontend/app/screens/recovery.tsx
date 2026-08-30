@@ -35,11 +35,15 @@ const WHEN_OPTIONS: { key: string; label: string; offset: () => number }[] = [
 
 type StreakMap = Record<string, number>;
 
+// v2 sozlugu. Eski dort secenek ('full'|'half'|'mini'|'reschedule') ile
+// bire bir ayni sey DEGIL: 'mini' ("2 dk minimum") v2'de karsiligi olmayan
+// bir kavramdi ve adaptor onu 'skip'e -- yani "telafi etme"ye -- esliyordu.
+// Artik dort secenek de kalici sozlukte adlandirildigi gibi.
 export const STRATEGY_META: Record<RecoveryStrategy, { label: string; desc: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
-  full: { label: 'Tam Telafi', desc: 'Tamamını yap', icon: 'refresh', color: colors.success },
-  half: { label: 'Yarım', desc: 'Azaltılmış sürüm', icon: 'contrast-outline', color: colors.warning },
-  mini: { label: 'Mini', desc: '2 dk minimum, zinciri koru', icon: 'flash-outline', color: colors.info },
-  reschedule: { label: 'Yeniden Planla', desc: 'İleri bir güne taşı', icon: 'calendar-outline', color: colors.primaryBright },
+  complete_today: { label: 'Bugün Tamamla', desc: 'Tamamını bugün yap', icon: 'refresh', color: colors.success },
+  push_tomorrow: { label: 'Yarına Aktar', desc: 'İleri bir güne taşı', icon: 'calendar-outline', color: colors.primaryBright },
+  split_two_days: { label: 'İkiye Böl', desc: 'İki güne dağıt', icon: 'contrast-outline', color: colors.warning },
+  skip: { label: 'Telafi Etme', desc: 'Bu sefer geç, zinciri kırma', icon: 'flash-outline', color: colors.info },
 };
 
 export default function RecoveryScreen() {
@@ -64,7 +68,7 @@ export default function RecoveryScreen() {
   const [planTarget, setPlanTarget] = useState<Habit | null>(null);
   const [planSource, setPlanSource] = useState<string>('');
   const [whenOffset, setWhenOffset] = useState(0);
-  const [strategy, setStrategy] = useState<RecoveryStrategy>('full');
+  const [strategy, setStrategy] = useState<RecoveryStrategy>('complete_today');
   const [note, setNote] = useState('');
   const [reminderOn, setReminderOn] = useState(false);
   const [reminderTime, setReminderTime] = useState('20:00');
@@ -220,7 +224,7 @@ export default function RecoveryScreen() {
     setPlanTarget(h);
     setPlanSource(sourceDate);
     setWhenOffset(0);
-    setStrategy('full');
+    setStrategy('complete_today');
     setNote('');
     setReminderOn(false);
     setReminderTime('20:00');

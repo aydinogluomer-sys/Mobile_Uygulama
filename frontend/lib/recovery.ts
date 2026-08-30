@@ -12,8 +12,9 @@
  * alongside this file (`supabase/migrations/20260825_phase1_core_engine.sql`)
  * adds them, but it is NOT applied (Supabase is unreachable this phase).
  *
- * `RecoveryPlanV2` below is that richer shape. `toLegacyRecoveryPlan` /
- * `fromLegacyRecoveryPlan` are the documented adapter between the two,
+ * `RecoveryPlanV2` below is the persisted row plus one DERIVED field.
+ * The adapter that used to translate two vocabularies is gone (see that
+ * type's doc and migration 20260831_recovery_vocabulary),
  * usable the moment `recoveryStore.ts` is rewired -- itself a follow-up,
  * not done here (see the constraints on this task).
  */
@@ -90,7 +91,8 @@ export function deficitFor({
  * The plan's four offered strategies, in the exact order it lists them:
  * `Bugün tamamla · Yarına aktar · 2 güne böl · Telafi etme`.
  */
-export type RecoveryStrategyV2 = 'complete_today' | 'push_tomorrow' | 'split_two_days' | 'skip';
+/** Kept as a name; the row type now spells the same four words. */
+export type RecoveryStrategyV2 = RecoveryStrategy;
 
 export type DistributedDay = { date: Ymd; value: number };
 
@@ -169,203 +171,58 @@ export function recoveryOptions(deficit: Deficit, { fromDate }: { fromDate: Ymd 
 }
 
 // ---------------------------------------------------------------------------
-// RecoveryPlanV2 + legacy adapter
+// RecoveryPlanV2
 // ---------------------------------------------------------------------------
 
-export type RecoveryStatusV2 = 'planned' | 'completed' | 'expired' | 'cancelled';
+export type RecoveryStatusV2 = RecoveryStatus;
 
 /**
- * The plan's full field list for a recovery plan. A strict superset of
- * today's `RecoveryPlan` (`lib/supabase.ts`) -- every field that type has,
- * plus the ones the plan requires that the live table does not persist yet:
- * `source_log_id`, `deficit_type`, `deficit_value`, `distributed_days`,
- * `completed_at`. Those five are typed nullable here specifically because
- * `fromLegacyRecoveryPlan` cannot populate them from today's row shape --
- * see that function's doc.
+ * A recovery plan.
+ *
+ * This used to be a strict SUPERSET of the persisted row, with five fields
+ * marked "not persisted today" and an adapter pair translating between two
+ * vocabularies on every read and write. Both halves of that arrangement were
+ * wrong by the time anyone looked:
+ *
+ *  - the five columns — `source_log_id`, `deficit_type`, `deficit_value`,
+ *    `distributed_days`, `completed_at` — were added by migration 20260825
+ *    and had existed ever since, so the adapter was silently discarding real
+ *    data on every save. A plan could not be reconstructed from what was
+ *    stored: `deficitFor` computes how much is owed, and the number was
+ *    thrown away on the way to the database;
+ *  - the strategy vocabulary was translated `complete_today <-> full`,
+ *    `skip <-> mini` and so on, where `mini` never meant `skip` — it meant a
+ *    reduced-scope same-day attempt, a concept v2 has no word for.
+ *
+ * Migration 20260831_recovery_vocabulary made the table speak v2 and the
+ * adapter is gone. What remains is `scheduled_for`, which is DERIVED rather
+ * than stored — see `planFromRow`.
  */
-export type RecoveryPlanV2 = {
-  id: string;
-  user_id: string;
-  habit_id: string;
-  /** `habit_logs.id` this recovery responds to. Not persisted today. */
-  source_log_id: string | null;
-  source_date: Ymd;
-  /** Primary/first scheduled date -- kept for shape-compatibility with
-   *  today's single `target_date` column. See `scheduled_for` for the full
-   *  set (relevant for `split_two_days`). */
-  target_date: Ymd;
-  /** Not persisted today. */
-  deficit_type: DeficitType | null;
-  /** Not persisted today. */
-  deficit_value: number | null;
-  strategy: RecoveryStrategyV2;
+export type RecoveryPlanV2 = RecoveryPlan & {
+  /**
+   * Every day this plan puts work on.
+   *
+   * Derived, not a column: for `split_two_days` it is the dates in
+   * `distributed_days`, otherwise it is just `target_date`. Storing it would
+   * be a second copy of facts already in the row, and the two would drift.
+   */
   scheduled_for: Ymd[];
-  /** Not persisted today. */
-  distributed_days: DistributedDay[] | null;
-  note: string | null;
-  reminder_time: string | null;
-  status: RecoveryStatusV2;
-  /** Not persisted today. */
-  completed_at: string | null;
-  created_at: string;
 };
 
 /**
- * v2 -> today's `RecoveryStrategy` ('full'|'half'|'mini'|'reschedule').
+ * A persisted row as the domain sees it.
  *
- * Both v2 and legacy have exactly four values, and this adapter is a
- * BIJECTION between them: `complete_today <-> full`, `push_tomorrow <->
- * reschedule`, `split_two_days <-> half`, and `skip <-> mini`. Every value
- * round-trips to itself in both directions -- see `strategyFromLegacy` for
- * why `'mini'` (not some other value) is `'skip'`'s legacy counterpart, and
- * why that pairing is a re-interpretation of `'mini'`'s original meaning
- * rather than a perfect match.
- *
- * FINDING A-03 history: earlier, `strategyFromLegacy('mini')` returned
- * `'complete_today'` while `strategyToLegacy('skip')` returned `'mini'`.
- * That was not just lossy, it INVERTED meaning on a round-trip: a user who
- * explicitly declined to recover ("Telafi etme", `'skip'`) would come back
- * out of a `'mini'` row reading as `'complete_today'` -- "I completed the
- * recovery" for a user who chose not to. Fixed by making `'mini'` map back
- * to `'skip'` instead, so the pairing is stable and non-inverting in both
- * directions (see `strategyFromLegacy`).
+ * The only work left is deriving `scheduled_for`. Everything else is the row
+ * itself — which is the point of retiring the adapter: there is no longer a
+ * translation step that can lose a field or re-interpret a word.
  */
-function strategyToLegacy(s: RecoveryStrategyV2): RecoveryStrategy {
-  switch (s) {
-    case 'complete_today':
-      return 'full';
-    case 'push_tomorrow':
-      return 'reschedule';
-    case 'split_two_days':
-      return 'half';
-    case 'skip':
-      return 'mini'; // bijection with strategyFromLegacy -- see doc above
-  }
-}
-
-/**
- * Legacy `RecoveryStrategy` -> v2. The exact inverse of `strategyToLegacy`
- * (FINDING A-03 fix) -- every legacy value maps back to the v2 value that
- * produced it: `full -> complete_today`, `reschedule -> push_tomorrow`,
- * `half -> split_two_days`, `mini -> skip`.
- *
- * `mini -> skip` is still an honest RE-INTERPRETATION, not a perfect
- * translation: legacy `'mini'` originally meant "a reduced-size make-up
- * attempt, done same-day" -- a partial-scope commitment that v2's four
- * strategies have no equivalent for (v2 only has "declined to recover" at
- * all, `'skip'`, or one of three full-scope timing choices). Reading a
- * legacy `'mini'` row as v2 `'skip'` is therefore imperfect -- it loses the
- * "it was reduced in scope, not declined outright" nuance -- but it is
- * STABLE and NON-INVERTING: it no longer turns an explicit decline into a
- * claimed completion, which is the property that actually matters for
- * recovery analytics and for what the user is told. The real fix is
- * widening the persisted `recovery_plans.strategy` CHECK constraint to carry
- * all four v2 values (and drop this adapter entirely) -- authored in
- * `supabase/migrations/20260825_phase1_core_engine.sql`, which deliberately
- * did NOT widen that constraint (only the `status` vocabulary was in scope
- * for that migration) and is blocked from applying while the Supabase
- * project is paused.
- */
-function strategyFromLegacy(s: RecoveryStrategy): RecoveryStrategyV2 {
-  switch (s) {
-    case 'full':
-      return 'complete_today';
-    case 'reschedule':
-      return 'push_tomorrow';
-    case 'half':
-      return 'split_two_days';
-    case 'mini':
-      return 'skip'; // FINDING A-03 fix -- was 'complete_today' (an inversion); see doc above
-  }
-}
-
-/**
- * v2 `status` -> legacy `status`. `'completed'` -> `'done'`, `'cancelled'`
- * -> `'skipped'`. `'expired'` has no legacy equivalent (the live vocabulary
- * predates the idea of a plan lapsing on its own) and is mapped to
- * `'skipped'` as the closest approximation -- functionally, an expired
- * recovery "did not happen" just like a skipped one, though the DISTINCTION
- * between "the user declined" and "the window silently closed" is lost
- * until the migration lands.
- */
-function statusToLegacy(s: RecoveryStatusV2): RecoveryStatus {
-  switch (s) {
-    case 'planned':
-      return 'planned';
-    case 'completed':
-      return 'done';
-    case 'expired':
-      return 'skipped'; // lossy -- see doc above
-    case 'cancelled':
-      return 'skipped';
-  }
-}
-
-/** Legacy `status` -> v2 `status`. Total and lossless (legacy never writes
- *  `'expired'`, so the reverse direction never needs to invent it). */
-function statusFromLegacy(s: RecoveryStatus): RecoveryStatusV2 {
-  switch (s) {
-    case 'planned':
-      return 'planned';
-    case 'done':
-      return 'completed';
-    case 'skipped':
-      return 'cancelled';
-  }
-}
-
-/**
- * `RecoveryPlanV2` -> the shape `recoveryStore.addPlan` can insert today
- * (i.e. today's `RecoveryPlan` row minus `id`/`created_at`, which the DB
- * assigns). `source_log_id`, `deficit_type`, `deficit_value`,
- * `distributed_days` and `completed_at` are DROPPED here -- there is no
- * column to put them in until the authored migration is reviewed and
- * applied. Callers that need those fields to survive a save must wait for
- * that migration; this adapter exists so the REST of a `RecoveryPlanV2`
- * (strategy, dates, note, reminder, status) can be persisted today without
- * blocking on it.
- */
-export function toLegacyRecoveryPlan(
-  plan: RecoveryPlanV2
-): Pick<RecoveryPlan, 'user_id' | 'habit_id' | 'source_date' | 'target_date' | 'strategy' | 'note' | 'reminder_time' | 'status'> {
-  return {
-    user_id: plan.user_id,
-    habit_id: plan.habit_id,
-    source_date: plan.source_date,
-    target_date: plan.target_date,
-    strategy: strategyToLegacy(plan.strategy),
-    note: plan.note,
-    reminder_time: plan.reminder_time,
-    status: statusToLegacy(plan.status),
-  };
-}
-
-/**
- * Today's persisted `RecoveryPlan` -> `RecoveryPlanV2`. The five fields the
- * live row cannot carry are filled with `null` (NOT guessed) --
- * `deficit_type`/`deficit_value` in particular are typed nullable in
- * `RecoveryPlanV2` specifically so this function can be honest that it does
- * not know them, rather than fabricating a value.
- */
-export function fromLegacyRecoveryPlan(row: RecoveryPlan): RecoveryPlanV2 {
-  return {
-    id: row.id,
-    user_id: row.user_id,
-    habit_id: row.habit_id,
-    source_log_id: null,
-    source_date: row.source_date,
-    target_date: row.target_date,
-    deficit_type: null,
-    deficit_value: null,
-    strategy: strategyFromLegacy(row.strategy),
-    scheduled_for: [row.target_date],
-    distributed_days: null,
-    note: row.note,
-    reminder_time: row.reminder_time,
-    status: statusFromLegacy(row.status),
-    completed_at: null,
-    created_at: row.created_at,
-  };
+export function planFromRow(row: RecoveryPlan): RecoveryPlanV2 {
+  const days = row.distributed_days ?? null;
+  const scheduled: Ymd[] =
+    days && days.length > 0
+      ? days.map((d) => d.date as Ymd)
+      : [row.target_date as Ymd];
+  return { ...row, scheduled_for: scheduled };
 }
 
 // ---------------------------------------------------------------------------
@@ -383,7 +240,7 @@ function lastScheduledDate(plan: RecoveryPlanV2): Ymd | null {
  * Expiry rule: a plan expires the day AFTER its last scheduled date has
  * passed -- i.e. `today` is strictly later than `max(scheduled_for)` (or
  * `target_date` when `scheduled_for` is empty, e.g. a plan rehydrated via
- * `fromLegacyRecoveryPlan`). The scheduled day itself still counts as a
+ * `planFromRow`). The scheduled day itself still counts as a
  * live opportunity to act, so it is not yet expired; only once that day has
  * fully elapsed does the plan lapse.
  *

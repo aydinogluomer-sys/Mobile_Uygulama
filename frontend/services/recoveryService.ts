@@ -10,7 +10,7 @@
  * cancelled and the plan removed from the list before anyone checked whether
  * the write had succeeded.
  */
-import type { Habit, RecoveryPlan } from '../lib/supabase';
+import type { Habit, RecoveryPlan, RecoveryStrategy } from '../lib/supabase';
 import { isMeasurableTracking } from '../lib/habitEngine';
 import {
   deleteRecoveryPlan,
@@ -25,9 +25,16 @@ export type CreatePlanInput = {
   habitId: string;
   sourceDate: string;
   targetDate: string;
-  strategy: string;
+  /** Was `string`, which let any spelling through to a CHECK that would
+   *  reject it at runtime. */
+  strategy: RecoveryStrategy;
   note?: string | null;
   reminderTime?: string | null;
+  /** What the plan answers and how much of it — see insertRecoveryPlan. */
+  sourceLogId?: string | null;
+  deficitType?: 'numeric' | 'binary' | null;
+  deficitValue?: number | null;
+  distributedDays?: { date: string; value: number }[] | null;
 };
 
 export const createPlan = (input: CreatePlanInput) => insertRecoveryPlan(input);
@@ -40,8 +47,11 @@ export const createPlan = (input: CreatePlanInput) => insertRecoveryPlan(input);
  * that is still `planned` on the server with no reminder scheduled is worse
  * than one the user has to complete twice.
  */
-export const completePlan = (id: string) => setRecoveryPlanStatus(id, 'done');
-export const skipPlan = (id: string) => setRecoveryPlanStatus(id, 'skipped');
+// 'done' and 'skipped' were the LEGACY spellings. The table now accepts only
+// the v2 vocabulary, so these two calls would have been rejected at runtime —
+// TypeScript could not see it while the parameter was a loose union of both.
+export const completePlan = (id: string) => setRecoveryPlanStatus(id, 'completed');
+export const skipPlan = (id: string) => setRecoveryPlanStatus(id, 'cancelled');
 export const removePlan = (id: string) => deleteRecoveryPlan(id);
 
 /** True when a plan's target day has passed without completion. */
@@ -61,13 +71,19 @@ export function makeupFor(
   plan: Pick<RecoveryPlan, 'strategy'>,
   habit: Pick<Habit, 'tracking_type' | 'behavior_type' | 'daily_goal' | 'target_direction'> | undefined,
 ): { state: 'done' | 'partial'; value?: number } {
-  const reduced = plan.strategy === 'half' || plan.strategy === 'mini';
+  // Only `split_two_days` is a REDUCED make-up: the day's work is spread
+  // over two days, so completing one of them is a partial. The legacy
+  // spelling of this rule was `half || mini`, where `mini` meant "a 2-minute
+  // token effort" -- a third size that v2 does not have. Reading `skip` as
+  // reduced would be worse than wrong: `skip` means the user declined, so
+  // there is no make-up to size at all.
+  const reduced = plan.strategy === 'split_two_days';
   if (!reduced) return { state: 'done' };
 
   const measurable = habit && isMeasurableTracking(habit.tracking_type) && habit.daily_goal;
   if (!measurable) return { state: 'partial' };
 
-  const share = plan.strategy === 'half' ? 0.5 : 0.25;
+  const share = 0.5;
   return { state: 'partial', value: Math.max(1, Math.round((habit!.daily_goal as number) * share)) };
 }
 

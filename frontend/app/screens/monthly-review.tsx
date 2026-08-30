@@ -29,7 +29,7 @@ import {
   completionTrend, strongestHabit, mostFragileHabit, recoverySuccessRate,
   type Trend, type Result,
 } from '../../lib/behaviorIntelligence';
-import { fromLegacyRecoveryPlan } from '../../lib/recovery';
+import { planFromRow } from '../../lib/recovery';
 import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
 import { EmptyState } from '../../components/ui';
 
@@ -282,8 +282,8 @@ export default function MonthlyReviewScreen() {
     const recoveryPlans = recoveryRes.ok ? recoveryRes.data : [];
     const thisMonthPlans = recoveryPlans.filter((p) => p.target_date >= start && p.target_date <= end);
     const prevMonthPlans = recoveryPlans.filter((p) => p.target_date >= prevStart && p.target_date <= prevEnd);
-    const recoveryThisMonth = recoverySuccessRate(thisMonthPlans.map(fromLegacyRecoveryPlan));
-    const recoveryPrevMonth = recoverySuccessRate(prevMonthPlans.map(fromLegacyRecoveryPlan));
+    const recoveryThisMonth = recoverySuccessRate(thisMonthPlans.map(planFromRow));
+    const recoveryPrevMonth = recoverySuccessRate(prevMonthPlans.map(planFromRow));
 
     // Goal.month is 1-indexed (see app/screens/goals.tsx's CUR_MONTH = NOW.getMonth() + 1);
     // `month` here is JS's 0-indexed Date#getMonth(), so +1 to compare.

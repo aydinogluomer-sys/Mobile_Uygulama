@@ -11,8 +11,6 @@ import {
 import {
   deficitFor,
   recoveryOptions,
-  toLegacyRecoveryPlan,
-  fromLegacyRecoveryPlan,
   type TrackingTypeV2,
   type RecoveryOption,
 } from '../lib/recovery';
@@ -41,6 +39,17 @@ type AddPlanInput = {
   strategy: RecoveryStrategy;
   note?: string | null;
   reminderTime?: string | null; // 'HH:mm'
+  /**
+   * Ne kadar borçlanıldı ve nasıl dağıtılacak.
+   *
+   * `recoveryOptionsFor` bunları zaten hesaplıyordu; adaptör kaldırılana
+   * kadar hiçbiri veritabanına ulaşmıyordu, dolayısıyla bir plan geri
+   * okunduğunda hangi eksiğe karşılık üretildiği bilinmiyordu.
+   */
+  sourceLogId?: string | null;
+  deficitType?: 'numeric' | 'binary' | null;
+  deficitValue?: number | null;
+  distributedDays?: { date: string; value: number }[] | null;
 };
 
 type RecoveryStore = {
@@ -69,28 +78,19 @@ type RecoveryStore = {
 };
 
 
-/**
- * Round-trips a persisted row through the `RecoveryPlanV2` model at the
- * read/write boundary (task 1-D, W3): `fromLegacyRecoveryPlan` widens it to
- * the plan's full V2 shape, `toLegacyRecoveryPlan` narrows it back to
- * exactly today's real columns. `toLegacyRecoveryPlan` deliberately does not
- * carry `id`/`created_at` (the DB assigns those, see its own doc), so they
- * are re-attached from the original row here.
- *
- * This makes the store genuinely SPEAK `RecoveryPlanV2` at every boundary
- * where a DB row becomes store/caller-facing data, while every persisted
- * field -- and therefore every existing external behaviour -- is unchanged:
- * the adapter pair is a verified bijection, so this round trip is a no-op on
- * the data, not a silent transformation. `source_log_id`, `deficit_type`,
- * `deficit_value`, `distributed_days` and `completed_at` are NOT written
- * here -- the live `recovery_plans` table has no columns for them (that
- * migration is authored but unapplied), and `toLegacyRecoveryPlan` already
- * omits them for exactly that reason.
- */
-function roundTripLegacy(row: RecoveryPlan): RecoveryPlan {
-  const v2 = fromLegacyRecoveryPlan(row);
-  return { id: row.id, created_at: row.created_at, ...toLegacyRecoveryPlan(v2) };
-}
+// The round trip that used to live here is gone.
+//
+// It widened a row to the v2 model and narrowed it back on every read, which
+// was described as "a no-op on the data". It was not: the narrowing dropped
+// `source_log_id`, `deficit_type`, `deficit_value`, `distributed_days` and
+// `completed_at`, on the stated grounds that the table had no columns for
+// them. It had — migration 20260825 added all five. So the store was erasing
+// five real fields from every row it handed out, and the deficit the plan was
+// built from was never visible to anything that read a plan back.
+//
+// The table now speaks the same vocabulary as the domain
+// (20260831_recovery_vocabulary), so a row IS a plan and there is nothing to
+// translate.
 
 export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
   plans: [],
@@ -99,7 +99,7 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
   fetchPlans: async () => {
     set({ loading: true });
     const res = await fetchPlannedRecoveryPlans();
-    if (res.ok) set({ plans: res.data.map(roundTripLegacy) });
+    if (res.ok) set({ plans: res.data });
     set({ loading: false });
   },
 
@@ -111,9 +111,13 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
       strategy: input.strategy,
       note: input.note ?? null,
       reminderTime: input.reminderTime ?? null,
+      sourceLogId: input.sourceLogId ?? null,
+      deficitType: input.deficitType ?? null,
+      deficitValue: input.deficitValue ?? null,
+      distributedDays: input.distributedDays ?? null,
     });
     if (!res.ok) return null;
-    const plan = roundTripLegacy(res.data);
+    const plan = res.data;
     set((s) => ({ plans: [...s.plans, plan].sort((a, b) => a.target_date.localeCompare(b.target_date)) }));
     if (plan.reminder_time) {
       scheduleRecoveryReminder(plan.id, input.habitName, plan.target_date, plan.reminder_time);

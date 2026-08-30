@@ -126,7 +126,7 @@ function planInput() {
     habitName: HABIT_NAME,
     sourceDate: '2026-08-29',
     targetDate: '2026-08-30',
-    strategy: 'half' as const,
+    strategy: 'split_two_days' as const,
     note: NOTE,
     reminderTime: '19:00',
   };
@@ -134,10 +134,11 @@ function planInput() {
 
 function stagedPlan(): RecoveryPlan {
   return {
-    id: PLAN_ID, user_id: 'u1', habit_id: HABIT_ID,
+    id: PLAN_ID, user_id: 'u1', habit_id: HABIT_ID, source_log_id: null,
     source_date: '2026-08-29', target_date: '2026-08-30',
-    strategy: 'mini', note: NOTE, reminder_time: null,
-    status: 'planned', created_at: '2026-08-29T20:00:00.000Z',
+    deficit_type: null, deficit_value: null,
+    strategy: 'skip', distributed_days: null, note: NOTE, reminder_time: null,
+    status: 'planned', completed_at: null, created_at: '2026-08-29T20:00:00.000Z',
   };
 }
 
@@ -163,7 +164,7 @@ describe('AC-1 -- addPlan success emits exactly one recovery_created', () => {
     expect(evs[0].props).toEqual({
       plan_id: PLAN_ID,
       habit_id: HABIT_ID,
-      strategy: 'half',
+      strategy: 'split_two_days',
       source_date: '2026-08-29',
       target_date: '2026-08-30',
       has_reminder: true,
@@ -204,7 +205,7 @@ describe('AC-3 -- completePlan success emits exactly one recovery_completed', ()
     expect(evs[0].props).toEqual({
       plan_id: PLAN_ID,
       habit_id: HABIT_ID,
-      strategy: 'mini',
+      strategy: 'skip',
       target_date: '2026-08-30',
     });
     expect(evs[0].dropped).toEqual([]);

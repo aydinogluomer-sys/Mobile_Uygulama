@@ -13,7 +13,7 @@ type Props = {
 export default function RecoveryRailCard({ plans, today, onOpen }: Props) {
   const planned = plans.filter((p) => p.status === 'planned');
   const dueToday = planned.filter((p) => p.target_date === today).length;
-  const done = plans.filter((p) => p.status === 'done').length;
+  const done = plans.filter((p) => p.status === 'completed').length;
   const overdue = planned.filter((p) => p.target_date < today).length;
 
   const rows = [

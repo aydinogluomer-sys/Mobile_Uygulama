@@ -7,8 +7,7 @@ import {
   deficitFor,
   recoveryOptions,
   expirePlans,
-  toLegacyRecoveryPlan,
-  fromLegacyRecoveryPlan,
+  planFromRow,
   type RecoveryPlanV2,
 } from '../../lib/recovery';
 import type { RecoveryPlan } from '../../lib/supabase';
@@ -183,52 +182,85 @@ describe('expirePlans -- a planned plan expires the day AFTER its last scheduled
 });
 
 // ---------------------------------------------------------------------------
-// legacy adapter
+// planFromRow -- what replaced the adapter
 // ---------------------------------------------------------------------------
 
-describe('toLegacyRecoveryPlan / fromLegacyRecoveryPlan', () => {
-  it('maps a v2 plan onto the fields the live recovery_plans table has today', () => {
-    const plan = v2Plan({ strategy: 'complete_today', status: 'planned' });
-    const legacy = toLegacyRecoveryPlan(plan);
-    expect(legacy).toEqual({
-      user_id: 'u1',
-      habit_id: 'h1',
-      source_date: '2026-08-04',
-      target_date: '2026-08-05',
-      strategy: 'full',
-      note: null,
-      reminder_time: null,
-      status: 'planned',
-    });
+describe('planFromRow', () => {
+  /**
+   * There used to be a `toLegacyRecoveryPlan` / `fromLegacyRecoveryPlan` pair
+   * here, translating `complete_today <-> full` and `skip <-> mini` in both
+   * directions, plus tests asserting that five fields came back NULL because
+   * "today's table cannot carry them".
+   *
+   * Both halves were wrong. The five columns had existed since migration
+   * 20260825, so the adapter was discarding real data; and `mini` never meant
+   * `skip` — it meant a reduced-scope same-day attempt, a size v2 has no word
+   * for. The table now speaks the domain's vocabulary
+   * (20260831_recovery_vocabulary) and a row IS a plan.
+   *
+   * All that is left to do is derive `scheduled_for`, which is not a column
+   * because storing it would be a second copy of facts already in the row.
+   */
+  const row = (over: Partial<RecoveryPlan> = {}): RecoveryPlan => ({
+    id: 'p1',
+    user_id: 'u1',
+    habit_id: 'h1',
+    source_log_id: null,
+    source_date: '2026-08-04',
+    target_date: '2026-08-05',
+    deficit_type: 'numeric',
+    deficit_value: 2000,
+    strategy: 'push_tomorrow',
+    distributed_days: null,
+    note: null,
+    reminder_time: null,
+    status: 'planned',
+    completed_at: null,
+    created_at: '2026-08-04T10:00:00.000Z',
+    ...over,
   });
 
-  it('status: completed -> done, cancelled -> skipped', () => {
-    expect(toLegacyRecoveryPlan(v2Plan({ status: 'completed' })).status).toBe('done');
-    expect(toLegacyRecoveryPlan(v2Plan({ status: 'cancelled' })).status).toBe('skipped');
-    expect(toLegacyRecoveryPlan(v2Plan({ status: 'expired' })).status).toBe('skipped'); // documented lossy mapping
+  it('carries every stored field through untouched', () => {
+    const r = row();
+    const plan = planFromRow(r);
+    for (const key of Object.keys(r) as (keyof RecoveryPlan)[]) {
+      expect(plan[key]).toEqual(r[key]);
+    }
   });
 
-  it('round-trips a legacy row, nulling the fields today\'s table cannot carry', () => {
-    const row: RecoveryPlan = {
-      id: 'p1',
-      user_id: 'u1',
-      habit_id: 'h1',
-      source_date: '2026-08-04',
-      target_date: '2026-08-05',
-      strategy: 'full',
-      note: 'test',
-      reminder_time: '09:00',
-      status: 'done',
-      created_at: '2026-08-04T10:00:00.000Z',
-    };
-    const v2 = fromLegacyRecoveryPlan(row);
-    expect(v2.status).toBe('completed');
-    expect(v2.strategy).toBe('complete_today');
-    // Fields the legacy table cannot carry come back null, not guessed.
-    expect(v2.source_log_id).toBeNull();
-    expect(v2.deficit_type).toBeNull();
-    expect(v2.deficit_value).toBeNull();
-    expect(v2.distributed_days).toBeNull();
-    expect(v2.completed_at).toBeNull();
+  it('keeps the deficit, which the adapter used to null out', () => {
+    const plan = planFromRow(row({ deficit_value: 2000, deficit_type: 'numeric', source_log_id: 'log-9' }));
+    expect(plan.deficit_value).toBe(2000);
+    expect(plan.deficit_type).toBe('numeric');
+    expect(plan.source_log_id).toBe('log-9');
+  });
+
+  it('scheduled_for is the target date when the work is not split', () => {
+    expect(planFromRow(row()).scheduled_for).toEqual(['2026-08-05']);
+  });
+
+  it('scheduled_for is every distributed day when it is', () => {
+    const plan = planFromRow(row({
+      strategy: 'split_two_days',
+      distributed_days: [{ date: '2026-08-05', value: 1000 }, { date: '2026-08-06', value: 1000 }],
+    }));
+    expect(plan.scheduled_for).toEqual(['2026-08-05', '2026-08-06']);
+  });
+
+  it('an empty distribution falls back to the target date rather than to nothing', () => {
+    // `[]` is what `recoveryOptions` returns for a zero deficit. A plan with
+    // no scheduled day at all would be invisible to every "what is due"
+    // query.
+    const plan = planFromRow(row({ strategy: 'split_two_days', distributed_days: [] }));
+    expect(plan.scheduled_for).toEqual(['2026-08-05']);
+  });
+
+  it('no strategy or status is renamed on the way through', () => {
+    for (const strategy of ['complete_today', 'push_tomorrow', 'split_two_days', 'skip'] as const) {
+      expect(planFromRow(row({ strategy })).strategy).toBe(strategy);
+    }
+    for (const status of ['planned', 'completed', 'expired', 'cancelled'] as const) {
+      expect(planFromRow(row({ status, completed_at: status === 'completed' ? 'now' : null })).status).toBe(status);
+    }
   });
 });

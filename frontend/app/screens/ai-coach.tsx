@@ -18,7 +18,7 @@ import { ACTION_COST } from '../../lib/subscription';
 import { extractInvokeError } from '../../lib/aiInvoke';
 import { todayLocal, ymd, addDaysLocal } from '../../lib/date';
 import { habitCompletionRate, weekdayBreakdown, bestWeekday, worstWeekday, recoverySuccessRate } from '../../lib/behaviorIntelligence';
-import { fromLegacyRecoveryPlan } from '../../lib/recovery';
+import { planFromRow } from '../../lib/recovery';
 import { loadReviewData } from '../../services/reviewService';
 import { DOW_TR } from '../../lib/focusReport';
 
@@ -119,7 +119,7 @@ export default function AICoachScreen() {
       if (worst.ok) summary.en_zayif_gun = `${DOW_TR[worst.value.weekday]} (%${Math.round(worst.value.rate * 100)})`;
 
       if (recoveryRes.ok) {
-        const rate = recoverySuccessRate(recoveryRes.data.map(fromLegacyRecoveryPlan));
+        const rate = recoverySuccessRate(recoveryRes.data.map(planFromRow));
         if (rate.ok) summary.telafi_basari_orani = `%${Math.round(rate.value * 100)}`;
       }
 
