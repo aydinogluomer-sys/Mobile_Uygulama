@@ -149,9 +149,27 @@ export default function StatsScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
 
-      // Son 365 gün heatmap + toplam/bugün/bu ay sayıları tek sorguda (habit_logs)
+      // Plan §28: "No blocking dashboard query waterfall".
+      //
+      // Bu üç getirme BIRBIRINDEN BAĞIMSIZ -- hiçbiri diğerinin çıktısını
+      // girdi olarak kullanmıyor; yalnızca `since` / `since30` tarih
+      // dizgilerine ihtiyaç duyuyorlar ve o ikisi de yereldeki `now`'dan
+      // hesaplanıyor. Daha önce üçü ayrı `await` satırlarında sıraya
+      // dizilmişti; bu, veri bağımlılığı olduğu için değil, yalnızca her
+      // `await` kendi satırında yazıldığı için oluşan bir şelaleydi:
+      // Stats sekmesi dört ardışık gidiş-dönüş bekliyordu.
+      //
+      // `app/tabs/today.tsx:74` aynı işi zaten tek `Promise.all` ile yapıyor
+      // -- desen depoda mevcuttu, burada kullanılmamıştı. İşleme mantığı
+      // aşağıda aynen duruyor; değişen tek şey bekleme biçimi.
       const since = format(subDays(now, 364), 'yyyy-MM-dd');
-      const heatmapRes = await fetchHabitLogsHeatmap({ since });
+      const since30 = format(subDays(now, 29), 'yyyy-MM-dd');
+      const [heatmapRes, logs30Res] = await Promise.all([
+        fetchHabitLogsHeatmap({ since }),
+        fetchHabitIdsCompletedSince({ since: since30 }),
+        fetchHabits(),
+        fetchTasks(),
+      ]);
 
       if (heatmapRes.ok) {
         const data = heatmapRes.data;
@@ -180,16 +198,13 @@ export default function StatsScreen() {
         setTrend14(arr);
       }
 
-      // Son 30 gün — alan performansı için habit_id bazlı tamamlamalar (habit_logs)
-      const since30 = format(subDays(now, 29), 'yyyy-MM-dd');
-      const logs30Res = await fetchHabitIdsCompletedSince({ since: since30 });
+      // Son 30 gün — alan performansı için habit_id bazlı tamamlamalar
+      // (habit_logs). Getirme yukarıdaki toplu `Promise.all` içinde yapıldı.
       if (logs30Res.ok) {
         const cmap: Record<string, number> = {};
         logs30Res.data.forEach((r) => { if (r.habit_id) cmap[r.habit_id] = (cmap[r.habit_id] ?? 0) + 1; });
         setAreaComp30(cmap);
       }
-
-      await Promise.all([fetchHabits(), fetchTasks()]);
     } finally {
       if (!silent) setLoading(false);
     }
