@@ -10,3 +10,4 @@ export { default as EmptyState } from './EmptyState';
 export { default as StatTile } from './StatTile';
 export { default as WillpowerBand } from './WillpowerBand';
 export { default as Skeleton, SkeletonLines } from './Skeleton';
+export { default as SyncStatusBadge, syncBadgeParts, syncBadgeA11yLabel } from './SyncStatusBadge';

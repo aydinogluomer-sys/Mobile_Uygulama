@@ -107,3 +107,70 @@ export function buildEvent(
   }
   return { name, props: clean, dropped };
 }
+
+// ---------------------------------------------------------------------------
+// Sink  (Phase 4, plan §22 — emission)
+// ---------------------------------------------------------------------------
+//
+// Until this block existed, `lib/analytics.ts` could only BUILD events. A
+// grep across `app/**`, `components/**` and `store/**` found zero call sites,
+// so §22's whole event layer was inert: correct, well-tested, and never
+// reached by a single habit completion. Building an event that nothing can
+// receive is not an analytics layer; it is a validator.
+//
+// Deliberately NO third-party SDK. Mirrors `lib/crashReporting.ts`'s posture
+// and for the same reason: attaching a vendor transport means committing a
+// dependency plus credentials for an account that does not exist yet, and it
+// means user data starts leaving the device the moment someone runs the app.
+// What IS a coding deliverable is the seam — one funnel, one swappable sink —
+// so a real transport is an `setAnalyticsSink()` call at boot, not a rewrite
+// of every emission site.
+
+export type AnalyticsSink = (event: AnalyticsEvent) => void;
+
+/**
+ * The default sink DROPS the event.
+ *
+ * Deliberate, and the opposite of `crashReporting`'s dev-console default. A
+ * crash is rare and always worth a line in the console; a habit completion is
+ * not. Logging every event unconditionally would print a habit id into the
+ * Metro console on every single tap and flood the test runner with hundreds
+ * of blocks — which trains a developer to ignore console output entirely,
+ * i.e. it makes the NEXT diagnostic worse. A developer who wants to watch
+ * events opts in with `setAnalyticsSink(consoleAnalyticsSink)`.
+ */
+const noopSink: AnalyticsSink = () => {};
+
+/** Opt-in developer sink. Never attached automatically — see `noopSink`. */
+export const consoleAnalyticsSink: AnalyticsSink = (event) => {
+  // eslint-disable-next-line no-console
+  console.log(`[analytics] ${event.name}`, event.props, event.dropped);
+};
+
+let sink: AnalyticsSink = noopSink;
+
+/** Attach a real transport (or `consoleAnalyticsSink`) at app boot. `null` restores the default. */
+export function setAnalyticsSink(next: AnalyticsSink | null): void {
+  sink = next ?? noopSink;
+}
+
+/**
+ * Hand a built event to the sink. NEVER throws.
+ *
+ * A sink is by definition foreign code (a vendor SDK, a fetch, a test spy). If
+ * it throws, the throw must stop here: emission sits inside a habit
+ * completion, and a failed analytics call is not a failed habit. Same posture,
+ * same reason, as `crashReporting.reportError`.
+ *
+ * Note what is NOT swallowed: `buildEvent`'s throw on an undeclared event
+ * name. That happens at the CALL SITE, before this function is reached, and
+ * stays loud by design (see `buildEvent`) — an undeclared event is a
+ * programming error, not a runtime condition.
+ */
+export function emitEvent(event: AnalyticsEvent): void {
+  try {
+    sink(event);
+  } catch {
+    // Deliberately empty: see above.
+  }
+}

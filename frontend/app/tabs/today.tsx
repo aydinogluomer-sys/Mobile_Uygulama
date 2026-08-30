@@ -20,7 +20,7 @@ import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { todayLocal } from '../../lib/date';
 import {
-  Card, SectionHeader, EmptyState, ProgressRing, IconCircle, WillpowerBand,
+  Card, SectionHeader, EmptyState, ProgressRing, IconCircle, WillpowerBand, SyncStatusBadge,
 } from '../../components/ui';
 
 // ISO hafta numarası (1–53)
@@ -48,7 +48,11 @@ export default function TodayScreen() {
   const now = new Date();
 
   const { habits, fetchHabits } = useHabitStore();
-  const { fetchLogsForDate, getLogForHabit, logHabit } = useLogStore();
+  // §18: `pendingSyncCount` / `deadSyncCount` burada okunuyor çünkü alışkanlık
+  // tamamlama bu ekranda oluyor (`onHabitTap` -> `logHabit`). Dokunuşun
+  // yapıldığı yerde durumu göstermek, kullanıcının "kaydedildi mi?" sorusunu
+  // sorduğu tek yer.
+  const { fetchLogsForDate, getLogForHabit, logHabit, pendingSyncCount, deadSyncCount } = useLogStore();
   const { tasks, fetchTasks, toggleDone, dueToday, overdue, addTask } = useTaskStore();
   const { state: wp, fetchToday } = useWillpowerStore();
   const { sessionsCompleted } = useFocusStore();
@@ -169,14 +173,19 @@ export default function TodayScreen() {
             <Text style={s.productLabel}>ATLAS / GÜNLÜK PUSULA</Text>
             <Text style={s.productHint}>Ritmini gör, sıradaki doğru adımı seç.</Text>
           </View>
-          <TouchableOpacity
-            onPress={() => router.push('/screens/journal' as any)}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Günlüğü aç"
-          >
-            <IconCircle icon="journal-outline" color={colors.accent} size={40} />
-          </TouchableOpacity>
+          <View style={s.mastheadActions}>
+            {/* §18 senkron durumu — hiçbir şey beklemiyorsa kendini render
+                etmez, dolayısıyla burada koşul gerekmiyor. */}
+            <SyncStatusBadge pending={pendingSyncCount} dead={deadSyncCount} />
+            <TouchableOpacity
+              onPress={() => router.push('/screens/journal' as any)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Günlüğü aç"
+            >
+              <IconCircle icon="journal-outline" color={colors.accent} size={40} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Editöryel Bugün hero */}
@@ -348,6 +357,7 @@ const s = StyleSheet.create({
     paddingBottom: space.lg, marginBottom: space.xl,
     borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
   },
+  mastheadActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   productLabel: { ...font.overline, color: colors.primaryBright, marginBottom: 5 },
   productHint: { ...font.bodySm, color: colors.textFaint },
 

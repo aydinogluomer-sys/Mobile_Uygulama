@@ -17,6 +17,7 @@ import {
   type SyncOp,
   type HabitLogIntent,
 } from '../lib/syncQueue';
+import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 
 /**
  * What a write actually did. The previous signature was `Promise<void>` and
@@ -119,6 +120,68 @@ function toPatch(intent: HabitLogIntent): Patch {
     xp: calcXp(intent.baseXp ?? 30, intent.value, intent.targetValue, intent.state),
     is_completed: intent.state === 'done',
   };
+}
+
+/**
+ * §22 ANALYTICS EMISSION — why this lives in the store and not in a screen.
+ *
+ * A habit is completed from at least three places (`app/tabs/today.tsx`'s
+ * inline row, `app/tabs/timeline.tsx`, `app/screens/recovery.tsx`), and a
+ * fourth is one deep link away. An event emitted from a screen fires for the
+ * taps that happen to go through that screen and silently never fires for the
+ * rest -- and the failure is invisible, because a missing event looks exactly
+ * like a user who did not do the thing. `logHabit` is the single choke point
+ * every one of those paths already goes through, so emitting here means the
+ * event cannot be bypassed by adding a screen.
+ *
+ * `skip` deliberately has NO entry. Plan §22 declares no `habit_skipped`
+ * event, and `buildEvent` throws on an undeclared name -- inventing one here
+ * would turn "user skipped a habit" into a crash. Absent from this map means
+ * "not an analytics event", not "forgotten".
+ */
+const EVENT_BY_STATE: Partial<Record<HabitLog['state'], AnalyticsEventName>> = {
+  done: 'habit_completed',
+  partial: 'habit_partial',
+  miss: 'habit_missed',
+};
+
+/**
+ * Builds and emits the §22 event for one log write. NEVER throws.
+ *
+ * Two guards, for two different failures:
+ *  - the `if (!name) return` above handles a state with no declared event;
+ *  - the `try` handles everything else (a future undeclared name, a sink that
+ *    blows up). An analytics failure is not a product failure: the user
+ *    tapped, the habit is logged, and nothing about that should be undone
+ *    because a telemetry call went wrong.
+ *
+ * PAYLOAD: ids, an enum, a date and counts only -- `patch` is used rather
+ * than the raw params on purpose, because `patch.value` is already
+ * `number | null` (never `undefined`, which the allowlist would drop) and
+ * `patch.xp` is the number actually written. The habit's TITLE is not passed
+ * and must never be: §22 forbids free text on an event, and `buildEvent`
+ * would drop it anyway -- but a payload that relies on the allowlist to
+ * scrub it is one refactor away from leaking.
+ */
+function emitHabitLogEvent(
+  habitId: string,
+  dateStr: string,
+  state: HabitLog['state'],
+  patch: Patch,
+): void {
+  const name = EVENT_BY_STATE[state];
+  if (!name) return;
+  try {
+    emitEvent(buildEvent(name, {
+      habit_id: habitId,
+      date: dateStr,
+      state,
+      xp: patch.xp,
+      value: patch.value,
+    }));
+  } catch {
+    // Deliberately empty: see above.
+  }
 }
 
 /**
@@ -320,6 +383,35 @@ export const useLogStore = create<LogStore>((set, get) => {
   // persisted after every mutation so `pending sync` survives a restart.
   let queueState: SyncQueueState = emptyQueueState();
 
+  /**
+   * RE-ENTRANCY GUARD for `flushPendingSync`.
+   *
+   * WHY IT LIVES HERE, in the store, and not in the component that calls the
+   * flush. There are now two independent triggers -- app boot and
+   * `AppState -> 'active'`, both in `app/_layout.tsx` -- and a third (a
+   * manual retry, a reconnect signal) is one feature away. A `useRef` guard
+   * inside a calling component only ever protects that component from
+   * ITSELF: a second caller elsewhere sails straight past it, which is
+   * exactly the case the guard exists for. The invariant is a property of
+   * the flush ("at most one pass in flight"), so it belongs with the flush.
+   *
+   * WHY IT COALESCES rather than skips. Returning the in-flight promise means
+   * a second caller still gets a real completion to await, with the real
+   * results, instead of a lie (`[]`) that reads as "nothing was owed".
+   *
+   * WHAT GOES WRONG WITHOUT IT: `orderedPending` is read at the START of a
+   * pass, so an overlapping second pass sees the same op, and both run it.
+   * `serialise` then chains them, so the second attempt observes the row the
+   * first one created and takes the UPDATE branch -- no duplicate row, but a
+   * second, entirely pointless round trip per queued op on every flush, and
+   * a `markSynced`/`markFailed` applied to an op that is already gone.
+   *
+   * Consequence worth stating: a coalesced caller's `now` argument is
+   * ignored (the in-flight pass keeps its own). Only tests pass `now`, and
+   * they drive the backoff clock sequentially, awaiting each pass.
+   */
+  let flushInFlight: Promise<LogResult[]> | null = null;
+
   function publishSyncCounts() {
     set(() => ({
       pendingSyncCount: queuePendingCount(queueState),
@@ -369,6 +461,39 @@ export const useLogStore = create<LogStore>((set, get) => {
       publishSyncCounts();
       throw new Error('__offline__'); // caller distinguishes network from a real result
     }
+  }
+
+  /**
+   * The body of one flush pass. Extracted from `flushPendingSync` UNCHANGED
+   * -- only the re-entrancy wrapper is new -- so that the guard has something
+   * to wrap without the guard's own bookkeeping ending up interleaved with
+   * the replay loop.
+   */
+  async function runFlushPass(now?: number): Promise<LogResult[]> {
+    const ready = orderedPending(queueState, now);
+    const results: LogResult[] = [];
+    for (const op of ready) {
+      const patch = toPatch(op.intent);
+
+      // Re-show optimistic state for anything a previous session queued but
+      // never confirmed -- "nothing lost" across a restart, not just "not
+      // duplicated".
+      const priorLocal = get().getLogForHabit(op.habitId, op.date);
+      if (!priorLocal) {
+        set((s) => replaceLogForKey(s, op.habitId, op.date, buildOptimisticLog(op.habitId, op.date, patch, undefined)));
+      }
+
+      const key = `${op.habitId}|${op.date}`;
+      try {
+        const result = await serialise(key, () => runAttempt(op.habitId, op.date, op, patch, now));
+        results.push(result);
+      } catch {
+        // Still offline -- op remains pending (see runAttempt's 'network'
+        // classification); nothing else to do this pass.
+        results.push({ ok: false, error: 'Ağ bağlantısı yok, tekrar denenecek.' });
+      }
+    }
+    return results;
   }
 
   return {
@@ -433,6 +558,18 @@ export const useLogStore = create<LogStore>((set, get) => {
         if (!result.ok && optimisticGen.get(key) === myGen) {
           set((s) => rollbackTo(s, habitId, dateStr, priorLocal));
         }
+        // 4) §22 event, emitted here rather than at the top of `logHabit` for
+        //    one reason: `result.ok` is what separates a completion that
+        //    STANDS from one that was rejected and rolled back a line above.
+        //    Emitting on the tap would count completions the user never got.
+        //
+        //    Offline still counts. An offline tap resolves `{ ok: true }`
+        //    with the optimistic log (see the catch inside the chain), which
+        //    is the honest reading under plan §18: the tap IS the completion,
+        //    the write is just owed. `flushPendingSync` deliberately does NOT
+        //    emit, so replaying that owed write later cannot double-count the
+        //    same completion.
+        if (result.ok) emitHabitLogEvent(habitId, dateStr, state, patch);
         return result;
       });
     },
@@ -461,31 +598,15 @@ export const useLogStore = create<LogStore>((set, get) => {
       publishSyncCounts();
     },
 
-    flushPendingSync: async (now) => {
-      const ready = orderedPending(queueState, now);
-      const results: LogResult[] = [];
-      for (const op of ready) {
-        const patch = toPatch(op.intent);
-
-        // Re-show optimistic state for anything a previous session queued but
-        // never confirmed -- "nothing lost" across a restart, not just "not
-        // duplicated".
-        const priorLocal = get().getLogForHabit(op.habitId, op.date);
-        if (!priorLocal) {
-          set((s) => replaceLogForKey(s, op.habitId, op.date, buildOptimisticLog(op.habitId, op.date, patch, undefined)));
-        }
-
-        const key = `${op.habitId}|${op.date}`;
-        try {
-          const result = await serialise(key, () => runAttempt(op.habitId, op.date, op, patch, now));
-          results.push(result);
-        } catch {
-          // Still offline -- op remains pending (see runAttempt's 'network'
-          // classification); nothing else to do this pass.
-          results.push({ ok: false, error: 'Ağ bağlantısı yok, tekrar denenecek.' });
-        }
-      }
-      return results;
+    flushPendingSync: (now) => {
+      // See `flushInFlight`'s doc above for why this guard is here and not in
+      // the caller. The `finally` cannot clear a LATER pass by mistake: while
+      // `flushInFlight` is set, every caller is handed that same promise, so
+      // no second pass can exist to overwrite.
+      if (flushInFlight) return flushInFlight;
+      const pass = runFlushPass(now).finally(() => { flushInFlight = null; });
+      flushInFlight = pass;
+      return pass;
     },
   };
 });
