@@ -1457,3 +1457,323 @@ an **upsert**, so a user editing their review a second time would fire a second
 **Recorded risk:** `b2a70d9` does not compile standalone — it needs Coder N's
 `emitEvent`/`setAnalyticsSink` export, which was still uncommitted when it was
 pushed. Harmless once N lands, but the branch is briefly non-bisectable.
+
+#### Coder N → sync lifecycle + logStore analytics — commit `e406ece`
+
+Verified: 11 files, `typecheck:ci` 0 errors (the `segments[1]` CI fix landed), and
+`hydrateSyncQueue` awaited in the boot chain with `flushPendingSync` on boot and on
+`AppState -> 'active'`, confirmed by reading the file.
+
+**A pre-existing bug the brief assumed did not exist:** `_layout.tsx` did **not**
+gate rendering on `loading` — it gated only the *redirect* effect, so `<Stack>`
+rendered unconditionally. The "hydration before first tap is structural" guarantee
+the brief took for granted was not actually there. A render gate was added, which is
+what makes it true.
+
+**A SIXTH form of the shallow-match trap, found by the Coder mutating their own
+tests:** `expect(a.indexOf(x)).toBeGreaterThan(a.indexOf(y))` **passes when `y` is
+deleted**, because `indexOf` returns `-1` and every real index beats it. Removing the
+hydration call initially turned only 2 assertions red; two ordering checks
+false-passed. Fixed with an `at()` helper that throws on absence — the mutation then
+goes red on 4. **Any ordering assertion in this repo built on raw `indexOf` has this
+bug.** This is now standing guidance alongside "anchor the scope, not the pattern".
+
+Other decisions worth keeping: the badge is deliberately **not tappable** (a retry
+button would be a lie — `orderedPending` excludes `dead`, so a flush never touches
+it; recovery is `enqueue`'s revival-on-fresh-tap, which the a11y label states);
+emission is gated on `result.ok` after the rollback branch, and `runFlushPass`
+**never** emits, so replay cannot double-count; the analytics default sink is a
+**no-op, not a dev console** — the opposite of `crashReporting.ts`'s choice, because
+a crash is rare and a habit completion is not.
+
+12 mutations, all red for the right reason, including two honest limits the Coder
+recorded: M5 leaves the *structural* assertion green (only the behavioural test
+catches it — correct division of labour), and M9 needed an M9b because the call site
+has its own catch.
+
+#### Coder P → 25 screens: accessibility, skeletons, empty states — commit `d778b41`
+
+**134 `accessibilityRole`, 118 Turkish `accessibilityLabel`, 48 `accessibilityState`,
+14 `accessibilityHint`, 56 decorative icons hidden — from a baseline of literally
+zero.** Every one of ~116 touchables in `app/screens/` is now labelled.
+
+**The Orchestrator's brief was wrong about the size of the spinner problem, and the
+Coder corrected it with evidence.** "47 ActivityIndicator across 19 files" came from
+`grep -c`, which counts *lines*, not elements: the real figure was 20 JSX sites
+across 15 files, only **5 full-screen**. 7 were replaced with skeletons; **13 were
+deliberately left** — in-button indeterminate actions, pull-to-refresh, and the
+ai-coach "typing" bubble (an LLM reply has no known geometry, so a skeleton would
+lie about it). The real gap was accessibility, not spinners.
+
+**A bug the brief did not know about:** `notes`, `deep-work`, `goals` and
+`reading-list` all destructure `loading` from their store and **never read it** — so
+they render "Henüz not yok" *while the fetch is still in flight*. A false empty state
+is worse than a spinner, because it tells the user their data is gone. Fixed in all
+four. **`monthly-review`'s real gap was not a spinner either:** two report sections
+were `{x.length > 0 && ...}`, so heading and all vanished silently when empty.
+
+**Process incident, self-corrected:** the Coder's first `git commit` (no pathspec)
+swept in 11 files another agent had staged in the race window. They caught it,
+`reset --soft`, and re-committed with an explicit pathspec. Nothing was lost or
+misattributed in the final history. **Standing rule for this branch: never a bare
+`git commit`/`git add -A` while agents share a working tree — always
+`git commit -F <msg> -- <paths>`.**
+
+**Escalated to a follow-up unit:** `components/ui/Button.tsx` and `Chip.tsx` render
+bare `TouchableOpacity` with closed prop types that forward **no** accessibility
+props — `Chip` takes a `selected` prop and never emits `accessibilityState`. A
+screens-scoped scan cannot see this. Dispatched as Coder Q.
+
+#### Orchestrator → crash reporting wired — commit `47a2484`
+
+`installGlobalErrorHandlers()` at **module scope, not in an effect**: an effect runs
+no earlier than after the first render commits, so a throw in this module's own
+import chain or in the first render itself happens before the handler exists and is
+lost — and a boot crash is the crash most worth reporting. `ErrorBoundary` wraps the
+navigator with `resetKeys={[segments[0]]}` — never resetting latches the user into
+the fallback until they force-quit; resetting on *every* route change would
+re-render the broken subtree instead of the fallback. 4 mutations red for the right
+reason; W1 deliberately left the comment behind and still went red, proving
+`stripComments` works.
+
+#### Orchestrator → performance audit + waterfall fix — commit `5738b8a`
+
+Full audit in `docs/PERFORMANCE_AUDIT_V2.md`, measured against §28's three criteria.
+
+- **Waterfall: one violation, FIXED.** `stats.tsx` awaited four independent things on
+  four lines. None consumes another's output — they were serialised only because each
+  `await` sat on its own line, costing the Stats tab **4 round trips instead of 2**.
+  Not a missing capability: `today.tsx:74` already batches five fetches in one
+  `Promise.all`. Mutation: restoring the waterfall turns all 6 real assertions red
+  while the 4 scanner-sanity tests correctly stay green.
+- **Unbounded chart render: PASS.** Every chart input is structurally capped.
+- **Full-data fetch: 4 violations, REPORTED NOT FIXED.** `noteStore`, `taskStore`,
+  `projectStore`, `readingListStore` fetch every row the user has ever created.
+  **Adding `.limit(n)` without pagination UI would not make the app faster — it would
+  make it silently wrong**, hiding the user's older data with no indication anything
+  was withheld. That is a worse defect than the one being fixed and is not what
+  "performance audit" authorises. Needs its own feature-shaped unit.
+
+The audit also states its own **limits** explicitly: static analysis only; frame
+time, list virtualisation, re-render volume and bundle size are out of scope and need
+a device profiler.
+
+#### Orchestrator → **the TZ pin had never worked** — commit `4b5d4ae`
+
+With typecheck and lint finally green in CI, the next failure appeared: 3 suites /
+5 tests, all timezone.
+
+`jest.setup.js` sets `process.env.TZ = 'Europe/Istanbul'`, and its own comment claims
+it runs "before any module — and therefore any Date — is loaded". It does not.
+`setupFiles` runs **inside an already-running worker**, by which point Node has
+resolved and cached the local zone; the assignment changes the variable and nothing
+else.
+
+**So the mechanism had never worked — and nothing revealed it, because the machine
+this project is developed on IS Europe/Istanbul.** The pin was invisibly redundant
+locally and inert in CI: `date.test.ts` was passing for the *wrong reason* on one
+machine and failing honestly on the other.
+
+**This is the SECOND bug of exactly this class found this session** — the local
+environment silently supplying what the code assumed, so a broken mechanism looked
+sound. The first was `.expo/types/router.d.ts`. Both were invisible to every gate
+until CI was actually read.
+
+Fixed with `jest.globalSetup.js`, which runs once in the parent **before any worker is
+forked**, so workers inherit `TZ` at spawn and Node *starts* in the right zone. The
+`jest.setup.js` assignment is kept for `--runInBand`. No new test was added, on
+purpose: the correct test already existed — `date.test.ts`'s
+`getTimezoneOffset() === -180` guard, whose comment reads *"If this fails, every
+assertion below is meaningless."* It did exactly its job. Evidence is the before/after:
+`TZ=UTC npx jest` saw `0` instead of `-180`; with the fix, the **full suite passes
+985/985 across 69 suites under `TZ=UTC`**.
+
+#### Orchestrator → **the structural gate depended on a gitignored `.env`** — commit `99ced94`
+
+With typecheck, lint and jest all finally green in CI, the next failure surfaced:
+`run-tests.js` exited 1. Locally it reports 142/142; in CI it **crashed before
+running**, because line 144 did `read('./.env')` and `.env` is gitignored, so a clean
+clone has none. `ENOENT` took the whole script down.
+
+**This is the THIRD bug of this exact class found this session:**
+
+| # | Gate | Local-only file it silently depended on |
+|---|---|---|
+| 1 | `tsc --noEmit` | `.expo/types/router.d.ts` — tsconfig includes it, .gitignore excludes it, CI never has it |
+| 2 | `jest` TZ pin | none — but the dev machine *is* Europe/Istanbul, so a pin that never worked looked fine |
+| 3 | `run-tests.js` | `.env` |
+
+And the diagnosis had **already been written down**: `jest.config.js`'s own comment
+reads *"Never read .env - the old run-tests.js did, and a test that depends on a
+gitignored file is not reproducible."* It was fixed for jest and left in place in
+`run-tests.js`.
+
+The fix is not to make the read tolerant. The meaningful, reproducible invariant is
+not the *contents of a developer's `.env`* — it is that the client is configured from
+the right environment variable names, and that fact lives in the repository, in
+`lib/supabase.ts` (`EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY`). A
+missing `.env` is a setup problem the app surfaces at runtime; it is not something a
+structural gate can meaningfully assert. Assertion count unchanged (2 → 2), still
+142/142, and CI parity proven directly by moving `.env` aside and re-running.
+
+#### Orchestrator → §24 "onboarding" — VERIFIED ALREADY DONE, and an earlier audit entry corrected
+
+**Correction to this session's own Phase 4 audit.** The audit recorded onboarding as
+"ABSENT (first-run)", on the reasoning that `components/HabitOnboarding.tsx` is a
+habit-creation wizard rather than a first-run product intro. That reasoning imported
+an assumption the plan does not make: **the plan never asks for a first-run intro
+anywhere.** §24's one-word "onboarding" bullet is specified concretely in §25, which
+asks for `HabitOnboarding.tsx` to become a *Habit Creation Wizard V2* with a named
+seven-step flow.
+
+Checked against the real file (Rule 7 — production code is the truth). It declares
+`TOTAL_STEPS = 7` and covers every step §25 names:
+
+| §25 step | Where |
+|---|---|
+| 1 Identity | step 1 — name, behaviour type, life area |
+| 2 Tracking | step 2 — binary / numeric + unit + goal |
+| 3 Schedule | step 3 — daily / weekly / monthly frequency |
+| 4 Difficulty | step 5 — difficulty + willpower cost, with a transparent breakdown |
+| 5 Reminder | step 3 — reminder toggle + time presets + free entry |
+| 6 Capacity preview | step 7 — `canActivate` against real `activeHabits`, slot and budget arithmetic |
+| 7 Activate / Queue | step 7 — `plannedStatus` resolves to `active` \| `waiting` \| `idea` |
+
+Step 7 is the substantive one and it is genuinely the Capacity Engine surfacing at
+creation time, not a summary screen: it names the destination, shows
+`active_count + 1 / focus_capacity` and `used + willpower_cost / daily_budget`, and
+handles the capacity-full case explicitly ("Kapasite dolu … Yer açarak
+aktifleştirebilirsin") rather than silently activating over the ceiling.
+
+Two deviations from §25's literal ordering, both judged acceptable: the reminder is
+folded into the schedule step rather than standing alone (it is a scheduling
+decision), and there is an **extra** step 4 for priority/triage that §25 does not
+list. The plan's list is a flow sketch; every named concern is covered and one more
+besides.
+
+**No work was done here, deliberately.** Building a first-run carousel would have been
+scope the plan never asked for, layered on top of a feature that already satisfies
+the requirement.
+
+### 🟢 CI IS GREEN — for the first time in this project's recorded history
+
+Run `33291446570`, commit `99ced94`, **3m13s, all seven steps passed**: `npm ci`,
+`typecheck:ci`, `expo lint`, `jest --ci`, `run-tests.js`, Android export, iOS export.
+Remaining annotations are warnings only (Node 20 deprecation notice, exhaustive-deps).
+
+This closes the finding that opened this session. Gate A's **"CI PASS"** criterion is
+now *established* rather than assumed — the previous session recorded CI as
+unobservable and closed Gates A–D against a green local run while every push was red.
+Getting here took three fixes, all of the same class (a gate silently depending on a
+file only the developer's machine has): `tsconfig.ci.json` for the generated
+typed-routes declaration, `jest.globalSetup.js` for the TZ pin that had never worked,
+and removing `run-tests.js`'s read of a gitignored `.env`.
+
+#### Coder R → `weekly_review_completed` from the repository — commit `69c8459`
+
+**Orchestrator verification:** 2 files, 18/18 green on an independent run, and the
+guard reads as described — `isFirstSave = probeError == null && existing == null`.
+
+The eleventh and last emittable event. The substance was not the emission but the
+**upsert double-fire**: `upsertWeeklyReview` cannot tell insert from update, so a user
+editing their review a second time would fire a second "completed".
+
+Solved with a `select('id')` probe on `(user_id, week_key)` before the upsert. Two
+details make it honest rather than merely working:
+
+1. **A failed probe is not read as "no row".** `probeError == null && existing == null`
+   — unknown means silent. For an exactly-once event, under-counting is the correct
+   failure direction.
+2. **The probe's error is never returned.** A read that exists only to answer an
+   analytics question must not be able to fail the user's save.
+
+**The race is documented in the file, not hidden.** Probe + upsert are two round
+trips, so two writers inside that window both see "no row" and both emit. Accepted
+because the key is `(user_id, week_key)`: the only writer who can collide with you is
+you, on a second device, on the same week, within a few hundred milliseconds — and
+the blast radius is bounded to analytics, since the upsert remains one atomic
+statement with unchanged last-write-wins semantics. No review is lost or corrupted.
+
+Three alternatives were evaluated and rejected **in the file, with reasons** — the
+`created_at`/`updated_at` discriminator the Orchestrator's brief suggested turned out
+to be **unavailable**: no in-repo migration defines `weekly_reviews` at all (it exists
+only remotely), and `WeeklyReviewRow` declares `created_at` alone. The Coder correctly
+declined to query the live database to check, per the standing constraint, and
+recorded the choice as *rejected for lack of evidence* rather than rejected on fact.
+`insert()`-then-`update()`-on-`23505` is genuinely atomic and is the right answer if
+this ever becomes contended; it was rejected because it rewrites the user's save path
+to buy accuracy on a counter.
+
+**The mutation pair worth keeping (M4 / M4b).** A *long prose* leak is invisible in
+`props` — the shipping filter eats it — so only `expect(dropped).toEqual([])` catches
+it. A *short token* survives the filter, so only key-set equality catches it. Two
+different assertions, each load-bearing against a different leak shape, both proven by
+mutation. 8 mutations total, all red for the right reason.
+
+**Monthly review — investigated, deliberately not wired.**
+`app/screens/monthly-review.tsx:295` writes straight to `AsyncStorage` inside
+`handleSave`. There is no monthly-review repository, store, or table. Emitting an event
+there would mean either putting analytics in a bypassable screen, or hanging it off an
+AsyncStorage key where "first save" is *per device* and a reinstall silently re-fires
+it — **an event whose funnel is device-local storage measures devices, not reviews.**
+`monthly_review_completed` is not in `ANALYTICS_EVENTS` and `buildEvent` throws on
+undeclared names, so nothing can emit it by accident meanwhile.
+
+The Coder also surfaced the underlying product defect, already logged in
+`docs/audit/03_UNFINISHED_AND_BROKEN_WORK.md` as P1/P2: monthly reflections are
+device-local, lost on reinstall, and the UI says "Kaydedildi" regardless.
+Recommendation: give monthly reviews a real table + repository mirroring
+`weekly_reviews`, *then* add the event. Carried to open items.
+
+**Shared-tree hazard confirmed as live, not theoretical.** Coder R observed a
+concurrent agent's suite grow from 1 test to 38 mid-verification, and correctly
+reported both the raw figure and the figure excluding the other agent's in-progress
+file. They also caught that the Orchestrator's stated jest baseline (975/68) was
+already stale (985/69) — a consequence of briefing from numbers captured before two
+other units landed.
+
+### §22 analytics — all eleven declared events verified emitting
+
+Checked by resolving each declared name to a production call site (excluding
+`lib/analytics.ts` itself and all test files):
+
+| Event | Emitted from |
+|---|---|
+| `habit_created` | `store/habitStore.ts` |
+| `habit_completed` / `habit_partial` / `habit_missed` | `store/logStore.ts` |
+| `recovery_created` / `recovery_completed` | `store/recoveryStore.ts` |
+| `routine_installed` / `ai_routine_generated` | `store/routineStore.ts` |
+| `focus_started` / `focus_completed` | `store/focusStore.ts` |
+| `weekly_review_completed` | `repositories/reviewRepository.ts` |
+
+**11/11, and not one of them from a screen.** Six production files carry emission.
+The layer went from zero call sites at session start to complete.
+
+### §27 Definition of Done — independently verified, with two honest nuances
+
+Confirmed by reading production code rather than trusting the log:
+
+- **notifications are genuinely wired**, not stubbed: `scheduleHabitReminder` on
+  create / update / activate, `cancelHabitReminder` on delete / deactivate
+  (`store/habitStore.ts:92,129,130,137,146,162`), permissions requested in
+  `lib/notifications.ts:25`.
+- `EmptyState` now used in **17** files under `app/`, `Skeleton` in **11**.
+
+Two DoD items need a qualifier rather than a tick:
+
+1. **"duration habits" — expressible and tested, but not reachable.**
+   `lib/habitEngine.ts:22` declares `'duration'` in `TrackingType`, and the engine
+   and its tests handle the case. But `adaptTrackingType` **never produces it**:
+   lines 44–48 state plainly that today's schema has no field distinguishing
+   "numeric with a duration unit" from any other numeric habit. So a user cannot
+   currently create a duration-tracked habit. This is a **documented, deliberate**
+   decision recorded in the code, not a hidden gap — but the DoD box is not honestly
+   tickable until the schema carries the distinction.
+
+2. **RLS is authored, not proven live.** Policies exist across
+   `001_initial_schema.sql` (5), `002_integrations.sql` (2) and
+   `20260825_phase1_core_engine.sql` (1). Per assumptions A-02/A-07, the Phase 1
+   migration remains **unapplied** because the Supabase project is paused. §28's
+   "RLS tested / cross-user isolation proven" therefore cannot be claimed from this
+   run — it needs the project restored and the migration applied, which is a
+   repo-owner action deliberately out of scope.
