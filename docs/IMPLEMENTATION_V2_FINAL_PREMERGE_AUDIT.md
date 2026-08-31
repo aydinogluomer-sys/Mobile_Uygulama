@@ -198,6 +198,7 @@ Each was found by looking at the running system, not at documentation.
 | 14 | **`anon` and `authenticated` held TRUNCATE on all 53 public tables.** RLS does not apply to TRUNCATE, so every ownership policy in this project is bypassed by one statement. Not reachable through PostgREST (no TRUNCATE verb, no DDL) — a property of today's call sites, not of the permission system. | `has_table_privilege` across every table | after revoke: 0 of 53 for both roles on TRUNCATE/REFERENCES/TRIGGER; SELECT/INSERT/DELETE still 53 |
 | 15 | **The Android notification icon was the opaque app icon.** From API 21 Android reads the ALPHA CHANNEL ONLY and fills the shape with the accent colour, so every notification would have shown a solid white block. | Decoded `icon.png`'s alpha: min and max both 255 | new white-on-transparent icon; the gate inflates the PNG and undoes all five scanline filters to assert alpha spans 0-255 — mutation red with `Expected: 0, Received: 255` |
 | 16 | **The UI showed an XP number the client invented.** `timeline.tsx` renders `+{log.xp}` from the optimistic row, whose `xp` came from a formula the server does not use — 30 against 10 for a binary done, 18 against 6 for a 12/20 duration day. Brief when online; as long as the queue waits when not. | Comparing client and server XP on the same live log | the optimistic row now carries the last CONFIRMED xp; the badge's own `xp > 0` guard hides it until the server answers |
+| 17 | **`xp_drift()` and `rebuild_profile_xp()` were callable by `anon`** — both documented "Service-role only". With only the publishable key that ships in the app bundle and no session, `rpc/rebuild_profile_xp` returned `200` and RAN against a real account's uuid; `xp_drift` returns every profile's id and totals whenever the database is not balanced. The revoke that was supposed to prevent it (`revoke all ... from public`) does not remove the EXPLICIT `anon`/`authenticated` grants Supabase's default privileges hand out at CREATE time — and **this pass repeated that same line** when it replaced the functions. | Asked "who can actually call this" instead of "did we write a revoke" | before: `200 {before_total: 30, after_total: 30, ...}` as anon. After `20260831_lock_admin_functions`: `401 42501 permission denied`. Triggers re-verified after the revoke — a logged habit still sets xp 10, awards 10, moves the streak to 1 and files 10 in the purge ledger |
 
 ---
 
@@ -325,6 +326,8 @@ There is no third status and none of them is left as a bare "not done".
 | G-8 | `supabase/migrations/` cannot rebuild the live schema | pre-existing, unchanged |
 | G-9 | ~~CI lint scope is narrower than the repo~~ — **CLOSED**; `lint:ci` runs `eslint .` over everything at `--max-warnings=0` | `.github/workflows/ci.yml` |
 | G-10 | `google_calendar_integrations` and `spotify_accounts` have RLS on and **0 policies** — deny-all for clients, reachable only through the service role. Deliberate, and recorded here so it is not mistaken for a gap | live policy inventory |
+| G-11 | ~15 SECURITY DEFINER RPCs that DO scope on `auth.uid()` (`spend_focus_points_v2`, `log_makeup_completion`, `buy_shop_item`, `upgrade_skill`, `claim_quest_reward`, `interact_with_pet`, the `get_*` readers) are still EXECUTE-able by `anon`. Not exploitable — `auth.uid()` is NULL there, so they act on nothing or raise — but the grant is meaningless and should go. Deliberately not swept in at the end of an unrelated pass: each one wants a live check that revoking it breaks no signed-in path | `has_function_privilege('anon', …)` across `public` |
+| G-12 | 22 functions have a mutable `search_path` (Supabase advisor `function_search_path_mutable`), most of them SECURITY DEFINER gamification RPCs. A known escalation shape. Every function this branch wrote or replaced pins `SET search_path TO 'public'`; the pre-existing ones do not | advisor run, 0 ERROR-level findings overall |
 
 ---
 
@@ -397,6 +400,7 @@ with them.
 | `20260831_ceiling_xp` | `habit_xp_value` reads `target_direction` | only ever lowers an award that was too high; `main` writes the same column |
 | `20260831_xp_drift_survives_purge` | `profiles.purged_xp` + a BEFORE DELETE trigger; `xp_drift`/`rebuild_profile_xp` account for it | additive column, server-written only |
 | `20260831_revoke_ddl_grants` | revokes TRUNCATE/REFERENCES/TRIGGER from `anon`/`authenticated` | removes privileges nothing uses; SELECT/INSERT/UPDATE/DELETE untouched |
+| `20260831_lock_admin_functions` | revokes EXECUTE on `xp_drift`/`rebuild_profile_xp`/`habit_xp_value` and every trigger function from `anon`+`authenticated`; stops future functions defaulting EXECUTE to `anon` | removes access nothing legitimate used; trigger firing re-verified live |
 
 Each was applied to the live project and verified there, and each is committed
 as a file so the tree and the database say the same thing.
