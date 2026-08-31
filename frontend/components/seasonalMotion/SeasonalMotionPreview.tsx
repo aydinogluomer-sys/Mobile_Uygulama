@@ -6,7 +6,7 @@ import { View, Text, StyleSheet, Modal, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { getMonthBackground } from '../../lib/monthBackgrounds';
-import { colors, hexA } from '../../lib/tokens';
+import { colors, hexA, alphaHex } from '../../lib/tokens';
 import SeasonalMotion from './SeasonalMotion';
 import { MONTH_NAMES_TR, monthNameFromIndex } from './config';
 import type { SeasonalMotionIntensity } from './types';
@@ -80,7 +80,7 @@ const s = StyleSheet.create({
   monthName: { fontSize: 16, fontWeight: '700', color: colors.white },
   seg: { flexDirection: 'row', gap: 8 },
   segBtn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: colors.border },
-  segOn: { backgroundColor: '#D9775722', borderColor: colors.accent },
+  segOn: { backgroundColor: alphaHex(colors.accent, '22'), borderColor: colors.accent },
   segTxt: { fontSize: 13, fontWeight: '700', color: colors.textFaint },
   segTxtOn: { color: colors.accent },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

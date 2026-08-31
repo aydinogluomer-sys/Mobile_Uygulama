@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
@@ -457,7 +457,7 @@ const s = StyleSheet.create({
   bannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   bannerTitle: { fontSize: 15, fontWeight: '700', color: colors.white },
   bannerSub: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
-  bannerBadge: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#D9775720', alignItems: 'center', justifyContent: 'center' },
+  bannerBadge: { width: 32, height: 32, borderRadius: 16, backgroundColor: alphaHex(colors.accent, '20'), alignItems: 'center', justifyContent: 'center' },
   bannerBadgeText: { fontSize: 13, fontWeight: '700', color: colors.accent },
   content: { paddingHorizontal: 16, paddingBottom: 40 },
 
@@ -466,7 +466,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 14, padding: 14,
     borderWidth: 1, borderColor: colors.border, marginBottom: 10,
   },
-  featureCardConnected: { borderColor: '#87A67830' },
+  featureCardConnected: { borderColor: alphaHex(colors.success, '30') },
   featureLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   featureIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   featureBody: { flex: 1 },
@@ -475,8 +475,8 @@ const s = StyleSheet.create({
   featureDesc: { fontSize: 12, color: colors.textFaint, lineHeight: 16 },
 
   badge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
-  badgeAvailable: { backgroundColor: '#87A67818' },
-  badgeConnected: { backgroundColor: '#87A67820' },
+  badgeAvailable: { backgroundColor: alphaHex(colors.success, '18') },
+  badgeConnected: { backgroundColor: alphaHex(colors.success, '20') },
   badgeText: { fontSize: 10, fontWeight: '700' },
   badgeTextAvailable: { color: colors.success },
   badgeTextConnected: { color: colors.success },
@@ -484,7 +484,7 @@ const s = StyleSheet.create({
   hint: {
     flexDirection: 'row', gap: 8, alignItems: 'flex-start',
     marginTop: 4, padding: 12, borderRadius: 10,
-    backgroundColor: '#111', borderWidth: 1, borderColor: colors.borderSubtle,
+    backgroundColor: colors.coolBlack850, borderWidth: 1, borderColor: colors.borderSubtle,
   },
   hintText: { flex: 1, fontSize: 12, color: colors.textGhost, lineHeight: 18 },
 
@@ -503,8 +503,8 @@ const s = StyleSheet.create({
   // Notion bağlı
   connectedBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#87A67812', borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: '#87A67830', marginBottom: 4,
+    backgroundColor: alphaHex(colors.success, '12'), borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: alphaHex(colors.success, '30'), marginBottom: 4,
   },
   connectedIconWrap: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   connectedTitle: { fontSize: 15, fontWeight: '700', color: colors.success },
@@ -542,8 +542,8 @@ const s = StyleSheet.create({
 
   errorBox: {
     flexDirection: 'row', gap: 8, alignItems: 'flex-start',
-    backgroundColor: '#C76A6A10', borderRadius: 10, padding: 12,
-    borderWidth: 1, borderColor: '#C76A6A28', marginBottom: 8,
+    backgroundColor: alphaHex(colors.error, '10'), borderRadius: 10, padding: 12,
+    borderWidth: 1, borderColor: alphaHex(colors.error, '28'), marginBottom: 8,
   },
   errorText: { flex: 1, fontSize: 12, color: colors.error, lineHeight: 17 },
 
@@ -565,13 +565,13 @@ const s = StyleSheet.create({
   stepNumText: { fontSize: 12, fontWeight: '700', color: colors.white },
   stepTitle: { fontSize: 14, fontWeight: '600', color: colors.text },
   stepDesc: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
-  pathBox: { backgroundColor: '#0a0a0a', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.borderSubtle },
+  pathBox: { backgroundColor: colors.coolBlack950, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.borderSubtle },
   pathLabel: { fontSize: 10, fontWeight: '700', color: colors.textGhost, letterSpacing: 1, marginBottom: 4 },
   pathValue: { fontSize: 13, fontFamily: 'monospace', color: colors.accent },
   docsBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#D9775710', borderRadius: 10, padding: 12,
-    borderWidth: 1, borderColor: '#D9775730',
+    backgroundColor: alphaHex(colors.accent, '10'), borderRadius: 10, padding: 12,
+    borderWidth: 1, borderColor: alphaHex(colors.accent, '30'),
   },
   docsBtnText: { fontSize: 13, color: colors.accent, fontWeight: '500' },
 });

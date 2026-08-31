@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { withEdgeDeadline } from '../../lib/edgeCall';
 import { newRequestId } from '../../services/focusPointService';
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -515,7 +515,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 8,
     backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
   },
-  fpBarWarn: { backgroundColor: '#C76A6A12', borderBottomColor: '#C76A6A30' },
+  fpBarWarn: { backgroundColor: alphaHex(colors.error, '12'), borderBottomColor: alphaHex(colors.error, '30') },
   fpLeft: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   fpText: { fontSize: 14, fontWeight: '700', color: colors.warning },
   fpSub: { fontSize: 11, color: colors.textFaint },
@@ -545,8 +545,8 @@ const s = StyleSheet.create({
   },
   bubbleError: {
     alignSelf: 'flex-start',
-    backgroundColor: '#C76A6A15',
-    borderColor: '#C76A6A30',
+    backgroundColor: alphaHex(colors.error, '15'),
+    borderColor: alphaHex(colors.error, '30'),
   },
   assistantIcon: {
     width: 20, height: 20, borderRadius: 10,

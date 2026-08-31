@@ -1,4 +1,4 @@
-import { colors } from '../lib/tokens';
+import { colors, alphaHex } from '../lib/tokens';
 import React, { useState } from 'react';
 import {
   View,
@@ -1050,8 +1050,8 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: 16,
     alignItems: 'center', borderWidth: 2, borderColor: colors.border,
   },
-  typeCardSelected: { borderColor: colors.accent, backgroundColor: '#1a1f2e' },
-  typeCardSelectedRed: { borderColor: colors.error, backgroundColor: '#1f1515' },
+  typeCardSelected: { borderColor: colors.accent, backgroundColor: colors.selectedTint },
+  typeCardSelectedRed: { borderColor: colors.error, backgroundColor: colors.selectedTintError },
   typeEmoji: { fontSize: 28, marginBottom: 6 },
   typeLabel: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 2 },
   typeDesc: { fontSize: 12, color: colors.textDim, textAlign: 'center' },
@@ -1060,13 +1060,13 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 14,
     alignItems: 'center', borderWidth: 2, borderColor: colors.border,
   },
-  dirBtnSelected: { borderColor: colors.accent, backgroundColor: '#1a1f2e' },
+  dirBtnSelected: { borderColor: colors.accent, backgroundColor: colors.selectedTint },
   dirBtnText: { color: colors.textDim, fontSize: 14, fontWeight: '600' },
   freqBtn: {
     flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12,
     alignItems: 'center', borderWidth: 2, borderColor: colors.border,
   },
-  freqBtnSelected: { borderColor: colors.accent, backgroundColor: '#1a1f2e' },
+  freqBtnSelected: { borderColor: colors.accent, backgroundColor: colors.selectedTint },
   freqBtnText: { color: colors.textDim, fontSize: 13, fontWeight: '600' },
   freqBtnTextSelected: { color: colors.accent },
   daysRow: { flexDirection: 'row', gap: 6 },
@@ -1081,7 +1081,7 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 14,
     alignItems: 'center', borderWidth: 2, borderColor: colors.border,
   },
-  partBtnSelected: { borderColor: colors.accent, backgroundColor: '#1a1f2e' },
+  partBtnSelected: { borderColor: colors.accent, backgroundColor: colors.selectedTint },
   partEmoji: { fontSize: 24, marginBottom: 4 },
   partLabel: { fontSize: 12, color: colors.textDim },
   iconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
@@ -1189,8 +1189,8 @@ const styles = StyleSheet.create({
   costHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   costHeadLabel: { fontSize: 14, fontWeight: '700', color: colors.white },
   costBigBadge: {
-    width: 44, height: 44, borderRadius: 12, backgroundColor: '#D4A84A22',
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#D4A84A55',
+    width: 44, height: 44, borderRadius: 12, backgroundColor: alphaHex(colors.warning, '22'),
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: alphaHex(colors.warning, '55'),
   },
   costBigText: { fontSize: 22, fontWeight: '800', color: colors.warning },
   costDivider: { height: 1, backgroundColor: colors.border, marginVertical: 12 },
@@ -1207,7 +1207,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9,
     borderWidth: 1, borderColor: colors.border,
   },
-  minsBtnSel: { backgroundColor: '#D9775720', borderColor: colors.accent },
+  minsBtnSel: { backgroundColor: alphaHex(colors.accent, '20'), borderColor: colors.accent },
   minsBtnText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
   minsBtnTextSel: { color: colors.accent },
 
@@ -1217,7 +1217,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 12,
     borderWidth: 2, borderColor: colors.border,
   },
-  endKindBtnSel: { borderColor: colors.accent, backgroundColor: '#1a1f2e' },
+  endKindBtnSel: { borderColor: colors.accent, backgroundColor: colors.selectedTint },
   endKindText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
   endHint: { fontSize: 12, color: colors.accent, marginTop: 10, fontWeight: '600' },
   endUnit: { fontSize: 13, color: colors.textDim, marginLeft: 10 },
@@ -1238,7 +1238,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
     borderWidth: 1, borderColor: colors.border,
   },
-  cueChipSel: { backgroundColor: '#D9775720', borderColor: colors.accent },
+  cueChipSel: { backgroundColor: alphaHex(colors.accent, '20'), borderColor: colors.accent },
   cueChipText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
 
   // Özet adımı (Step 7)

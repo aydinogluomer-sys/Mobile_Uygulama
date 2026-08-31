@@ -28,8 +28,8 @@ const GROUPS: { title: string; items: HubItem[] }[] = [
     items: [
       { label: 'Gelen', icon: 'mail-outline', color: '#06b6d4', route: '/tabs/tasks?tab=inbox' },
       { label: 'Bu Hafta', icon: 'today-outline', color: '#6366f1', route: '/tabs/tasks?tab=this_week' },
-      { label: 'Bir Gün', icon: 'time-outline', color: '#9ca3af', route: '/tabs/tasks?tab=someday' },
-      { label: 'Arşiv', icon: 'archive-outline', color: '#4b5563', route: '/tabs/tasks?tab=done' },
+      { label: 'Bir Gün', icon: 'time-outline', color: colors.neutral400, route: '/tabs/tasks?tab=someday' },
+      { label: 'Arşiv', icon: 'archive-outline', color: colors.neutral600, route: '/tabs/tasks?tab=done' },
     ],
   },
   {
@@ -42,7 +42,7 @@ const GROUPS: { title: string; items: HubItem[] }[] = [
   {
     title: 'Kişisel',
     items: [
-      { label: 'Notlar', icon: 'document-text-outline', color: '#9ca3af', route: '/screens/notes' },
+      { label: 'Notlar', icon: 'document-text-outline', color: colors.neutral400, route: '/screens/notes' },
       { label: 'Journal', icon: 'journal-outline', color: '#ec4899', route: '/screens/journal' },
     ],
   },
@@ -50,7 +50,7 @@ const GROUPS: { title: string; items: HubItem[] }[] = [
     title: 'Sistem',
     items: [
       { label: 'İstatistikler', icon: 'stats-chart-outline', color: '#6366f1', route: '/tabs/stats' },
-      { label: 'Ayarlar', icon: 'settings-outline', color: '#6b7280', route: '/tabs/settings' },
+      { label: 'Ayarlar', icon: 'settings-outline', color: colors.neutral500, route: '/tabs/settings' },
     ],
   },
 ];

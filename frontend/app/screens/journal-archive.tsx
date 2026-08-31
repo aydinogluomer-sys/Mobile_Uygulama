@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -141,10 +141,10 @@ const s = StyleSheet.create({
   content: { padding: 16, paddingBottom: 40 },
 
   report: {
-    backgroundColor: '#211C18', borderRadius: 16, borderWidth: 1, borderColor: '#3A3026',
+    backgroundColor: colors.paperSurface, borderRadius: 16, borderWidth: 1, borderColor: colors.paperBorder,
     padding: 16, marginBottom: 18,
   },
-  reportTitle: { fontSize: 11, fontWeight: '800', color: '#A88E6A', letterSpacing: 1.5, marginBottom: 12 },
+  reportTitle: { fontSize: 11, fontWeight: '800', color: colors.paperLabel, letterSpacing: 1.5, marginBottom: 12 },
   statRow: { flexDirection: 'row', justifyContent: 'space-between' },
   stat: { alignItems: 'center', flex: 1 },
   statValue: { fontSize: 18, fontWeight: '800', color: colors.text },
@@ -155,12 +155,12 @@ const s = StyleSheet.create({
 
   page: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-    backgroundColor: '#211C18', borderRadius: 12, borderWidth: 1, borderColor: '#3A3026',
+    backgroundColor: colors.paperSurface, borderRadius: 12, borderWidth: 1, borderColor: colors.paperBorder,
     padding: 14, marginBottom: 8,
   },
   spine: {
     alignItems: 'center', minWidth: 38,
-    borderRightWidth: 1, borderRightColor: '#3A3026', paddingRight: 12,
+    borderRightWidth: 1, borderRightColor: colors.paperBorder, paddingRight: 12,
   },
   spineDay: { fontSize: 20, fontWeight: '800', color: colors.warning },
   spineDow: { fontSize: 10, color: colors.textFaint, fontWeight: '600' },
@@ -168,7 +168,7 @@ const s = StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   sourceChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start',
-    backgroundColor: '#D4A84A18', borderColor: '#D4A84A40', borderWidth: 1,
+    backgroundColor: alphaHex(colors.warning, '18'), borderColor: alphaHex(colors.warning, '40'), borderWidth: 1,
     borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
   },
   sourceChipText: { fontSize: 10, color: colors.warning, fontWeight: '700' },
@@ -178,7 +178,7 @@ const s = StyleSheet.create({
     borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
   },
   aiChipText: { fontSize: 10, color: '#ec4899', fontWeight: '700' },
-  preview: { fontSize: 13, color: '#CFC9BC', lineHeight: 19 },
+  preview: { fontSize: 13, color: colors.paperTextDim, lineHeight: 19 },
   mood: { fontSize: 20 },
 
   empty: { alignItems: 'center', gap: 12, paddingTop: 50, paddingHorizontal: 30 },

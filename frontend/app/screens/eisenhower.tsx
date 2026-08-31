@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -322,8 +322,8 @@ const s = StyleSheet.create({
 
   unassignedBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#D4A84A15', borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: '#D4A84A30', marginBottom: 16,
+    backgroundColor: alphaHex(colors.warning, '15'), borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: alphaHex(colors.warning, '30'), marginBottom: 16,
   },
   unassignedText: { flex: 1, fontSize: 13, color: colors.warning },
   unassignedLink: { fontSize: 13, color: colors.warning, fontWeight: '700' },
@@ -342,10 +342,10 @@ const s = StyleSheet.create({
 
   taskChip: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
-    backgroundColor: '#111', borderRadius: 8, padding: 8, marginBottom: 6,
+    backgroundColor: colors.coolBlack850, borderRadius: 8, padding: 8, marginBottom: 6,
   },
   dot: { width: 7, height: 7, borderRadius: 4, marginTop: 3, flexShrink: 0 },
-  taskTitle: { flex: 1, fontSize: 12, color: '#d1d5db', lineHeight: 16 },
+  taskTitle: { flex: 1, fontSize: 12, color: colors.neutral300, lineHeight: 16 },
   habitRoom: { fontSize: 9, color: colors.textFaint, marginTop: 1 },
 
   axisRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingHorizontal: 4 },
@@ -361,7 +361,7 @@ const s = StyleSheet.create({
   modalOption: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     padding: 12, borderRadius: 10, marginBottom: 8,
-    backgroundColor: '#111', borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.coolBlack850, borderWidth: 1, borderColor: colors.border,
   },
   modalOptionActive: { borderColor: colors.accent },
   modalOptionLabel: { fontSize: 13, fontWeight: '700' },

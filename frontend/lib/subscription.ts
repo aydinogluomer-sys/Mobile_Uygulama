@@ -1,4 +1,5 @@
 // Katmanlı abonelik + Focus Point kredi sistemi — paylaşılan config
+import { colors } from '../lib/tokens';
 // Backend (generate-routine) ile aynı maliyet/grant değerleri kullanılmalı.
 
 export type Tier = 'free' | 'plus' | 'pro';
@@ -27,7 +28,7 @@ export const TIERS: Record<Tier, TierConfig> = {
     key: 'free',
     name: 'Free',
     grant: 30,
-    color: '#6b7280',
+    color: colors.neutral500,
     tagline: 'Başlangıç için',
     features: [
       'Tüm alışkanlık takibi & Kanban',

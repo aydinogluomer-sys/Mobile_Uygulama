@@ -1,4 +1,4 @@
-import { colors } from '../lib/tokens';
+import { colors, alphaHex } from '../lib/tokens';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { IntegrationStatus } from '../constants/integrations';
@@ -13,12 +13,12 @@ const STATUS_CONFIG: Record<
 > = {
   available: {
     label: 'Kur',
-    backgroundColor: '#D9775720',
+    backgroundColor: alphaHex(colors.accent, '20'),
     color: colors.accent,
   },
   connected: {
     label: 'Bağlı',
-    backgroundColor: '#87A67820',
+    backgroundColor: alphaHex(colors.success, '20'),
     color: colors.success,
   },
   comingSoon: {

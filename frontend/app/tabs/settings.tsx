@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../../store/themeStore';
-import { colors, ACCENTS, type AccentKey } from '../../lib/tokens';
+import { colors, ACCENTS, type AccentKey, alphaHex } from '../../lib/tokens';
 import type { SeasonalMotionIntensity } from '../../components/seasonalMotion/types';
 import {
   listWebhooks, registerWebhook, removeWebhook,
@@ -203,7 +203,7 @@ export default function SettingsScreen() {
               <Switch
                 value={isDark}
                 onValueChange={toggleTheme}
-                trackColor={{ false: colors.border, true: '#D9775740' }}
+                trackColor={{ false: colors.border, true: alphaHex(colors.accent, '40') }}
                 thumbColor={isDark ? colors.accent : colors.textDim}
               />
             </View>
@@ -336,7 +336,7 @@ export default function SettingsScreen() {
                 disabled={seedingDemo}
               >
                 <View style={styles.settingLeft}>
-                  <View style={[styles.settingIcon, { backgroundColor: '#87A67820' }]}>
+                  <View style={[styles.settingIcon, { backgroundColor: alphaHex(colors.success, '20') }]}>
                     <Ionicons name="flask-outline" size={24} color="#87A678" />
                   </View>
                   <View style={styles.settingInfo}>
@@ -571,7 +571,7 @@ const styles = StyleSheet.create({
     flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10,
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg,
   },
-  segBtnOn: { backgroundColor: '#D9775722', borderColor: colors.accent },
+  segBtnOn: { backgroundColor: alphaHex(colors.accent, '22'), borderColor: colors.accent },
   segText: { fontSize: 13, fontWeight: '700', color: colors.textFaint },
   segTextOn: { color: colors.accent },
   accentRow: { flexDirection: 'row', gap: 8 },
@@ -786,7 +786,7 @@ const styles = StyleSheet.create({
   },
   webhookUrl: {
     fontSize: 12,
-    color: '#d1d5db',
+    color: colors.neutral300,
     flex: 1,
     marginRight: 8,
   },

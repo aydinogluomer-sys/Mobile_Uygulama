@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { withEdgeDeadline } from '../../lib/edgeCall';
 import { newRequestId } from '../../services/focusPointService';
 import { useEffect, useMemo, useState } from 'react';
@@ -207,7 +207,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 8,
     backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
   },
-  fpBarWarn: { backgroundColor: '#C76A6A12', borderBottomColor: '#C76A6A30' },
+  fpBarWarn: { backgroundColor: alphaHex(colors.error, '12'), borderBottomColor: alphaHex(colors.error, '30') },
   fpLeft: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   fpText: { fontSize: 14, fontWeight: '700', color: colors.warning },
   fpSub: { fontSize: 11, color: colors.textFaint },
@@ -239,14 +239,14 @@ const s = StyleSheet.create({
   cardTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
   cardMeta: { fontSize: 11, color: colors.textFaint },
-  insightText: { fontSize: 14, color: '#E3DDD0', lineHeight: 22 },
+  insightText: { fontSize: 14, color: colors.paperText, lineHeight: 22 },
   placeholder: { fontSize: 13, color: colors.textFaint, lineHeight: 20, fontStyle: 'italic' },
   loadingBox: { alignItems: 'center', gap: 10, paddingVertical: 20 },
   loadingText: { fontSize: 13, color: colors.textFaint },
 
   errorBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#C76A6A15', borderColor: '#C76A6A30', borderWidth: 1,
+    backgroundColor: alphaHex(colors.error, '15'), borderColor: alphaHex(colors.error, '30'), borderWidth: 1,
     borderRadius: 12, padding: 12, marginBottom: 12,
   },
   errorText: { flex: 1, fontSize: 13, color: colors.error },

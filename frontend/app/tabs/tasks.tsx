@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore, type Task, type ListType, type TaskPriority } from '../../store/taskStore';
 import { useProjectStore } from '../../store/projectStore';
-import { colors, space } from '../../lib/tokens';
+import { colors, space, alphaHex } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import InlineComposer from '../../components/InlineComposer';
 import { todayLocal } from '../../lib/date';
@@ -257,11 +257,11 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20,
     borderWidth: 1, borderColor: colors.border,
   },
-  tabBtnActive: { backgroundColor: '#D9775720', borderColor: colors.accent },
+  tabBtnActive: { backgroundColor: alphaHex(colors.accent, '20'), borderColor: colors.accent },
   tabLabel: { fontSize: 13, color: colors.textFaint, fontWeight: '500' },
   tabLabelActive: { color: colors.accent },
   tabBadge: { backgroundColor: colors.border, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 },
-  tabBadgeActive: { backgroundColor: '#D9775730' },
+  tabBadgeActive: { backgroundColor: alphaHex(colors.accent, '30') },
   tabBadgeText: { fontSize: 11, color: colors.textDim },
 
   list: { flex: 1 },
@@ -318,7 +318,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
     borderWidth: 1, borderColor: colors.border,
   },
-  optBtnActive: { backgroundColor: '#D9775720', borderColor: colors.accent },
+  optBtnActive: { backgroundColor: alphaHex(colors.accent, '20'), borderColor: colors.accent },
   optText: { fontSize: 13, color: colors.textDim },
   optTextActive: { color: colors.accent },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 8 },

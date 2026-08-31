@@ -51,7 +51,79 @@ export const colors = {
 
   white: '#ffffff',
   black: '#000000',
+
+  // ── Legacy neutrals ────────────────────────────────────────────────────
+  //
+  // These are NOT part of the warm Atlas palette above and are not blessed as
+  // such. They are the Tailwind grey ramp and a cool near-black ramp that the
+  // app was built with before that palette existed, and they are still in use
+  // across the timeline, hub, stats and habits screens.
+  //
+  // They are named here rather than left as bare hexes for one reason: a
+  // colour with a name can be found, counted and changed in one place, and a
+  // literal cannot. The names are the ramps' own — `#9ca3af` IS Tailwind
+  // `gray-400` — so nothing is invented, which is the objection that kept
+  // them unnamed until now.
+  //
+  // The OPEN QUESTION is unchanged and belongs to a designer: whether these
+  // should collapse into `textDim`/`textFaint`/`bg` and friends. Naming them
+  // does not answer it; it makes the question askable with a grep. See
+  // `docs/DESIGN_TOKENS.md`.
+  neutral200: '#e5e7eb',
+  neutral300: '#d1d5db',
+  neutral400: '#9ca3af',
+  neutral500: '#6b7280',
+  neutral600: '#4b5563',
+
+  coolBlack950: '#0a0a0a',
+  coolBlack900: '#0f0f0f',
+  coolBlack850: '#111111',
+  coolBlack800: '#1a1a1a',
+  coolBlack750: '#1f1f1f',
+  coolBlack700: '#2a2a2a',
+  coolBlack600: '#3a3a3a',
+
+  // ── Journal "paper" surfaces ───────────────────────────────────────────
+  //
+  // The journal, its archive and its reader deliberately look like paper
+  // rather than like the rest of the app: a warmer card, a gold hairline, a
+  // softer body ink. That is a real sub-palette used across three screens,
+  // not drift, so it is named by the role each colour plays there.
+  paperSurface: '#211c18',
+  paperBorder: '#3a3026',
+  paperLabel: '#a88e6a',
+  paperText: '#e3ddd0',
+  paperTextDim: '#cfc9bc',
+
+  // ── Selected-state tints ───────────────────────────────────────────────
+  //
+  // The background a card takes when it is chosen, in three flavours matching
+  // the border it is paired with (`colors.accent`, `colors.error`, and the
+  // capacity screens' green). Named because "the selected background" is a
+  // role; the hexes themselves say nothing.
+  selectedTint: '#1a1f2e',
+  selectedTintError: '#1f1515',
+  selectedTintSuccess: '#1f3d33',
+
+  /** Warm amber hint text on the focus screen. */
+  amberSoft: '#e0a458',
 } as const;
+
+/**
+ * A token colour at an 8-bit alpha, written the way the literal was.
+ *
+ * `alphaHex(colors.accent, '20')` is EXACTLY `'#D9775720'` — the same bytes
+ * React Native was already given. `hexA` above is not a substitute: it emits
+ * `rgba(217, 119, 87, 0.125)`, a different string and a slightly different
+ * value, so swapping the ~90 `#RRGGBBAA` literals for it would have been a
+ * silent restyle rather than a rename.
+ *
+ * `aa` stays a two-character hex string for the same reason: it is what was
+ * written, and converting to a 0–1 opacity would round.
+ */
+export function alphaHex(hex: string, aa: string): string {
+  return `${hex}${aa}`;
+}
 
 // Aksan renk temaları (Atlas: clay varsayılan + moss/slate/amber) — runtime seçilebilir.
 // Mimari not: yalnız render-anında okunan yüzeyler (primary Button, tab bar, Today hero)

@@ -1,4 +1,4 @@
-import { colors } from '../lib/tokens';
+import { colors, alphaHex } from '../lib/tokens';
 import React, { useState } from 'react';
 import {
   View,
@@ -380,8 +380,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    backgroundColor: '#C76A6A15',
-    borderColor: '#C76A6A30',
+    backgroundColor: alphaHex(colors.error, '15'),
+    borderColor: alphaHex(colors.error, '30'),
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,

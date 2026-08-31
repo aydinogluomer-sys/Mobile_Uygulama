@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -274,7 +274,7 @@ export default function GoalsScreen() {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
 
-  tabs: { flexDirection: 'row', backgroundColor: '#111', borderBottomWidth: 1, borderBottomColor: colors.border },
+  tabs: { flexDirection: 'row', backgroundColor: colors.coolBlack850, borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
 
@@ -288,7 +288,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 14, padding: 14,
     borderWidth: 1, borderColor: colors.border, marginBottom: 10,
   },
-  goalDone: { borderColor: '#87A67830', backgroundColor: '#87A67808' },
+  goalDone: { borderColor: alphaHex(colors.success, '30'), backgroundColor: alphaHex(colors.success, '08') },
   goalRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
   goalTitle: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '500', lineHeight: 20 },
   goalTitleDone: { textDecorationLine: 'line-through', color: colors.textFaint },
@@ -319,13 +319,13 @@ const s = StyleSheet.create({
 
   fieldLabel: { fontSize: 12, color: colors.textFaint, marginBottom: 8, fontWeight: '600' },
   input: {
-    backgroundColor: '#111', borderRadius: 10, padding: 14,
+    backgroundColor: colors.coolBlack850, borderRadius: 10, padding: 14,
     fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 16,
   },
   quickRow: { flexDirection: 'row', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
   quickBtn: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: '#111', borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.coolBlack850, borderWidth: 1, borderColor: colors.border,
   },
   quickText: { fontSize: 13, color: colors.textFaint },
 

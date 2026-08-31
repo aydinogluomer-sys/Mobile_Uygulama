@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal,
@@ -315,7 +315,7 @@ const s = StyleSheet.create({
 
   objCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 14 },
   objHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  qBadge: { backgroundColor: '#D9775720', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  qBadge: { backgroundColor: alphaHex(colors.accent, '20'), borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   qBadgeText: { fontSize: 11, color: colors.accent, fontWeight: '700' },
   objText: { fontSize: 16, fontWeight: '700', color: colors.white, marginBottom: 12 },
   objProgRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
@@ -352,7 +352,7 @@ const s = StyleSheet.create({
   input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 14 },
   row: { flexDirection: 'row', gap: 10, marginBottom: 6 },
   chip: { flex: 1, alignItems: 'center', backgroundColor: colors.surface, borderRadius: 10, paddingVertical: 10, borderWidth: 1, borderColor: colors.border },
-  chipSel: { backgroundColor: '#D9775720', borderColor: colors.accent },
+  chipSel: { backgroundColor: alphaHex(colors.accent, '20'), borderColor: colors.accent },
   chipText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
   chipTextSel: { color: colors.accent },
   actions: { flexDirection: 'row', gap: 12, marginTop: 16 },

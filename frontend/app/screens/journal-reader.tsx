@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, FlatList, Dimensions, TouchableOpacity,
@@ -154,19 +154,19 @@ const s = StyleSheet.create({
 
   pageWrap: { paddingHorizontal: 16, paddingVertical: 14 },
   paper: {
-    flex: 1, backgroundColor: '#211C18', borderRadius: 16,
-    borderWidth: 1, borderColor: '#3A3026', overflow: 'hidden',
+    flex: 1, backgroundColor: colors.paperSurface, borderRadius: 16,
+    borderWidth: 1, borderColor: colors.paperBorder, overflow: 'hidden',
   },
   margin: {
     position: 'absolute', top: 0, bottom: 0, left: 30, width: 1,
-    backgroundColor: '#C76A6A40',
+    backgroundColor: alphaHex(colors.error, '40'),
   },
   paperContent: { padding: 22, paddingLeft: 44, paddingBottom: 40 },
-  dow: { fontSize: 13, color: '#A88E6A', fontWeight: '600' },
+  dow: { fontSize: 13, color: colors.paperLabel, fontWeight: '600' },
   dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
   dateBig: { fontSize: 22, fontWeight: '800', color: colors.text },
   moodBig: { fontSize: 26 },
-  hairline: { height: 1, backgroundColor: '#3A3026', marginVertical: 14 },
+  hairline: { height: 1, backgroundColor: colors.paperBorder, marginVertical: 14 },
 
   aiChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
@@ -174,7 +174,7 @@ const s = StyleSheet.create({
     borderRadius: 20, paddingHorizontal: 9, paddingVertical: 4, marginBottom: 14,
   },
   aiChipText: { fontSize: 11, color: '#ec4899', fontWeight: '700' },
-  body: { fontSize: 15, color: '#E3DDD0', lineHeight: 25 },
+  body: { fontSize: 15, color: colors.paperText, lineHeight: 25 },
 
   navBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

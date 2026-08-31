@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { currentUser } from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
@@ -477,6 +477,6 @@ const s = StyleSheet.create({
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#14b8a6', borderRadius: 14, paddingVertical: 15, marginTop: 8 },
   saveBtnLoading: { opacity: 0.7 },
   saveBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
-  savedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#87A67810', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#87A67830' },
+  savedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: alphaHex(colors.success, '10'), borderRadius: 12, padding: 12, borderWidth: 1, borderColor: alphaHex(colors.success, '30') },
   savedBadgeText: { fontSize: 13, color: colors.success },
 });

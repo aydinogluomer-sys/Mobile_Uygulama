@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDrawerStore } from '../store/drawerStore';
-import { fontFamily, colors } from '../lib/tokens';
+import { fontFamily, colors, alphaHex } from '../lib/tokens';
 
 const DRAWER_WIDTH = 280;
 
@@ -184,7 +184,7 @@ const s = StyleSheet.create({
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   avatar: {
     width: 38, height: 38, borderRadius: 12,
-    backgroundColor: '#D9775720',
+    backgroundColor: alphaHex(colors.accent, '20'),
     alignItems: 'center', justifyContent: 'center',
   },
   appName: { fontFamily: fontFamily.serif, fontSize: 19, fontWeight: '400', letterSpacing: -0.3, color: colors.text },

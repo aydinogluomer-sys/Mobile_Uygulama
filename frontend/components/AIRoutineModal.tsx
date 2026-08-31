@@ -1,4 +1,4 @@
-import { colors } from '../lib/tokens';
+import { colors, alphaHex } from '../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, Modal, TextInput,
@@ -395,13 +395,13 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { fontSize: 18, fontWeight: '700', color: colors.white },
-  betaBadge: { backgroundColor: '#D9775730', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  betaBadge: { backgroundColor: alphaHex(colors.accent, '30'), borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   betaText: { fontSize: 10, color: colors.accent, fontWeight: '700', letterSpacing: 1 },
   body: { padding: 20 },
 
   errorBox: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    backgroundColor: '#C76A6A15', borderWidth: 1, borderColor: '#C76A6A30',
+    backgroundColor: alphaHex(colors.error, '15'), borderWidth: 1, borderColor: alphaHex(colors.error, '30'),
     borderRadius: 12, padding: 12, marginBottom: 16,
   },
   errorText: { flex: 1, fontSize: 13, color: colors.error, lineHeight: 18 },
@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
   fpHintText: { fontSize: 12, color: colors.textDim },
 
   rejectBox: {
-    backgroundColor: '#C76A6A10', borderWidth: 1, borderColor: '#C76A6A30',
+    backgroundColor: alphaHex(colors.error, '10'), borderWidth: 1, borderColor: alphaHex(colors.error, '30'),
     borderRadius: 14, padding: 16, marginBottom: 16,
   },
   rejectHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
   },
 
   completionBox: {
-    backgroundColor: '#D4A84A10', borderWidth: 1, borderColor: '#D4A84A30',
+    backgroundColor: alphaHex(colors.warning, '10'), borderWidth: 1, borderColor: alphaHex(colors.warning, '30'),
     borderRadius: 14, padding: 16, marginBottom: 16,
   },
   completionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
@@ -471,7 +471,7 @@ const styles = StyleSheet.create({
   },
   packIcon: {
     width: 36, height: 36, borderRadius: 10,
-    backgroundColor: '#D9775715', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: alphaHex(colors.accent, '15'), alignItems: 'center', justifyContent: 'center',
   },
   packTitle: { fontSize: 14, fontWeight: '700', color: colors.white, marginBottom: 2 },
   packGoal: { fontSize: 12, color: colors.textDim, marginBottom: 2 },
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
   resultDesc: { fontSize: 13, color: colors.textDim, lineHeight: 18 },
 
   capacityBox: {
-    backgroundColor: '#D4A84A10', borderWidth: 1, borderColor: '#D4A84A30',
+    backgroundColor: alphaHex(colors.warning, '10'), borderWidth: 1, borderColor: alphaHex(colors.warning, '30'),
     borderRadius: 12, padding: 12, marginBottom: 14,
   },
   capacityLine: { fontSize: 13, fontWeight: '700', color: colors.warning, marginBottom: 4 },
@@ -495,9 +495,9 @@ const styles = StyleSheet.create({
   itemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   itemIcon: {
     width: 40, height: 40, borderRadius: 10,
-    backgroundColor: '#87A67815', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: alphaHex(colors.success, '15'), alignItems: 'center', justifyContent: 'center',
   },
-  itemIconQueued: { backgroundColor: '#D4A84A15' },
+  itemIconQueued: { backgroundColor: alphaHex(colors.warning, '15') },
   itemInfo: { flex: 1 },
   itemName: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 4 },
   itemStatus: { fontSize: 11.5, color: colors.success },
@@ -517,12 +517,12 @@ const styles = StyleSheet.create({
 
   successMsg: {
     alignItems: 'center', gap: 10,
-    backgroundColor: '#87A67815', borderRadius: 12, padding: 20,
+    backgroundColor: alphaHex(colors.success, '15'), borderRadius: 12, padding: 20,
     marginTop: 16, marginBottom: 32,
   },
   successText: { fontSize: 13, color: colors.success, lineHeight: 19, textAlign: 'center' },
   closeSuccessBtn: {
-    marginTop: 4, backgroundColor: '#87A67830', borderRadius: 10,
+    marginTop: 4, backgroundColor: alphaHex(colors.success, '30'), borderRadius: 10,
     paddingHorizontal: 20, paddingVertical: 8,
   },
   closeSuccessText: { fontSize: 14, fontWeight: '600', color: colors.success },

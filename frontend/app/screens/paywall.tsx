@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert,
@@ -195,7 +195,7 @@ const s = StyleSheet.create({
   },
   statusLabel: { fontSize: 12, color: colors.textFaint },
   statusTier: { fontSize: 22, fontWeight: '800', marginTop: 2 },
-  fpBox: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#D4A84A18', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  fpBox: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: alphaHex(colors.warning, '18'), borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
   fpVal: { fontSize: 20, fontWeight: '800', color: colors.warning },
   fpUnit: { fontSize: 12, color: colors.warning, fontWeight: '600' },
   fpHintRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, marginBottom: 18, paddingHorizontal: 4 },
@@ -208,7 +208,7 @@ const s = StyleSheet.create({
     flex: 1, alignItems: 'center', backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 10,
     borderWidth: 1, borderColor: colors.border,
   },
-  periodBtnSel: { backgroundColor: '#D9775720', borderColor: colors.accent },
+  periodBtnSel: { backgroundColor: alphaHex(colors.accent, '20'), borderColor: colors.accent },
   periodText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
   periodTextSel: { color: colors.accent },
   periodBadge: { fontSize: 9, color: colors.success, marginTop: 2 },
@@ -227,7 +227,7 @@ const s = StyleSheet.create({
 
   grantPill: {
     flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
-    backgroundColor: '#D4A84A14', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 12,
+    backgroundColor: alphaHex(colors.warning, '14'), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 12,
   },
   grantText: { fontSize: 12, color: colors.warning, fontWeight: '700' },
 

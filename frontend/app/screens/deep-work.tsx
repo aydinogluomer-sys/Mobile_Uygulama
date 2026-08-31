@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -49,17 +49,17 @@ export default function DeepWorkScreen() {
 
         {/* Özet kartları */}
         <View style={s.metrics}>
-          <View style={[s.metricCard, { borderColor: '#7C97C540' }]}>
+          <View style={[s.metricCard, { borderColor: alphaHex(colors.info, '40') }]}>
             <Ionicons name="today-outline" size={18} color="#7C97C5" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.metricValue}>{formatMins(todayM)}</Text>
             <Text style={s.metricLabel}>Bugün</Text>
           </View>
-          <View style={[s.metricCard, { borderColor: '#D9775740' }]}>
+          <View style={[s.metricCard, { borderColor: alphaHex(colors.accent, '40') }]}>
             <Ionicons name="calendar-outline" size={18} color="#D97757" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.metricValue}>{formatMins(weekM)}</Text>
             <Text style={s.metricLabel}>Bu Hafta</Text>
           </View>
-          <View style={[s.metricCard, { borderColor: '#87A67840' }]}>
+          <View style={[s.metricCard, { borderColor: alphaHex(colors.success, '40') }]}>
             <Ionicons name="layers-outline" size={18} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.metricValue}>{todaySessions.length}</Text>
             <Text style={s.metricLabel}>Seans</Text>
@@ -225,7 +225,7 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1 },
   addBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#7C97C515', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+    backgroundColor: alphaHex(colors.info, '15'), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
   },
   addBtnText: { fontSize: 13, color: colors.teal, fontWeight: '600' },
 
@@ -254,16 +254,16 @@ const s = StyleSheet.create({
 
   fieldLabel: { fontSize: 12, color: colors.textFaint, marginBottom: 8, fontWeight: '600' },
   input: {
-    backgroundColor: '#111', borderRadius: 10, padding: 14,
+    backgroundColor: colors.coolBlack850, borderRadius: 10, padding: 14,
     fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 16,
   },
 
   quickRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   quickBtn: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: '#111', borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.coolBlack850, borderWidth: 1, borderColor: colors.border,
   },
-  quickBtnActive: { backgroundColor: '#7C97C520', borderColor: colors.teal },
+  quickBtnActive: { backgroundColor: alphaHex(colors.info, '20'), borderColor: colors.teal },
   quickBtnText: { fontSize: 13, color: colors.textFaint },
   quickBtnTextActive: { color: colors.teal, fontWeight: '700' },
 

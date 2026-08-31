@@ -42,7 +42,7 @@ export const IMPACT_LEVELS: {
   { key: 'critical', label: 'Kritik', desc: 'Hayati / temel', color: '#ef4444', suggestedCost: 5 },
   { key: 'high', label: 'Yüksek', desc: 'Önemli hedefler', color: '#f59e0b', suggestedCost: 4 },
   { key: 'medium', label: 'Orta', desc: 'Anlamlı gelişim', color: '#eab308', suggestedCost: 3 },
-  { key: 'low', label: 'Düşük', desc: 'Küçük iyileştirme', color: '#6b7280', suggestedCost: 2 },
+  { key: 'low', label: 'Düşük', desc: 'Küçük iyileştirme', color: colors.neutral500, suggestedCost: 2 },
 ];
 
 export const URGENCY_OPTIONS: {
@@ -92,7 +92,7 @@ export const TRIAGE_META: Record<Triage, {
     label: 'Ele / İptal Et',
     emoji: '🗑',
     icon: 'trash-outline',
-    color: '#6b7280',
+    color: colors.neutral500,
     room: 'Fikirler',
     roomDesc: 'Fikir olarak saklanacak',
   },

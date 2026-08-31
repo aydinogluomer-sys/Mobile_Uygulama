@@ -20,7 +20,7 @@ import { useGoalStore } from '../../store/goalStore';
 import MonthBackground from '../../components/MonthBackground';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
-import { colors, hexA } from '../../lib/tokens';
+import { colors, hexA, alphaHex } from '../../lib/tokens';
 import { buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions, reportBadge, summarizeHabitProgress, type ReportBadge } from '../../lib/reportMetrics';
 import { ymdFromIso, ymd, parseLocalDate } from '../../lib/date';
 import { dailyLoad, type TaskLoadItem } from '../../lib/capacity';
@@ -613,7 +613,7 @@ const s = StyleSheet.create({
   },
 
   hero: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
-  heroIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#D9775720', alignItems: 'center', justifyContent: 'center' },
+  heroIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: alphaHex(colors.accent, '20'), alignItems: 'center', justifyContent: 'center' },
   heroTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
   heroDates: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   monthNav: { flexDirection: 'row', gap: 4 },

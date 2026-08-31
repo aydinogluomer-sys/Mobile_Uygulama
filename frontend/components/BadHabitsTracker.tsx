@@ -1,4 +1,4 @@
-import { colors } from '../lib/tokens';
+import { colors, alphaHex } from '../lib/tokens';
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#C76A6A20',
+    backgroundColor: alphaHex(colors.error, '20'),
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,

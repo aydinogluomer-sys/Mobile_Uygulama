@@ -340,13 +340,13 @@ const s = StyleSheet.create({
   phaseRow: { flex: 1, flexDirection: 'row', gap: 6 },
   phaseBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
   phaseBtnText: { fontSize: 12, fontWeight: '600' },
-  settingsBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  settingsBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.coolBlack800, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
 
   presetsRow: { marginBottom: 16, maxHeight: 38 },
   presetsContent: { gap: 8 },
   presetChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#1a1a1a', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6,
+    backgroundColor: colors.coolBlack800, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6,
     borderWidth: 1, borderColor: colors.border,
   },
   presetDot: { width: 8, height: 8, borderRadius: 4 },
@@ -374,7 +374,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.bgElevated, borderRadius: 12, padding: 10, borderWidth: 1, marginBottom: 8,
   },
   selectedTaskDot: { width: 8, height: 8, borderRadius: 4 },
-  selectedTaskTitle: { flex: 1, fontSize: 14, color: '#e5e7eb', fontWeight: '500' },
+  selectedTaskTitle: { flex: 1, fontSize: 14, color: colors.neutral200, fontWeight: '500' },
   pomodoroCount: { fontSize: 12, color: colors.textFaint },
   noTaskHint: { fontSize: 13, color: colors.textGhost, marginBottom: 8 },
   sessionCount: { fontSize: 12, color: colors.textFaint },
@@ -384,7 +384,7 @@ const s = StyleSheet.create({
   startBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, height: 52, borderRadius: 14 },
   startBtnGated: { opacity: 0.55 },
   startBtnText: { fontSize: 17, fontWeight: '700', color: colors.white },
-  startHint: { marginTop: -14, marginBottom: 18, textAlign: 'center', fontSize: 12.5, fontWeight: '600', color: '#E0A458' },
+  startHint: { marginTop: -14, marginBottom: 18, textAlign: 'center', fontSize: 12.5, fontWeight: '600', color: colors.amberSoft },
 
   taskSection: {},
   taskSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
@@ -407,7 +407,7 @@ const s = StyleSheet.create({
   taskDelete: { padding: 4 },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, borderWidth: 1, borderColor: colors.border },
+  sheet: { backgroundColor: colors.coolBlack800, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, borderWidth: 1, borderColor: colors.border },
   sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 16 },
   settingsHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   settingsField: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },

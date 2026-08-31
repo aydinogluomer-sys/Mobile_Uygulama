@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
@@ -248,7 +248,7 @@ export default function HabitsScreen() {
               )}
               <View style={[
                 styles.behaviorBadge,
-                { backgroundColor: habit.behavior_type === 'positive' ? '#87A67820' : '#C76A6A20' }
+                { backgroundColor: habit.behavior_type === 'positive' ? alphaHex(colors.success, '20') : alphaHex(colors.error, '20') }
               ]}>
                 <Text style={styles.behaviorText}>
                   {habit.behavior_type === 'positive' ? '✅ Pozitif' : '🚫 Negatif'}
@@ -639,7 +639,7 @@ const styles = StyleSheet.create({
   },
   habitCardWaiting: { opacity: 0.65 },
   habitCardIdea: { opacity: 0.5, borderStyle: 'dashed' },
-  habitCardDone: { opacity: 0.55, borderColor: '#87A67840' },
+  habitCardDone: { opacity: 0.55, borderColor: alphaHex(colors.success, '40') },
   habitHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   habitLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
   iconWrap: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
@@ -648,7 +648,7 @@ const styles = StyleSheet.create({
   habitBadges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   wpCostBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 2,
-    backgroundColor: '#D4A84A20', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+    backgroundColor: alphaHex(colors.warning, '20'), borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
   },
   wpCostText: { fontSize: 11, color: colors.warning, fontWeight: '600' },
   minBadge: {
@@ -664,7 +664,7 @@ const styles = StyleSheet.create({
   cueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   cueText: { fontSize: 12, color: colors.textFaint, flex: 1 },
   measurableBadge: {
-    backgroundColor: '#D9775720', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+    backgroundColor: alphaHex(colors.accent, '20'), borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
   },
   measurableText: { fontSize: 11, color: colors.accent },
   behaviorBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
@@ -674,8 +674,8 @@ const styles = StyleSheet.create({
   iconBtn: { padding: 2 },
   moveBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#D9775720', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
-    borderWidth: 1, borderColor: '#D9775730',
+    backgroundColor: alphaHex(colors.accent, '20'), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
+    borderWidth: 1, borderColor: alphaHex(colors.accent, '30'),
   },
   moveBtnText: { fontSize: 12, color: colors.accent, fontWeight: '600' },
   impactChip: {
@@ -709,8 +709,8 @@ const styles = StyleSheet.create({
 
   cardActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   trashBtn: {
-    width: 34, height: 34, borderRadius: 9, backgroundColor: '#C76A6A15',
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#C76A6A30',
+    width: 34, height: 34, borderRadius: 9, backgroundColor: alphaHex(colors.error, '15'),
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: alphaHex(colors.error, '30'),
   },
 
   undoToast: {
@@ -724,8 +724,8 @@ const styles = StyleSheet.create({
   undoText: { flex: 1, fontSize: 14, color: colors.text },
   undoBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#D9775720', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
-    borderWidth: 1, borderColor: '#D9775740',
+    backgroundColor: alphaHex(colors.accent, '20'), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: alphaHex(colors.accent, '40'),
   },
   undoBtnText: { fontSize: 13, color: colors.accent, fontWeight: '700' },
 
@@ -733,7 +733,7 @@ const styles = StyleSheet.create({
   delOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 24 },
   delSheet: { backgroundColor: colors.surface, borderRadius: 20, padding: 22, borderWidth: 1, borderColor: colors.border },
   delIconWrap: {
-    width: 52, height: 52, borderRadius: 16, backgroundColor: '#C76A6A18',
+    width: 52, height: 52, borderRadius: 16, backgroundColor: alphaHex(colors.error, '18'),
     alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 12,
   },
   delTitle: { fontSize: 19, fontWeight: '800', color: colors.white, textAlign: 'center', marginBottom: 4 },
@@ -743,7 +743,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
     borderWidth: 1, borderColor: colors.border,
   },
-  reasonChipSel: { backgroundColor: '#C76A6A18', borderColor: colors.error },
+  reasonChipSel: { backgroundColor: alphaHex(colors.error, '18'), borderColor: colors.error },
   reasonChipText: { fontSize: 13, color: colors.textDim },
   reasonChipTextSel: { color: colors.error, fontWeight: '600' },
   reasonInput: {
@@ -769,7 +769,7 @@ const styles = StyleSheet.create({
   },
   capHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   capWarnIcon: {
-    width: 48, height: 48, borderRadius: 14, backgroundColor: '#C76A6A18',
+    width: 48, height: 48, borderRadius: 14, backgroundColor: alphaHex(colors.error, '18'),
     alignItems: 'center', justifyContent: 'center',
   },
   capTitle: { fontSize: 18, fontWeight: '800', color: colors.white },
@@ -799,7 +799,7 @@ const styles = StyleSheet.create({
   capItemName: { flex: 1, fontSize: 14, color: colors.text, fontWeight: '500' },
   capItemCost: {
     flexDirection: 'row', alignItems: 'center', gap: 2,
-    backgroundColor: '#D4A84A20', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+    backgroundColor: alphaHex(colors.warning, '20'), borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
   },
   capItemCostText: { fontSize: 11, color: colors.warning, fontWeight: '600' },
   capMoveBtn: {
@@ -814,7 +814,7 @@ const styles = StyleSheet.create({
   capCancelText: { fontSize: 14, fontWeight: '600', color: colors.text },
   capWaitBtn: {
     flex: 1.4, flexDirection: 'row', gap: 6, paddingVertical: 13, borderRadius: 12,
-    backgroundColor: '#D4A84A18', borderWidth: 1, borderColor: '#D4A84A40',
+    backgroundColor: alphaHex(colors.warning, '18'), borderWidth: 1, borderColor: alphaHex(colors.warning, '40'),
     alignItems: 'center', justifyContent: 'center',
   },
   capWaitText: { fontSize: 14, fontWeight: '700', color: colors.warning },
@@ -822,6 +822,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row', gap: 8, paddingVertical: 15, borderRadius: 12, marginTop: 10,
     backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center',
   },
-  capActivateDisabled: { backgroundColor: '#1f3d33', opacity: 0.7 },
+  capActivateDisabled: { backgroundColor: colors.selectedTintSuccess, opacity: 0.7 },
   capActivateText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });

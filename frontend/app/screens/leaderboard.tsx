@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
@@ -142,7 +142,7 @@ const s = StyleSheet.create({
     flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 12,
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
   },
-  tabActive: { backgroundColor: '#D4A84A20', borderColor: colors.warning },
+  tabActive: { backgroundColor: alphaHex(colors.warning, '20'), borderColor: colors.warning },
   tabText: { fontSize: 13, fontWeight: '700', color: colors.textFaint },
   tabTextActive: { color: colors.warning },
 
@@ -150,7 +150,7 @@ const s = StyleSheet.create({
 
   meCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#D4A84A12', borderRadius: 16, borderWidth: 1, borderColor: '#D4A84A40',
+    backgroundColor: alphaHex(colors.warning, '12'), borderRadius: 16, borderWidth: 1, borderColor: alphaHex(colors.warning, '40'),
     padding: 14, marginBottom: 6,
   },
   meRankWrap: { alignItems: 'center', minWidth: 48 },
@@ -167,7 +167,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border,
     paddingVertical: 12, paddingHorizontal: 12,
   },
-  rowMe: { borderColor: colors.warning, backgroundColor: '#D4A84A12' },
+  rowMe: { borderColor: colors.warning, backgroundColor: alphaHex(colors.warning, '12') },
   rankCol: { width: 34, alignItems: 'center' },
   rankNum: { fontSize: 15, fontWeight: '800', color: colors.textDim },
   rankTop: { fontSize: 20 },
