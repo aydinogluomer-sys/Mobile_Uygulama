@@ -14,7 +14,29 @@
 
 ## 2. Kanıtlanmış mevcut durum
 
-- Frontend proje referansı: `zdqiujpeewtyhtcqhdcj`.
+- Frontend proje referansı: `kbcuolhjjnmhjaarxxmu` ("Alışkanlık Uygulaması").
+  Bu, `frontend/.env`, `supabase/config.toml` ve `supabase/.temp/linked-project.json`
+  ile aynı olan tek kanonik Atlas projesidir.
+
+> **SUPERSEDED / HISTORICAL — aşağıdaki gözlemler Atlas'ta doğrulanmadı.**
+>
+> Bu bölümdeki e-posta teslimat gözlemleri ATLAS'A AİT OLMAYAN, ilgisiz bir
+> Supabase projesinde kaydedilmişti; belge bir dönem o projenin referansını
+> "mevcut durum" diye taşıyordu. O referans Atlas için hiçbir zaman geçerli
+> bir hedef değildir — literal değeri yalnızca `supabase/predeploy_guard.sh`
+> içinde DENIED sabiti olarak ve `docs/audit/**` içindeki olay kayıtlarında
+> bulunur.
+>
+> Atlas'ın kendi e-posta teslimatı şu anda ÇALIŞMIYOR: yapılandırılmış SMTP
+> sunucusu kimlik bilgilerini reddediyor (`535 "Incorrect authentication
+> data"`), bu yüzden `signUp` 500 dönüyor. Yani aşağıdaki "mesaj ulaşıyor"
+> maddesi Atlas için doğru değildir ve öyle okunmamalıdır. Güncel durum
+> `docs/IMPLEMENTATION_V2_FINAL_PREMERGE_AUDIT.md` §4 P0-1'de izleniyor.
+>
+> Mimari (§3 ve sonrası) bundan bağımsız olarak geçerlidir: hangi projede
+> olursa olsun `{{ .Token }}` şablona eklenmedikçe 6 haneli kod e-postada
+> görünmez.
+
 - `resetPasswordForEmail()` başarılı; Gmail mesajı ulaşıyor.
 - Gmail mesajında Supabase varsayılan içeriği görülüyor: “Follow this link…” ve `Reset Password` bağlantısı.
 - Bu, SMTP/teslimat sorunu olmadığını; hosted Auth recovery şablonunda yalnızca `{{ .ConfirmationURL }}` bulunduğunu kanıtlar.

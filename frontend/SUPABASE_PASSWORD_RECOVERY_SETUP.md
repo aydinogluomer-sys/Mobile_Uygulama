@@ -10,7 +10,13 @@ Uygulama, Supabase Auth recovery OTP akışını kullanır:
 
 ## Zorunlu e-posta şablonu
 
-[Bu projenin e-posta şablonlarını aç](https://supabase.com/dashboard/project/zdqiujpeewtyhtcqhdcj/auth/templates) → **Reset Password** şablonunu seçin.
+[Atlas'ın e-posta şablonlarını aç](https://supabase.com/dashboard/project/kbcuolhjjnmhjaarxxmu/auth/templates) → **Reset Password** şablonunu seçin.
+
+> Bu bağlantı Atlas'ın kanonik Supabase projesine (`kbcuolhjjnmhjaarxxmu`,
+> "Alışkanlık Uygulaması") gider. Bu belge bir dönem BAŞKA bir projenin
+> panosuna bağlanıyordu; o proje Atlas'a ait değildir ve buradan hiçbir
+> şekilde yapılandırılmamalıdır. Doğru hedef `supabase/config.toml` içinde
+> sabitlenmiştir ve `supabase/predeploy_guard.sh` tarafından zorlanır.
 
 Konu:
 
