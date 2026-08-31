@@ -14,39 +14,79 @@ the command, query or live request that produced it.
 
 ---
 
-## 0. One thing to decide before anything else: the live schema is ahead of `main`
+## 0. Live schema vs `main` — RESOLVED by a compatibility rollback
 
-`20260831_recovery_vocabulary` is applied to the live project. It narrows
-`recovery_plans.strategy` and `.status` to the v2 vocabulary, and **`main`
-still writes the legacy words**. Probed against the live database as an
-ordinary caller:
+`20260831_recovery_vocabulary` narrowed `recovery_plans.strategy` and
+`.status` to the v2 vocabulary on the live project. The v2 branch is not
+released, so the client running against that database is still `main`, which
+writes the legacy words — and `main`'s recovery flow broke: it could not
+create, complete or skip a plan.
 
-| what `main` does | live result |
+**Resolved.** `20260831_recovery_vocabulary_compat_rollback` restores the
+legacy `strategy` contract and the six-value compatibility `status` set.
+Verified live as an ordinary `authenticated` caller under RLS, not as the
+service role:
+
+| step | result |
 |---|---|
-| create a plan with `strategy: 'full'` | **rejected** (check constraint) |
-| complete a plan with `status: 'done'` | **rejected** |
-| skip a plan with `status: 'skipped'` | **rejected** |
+| acting as | `authenticated`, `auth.uid()` resolved |
+| CREATE `strategy='full'` `status='planned'` | PASS |
+| COMPLETE `status='done'` | PASS |
+| CREATE `strategy='reschedule'` `status='planned'` | PASS |
+| SKIP `status='skipped'` | PASS |
+| CREATE `strategy='half'` and `'mini'` | PASS |
+| INVALID `strategy='garbage'` | refused (check violation) |
+| INVALID `status='garbage'` | refused (check violation) |
+| v2 `strategy='complete_today'` | refused — the rollback took effect |
+| rows before / after | 0 / 0 (unchanged) |
 
-So the recovery feature on `main` cannot create, complete or skip a plan
-against this database today. That is a consequence of applying the migration,
-not of anything in the branch, and it does not fix itself by leaving the
-branch unmerged.
+Scope of the rollback is the vocabulary and nothing else. `source_log_id`,
+`deficit_type`, `deficit_value`, `distributed_days`, `completed_at` and the
+three constraints that guard them are untouched — none of them caused the
+incompatibility, and `main` never writes them.
 
-There are two ways out, and both are the owner's call:
+The migration history is not rewritten: `20260831_recovery_vocabulary` remains
+exactly as applied, and the rollback is a new forward migration that
+supersedes its vocabulary half.
 
-1. **merge this branch** — the code and the schema then agree; or
-2. **roll the migration back** — restore the two CHECK expressions, which the
-   migration file quotes verbatim for exactly this reason, and `main` works
-   again while the branch waits.
+**This is a deployment postponement, not a retraction of the work.** The v2
+vocabulary is re-applied as part of a coordinated release — see the release
+gate in §24.
 
-`recovery_plans` holds zero rows, so neither direction risks data.
 
-The other migrations from this pass are additive or restrictive in ways
-`main` does not exercise: new tables (`bad_habits`, `webhooks`,
-`monthly_reviews`), new functions (`spend_focus_points_v2`,
-`refund_focus_points`, `xp_drift`, `rebuild_profile_xp`), and the
-`profiles` column-grant narrowing — `main` writes only `username`, which is
-still granted. They were checked, not assumed.
+---
+
+## 0b. Release gate — the v2 vocabulary must be re-applied
+
+`20260831_recovery_vocabulary` is **authored, applied once, and currently
+rolled back** on the live project so the unreleased-branch situation does not
+break `main`.
+
+```
+Recovery V2 code                                   : PASS
+Recovery V2 migration authored                     : PASS
+Recovery V2 vocabulary live                        : ROLLED BACK FOR MAIN COMPATIBILITY
+Coordinated V2 migration required before/with release : YES
+```
+
+**This is a gate, not a note.** Shipping the v2 client without re-applying the
+vocabulary migration breaks the branch's recovery flow in the exact mirror of
+what the rollback fixed: the client would write `complete_today` / `completed`
+into a table whose CHECK accepts only `full|half|mini|reschedule` for
+`strategy`. Create, complete and skip would all fail.
+
+Re-apply order, whichever way the release goes:
+
+1. re-apply `20260831_recovery_vocabulary` (it is idempotent — it drops and
+   recreates the two CHECKs by name); then
+2. deploy the v2 client.
+
+Doing it the other way round leaves a window in which the shipped client
+cannot write a recovery plan. `recovery_plans` is expected to stay small; if
+it has rows by then, the legacy values must be mapped first —
+`full→complete_today`, `reschedule→push_tomorrow`, `half→split_two_days`,
+`mini→skip`, `done→completed`, `skipped→cancelled` — which is the mapping the
+deleted adapter used and the migration's own header records.
 
 ---
 
@@ -77,7 +117,7 @@ still granted. They were checked, not assumed.
 | **§21** | Widget | absent | — | absent. A home-screen widget is native code — a WidgetKit extension (Swift) or an AppWidgetProvider (Kotlin) — plus a config plugin or `expo prebuild`, and it cannot run in Expo Go. This repo is managed workflow with no `ios/` or `android/` directory. I cannot build or run either platform here, so any widget I wrote would be unverified native code presented as working | **NOT_DONE** (needs a native build; deliberately not attempted rather than shipped unverified) |
 | **§22** | Crash monitoring sink | dev console only | — | no DSN provided | **BLOCKED_EXTERNAL** |
 | **§23** | Offline queue account safety | one global key, no owner | per-account key + `userId` + replay filter + lossless migration | 6 behaviour tests; mutations (4 red / 1 red) | **PASS** |
-| **§24** | Recovery vocabulary | two vocabularies + an adapter that DROPPED five fields on every save, on the stale grounds that "the table has no columns for them" — it had, since 20260825 | one vocabulary; `recovery_plans.strategy`/`status` accept only the v2 words; the adapter is deleted and all five fields are persisted and read back | 7 live constraint probes (legacy strategy/status refused, negative deficit refused, completed-without-timestamp refused, planned-with-timestamp refused, non-array distribution refused, full v2 plan accepted) + 22 tests. 3 mutations red: a legacy word reappearing, a translation function returning, the store dropping the deficit | **PASS** |
+| **§24** | Recovery vocabulary | two vocabularies + an adapter that DROPPED five fields on every save, on the stale grounds that "the table has no columns for them" — it had, since 20260825 | one vocabulary in the code; the adapter is deleted and all five fields are persisted and read back | **Code PASS. Live vocabulary ROLLED BACK for `main` compatibility** — see §0 and the release gate in §0b. 22 tests + 3 mutations red; the branch keeps the v2 source unchanged | **PASS** (code) |
 | **§25** | Negative + measurable habits | reward inverted; two disagreeing scorers; negative habits due on no day | ceiling scoring unified AND the lifecycle closed: `isDueOn` no longer reads `behavior_type`; `isMissedOn`/`countsTowardAverage` carry the real asymmetry (absence of a log is not failure for a negative habit) | reports, analytics and the recovery backlog now include negative measurable habits; 3 mutations red (7/1/1). Also fixed: an explicit `miss` log landed in the done set, so a day the user recorded as failed could never be offered a make-up | **PASS** |
 | **§26** | Auth lifecycle | — | partially (queue on sign-out) | register blocked, so the full cycle is untestable | **BLOCKED_EXTERNAL** |
 | **§27** | Cache isolation | sync queue and Notion session both global | both scoped per account, each with a lossless one-time migration | 11 behaviour tests across the two; mutations red. `focus.settings.v1` and the theme keys stay global by decision — timer durations and a colour are UI preference, not personal data | **PASS** |
