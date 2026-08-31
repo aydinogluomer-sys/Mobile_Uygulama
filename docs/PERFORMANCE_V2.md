@@ -78,6 +78,35 @@ query sat in an already-"bounded" file.
 unused `app-image.png`, and the Expo template splash — were referenced by
 nothing. Now 18 KB. See `docs/BRANDING.md`.
 
+## Re-measured at the transport, not at the call site
+
+The numbers above come from timing three operations. The stronger question is
+how many requests the app makes AT ALL, and that was measured by counting them
+where they actually leave — `global.fetch` — split by service, running the
+app's own repositories and services against the live project with a real JWT:
+
+| what | auth requests | rest | rpc |
+|---|---|---|---|
+| `currentUser()` x10 | **0** | 0 | 0 |
+| `getSession()` x40 | **0** | 0 | 0 |
+| a six-collection screen load | **0** | 6 | 0 |
+
+Six collections, six reads, no hidden extras and no auth round trip. Before
+`lib/session`, that same load cost six `GET /auth/v1/user` calls on top.
+
+The same six in series against the same six batched:
+
+```
+serial    983 ms   6 rest requests
+parallel  232 ms   6 rest requests
+saved     751 ms   at an identical request count
+```
+
+Which is the point the waterfall gate exists to protect: writing them on
+separate `await` lines costs LATENCY, not requests, so a request-count metric
+alone would have shown nothing. The two checks answer different questions and
+neither replaces the other.
+
 ## What is NOT measured, and why
 
 **Screen-level render profiling on a device.** Re-render counts, frame drops
@@ -86,8 +115,14 @@ animations, time-to-interactive per tab.
 
 This needs the app running on a device or simulator with the profiler
 attached. It cannot be inferred from source, and a number produced any other
-way would be a guess wearing a decimal point. §36 stays NOT_DONE for that
-reason rather than being closed on the three items above.
+way would be a guess wearing a decimal point. Checked rather than assumed:
+neither `adb` nor `emulator` is on this machine and there is no Android SDK,
+so it is not a matter of choosing not to.
+
+§36 is therefore **DEFERRED_WITH_JUSTIFICATION** rather than left as "not
+done": every cause a source or transport measurement can reach is measured and
+zero, and what remains is a **store-release QA gate** — it belongs on a device
+before shipping, not on a branch before merging.
 
 What the audit *can* say is which of them are unlikely to be the problem: the
 per-operation auth round trip is gone, no screen serialises independent reads,

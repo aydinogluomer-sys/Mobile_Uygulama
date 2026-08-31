@@ -1,16 +1,19 @@
 # ATLAS — IMPLEMENTATION_V2 FINAL PRE-MERGE AUDIT
 
 **Branch:** `phase/final-v2-hardening`
-**Audit measured against the tree at:** `e4d2073` — the parent of the commit
+**Audit measured against the tree at:** `ac93d28` — the parent of the commit
 that carries this revision. A document cannot state its own SHA, so the commit
 adding these rows is by construction not the one they were measured on.
 **Final branch HEAD and its CI result:** see the terminal report, not this
 file. Nothing here claims a CI run it cannot have observed.
 **Date:** 2026-08-31
 
-Status values are only `PASS`, `BLOCKED_EXTERNAL`, `FAIL`, or `NOT_DONE`.
-Nothing here is marked from a document or a commit message; every `PASS` names
-the command, query or live request that produced it.
+Status values are only `PASS`, `BLOCKED_EXTERNAL`, `FAIL`,
+`REQUIRED_BEFORE_MERGE` or `DEFERRED_WITH_JUSTIFICATION`. `NOT_DONE` is gone:
+every item that carried it has been classified as one or the other, because
+"not done" was doing the work of a decision nobody had made. Nothing here is
+marked from a document or a commit message; every `PASS` names the command,
+query or live request that produced it.
 
 ---
 
@@ -51,7 +54,7 @@ supersedes its vocabulary half.
 
 **This is a deployment postponement, not a retraction of the work.** The v2
 vocabulary is re-applied as part of a coordinated release — see the release
-gate in §24.
+gate in §0b.
 
 
 ---
@@ -112,9 +115,9 @@ deleted adapter used and the migration's own header records.
 | **§16** | Dependency security | 2 critical, 16 high | `npm audit fix`, no `--force` | **0 critical, 9 high** — all in the build toolchain (metro, @expo/cli, image-size, postcss). Absence from the shipped bundle is now PROVEN, not asserted: string search over the 6.5 MB Hermes bundle with a positive control (`supabase` 15, `generate-routine` 1, `monthly_reviews` 1 — so the search works on `.hbc`), and `node_modules/image-size` / `require('image-size')` = 0. The one raw `image-size` hit is the Ionicons glyph `image-size-select-small` | **PASS** |
 | **§17** | Lint zero | full repo 3 err / 183 warn; `expo lint` saw only 73 of them | **0 / 0 across the whole repository** | 3 errors were an eslint env gap (`jest`, `__dirname` undeclared), not defects — declared rather than silenced. 42 hook-dependency warnings fixed on their merits, not suppressed: 30 by naming stable store actions, the rest by restructuring (clock read inside the loader, filter moved into the effect, latest-ref in the two review screens). A new test pins the zustand identity assumption the 30 rely on | **PASS** |
 | **§18** | Package manager | `yarn@1.22.22`, no yarn.lock | `npm@11.16.0`; CI comment corrected | manifest/lockfile/CI all name npm | **PASS** |
-| **§19** | Design tokens | 1572 hex literals in 56 files against a token table that already held most of them | 1139 replaced with the token holding that exact colour, in 51 files | Colour-preserving, checked not asserted: 50 files, 1690 colour terms, **0 files changed a colour**. 385 remain because they have NO token — inventing `grey5` is not a design system; they are grouped and explained in `docs/DESIGN_TOKENS.md` and capped by a ratchet. Mutation red: writing a tokened hex back out. NOT_DONE because 385 literals remain: the requirement is hardcoded-hex elimination and naming a token for each is a design decision, so it is not mine to close | **NOT_DONE** |
-| **§20** | Branding / store assets | installs as "frontend" with Expo's blue "e"; three icons byte-identical; deep-links as `frontend://`; launch on `#000` against a `#15140F` app; notification tint an indigo from no palette | named Atlas, own scheme, generated mark from `colors.bg`/`colors.accent`, launch colours read from tokens, 6 dead template assets deleted (1056 KB -> 18 KB) | 12 tests, mutation red on the template name returning. `docs/BRANDING.md` records the two things NOT done and why: bundle identifiers (tied to the owner's developer accounts — a guess can collide with a real listing) and real artwork (a design deliverable) | **NOT_DONE** (config and template residue fixed; bundle identifiers and artwork are the owner's) |
-| **§21** | Widget | absent | — | absent. A home-screen widget is native code — a WidgetKit extension (Swift) or an AppWidgetProvider (Kotlin) — plus a config plugin or `expo prebuild`, and it cannot run in Expo Go. This repo is managed workflow with no `ios/` or `android/` directory. I cannot build or run either platform here, so any widget I wrote would be unverified native code presented as working | **NOT_DONE** (needs a native build; deliberately not attempted rather than shipped unverified) |
+| **§19** | Design tokens | 1572 hex literals in 56 files against a token table that already held most of them | 1139 replaced with the token holding that exact colour; then the remaining 385 enumerated one at a time and split — **181 were semantic UI chrome and are now tokens** (Tailwind greys, cool near-blacks, 90 alpha variants of existing tokens, the journal paper set, selected-state tints), 181 are a categorical palette, illustration constants, theme triples, third-party brand colours or a heatmap ramp | Colour-preserving both times, checked not asserted: the second pass compared 30 files and 1325 colour terms, **0 files changed a colour**. The gate's real assertion is now *no semantic UI colour is left as a bare literal* (previously it was only a count), plus the six exempt categories asserted by exact count — mutation red on both a re-hardcoded token and a brand-new unexplained colour. Full taxonomy in `docs/DESIGN_TOKENS.md` | **DEFERRED_WITH_JUSTIFICATION** (unexplained magic colours: 0; what remains is one design decision — whether the legacy neutral ramp should collapse into `textDim`/`bg` — which changes pixels and belongs to a designer) |
+| **§20** | Branding / store assets | installs as "frontend" with Expo's blue "e"; three icons byte-identical; deep-links as `frontend://`; launch on `#000` against a `#15140F` app; notification tint an indigo from no palette; **and the Android notification icon was the opaque app icon, which Android renders as a solid white block** | named Atlas, own scheme, generated mark from `colors.bg`/`colors.accent`, launch colours read from tokens, 6 dead template assets deleted (1056 KB -> 18 KB), and a real white-on-transparent `notification-icon.png` | 13 tests. The notification gate decodes the PNG (inflates IDAT, undoes all five scanline filters) and asserts the alpha spans 0-255 — mutation red pointing it back at `icon.png` with `Expected: 0, Received: 255`. `docs/BRANDING.md` records what is NOT done and why | **DEFERRED_WITH_JUSTIFICATION** for artwork; **bundle identifiers are REQUIRED_BEFORE_STORE_RELEASE** and BLOCKED_EXTERNAL — they are tied to the owner's Apple/Google accounts and a domain they control, and a guess like `com.atlas.app` can collide with a real listing |
+| **§21** | Widget | absent | — | absent, and the spec is where that was checked rather than assumed: `PROGRESS.md` records it as assumption **A-05** ("Widgets are deferred, with cause") and `docs/FINAL_GAP_AUDIT_V2.md` files it as **P3-4 — QUALITY**. It appears in no Definition of Done. Building one needs a WidgetKit extension (Swift) or an AppWidgetProvider (Kotlin) plus a config plugin, in a managed-workflow repo with no `ios/` or `android/` directory and no Android SDK on this machine (`adb`/`emulator` absent, checked) | **DEFERRED_WITH_JUSTIFICATION** (P3 polish in the source-of-truth spec, never a merge requirement) |
 | **§22** | Crash monitoring sink | dev console only | — | no DSN provided | **BLOCKED_EXTERNAL** |
 | **§23** | Offline queue account safety | one global key, no owner | per-account key + `userId` + replay filter + lossless migration | 6 behaviour tests; mutations (4 red / 1 red) | **PASS** |
 | **§24** | Recovery vocabulary | two vocabularies + an adapter that DROPPED five fields on every save, on the stale grounds that "the table has no columns for them" — it had, since 20260825 | one vocabulary in the code; the adapter is deleted and all five fields are persisted and read back | **Code PASS. Live vocabulary ROLLED BACK for `main` compatibility** — see §0 and the release gate in §0b. 22 tests + 3 mutations red; the branch keeps the v2 source unchanged | **PASS** (code) |
@@ -129,8 +132,47 @@ deleted adapter used and the migration's own header records.
 | **§33** | Test quality | — | every new suite mutation-verified | 1402 tests, 97 suites. Several gates were found blind by their own mutation checks and fixed: the edge-deadline scanner missed multi-line calls, the XP write detector's template-literal `\s` collapsed to a literal `s`, the waterfall scanner flagged genuine dependencies | **PASS** |
 | **§34** | CI as merge gate | `npx expo lint`: app dirs only, warnings advisory (exit 0 on 73) | `npm run lint:ci` = `eslint . --max-warnings=0` | Gates the whole repo, warning = failure. 3 mutations red: an unused variable, a removed hook dependency, an undefined global in a script | **PASS** |
 | **§35** | Full live smoke | — | duration, ceilings, RLS, XP, notion-sync, child-row ownership verified live | Registration is the first step and is externally blocked, so the journey cannot run end to end | **BLOCKED_EXTERNAL** |
-| **§36** | Performance profiling | `currentUserId` issued `GET /auth/v1/user` before EVERY repository operation, and 13 more sites did the same; the waterfall shape had only ever been checked on one screen | 14 sites moved to a local session read; waterfall scan extended to the whole app | Measured live: 3 ops cost 3 auth requests / 373 ms (total 1779 ms) before, **0** after. Waterfall runs across app/components/store/services: **0**, scanner validated by planting one. Full write-up in `docs/PERFORMANCE_V2.md`. On-device render profiling (re-render counts, frame drops, time-to-interactive) still not done and cannot be inferred from source | **NOT_DONE** (three measurable causes eliminated; device profiling outstanding) |
+| **§36** | Performance profiling | `currentUserId` issued `GET /auth/v1/user` before EVERY repository operation, and 13 more sites did the same; the waterfall shape had only ever been checked on one screen | 14 sites moved to a local session read; waterfall scan extended to the whole app | Re-measured live at the transport on the final HEAD, counting requests by service: `currentUser()` x10 -> **0** auth and **0** rest requests; a six-collection screen load -> **6** rest, **0** auth, **0** rpc; `getSession()` x40 -> **0** auth. Batching the same six saves 751 ms of latency (983 -> 232 ms) at an identical request count. Waterfall runs across app/components/store/services: **0**. Full write-up in `docs/PERFORMANCE_V2.md` | **DEFERRED_WITH_JUSTIFICATION** (every source-observable cause is measured and zero; on-device render profiling needs a device or emulator — none available here — and is a store-release QA gate) |
 | **§37** | main sync | — | 0 behind | `git rev-list --left-right --count origin/main...HEAD` → `0  15` | **PASS** |
+
+---
+
+## 1c. Live end-to-end verification on a fresh account
+
+Everything below ran against the live project through the app's OWN code —
+its repositories, services and stores, signed in with a real JWT under RLS —
+rather than through hand-written SQL. 40 assertions across 9 suites, all
+passing on the final HEAD.
+
+**How the accounts were made, and why that does not close §1.** `signUp()` is
+still broken (see the P0 table), so three accounts were created the way this
+project's own `create_test_user_v2` migration does. The
+`on_auth_user_created` trigger fires either way, so profile bootstrap is
+exercised exactly as a real signup would exercise it — but the SIGNUP GATE
+ITSELF is untested by this and stays BLOCKED_EXTERNAL. A journey that starts
+one step past the broken door does not prove the door opens.
+
+| § | What was checked | Result |
+|---|---|---|
+| 5.1 | fresh account: JWT `role=authenticated`, `sub` matches; `lib/session` resolves locally; profile bootstrap `level 1 / xp 0 / rank Acemi / 3 makeup credits`; habits, today's logs, tasks, notes and recovery plans all answer `ok` and empty | PASS |
+| 5.2 | binary habit: `done` stored, read back, 100% | PASS |
+| 5.3 | numeric `at_least` 10000, logged 8000 -> `partial`, **80%** | PASS |
+| 5.4 | duration 20 min, logged 12 -> `partial`, **60%** | PASS |
+| 5.5 | negative numeric `at_most` 2: 0/1/2 -> `done` 100%, 3 -> `partial` 50%, 4 -> `miss` 0%. Lifecycle too: `isDueOn` true, an UNLOGGED day is not a miss, an unlogged day is excluded from the average | PASS |
+| 5.6 | abstinence: abstained day `done` (30 XP), relapse `miss` (0 XP) | PASS |
+| 6 | recovery, both contracts: legacy `full`/`half`/`mini`/`reschedule` + `done`/`skipped` all accepted live; `garbage` refused (23514); the v2 client's `complete_today` refused **for the right reason** (`recovery_plans_strategy_check`); v2 domain functions correct on the branch | PASS |
+| 7 | monthly reflection: cloud row with the right `user_id`/`month_key`/answers; survives the screen closing, the local draft being dropped, and a **second device** (storage wiped, fresh login); an unwritten month reads empty, not as an error; `2026-13` and a non-string answer refused (23514) | PASS |
+| 8 | offline queue: a tap while the transport fails stays optimistic and pending, 0 server rows; survives a queue reload; flushes to **exactly one** row and **exactly one** XP award; a second flush replays nothing and awards nothing; account B sees none of A's pending work, flushes none of it, and is refused (`42501`) writing to A's habit; A returns and drains it | PASS |
+| 9 | XP: one award per completion; a replay of the same intent awards nothing and leaves one row; upgrading `partial`->`done` awards only the difference; `miss`/`skip` earn nothing; a client sending `xp: 999999` gets the server's 10; `total_xp = sum(habit_logs.xp) + purged_xp` | PASS |
+| 10 | Focus Points: a real provider failure debits then refunds (`ai_coach -5`, `ai_error +5`, balance restored); the same `request_id` retried adds nothing to either side; an unaffordable call returns **402** with no debit, no output and no negative balance; a refund cannot be replayed into a second credit | PASS |
+| 11 | account isolation: B sees none of A's habits, tasks, notes or reflections, cannot reach them by id, cannot update or delete them, inherits none of A's device caches; A signs back in and everything returns. Every surviving device key is account-scoped — **0 unscoped keys hold personal data** | PASS |
+| 17 | request counts, measured at the transport: `currentUser()` x10 -> **0** auth requests; a six-collection screen load -> **6** rest, **0** auth, **0** rpc; `getSession()` x40 -> **0** auth; batching saves 751 ms at an identical request count | PASS |
+
+One scenario could NOT be produced: a **successful** AI generation. The
+Anthropic account attached to this project is out of credit — the function's
+own log says so — so §10 scenario A is BLOCKED_EXTERNAL. That failure is what
+made scenario D testable with a genuine provider error instead of a simulated
+one, which is a stronger result than the one that was planned.
 
 ---
 
@@ -150,6 +192,12 @@ Each was found by looking at the running system, not at documentation.
 | 8 | **`habit_logs` accepted foreign habit ids** — any user could attach logs to another user's habit. | Live cross-user RLS matrix | live: insert accepted → after fix `42501` |
 | 9 | **The offline queue was shared by every account** on a device — A's writes drained through B's session. | Reading the replay path's user resolution | mutations: 4 red / 1 red |
 | 10 | **`notion-auth` canonical was undeployable** — it had dropped `createAtlasDatabases` and wrote null database ids, which would break new connections *and* wipe working ones via upsert. | Comparing canonical to deployed before deleting the duplicate tree | gate: 3 assertions |
+| 11 | **The offline queue treated every offline tap as a server rejection.** `logStore` classified connectivity failure as "the call threw"; supabase-js never throws — it returns `{ data: null, error, status: 0 }`. So the `network` branch was unreachable on a device: five offline taps exhausted `MAX_ATTEMPTS`, the op went `dead`, and a logged completion was dropped; each one also rolled the optimistic row back. | Ran the real store against the live project with a failing transport | live probe: `threw: false`, `status: 0`. Fix classifies on HTTP status; the test mock (which threw) now answers the way the client does — 3 of its 9 assertions go red without the fix |
+| 12 | **A ceiling habit was scored as a floor by the server.** `habit_xp_value` never read `target_direction`, so "at most 2" with a logged 3 paid the FULL 30 XP — the same as a perfect 0. §25's ceiling fix had landed on the client, but XP is decided by a trigger that overwrites whatever the client sends. | Live XP journey on a real account | before: every value 0-6 paid 30. After `20260831_ceiling_xp`: 0/1/2 -> 30, 3 -> 15, 4 -> 0 |
+| 13 | **`xp_drift()` accused users of drifting because they deleted a habit,** and `rebuild_profile_xp` would have confiscated the XP. `habit_logs.habit_id` is ON DELETE CASCADE and `purgeHabit` is reachable from two tabs, so the logs vanish and the XP stays. | Reproduced from zero on an untouched account | log one habit (+10), delete it -> `xp_drift` reports 10. After `20260831_xp_drift_survives_purge`: 0, and a hand-edited total still makes it fire (0 -> 1 -> 0) |
+| 14 | **`anon` and `authenticated` held TRUNCATE on all 53 public tables.** RLS does not apply to TRUNCATE, so every ownership policy in this project is bypassed by one statement. Not reachable through PostgREST (no TRUNCATE verb, no DDL) — a property of today's call sites, not of the permission system. | `has_table_privilege` across every table | after revoke: 0 of 53 for both roles on TRUNCATE/REFERENCES/TRIGGER; SELECT/INSERT/DELETE still 53 |
+| 15 | **The Android notification icon was the opaque app icon.** From API 21 Android reads the ALPHA CHANNEL ONLY and fills the shape with the accent colour, so every notification would have shown a solid white block. | Decoded `icon.png`'s alpha: min and max both 255 | new white-on-transparent icon; the gate inflates the PNG and undoes all five scanline filters to assert alpha spans 0-255 — mutation red with `Expected: 0, Received: 255` |
+| 16 | **The UI showed an XP number the client invented.** `timeline.tsx` renders `+{log.xp}` from the optimistic row, whose `xp` came from a formula the server does not use — 30 against 10 for a binary done, 18 against 6 for a 12/20 duration day. Brief when online; as long as the queue waits when not. | Comparing client and server XP on the same live log | the optimistic row now carries the last CONFIRMED xp; the badge's own `xp > 0` guard hides it until the server answers |
 
 ---
 
@@ -210,54 +258,73 @@ Proven live, 6/6:
 A ledger built to fix double-awarding would have added risk to a hot path for
 a problem that does not exist. **The idempotency requirement in §40 is met.**
 
-**But the reconstructibility half is real, and worse than assumed.**
-`profiles.total_xp` cannot be rebuilt, and has already drifted in production:
+**The reconstructibility half was real — and is now closed.**
 
-| user | `total_xp` | `sum(habit_logs.xp)` | drift |
-|---|---|---|---|
-| `88fe8c16…` (real account) | **0** | **30** (13 logs) | **−30** |
+When this section was first written, `profiles.total_xp` could not be rebuilt
+and one real account was already 30 XP behind its own logs. `xp_drift()` and
+`rebuild_profile_xp()` were added for it, and the account was repaired.
 
-Deleting habit logs also leaves `total_xp` untouched, so the aggregate
-diverges permanently. That is an open gap (§5), not something this branch
-fixed.
+What that pair still got wrong was WHY a profile can legitimately be ahead of
+its logs. `habit_logs.habit_id` is `ON DELETE CASCADE`, and deleting a habit
+is an ordinary action on two tabs, so the logs vanish while the XP they
+awarded stays. The detector therefore reported every user who had ever deleted
+a habit, and the repair it pointed at would have taken their XP away
+(reproduced from zero on an untouched account: log one habit, +10, delete it,
+drift 10). `20260831_xp_drift_survives_purge` records the purged XP so
+`total_xp = sum(habit_logs.xp) + purged_xp` is true again — see §2 defect 13.
+
+Live at the end of this pass: **`xp_drift()` returns 0 users**, and the
+account that was −30 now reads `total_xp 30 / logs 30 / purged 0`, i.e. it
+balances on its own rather than by being papered over.
 
 ---
 
 ## 4. Open blockers
 
-### P0 — external
+### P0 — external, and one of them blocks the merge
 
-| # | Blocker | Exact action | Blocks |
-|---|---|---|---|
-| 1 | `mailer_autoconfirm = false`, no SMTP | Auth → Providers → Email → **Confirm email OFF**, then re-read `/auth/v1/settings` | registration, §26, full §35 |
-| 2 | Spotify client secret hardcoded in the **deployed** function | rotate in Spotify dashboard, set `SPOTIFY_CLIENT_SECRET` as an edge secret | §4, §31 |
-| 3 | `OAUTH_STATE_SECRET` + `OAUTH_REDIRECT_ALLOWLIST` unset | set both, then deploy `spotify-auth` and `notion-auth` — their hardening has **never reached production** | §4 |
-| 4 | Google secrets unset | `GOOGLE_CLIENT_ID/SECRET` + the two above, then `supabase functions deploy google-auth` | §5 |
-| 5 | No Sentry DSN | provide one | §22 |
+| # | Blocker | Evidence, read live today | Exact action | Blocks |
+|---|---|---|---|---|
+| 1 | **Registration has never succeeded.** `mailer_autoconfirm = false` and the configured SMTP server rejects the credentials. | `POST /auth/v1/signup` -> `500 Error sending confirmation email`; the auth log for that exact `request_id` carries `error: 535 "Incorrect authentication data"`. So SMTP IS configured — its credentials are being refused. The user row is rolled back, so no orphans accumulate. | EITHER fix the SMTP credentials, OR Auth -> Providers -> Email -> **Confirm email OFF**. Then re-read `/auth/v1/settings` and run a real `signUp`. | §1, §26, the merge |
+| 2 | **The DEPLOYED `spotify-auth` carries a hardcoded client-secret fallback** and issues an unverified `crypto.randomUUID()` as OAuth `state` — the callback never checks it, so the deployed flow has no CSRF protection at all. The branch's hardened version fixes both and **has never been deployed**. | Deployed source read live: a `Deno.env.get('SPOTIFY_CLIENT_SECRET') ?? '<literal>'` fallback, and `action=url` returns a bare UUID where the branch returns `<payload>.<hmac>` | rotate the secret in the Spotify dashboard, set `SPOTIFY_CLIENT_SECRET`, `OAUTH_STATE_SECRET` and `OAUTH_REDIRECT_ALLOWLIST` as edge secrets, THEN deploy the canonical function | §4, §31 |
+| 3 | **`OAUTH_STATE_SECRET` / `OAUTH_REDIRECT_ALLOWLIST` unset.** The branch's functions fail closed without them (500), which is why deploying them before the secrets exist would break a flow that currently "works". | `spotify-auth` and `notion-auth` both return an unsigned UUID state | set both, then deploy `spotify-auth` and `notion-auth` | §4 |
+| 4 | **Notion is not configured at all.** | `notion-auth?action=url` returns `client_id=undefined` | set `NOTION_CLIENT_ID`/`NOTION_CLIENT_SECRET` (+ #3), then a linked-account round trip | §6 |
+| 5 | **`google-auth` is not deployed.** | `functions/v1/google-auth` -> `404 NOT_FOUND`; 5 functions live, google-auth is not one | set `GOOGLE_CLIENT_ID/SECRET` (+ #3), then `supabase functions deploy google-auth` | §5 |
+| 6 | **The Anthropic account is out of credit,** so no AI feature can return output. | `generate-routine` log: `400 ... "Your credit balance is too low to access the Anthropic API"` | top up the Anthropic account | §10 scenario A |
+| 7 | **No crash-reporting sink.** Console only. | no DSN anywhere; `lib/crashReporting.ts` ships a transport seam and a dev sink | provide a DSN and attach a transport at boot | §22 |
+| 8 | **Bundle identifiers absent.** | `app.json` has no `ios.bundleIdentifier` / `android.package` | the owner chooses them against their own Apple/Google accounts and a domain they control | store release |
 
-### P1 — not done on this branch
+Only **#1 blocks the merge**. The rest are integrations the app already fails
+closed on, and #8 is a store-release gate rather than a merge one. #1 is
+different because registration is the product's entry point: an app nobody can
+sign up for is not shippable, whatever else passes.
 
+### P1 — the four remaining items, classified
 
-design tokens (§19) ·
-branding (§20) · widget (§21) · recovery vocabulary (§24) · performance
-profiling (§36).
+Every one is now `REQUIRED_BEFORE_MERGE` or `DEFERRED_WITH_JUSTIFICATION`.
+There is no third status and none of them is left as a bare "not done".
 
-Completed since the first version of this document: the repository boundary
-(§8), pagination (§13) and the navigation IA (§14).
+| Item | Classification | Why |
+|---|---|---|
+| **§19 Design tokens** | DEFERRED_WITH_JUSTIFICATION | The obligation was "semantic UI colours belong in tokens", and that is now met: **0 unexplained magic UI colours**. 181 were moved with zero pixel change; the 181 that remain are a categorical palette, illustration constants, theme triples, brand colours and a heatmap ramp — none of which wants a semantic name. What is left is one design decision (collapse the legacy neutral ramp into `textDim`/`bg`?) that changes pixels. |
+| **§20 Branding** | Artwork: DEFERRED_WITH_JUSTIFICATION. **Bundle identifiers: REQUIRED_BEFORE_STORE_RELEASE**, BLOCKED_EXTERNAL | Everything that does not need an account is done, including a real notification icon that Android can actually render. Identifiers are tied to accounts and a domain; inventing one can collide with a live listing. Not a merge blocker — a store-release one. |
+| **§21 Widget** | DEFERRED_WITH_JUSTIFICATION | Checked against the source-of-truth documents rather than assumed: `PROGRESS.md` assumption **A-05** and `FINAL_GAP_AUDIT_V2.md` **P3-4 (QUALITY)**. It is in no Definition of Done. It also needs a native target this managed-workflow repo has no directory for, and there is no Android SDK on this machine — but the spec, not the environment, is the reason it is deferred. |
+| **§36 Performance** | DEFERRED_WITH_JUSTIFICATION | Every source-observable cause is measured and zero (see §1c row 17). On-device render profiling needs a device or emulator; `adb` and `emulator` are both absent here. This is a **store-release QA gate**, and saying so is the honest version of "we did not get to it". |
 
 ### P2 — recorded gaps
 
 | # | Gap | Evidence |
 |---|---|---|
-| G-1 | `profiles.total_xp` not reconstructible; one real account already drifted −30 | §3.2 |
-| G-2 | ~~`isDueOn` excludes negative habits~~ — **CLOSED**, see §25 | `ceilingSemantics.test.ts` now pins the fixed behaviour |
-| G-3 | ~~`atlas_notion_login_session` is global~~ — **CLOSED**, see §27 | scoped per account, migration tested |
+| G-1 | ~~`profiles.total_xp` not reconstructible~~ — **CLOSED**. `total_xp = sum(habit_logs.xp) + purged_xp` holds live, and `xp_drift()` reports 0 users | §2 defect 13 |
+| G-2 | ~~`isDueOn` excludes negative habits~~ — **CLOSED**, see §25 | `ceilingSemantics.test.ts` |
+| G-3 | ~~`atlas_notion_login_session` is global~~ — **CLOSED**, see §27 | verified live in §1c row 11 |
 | G-4 | `weekly_xp` / `boss_contributors` readable by any authenticated user; the client never uses them | `FINAL_RLS_MATRIX.md` O-1/O-2 |
 | G-5 | `tasks` has 3 overlapping ALL policies | O-3 |
 | G-6 | anon denied two different ways (`42501` vs empty) across the schema | O-4 |
 | G-7 | 3 orphaned `SECURITY DEFINER` XP functions attached to no trigger; task completion awards no XP | trigger inventory |
 | G-8 | `supabase/migrations/` cannot rebuild the live schema | pre-existing, unchanged |
-| G-9 | CI lint scope is narrower than the repo — 3 errors live outside `expo lint` | `jest.setup.js`, `scripts/fix-expo-tsconfig.js` |
+| G-9 | ~~CI lint scope is narrower than the repo~~ — **CLOSED**; `lint:ci` runs `eslint .` over everything at `--max-warnings=0` | `.github/workflows/ci.yml` |
+| G-10 | `google_calendar_integrations` and `spotify_accounts` have RLS on and **0 policies** — deny-all for clients, reachable only through the service role. Deliberate, and recorded here so it is not mistaken for a gap | live policy inventory |
 
 ---
 
@@ -265,24 +332,91 @@ Completed since the first version of this document: the repository boundary
 
 ```
 npm run typecheck:ci                exit 0
-npx jest --ci                       exit 0    1156/1156, 80 suites
-node run-tests.js                   exit 0    144/144
-npx expo lint                       exit 0    0 errors, 73 warnings
-npx eslint . --ext .ts,.tsx                   3 errors, 163 warnings (outside CI scope)
-npx expo export --platform android  exit 0
-npx expo export --platform ios      exit 0
-npm audit                                     0 critical, 9 high (all build-time)
-supabase/predeploy_guard.sh         exit 0    kbcuolhjjnmhjaarxxmu, no warning
-GitHub Actions 33319921172          success   all 10 steps
+npm run lint:ci                     exit 0    whole repo, 0 errors 0 warnings
+npx jest --ci                       exit 0    1405/1405, 97 suites, 0 console blocks
+node run-tests.js                   exit 0    145/145
+npx expo export --platform android  exit 0    6.5 MB .hbc
+npx expo export --platform ios      exit 0    6.5 MB .hbc
+npm audit                                     0 critical, 9 high, 13 moderate
+live release-readiness suite        exit 0    40/40 across 9 suites, real JWTs under RLS
 ```
 
-**Live database left exactly as found after every test run:** 3 users,
-3 profiles, 6 habits, 13 habit_logs, 0 recovery_plans. Every disposable user
-created during this audit was removed.
+CI on the final HEAD is reported in the terminal, not here: a document cannot
+observe a run of the commit that contains it.
 
-Three additive migrations applied, all policy/table only, no row touched:
-`20260830_google_calendar_integrations` (49→50 tables),
-`20260830_habit_logs_ownership_check` (5→4 policies, 13 rows unchanged) and
-`20260830_child_row_ownership` (recovery_plans + key_results now require the
-parent row to belong to the caller; verified live with two users, including
-that owners can still write their own).
+### The 9 high advisories, re-proved on THIS build
+
+All nine are Expo/Metro build-chain packages (`@expo/cli`, `@expo/metro*`,
+`metro*`, `postcss`, `image-size`, `expo`). The proof that none of them ships
+was re-run against a bundle exported minutes before this line — not carried
+over from an earlier one — with three positive controls so a scanner that
+silently matches nothing cannot pass:
+
+```
+CONTROL react-native      24 hits   present, as it must be
+CONTROL supabase          58 hits   present
+CONTROL "Telafi"           8 hits   present (the app's own Turkish copy)
+postcss                    0
+metro-config               0
+metro-transform-worker     0
+@expo/cli                  0
+@expo/metro-config         0
+@expo/prebuild-config      0
+xcode                      0 (android) / 1 (ios)
+image-size                 3 (android) / 0 (ios, as a package path)
+```
+
+The two non-zero rows were opened rather than assumed. Every `image-size` hit
+is an icon glyph name — `image-size-select-small`, `-actual`, `-large`. The
+single iOS `xcode` hit straddles two adjacent glyph names in the font table
+(`...codesandbo` + `xcode` + `space...`). Neither is the package.
+
+### The live database was left exactly as found
+
+```
+                     before   after
+auth.users              3       3
+profiles                3       3
+habits                  6       6
+habit_logs             13      13
+recovery_plans          0       0
+monthly_reviews         0       0
+credit_transactions     3       3   (all pre-existing, dated 2026-08-30)
+xp_drift()              -       0   users
+```
+
+Three accounts were created for the live journey and all three were deleted;
+the cascade took their habits, logs, tasks, notes, reflections and ledger rows
+with them.
+
+### Migrations applied by this pass
+
+| migration | what it does | risk to `main` |
+|---|---|---|
+| `20260831_recovery_vocabulary_compat_rollback` | restores the legacy recovery vocabulary so `main` works | fixes a break, does not cause one |
+| `20260831_ceiling_xp` | `habit_xp_value` reads `target_direction` | only ever lowers an award that was too high; `main` writes the same column |
+| `20260831_xp_drift_survives_purge` | `profiles.purged_xp` + a BEFORE DELETE trigger; `xp_drift`/`rebuild_profile_xp` account for it | additive column, server-written only |
+| `20260831_revoke_ddl_grants` | revokes TRUNCATE/REFERENCES/TRIGGER from `anon`/`authenticated` | removes privileges nothing uses; SELECT/INSERT/UPDATE/DELETE untouched |
+
+Each was applied to the live project and verified there, and each is committed
+as a file so the tree and the database say the same thing.
+
+---
+
+## 6. Merge decision
+
+**NOT MERGE READY**, on exactly one blocker.
+
+Registration has never succeeded. `signUp()` returns 500 because the
+configured SMTP server refuses the credentials it is given
+(`535 "Incorrect authentication data"`), and email confirmation is required.
+Everything downstream of the front door works — verified live, on real
+accounts, through the app's own code — but an app nobody can sign up for is
+not shippable, and no amount of green elsewhere changes that.
+
+That single fact also holds the recovery release sequence: re-applying
+`20260831_recovery_vocabulary` and deploying the v2 client is a coordinated
+step (§0b) that should not happen while the product cannot take a new user.
+
+Everything else is either PASS, deliberately DEFERRED with the reason written
+down, or BLOCKED_EXTERNAL on a secret this branch must not invent.
