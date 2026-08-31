@@ -41,7 +41,7 @@ ACCENT = (0xD9, 0x77, 0x57, 255)  # colors.accent
 OUT = os.path.join(os.path.dirname(__file__), '..', 'assets', 'images')
 
 
-def draw_mark(size, inset_ratio, transparent_bg):
+def draw_mark(size, inset_ratio, transparent_bg, fill=None):
     """One square canvas with the mark centred.
 
     `inset_ratio` is how much of the canvas the mark occupies. Android's
@@ -50,6 +50,7 @@ def draw_mark(size, inset_ratio, transparent_bg):
     """
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0) if transparent_bg else BG)
     d = ImageDraw.Draw(img)
+    colour = fill or ACCENT
 
     m = size * inset_ratio          # mark height
     cx, cy = size / 2, size / 2
@@ -61,13 +62,13 @@ def draw_mark(size, inset_ratio, transparent_bg):
     # Left and right legs of the A, as quadrilaterals from apex to base.
     apex_l = (cx - stroke * 0.55, top)
     apex_r = (cx + stroke * 0.55, top)
-    d.polygon([apex_l, apex_r, (cx - half_w + stroke, bot), (cx - half_w, bot)], fill=ACCENT)
-    d.polygon([apex_r, apex_l, (cx + half_w - stroke, bot), (cx + half_w, bot)], fill=ACCENT)
+    d.polygon([apex_l, apex_r, (cx - half_w + stroke, bot), (cx - half_w, bot)], fill=colour)
+    d.polygon([apex_r, apex_l, (cx + half_w - stroke, bot), (cx + half_w, bot)], fill=colour)
 
     # Crossbar, at the optical rather than geometric middle.
     bar_y = top + m * 0.66
     bar_half = half_w * 0.60
-    d.rectangle([cx - bar_half, bar_y, cx + bar_half, bar_y + stroke * 0.85], fill=ACCENT)
+    d.rectangle([cx - bar_half, bar_y, cx + bar_half, bar_y + stroke * 0.85], fill=colour)
     return img
 
 
@@ -101,3 +102,17 @@ if __name__ == '__main__':
 
     # Splash: the mark alone on transparent; app.json paints the ground.
     save(draw_mark(512, 0.46, transparent_bg=True), 'splash-icon.png')
+
+    # Android notification small icon.
+    #
+    # Android does NOT render this image. From API 21 it takes the ALPHA
+    # CHANNEL ONLY and paints the result in the notification's accent colour,
+    # so any opaque icon becomes a solid filled square in the status bar.
+    # `app.json` pointed at `icon.png`, which is opaque to every last pixel
+    # (verified: alpha min and max are both 255) -- so every Atlas notification
+    # would have shown a white rounded rectangle where the mark should be.
+    #
+    # White is used for the fill because only the shape survives; the tint
+    # comes from the plugin's `color` (colors.accent).
+    save(draw_mark(96, 0.62, transparent_bg=True, fill=(255, 255, 255, 255)),
+         'notification-icon.png')

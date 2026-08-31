@@ -30,12 +30,86 @@
  */
 import { existsSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
+import { inflateSync } from 'zlib';
 
 const ROOT = join(__dirname, '..', '..');
 const config = JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')).expo as Record<string, any>;
 
 /** Anything still spelled this way is template residue. */
 const TEMPLATE_DEFAULT = 'frontend';
+
+/**
+ * The smallest and largest alpha in an 8-bit RGBA / grey+alpha PNG.
+ *
+ * Written out rather than pulled in as a dependency: the whole question is
+ * "does this file have transparent pixels", and adding a PNG library to the
+ * devDependencies to answer it would cost more than the forty lines. The
+ * scanline filters are the ones PNG defines (None/Sub/Up/Average/Paeth) and
+ * must all be undone, because a filtered byte is a DIFFERENCE, not a value —
+ * reading them raw would report alphas that were never in the image.
+ */
+function alphaExtrema(png: Buffer): { min: number; max: number } {
+  const width = png.readUInt32BE(16);
+  const height = png.readUInt32BE(20);
+  const depth = png[24];
+  const colourType = png[25];
+  const interlace = png[28];
+  if (depth !== 8 || interlace !== 0) throw new Error('alphaExtrema: 8-bit, non-interlaced only');
+  const channels = colourType === 6 ? 4 : colourType === 4 ? 2 : 0;
+  if (!channels) throw new Error(`alphaExtrema: colour type ${colourType} has no alpha`);
+
+  // Concatenate every IDAT chunk, then inflate.
+  const parts: Buffer[] = [];
+  let off = 8;
+  while (off < png.length) {
+    const len = png.readUInt32BE(off);
+    const type = png.toString('ascii', off + 4, off + 8);
+    if (type === 'IDAT') parts.push(png.subarray(off + 8, off + 8 + len));
+    off += 12 + len;
+    if (type === 'IEND') break;
+  }
+  const raw = inflateSync(Buffer.concat(parts));
+
+  const bpp = channels;                 // bytes per pixel at depth 8
+  const stride = width * bpp;
+  const prev = Buffer.alloc(stride);
+  const line = Buffer.alloc(stride);
+  let min = 255;
+  let max = 0;
+
+  for (let y = 0; y < height; y++) {
+    const base = y * (stride + 1);
+    const filter = raw[base];
+    raw.copy(line, 0, base + 1, base + 1 + stride);
+    for (let i = 0; i < stride; i++) {
+      const a = i >= bpp ? line[i - bpp] : 0;   // left
+      const b = prev[i];                         // up
+      const c = i >= bpp ? prev[i - bpp] : 0;    // upper-left
+      switch (filter) {
+        case 0: break;
+        case 1: line[i] = (line[i] + a) & 0xff; break;
+        case 2: line[i] = (line[i] + b) & 0xff; break;
+        case 3: line[i] = (line[i] + ((a + b) >> 1)) & 0xff; break;
+        case 4: {
+          const p = a + b - c;
+          const pa = Math.abs(p - a);
+          const pb = Math.abs(p - b);
+          const pc = Math.abs(p - c);
+          const pred = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+          line[i] = (line[i] + pred) & 0xff;
+          break;
+        }
+        default: throw new Error(`alphaExtrema: unknown filter ${filter}`);
+      }
+    }
+    for (let x = bpp - 1; x < stride; x += bpp) {
+      if (line[x] < min) min = line[x];
+      if (line[x] > max) max = line[x];
+    }
+    line.copy(prev);
+  }
+  return { min, max };
+}
 
 describe('identity', () => {
   it.each(['name', 'slug', 'scheme'])('%s is not the template default', (field) => {
@@ -101,6 +175,32 @@ describe('assets', () => {
     const adaptive = read('adaptive-icon.png');
     expect(icon.equals(favicon)).toBe(false);
     expect(icon.equals(adaptive)).toBe(false);
+  });
+
+  it('the notification icon is a silhouette, not a filled square', () => {
+    // Android does not RENDER this image. From API 21 it reads the alpha
+    // channel only and paints the result in the notification colour, so an
+    // opaque icon arrives as a solid block in the status bar.
+    //
+    // `app.json` pointed at `icon.png`, whose alpha is 255 at every pixel, so
+    // every Atlas notification would have shown a white rounded rectangle.
+    // This checks the property that matters — the file has transparency —
+    // rather than which filename is configured, because the next person to
+    // point it at a different opaque PNG reintroduces exactly the same bug.
+    const config = JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')).expo;
+    const notif = config.plugins.find((p: unknown) => Array.isArray(p) && p[0] === 'expo-notifications');
+    const rel = (notif as [string, { icon: string }])[1].icon.replace('./', '');
+    const png = readFileSync(join(ROOT, rel));
+
+    // PNG colour type lives at byte 25 of the IHDR chunk: 6 = RGBA, 4 =
+    // grey+alpha. Anything else has no alpha channel to read.
+    expect([4, 6]).toContain(png[25]);
+
+    // Having an alpha channel is not the same as using one — `icon.png` is
+    // RGBA and opaque at every pixel. So the alpha is actually decoded.
+    const alpha = alphaExtrema(png);
+    expect(alpha.min).toBe(0);    // there is transparent space around the mark
+    expect(alpha.max).toBe(255);  // and the mark itself is solid
   });
 
   it('the icons can be regenerated from a committed source', () => {
