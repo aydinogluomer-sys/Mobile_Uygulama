@@ -10,7 +10,7 @@
  */
 import { supabase } from '../lib/supabase';
 import type { HabitLog } from '../lib/supabase';
-import { currentUserId, updateOwned, type RepoResult } from './shared';
+import { currentUserId, isTransportFailure, updateOwned, type RepoResult } from './shared';
 
 export type ReviewLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
 export type HeatmapLogRow = Pick<HabitLog, 'completed_at' | 'state'>;
@@ -182,7 +182,7 @@ export async function insertHabitLog(params: {
 }): Promise<RepoResult<HabitLog> & { code?: string }> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('habit_logs')
     .insert({
       habit_id: params.habitId,
@@ -192,7 +192,12 @@ export async function insertHabitLog(params: {
     })
     .select(WRITE_COLS)
     .single();
-  if (error) return { ok: false, error: error.message, code: error.code };
+  if (error) {
+    return {
+      ok: false, error: error.message, code: error.code,
+      offline: isTransportFailure(status),
+    };
+  }
   return { ok: true, data: data as unknown as HabitLog };
 }
 
@@ -203,14 +208,14 @@ export async function findHabitLog(params: {
 }): Promise<RepoResult<HabitLog | null>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('habit_logs')
     .select(WRITE_COLS)
     .eq('habit_id', params.habitId)
     .eq('user_id', u.userId)
     .eq('completed_at', params.dateStr)
     .maybeSingle();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
   return { ok: true, data: (data ?? null) as HabitLog | null };
 }
 

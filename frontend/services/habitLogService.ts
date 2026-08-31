@@ -128,7 +128,8 @@ export function completionFor(
 
 export type PersistResult =
   | { ok: true; log: HabitLog }
-  | { ok: false; error: string };
+  /** `offline` = the request never reached the server. See `isTransportFailure`. */
+  | { ok: false; error: string; offline?: boolean };
 
 /**
  * Writes one completion, resolving insert vs update against what is already
@@ -171,7 +172,7 @@ export async function persistCompletion(params: {
 }): Promise<PersistResult> {
   if (params.confirmedId) {
     const updated = await repoUpdateHabitLog(params.confirmedId, params.patch as Record<string, unknown>);
-    if (!updated.ok) return { ok: false, error: updated.error };
+    if (!updated.ok) return { ok: false, error: updated.error, offline: updated.offline };
     announce(params.habitId, params.dateStr, updated.data);
     return { ok: true, log: updated.data };
   }
@@ -190,13 +191,13 @@ export async function persistCompletion(params: {
     const found = await repoFindHabitLog({ habitId: params.habitId, dateStr: params.dateStr });
     if (found.ok && found.data) {
       const updated = await repoUpdateHabitLog(found.data.id, params.patch as Record<string, unknown>);
-      if (!updated.ok) return { ok: false, error: updated.error };
+      if (!updated.ok) return { ok: false, error: updated.error, offline: updated.offline };
       announce(params.habitId, params.dateStr, updated.data);
       return { ok: true, log: updated.data };
     }
   }
 
-  return { ok: false, error: inserted.error };
+  return { ok: false, error: inserted.error, offline: inserted.offline };
 }
 
 /** Every log for one local day, for the signed-in user. */

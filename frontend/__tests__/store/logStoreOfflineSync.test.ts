@@ -20,8 +20,10 @@
  * Mirrors `store/logStore.test.ts`'s mock style (a fake `../../lib/supabase`
  * client) rather than reusing it, per this task's "no existing test file
  * changes" constraint -- this is a NEW file with its own mock DB, extended
- * with a `networkDown` switch (throws, simulating a connectivity failure
- * instead of returning a normal `{ error }`) and a uniqueness check on
+ * with a `networkDown` switch (answers the way supabase-js really answers a
+ * failed transport: a normal result with `status: 0` -- see `OFFLINE_RESULT`)
+ * and a `networkThrows` switch for a call that genuinely throws, plus a
+ * uniqueness check on
  * insert that mirrors the real `UNIQUE (habit_id, completed_at)` constraint
  * (`supabase/migrations/001_initial_schema.sql:34`) rather than requiring
  * the test to hand-inject a 23505 -- the whole point of AC-O02 is that the
@@ -45,11 +47,40 @@ const mockDb = {
   calls: [] as string[],
   rows: [] as Row[],
   idSeq: 0,
-  /** true => every DB call throws, simulating a connectivity failure. */
+  /**
+   * true => every DB call answers the way supabase-js ACTUALLY answers when
+   * the transport fails: a normal result carrying an error and `status: 0`.
+   * It does not throw. That was verified against the live project with the
+   * app's own client:
+   *
+   *   { data: null,
+   *     error: { message: 'TypeError: Network request failed', code: '' },
+   *     status: 0 }
+   *
+   * This mock used to throw here, which is why `logStore.runAttempt`'s
+   * `network` branch could pass its tests and still be unreachable on a real
+   * device -- every offline tap was classified as a server REJECTION, burning
+   * the MAX_ATTEMPTS budget until the op went `dead` and the user's logged
+   * completion was dropped.
+   */
   networkDown: false,
+  /**
+   * true => the call throws instead. Kept as a separate switch rather than
+   * replaced: a thrown call is still possible (an adapter, a polyfill, an
+   * `AbortError`), and `runAttempt`'s `catch` still has to handle it.
+   */
+  networkThrows: false,
   /** injects a non-uniqueness rejection, e.g. RLS/validation. */
   insertError: null as PgError | null,
   updateError: null as PgError | null,
+};
+
+/** What a failed transport looks like coming back from supabase-js. */
+const OFFLINE_RESULT = {
+  data: null,
+  error: { message: 'TypeError: Network request failed', details: '', hint: '', code: '' },
+  status: 0,
+  statusText: '',
 };
 
 jest.mock('../../lib/supabase', () => {
@@ -68,8 +99,11 @@ jest.mock('../../lib/supabase', () => {
         const r = await this.getUser();
         return { data: { session: r.data.user ? { user: r.data.user, access_token: 'test-jwt' } : null } };
       },
+        // Deliberately NOT affected by `networkDown`: `getSession()` reads
+        // the persisted session locally, so being offline does not sign the
+        // user out. Only an outright thrown call is simulated here.
         getUser: jest.fn().mockImplementation(async () => {
-          if (mockDb.networkDown) throw new TypeError('Network request failed');
+          if (mockDb.networkThrows) throw new TypeError('Network request failed');
           return { data: { user: { id: 'u1' } } };
         }),
       },
@@ -79,7 +113,8 @@ jest.mock('../../lib/supabase', () => {
           const q = {
             eq(col: string, val: unknown) { filters[col] = val; return q; },
             async maybeSingle() {
-              if (mockDb.networkDown) throw new TypeError('Network request failed');
+              if (mockDb.networkThrows) throw new TypeError('Network request failed');
+              if (mockDb.networkDown) return OFFLINE_RESULT;
               mockDb.calls.push('select');
               return { data: match(filters)[0] ?? null, error: null };
             },
@@ -90,7 +125,8 @@ jest.mock('../../lib/supabase', () => {
           return {
             select: () => ({
               single: async () => {
-                if (mockDb.networkDown) throw new TypeError('Network request failed');
+                if (mockDb.networkThrows) throw new TypeError('Network request failed');
+                if (mockDb.networkDown) return OFFLINE_RESULT;
                 mockDb.calls.push('insert');
                 if (mockDb.insertError) {
                   const e = mockDb.insertError;
@@ -121,7 +157,8 @@ jest.mock('../../lib/supabase', () => {
             eq(col: string, val: unknown) { filters[col] = val; return u; },
             select: () => ({
               single: async () => {
-                if (mockDb.networkDown) throw new TypeError('Network request failed');
+                if (mockDb.networkThrows) throw new TypeError('Network request failed');
+                if (mockDb.networkDown) return OFFLINE_RESULT;
                 mockDb.calls.push('update');
                 if (mockDb.updateError) {
                   const e = mockDb.updateError;
@@ -133,7 +170,8 @@ jest.mock('../../lib/supabase', () => {
                 return { data: row, error: null };
               },
               maybeSingle: async () => {
-                if (mockDb.networkDown) throw new TypeError('Network request failed');
+                if (mockDb.networkThrows) throw new TypeError('Network request failed');
+                if (mockDb.networkDown) return OFFLINE_RESULT;
                 mockDb.calls.push('update');
                 if (mockDb.updateError) {
                   const e = mockDb.updateError;
@@ -163,6 +201,7 @@ beforeEach(async () => {
   mockDb.rows.length = 0;
   mockDb.idSeq = 0;
   mockDb.networkDown = false;
+  mockDb.networkThrows = false;
   mockDb.insertError = null;
   mockDb.updateError = null;
   await AsyncStorage.clear();

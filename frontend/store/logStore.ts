@@ -32,7 +32,13 @@ import {
  */
 export type LogResult =
   | { ok: true; log: HabitLog }
-  | { ok: false; error: string };
+  /**
+   * `offline` distinguishes "the request never reached the server" from "the
+   * server refused it". `runAttempt` treats the two completely differently,
+   * and until this flag existed it could not tell them apart — see
+   * `isTransportFailure` in `repositories/shared.ts`.
+   */
+  | { ok: false; error: string; offline?: boolean };
 
 /** UI-facing sync status for one (habit, day) key -- see `getSyncStatusFor`. */
 export type HabitSyncStatus = 'synced' | 'pending' | 'dead';
@@ -315,7 +321,7 @@ async function attemptWrite(
   const res = await persistCompletion({
     habitId, dateStr, patch, confirmedId: confirmed?.id,
   });
-  if (!res.ok) return { ok: false, error: res.error };
+  if (!res.ok) return { ok: false, error: res.error, offline: res.offline };
 
   set((s) => replaceLogForKey(s, res.log.habit_id, res.log.completed_at, res.log));
   return { ok: true, log: res.log };
@@ -377,23 +383,34 @@ export const useLogStore = create<LogStore>((set, get) => {
   /**
    * Runs one queued/live write through `attemptWrite`, classifying the
    * outcome back into the queue:
-   *  - success                          -> `markSynced` (nothing left to do)
-   *  - a real `{ error }` response      -> `markFailed(..., 'rejected')`
+   *  - success                       -> `markSynced` (nothing left to do)
+   *  - the server REFUSED the write  -> `markFailed(..., 'rejected')`
    *    (counts toward the terminal budget; still returned to the caller
    *    exactly as before -- this is what keeps `logHabitErrorsSurfaced`
    *    (commit 8a04c04) true)
-   *  - a THROWN/rejected call           -> `markFailed(..., 'network')`
+   *  - the request never REACHED the server -> `markFailed(..., 'network')`
    *    (does not count; the op stays pending for the next attempt)
    *
-   * The network/rejected split is the one interpretive call this task's
-   * mocks-only constraint requires: no live Supabase call exists to observe
-   * directly, so the rule adopted -- documented once, here -- is "a normal
-   * `{ data, error }` response means the server was reached, so any error in
-   * it is a real rejection; a thrown exception means the request never got a
-   * response, i.e. connectivity". Every EXISTING test's fake client only
-   * ever returns `{ error }` and never throws, so this is additive: those
-   * tests keep exercising the untouched `try` path and their asserted
-   * behaviour is unchanged.
+   * ## The rule this used to use, and why it never fired
+   *
+   * The split was originally "a returned `{ error }` means the server was
+   * reached; a THROWN call means connectivity". That was written under a
+   * mocks-only constraint -- "no live Supabase call exists to observe
+   * directly" -- and the mock duly threw. The real client does not:
+   * supabase-js catches the transport error and returns
+   * `{ data: null, error: { message: 'TypeError: Network request failed',
+   * code: '' }, status: 0 }`, observed live against this project.
+   *
+   * So on a real device the `network` branch was unreachable and every
+   * offline tap was counted as a server rejection: five of them exhausted
+   * `MAX_ATTEMPTS` and the op went `dead` -- a completion the user logged,
+   * silently dropped -- while each one also rolled the optimistic row back,
+   * so the tap appeared to fail as it was made.
+   *
+   * The classification is now made on `result.offline`, which the repository
+   * layer derives from the HTTP status rather than from the shape of the
+   * failure. The `catch` is kept: a call that genuinely throws also never
+   * got a response.
    */
   async function runAttempt(
     habitId: string,
@@ -404,13 +421,28 @@ export const useLogStore = create<LogStore>((set, get) => {
   ): Promise<LogResult> {
     try {
       const result = await attemptWrite(set, get, habitId, dateStr, patch);
+
+      // A lost connection arrives here as an ordinary `{ ok: false }`, NOT as
+      // a throw — supabase-js catches the transport error itself. Treating it
+      // as a rejection is what the `catch` below was written to avoid, so it
+      // takes the same route: the attempt does not count, the op stays
+      // pending, and the caller keeps its optimistic row.
+      if (!result.ok && result.offline) {
+        queueState = markOpFailed(queueState, op.id, 'network', { now });
+        await saveSyncQueue(queueState, queueOwnerId ?? '');
+        publishSyncCounts();
+        throw new Error('__offline__');
+      }
+
       queueState = result.ok
         ? markOpSynced(queueState, op.id)
         : markOpFailed(queueState, op.id, 'rejected', { error: result.error, now });
       await saveSyncQueue(queueState, queueOwnerId ?? '');
       publishSyncCounts();
       return result;
-    } catch {
+    } catch (e) {
+      // Re-thrown from the offline branch above; the queue is already updated.
+      if (e instanceof Error && e.message === '__offline__') throw e;
       queueState = markOpFailed(queueState, op.id, 'network', { now });
       await saveSyncQueue(queueState, queueOwnerId ?? '');
       publishSyncCounts();

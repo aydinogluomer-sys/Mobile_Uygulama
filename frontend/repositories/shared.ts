@@ -15,11 +15,52 @@ import { supabase } from '../lib/supabase';
 
 export type RepoResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: string };
+  /**
+   * `offline` marks a failure where the request never reached the server, as
+   * distinct from one the server considered and refused. Callers that retry
+   * (the offline queue) need that difference: a refusal should consume the
+   * retry budget, a lost connection must not.
+   */
+  | { ok: false; error: string; offline?: boolean };
 
 export type ScopedUser =
   | { ok: true; userId: string }
   | { ok: false; error: string };
+
+/**
+ * Did this response come back without ever reaching PostgREST?
+ *
+ * ## Why this is not "did the call throw"
+ *
+ * It is natural to assume a connectivity failure surfaces as a thrown
+ * exception, and this codebase did assume it: `store/logStore.ts` classified
+ * a THROWN call as `network` and any returned `{ error }` as a real server
+ * rejection. Against the actual client that rule never fires. supabase-js
+ * catches the transport error itself and hands back a perfectly ordinary
+ * result — observed live, with the app's own client and a failing transport:
+ *
+ *     { data: null,
+ *       error: { message: 'TypeError: Network request failed', code: '' },
+ *       status: 0 }
+ *
+ * No throw. So every offline write was being counted as a server REJECTION,
+ * which consumed the terminal retry budget and rolled the optimistic row
+ * back — the two things an offline-first queue must not do.
+ *
+ * `status` is the honest discriminator rather than message-sniffing: PostgREST
+ * always answers with a real HTTP status, and supabase-js sets `0` on the one
+ * path where there was no HTTP response at all.
+ *
+ * A MISSING status is deliberately NOT treated as offline. It would be the
+ * more cautious-looking choice, but it is the wrong one: a real rejection
+ * misread as a lost connection stops surfacing to the caller (`logHabit`
+ * returns its optimistic `{ ok: true }` on the offline path), which is the
+ * error-swallowing this layer exists to prevent. Only an explicit `0` — the
+ * value the client actually sets when the request never completed — counts.
+ */
+export function isTransportFailure(status: number | null | undefined): boolean {
+  return status === 0;
+}
 
 /**
  * Resolves the current authenticated user id, or a typed failure.
@@ -170,14 +211,14 @@ export async function updateOwned<T>(params: {
   patch: Record<string, unknown>;
   columns?: string;
 }): Promise<RepoResult<T>> {
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from(params.table)
     .update(params.patch)
     .eq('id', params.id)
     .eq('user_id', params.userId)
     .select(params.columns ?? '*')
     .maybeSingle();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
   if (!data) return { ok: false, error: 'Kayıt bulunamadı ya da erişim yok.' };
   return { ok: true, data: data as T };
 }
@@ -187,13 +228,13 @@ export async function deleteOwned(params: {
   id: string;
   userId: string;
 }): Promise<RepoResult<true>> {
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from(params.table)
     .delete()
     .eq('id', params.id)
     .eq('user_id', params.userId)
     .select('id');
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
   // A delete that matched nothing is reported, not treated as success -- the
   // stores previously removed the row from local state either way.
   if (!data || data.length === 0) return { ok: false, error: 'Kayıt bulunamadı ya da erişim yok.' };
