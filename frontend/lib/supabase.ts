@@ -171,6 +171,12 @@ export type Routine = {
 // `completed_at`. Gerekçesi "henüz sütunları yok" idi; oysa hepsi
 // 20260825'te eklenmişti. Sözlük 20260831_recovery_vocabulary ile tek'e
 // indirildi ve adaptör kaldırıldı.
+//
+// DEPLOY NOTU: bu branch yayınlanmadığı için canlı veritabanında o migration
+// şu an geri alınmış (20260831_recovery_vocabulary_compat_rollback) --
+// `main` legacy kelimeleri yazmaya devam edebilsin diye. Aşağıdaki sözlük
+// branch'in sözlüğüdür ve doğrudur; canlıya çıkmadan ÖNCE vocabulary
+// migration'ı yeniden uygulanmalı. Release gate: pre-merge audit §0b.
 export type RecoveryStrategy = 'complete_today' | 'push_tomorrow' | 'split_two_days' | 'skip';
 export type RecoveryStatus = 'planned' | 'completed' | 'expired' | 'cancelled';
 export type RecoveryDeficitType = 'numeric' | 'binary';
