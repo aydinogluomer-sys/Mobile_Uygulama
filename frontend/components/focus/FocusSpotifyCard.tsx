@@ -7,6 +7,7 @@ import { useSpotifyStore } from '../../store/spotifyStore';
 import { FOCUS_PLAYLISTS, type FocusPlaylist } from '../../lib/spotifyFocus';
 import { haptic } from '../../lib/haptics';
 import { colors } from '../../lib/tokens';
+import { SPOTIFY_OAUTH_ENABLED, SPOTIFY_OAUTH_DISABLED_REASON } from '../../lib/featureGates';
 
 const SPOTIFY = '#1DB954';
 
@@ -47,6 +48,28 @@ export default function FocusSpotifyCard() {
     haptic.light();
     if (nowPlaying?.isPlaying) await pause();
     else await play();
+  }
+
+  // ── Bağlanma kapalı ──────────────────────────────────────────────────────
+  //
+  // Honest unavailability, not a button that fails. The reason is stated
+  // instead of hidden: a feature that silently disappears reads as a bug, and
+  // a button that errors on tap wastes the user's attempt. The real refusal is
+  // in `spotifyStore.connect()`; this is what the person sees.
+  if (!connection && !SPOTIFY_OAUTH_ENABLED) {
+    return (
+      <View style={s.card}>
+        <View style={s.connectRow}>
+          <View style={[s.logo, { backgroundColor: colors.surfaceAlt }]}>
+            <Ionicons name="musical-notes" size={20} color={colors.textFaint} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.connectTitle}>Spotify</Text>
+            <Text style={s.connectSub}>{SPOTIFY_OAUTH_DISABLED_REASON}</Text>
+          </View>
+        </View>
+      </View>
+    );
   }
 
   // ── Bağlı değil ──────────────────────────────────────────────────────────

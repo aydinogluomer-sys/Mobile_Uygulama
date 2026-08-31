@@ -1,4 +1,5 @@
 import { withEdgeDeadline } from '../lib/edgeCall';
+import { SPOTIFY_OAUTH_ENABLED, SPOTIFY_OAUTH_DISABLED_REASON } from '../lib/featureGates';
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import * as WebBrowser from 'expo-web-browser';
@@ -84,6 +85,21 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
   },
 
   connect: async () => {
+    // ── The gate is HERE, not in the card ────────────────────────────────
+    //
+    // A disabled button is decoration: any other caller — a deep link, a
+    // future screen, a test — would still walk into the flow. This is the
+    // only function that starts an authorization, so it is the boundary.
+    //
+    // It returns BEFORE any network call, so no request reaches the
+    // vulnerable deployed function and no browser session is opened. See
+    // `lib/featureGates.ts` for the live evidence and the four conditions
+    // that turn it back on.
+    if (!SPOTIFY_OAUTH_ENABLED) {
+      set({ status: 'error', error: SPOTIFY_OAUTH_DISABLED_REASON });
+      return false;
+    }
+
     set({ status: 'connecting', error: null });
     try {
       const { data: { session } } = await supabase.auth.getSession();
