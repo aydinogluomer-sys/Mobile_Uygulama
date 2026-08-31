@@ -246,7 +246,25 @@ function buildOptimisticLog(
   patch: Patch,
   priorLocal: HabitLog | undefined,
 ): HabitLog {
-  if (priorLocal) return { ...priorLocal, ...patch };
+  // ── why `xp` is excluded from the optimistic row ──────────────────────
+  //
+  // XP is decided by the SERVER. `fn_habit_log_set_xp` overwrites whatever
+  // the client sends, using the habit's difficulty, impact, behaviour and
+  // tracking type; `xpFor` here knows none of that. The two disagree by a
+  // lot — measured live: a plain binary `done` is 10 on the server and 30
+  // by this formula, a 12/20 duration day is 6 against 18.
+  //
+  // `app/tabs/timeline.tsx` renders `+{log.xp}`, so showing the guess means
+  // showing a number that is simply wrong until the write lands — and while
+  // offline, that is not a flicker, it is however long the queue waits.
+  //
+  // So the optimistic row carries the last CONFIRMED xp (or none yet), and
+  // the badge's own `xp > 0` guard hides it until the server has spoken.
+  // The patch still sends `xp`, which the trigger ignores; the value is left
+  // in place because `xpFor` is also the offline-queue's intent record and
+  // is asserted by its own tests.
+  const { xp: _serverOwned, ...displayable } = patch;
+  if (priorLocal) return { ...priorLocal, ...displayable };
   return {
     id: `${LOCAL_ID_PREFIX}${habitId}|${dateStr}`,
     habit_id: habitId,
@@ -256,7 +274,8 @@ function buildOptimisticLog(
     user_id: '',
     completed_at: dateStr,
     created_at: new Date().toISOString(),
-    ...patch,
+    xp: 0,
+    ...displayable,
   };
 }
 
