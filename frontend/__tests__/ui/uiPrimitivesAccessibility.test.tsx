@@ -57,6 +57,28 @@ import WillpowerBand from '../../components/ui/WillpowerBand';
 type Json = TestRenderer.ReactTestRendererJSON;
 
 /**
+ * 30 s per test, not jest's default 5 s.
+ *
+ * This suite mounts 38 components, and the FIRST mount also pays for
+ * `@expo/vector-icons` resolving its font promise. On an idle machine the
+ * whole file finishes in about two seconds, so the default never bites. Under
+ * the full suite it competes with 97 others for a worker, and roughly one run
+ * in ten it lost — the file took 45 s and the first two tests failed with
+ * `Exceeded timeout of 5000 ms`, always the two that mount first. Reproduced
+ * on demand with `npx jest --maxWorkers=16`, which fails them every time.
+ *
+ * That is a scheduling artefact, not a defect being caught, and a gate that
+ * goes red at random is the same disease as one that is green for the wrong
+ * reason: both teach people to press the button again. CI runs on a smaller,
+ * busier machine than this one, so it is the more exposed of the two.
+ *
+ * 30 s is chosen as a real hang threshold — a synchronous mount that has not
+ * finished in thirty seconds is genuinely stuck, and the timeout still catches
+ * that. It is not `Infinity`, which would be giving up on the check.
+ */
+jest.setTimeout(30_000);
+
+/**
  * Ağacı ASENKRON bir `act` içinde oluşturur — bu bir stil tercihi değil,
  * iddiaların anlamlı olmasının koşulu.
  *
