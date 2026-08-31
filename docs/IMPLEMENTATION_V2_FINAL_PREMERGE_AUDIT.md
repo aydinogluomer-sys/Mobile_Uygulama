@@ -100,7 +100,7 @@ deleted adapter used and the migration's own header records.
 | **§1** | Registration works | `signUp()` → 500 | none possible in code | **Real signUp attempted**, not skipped: `500 Error sending confirmation email`; `/auth/v1/settings` → `mailer_autoconfirm=false`; 0 orphan rows created | **BLOCKED_EXTERNAL** |
 | **§2** | Google OAuth state fail-closed | `state ?? clientState` fallback | only the provider's state is forwarded; absent state refuses before the callback request | behaviour tests + mutation (1 red) | **PASS** |
 | **§3** | Disconnect honesty | response discarded, state cleared unconditionally (Google **and** Spotify) | local state cleared only on server confirmation | 401/500/throw cases; mutations (2 red each) | **PASS** |
-| **§4** | Spotify security drift | canonical hardened, **production not** | canonical verified hardened; deploy NOT performed | deployed source read live: `crypto.randomUUID()`, no verify, **hardcoded client secret fallback** | **BLOCKED_EXTERNAL** |
+| **§4** | Spotify security drift | canonical hardened, **production not** | canonical verified hardened; deploy NOT performed; and the client now **refuses to start a new authorization** rather than pointing users at the vulnerable deployment | Deployed function probed live on the final day: unsigned UUID state, callback never checks it, and `redirect_uri=https://attacker.example/steal` returns 200 with that URL embedded — no allowlist. `SPOTIFY_OAUTH_ENABLED=false` refuses in the store before any I/O; playback and `disconnect` still work for an already-connected account. 5 tests, mutation red 3/5 | **BLOCKED_EXTERNAL** (securely disabled meanwhile) |
 | **§5** | Google Calendar deployed | function absent, table absent | table created (49→50), canonical function written, client fails closed | migration verified; deploy pending secrets | **BLOCKED_EXTERNAL** (code complete) |
 | **§6** | Notion sync E2E | `success:true, synced_habits:0` forever | columns fixed, errors checked, honest partial reporting; **deployed v2** | code/schema/deploy sub-checks pass live (v1 query → `42703`, v2 → OK, function authenticating). A linked-account round trip needs Notion credentials | **BLOCKED_EXTERNAL** |
 | **§7** | Full RLS semantic audit | policy counting only | 127 live checks, 2 users + anon; 1 defect found and fixed | `docs/FINAL_RLS_MATRIX.md` | **PASS** |
@@ -199,6 +199,7 @@ Each was found by looking at the running system, not at documentation.
 | 15 | **The Android notification icon was the opaque app icon.** From API 21 Android reads the ALPHA CHANNEL ONLY and fills the shape with the accent colour, so every notification would have shown a solid white block. | Decoded `icon.png`'s alpha: min and max both 255 | new white-on-transparent icon; the gate inflates the PNG and undoes all five scanline filters to assert alpha spans 0-255 — mutation red with `Expected: 0, Received: 255` |
 | 16 | **The UI showed an XP number the client invented.** `timeline.tsx` renders `+{log.xp}` from the optimistic row, whose `xp` came from a formula the server does not use — 30 against 10 for a binary done, 18 against 6 for a 12/20 duration day. Brief when online; as long as the queue waits when not. | Comparing client and server XP on the same live log | the optimistic row now carries the last CONFIRMED xp; the badge's own `xp > 0` guard hides it until the server answers |
 | 17 | **`xp_drift()` and `rebuild_profile_xp()` were callable by `anon`** — both documented "Service-role only". With only the publishable key that ships in the app bundle and no session, `rpc/rebuild_profile_xp` returned `200` and RAN against a real account's uuid; `xp_drift` returns every profile's id and totals whenever the database is not balanced. The revoke that was supposed to prevent it (`revoke all ... from public`) does not remove the EXPLICIT `anon`/`authenticated` grants Supabase's default privileges hand out at CREATE time — and **this pass repeated that same line** when it replaced the functions. | Asked "who can actually call this" instead of "did we write a revoke" | before: `200 {before_total: 30, after_total: 30, ...}` as anon. After `20260831_lock_admin_functions`: `401 42501 permission denied`. Triggers re-verified after the revoke — a logged habit still sets xp 10, awards 10, moves the streak to 1 and files 10 in the purge ledger |
+| 18 | **The deployed `spotify-auth` accepts any `redirect_uri`.** Not previously probed. It returns a Spotify authorize URL pointing at whatever target it is handed, and the `state` it issues is never verified — so a crafted link delivers the victim's authorization code. | Probed the deployed function directly instead of reading its source | `redirect_uri=https://attacker.example/steal` -> `200` with that URL embedded. Connect is now refused in `spotifyStore.connect()` before any I/O; mutation red 3/5 |
 
 ---
 
@@ -286,8 +287,8 @@ balances on its own rather than by being papered over.
 
 | # | Blocker | Evidence, read live today | Exact action | Blocks |
 |---|---|---|---|---|
-| 1 | **Registration has never succeeded.** `mailer_autoconfirm = false` and the configured SMTP server rejects the credentials. | `POST /auth/v1/signup` -> `500 Error sending confirmation email`; the auth log for that exact `request_id` carries `error: 535 "Incorrect authentication data"`. So SMTP IS configured — its credentials are being refused. The user row is rolled back, so no orphans accumulate. | EITHER fix the SMTP credentials, OR Auth -> Providers -> Email -> **Confirm email OFF**. Then re-read `/auth/v1/settings` and run a real `signUp`. | §1, §26, the merge |
-| 2 | **The DEPLOYED `spotify-auth` carries a hardcoded client-secret fallback** and issues an unverified `crypto.randomUUID()` as OAuth `state` — the callback never checks it, so the deployed flow has no CSRF protection at all. The branch's hardened version fixes both and **has never been deployed**. | Deployed source read live: a `Deno.env.get('SPOTIFY_CLIENT_SECRET') ?? '<literal>'` fallback, and `action=url` returns a bare UUID where the branch returns `<payload>.<hmac>` | rotate the secret in the Spotify dashboard, set `SPOTIFY_CLIENT_SECRET`, `OAUTH_STATE_SECRET` and `OAUTH_REDIRECT_ALLOWLIST` as edge secrets, THEN deploy the canonical function | §4, §31 |
+| 1 | **Registration has never succeeded.** `mailer_autoconfirm = false` and the configured SMTP server rejects the credentials. | Re-probed on the final day, not carried over: `/auth/v1/settings` -> `disable_signup=false`, `mailer_autoconfirm=false`; a fresh `POST /auth/v1/signup` -> `500`, `request_id 01a057a2-0dd2-7c36-b578-013d2fc67c90`; that exact id in the auth log -> `535 "Incorrect authentication data"`. Every auth error in the log window is this one and nothing else (3 occurrences, 2026-08-30 14:33 to 2026-08-31 11:43). What the 535 proves without reading a single value: a custom SMTP server IS configured and reachable, the session gets as far as AUTH, and the credential pair is refused. The user row is rolled back, so no orphans accumulate. | EITHER fix the SMTP credentials, OR Auth -> Providers -> Email -> **Confirm email OFF**. Then re-read `/auth/v1/settings` and run a real `signUp`. | §1, §26, the merge |
+| 2 | **The DEPLOYED `spotify-auth` accepts ANY redirect target**, carries a hardcoded client-secret fallback, and issues an OAuth `state` it never verifies. | Re-probed live on the final day; deployment unchanged (v2, `ezbr_sha256 977309e1…`). `action=url` returns a bare 36-char UUID where the branch returns `<payload>.<hmac>`; the callback never reads `state`; and `redirect_uri=https://attacker.example/steal` returns **200 with an authorize URL pointing at it** — there is no allowlist. A crafted link therefore delivers the victim's Spotify authorization code to whoever made it. | rotate the secret in the Spotify dashboard, set `SPOTIFY_CLIENT_SECRET`, `OAUTH_STATE_SECRET` and `OAUTH_REDIRECT_ALLOWLIST` as edge secrets, THEN deploy the canonical function | §4, §31 |
 | 3 | **`OAUTH_STATE_SECRET` / `OAUTH_REDIRECT_ALLOWLIST` unset.** The branch's functions fail closed without them (500), which is why deploying them before the secrets exist would break a flow that currently "works". | `spotify-auth` and `notion-auth` both return an unsigned UUID state | set both, then deploy `spotify-auth` and `notion-auth` | §4 |
 | 4 | **Notion is not configured at all.** | `notion-auth?action=url` returns `client_id=undefined` | set `NOTION_CLIENT_ID`/`NOTION_CLIENT_SECRET` (+ #3), then a linked-account round trip | §6 |
 | 5 | **`google-auth` is not deployed.** | `functions/v1/google-auth` -> `404 NOT_FOUND`; 5 functions live, google-auth is not one | set `GOOGLE_CLIENT_ID/SECRET` (+ #3), then `supabase functions deploy google-auth` | §5 |
@@ -331,17 +332,89 @@ There is no third status and none of them is left as a bare "not done".
 
 ---
 
+## 4b. The final verification round, and what it changed
+
+Everything in this section was re-read on the last day rather than carried
+forward, because a release decision made from a stale probe is a guess with a
+timestamp.
+
+### Registration: unchanged, and now pinned to a fresh request id
+
+See P0 row 1. The failure is identical, the request id is new, and the SMTP
+inventory is stated only as far as the evidence reaches — configured,
+reachable, credentials refused. No field value was read, because none can be:
+there is no auth-config endpoint in the tooling available here, which is why
+this is a dashboard action and not a code change.
+
+### Spotify: worse than previously recorded
+
+The earlier pass recorded an unsigned `state` and a callback that never checks
+it. The redirect target had not been probed. It is the more serious of the
+three:
+
+```
+redirect_uri = https://attacker.example/steal
+-> 200 {"url": "https://accounts.spotify.com/authorize?...&redirect_uri=https%3A%2F%2Fattacker.example%2Fsteal&..."}
+```
+
+The deployed function will mint an authorize URL for any target it is handed.
+Combined with a `state` nobody verifies, a crafted link is enough to receive a
+victim's authorization code.
+
+**So the flow is withheld rather than shipped.** `SPOTIFY_OAUTH_ENABLED` is
+`false` and `spotifyStore.connect()` refuses before any I/O — the store, not
+the card, because a disabled button is decoration and any other caller would
+still walk in. Playback for an already-connected account is untouched (it uses
+stored tokens and never re-enters OAuth), and `disconnect` still works, because
+anyone who connected under the old build has to be able to get out. The card
+states the reason instead of hiding the section.
+
+`lib/featureGates.ts` carries the four conditions that turn it back on, so the
+flag cannot be flipped without a diff that sits next to its evidence.
+Mutation-checked: setting it `true` turns 3 of the 5 assertions red, including
+the one proving no request is made.
+
+### Anthropic: still out of credit, and the refund path proved it again
+
+A fresh call on the final day returned the function's own honest message, and
+the provider's reason is in the function log verbatim: *"Your credit balance is
+too low to access the Anthropic API."* So the SUCCESSFUL provider path is still
+unverifiable and is not claimed.
+
+What it did demonstrate, on a real provider failure rather than a simulated
+one:
+
+```
+FP before 30 -> ai_coach -5 -> ai_error +5 -> FP after 30
+```
+
+### A flaky gate, found by not accepting the green re-run
+
+`uiPrimitivesAccessibility.test.tsx` failed about one full run in ten. Chasing
+it rather than re-running: the file mounts 38 components, the first also pays
+for `@expo/vector-icons` resolving its font promise, and under contention for a
+worker the first two tests blew jest's 5 s default — reproducible on demand
+with `--maxWorkers=16`, which failed them every time.
+
+A gate that goes red at random is the same disease as one that is green for the
+wrong reason: both teach people to press the button again. Given 30 s of
+headroom — a real hang threshold, not `Infinity` — three previously-failing
+contended runs and four normal runs all pass 1410/1410.
+
+---
+
 ## 5. Verification summary
 
 ```
 npm run typecheck:ci                exit 0
 npm run lint:ci                     exit 0    whole repo, 0 errors 0 warnings
-npx jest --ci                       exit 0    1405/1405, 97 suites, 0 console blocks
+npx jest --ci                       exit 0    1410/1410, 98 suites, 0 console blocks
 node run-tests.js                   exit 0    145/145
 npx expo export --platform android  exit 0    6.5 MB .hbc
 npx expo export --platform ios      exit 0    6.5 MB .hbc
 npm audit                                     0 critical, 9 high, 13 moderate
 live release-readiness suite        exit 0    40/40 across 9 suites, real JWTs under RLS
+jest under induced contention        exit 0    --maxWorkers=16, 3 runs, no timeout flake
 ```
 
 CI on the final HEAD is reported in the terminal, not here: a document cannot
@@ -409,18 +482,29 @@ as a file so the tree and the database say the same thing.
 
 ## 6. Merge decision
 
-**NOT MERGE READY**, on exactly one blocker.
+**NOT MERGE READY**, on one blocker and one thing that is not mine to invent.
 
-Registration has never succeeded. `signUp()` returns 500 because the
+**Registration has never succeeded.** `signUp()` returns 500 because the
 configured SMTP server refuses the credentials it is given
-(`535 "Incorrect authentication data"`), and email confirmation is required.
-Everything downstream of the front door works — verified live, on real
-accounts, through the app's own code — but an app nobody can sign up for is
-not shippable, and no amount of green elsewhere changes that.
+(`535 "Incorrect authentication data"`, re-confirmed on the final day against a
+fresh request id), and email confirmation is required. Everything downstream of
+the front door works — verified live, on real accounts, through the app's own
+code — but an app nobody can sign up for is not shippable, and no amount of
+green elsewhere changes that.
 
 That single fact also holds the recovery release sequence: re-applying
 `20260831_recovery_vocabulary` and deploying the v2 client is a coordinated
-step (§0b) that should not happen while the product cannot take a new user.
+step (§0b) that must not happen while the product cannot take a new user.
+
+**Store identifiers are pending the owner.** `ios.bundleIdentifier` and
+`android.package` are tied to their Apple and Google accounts and a domain they
+control; a guess like `com.atlas.app` can collide with a real listing, so they
+are asked for rather than invented. This is a store-release gate, not a merge
+one.
+
+Two things that would have been merge blockers are closed rather than deferred:
+the Spotify flow is **securely disabled** instead of pointing at a deployment
+that accepts any redirect target, and the anon-executable admin RPCs are shut.
 
 Everything else is either PASS, deliberately DEFERRED with the reason written
 down, or BLOCKED_EXTERNAL on a secret this branch must not invent.
