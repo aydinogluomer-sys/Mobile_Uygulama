@@ -159,9 +159,22 @@ describe('reportError — the funnel must never become the crash', () => {
   });
 
   it('restores the console sink when the sink is cleared', () => {
-    setCrashSink(() => {});
-    setCrashSink(null);
-    expect(() => reportError(new Error('x'))).not.toThrow();
+    // Clearing the sink puts the DEFAULT one back, and the default one writes
+    // to console.error -- that is the behaviour under test. The spy is here so
+    // the run's output does not carry a red stack trace that looks like a
+    // failure, and it is scoped to this test rather than silenced globally:
+    // an unexpected console.error anywhere else still shows up.
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      setCrashSink(() => {});
+      setCrashSink(null);
+      expect(() => reportError(new Error('x'))).not.toThrow();
+      // And it really did reach the console sink, which is the point of the
+      // test -- swallowing the output must not turn this into a vacuous pass.
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

@@ -28,13 +28,27 @@ jobs:
       run:
         working-directory: frontend
     steps:
+      # `actions/checkout@v4` and `actions/setup-node@v4` declare `node20` as
+      # their own JS runtime. GitHub now forces those onto Node 24 anyway and
+      # prints a deprecation annotation on every run, so the gate ended each
+      # build with a warning nobody could act on and everybody learned to
+      # ignore. `checkout@v5` and `setup-node@v6` are the first majors of each
+      # that declare `node24`, which is what actually clears it.
+      #
+      # This is about the ACTIONS' runtime. The version the app builds with is
+      # `node-version` below, and the two are unrelated.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      # Node 20 reached end of life in April 2026 — no more security patches —
+      # so a gate pinned to it verifies the app on a runtime nobody should be
+      # shipping from. 22 is the LTS Expo SDK 54 supports; 24 is deliberately
+      # NOT chosen here just because it is newer, since nothing in this repo
+      # has been run against it.
+      - name: Setup Node 22 (LTS)
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 

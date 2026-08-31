@@ -14,3 +14,32 @@ process.env.TZ = 'Europe/Istanbul';
  */
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'));
+
+/**
+ * One message, filtered — not console.warn.
+ *
+ * `lib/notifications.ts` imports `expo-notifications`, whose
+ * `DevicePushTokenAutoRegistration.fx` module warns AT IMPORT TIME that remote
+ * push was removed from Expo Go in SDK 53. Five suites import it transitively,
+ * so a green run ended with five copies of an eight-line warning about a
+ * client this test run is not.
+ *
+ * It is filtered by its exact text rather than by silencing `console.warn`,
+ * because the warnings worth having are the ones nobody predicted. Anything
+ * else printed still comes through, and if this message ever stops being
+ * emitted the filter simply stops matching — it cannot hide a different
+ * warning that takes its place.
+ *
+ * Mocking `expo-notifications` outright was the other option and was rejected:
+ * `__tests__/store/recoveryPersistence.test.ts` deliberately schedules through
+ * the real module ("no ad-hoc mocking beyond the Supabase client"), and
+ * replacing it would have quietly hollowed out that test.
+ */
+const EXPO_GO_PUSH_NOTICE =
+  'expo-notifications: Android Push notifications (remote notifications) functionality provided by expo-notifications was removed from Expo Go';
+
+const realWarn = console.warn.bind(console);
+console.warn = (...args) => {
+  if (typeof args[0] === 'string' && args[0].includes(EXPO_GO_PUSH_NOTICE)) return;
+  realWarn(...args);
+};
