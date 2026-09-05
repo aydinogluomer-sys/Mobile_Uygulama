@@ -53,6 +53,8 @@ query is unbounded; this does not.
 | `okrRepository.ts` | `fetchOkrs` | `key_results` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `okrRepository.ts` | `insertKeyResult` | `key_results` | no | WRITE | — |
 | `okrRepository.ts` | `insertObjective` | `okrs` | no | WRITE | — |
+| `onboardingRepository.ts` | `fetchOnboarding` | `user_onboarding` | no | SINGLE_ROW | yes |
+| `onboardingRepository.ts` | `writeOnboarding` | `user_onboarding` | no | WRITE | — |
 | `profileRepository.ts` | `fetchBadges` | `profile_badges` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `profileRepository.ts` | `fetchOrCreateProfile` | `profiles` | no | SINGLE_ROW | yes |
 | `profileRepository.ts` | `fetchOrCreateProfile` | `profiles` | no | WRITE | — |
@@ -82,12 +84,12 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **71**
+- queries: **73**
 - collection SELECTs: **35**
 - KEYSET_PAGE: **6**
 - DATE_WINDOW: **9**
 - BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **1**
 - BOUNDED_DOMAIN_WINDOW: **15**
-- SINGLE_ROW: **8**
+- SINGLE_ROW: **9**
 - **UNCLASSIFIED: 0**

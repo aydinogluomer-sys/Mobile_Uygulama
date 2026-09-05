@@ -76,6 +76,8 @@ export default function LoginScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
               value={email}
               onChangeText={(t) => { setEmail(t); setError(''); }}
             />
@@ -84,11 +86,18 @@ export default function LoginScreen() {
               label="Şifre"
               icon="lock-closed-outline"
               secureTextEntry={!showPw}
+              autoComplete="current-password"
+              textContentType="password"
               value={password}
               onChangeText={(t) => { setPassword(t); setError(''); }}
               onSubmitEditing={handleLogin}
               rightElement={(
-                <TouchableOpacity onPress={() => setShowPw((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity
+                  onPress={() => setShowPw((v) => !v)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={showPw ? 'Şifreyi gizle' : 'Şifreyi göster'}
+                >
                   <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textFaint} />
                 </TouchableOpacity>
               )}

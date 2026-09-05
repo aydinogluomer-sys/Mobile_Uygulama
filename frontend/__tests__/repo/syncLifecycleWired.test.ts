@@ -128,18 +128,36 @@ describe('AC-W01 — hydration is awaited at boot, before anything can be tapped
 });
 
 describe('AC-W02 — nothing renders while the boot sequence is still running', () => {
-  it('a block-bodied `if (loading)` returns early', () => {
-    expect(layout).toMatch(/if \(loading\) \{\s*return \(/);
+  /**
+   * The gate now reads `if (loading || (!!session && !onboardingHydrated))`.
+   *
+   * The property this AC protects is unchanged and in fact stronger: the
+   * navigator still renders nothing until boot resolves, and now also waits
+   * for the onboarding row, so a new user never sees Today flash before
+   * being redirected. `[^{]*?` widens the condition without letting the
+   * pattern run past the opening brace into unrelated code -- the sanity
+   * case below still proves the effects' one-line `if (loading) return;`
+   * cannot satisfy it.
+   */
+  const BOOT_GATE = /if \(loading[^{]*?\) \{\s*return \(/;
+
+  it('a block-bodied `if (loading …)` returns early', () => {
+    expect(layout).toMatch(BOOT_GATE);
+  });
+
+  it('the gate still starts with the boot flag', () => {
+    // Widening the condition must not become "any early return will do".
+    expect(layout).toMatch(/if \(loading\b/);
   });
 
   it('that gate precedes the navigator', () => {
-    const gate = layout.search(/if \(loading\) \{\s*return \(/);
+    const gate = layout.search(BOOT_GATE);
     expect(gate).toBeGreaterThan(-1);
     expect(at(layout, '<Stack')).toBeGreaterThan(gate);
   });
 
   it('scanner sanity — the effects\' own `if (loading) return;` must NOT satisfy it', () => {
-    expect('if (loading) return;\n\n  const x = 1;').not.toMatch(/if \(loading\) \{\s*return \(/);
+    expect('if (loading) return;\n\n  const x = 1;').not.toMatch(BOOT_GATE);
   });
 });
 

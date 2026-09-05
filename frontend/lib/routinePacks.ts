@@ -33,6 +33,7 @@ import type { TrackingType } from './habitEngine';
 import type { FrequencyConfig } from './supabase';
 import { habitLoadPoints, type HabitLoadInput } from './capacity';
 import type { RoutineProposal, ProposalHabit } from './routineProposal';
+import type { DaypartId, GoalId } from './onboarding';
 
 /** A pack habit carries everything the AI-facing schema does (name,
  *  tracking_type, difficulty, estimated_minutes) PLUS the extra `Habit`
@@ -44,6 +45,17 @@ import type { RoutineProposal, ProposalHabit } from './routineProposal';
 export type RoutinePackHabit = {
   name: string;
   icon: string;
+  /**
+   * Which onboarding goals this habit serves, and when it belongs in the day.
+   *
+   * Required, not optional. The first-run plan engine ranks candidates by
+   * these tags (`lib/starterPlan.ts`), and an untagged habit would silently
+   * never be selected -- an omission that looks exactly like "this habit is
+   * unpopular" rather than "somebody forgot a field". Making it required
+   * means a new pack habit cannot be added without deciding what it is for.
+   */
+  goals: GoalId[];
+  daypart: DaypartId;
   tracking_type: Extract<TrackingType, 'binary' | 'numeric'>;
   difficulty: 1 | 3 | 5;
   estimated_minutes: number;
@@ -53,7 +65,9 @@ export type RoutinePackHabit = {
   target_direction?: 'at_least' | 'at_most' | null;
 };
 
-export type RoutinePackKey = 'morning-reset' | 'deep-work' | 'sleep-reset' | 'fitness-foundation';
+export type RoutinePackKey =
+  | 'morning-reset' | 'deep-work' | 'sleep-reset' | 'fitness-foundation'
+  | 'everyday-foundations';
 
 export type RoutinePack = {
   key: RoutinePackKey;
@@ -71,11 +85,11 @@ export const ROUTINE_PACKS: readonly RoutinePack[] = [
     goal: 'Güne sakin ve kontrollü başla.',
     statedLoad: 24,
     habits: [
-      { name: 'Bir bardak su iç', icon: 'water-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 2, frequency_config: { kind: 'daily' } },
-      { name: 'Yatağını topla', icon: 'bed-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 3, frequency_config: { kind: 'daily' } },
-      { name: '10 dakika esneme / mobilite', icon: 'body-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 12, frequency_config: { kind: 'daily' } },
-      { name: 'Günün 3 önceliğini yaz', icon: 'journal-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 10, frequency_config: { kind: 'daily' } },
-      { name: 'Gün ışığında kısa yürüyüş', icon: 'sunny-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 15, frequency_config: { kind: 'daily' } },
+      { name: 'Bir bardak su iç', icon: 'water-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 2, frequency_config: { kind: 'daily' }, goals: ['health_energy'], daypart: 'morning' },
+      { name: 'Yatağını topla', icon: 'bed-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 3, frequency_config: { kind: 'daily' }, goals: ['daily_order'], daypart: 'morning' },
+      { name: '10 dakika esneme / mobilite', icon: 'body-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 12, frequency_config: { kind: 'daily' }, goals: ['health_energy'], daypart: 'morning' },
+      { name: 'Günün 3 önceliğini yaz', icon: 'journal-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 10, frequency_config: { kind: 'daily' }, goals: ['focus_productivity', 'daily_order'], daypart: 'morning' },
+      { name: 'Gün ışığında kısa yürüyüş', icon: 'sunny-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 15, frequency_config: { kind: 'daily' }, goals: ['health_energy', 'mental_wellbeing'], daypart: 'morning' },
     ],
   },
   {
@@ -84,10 +98,10 @@ export const ROUTINE_PACKS: readonly RoutinePack[] = [
     goal: 'Dikkat dağınıklığını azalt, odaklanmış bloklar kur.',
     statedLoad: 38,
     habits: [
-      { name: 'Kesintisiz derin çalışma bloğu', icon: 'hourglass-outline', tracking_type: 'binary', difficulty: 5, estimated_minutes: 50, frequency_config: { kind: 'daily' } },
-      { name: 'Günün 3 önceliğini planla', icon: 'list-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 15, frequency_config: { kind: 'daily' } },
-      { name: 'Bildirimsiz odak seansı', icon: 'eye-off-outline', tracking_type: 'binary', difficulty: 5, estimated_minutes: 25, frequency_config: { kind: 'daily' } },
-      { name: 'Gün sonu değerlendirme', icon: 'checkmark-done-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' } },
+      { name: 'Kesintisiz derin çalışma bloğu', icon: 'hourglass-outline', tracking_type: 'binary', difficulty: 5, estimated_minutes: 50, frequency_config: { kind: 'daily' }, goals: ['focus_productivity'], daypart: 'daytime' },
+      { name: 'Günün 3 önceliğini planla', icon: 'list-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 15, frequency_config: { kind: 'daily' }, goals: ['focus_productivity', 'daily_order'], daypart: 'morning' },
+      { name: 'Bildirimsiz odak seansı', icon: 'eye-off-outline', tracking_type: 'binary', difficulty: 5, estimated_minutes: 25, frequency_config: { kind: 'daily' }, goals: ['focus_productivity'], daypart: 'daytime' },
+      { name: 'Gün sonu değerlendirme', icon: 'checkmark-done-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, goals: ['focus_productivity', 'daily_order'], daypart: 'evening' },
     ],
   },
   {
@@ -96,12 +110,12 @@ export const ROUTINE_PACKS: readonly RoutinePack[] = [
     goal: 'Uyku düzenini ve kalitesini iyileştir.',
     statedLoad: 29,
     habits: [
-      { name: 'Sabit yatış saati', icon: 'moon-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 2, frequency_config: { kind: 'daily' } },
-      { name: 'Yatmadan 1 saat önce ekran yok', icon: 'phone-portrait-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 25, frequency_config: { kind: 'daily' } },
-      { name: 'Işıkları kıs', icon: 'bulb-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' } },
-      { name: 'Sakinleştirici okuma', icon: 'book-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 15, frequency_config: { kind: 'daily' } },
-      { name: 'Öğleden sonra kafeini kes', icon: 'cafe-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' } },
-      { name: 'Uyumadan önce şükran notu', icon: 'heart-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 5, frequency_config: { kind: 'daily' } },
+      { name: 'Sabit yatış saati', icon: 'moon-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 2, frequency_config: { kind: 'daily' }, goals: ['sleep'], daypart: 'bedtime' },
+      { name: 'Yatmadan 1 saat önce ekran yok', icon: 'phone-portrait-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 25, frequency_config: { kind: 'daily' }, goals: ['sleep'], daypart: 'bedtime' },
+      { name: 'Işıkları kıs', icon: 'bulb-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, goals: ['sleep'], daypart: 'bedtime' },
+      { name: 'Sakinleştirici okuma', icon: 'book-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 15, frequency_config: { kind: 'daily' }, goals: ['sleep', 'learning'], daypart: 'bedtime' },
+      { name: 'Öğleden sonra kafeini kes', icon: 'cafe-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, goals: ['sleep'], daypart: 'daytime' },
+      { name: 'Uyumadan önce şükran notu', icon: 'heart-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 5, frequency_config: { kind: 'daily' }, goals: ['mental_wellbeing'], daypart: 'bedtime' },
     ],
   },
   {
@@ -110,11 +124,39 @@ export const ROUTINE_PACKS: readonly RoutinePack[] = [
     goal: 'Düzenli hareket ve temel fitness alışkanlığı kur.',
     statedLoad: 41,
     habits: [
-      { name: 'Yapılandırılmış antrenman', icon: 'barbell-outline', tracking_type: 'binary', difficulty: 5, estimated_minutes: 90, frequency_config: { kind: 'daily' } },
-      { name: 'Mobilite / esneme', icon: 'body-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 20, frequency_config: { kind: 'daily' } },
-      { name: 'Protein hedefi', icon: 'nutrition-outline', tracking_type: 'numeric', difficulty: 3, estimated_minutes: 5, frequency_config: { kind: 'daily' }, unit: 'g', daily_goal: 120, target_direction: 'at_least' },
-      { name: 'Su hedefi', icon: 'water-outline', tracking_type: 'numeric', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, unit: 'bardak', daily_goal: 8, target_direction: 'at_least' },
-      { name: 'Adım hedefi', icon: 'footsteps-outline', tracking_type: 'numeric', difficulty: 3, estimated_minutes: 8, frequency_config: { kind: 'daily' }, unit: 'adım', daily_goal: 8000, target_direction: 'at_least' },
+      { name: 'Yapılandırılmış antrenman', icon: 'barbell-outline', tracking_type: 'binary', difficulty: 5, estimated_minutes: 90, frequency_config: { kind: 'daily' }, goals: ['health_energy'], daypart: 'evening' },
+      { name: 'Mobilite / esneme', icon: 'body-outline', tracking_type: 'binary', difficulty: 3, estimated_minutes: 20, frequency_config: { kind: 'daily' }, goals: ['health_energy'], daypart: 'evening' },
+      { name: 'Protein hedefi', icon: 'nutrition-outline', tracking_type: 'numeric', difficulty: 3, estimated_minutes: 5, frequency_config: { kind: 'daily' }, unit: 'g', daily_goal: 120, target_direction: 'at_least', goals: ['health_energy'], daypart: 'daytime' },
+      { name: 'Su hedefi', icon: 'water-outline', tracking_type: 'numeric', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, unit: 'bardak', daily_goal: 8, target_direction: 'at_least', goals: ['health_energy'], daypart: 'daytime' },
+      { name: 'Adım hedefi', icon: 'footsteps-outline', tracking_type: 'numeric', difficulty: 3, estimated_minutes: 8, frequency_config: { kind: 'daily' }, unit: 'adım', daily_goal: 8000, target_direction: 'at_least', goals: ['health_energy'], daypart: 'daytime' },
+    ],
+  },
+  {
+    // The fifth pack exists because of a hole the first four left.
+    //
+    // Tagging the original packs for the onboarding goals showed that
+    // `finance` had ZERO candidate habits and `learning` had one, so a user
+    // who picked Finans on the first screen would have watched their answer
+    // change nothing — the question would have been decorative, which is the
+    // one thing the onboarding brief forbids. These are five deliberately
+    // small, low-difficulty habits covering the thin goals; it is a pack in
+    // the same file, of the same type, through the same validator and the
+    // same installer, not a second habit library.
+    key: 'everyday-foundations',
+    title: 'Günlük Temeller',
+    goal: 'Küçük ama düzenli günlük çapalar kur.',
+    // NOT a plan quote: the other four carry plan §13's own numbers, and this
+    // pack postdates that plan. 14 is the author's intended load, kept as data
+    // for the same reason the others are -- so the tolerance test compares a
+    // written intention against a computed reality instead of a number against
+    // itself.
+    statedLoad: 14,
+    habits: [
+      { name: '10 dakika okuma', icon: 'book-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 10, frequency_config: { kind: 'daily' }, goals: ['learning'], daypart: 'evening' },
+      { name: 'Günlük harcamaları kaydet', icon: 'wallet-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, goals: ['finance'], daypart: 'evening' },
+      { name: '5 dakika nefes egzersizi', icon: 'leaf-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, goals: ['mental_wellbeing'], daypart: 'morning' },
+      { name: 'Çalışma alanını topla', icon: 'file-tray-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, goals: ['daily_order'], daypart: 'evening' },
+      { name: 'Bugünü tek cümleyle yaz', icon: 'create-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 3, frequency_config: { kind: 'daily' }, goals: ['mental_wellbeing', 'daily_order'], daypart: 'bedtime' },
     ],
   },
 ];

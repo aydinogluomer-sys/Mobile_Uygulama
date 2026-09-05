@@ -60,6 +60,17 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
+  /**
+   * Two error slots, not one.
+   *
+   * A rejected address belongs ON the address field -- that is where the user
+   * has to look and what they have to change. A server refusal ("Dogrulama
+   * e-postasi su anda gonderilemiyor") belongs to the form: no single field is
+   * wrong, and attaching it to one would tell the user to edit something that
+   * is fine.
+   */
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [error, setError] = useState('');
 
   // Pending-state only.
@@ -82,11 +93,15 @@ export default function RegisterScreen() {
   }, [resendCooldown]);
 
   async function handleRegister() {
-    if (!address || !password) { setError('E-posta ve şifre giriniz.'); return; }
-    if (!/^\S+@\S+\.\S+$/.test(address)) { setError('Geçerli bir e-posta adresi girin.'); return; }
-    if (password.length < 6) { setError('Şifre en az 6 karakter olmalıdır.'); return; }
-
+    setEmailError('');
+    setPasswordError('');
     setError('');
+
+    if (!address) { setEmailError('E-posta adresi girin.'); return; }
+    if (!/^\S+@\S+\.\S+$/.test(address)) { setEmailError('Geçerli bir e-posta adresi girin.'); return; }
+    if (!password) { setPasswordError('Şifre girin.'); return; }
+    if (password.length < 6) { setPasswordError('Şifre en az 6 karakter olmalıdır.'); return; }
+
     setLoading(true);
     const { data, error: signUpError } = await supabase.auth.signUp({ email: address, password });
     setLoading(false);
@@ -132,6 +147,8 @@ export default function RegisterScreen() {
 
   function handleChangeEmail() {
     setPhase('form');
+    setEmailError('');
+    setPasswordError('');
     setError('');
     setResendNotice('');
     setResendError('');
@@ -161,14 +178,26 @@ export default function RegisterScreen() {
             </>
           ) : (
             <>
+              {/*
+                Register answers a different question from Login. Login is
+                "let me back in" and stays compact; this screen has to earn the
+                account, so it leads with what the product does before it asks
+                for anything.
+              */}
               <View style={s.brand}>
                 <View style={s.mark}>
                   <Text style={s.markLetter}>a</Text>
                   <View style={s.markDot} />
                 </View>
-                <Text style={s.wordmark}>Hesap Oluştur</Text>
-                <Text style={s.tagline}>Aderyth ile alışkanlık yolculuğuna başla.</Text>
+                <Text style={s.brandName}>Aderyth</Text>
+                <Text style={s.wordmark}>Hesabını oluştur</Text>
+                <Text style={s.promise}>Ritmini kur. İlerlemeni gör.</Text>
               </View>
+
+              <Text style={s.pitch}>
+                Sana uygun alışkanlıklar oluştur, sürdürülebilir bir rutin kur ve
+                neyin gerçekten işe yaradığını gör.
+              </Text>
 
               <View style={s.form}>
                 <FloatingLabelInput
@@ -177,19 +206,30 @@ export default function RegisterScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  autoComplete="email"
+                  textContentType="emailAddress"
                   value={email}
-                  onChangeText={(t) => { setEmail(t); setError(''); }}
+                  error={emailError}
+                  onChangeText={(t) => { setEmail(t); setEmailError(''); setError(''); }}
                 />
 
                 <FloatingLabelInput
                   label="Şifre (en az 6 karakter)"
                   icon="lock-closed-outline"
                   secureTextEntry={!showPw}
+                  autoComplete="new-password"
+                  textContentType="newPassword"
                   value={password}
-                  onChangeText={(t) => { setPassword(t); setError(''); }}
+                  error={passwordError}
+                  onChangeText={(t) => { setPassword(t); setPasswordError(''); setError(''); }}
                   onSubmitEditing={handleRegister}
                   rightElement={(
-                    <TouchableOpacity onPress={() => setShowPw((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => setShowPw((v) => !v)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={showPw ? 'Şifreyi gizle' : 'Şifreyi göster'}
+                    >
                       <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textFaint} />
                     </TouchableOpacity>
                   )}
@@ -202,10 +242,21 @@ export default function RegisterScreen() {
                   </View>
                 )}
 
-                <Button label="Kayıt Ol" onPress={handleRegister} loading={loading} size="lg" style={{ marginTop: space.sm }} />
+                <Button label="Hesabımı oluştur" onPress={handleRegister} loading={loading} size="lg" style={{ marginTop: space.md }} />
+
+                {/*
+                  Plain text, not links. There is no terms or privacy
+                  destination in this app or its config, and a tappable phrase
+                  that goes nowhere is worse than one that does not invite the
+                  tap. When those pages exist, this becomes two links.
+                */}
+                <Text style={s.legal}>
+                  Hesap oluşturarak Kullanım Koşulları ve Gizlilik Politikasını kabul
+                  etmiş olursun.
+                </Text>
 
                 <Link href="/(auth)/login" asChild>
-                  <TouchableOpacity style={s.linkBtn}>
+                  <TouchableOpacity style={s.linkBtn} accessibilityRole="link">
                     <Text style={s.linkText}>Zaten hesabın var mı? <Text style={s.linkHighlight}>Giriş yap</Text></Text>
                   </TouchableOpacity>
                 </Link>
@@ -222,7 +273,7 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 28, paddingVertical: 40 },
 
-  brand: { alignItems: 'center', marginBottom: 44 },
+  brand: { alignItems: 'center', marginBottom: space.xl },
   mark: {
     width: 64, height: 64, borderRadius: radius.lg, backgroundColor: colors.surfaceAlt,
     borderWidth: 1, borderColor: colors.border,
@@ -230,10 +281,21 @@ const s = StyleSheet.create({
   },
   markLetter: { fontFamily: fontFamily.serif, fontSize: 34, fontStyle: 'italic', color: colors.primary, lineHeight: 40 },
   markDot: { position: 'absolute', top: 12, right: 12, width: 5, height: 5, borderRadius: 3, backgroundColor: colors.primary },
-  wordmark: { ...font.title, color: colors.text, marginBottom: 6 },
-  tagline: { ...font.body, color: colors.textDim, textAlign: 'center' },
+  brandName: { ...font.overline, color: colors.primary, marginBottom: space.sm },
+  wordmark: { ...font.display, color: colors.text, marginBottom: 8, textAlign: 'center' },
+  promise: { ...font.h3, color: colors.primaryBright, textAlign: 'center' },
+  pitch: {
+    ...font.body, color: colors.textDim, textAlign: 'center',
+    lineHeight: 23, marginBottom: space.h, paddingHorizontal: space.sm,
+  },
 
-  form: { gap: space.md },
+  // Wider than Login's: fields with no box need the space between them to do
+  // the separating the borders used to do.
+  form: { gap: space.xl },
+  legal: {
+    ...font.caption, color: colors.textFaint, textAlign: 'center',
+    lineHeight: 18, marginTop: space.xs,
+  },
 
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
   errorText: { color: colors.error, fontSize: 13, flex: 1 },

@@ -17,7 +17,7 @@
  * are what the screen renders.
  */
 import { computeWillpowerCost } from '../lib/triage';
-import type { Habit } from '../lib/supabase';
+import type { FrequencyConfig, Habit } from '../lib/supabase';
 import {
   insertRoutineHabits,
   type InstallHabitRow,
@@ -27,12 +27,32 @@ import { fetchRoutines as repoFetchRoutines } from '../repositories/routineRepos
 /** The user's saved routines. Bounded in the repository. */
 export const listRoutines = <T,>() => repoFetchRoutines<T>();
 
-/** The subset of a validated proposal habit this service needs. */
+/**
+ * The subset of a validated proposal habit this service needs.
+ *
+ * The last five fields are OPTIONAL and additive. An AI proposal cannot carry
+ * them — its contract has four fields — so it omits them and gets exactly the
+ * defaults it always got. App-authored sources CAN: a routine pack knows its
+ * habit's icon, its unit and target, and which part of the day it belongs to,
+ * and the first-run plan is built from those same packs.
+ *
+ * Before this, `buildInstallRows` flattened every install to
+ * `icon: null, unit: null, daily_goal: null, frequency_config: daily` — so a
+ * pack's "Su hedefi, 8 bardak" installed as a bare yes/no habit with no unit
+ * and no target, silently losing the thing that made it measurable. The
+ * repository row (`InstallHabitRow`) always had the columns; only this
+ * function refused to fill them.
+ */
 export type ProposalHabit = {
   name: string;
   tracking_type: 'binary' | 'numeric';
   difficulty: number;
   estimated_minutes: number;
+  icon?: string | null;
+  unit?: string | null;
+  daily_goal?: number | null;
+  target_direction?: 'at_least' | 'at_most' | null;
+  frequency_config?: FrequencyConfig;
 };
 
 /**
@@ -55,20 +75,24 @@ export function buildInstallRows(
 
   return habits.map((h) => {
     const trackingType: 'boolean' | 'numeric' = h.tracking_type === 'numeric' ? 'numeric' : 'boolean';
+    // Daily remains the default for anything that does not state a schedule.
+    const frequency = h.frequency_config ?? dailyFreq;
     return {
       name: h.name,
-      icon: null,
+      icon: h.icon ?? null,
       tracking_type: trackingType,
-      unit: null,
-      daily_goal: null,
-      target_direction: null,
-      frequency_config: dailyFreq,
+      unit: h.unit ?? null,
+      daily_goal: h.daily_goal ?? null,
+      target_direction: h.target_direction ?? null,
+      frequency_config: frequency,
+      // Costed from the habit's OWN schedule, so a weekly habit is not priced
+      // as if it ran every day.
       willpower_cost: computeWillpowerCost({
         difficulty: h.difficulty,
         impact_level: 'medium',
         behavior_type: 'positive',
         tracking_type: trackingType,
-        frequency_config: dailyFreq,
+        frequency_config: frequency,
         estimated_minutes: h.estimated_minutes,
       }),
       difficulty: h.difficulty,

@@ -65,6 +65,14 @@ const CRUD_ONLY = new Set([
   // Was listed UI_ONLY -- "no persistence at all" -- while reading and
   // writing the user's tier and Focus-Point balance through three RPCs.
   'subscriptionStore.ts',
+  // Hybrid, and CRUD is the honest half. Its OWN row (`user_onboarding`) is
+  // one record with no cross-aggregate rule, so it uses its repository
+  // directly like the rest of this list. The one orchestrated thing it does
+  // -- turning the generated plan into habits -- it does NOT do itself: it
+  // calls `services/routineService.installProposal`, the same entry point
+  // `routineStore` uses, so the derived willpower cost and the
+  // activate-vs-queue decision stay in one place.
+  'onboardingStore.ts',
 ]);
 
 /** No persistence at all — UI preference or transient state. */

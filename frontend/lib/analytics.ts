@@ -38,6 +38,15 @@ export const ANALYTICS_EVENTS = [
   'focus_completed',
   'weekly_review_completed',
   'ai_routine_generated',
+  // First-run onboarding. Categorical ids only -- never an email, a name or
+  // free text; see `buildEvent`'s own contract and
+  // `__tests__/repo/analyticsNoFreeText.test.ts`.
+  'onboarding_started',
+  'onboarding_needs_completed',
+  'onboarding_preferences_completed',
+  'onboarding_plan_generated',
+  'onboarding_plan_installed',
+  'onboarding_skipped',
 ] as const;
 
 export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[number];

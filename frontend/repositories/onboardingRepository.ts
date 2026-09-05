@@ -1,0 +1,98 @@
+/**
+ * `user_onboarding` data access.  (plan §5 Rule 4)
+ *
+ * One row per user, owner-scoped by an explicit `user_id` filter as well as
+ * by RLS — the same defence-in-depth every other repository here applies.
+ *
+ * ## Why "no row" is a value, not an error
+ *
+ * A brand-new account has no row until it answers something. `fetchOnboarding`
+ * returns `{ ok: true, data: null }` for that, and the store reads null as
+ * `pending`. Returning an error instead would make "you are new" and "the
+ * query failed" the same outcome, and the router would have to guess which
+ * one it was looking at while deciding whether to show onboarding.
+ *
+ * ## Why the status invariant lives here
+ *
+ * The live CHECK `user_onboarding_completed_at_agrees_with_status` requires
+ * `completed_at` to be set exactly when `status = 'completed'`. Leaving that
+ * to callers means every call site has to remember it and one of them
+ * eventually will not — the write then fails with a constraint violation the
+ * user sees as "kaydedilemedi". `writeOnboarding` derives the timestamp from
+ * the status, so the pair cannot disagree.
+ */
+import { supabase } from '../lib/supabase';
+import { currentUserId, type RepoResult } from './shared';
+import {
+  ONBOARDING_VERSION,
+  type OnboardingAnswers,
+  type OnboardingStatus,
+} from '../lib/onboarding';
+
+export type OnboardingRow = {
+  user_id: string;
+  onboarding_version: number;
+  goals: string[];
+  primary_barrier: string | null;
+  pace: string | null;
+  preferred_dayparts: string[];
+  reminder_intent: boolean | null;
+  status: OnboardingStatus;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const COLS =
+  'user_id,onboarding_version,goals,primary_barrier,pace,preferred_dayparts,' +
+  'reminder_intent,status,completed_at,created_at,updated_at';
+
+/** The caller's row, or `null` when they have never answered anything. */
+export async function fetchOnboarding(): Promise<RepoResult<OnboardingRow | null>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('user_onboarding')
+    .select(COLS)
+    .eq('user_id', u.userId)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? null) as OnboardingRow | null };
+}
+
+/**
+ * Writes the answers and the lifecycle status together.
+ *
+ * Upsert on `user_id` — one row per user is the primary key, so a second
+ * write from a second device updates rather than duplicating. `user_id` is
+ * supplied here and never by the caller, so the conflict target cannot be
+ * aimed at somebody else's row.
+ */
+export async function writeOnboarding(input: {
+  answers: OnboardingAnswers;
+  status: OnboardingStatus;
+}): Promise<RepoResult<OnboardingRow>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+
+  const row = {
+    user_id: u.userId,
+    onboarding_version: ONBOARDING_VERSION,
+    goals: input.answers.goals,
+    primary_barrier: input.answers.primaryBarrier,
+    pace: input.answers.pace,
+    preferred_dayparts: input.answers.preferredDayparts,
+    reminder_intent: input.answers.reminderIntent,
+    status: input.status,
+    // Derived, never passed in — see the file doc.
+    completed_at: input.status === 'completed' ? new Date().toISOString() : null,
+  };
+
+  const { data, error } = await supabase
+    .from('user_onboarding')
+    .upsert(row, { onConflict: 'user_id' })
+    .select(COLS)
+    .single();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: data as unknown as OnboardingRow };
+}

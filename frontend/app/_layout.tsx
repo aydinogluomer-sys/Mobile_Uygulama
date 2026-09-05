@@ -9,6 +9,7 @@ import { colors } from '../lib/tokens';
 import { useThemeStore } from '../store/themeStore';
 import { useNotionSessionStore } from '../store/notionSessionStore';
 import { useLogStore } from '../store/logStore';
+import { needsOnboarding, useOnboardingStore } from '../store/onboardingStore';
 import { installGlobalErrorHandlers } from '../lib/crashReporting';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
 
@@ -42,6 +43,10 @@ export default function RootLayout() {
   // tetiklenmeye yol açmazlar.
   const hydrateSyncQueue = useLogStore((s) => s.hydrateSyncQueue);
   const flushPendingSync = useLogStore((s) => s.flushPendingSync);
+  const hydrateOnboarding = useOnboardingStore((s) => s.hydrate);
+  const onboardingHydrated = useOnboardingStore((s) => s.hydrated);
+  const onboardingStatus = useOnboardingStore((s) => s.status);
+  const personalizing = useOnboardingStore((s) => s.personalizing);
 
   useEffect(() => {
     let alive = true;
@@ -85,6 +90,28 @@ export default function RootLayout() {
       subscription.unsubscribe();
     };
   }, [hydrateNotionSession, hydrateSyncQueue, flushPendingSync, loadTheme]);
+
+  /**
+   * Onboarding durumu HESABA bağlıdır, cihaza değil.
+   *
+   * Oturum göründüğünde sunucudan okunur; oturum bittiğinde sıfırlanır.
+   * Sıfırlamamak, A hesabından çıkıp B hesabına girildiğinde B'yi A'nın
+   * cevabıyla yönlendirirdi -- yeni bir kullanıcı onboarding'i hiç görmeden
+   * Today'e düşerdi.
+   *
+   * Notion oturumu ile giren kullanıcının Supabase oturumu yoktur; okuma
+   * `Oturum bulunamadı.` ile döner, `status` `'unknown'` kalır ve
+   * `needsOnboarding` false olur -- yani Notion kullanıcısı onboarding'e
+   * yönlendirilmez. Bu, tahmin değil kasıtlı güvenli taraf.
+   */
+  useEffect(() => {
+    if (loading) return;
+    if (session) {
+      void hydrateOnboarding();
+    } else {
+      useOnboardingStore.setState({ hydrated: false, status: 'unknown' });
+    }
+  }, [session, loading, hydrateOnboarding]);
 
   /**
    * §18: uygulama ön plana döndüğünde replay.
@@ -139,20 +166,49 @@ export default function RootLayout() {
       segmentPath[1] === 'forgot-password' || segmentPath[1] === 'reset-password'
     );
     const hasAppSession = !!session || !!notionSession;
+    const inOnboarding = segmentPath[0] === 'onboarding';
 
     if (!hasAppSession && !inAuthGroup) {
       router.replace('/(auth)/login');
-    } else if (hasAppSession && inAuthGroup && !inPasswordRecovery) {
+      return;
+    }
+
+    if (!hasAppSession) return;   // in the auth group, signed out: nothing to do
+
+    // A Supabase-authenticated user is routed by their onboarding row, and
+    // ONLY once that row has actually been read. Redirecting on
+    // `status === 'unknown'` would send an existing user into a first-run
+    // flow for the length of one network round trip.
+    if (session && !onboardingHydrated) return;
+
+    if (session && needsOnboarding(onboardingStatus)) {
+      if (!inOnboarding) router.replace('/onboarding/needs');
+      return;
+    }
+
+    // Finished, skipped, legacy -- or a Notion session, which never enters
+    // onboarding. Anyone standing in the onboarding group is sent on, UNLESS
+    // they opened it deliberately from Settings.
+    if (inOnboarding && !personalizing) {
+      router.replace('/tabs/today');
+      return;
+    }
+
+    if (inAuthGroup && !inPasswordRecovery) {
       router.replace('/tabs/today');
     }
-  }, [session, notionSession, loading, segments, router]);
+  }, [session, notionSession, loading, segments, router, onboardingHydrated, onboardingStatus, personalizing]);
 
   // §18: boot zinciri çözülene kadar HİÇBİR ekran render edilmez. Bu kozmetik
   // bir splash değil; "ilk dokunuştan önce hidrasyon" garantisini yapısal
   // yapan şeyin ta kendisi. Yönlendirme effect'i zaten `loading` ile
   // kapılıydı, dolayısıyla `router.replace` navigator mount edildikten sonra
   // (loading=false render'ının commit'ini takip eden effect fazında) çalışır.
-  if (loading) {
+  // Aynı gerekçe §18'in kendi kapısında yazılı: karar verilemeyen bir anda
+  // ekran GÖSTERMEMEK, yanlış ekranı gösterip düzeltmekten iyidir. Supabase
+  // oturumu varken onboarding satırı okunana kadar bekleniyor; aksi halde
+  // yeni kullanıcı önce boş bir Today görür, sonra onboarding'e atılırdı.
+  if (loading || (!!session && !onboardingHydrated)) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color={colors.primary} />
@@ -175,6 +231,7 @@ export default function RootLayout() {
         <Stack.Screen name="tabs" />
         <Stack.Screen name="habits" />
         <Stack.Screen name="screens" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" />
       </Stack>
     </ErrorBoundary>
   );

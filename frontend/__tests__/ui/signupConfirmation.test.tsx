@@ -125,7 +125,7 @@ async function fillAndSubmit(tree: TestRenderer.ReactTestRenderer, email: string
   expect(inputs.length).toBeGreaterThanOrEqual(2);
   await act(async () => { inputs[0].props.onChangeText(email); });
   await act(async () => { inputs[1].props.onChangeText(password); });
-  await act(async () => { pressable(tree, 'Kayıt Ol').props.onPress(); });
+  await act(async () => { pressable(tree, 'Hesabımı oluştur').props.onPress(); });
 }
 
 /** Onay bekleyen bir signup — oturum YOK, kullanıcı VAR. */
@@ -142,7 +142,7 @@ describe('AC-S00 ağaç gerçekten içerik görüyor', () => {
   it('kayıt formu boş bir ağaç değil', async () => {
     mockSignUp.mockResolvedValue(PENDING_NEW);
     const tree = await render(<RegisterScreen />);
-    expect(textOf(tree)).toContain('Kayıt Ol');
+    expect(textOf(tree)).toContain('Hesabımı oluştur');
     expect(tree.root.findAllByType(TextInput).length).toBeGreaterThanOrEqual(2);
   });
 });

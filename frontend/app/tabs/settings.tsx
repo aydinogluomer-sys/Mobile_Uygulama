@@ -22,7 +22,9 @@ import {
   type WebhookRow,
 } from '../../services/webhookService';
 import { buildBackup, renderBackup, type ExportFormat } from '../../services/exportService';
+import { useRouter } from 'expo-router';
 import BadHabitsTracker from '../../components/BadHabitsTracker';
+import { useOnboardingStore } from '../../store/onboardingStore';
 import { seedDemoData, isSeedingAllowed } from '../../lib/demoSeed';
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 import IntegrationItemCard from '../../components/IntegrationItemCard';
@@ -52,6 +54,22 @@ export default function SettingsScreen() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhooks, setWebhooks] = useState<WebhookRow[]>([]);
   const [showBadHabitsTracker, setShowBadHabitsTracker] = useState(false);
+  const router = useRouter();
+  const beginPersonalization = useOnboardingStore((s) => s.beginPersonalization);
+
+  /**
+   * Reopens the first-run flow on purpose.
+   *
+   * `beginPersonalization()` is what stops the router bouncing a finished
+   * user straight back out (see `app/_layout.tsx`). Re-running the flow ADDS
+   * a proposal the user must confirm; it never edits or deletes the habits
+   * they already have -- the plan screen writes through the same install
+   * pipeline, which only inserts.
+   */
+  function openPersonalization() {
+    beginPersonalization();
+    router.push('/onboarding/needs');
+  }
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
   const [seedingDemo, setSeedingDemo] = useState(false);
 
@@ -357,6 +375,19 @@ export default function SettingsScreen() {
                 </View>
                 {seedingDemo ? <ActivityIndicator size="small" color="#87A678" /> : <Ionicons name="chevron-forward" size={20} color="#827E72" />}
               </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Personalization */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Kişiselleştirme</Text>
+
+            {renderSettingItem(
+              'sparkles',
+              'Başlangıç tercihleri',
+              'Hedeflerini, tempoyu ve hatırlatma tercihini güncelle',
+              openPersonalization,
+              colors.primary
             )}
           </View>
 
