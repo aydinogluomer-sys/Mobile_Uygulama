@@ -117,6 +117,20 @@ export function makeSupabaseMock(db: MockDb, opts?: { userId?: string | null }) 
         const q: Record<string, unknown> = {
           eq(c: string, v: unknown) { filters[c] = v; return q; },
           neq(c: string, v: unknown) { filters['!' + c] = v; return q; },
+          /**
+           * PostgREST's `not(column, operator, value)`.
+           *
+           * Only `eq` is modelled, which is the form the repositories build
+           * (`not('status', 'eq', 'archived')` — how every list excludes
+           * archived rows). Without it that exclusion was unrunnable in
+           * tests: `fetchHabits` threw rather than filtering, so any test
+           * reaching it failed for a reason unrelated to what it was
+           * checking.
+           */
+          not(c: string, op: string, v: unknown) {
+            if (op === 'eq') filters['!' + c] = v;
+            return q;
+          },
           is(c: string, v: unknown) { filters[c] = v; return q; },
           in() { return q; },
           gte() { return q; },

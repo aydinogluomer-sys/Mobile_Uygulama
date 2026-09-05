@@ -9,7 +9,8 @@ import { colors } from '../lib/tokens';
 import { useThemeStore } from '../store/themeStore';
 import { useNotionSessionStore } from '../store/notionSessionStore';
 import { useLogStore } from '../store/logStore';
-import { needsOnboarding, useOnboardingStore } from '../store/onboardingStore';
+import { resolveOnboardingRouting, useOnboardingStore } from '../store/onboardingStore';
+import OnboardingGate from '../components/onboarding/OnboardingGate';
 import { installGlobalErrorHandlers } from '../lib/crashReporting';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
 
@@ -44,8 +45,9 @@ export default function RootLayout() {
   const hydrateSyncQueue = useLogStore((s) => s.hydrateSyncQueue);
   const flushPendingSync = useLogStore((s) => s.flushPendingSync);
   const hydrateOnboarding = useOnboardingStore((s) => s.hydrate);
-  const onboardingHydrated = useOnboardingStore((s) => s.hydrated);
+  const onboardingHydration = useOnboardingStore((s) => s.hydrationState);
   const onboardingStatus = useOnboardingStore((s) => s.status);
+  const onboardingLoadError = useOnboardingStore((s) => s.loadError);
   const personalizing = useOnboardingStore((s) => s.personalizing);
 
   useEffect(() => {
@@ -109,7 +111,10 @@ export default function RootLayout() {
     if (session) {
       void hydrateOnboarding();
     } else {
-      useOnboardingStore.setState({ hydrated: false, status: 'unknown' });
+      // Everything account-scoped, not just the status: the plan, the answers,
+      // the personalization flag and the previous account's error all belong
+      // to whoever just signed out.
+      useOnboardingStore.getState().resetForAccount();
     }
   }, [session, loading, hydrateOnboarding]);
 
@@ -165,50 +170,53 @@ export default function RootLayout() {
     const inPasswordRecovery = inAuthGroup && (
       segmentPath[1] === 'forgot-password' || segmentPath[1] === 'reset-password'
     );
-    const hasAppSession = !!session || !!notionSession;
-    const inOnboarding = segmentPath[0] === 'onboarding';
+    // The decision itself is a pure function in `store/onboardingStore.ts`,
+    // so every combination of session / hydration / status can be asserted
+    // directly instead of by mounting a navigator and reading the source.
+    const decision = resolveOnboardingRouting({
+      hasSupabaseSession: !!session,
+      hasAnySession: !!session || !!notionSession,
+      hydrationState: onboardingHydration,
+      status: onboardingStatus,
+      inAuthGroup,
+      inPasswordRecovery,
+      inOnboarding: segmentPath[0] === 'onboarding',
+      personalizing,
+    });
 
-    if (!hasAppSession && !inAuthGroup) {
-      router.replace('/(auth)/login');
-      return;
-    }
-
-    if (!hasAppSession) return;   // in the auth group, signed out: nothing to do
-
-    // A Supabase-authenticated user is routed by their onboarding row, and
-    // ONLY once that row has actually been read. Redirecting on
-    // `status === 'unknown'` would send an existing user into a first-run
-    // flow for the length of one network round trip.
-    if (session && !onboardingHydrated) return;
-
-    if (session && needsOnboarding(onboardingStatus)) {
-      if (!inOnboarding) router.replace('/onboarding/needs');
-      return;
-    }
-
-    // Finished, skipped, legacy -- or a Notion session, which never enters
-    // onboarding. Anyone standing in the onboarding group is sent on, UNLESS
-    // they opened it deliberately from Settings.
-    if (inOnboarding && !personalizing) {
-      router.replace('/tabs/today');
-      return;
-    }
-
-    if (inAuthGroup && !inPasswordRecovery) {
-      router.replace('/tabs/today');
-    }
-  }, [session, notionSession, loading, segments, router, onboardingHydrated, onboardingStatus, personalizing]);
+    if (decision.kind === 'redirect') router.replace(decision.to);
+    // 'wait' and 'gate' are handled by the render below; 'stay' does nothing.
+  }, [session, notionSession, loading, segments, router, onboardingHydration, onboardingStatus, personalizing]);
 
   // §18: boot zinciri çözülene kadar HİÇBİR ekran render edilmez. Bu kozmetik
   // bir splash değil; "ilk dokunuştan önce hidrasyon" garantisini yapısal
   // yapan şeyin ta kendisi. Yönlendirme effect'i zaten `loading` ile
   // kapılıydı, dolayısıyla `router.replace` navigator mount edildikten sonra
   // (loading=false render'ının commit'ini takip eden effect fazında) çalışır.
+  /**
+   * Onboarding satırı okunamadıysa Today'e DÜŞÜLMEZ.
+   *
+   * Eski hali `hydrated` boolean'ıydı ve hata durumunda da true oluyordu;
+   * router beklemeyi bırakıyor, `needsOnboarding('unknown')` false dönüyor ve
+   * yeni kullanıcı, uygulama onboarding'e ihtiyacı olup olmadığını
+   * ÖĞRENEMEDİĞİ hâlde Today'e ulaşıyordu.
+   *
+   * Sonsuz spinner da değil: kullanıcıya görünür bir yeniden-deneme var.
+   */
+  if (!!session && onboardingHydration === 'error') {
+    return (
+      <OnboardingGate
+        error={onboardingLoadError}
+        onRetry={() => { void hydrateOnboarding(); }}
+      />
+    );
+  }
+
   // Aynı gerekçe §18'in kendi kapısında yazılı: karar verilemeyen bir anda
   // ekran GÖSTERMEMEK, yanlış ekranı gösterip düzeltmekten iyidir. Supabase
   // oturumu varken onboarding satırı okunana kadar bekleniyor; aksi halde
   // yeni kullanıcı önce boş bir Today görür, sonra onboarding'e atılırdı.
-  if (loading || (!!session && !onboardingHydrated)) {
+  if (loading || (!!session && onboardingHydration !== 'ready')) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color={colors.primary} />

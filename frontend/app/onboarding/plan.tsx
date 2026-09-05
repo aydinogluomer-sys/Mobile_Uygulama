@@ -36,6 +36,9 @@ export default function OnboardingPlanScreen() {
   const installPlan = useOnboardingStore((s) => s.installPlan);
   const installing = useOnboardingStore((s) => s.installing);
   const installError = useOnboardingStore((s) => s.installError);
+  const installPhase = useOnboardingStore((s) => s.installPhase);
+  const installedHabitCount = useOnboardingStore((s) => s.installedHabitCount);
+  const completeInstall = useOnboardingStore((s) => s.completeInstall);
 
   /** Names the user removed from the preview. Local until install. */
   const [dropped, setDropped] = useState<Set<string>>(new Set());
@@ -44,9 +47,18 @@ export default function OnboardingPlanScreen() {
   // Arriving here directly (a reload on web, a deep link) with no plan in
   // memory regenerates it rather than showing an empty screen. Deterministic,
   // so the regenerated plan is the same one.
+  //
+  // NOT while an install is awaiting its completion write: regenerating there
+  // would put a fresh proposal on screen next to habits that already exist,
+  // and the obvious next tap would install a second copy of them.
   useEffect(() => {
-    if (!plan) generatePlan();
-  }, [plan, generatePlan]);
+    if (!plan && installPhase !== 'awaiting_completion') generatePlan();
+  }, [plan, generatePlan, installPhase]);
+
+  async function handleFinish() {
+    const ok = await completeInstall();
+    if (ok) router.replace('/tabs/today');
+  }
 
   const kept = useMemo(
     () => (plan?.habits ?? []).filter((h) => !dropped.has(h.name)),
@@ -72,6 +84,39 @@ export default function OnboardingPlanScreen() {
     const ok = await installPlan();
     if (!ok) return;   // the error is rendered; onboarding stays unfinished
     router.replace('/tabs/today');
+  }
+
+  /**
+   * The habits are in the database and the completion write is not.
+   *
+   * Reached in this session after a failed confirm, and in a LATER session
+   * from the durable `installing` status — `hydrate` resolves that by counting
+   * the account's habits, so arriving here means the count was greater than
+   * zero. The only action offered writes the completion; there is deliberately
+   * no path from this screen back to the insert.
+   */
+  if (installPhase === 'awaiting_completion') {
+    return (
+      <OnboardingScaffold
+        step={3}
+        totalSteps={3}
+        title="Neredeyse bitti"
+        subtitle="Alışkanlıkların oluşturuldu, ama kurulumu kaydedemedik. Tekrar denediğinde yeniden oluşturulmayacaklar."
+        primaryLabel="Kurulumu tamamla"
+        onPrimary={handleFinish}
+        primaryLoading={installing}
+        primaryDisabled={installing}
+        error={installError}
+      >
+        <View style={s.recovery}>
+          <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+          <Text style={s.recoveryText}>
+            {installedHabitCount} alışkanlık hesabına eklendi. Bunlar korunuyor;
+            bu adım yalnızca kurulumun tamamlandığını kaydeder.
+          </Text>
+        </View>
+      </OnboardingScaffold>
+    );
   }
 
   if (!plan) {
@@ -177,6 +222,12 @@ export default function OnboardingPlanScreen() {
 
 const s = StyleSheet.create({
   muted: { ...font.body, color: colors.textFaint },
+  recovery: {
+    flexDirection: 'row', gap: space.md, alignItems: 'flex-start',
+    padding: space.lg, borderRadius: radius.lg,
+    backgroundColor: hexA(colors.success, 0.10),
+  },
+  recoveryText: { ...font.bodySm, color: colors.textDim, flex: 1, lineHeight: 20 },
 
   summaryRow: { flexDirection: 'row', gap: space.lg },
   summaryCell: { flex: 1, gap: 4 },

@@ -77,12 +77,8 @@ function resetAll() {
   mockEnsurePermission.mockReset();
   mockEnsurePermission.mockResolvedValue(true);
   useHabitStore.setState({ habits: [] });
-  useOnboardingStore.setState({
-    hydrated: false, loading: false, loadError: null, status: 'unknown',
-    answers: ANSWERS, plan: null, planReasons: [],
-    saving: false, saveError: null, installing: false, installError: null,
-    permission: 'unknown', personalizing: false,
-  });
+  useOnboardingStore.getState().resetForAccount();
+  useOnboardingStore.setState({ answers: ANSWERS });
 }
 
 beforeEach(resetAll);
@@ -92,7 +88,7 @@ describe('AC-OF01 hydration', () => {
   it('no row means a new user', async () => {
     await useOnboardingStore.getState().hydrate();
     const s = useOnboardingStore.getState();
-    expect(s.hydrated).toBe(true);
+    expect(s.hydrationState).toBe('ready');
     expect(s.status).toBe('pending');
   });
 
@@ -108,13 +104,16 @@ describe('AC-OF01 hydration', () => {
     expect(needsOnboarding(useOnboardingStore.getState().status)).toBe(false);
   });
 
-  it('a failed read is hydrated-with-an-error, never a guessed status', async () => {
+  it('a failed read is its own state, not a hydrated one', async () => {
     mockSession.userId = null;   // no session -> the repository errors
     await useOnboardingStore.getState().hydrate();
     const s = useOnboardingStore.getState();
-    expect(s.hydrated).toBe(true);
+    // NOT 'ready'. The old code set a `hydrated` boolean true here, the
+    // router stopped waiting, and a new user reached Today because
+    // `needsOnboarding('unknown')` is false. `error` is what stops that, and
+    // `onboardingRecovery.test.ts` asserts the routing consequence.
+    expect(s.hydrationState).toBe('error');
     expect(s.loadError).toBeTruthy();
-    // Still 'unknown': routing on a guess is what this avoids.
     expect(s.status).toBe('unknown');
     expect(needsOnboarding(s.status)).toBe(false);
   });
@@ -138,6 +137,9 @@ describe('AC-OF01 hydration', () => {
 describe('AC-OF02 only pending routes into onboarding', () => {
   it.each([
     ['pending', true],
+    // An interrupted install still owes the user a resolution; sending them
+    // to Today would leave it half-finished forever.
+    ['installing', true],
     ['completed', false],
     ['skipped', false],
     ['legacy', false],
@@ -220,28 +222,47 @@ describe('AC-OF04 a double tap installs one set', () => {
 describe('AC-OF05/OF06 failures are reported, not absorbed', () => {
   it('a failed habit insert leaves the flow unfinished', async () => {
     useOnboardingStore.getState().generatePlan();
-    mockDb.failNext = { error: 'insert reddedildi' };
+
+    // Armed on the `habits` table specifically. A bare `failNext` would now
+    // hit the FIRST write, which is the durable claim, and this test would
+    // quietly become a test of a different failure.
+    const original = mockClient.from;
+    (mockClient as { from: typeof original }).from = (table: string) => {
+      if (table === 'habits') mockDb.failNext = { error: 'insert reddedildi' };
+      return original(table);
+    };
 
     expect(await useOnboardingStore.getState().installPlan()).toBe(false);
+    (mockClient as { from: typeof original }).from = original;
 
     const s = useOnboardingStore.getState();
     expect(s.installError).toBe('insert reddedildi');
+    expect(mockDb.rows.habits ?? []).toEqual([]);
     // Not completed: the user must be able to reach the plan again.
     expect(s.status).not.toBe('completed');
-    expect(mockDb.rows.user_onboarding ?? []).toEqual([]);
+    // The durable claim written before the insert is retracted, so the next
+    // launch does not put them in install recovery for habits that were
+    // never written.
+    expect(mockDb.rows.user_onboarding[0].status).toBe('pending');
+    expect(s.installPhase).toBe('idle');
   });
 
-  it('habits written but the status write failing is reported as a failure', async () => {
+  it('habits written but the completion write failing is reported as a failure', async () => {
     useOnboardingStore.getState().generatePlan();
     const planned = useOnboardingStore.getState().plan!.habits.length;
 
-    // `failNext` fires once and clears, so it hits the SECOND write — the
-    // status upsert, after the habits already landed.
+    // Three writes now, in order: the durable claim (user_onboarding), the
+    // habits, then the completion (user_onboarding again). Counting visits to
+    // `user_onboarding` targets the completion specifically — a bare "second
+    // write" counter would hit the habits insert instead, which is the wrong
+    // failure and would prove nothing about this case.
     const original = mockClient.from;
-    let writes = 0;
+    let onboardingWrites = 0;
     (mockClient as { from: typeof original }).from = (table: string) => {
-      writes += 1;
-      if (writes === 2) mockDb.failNext = { error: 'durum kaydedilemedi' };
+      if (table === 'user_onboarding') {
+        onboardingWrites += 1;
+        if (onboardingWrites === 2) mockDb.failNext = { error: 'durum kaydedilemedi' };
+      }
       return original(table);
     };
 
@@ -250,8 +271,11 @@ describe('AC-OF05/OF06 failures are reported, not absorbed', () => {
 
     expect(ok).toBe(false);
     expect(mockDb.rows.habits).toHaveLength(planned);
-    // The habits exist and the flow is honest about not having finished.
+    // The habits exist, the flow is honest about not having finished, and it
+    // is now in the state that knows a retry must not insert again. The full
+    // retry sequence is `onboardingRecovery.test.ts` AC-R01.
     expect(useOnboardingStore.getState().status).not.toBe('completed');
+    expect(useOnboardingStore.getState().installPhase).toBe('awaiting_completion');
     expect(useOnboardingStore.getState().installError).toBeTruthy();
   });
 });
@@ -297,18 +321,22 @@ describe('AC-OF08 the router rules', () => {
     expect(layout).toContain('RootLayout');
   });
 
-  it('a pending user is sent to onboarding', () => {
-    expect(layout).toContain('needsOnboarding(onboardingStatus)');
-    expect(layout).toContain("router.replace('/onboarding/needs')");
+  it('routing is delegated to the pure decision, not re-implemented here', () => {
+    // The behavioural coverage lives in `onboardingRecovery.test.ts`, against
+    // `resolveOnboardingRouting` directly. What matters here is that the
+    // layout OBEYS it rather than keeping a second copy of the rules.
+    expect(layout).toContain('resolveOnboardingRouting({');
+    expect(layout).toContain("if (decision.kind === 'redirect') router.replace(decision.to);");
   });
 
   it('nothing renders until the onboarding row is known', () => {
     // Without this the new user sees Today for one frame and is then yanked.
-    expect(layout).toMatch(/if \(loading \|\| \(!!session && !onboardingHydrated\)\)/);
+    expect(layout).toMatch(/if \(loading \|\| \(!!session && onboardingHydration !== 'ready'\)\)/);
   });
 
-  it('the redirect waits for hydration rather than guessing', () => {
-    expect(layout).toContain('if (session && !onboardingHydrated) return;');
+  it('a failed read renders a retry gate rather than falling through', () => {
+    expect(layout).toContain("onboardingHydration === 'error'");
+    expect(layout).toContain('<OnboardingGate');
   });
 
   it('password recovery is still exempt from the signed-in bounce', () => {
@@ -317,12 +345,9 @@ describe('AC-OF08 the router rules', () => {
     expect(layout).toContain("segmentPath[1] === 'reset-password'");
   });
 
-  it('a finished user standing in onboarding is sent on — unless they meant it', () => {
-    expect(layout).toContain('inOnboarding && !personalizing');
-  });
-
-  it('signing out clears the cached status', () => {
-    // Otherwise account B is routed by account A's answer.
-    expect(layout).toContain("useOnboardingStore.setState({ hydrated: false, status: 'unknown' })");
+  it('signing out clears every account-scoped value', () => {
+    // Otherwise account B is routed by account A's answer — and sees A's
+    // error, and can open A's plan.
+    expect(layout).toContain('useOnboardingStore.getState().resetForAccount()');
   });
 });

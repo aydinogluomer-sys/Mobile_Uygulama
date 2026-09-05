@@ -155,7 +155,13 @@ export const DAYPART_TO_PART_OF_DAY: Record<DaypartId, 'morning' | 'afternoon' |
 
 export const ONBOARDING_VERSION = 1;
 
-export type OnboardingStatus = 'pending' | 'completed' | 'skipped' | 'legacy';
+/**
+ * `installing` is a DURABLE claim, not a transient UI flag: it is written to
+ * `user_onboarding` before the habits are inserted and survives process
+ * death, which is how a later session learns an install already happened.
+ * See `supabase/migrations/20260906b_user_onboarding_installing_status.sql`.
+ */
+export type OnboardingStatus = 'pending' | 'installing' | 'completed' | 'skipped' | 'legacy';
 
 export type OnboardingAnswers = {
   goals: GoalId[];
