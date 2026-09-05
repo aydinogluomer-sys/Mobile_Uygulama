@@ -1,4 +1,4 @@
-/* Atlas POS Sync — Obsidian Plugin */
+/* Aderyth Sync — Obsidian Plugin */
 "use strict";
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -26,7 +26,7 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var DEFAULT_SETTINGS = {
-  vaultFolder: "Atlas",
+  vaultFolder: "Aderyth",
   dateFormat: "YYYY-MM-DD",
   supabaseUrl: "",
   supabaseKey: "",
@@ -34,10 +34,12 @@ var DEFAULT_SETTINGS = {
   autoSyncIntervalMin: 60,
   appendToExisting: true
 };
+var BLOCK_MARKER_PREFIX = "## \u{1F5D3}\uFE0F Aderyth";
+var LEGACY_BLOCK_MARKER_PREFIX = "## \u{1F5D3}\uFE0F Atlas";
 function buildAtlasBlock(payload) {
   var _a;
   const lines = [];
-  lines.push(`## \u{1F5D3}\uFE0F Atlas \u2014 ${payload.date}`);
+  lines.push(`${BLOCK_MARKER_PREFIX} \u2014 ${payload.date}`);
   lines.push("");
   if (payload.willpower) {
     const { used, daily_budget } = payload.willpower;
@@ -78,7 +80,7 @@ function buildAtlasBlock(payload) {
     lines.push("");
   }
   lines.push("---");
-  lines.push(`*Atlas POS v2 taraf\u0131ndan senkronland\u0131 \u2014 ${(/* @__PURE__ */ new Date()).toLocaleTimeString("tr-TR")}*`);
+  lines.push(`*Aderyth taraf\u0131ndan senkronland\u0131 \u2014 ${(/* @__PURE__ */ new Date()).toLocaleTimeString("tr-TR")}*`);
   lines.push("");
   return lines.join("\n");
 }
@@ -143,7 +145,7 @@ var AtlasPosPlugin = class extends import_obsidian.Plugin {
   }
   async onload() {
     await this.loadSettings();
-    this.addRibbonIcon("sync", "Atlas: Bug\xFCn\xFC Senkronla", async () => {
+    this.addRibbonIcon("sync", "Aderyth: Bug\xFCn\xFC Senkronla", async () => {
       await this.syncToday();
     });
     this.addCommand({
@@ -164,7 +166,7 @@ var AtlasPosPlugin = class extends import_obsidian.Plugin {
     });
     this.addCommand({
       id: "atlas-open-today",
-      name: "Bug\xFCn\xFCn Atlas notunu a\xE7",
+      name: "Bug\xFCn\xFCn Aderyth notunu a\xE7",
       callback: async () => {
         const date = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
         const path = this.notePath(date);
@@ -172,7 +174,7 @@ var AtlasPosPlugin = class extends import_obsidian.Plugin {
         if (file instanceof import_obsidian.TFile) {
           await this.app.workspace.getLeaf().openFile(file);
         } else {
-          new import_obsidian.Notice("Bug\xFCn i\xE7in hen\xFCz Atlas notu yok. \xD6nce senkronla.");
+          new import_obsidian.Notice("Bug\xFCn i\xE7in hen\xFCz Aderyth notu yok. \xD6nce senkronla.");
         }
       }
     });
@@ -180,7 +182,7 @@ var AtlasPosPlugin = class extends import_obsidian.Plugin {
     if (this.settings.autoSyncEnabled) {
       this.scheduleAutoSync();
     }
-    new import_obsidian.Notice("Atlas POS Sync y\xFCklendi \u2705");
+    new import_obsidian.Notice("Aderyth Sync y\xFCklendi \u2705");
   }
   onunload() {
     if (this.autoSyncTimer !== null) {
@@ -194,10 +196,10 @@ var AtlasPosPlugin = class extends import_obsidian.Plugin {
   }
   async syncDate(date) {
     if (!this.settings.supabaseUrl || !this.settings.supabaseKey) {
-      new import_obsidian.Notice("\u26A0\uFE0F Atlas: Supabase URL ve Key ayarlara girilmeli.");
+      new import_obsidian.Notice("\u26A0\uFE0F Aderyth: Supabase URL ve Key ayarlara girilmeli.");
       return;
     }
-    new import_obsidian.Notice(`Atlas: ${date} senkronlan\u0131yor\u2026`);
+    new import_obsidian.Notice(`Aderyth: ${date} senkronlan\u0131yor\u2026`);
     try {
       const payload = await fetchAtlasData(
         this.settings.supabaseUrl,
@@ -205,10 +207,10 @@ var AtlasPosPlugin = class extends import_obsidian.Plugin {
         date
       );
       await this.writeNote(payload);
-      new import_obsidian.Notice(`\u2705 Atlas: ${date} senkronland\u0131 \u2014 ${payload.habits.length} al\u0131\u015Fkanl\u0131k, ${payload.tasks.length} g\xF6rev`);
+      new import_obsidian.Notice(`\u2705 Aderyth: ${date} senkronland\u0131 \u2014 ${payload.habits.length} al\u0131\u015Fkanl\u0131k, ${payload.tasks.length} g\xF6rev`);
     } catch (e) {
-      console.error("[Atlas Plugin]", e);
-      new import_obsidian.Notice("\u274C Atlas senkron hatas\u0131: " + e.message);
+      console.error("[Aderyth Plugin]", e);
+      new import_obsidian.Notice("\u274C Aderyth senkron hatas\u0131: " + e.message);
     }
   }
   // ── Not yazma ──────────────────────────────────────────────────────────────
@@ -227,7 +229,9 @@ var AtlasPosPlugin = class extends import_obsidian.Plugin {
     if (existing instanceof import_obsidian.TFile) {
       if (this.settings.appendToExisting) {
         const content = await this.app.vault.read(existing);
-        const marker = `## \u{1F5D3}\uFE0F Atlas \u2014 ${payload.date}`;
+        const current = `${BLOCK_MARKER_PREFIX} \u2014 ${payload.date}`;
+        const legacy = `${LEGACY_BLOCK_MARKER_PREFIX} \u2014 ${payload.date}`;
+        const marker = content.includes(current) ? current : legacy;
         if (content.includes(marker)) {
           const before = content.slice(0, content.indexOf(marker));
           const afterIdx = content.indexOf("\n## ", content.indexOf(marker) + 1);
@@ -277,21 +281,21 @@ var AtlasSettingTab = class extends import_obsidian.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Atlas POS Sync Ayarlar\u0131" });
-    new import_obsidian.Setting(containerEl).setName("Vault klas\xF6r\xFC").setDesc("Atlas notlar\u0131n\u0131n yaz\u0131laca\u011F\u0131 klas\xF6r (vault i\xE7inde)").addText(
-      (t) => t.setPlaceholder("Atlas").setValue(this.plugin.settings.vaultFolder).onChange(async (v) => {
-        this.plugin.settings.vaultFolder = v || "Atlas";
+    containerEl.createEl("h2", { text: "Aderyth Sync Ayarlar\u0131" });
+    new import_obsidian.Setting(containerEl).setName("Vault klas\xF6r\xFC").setDesc("Aderyth notlar\u0131n\u0131n yaz\u0131laca\u011F\u0131 klas\xF6r (vault i\xE7inde)").addText(
+      (t) => t.setPlaceholder("Aderyth").setValue(this.plugin.settings.vaultFolder).onChange(async (v) => {
+        this.plugin.settings.vaultFolder = v || "Aderyth";
         await this.plugin.saveSettings();
       })
     );
     containerEl.createEl("h3", { text: "Supabase Ba\u011Flant\u0131s\u0131" });
-    new import_obsidian.Setting(containerEl).setName("Supabase URL").setDesc("Atlas projenizin Supabase URL'si (EXPO_PUBLIC_SUPABASE_URL)").addText(
+    new import_obsidian.Setting(containerEl).setName("Supabase URL").setDesc("Aderyth projenizin Supabase URL'si (EXPO_PUBLIC_SUPABASE_URL)").addText(
       (t) => t.setPlaceholder("https://xxxx.supabase.co").setValue(this.plugin.settings.supabaseUrl).onChange(async (v) => {
         this.plugin.settings.supabaseUrl = v.trim();
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Supabase Anon Key").setDesc("Atlas anon public key'i").addText((t) => {
+    new import_obsidian.Setting(containerEl).setName("Supabase Anon Key").setDesc("Aderyth anon public key'i").addText((t) => {
       t.inputEl.type = "password";
       t.setPlaceholder("eyJhbGciOiJIUzI1NiIs\u2026").setValue(this.plugin.settings.supabaseKey).onChange(async (v) => {
         this.plugin.settings.supabaseKey = v.trim();
@@ -319,13 +323,13 @@ var AtlasSettingTab = class extends import_obsidian.PluginSettingTab {
       })
     );
     containerEl.createEl("h3", { text: "Senkronizasyon" });
-    new import_obsidian.Setting(containerEl).setName("Mevcut notlara ekle").setDesc("A\xE7\u0131k: Atlas blo\u011Funu g\xFCnceller. Kapal\u0131: dosyay\u0131 tamamen yeniden yazar.").addToggle(
+    new import_obsidian.Setting(containerEl).setName("Mevcut notlara ekle").setDesc("A\xE7\u0131k: Aderyth blo\u011Funu g\xFCnceller. Kapal\u0131: dosyay\u0131 tamamen yeniden yazar.").addToggle(
       (t) => t.setValue(this.plugin.settings.appendToExisting).onChange(async (v) => {
         this.plugin.settings.appendToExisting = v;
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Otomatik senkronizasyon").setDesc("Arka planda periyodik olarak Atlas verisini \xE7eker").addToggle(
+    new import_obsidian.Setting(containerEl).setName("Otomatik senkronizasyon").setDesc("Arka planda periyodik olarak Aderyth verisini \xE7eker").addToggle(
       (t) => t.setValue(this.plugin.settings.autoSyncEnabled).onChange(async (v) => {
         this.plugin.settings.autoSyncEnabled = v;
         await this.plugin.saveSettings();
@@ -337,7 +341,7 @@ var AtlasSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("\u015Eimdi senkronla").setDesc("Bug\xFCn\xFCn Atlas verisini hemen Obsidian'a yazar").addButton(
+    new import_obsidian.Setting(containerEl).setName("\u015Eimdi senkronla").setDesc("Bug\xFCn\xFCn Aderyth verisini hemen Obsidian'a yazar").addButton(
       (b) => b.setButtonText("Bug\xFCn\xFC Senkronla").setCta().onClick(async () => {
         await this.plugin.syncToday();
       })

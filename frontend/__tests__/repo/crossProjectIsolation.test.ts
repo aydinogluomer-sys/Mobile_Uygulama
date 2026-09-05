@@ -164,11 +164,11 @@ describe('the active target is the canonical project', () => {
     expect(new RegExp(`^DENIED="${DENIED}"`, 'm').test(guard)).toBe(true);
   });
 
-  it('the Expo config is Atlas and names no foreign project', () => {
+  it('the Expo config is Aderyth and names no foreign project', () => {
     const raw = read('frontend/app.json');
     expect(raw).not.toContain(DENIED);
     const expo = JSON.parse(raw).expo;
-    expect(expo.name).toBe('Atlas');
+    expect(expo.name).toBe('Aderyth');
     expect(expo.slug).toBe('atlas');
     expect(expo.scheme).toBe('atlas');
     // Bundle identifiers may legitimately be absent at this stage. What they

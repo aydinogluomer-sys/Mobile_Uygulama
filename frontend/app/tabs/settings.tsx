@@ -90,7 +90,7 @@ export default function SettingsScreen() {
 
       if (backup.failed.length > 0) {
         Alert.alert(
-          'Yedek eksik',
+          'Dışa aktarım eksik',
           `Şu bölümler okunamadı: ${backup.failed.map((f) => f.collection).join(', ')}.
 
 ` +
@@ -100,7 +100,7 @@ export default function SettingsScreen() {
 
       await Share.share({
         message: renderBackup(backup, format),
-        title: `Atlas Veri Yedeği (${format.toUpperCase()})`,
+        title: `Aderyth Veri Dışa Aktarımı (${format.toUpperCase()})`,
       });
     } catch (error) {
       Alert.alert('Hata', 'Veriler dışa aktarılırken bir hata oluştu');
@@ -273,9 +273,20 @@ export default function SettingsScreen() {
             <Text style={styles.sectionTitle}>Veri ve Gizlilik</Text>
             
             <View style={styles.exportContainer}>
-              <Text style={styles.exportTitle}>Verilerinizi İndirin</Text>
+              <Text style={styles.exportTitle}>Verileri Dışa Aktar</Text>
               <Text style={styles.exportSubtitle}>
                 Power BI, Excel veya diğer analiz araçlarında kullanabilirsiniz
+              </Text>
+              {/*
+                Said out loud, in the UI, because the alternative is letting
+                the word "yedek" imply a promise the app cannot keep. There is
+                no import path: a file produced here cannot be loaded back.
+                See services/exportService.ts for why a restore was not
+                written rather than written badly.
+              */}
+              <Text style={styles.exportSubtitle}>
+                Bu bir yedek değildir — geri yükleme yoktur. Dosya yalnızca
+                okumak ve analiz etmek içindir.
               </Text>
               
               <View style={styles.exportButtons}>
@@ -383,7 +394,7 @@ export default function SettingsScreen() {
             <Text style={styles.sectionTitle}>Hakkında</Text>
             
             <View style={styles.infoCard}>
-              <Text style={styles.appName}>Atlas</Text>
+              <Text style={styles.appName}>Aderyth</Text>
               <Text style={styles.appVersion}>Versiyon 1.0.0</Text>
               <Text style={styles.appDescription}>
                 Minimalist, bilimsel temelli alışkanlık takip uygulaması.
@@ -396,7 +407,7 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Özellikler</Text>
             <Text style={styles.featureSectionIntro}>
-              Atlas’ın kendi alışkanlık motoru. Dış bağlantılar için Entegrasyonlar
+              Aderyth’in kendi alışkanlık motoru. Dış bağlantılar için Entegrasyonlar
               bölümüne bakın.
             </Text>
             <View style={styles.featureCard}>

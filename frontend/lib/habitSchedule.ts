@@ -317,6 +317,90 @@ export function streakBroken(
 }
 
 /**
+ * How often the habit was actually done, over the days it was actually DUE.
+ *
+ * ## Why this exists here and not in `capacity.ts`
+ *
+ * `capacity.masteryStatus` carried this note:
+ *
+ *     TODO(phase1-wiring): `recent_completion_rate` here is a LOCAL
+ *     approximation -- `done` logs divided by TOTAL logs within the trailing
+ *     window. It does not know the habit's actual due-schedule.
+ *
+ * That approximation is not merely imprecise, it is biased in one direction:
+ * the denominator is the days the user TOUCHED, so a habit due seven days a
+ * week and logged `done` on the two days it was remembered scores 1.00 — a
+ * perfect completion rate for 2/7 adherence. Mastery is granted on that
+ * number, so the weakest habits were the easiest to certify.
+ *
+ * The correct denominator is due days, and which days are due is this
+ * module's job. Putting the calculation in `capacity.ts` would have meant a
+ * second implementation of "is it due today" living next to `isDueOn`, which
+ * is the duplication the note was avoiding by leaving it undone.
+ *
+ * ## The two exclusions, both reused rather than re-decided
+ *
+ *  - `state === 'skip'` leaves the numerator AND the denominator. A day the
+ *    user explicitly excused is not evidence either way — the same rule
+ *    `habitStrength` applies.
+ *  - `countsTowardAverage` decides unlogged days. For a negative habit an
+ *    empty day is excluded rather than scored zero, because scoring it zero
+ *    asserts the day went badly on no evidence. That decision already exists
+ *    directly below; it is called, not repeated.
+ *
+ * A window with no due days returns `rate: 0` with `dueDays: 0`. Callers that
+ * care about the difference between "never due" and "due and never done"
+ * must read `dueDays` — the rate alone cannot carry it, and returning `1` for
+ * an empty window would certify a habit that has done nothing.
+ */
+export type ScheduledCompletion = {
+  /** doneDays / dueDays, or 0 when nothing was due. */
+  rate: number;
+  /** Due days in the window, after the skip and negative-habit exclusions. */
+  dueDays: number;
+  doneDays: number;
+};
+
+export function scheduledCompletionRate(
+  habit: Habit,
+  logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>[],
+  range: { from: Date; to: Date; since?: Date | null },
+): ScheduledCompletion {
+  const fromYmd = ymd(range.from);
+  const toYmd = ymd(range.to);
+  const sinceYmd = range.since ? ymd(range.since) : null;
+
+  // One log per habit per day is a store-level invariant; if it is violated
+  // the last entry in array order wins, matching `habitStrength`'s documented
+  // tiebreak rather than inventing a second one.
+  const byDay = new Map<string, { state: string }>();
+  for (const l of logs) {
+    if (l.habit_id != null && l.habit_id !== habit.id) continue;
+    const d = l.completed_at.slice(0, 10);
+    if (d < fromYmd || d > toYmd) continue;
+    byDay.set(d, { state: l.state });
+  }
+
+  let dueDays = 0;
+  let doneDays = 0;
+
+  for (let cursor = range.from; ymd(cursor) <= toYmd; cursor = addDaysLocal(cursor, 1)) {
+    const day = ymd(cursor);
+    if (sinceYmd && day < sinceYmd) continue;   // the habit did not exist yet
+    if (!isDueOn(habit, cursor)) continue;
+
+    const log = byDay.get(day);
+    if (log?.state === 'skip') continue;        // excused: out of both sides
+    if (!countsTowardAverage(habit, log)) continue;
+
+    dueDays += 1;
+    if (log?.state === 'done') doneDays += 1;
+  }
+
+  return { rate: dueDays === 0 ? 0 : doneDays / dueDays, dueDays, doneDays };
+}
+
+/**
  * Did the user MISS this habit on a due day?
  *
  * The rule is deliberately asymmetric, and the asymmetry is the whole point

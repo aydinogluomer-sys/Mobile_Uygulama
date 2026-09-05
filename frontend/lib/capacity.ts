@@ -18,6 +18,7 @@
 
 import type { Habit, HabitLog, FrequencyConfig } from './supabase';
 import { ymd, ymdFromIso, parseLocalDate, addDaysLocal, daysBetweenLocal } from './date';
+import { scheduledCompletionRate } from './habitSchedule';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -195,7 +196,10 @@ const OVERDUE_POINTS_PER_ITEM = 3;
 
 export type DailyLoadInput = {
   /** Habits considered due/active TODAY. Filtering by schedule is the
-   *  caller's responsibility -- see the TODO(phase1-wiring) note below. */
+   *  caller's responsibility: use `habitSchedule.isDueOn`. This is a
+   *  contract, not an omission -- `dailyLoad` is a pure sum over whatever it
+   *  is handed, and `repo/capacityCallSitesActiveHabits.test.ts` pins that
+   *  every call site does the filtering. */
   habits: HabitLoadInput[];
   tasks?: TaskLoadItem[];
   focusMinutes?: number;
@@ -421,6 +425,9 @@ export type MasteryResult = {
   recent_completion_rate: number;
   stability_score: number;
   age_days: number;
+  /** Due days the rate was measured over — 0 means "nothing was scheduled". */
+  due_days: number;
+  done_days: number;
 };
 
 /**
@@ -440,13 +447,26 @@ export type MasteryResult = {
  * at 0.5 (half the weeks at 0, half at 1), so `1 - stdDev * 2` maps
  * "maximally uneven" to a stability of 0 and "perfectly even" to 1.
  */
-function weeklyStability(logs: HabitLog[], windowStart: Date, buckets: number): number {
+function weeklyStability(
+  habit: Habit,
+  logs: HabitLog[],
+  windowStart: Date,
+  buckets: number,
+  since: Date | null,
+): number {
   const weekRates: number[] = [];
   for (let w = 0; w < buckets; w++) {
-    const bucketStart = ymd(addDaysLocal(windowStart, w * 7));
-    const bucketEnd = ymd(addDaysLocal(windowStart, w * 7 + 6));
-    const weekLogs = logs.filter((l) => l.completed_at >= bucketStart && l.completed_at <= bucketEnd);
-    weekRates.push(weekLogs.length === 0 ? 0 : weekLogs.filter((l) => l.state === 'done').length / weekLogs.length);
+    const from = addDaysLocal(windowStart, w * 7);
+    const to = addDaysLocal(windowStart, w * 7 + 6);
+    // The SAME rate the threshold is applied to, per week. Measuring
+    // stability on a log-count rate while gating on a schedule-aware one
+    // would put the two halves of the mastery rule on different scales.
+    const week = scheduledCompletionRate(habit, logs, { from, to, since });
+    // A week with nothing due contributes 0 rather than being dropped: for a
+    // habit that IS due most weeks, a week off is a real dip in consistency,
+    // and dropping it would let an every-other-week habit read as perfectly
+    // stable.
+    weekRates.push(week.rate);
   }
   const mean = weekRates.reduce((a, b) => a + b, 0) / weekRates.length;
   const variance = weekRates.reduce((a, b) => a + (b - mean) ** 2, 0) / weekRates.length;
@@ -459,16 +479,27 @@ function weeklyStability(logs: HabitLog[], windowStart: Date, buckets: number): 
  * stability_score >= threshold` -- the plan's replacement for
  * `strength >= 80`.
  *
- * TODO(phase1-wiring): `recent_completion_rate` here is a LOCAL
- * approximation -- `done` logs divided by TOTAL logs within the trailing
- * window. It does not know the habit's actual due-schedule (frequency/day
- * of week), because that logic belongs to `habitSchedule.ts`, owned by
- * CODER-A in this phase and explicitly off-limits to this file. Once a
- * shared `habitEngine.completionRatio` exists, swap it in here for a
- * schedule-aware rate instead of this log-count approximation.
+ * ## `recent_completion_rate` is schedule-aware
+ *
+ * It used to be `done` logs divided by TOTAL logs in the window, which made
+ * the denominator "days the user touched" instead of "days the habit was
+ * due". A daily habit logged `done` twice and ignored the other five days
+ * scored 1.00 and was certified mastered on 2/7 adherence — the rule granted
+ * its strongest verdict to its weakest evidence.
+ *
+ * The rate now comes from `habitSchedule.scheduledCompletionRate`, which owns
+ * `isDueOn` and the skip / negative-habit exclusions. The calculation is not
+ * repeated here; `capacity.ts` states the THRESHOLDS and
+ * `habitSchedule.ts` states what is being measured.
+ *
+ * A habit with no due days in the window (paused, or scheduled outside it)
+ * gets `rate: 0` and is not mastered. That is deliberate: mastery is a claim
+ * about demonstrated consistency, and there is nothing to demonstrate it
+ * with. `dueDays` is returned so a caller can tell that apart from "due and
+ * missed".
  */
 export function masteryStatus(
-  habit: Pick<Habit, 'id' | 'created_at'>,
+  habit: Habit,
   logs: HabitLog[],
   { asOf = new Date() }: { asOf?: Date } = {}
 ): MasteryResult {
@@ -483,9 +514,15 @@ export function masteryStatus(
     (l) => l.habit_id === habit.id && l.completed_at >= windowStartYmd && l.completed_at <= asOfYmd
   );
 
-  const recentCompletionRate =
-    recentLogs.length === 0 ? 0 : recentLogs.filter((l) => l.state === 'done').length / recentLogs.length;
-  const stabilityScore = weeklyStability(recentLogs, windowStart, STABILITY_WEEK_BUCKETS);
+  // Days before the habit existed are not due days, so they are excluded
+  // from the denominator rather than counted as misses.
+  const completion = scheduledCompletionRate(habit, recentLogs, {
+    from: windowStart,
+    to: asOfDate,
+    since: createdDate ?? null,
+  });
+  const recentCompletionRate = completion.rate;
+  const stabilityScore = weeklyStability(habit, recentLogs, windowStart, STABILITY_WEEK_BUCKETS, createdDate ?? null);
 
   const ageOk = ageDays >= MASTERY_MIN_AGE_DAYS;
   const rateOk = recentCompletionRate >= MASTERY_COMPLETION_RATE_THRESHOLD;
@@ -493,7 +530,7 @@ export function masteryStatus(
 
   const reasons = [
     `age_days >= ${MASTERY_MIN_AGE_DAYS}: ${ageOk ? 'OK' : 'FAILED'} (${ageDays})`,
-    `recent_completion_rate >= ${MASTERY_COMPLETION_RATE_THRESHOLD}: ${rateOk ? 'OK' : 'FAILED'} (${recentCompletionRate.toFixed(2)})`,
+    `recent_completion_rate >= ${MASTERY_COMPLETION_RATE_THRESHOLD}: ${rateOk ? 'OK' : 'FAILED'} (${recentCompletionRate.toFixed(2)} over ${completion.dueDays} due days)`,
     `stability_score >= ${MASTERY_STABILITY_THRESHOLD}: ${stabilityOk ? 'OK' : 'FAILED'} (${stabilityScore.toFixed(2)})`,
   ];
 
@@ -505,5 +542,7 @@ export function masteryStatus(
     recent_completion_rate: recentCompletionRate,
     stability_score: stabilityScore,
     age_days: ageDays,
+    due_days: completion.dueDays,
+    done_days: completion.doneDays,
   };
 }

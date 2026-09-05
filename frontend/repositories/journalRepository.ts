@@ -41,6 +41,37 @@ export async function fetchJournalEntries(limit = 365): Promise<RepoResult<Journ
   return { ok: true, data: (data ?? []) as unknown as JournalEntryRow[] };
 }
 
+/**
+ * Free-text search across the caller's own entries.
+ *
+ * Journal content is the most sensitive text the app stores, so the owner
+ * filter is explicit here for the same reason it is on `fetchJournalEntries`:
+ * RLS is the backstop, not the only scope.
+ *
+ * `%` is stripped along with the `or()` delimiters — without it a lone `%`
+ * typed into the palette becomes a wildcard matching every entry the user has
+ * ever written, which is not what someone searching for a percent sign meant.
+ */
+export async function searchJournalEntries(
+  query: string,
+  limit = 8,
+): Promise<RepoResult<JournalEntryRow[]>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const term = query.trim();
+  if (!term) return { ok: true, data: [] };
+  const safe = term.replace(/[,()%]/g, ' ');
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select(COLS)
+    .eq('user_id', u.userId)
+    .ilike('content', `%${safe}%`)
+    .order('date', { ascending: false })
+    .limit(Math.max(1, Math.min(limit, 50)));
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data ?? []) as unknown as JournalEntryRow[] };
+}
+
 export async function fetchJournalEntry(date: string): Promise<RepoResult<JournalEntryRow | null>> {
   const u = await currentUserId();
   if (!u.ok) return u;

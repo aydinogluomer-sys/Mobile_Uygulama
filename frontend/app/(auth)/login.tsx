@@ -56,7 +56,7 @@ export default function LoginScreen() {
               <Text style={s.markLetter}>a</Text>
               <View style={s.markDot} />
             </View>
-            <Text style={s.wordmark}>Atlas</Text>
+            <Text style={s.wordmark}>Aderyth</Text>
             <Text style={s.tagline}>Alışkanlıklarını taşı, iradeni yönet.</Text>
           </View>
 

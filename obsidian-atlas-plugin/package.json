@@ -1,13 +1,13 @@
 {
   "name": "obsidian-atlas-plugin",
   "version": "1.0.0",
-  "description": "Atlas POS v2 habit & task sync for Obsidian",
+  "description": "Aderyth habit & task sync for Obsidian",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production"
   },
-  "keywords": ["obsidian", "habits", "atlas"],
+  "keywords": ["obsidian", "habits", "aderyth"],
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.0.0",

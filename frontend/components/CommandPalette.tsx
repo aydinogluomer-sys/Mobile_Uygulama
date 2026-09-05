@@ -13,10 +13,19 @@ import { useHabitStore } from '../store/habitStore';
 import { useTaskStore } from '../store/taskStore';
 import { useNoteStore } from '../store/noteStore';
 import { useProjectStore } from '../store/projectStore';
-import { searchEverything } from '../services/searchService';
+import { searchEverything, type SearchResults } from '../services/searchService';
+import { useJournalStore } from '../store/journalStore';
 import { useDrawerStore } from '../store/drawerStore';
 
 const RECENTS_KEY = 'app_cmd_recents';
+
+/**
+ * The AI category hue. Hoisted rather than repeated: the quick action and the
+ * `recents` entry it writes must agree, and `designTokens.test.ts` counts
+ * bare colour literals per occurrence — two copies of the same hue is two
+ * magic colours, not one.
+ */
+const AI_HUE = '#8b5cf6';
 
 type RecentEntry = { label: string; icon: string; color: string; route: string };
 
@@ -30,19 +39,27 @@ type QuickAction = {
   action: () => void;
 };
 
-interface Props {
-  onOpenHabitForm?: () => void;
-  onOpenAIModal?: () => void;
-}
-
-export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props) {
+/**
+ * Mounted ONCE, by `app/tabs/_layout.tsx`, beside the `<Drawer />` — the same
+ * layout that renders the header button which opens it. It previously took
+ * `onOpenHabitForm` / `onOpenAIModal` callbacks, which is why it could only be
+ * rendered by the screen owning those modals, and why it ended up rendered by
+ * nobody: the header lives in the layout, the modals live in a screen, and no
+ * single component had both.
+ *
+ * Those two actions now hand an intent to `commandStore` and navigate; the
+ * screen that owns the modal consumes it on arrival. See that store's doc.
+ */
+export default function CommandPalette() {
   const [query, setQuery] = useState('');
   const [recents, setRecents] = useState<RecentEntry[]>([]);
   const { visible, close } = useCommandStore();
+  const requestIntent = useCommandStore((st) => st.requestIntent);
   const { habits, fetchHabits } = useHabitStore();
   const { tasks, fetchTasks } = useTaskStore();
   const { notes, fetchNotes } = useNoteStore();
   const { projects, fetchProjects } = useProjectStore();
+  const fetchJournal = useJournalStore((st) => st.fetchEntries);
   const router = useRouter();
   const openDrawer = useDrawerStore((s) => s.open);
 
@@ -56,7 +73,8 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
     if (tasks.length === 0) fetchTasks();
     if (notes.length === 0) fetchNotes();
     if (projects.length === 0) fetchProjects();
-  }, [visible, habits.length, tasks.length, notes.length, projects.length, fetchHabits, fetchTasks, fetchNotes, fetchProjects]);
+    fetchJournal();
+  }, [visible, habits.length, tasks.length, notes.length, projects.length, fetchHabits, fetchTasks, fetchNotes, fetchProjects, fetchJournal]);
 
   function recordRecent(entry: RecentEntry) {
     setRecents((prev) => {
@@ -80,8 +98,12 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
     { id: 'habits', label: 'Alışkanlıkları gör', icon: 'checkmark-circle-outline', color: colors.success, route: '/tabs/timeline', action: () => go('/tabs/timeline', 'Alışkanlıkları gör', 'checkmark-circle-outline', colors.success) },
     { id: 'notes', label: 'Notlar', icon: 'document-text-outline', color: colors.teal, route: '/screens/notes', action: () => go('/screens/notes', 'Notlar', 'document-text-outline', colors.teal) },
     { id: 'leaderboard', label: 'Sıralama', icon: 'podium-outline', color: colors.warning, route: '/screens/leaderboard', action: () => go('/screens/leaderboard', 'Sıralama', 'podium-outline', colors.warning) },
-    { id: 'new-habit', label: 'Yeni alışkanlık ekle', icon: 'add-circle-outline', color: colors.accent, action: () => { close(); onOpenHabitForm?.(); } },
-    { id: 'ai-routine', label: 'AI Rutin oluştur', icon: 'sparkles-outline', color: '#8b5cf6', action: () => { close(); onOpenAIModal?.(); } },
+    // These two open a modal owned by another screen. The intent is recorded
+    // and the screen is navigated to; it opens the modal when it arrives.
+    // Written this way so neither row can silently become a no-op the way the
+    // optional-callback version did.
+    { id: 'new-habit', label: 'Yeni alışkanlık ekle', icon: 'add-circle-outline', color: colors.accent, action: () => { requestIntent('new-habit'); go('/tabs/timeline', 'Yeni alışkanlık ekle', 'add-circle-outline', colors.accent); } },
+    { id: 'ai-routine', label: 'AI Rutin oluştur', icon: 'sparkles-outline', color: AI_HUE, action: () => { requestIntent('ai-routine'); go('/tabs/habits', 'AI Rutin oluştur', 'sparkles-outline', AI_HUE); } },
     { id: 'drawer', label: 'Menüyü aç', icon: 'menu-outline', color: colors.textDim, action: () => { close(); setTimeout(() => openDrawer(), 150); } },
   ];
 
@@ -112,33 +134,45 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
     habits: !q ? [] : habits.filter((h) => h.name.toLowerCase().includes(q)).slice(0, 5),
   }), [q, tasks, notes, projects, habits]);
 
-  const [remote, setRemote] = useState<{
-    tasks: typeof tasks; notes: typeof notes; projects: typeof projects; habits: typeof habits;
-  } | null>(null);
+  const [remote, setRemote] = useState<SearchResults | null>(null);
+  /**
+   * True from the keystroke until the server answers.
+   *
+   * Without it the list showed "Sonuç yok" during the 220 ms debounce and the
+   * request that follows — the same sentence it shows when the search really
+   * did come back empty. A user typing a word that matches nothing they have
+   * loaded locally therefore read "no results" before anything had been
+   * asked. Three states, three sentences.
+   */
+  const [searching, setSearching] = useState(false);
+  /** Sources whose query failed, so an outage is not rendered as emptiness. */
+  const [failedSources, setFailedSources] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!q) { setRemote(null); return; }
+    if (!q) { setRemote(null); setSearching(false); setFailedSources([]); return; }
     let alive = true;
+    setSearching(true);
     const timer = setTimeout(async () => {
       // One service call. The per-source limit and the "a failed source
       // contributes nothing rather than failing the search" policy live
       // there, not next to the rendering.
       const found = await searchEverything(q, 5);
       if (!alive) return;
-      setRemote({
-        tasks: found.tasks as typeof tasks,
-        notes: found.notes as typeof notes,
-        projects: found.projects as typeof projects,
-        habits: found.habits as typeof habits,
-      });
+      setRemote(found);
+      setFailedSources(found.failed);
+      setSearching(false);
     }, 220);
     return () => { alive = false; clearTimeout(timer); };
   }, [q]);
 
-  const filteredTasks = remote ? remote.tasks.slice(0, 5) : local.tasks;
-  const filteredNotes = remote ? remote.notes.slice(0, 5) : local.notes;
-  const filteredProjects = remote ? remote.projects.slice(0, 5) : local.projects;
-  const filteredHabits = remote ? remote.habits.slice(0, 5) : local.habits;
+  const filteredTasks = (remote ? remote.tasks : local.tasks) as typeof tasks;
+  const filteredNotes = (remote ? remote.notes : local.notes) as typeof notes;
+  const filteredProjects = (remote ? remote.projects : local.projects) as typeof projects;
+  const filteredHabits = (remote ? remote.habits : local.habits) as typeof habits;
+  // Journal has no local instant answer on purpose: the store holds the last
+  // year of entries for the journal screen, and scanning that much prose on
+  // every keystroke is work the server already does with an index.
+  const filteredJournal = (remote?.journal ?? []) as { id: string; date: string; content: string }[];
 
   function handleClose() {
     setQuery('');
@@ -171,8 +205,32 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
     data.push({ type: 'section', label: 'Alışkanlıklar' });
     filteredHabits.forEach((h) => data.push({ type: 'go', id: 'h:' + h.id, label: h.name, icon: h.icon ?? 'star-outline', color: h.color ?? colors.accent, route: '/tabs/timeline' }));
   }
+  if (filteredJournal.length > 0) {
+    data.push({ type: 'section', label: 'Günlük' });
+    filteredJournal.forEach((e) => data.push({
+      type: 'go',
+      id: 'j:' + e.id,
+      // The date is the entry's identity; the prose is the match context.
+      label: `${e.date} — ${e.content.replace(/\s+/g, ' ').trim().slice(0, 60)}`,
+      icon: 'journal-outline',
+      color: colors.primaryDeep,
+      route: '/screens/journal',
+    }));
+  }
+
+  /**
+   * Three distinct terminal rows, never collapsed into one.
+   *
+   * `searching` wins over `empty` because a search in flight has not answered
+   * yet, and `error` wins over both because a failed source cannot be
+   * reported as an absence of matches. The old code had only `empty`, so all
+   * three read "Sonuç yok".
+   */
+  const allSourcesFailed = failedSources.length >= 5;
   if (data.length === 0) {
-    data.push({ type: 'empty' });
+    if (searching) data.push({ type: 'loading' });
+    else if (allSourcesFailed) data.push({ type: 'error' });
+    else data.push({ type: 'empty' });
   }
 
   return (
@@ -202,6 +260,12 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
 
           <View style={styles.divider} />
 
+          {failedSources.length > 0 && !allSourcesFailed && (
+            <Text style={styles.partialText} accessibilityLabel="Arama kısmen başarısız">
+              Bazı kaynaklar yanıt vermedi ({failedSources.join(', ')}); sonuçlar eksik olabilir.
+            </Text>
+          )}
+
           <FlatList
             data={data}
             keyExtractor={(item, i) => item.id ?? item.label ?? i.toString()}
@@ -210,6 +274,16 @@ export default function CommandPalette({ onOpenHabitForm, onOpenAIModal }: Props
             renderItem={({ item }) => {
               if (item.type === 'section') {
                 return <Text style={styles.sectionLabel}>{item.label}</Text>;
+              }
+              if (item.type === 'loading') {
+                return <Text style={styles.emptyText} accessibilityLabel="Aranıyor">Aranıyor…</Text>;
+              }
+              if (item.type === 'error') {
+                return (
+                  <Text style={styles.errorText} accessibilityLabel="Arama başarısız">
+                    Arama şu anda yapılamadı. Bağlantını kontrol edip tekrar dene.
+                  </Text>
+                );
               }
               if (item.type === 'empty') {
                 return <Text style={styles.emptyText}>Sonuç yok</Text>;
@@ -268,6 +342,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4,
   },
   emptyText: { fontSize: 14, color: colors.textFaint, textAlign: 'center', padding: 24 },
+  errorText: { fontSize: 14, color: colors.error, textAlign: 'center', padding: 24, lineHeight: 20 },
+  partialText: {
+    fontSize: 12, color: colors.warning, paddingHorizontal: 16, paddingVertical: 8, lineHeight: 17,
+  },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 12,

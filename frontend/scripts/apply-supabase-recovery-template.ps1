@@ -4,7 +4,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $projectRoot
 
 Write-Host ''
-Write-Host 'Atlas Supabase recovery template configurator' -ForegroundColor Cyan
+Write-Host 'Aderyth Supabase auth e-posta şablonları' -ForegroundColor Cyan
 Write-Host 'Token ekranda gösterilmez, dosyaya yazılmaz ve işlem sonunda bellekten temizlenir.' -ForegroundColor DarkGray
 Write-Host ''
 
@@ -20,8 +20,8 @@ try {
   }
 
   Write-Host ''
-  Write-Host 'Başarılı: Yeni recovery e-postaları 6 haneli kod içerecek.' -ForegroundColor Green
-  Write-Host 'Şimdi localhost:3002/forgot-password üzerinden YENİ bir kod isteyin.' -ForegroundColor Green
+  Write-Host 'Başarılı: Doğrulama ve kurtarma e-postaları Aderyth şablonuyla güncellendi.' -ForegroundColor Green
+  Write-Host 'Şimdi uygulamadan YENİ bir kayıt ve YENİ bir kurtarma kodu isteyip postaları gözle doğrulayın.' -ForegroundColor Green
 }
 catch {
   Write-Host ''

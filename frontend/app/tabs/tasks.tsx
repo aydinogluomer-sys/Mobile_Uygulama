@@ -12,6 +12,7 @@ import { haptic } from '../../lib/haptics';
 import InlineComposer from '../../components/InlineComposer';
 import { todayLocal } from '../../lib/date';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
+import ADHDTaskSplitter from '../../components/ADHDTaskSplitter';
 
 const TABS: { key: ListType | 'done'; label: string }[] = [
   { key: 'inbox', label: 'Gelen' },
@@ -33,6 +34,20 @@ export default function TasksScreen() {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('none');
   const [listType, setListType] = useState<ListType>('inbox');
+  /**
+   * The task being split, or null.
+   *
+   * `ADHDTaskSplitter` and the decomposition engine behind it
+   * (`lib/taskDecomposition.ts`, 39 tests) were complete and wired all the
+   * way to `tasks` — validation gate, preview step, explicit confirm,
+   * `insertSplitTasks` — and unreachable, because nothing rendered the
+   * component. A tested engine with no entry point is not a feature.
+   *
+   * The row is where it belongs: splitting is an operation ON a task, so it
+   * is offered next to the task rather than behind a global button that
+   * would then have to ask which one.
+   */
+  const [splitTarget, setSplitTarget] = useState<Task | null>(null);
 
   const { tasks, loadingMore, hasMore, loadMore, fetchTasks, addTask, toggleDone, removeTask, byList } = useTaskStore();
   const { projects, fetchProjects } = useProjectStore();
@@ -55,6 +70,19 @@ export default function TasksScreen() {
     setTitle('');
     setPriority('none');
     setShowAdd(true);
+  }
+
+  /**
+   * Re-reads from the server rather than trusting the rows handed back.
+   *
+   * The splitter returns exactly what the insert returned, so pushing those
+   * into the store would also show them — but it would show them whether or
+   * not the list the user is looking at is the list they landed in. A refetch
+   * proves the subtasks are really in `tasks` and puts them in the right tab.
+   */
+  async function handleSplit() {
+    setSplitTarget(null);
+    await fetchTasks();
   }
 
   function confirmDelete(t: Task) {
@@ -157,6 +185,18 @@ export default function TasksScreen() {
               </View>
             </View>
 
+            {!item.completed && (
+              <TouchableOpacity
+                style={s.splitBtn}
+                onPress={() => setSplitTarget(item)}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.title} görevini alt adımlara böl`}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="git-branch-outline" size={16} color={colors.primaryBright} />
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity style={s.deleteBtn} onPress={() => confirmDelete(item)}>
               <Ionicons name="trash-outline" size={16} color="#56544B" />
             </TouchableOpacity>
@@ -172,6 +212,16 @@ export default function TasksScreen() {
         >
           <Ionicons name="add" size={26} color="#fff" />
         </TouchableOpacity>
+      )}
+
+      {/* Görev bölücü — yalnızca bir hedef seçildiğinde monte edilir */}
+      {splitTarget && (
+        <ADHDTaskSplitter
+          task={splitTarget}
+          visible
+          onClose={() => setSplitTarget(null)}
+          onSplit={handleSplit}
+        />
       )}
 
       {/* Ekle modal */}
@@ -287,6 +337,7 @@ const s = StyleSheet.create({
   duePast: { color: colors.error },
   projectLabel: { fontSize: 11, color: colors.accent },
   deleteBtn: { padding: 4 },
+  splitBtn: { padding: 4, marginRight: 2 },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 10 },
   emptyText: { fontSize: 15, color: colors.textGhost },

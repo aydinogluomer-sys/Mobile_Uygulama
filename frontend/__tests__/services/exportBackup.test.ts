@@ -187,7 +187,7 @@ describe('renderers', () => {
   it('renderBackup dispatches on format', async () => {
     const b = await buildBackup();
     expect(renderBackup(b, 'json').startsWith('{')).toBe(true);
-    expect(renderBackup(b, 'csv')).toContain('# Atlas yedek');
+    expect(renderBackup(b, 'csv')).toContain('# Aderyth dışa aktarım');
     expect(renderBackup(b, 'excel')).toContain('<?xml');
   });
 });

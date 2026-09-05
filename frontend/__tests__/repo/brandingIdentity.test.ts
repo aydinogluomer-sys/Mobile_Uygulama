@@ -1,5 +1,5 @@
 /**
- * The app is Atlas, not the Expo template.
+ * The app is Aderyth, not the Expo template.
  *
  * ## What shipped
  *
@@ -116,8 +116,8 @@ describe('identity', () => {
     expect(config[field]).not.toBe(TEMPLATE_DEFAULT);
   });
 
-  it('the app is named Atlas, which is what its own UI calls it', () => {
-    expect(config.name).toBe('Atlas');
+  it('the app is named Aderyth, which is what its own UI calls it', () => {
+    expect(config.name).toBe('Aderyth');
   });
 
   it('has a description, which the stores require', () => {
@@ -128,6 +128,11 @@ describe('identity', () => {
   it('the deep-link scheme is a single lowercase word', () => {
     // It becomes `atlas://…`; anything with punctuation or a capital is a
     // portability problem across the two platforms' URL handling.
+    //
+    // The scheme is deliberately NOT the product name. It is baked into the
+    // OAuth redirect URIs registered in the Notion and Google consoles and
+    // into the edge allowlist, so the Atlas→Aderyth rename left it alone —
+    // see docs/RENAME_ATLAS_TO_ADERYTH_AUDIT.md.
     expect(config.scheme).toMatch(/^[a-z][a-z0-9]*$/);
   });
 });
@@ -183,7 +188,7 @@ describe('assets', () => {
     // opaque icon arrives as a solid block in the status bar.
     //
     // `app.json` pointed at `icon.png`, whose alpha is 255 at every pixel, so
-    // every Atlas notification would have shown a white rounded rectangle.
+    // every notification would have shown a white rounded rectangle.
     // This checks the property that matters — the file has transparency —
     // rather than which filename is configured, because the next person to
     // point it at a different opaque PNG reintroduces exactly the same bug.

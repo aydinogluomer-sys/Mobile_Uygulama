@@ -1,7 +1,30 @@
+/**
+ * Aderyth auth e-posta şablonlarını Supabase Management API üzerinden uygular.
+ *
+ * İKİ ŞABLON:
+ *   confirm signup  → supabase-confirm-signup-template.html
+ *   recovery        → supabase-password-recovery-template.html
+ *
+ * NE YAPMAZ — ve bunu iddia etmekle kalmaz, doğrular:
+ *   SMTP ayarlarına DOKUNMAZ. PATCH gövdesi yalnızca `mailer_subjects_*` ve
+ *   `mailer_templates_*_content` alanlarını taşır; işlemden önce ve sonra
+ *   sunucudaki `smtp_*` alanlarının parmak izi alınır ve değişmediği
+ *   doğrulanır. Parmak izi bir SHA-256 kısaltmasıdır: karşılaştırma yapar ama
+ *   hiçbir gizli değeri ekrana yazmaz.
+ *
+ * Kullanım:
+ *   node scripts/configure-supabase-recovery-template.mjs            # dry run
+ *   SUPABASE_ACCESS_TOKEN=… node scripts/… --apply                   # uygula
+ *
+ * Token yalnızca process environment'tan okunur; dosyaya veya komut satırına
+ * yazılmaz, log'lanmaz.
+ */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const APPLY = process.argv.includes('--apply');
+
 const envFile = readFileSync(resolve('.env'), 'utf8');
 const env = Object.fromEntries(
   envFile
@@ -18,19 +41,54 @@ const supabaseUrl = env.EXPO_PUBLIC_SUPABASE_URL;
 if (!supabaseUrl) throw new Error('EXPO_PUBLIC_SUPABASE_URL .env içinde bulunamadı.');
 
 const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
-const template = readFileSync(resolve('supabase-password-recovery-template.html'), 'utf8');
 const endpoint = `https://api.supabase.com/v1/projects/${projectRef}/config/auth`;
-const fields = {
-  mailer_subjects_recovery: 'Atlas şifre kurtarma kodun',
-  mailer_templates_recovery_content: template,
-};
 
-console.log(`Project: ${projectRef}`);
+/**
+ * Her şablonun kendi zorunlu değişkenleri var. Bunlar kozmetik değil: recovery
+ * şablonundan `{{ .Token }}` düşerse forgot-password ekranı hiçbir zaman
+ * doğrulayamayacağı bir kod bekler, confirmation şablonundan
+ * `{{ .ConfirmationURL }}` düşerse hesap hiç etkinleşmez. Bu yüzden hem
+ * göndermeden önce hem de sunucudan geri okuyarak kontrol edilir.
+ */
+const TEMPLATES = [
+  {
+    label: 'confirm signup',
+    file: 'supabase-confirm-signup-template.html',
+    subjectField: 'mailer_subjects_confirmation',
+    contentField: 'mailer_templates_confirmation_content',
+    subject: 'Aderyth hesabını doğrula',
+    required: ['{{ .ConfirmationURL }}'],
+  },
+  {
+    label: 'password recovery',
+    file: 'supabase-password-recovery-template.html',
+    subjectField: 'mailer_subjects_recovery',
+    contentField: 'mailer_templates_recovery_content',
+    subject: 'Aderyth şifre kurtarma kodun',
+    required: ['{{ .Token }}', '{{ .ConfirmationURL }}'],
+  },
+];
+
+const fields = {};
+for (const t of TEMPLATES) {
+  const html = readFileSync(resolve(t.file), 'utf8');
+  const missing = t.required.filter((v) => !html.includes(v));
+  if (missing.length) {
+    throw new Error(`${t.file} zorunlu değişkeni içermiyor: ${missing.join(', ')}`);
+  }
+  fields[t.subjectField] = t.subject;
+  fields[t.contentField] = html;
+}
+
+console.log(`Project : ${projectRef}`);
 console.log(`Endpoint: ${endpoint}`);
-console.log(`Fields: ${Object.keys(fields).join(', ')}`);
+for (const t of TEMPLATES) {
+  console.log(`  · ${t.label.padEnd(18)} ${t.file}  (${t.required.join(' ')})`);
+}
+console.log('SMTP    : dokunulmuyor — PATCH gövdesinde hiçbir smtp_* alanı yok');
 
 if (!APPLY) {
-  console.log('DRY RUN: Değişiklik yapılmadı. Uygulamak için SUPABASE_ACCESS_TOKEN tanımlayıp --apply kullanın.');
+  console.log('\nDRY RUN: Değişiklik yapılmadı. Uygulamak için SUPABASE_ACCESS_TOKEN tanımlayıp --apply kullanın.');
   process.exit(0);
 }
 
@@ -39,12 +97,28 @@ if (!accessToken) {
   throw new Error('SUPABASE_ACCESS_TOKEN eksik. Token kaynak dosyaya veya komut satırına yazılmamalı; yalnızca process environment üzerinden sağlanmalı.');
 }
 
+const auth = { Authorization: `Bearer ${accessToken}` };
+
+async function readConfig(what) {
+  const r = await fetch(endpoint, { headers: auth });
+  if (!r.ok) throw new Error(`${what} okunamadı: HTTP ${r.status}`);
+  return r.json();
+}
+
+/** smtp_* alanlarının içeriğini AÇMADAN karşılaştırılabilir hale getirir. */
+function smtpFingerprint(config) {
+  const keys = Object.keys(config).filter((k) => k.startsWith('smtp_')).sort();
+  const material = keys.map((k) => `${k}=${String(config[k] ?? '')}`).join('\n');
+  return { keys, digest: createHash('sha256').update(material).digest('hex').slice(0, 16) };
+}
+
+const before = await readConfig('Mevcut yapılandırma');
+const smtpBefore = smtpFingerprint(before);
+console.log(`\nSMTP fingerprint (önce): ${smtpBefore.digest}  [${smtpBefore.keys.length} alan]`);
+
 const response = await fetch(endpoint, {
   method: 'PATCH',
-  headers: {
-    Authorization: `Bearer ${accessToken}`,
-    'Content-Type': 'application/json',
-  },
+  headers: { ...auth, 'Content-Type': 'application/json' },
   body: JSON.stringify(fields),
 });
 
@@ -53,17 +127,21 @@ if (!response.ok) {
   throw new Error(`Supabase Management API ${response.status}: ${detail.slice(0, 500)}`);
 }
 
-const verification = await fetch(endpoint, {
-  headers: { Authorization: `Bearer ${accessToken}` },
-});
-if (!verification.ok) throw new Error(`Şablon doğrulaması başarısız: HTTP ${verification.status}`);
+const after = await readConfig('Şablon doğrulaması');
 
-const config = await verification.json();
-const content = String(config.mailer_templates_recovery_content ?? '');
-const subject = String(config.mailer_subjects_recovery ?? '');
-
-if (!content.includes('{{ .Token }}') || subject !== fields.mailer_subjects_recovery) {
-  throw new Error('API başarılı döndü ancak recovery subject/content doğrulanamadı.');
+for (const t of TEMPLATES) {
+  const content = String(after[t.contentField] ?? '');
+  const subject = String(after[t.subjectField] ?? '');
+  const missing = t.required.filter((v) => !content.includes(v));
+  if (missing.length) throw new Error(`${t.label}: sunucudaki şablonda eksik değişken: ${missing.join(', ')}`);
+  if (subject !== t.subject) throw new Error(`${t.label}: konu satırı doğrulanamadı.`);
+  if (!content.includes('Aderyth')) throw new Error(`${t.label}: sunucudaki şablon Aderyth markasını taşımıyor.`);
+  console.log(`OK  ${t.label.padEnd(18)} konu + şablon doğrulandı`);
 }
 
-console.log('OK: Recovery e-posta şablonu 6 haneli {{ .Token }} içerecek şekilde güncellendi ve doğrulandı.');
+const smtpAfter = smtpFingerprint(after);
+console.log(`SMTP fingerprint (sonra): ${smtpAfter.digest}  [${smtpAfter.keys.length} alan]`);
+if (smtpAfter.digest !== smtpBefore.digest) {
+  throw new Error('SMTP yapılandırması değişti. Bu script SMTP alanlarına dokunmaz — bu farkı manuel inceleyin.');
+}
+console.log('OK  SMTP yapılandırması değişmedi.');

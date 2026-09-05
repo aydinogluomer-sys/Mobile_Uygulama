@@ -5,7 +5,7 @@ import builtins from 'builtin-modules';
 const prod = process.argv[2] === 'production';
 
 const buildOptions = {
-  banner: { js: '/* Atlas POS Sync — Obsidian Plugin */' },
+  banner: { js: '/* Aderyth Sync — Obsidian Plugin */' },
   entryPoints: ['main.ts'],
   bundle: true,
   external: [

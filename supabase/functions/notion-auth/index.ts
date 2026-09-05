@@ -60,7 +60,7 @@ async function getUser(req: Request) {
 }
 
 /**
- * Creates the Atlas page and the two databases inside the user's workspace,
+ * Creates the Aderyth page and the two databases inside the user's workspace,
  * and returns their ids.
  *
  * ## Why this had to come back
@@ -93,12 +93,12 @@ async function createAtlasDatabases(token: string, workspaceName: string) {
     body: JSON.stringify({
       parent: { type: 'workspace', workspace: true },
       icon: { type: 'emoji', emoji: '🗂️' },
-      properties: { title: { title: [{ text: { content: 'Atlas' } }] } },
+      properties: { title: { title: [{ text: { content: 'Aderyth' } }] } },
       children: [{
         object: 'block',
         type: 'callout',
         callout: {
-          rich_text: [{ text: { content: `Atlas — ${workspaceName} workspace'i ile senkronlandı.` } }],
+          rich_text: [{ text: { content: `Aderyth — ${workspaceName} workspace'i ile senkronlandı.` } }],
           icon: { type: 'emoji', emoji: '⚡' },
           color: 'purple_background',
         },

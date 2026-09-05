@@ -20,6 +20,7 @@ import { useHabitStore } from '../../store/habitStore';
 import { useWillpowerStore } from '../../store/willpowerStore';
 import HabitOnboarding from '../../components/HabitOnboarding';
 import AIRoutineModal from '../../components/AIRoutineModal';
+import { useCommandStore } from '../../store/commandStore';
 import type { Habit } from '../../lib/supabase';
 import { computeTriage, triageToStatus, impactMeta, TRIAGE_META, cueLabel } from '../../lib/triage';
 import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS } from '../../lib/capacity';
@@ -31,6 +32,24 @@ export default function HabitsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAIRoutine, setShowAIRoutine] = useState(false);
+
+  /**
+   * The command palette cannot open this modal itself — it is mounted in the
+   * tab layout and the modal lives here. It records an intent and navigates;
+   * this effect is the other half.
+   *
+   * Keyed on the store value rather than on mount, because tab screens stay
+   * mounted: a mount-only effect would fire on the first visit and never
+   * again, so the palette action would work exactly once per app launch.
+   * `consumeIntent` clears as it reads, so this cannot re-fire on re-render.
+   */
+  const pendingIntent = useCommandStore((st) => st.pendingIntent);
+  const consumeIntent = useCommandStore((st) => st.consumeIntent);
+  useEffect(() => {
+    if (pendingIntent !== 'ai-routine') return;
+    if (consumeIntent() === 'ai-routine') setShowAIRoutine(true);
+  }, [pendingIntent, consumeIntent]);
+
   const [xpAnim, setXpAnim] = useState<number | null>(null);
 
   // Silme akışı

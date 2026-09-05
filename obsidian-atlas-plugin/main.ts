@@ -41,15 +41,15 @@ interface AtlasSyncPayload {
 interface AtlasPluginSettings {
   vaultFolder: string;       // Günlük notların yazılacağı klasör
   dateFormat: string;        // Not dosyası isim formatı
-  supabaseUrl: string;       // Atlas Supabase project URL
-  supabaseKey: string;       // Atlas anon key
+  supabaseUrl: string;       // Aderyth Supabase project URL
+  supabaseKey: string;       // Aderyth anon key
   autoSyncEnabled: boolean;
   autoSyncIntervalMin: number;
   appendToExisting: boolean; // Mevcut nota ekle veya üzerine yaz
 }
 
 const DEFAULT_SETTINGS: AtlasPluginSettings = {
-  vaultFolder: 'Atlas',
+  vaultFolder: 'Aderyth',
   dateFormat: 'YYYY-MM-DD',
   supabaseUrl: '',
   supabaseKey: '',
@@ -58,12 +58,18 @@ const DEFAULT_SETTINGS: AtlasPluginSettings = {
   appendToExisting: true,
 };
 
+// The daily block heading is also the key the updater matches on, so a note
+// written before the rename still has to be found. New blocks are written
+// under the current name; both are searched when replacing.
+const BLOCK_MARKER_PREFIX = '## 🗓️ Aderyth';
+const LEGACY_BLOCK_MARKER_PREFIX = '## 🗓️ Atlas';
+
 // ── Yardımcı: Markdown blok üret ─────────────────────────────────────────────
 
 function buildAtlasBlock(payload: AtlasSyncPayload): string {
   const lines: string[] = [];
 
-  lines.push(`## 🗓️ Atlas — ${payload.date}`);
+  lines.push(`${BLOCK_MARKER_PREFIX} — ${payload.date}`);
   lines.push('');
 
   // Willpower
@@ -114,7 +120,7 @@ function buildAtlasBlock(payload: AtlasSyncPayload): string {
   }
 
   lines.push('---');
-  lines.push(`*Atlas POS v2 tarafından senkronlandı — ${new Date().toLocaleTimeString('tr-TR')}*`);
+  lines.push(`*Aderyth tarafından senkronlandı — ${new Date().toLocaleTimeString('tr-TR')}*`);
   lines.push('');
 
   return lines.join('\n');
@@ -204,7 +210,7 @@ export default class AtlasPosPlugin extends Plugin {
     await this.loadSettings();
 
     // Ribbon ikonu
-    this.addRibbonIcon('sync', 'Atlas: Bugünü Senkronla', async () => {
+    this.addRibbonIcon('sync', 'Aderyth: Bugünü Senkronla', async () => {
       await this.syncToday();
     });
 
@@ -227,7 +233,7 @@ export default class AtlasPosPlugin extends Plugin {
 
     this.addCommand({
       id: 'atlas-open-today',
-      name: "Bugünün Atlas notunu aç",
+      name: "Bugünün Aderyth notunu aç",
       callback: async () => {
         const date = new Date().toISOString().split('T')[0];
         const path = this.notePath(date);
@@ -235,7 +241,7 @@ export default class AtlasPosPlugin extends Plugin {
         if (file instanceof TFile) {
           await this.app.workspace.getLeaf().openFile(file);
         } else {
-          new Notice('Bugün için henüz Atlas notu yok. Önce senkronla.');
+          new Notice('Bugün için henüz Aderyth notu yok. Önce senkronla.');
         }
       },
     });
@@ -248,7 +254,7 @@ export default class AtlasPosPlugin extends Plugin {
       this.scheduleAutoSync();
     }
 
-    new Notice('Atlas POS Sync yüklendi ✅');
+    new Notice('Aderyth Sync yüklendi ✅');
   }
 
   onunload() {
@@ -266,11 +272,11 @@ export default class AtlasPosPlugin extends Plugin {
 
   async syncDate(date: string) {
     if (!this.settings.supabaseUrl || !this.settings.supabaseKey) {
-      new Notice('⚠️ Atlas: Supabase URL ve Key ayarlara girilmeli.');
+      new Notice('⚠️ Aderyth: Supabase URL ve Key ayarlara girilmeli.');
       return;
     }
 
-    new Notice(`Atlas: ${date} senkronlanıyor…`);
+    new Notice(`Aderyth: ${date} senkronlanıyor…`);
 
     try {
       const payload = await fetchAtlasData(
@@ -280,10 +286,10 @@ export default class AtlasPosPlugin extends Plugin {
       );
 
       await this.writeNote(payload);
-      new Notice(`✅ Atlas: ${date} senkronlandı — ${payload.habits.length} alışkanlık, ${payload.tasks.length} görev`);
+      new Notice(`✅ Aderyth: ${date} senkronlandı — ${payload.habits.length} alışkanlık, ${payload.tasks.length} görev`);
     } catch (e) {
-      console.error('[Atlas Plugin]', e);
-      new Notice('❌ Atlas senkron hatası: ' + (e as Error).message);
+      console.error('[Aderyth Plugin]', e);
+      new Notice('❌ Aderyth senkron hatası: ' + (e as Error).message);
     }
   }
 
@@ -308,9 +314,11 @@ export default class AtlasPosPlugin extends Plugin {
 
     if (existing instanceof TFile) {
       if (this.settings.appendToExisting) {
-        // Eski Atlas bloğunu değiştir, yoksa sona ekle
+        // Eski bloğu değiştir, yoksa sona ekle
         const content = await this.app.vault.read(existing);
-        const marker = `## 🗓️ Atlas — ${payload.date}`;
+        const current = `${BLOCK_MARKER_PREFIX} — ${payload.date}`;
+        const legacy = `${LEGACY_BLOCK_MARKER_PREFIX} — ${payload.date}`;
+        const marker = content.includes(current) ? current : legacy;
         if (content.includes(marker)) {
           // Eski bloğu bul ve değiştir
           const before = content.slice(0, content.indexOf(marker));
@@ -370,17 +378,17 @@ class AtlasSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'Atlas POS Sync Ayarları' });
+    containerEl.createEl('h2', { text: 'Aderyth Sync Ayarları' });
 
     // Vault klasörü
     new Setting(containerEl)
       .setName('Vault klasörü')
-      .setDesc('Atlas notlarının yazılacağı klasör (vault içinde)')
+      .setDesc('Aderyth notlarının yazılacağı klasör (vault içinde)')
       .addText(t =>
-        t.setPlaceholder('Atlas')
+        t.setPlaceholder('Aderyth')
           .setValue(this.plugin.settings.vaultFolder)
           .onChange(async v => {
-            this.plugin.settings.vaultFolder = v || 'Atlas';
+            this.plugin.settings.vaultFolder = v || 'Aderyth';
             await this.plugin.saveSettings();
           })
       );
@@ -390,7 +398,7 @@ class AtlasSettingTab extends PluginSettingTab {
     // Supabase URL
     new Setting(containerEl)
       .setName('Supabase URL')
-      .setDesc('Atlas projenizin Supabase URL\'si (EXPO_PUBLIC_SUPABASE_URL)')
+      .setDesc('Aderyth projenizin Supabase URL\'si (EXPO_PUBLIC_SUPABASE_URL)')
       .addText(t =>
         t.setPlaceholder('https://xxxx.supabase.co')
           .setValue(this.plugin.settings.supabaseUrl)
@@ -403,7 +411,7 @@ class AtlasSettingTab extends PluginSettingTab {
     // Supabase Anon Key
     new Setting(containerEl)
       .setName('Supabase Anon Key')
-      .setDesc('Atlas anon public key\'i')
+      .setDesc('Aderyth anon public key\'i')
       .addText(t => {
         t.inputEl.type = 'password';
         t.setPlaceholder('eyJhbGciOiJIUzI1NiIs…')
@@ -444,7 +452,7 @@ class AtlasSettingTab extends PluginSettingTab {
     // Mevcut notlara ekle
     new Setting(containerEl)
       .setName('Mevcut notlara ekle')
-      .setDesc('Açık: Atlas bloğunu günceller. Kapalı: dosyayı tamamen yeniden yazar.')
+      .setDesc('Açık: Aderyth bloğunu günceller. Kapalı: dosyayı tamamen yeniden yazar.')
       .addToggle(t =>
         t.setValue(this.plugin.settings.appendToExisting)
           .onChange(async v => {
@@ -456,7 +464,7 @@ class AtlasSettingTab extends PluginSettingTab {
     // Otomatik senkron
     new Setting(containerEl)
       .setName('Otomatik senkronizasyon')
-      .setDesc('Arka planda periyodik olarak Atlas verisini çeker')
+      .setDesc('Arka planda periyodik olarak Aderyth verisini çeker')
       .addToggle(t =>
         t.setValue(this.plugin.settings.autoSyncEnabled)
           .onChange(async v => {
@@ -482,7 +490,7 @@ class AtlasSettingTab extends PluginSettingTab {
     // Manuel senkron butonu
     new Setting(containerEl)
       .setName('Şimdi senkronla')
-      .setDesc('Bugünün Atlas verisini hemen Obsidian\'a yazar')
+      .setDesc('Bugünün Aderyth verisini hemen Obsidian\'a yazar')
       .addButton(b =>
         b.setButtonText('Bugünü Senkronla')
           .setCta()

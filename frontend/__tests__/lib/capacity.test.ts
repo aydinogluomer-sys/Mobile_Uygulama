@@ -16,7 +16,7 @@ import {
   MASTERY_MIN_AGE_DAYS,
   type HabitLoadInput,
 } from '../../lib/capacity';
-import type { Habit, HabitLog } from '../../lib/supabase';
+import type { FrequencyConfig, Habit, HabitLog } from '../../lib/supabase';
 
 function habitInput(overrides: Partial<HabitLoadInput> = {}): HabitLoadInput {
   return {
@@ -202,8 +202,40 @@ describe('dailyLoad', () => {
 // masteryStatus
 // ---------------------------------------------------------------------------
 
-function habit(createdAt: string): Pick<Habit, 'id' | 'created_at'> {
-  return { id: 'h1', created_at: createdAt };
+/**
+ * A full habit, because `masteryStatus` now consults the schedule.
+ *
+ * It used to take `Pick<Habit, 'id' | 'created_at'>`, which was exactly as
+ * much as the old log-count rate needed. The rate is now measured over DUE
+ * days, so the frequency is no longer optional context — it is the
+ * denominator.
+ */
+function habit(createdAt: string, frequency: FrequencyConfig = { kind: 'daily' }): Habit {
+  return {
+    id: 'h1',
+    user_id: 'u1',
+    name: 'Test',
+    icon: null,
+    color: null,
+    behavior_type: 'positive',
+    tracking_type: 'boolean',
+    unit: null,
+    daily_goal: null,
+    target_direction: null,
+    frequency_config: frequency,
+    willpower_cost: 1,
+    status: 'active',
+    impact_level: null,
+    urgency: null,
+    difficulty: 1,
+    estimated_minutes: 10,
+    reminders: null,
+    cue_habit_id: null,
+    cue_note: null,
+    life_area: null,
+    end_condition: null,
+    created_at: createdAt,
+  };
 }
 
 /** 28 consecutive local days of `state: 'done'` logs, ending on `asOf`. */
@@ -274,5 +306,95 @@ describe('masteryStatus -- minimum_age >= 28 days AND recent_completion_rate AND
     const result = masteryStatus(habit(created.toISOString()), logs, { asOf });
     expect(result.stability_score).toBeLessThan(0.7);
     expect(result.mastered).toBe(false);
+  });
+});
+
+
+/**
+ * The bias the schedule-aware rate removes.
+ *
+ * `recent_completion_rate` used to be `done` logs / TOTAL logs, so the
+ * denominator was "days the user touched the habit". A daily habit answered
+ * on two days out of twenty-eight and ignored on the rest scored 1.00 — and
+ * mastery, whose whole job is to certify consistency, was granted on 2/28
+ * adherence. The rule handed its strongest verdict to its weakest evidence.
+ *
+ * These cases fail on the old implementation and pass on the new one, which
+ * is the only reason to write them.
+ */
+describe('recent_completion_rate is measured over DUE days, not logged days', () => {
+  const asOf = new Date(2026, 0, 29);
+  const created = new Date(2025, 11, 1); // old enough that age never decides
+
+  it('a daily habit touched twice in the window does not score a perfect rate', () => {
+    const logs = [
+      log('h1', '2026-01-28', 'done'),
+      log('h1', '2026-01-27', 'done'),
+    ];
+    const result = masteryStatus(habit(created.toISOString()), logs, { asOf });
+
+    // 2 done over 28 due days.
+    expect(result.due_days).toBe(28);
+    expect(result.done_days).toBe(2);
+    expect(result.recent_completion_rate).toBeCloseTo(2 / 28, 10);
+    expect(result.mastered).toBe(false);
+  });
+
+  it('a Mon/Wed/Fri habit is judged on Mon/Wed/Fri only', () => {
+    // Every due day in the window done; the other four weekdays never logged.
+    const weekly: FrequencyConfig = { kind: 'weekly', days: [0, 2, 4] };
+    const h = habit(created.toISOString(), weekly);
+    const logs: HabitLog[] = [];
+    for (let i = 0; i < 28; i++) {
+      const d = new Date(2026, 0, 29 - i);
+      const weekday = (d.getDay() + 6) % 7;
+      if (![0, 2, 4].includes(weekday)) continue;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      logs.push(log('h1', key, 'done'));
+    }
+    const result = masteryStatus(h, logs, { asOf });
+
+    // 4 weeks x 3 due days. The untouched Tue/Thu/Sat/Sun are not misses.
+    expect(result.due_days).toBe(12);
+    expect(result.done_days).toBe(12);
+    expect(result.recent_completion_rate).toBeCloseTo(1, 10);
+    expect(result.mastered).toBe(true);
+  });
+
+  it('a habit with nothing due in the window is not mastered by default', () => {
+    // Monthly never resolves to a due day (see isDueOn's own note), so the
+    // window is empty. An empty window must not read as success.
+    const monthly: FrequencyConfig = { kind: 'monthly' };
+    const result = masteryStatus(habit(created.toISOString(), monthly), [], { asOf });
+    expect(result.due_days).toBe(0);
+    expect(result.recent_completion_rate).toBe(0);
+    expect(result.mastered).toBe(false);
+  });
+
+  it('days before the habit existed are not counted as misses', () => {
+    // Created 6 days before asOf, done every day since.
+    const born = new Date(2026, 0, 24);
+    const logs: HabitLog[] = [];
+    for (let i = 0; i <= 5; i++) {
+      const d = new Date(2026, 0, 24 + i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      logs.push(log('h1', key, 'done'));
+    }
+    const result = masteryStatus(habit(born.toISOString()), logs, { asOf });
+    expect(result.due_days).toBe(6);
+    expect(result.recent_completion_rate).toBeCloseTo(1, 10);
+    // ...but it is still far too young to be mastered.
+    expect(result.mastered).toBe(false);
+  });
+
+  it('an explicitly skipped day leaves both sides of the ratio', () => {
+    const logs = [
+      log('h1', '2026-01-29', 'done'),
+      log('h1', '2026-01-28', 'skip'),
+    ];
+    const result = masteryStatus(habit(created.toISOString()), logs, { asOf });
+    // 28 window days minus the one skipped.
+    expect(result.due_days).toBe(27);
+    expect(result.done_days).toBe(1);
   });
 });

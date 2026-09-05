@@ -116,7 +116,7 @@ export default function Drawer() {
                 <Ionicons name="person" size={20} color="#D97757" />
               </View>
               <View>
-                <Text style={s.appName}>Atlas</Text>
+                <Text style={s.appName}>Aderyth</Text>
                 <Text style={s.userEmail} numberOfLines={1}>Kişisel Sistem</Text>
               </View>
             </View>

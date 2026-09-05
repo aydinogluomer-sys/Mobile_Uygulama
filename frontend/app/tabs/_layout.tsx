@@ -6,6 +6,7 @@ import { useTaskStore } from '../../store/taskStore';
 import { useDrawerStore } from '../../store/drawerStore';
 import { useThemeStore } from '../../store/themeStore';
 import Drawer from '../../components/Drawer';
+import CommandPalette from '../../components/CommandPalette';
 import { colors } from '../../lib/tokens';
 import { useAccent } from '../../lib/useAccent';
 
@@ -72,6 +73,22 @@ export default function TabLayout() {
   return (
     <>
       <Drawer />
+      {/*
+        Mounted here, once, and nowhere else.
+
+        The header's "Komut veya ara" pill (see `HeaderActions` above) calls
+        `useCommandStore.open()`, which flips a flag that only this component
+        reads. Until this line existed the palette was never rendered by
+        anything, so the button set a flag nobody watched and visibly did
+        nothing — the search affordance on every screen was dead.
+
+        The tab layout is the right owner because it is the same component
+        that renders the button: mounting it inside a screen would give a
+        palette that only exists on that screen, and mounting it in the root
+        layout would put it above the auth stack, where there is no search
+        button and no session to search with.
+      */}
+      <CommandPalette />
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: accent.bright,

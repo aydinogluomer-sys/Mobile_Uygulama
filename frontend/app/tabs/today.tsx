@@ -171,7 +171,7 @@ export default function TodayScreen() {
       >
         <View style={s.masthead}>
           <View>
-            <Text style={s.productLabel}>ATLAS / GÜNLÜK PUSULA</Text>
+            <Text style={s.productLabel}>ADERYTH / GÜNLÜK PUSULA</Text>
             <Text style={s.productHint}>Ritmini gör, sıradaki doğru adımı seç.</Text>
           </View>
           <View style={s.mastheadActions}>

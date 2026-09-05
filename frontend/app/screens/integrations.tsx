@@ -81,7 +81,7 @@ export default function IntegrationsScreen() {
           <View>
             <Text style={s.bannerTitle}>Entegrasyonlar</Text>
             <Text style={s.bannerSub}>
-              {connectedCount > 0 ? `${connectedCount} bağlı servis` : "Harici servisleri Atlas'a bağlayın"}
+              {connectedCount > 0 ? `${connectedCount} bağlı servis` : "Harici servisleri Aderyth'e bağlayın"}
             </Text>
           </View>
         </View>
@@ -232,7 +232,7 @@ export default function IntegrationsScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.connectedTitle}>{connection!.workspaceName}</Text>
-                      <Text style={s.connectedSub}>Atlas veritabanları Notion&apos;da hazır</Text>
+                      <Text style={s.connectedSub}>Aderyth veritabanları Notion&apos;da hazır</Text>
                     </View>
                   </View>
 
@@ -310,7 +310,7 @@ export default function IntegrationsScreen() {
                   </View>
 
                   <Text style={s.oauthNote}>
-                    Notion hesabınızda oturum açmanız istenecek. Atlas, seçtiğiniz workspace&apos;e iki veritabanı oluşturacak.
+                    Notion hesabınızda oturum açmanız istenecek. Aderyth, seçtiğiniz workspace&apos;e iki veritabanı oluşturacak.
                   </Text>
 
                   {notionStatus === 'error' && notionError && (
@@ -411,7 +411,7 @@ export default function IntegrationsScreen() {
                   </View>
 
                   <Text style={s.oauthNote}>
-                    Google hesabınızdan takviminize erişim izni isteyeceğiz. Atlas, bu izinle takvim blokları ve hatırlatma etkinliklerini ekleyebilir.
+                    Google hesabınızdan takviminize erişim izni isteyeceğiz. Aderyth, bu izinle takvim blokları ve hatırlatma etkinliklerini ekleyebilir.
                   </Text>
 
                   {googleStatus === 'error' && googleError && (

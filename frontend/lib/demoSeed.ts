@@ -78,7 +78,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
       {
         id: 'demo-project-1',
         user_id: demoUserId,
-        name: 'Demo: Atlas Yol Haritasi',
+        name: 'Demo: Aderyth Yol Haritasi',
         color: colors.accent,
         description: 'Uygulama test projesi',
         status: 'active',
@@ -399,7 +399,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
   ]);
 
   const demoProjects = [
-    { name: 'Demo: Atlas Yol Haritasi', color: colors.accent, description: 'Uygulama test projesi' },
+    { name: 'Demo: Aderyth Yol Haritasi', color: colors.accent, description: 'Uygulama test projesi' },
     { name: 'Demo: Saglik ve Enerji', color: colors.success, description: 'Rutin ve enerji takibi' },
   ];
 
@@ -412,7 +412,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
   }
 
   await useProjectStore.getState().fetchProjects();
-  const primaryProject = useProjectStore.getState().projects.find((p) => p.name === 'Demo: Atlas Yol Haritasi') ?? null;
+  const primaryProject = useProjectStore.getState().projects.find((p) => p.name === 'Demo: Aderyth Yol Haritasi') ?? null;
 
   const demoHabits = [
     {

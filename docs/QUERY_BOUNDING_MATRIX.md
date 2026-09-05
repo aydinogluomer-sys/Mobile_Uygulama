@@ -40,6 +40,7 @@ query is unbounded; this does not.
 | `journalInsightRepository.ts` | `upsertJournalInsight` | `journal_insights` | no | WRITE | — |
 | `journalRepository.ts` | `fetchJournalEntries` | `journal_entries` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `journalRepository.ts` | `fetchJournalEntry` | `journal_entries` | no | SINGLE_ROW | yes |
+| `journalRepository.ts` | `searchJournalEntries` | `journal_entries` | yes | BOUNDED_SEARCH | yes |
 | `journalRepository.ts` | `upsertJournalEntry` | `journal_entries` | no | WRITE | — |
 | `lifeAreaRepository.ts` | `fetchRecentLifeAreaLogs` | `life_area_logs` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `lifeAreaRepository.ts` | `upsertLifeAreaLogs` | `life_area_logs` | no | WRITE | — |
@@ -81,11 +82,11 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **70**
-- collection SELECTs: **34**
+- queries: **71**
+- collection SELECTs: **35**
 - KEYSET_PAGE: **6**
 - DATE_WINDOW: **9**
-- BOUNDED_SEARCH: **3**
+- BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **1**
 - BOUNDED_DOMAIN_WINDOW: **15**
 - SINGLE_ROW: **8**

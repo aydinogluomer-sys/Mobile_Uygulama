@@ -1,10 +1,10 @@
 {
   "id": "atlas-pos-sync",
-  "name": "Atlas POS Sync",
+  "name": "Aderyth Sync",
   "version": "1.0.0",
   "minAppVersion": "1.4.0",
-  "description": "Atlas POS v2 uygulamasından alışkanlık ve görev verilerini Obsidian vault'unuza senkronlar.",
-  "author": "Atlas POS",
+  "description": "Aderyth uygulamasından alışkanlık ve görev verilerini Obsidian vault'unuza senkronlar.",
+  "author": "Aderyth",
   "authorUrl": "",
   "isDesktopOnly": false
 }

@@ -30,6 +30,46 @@
  * to the end, and if it hits the safety cap it says so in `truncated`
  * instead of pretending.
  *
+ * ## Why there is NO import, and why the word "backup" was removed
+ *
+ * This produces a document to read, not a snapshot to restore. It was being
+ * presented as a "yedek" (backup), which promises the opposite — and four
+ * properties of the file make a faithful restore impossible to write from it:
+ *
+ *  1. **It is not the account.** Ten collections are exported. The account
+ *     also has `okrs`, `key_results`, `recovery_plans`, `reading_list`,
+ *     `life_area_logs`, `deep_work_sessions`, `weekly_reviews`,
+ *     `monthly_reviews`, `focus_tasks` and `willpower_state`. Restoring this
+ *     file would produce an account missing most of its data while reporting
+ *     success — which is a fake restore, not a partial one.
+ *
+ *  2. **Re-inserting `habit_logs` would corrupt XP.** `habit_logs.xp` is
+ *     server-owned: a trigger awards it on insert and rolls it into
+ *     `profiles.total_xp`. Importing logs re-fires that trigger, inflating a
+ *     total the schema has three migrations defending
+ *     (`20260831_xp_integrity`, `_ceiling_xp`, `_xp_drift_survives_purge`).
+ *     An import would have to suppress a trigger it cannot see from the
+ *     client.
+ *
+ *  3. **Webhook rows are exported without their headers** — deliberately, see
+ *     above. Restoring them recreates registrations that look configured and
+ *     cannot authenticate.
+ *
+ *  4. **The file may be `truncated`.** A collection over `MAX_ROWS` is cut and
+ *     says so. Importing it would silently establish the truncated set as the
+ *     new reality.
+ *
+ * Any one of those makes "restore" a lie; together they make it a data-loss
+ * feature. The honest fix was to stop claiming it: the UI says "Verileri Dışa
+ * Aktar" and states in plain words that there is no import.
+ *
+ * A real restore is a separate piece of work: it needs the full collection
+ * set, id remapping across the foreign keys (`habit_logs.habit_id`,
+ * `tasks.project_id`, `key_results.okr_id`), a server-side path that can
+ * insert logs without re-awarding XP, an idempotency key so a re-run does not
+ * duplicate, and an explicit destructive-overwrite confirmation. None of that
+ * is started here, and pretending otherwise in the UI was the actual defect.
+ *
  * **Webhook headers are excluded.** A registration may carry an
  * authorization header for the user's own automation. The export is handed
  * to `Share.share()`, i.e. to whatever application the user taps — mail,
@@ -223,7 +263,7 @@ export function backupToCSV(backup: Backup): string {
     const s = v === null || v === undefined ? '' : String(v);
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const out: string[] = [`# Atlas yedek,${backup.export_date},format v${backup.format_version}`];
+  const out: string[] = [`# Aderyth dışa aktarım,${backup.export_date},format v${backup.format_version}`];
   for (const sheet of backupToSheets(backup)) {
     out.push('', `## ${sheet.name}`, sheet.headers.map(esc).join(','));
     for (const row of sheet.rows) out.push(row.map(esc).join(','));

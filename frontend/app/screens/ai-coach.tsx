@@ -47,7 +47,7 @@ export default function AICoachScreen() {
     {
       id: '0',
       role: 'assistant',
-      content: 'Merhaba! Ben Atlas AI Coach\'un. Alışkanlıkların, görevlerin ve hedeflerin hakkında sana yardımcı olabilirim. Ne öğrenmek istersin?',
+      content: 'Merhaba! Ben Aderyth AI Coach\'un. Alışkanlıkların, görevlerin ve hedeflerin hakkında sana yardımcı olabilirim. Ne öğrenmek istersin?',
     },
   ]);
   const [input, setInput] = useState('');
