@@ -4,6 +4,15 @@ import Anthropic from 'npm:@anthropic-ai/sdk@0.27.0';
 const MAX_TOKENS = 400;          // Varsayılan çıktı token limiti (maliyet kontrolü)
 const INSIGHTS_MAX_TOKENS = 500; // İçgörü biraz daha uzun olabilir
 
+// Rutin modunun kendi bütçesi. Diğerleri düz metin döndürür; bu mod tek
+// parçada geçerli JSON döndürmek zorunda, ve o JSON yapısı gereği uzun:
+// 4 alışkanlık × 7 alan + sarmalayıcı. Model çıktıyı girintili yazıyor, ve
+// 400 token bunun ortasında bitiyordu -- ölçülen dört denemenin DÖRDÜ de
+// aynı yerde, "line 40 column 6"da koptu. Kesilen metin `JSON.parse` için
+// geçersiz olduğundan her rutin üretimi 500 ile bitiyordu. Ayrıntı için
+// aşağıdaki `stop_reason` kontrolüne bak.
+const ROUTINE_MAX_TOKENS = 1500;
+
 // Aksiyon başına Focus Point maliyeti
 const COST = { coach: 5, routine: 25, summarize: 3, insights: 5 } as const;
 type Mode = keyof typeof COST;
@@ -208,10 +217,26 @@ Deno.serve(async (req: Request) => {
     } else {
       const message = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: MAX_TOKENS,
+        max_tokens: ROUTINE_MAX_TOKENS,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: prompt }],
       });
+
+      // Kesilmiş bir yanıtı AYIKLAMAYA ÇALIŞMA.
+      //
+      // `stop_reason === 'max_tokens'` modelin cümlesinin ortasında
+      // durdurulduğunu söyler. Aşağıdaki `/\{[\s\S]*\}/` açgözlü olduğu için
+      // böyle bir metinde de EŞLEŞİR: ilk `{`den kalan son `}`e kadar alır,
+      // yani yarım kalmış `items` dizisinin içindeki bir alt nesnenin
+      // kapanışına. Ortaya makul görünen ama geçersiz bir JSON parçası çıkar,
+      // `JSON.parse` fırlatır, ve kullanıcı sağlayıcı hatası sanılan
+      // "AI servisi şu an yanıt veremedi" mesajını görür. Sağlayıcı çalışıyor;
+      // yanıt sığmıyor. Bunu burada, kendi adıyla yakalıyoruz.
+      if (message.stop_reason === 'max_tokens') {
+        await refund('ai_truncated');
+        return json({ error: 'AI yanıtı yarım kaldı, tekrar deneyin.' }, 500);
+      }
+
       const text = message.content[0].type === 'text' ? message.content[0].text : '';
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) {
