@@ -85,6 +85,29 @@ Deno.serve(async (req: Request) => {
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!apiKey) return json({ error: 'Sunucu yapılandırma hatası' }, 500);
 
+    // ── Ayri, GUVENILIR istemci ────────────────────────────────────────
+    //
+    // Islem ve muhasebe RPC'leri artik yalnizca `service_role`a acik. Once
+    // oyle degildi ve sonuc gercek bir aciktı: siradan bir kullanici, sadece
+    // publishable anahtar ve kendi JWT'si ile `ai_request_begin` +
+    // `ai_request_complete` cagirip KENDI yazdigi JSON'u tamamlanmis yanit
+    // diye kaydedebiliyor, sonra `generate-routine`den onu 200 ile, ucretsiz
+    // ve saglayiciya hic gitmeden geri alabiliyordu.
+    //
+    // Anahtar sunucuda, kimlik kullanicida: asagidaki her cagriya JWT'den
+    // DOGRULANMIS `user.id` gecirilir. Istemci bu fonksiyonlari hic
+    // cagiramadigi icin baskasinin kimligini secmesi de mumkun degil.
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!serviceKey) {
+      // Kapali basarisizlik: guvenilir yol yoksa ucret de almayiz, cagri da
+      // yapmayiz.
+      console.error('SUPABASE_SERVICE_ROLE_KEY missing; refusing to serve');
+      return json({ error: 'Sunucu yapılandırma hatası' }, 500);
+    }
+    const admin = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
     // Girdi doğrulama
     let userMsg = '';
     let prompt = '';
@@ -235,8 +258,8 @@ Deno.serve(async (req: Request) => {
       },
       {
         begin: async ({ requestId: id, mode: m, fingerprint }) => {
-          const { data, error } = await supabase.rpc('ai_request_begin', {
-            p_request_id: id, p_mode: m, p_fingerprint: fingerprint,
+          const { data, error } = await admin.rpc('ai_request_begin', {
+            p_user_id: user.id, p_request_id: id, p_mode: m, p_fingerprint: fingerprint,
           });
           if (error) {
             // Iddia edilemediyse cagriyi ENGELLE. Iddiasiz bir cagriyi ikinci
@@ -256,8 +279,8 @@ Deno.serve(async (req: Request) => {
         },
 
         complete: async ({ requestId: id, response }) => {
-          const { error } = await supabase.rpc('ai_request_complete', {
-            p_request_id: id, p_response: response,
+          const { error } = await admin.rpc('ai_request_complete', {
+            p_user_id: user.id, p_request_id: id, p_response: response,
           });
           // Yanit dondurulecek ama saklanamadi: kullanici cevabini alir,
           // kaybederse geri getiremez. Sessiz gecmiyoruz.
@@ -265,19 +288,22 @@ Deno.serve(async (req: Request) => {
         },
 
         fail: async ({ requestId: id, error: reason }) => {
-          const { error } = await supabase.rpc('ai_request_fail', {
-            p_request_id: id, p_error: reason,
+          const { error } = await admin.rpc('ai_request_fail', {
+            p_user_id: user.id, p_request_id: id, p_error: reason,
           });
           if (error) console.error('ai_request_fail failed:', { requestId: id, error: error.message });
         },
 
         release: async ({ requestId: id }) => {
-          const { error } = await supabase.rpc('ai_request_release', { p_request_id: id });
+          const { error } = await admin.rpc('ai_request_release', {
+            p_user_id: user.id, p_request_id: id,
+          });
           if (error) console.error('ai_request_release failed:', { requestId: id, error: error.message });
         },
 
         spend: async ({ requestId: id, mode: m, cost: amount }) => {
-          const { data, error } = await supabase.rpc('spend_focus_points_v2', {
+          const { data, error } = await admin.rpc('spend_focus_points_v2', {
+            p_user_id: user.id,
             p_amount: amount,
             p_reason: `ai_${m}`,
             p_request_id: id,
@@ -297,7 +323,8 @@ Deno.serve(async (req: Request) => {
         },
 
         refund: async ({ requestId: id, reason }) => {
-          const { error } = await supabase.rpc('refund_focus_points', {
+          const { error } = await admin.rpc('refund_focus_points', {
+            p_user_id: user.id,
             p_request_id: id,
             p_reason: reason,
           });
@@ -311,6 +338,10 @@ Deno.serve(async (req: Request) => {
         readBalance: async () => {
           // Tekrar yolunda bakiye OKUNUR, harcama RPC'si cagrilmaz: ucret
           // alamayacak bir yolda ucret alabilen bir sey cagirmak yanlis olur.
+          //
+          // Ve bu okuma kasitli olarak KULLANICININ istemcisiyle yapilir:
+          // RLS zaten kendi satirina sinirliyor, yani en az yetki. `admin`
+          // sadece yazma gecislerinde kullanilir.
           const { data, error } = await supabase
             .from('user_subscriptions')
             .select('focus_points')
