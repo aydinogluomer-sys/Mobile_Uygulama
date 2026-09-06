@@ -27,9 +27,14 @@
  * routine body is the literal example its SYSTEM_PROMPT shows the model.
  * Neither can drift from production without this file failing.
  *
- * Verified against the live deployment on 2026-09-06: v12 of
- * `generate-routine` on project kbcuolhjjnmhjaarxxmu returns exactly this
- * envelope, and the 402/500 paths return `balance`/`cost` too.
+ * Verified against the live deployment on 2026-09-06: `generate-routine` on
+ * project kbcuolhjjnmhjaarxxmu returns exactly this envelope, and the 402/500
+ * paths return `balance`/`cost` too.
+ *
+ * The envelope is now assembled in `_shared/aiIdempotency.ts` rather than in
+ * the handler, because the replay path must return the STORED payload under
+ * the same envelope without calling the provider. So that is where the keys
+ * are read from — the file that writes them.
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -54,15 +59,33 @@ const FN_SRC = readFileSync(
   join(ROOT, '..', 'supabase', 'functions', 'generate-routine', 'index.ts'),
   'utf8',
 );
+/** The file that now builds the response body around the AI payload. */
+const ORCH_SRC = readFileSync(
+  join(ROOT, '..', 'supabase', 'functions', '_shared', 'aiIdempotency.ts'),
+  'utf8',
+);
 
 /**
  * The keys the function merges alongside the AI payload, read from the
  * function itself rather than restated here.
  */
 function envelopeKeysFromSource(): string[] {
-  const m = /return json\(\{\s*\.\.\.payload,([^}]*)\}\)/.exec(FN_SRC);
-  if (!m) throw new Error('could not find the success return in generate-routine');
-  return m[1].split(',').map((s) => s.trim()).filter(Boolean);
+  const m = /\{\s*\.\.\.result\.payload,([^}]*)\}/.exec(ORCH_SRC);
+  if (!m) throw new Error('could not find the success body in aiIdempotency');
+  return m[1]
+    .split(',')
+    .map((part) => part.trim().split(':')[0].trim())
+    .filter(Boolean);
+}
+
+/** The replay path must wear the SAME envelope, or a recovered answer would
+ *  arrive in a shape the client gate has never been shown. */
+function replayEnvelopeKeysFromSource(): string[] {
+  const at = ORCH_SRC.indexOf('...begin.response,');
+  if (at < 0) throw new Error('could not find the replay body in aiIdempotency');
+  const slice = ORCH_SRC.slice(at, at + 240);
+  const keys = [...slice.matchAll(/\b(balance|cost|replayed)\b/g)].map((x) => x[1]);
+  return [...new Set(keys)];
 }
 
 /**
@@ -111,6 +134,10 @@ const REAL_RESPONSE = { ...AI_PAYLOAD, balance: 5, cost: 25, replayed: false };
 describe('the fixture is the function’s own contract, not an invention', () => {
   it('the success path merges envelope fields into the AI payload', () => {
     expect(ENVELOPE_KEYS).toEqual(['balance', 'cost', 'replayed']);
+  });
+
+  it('the replay path wears the same envelope', () => {
+    expect(replayEnvelopeKeysFromSource().sort()).toEqual(['balance', 'cost', 'replayed']);
   });
 
   it('the prompt asks for exactly the top-level keys used above', () => {

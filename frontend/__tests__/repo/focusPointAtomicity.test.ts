@@ -28,10 +28,23 @@
  *
  * The edge function runs on Deno against a live database and an LLM; it is
  * not reachable from jest. What jest CAN hold is the ORDER, which is the
- * whole fix — the debit must come before the AI client is constructed, and
- * every path out after the charge must either return output or refund. The
+ * whole fix — the debit must come before the AI client is used, and every
+ * path out after the charge must either return output or refund. The
  * database side is verified separately, live, in the migration probes
  * recorded in 20260831_focus_point_atomicity.sql.
+ *
+ * ## Where these properties now live
+ *
+ * The sequencing moved into `_shared/aiIdempotency.ts` when a second defect
+ * turned up: the charge was idempotent but the WORK was not, so a replayed
+ * key called Anthropic again for free. Closing that meant a claim/spend/call
+ * order that is one function rather than a straight line through the handler.
+ *
+ * Nothing here was dropped in the move. Each assertion simply now reads the
+ * file that owns the property: the ORCHESTRATOR for ordering and settlement,
+ * the EDGE for prices, keys, and how the RPC results are read. The behaviour
+ * is additionally proven — not merely asserted — with counted provider
+ * invocations in `__tests__/edge/aiIdempotency.test.ts`.
  */
 // The service re-exports the CRUD reads, so importing it constructs the
 // Supabase client. Mocked away: this file is about ordering and prices.
@@ -42,8 +55,12 @@ import { join } from 'path';
 import { stripComments } from '../helpers/sourceText';
 import { COST, newRequestId } from '../../services/focusPointService';
 
-const EDGE = join(__dirname, '..', '..', '..', 'supabase', 'functions', 'generate-routine', 'index.ts');
+const FUNCTIONS = join(__dirname, '..', '..', '..', 'supabase', 'functions');
+const EDGE = join(FUNCTIONS, 'generate-routine', 'index.ts');
+const ORCHESTRATOR = join(FUNCTIONS, '_shared', 'aiIdempotency.ts');
 const src = stripComments(readFileSync(EDGE, 'utf8'));
+/** The file that now decides what runs, in what order, and how often. */
+const orch = stripComments(readFileSync(ORCHESTRATOR, 'utf8'));
 
 describe('the charge happens before the AI call', () => {
   it('the edge function is where this test thinks it is', () => {
@@ -57,60 +74,91 @@ describe('the charge happens before the AI call', () => {
     expect(src).not.toContain("rpc('spend_focus_points'");
   });
 
-  it('the debit precedes constructing the Anthropic client', () => {
-    // The ordering IS the fix. If the client is built first, the AI call can
-    // happen before anyone has been charged for it.
-    const debit = src.indexOf("rpc('spend_focus_points_v2'");
-    const ai = src.indexOf('new Anthropic(');
+  it('the debit precedes the provider call', () => {
+    // The ordering IS the fix. It now lives in the orchestrator, where the
+    // spend is awaited and only then is the provider reached.
+    const debit = orch.indexOf('deps.spend(');
+    const ai = orch.indexOf('deps.callProvider()');
     expect(debit).toBeGreaterThan(-1);
     expect(ai).toBeGreaterThan(-1);
     expect(debit).toBeLessThan(ai);
   });
 
-  it("reads the RPC's ok flag rather than only its balance", () => {
-    expect(src).toContain('spend.ok !== true');
+  it('the edge has exactly one way to reach Anthropic, and hands it over', () => {
+    // The ordering above only means anything if the handler cannot call the
+    // provider on its own. One construction site, inside one closure, passed
+    // to the orchestrator as the single `callProvider`.
+    expect(src.match(/new Anthropic\(/g)).toHaveLength(1);
+    expect(src).toContain('const callAi = async (): Promise<ProviderResult>');
+    expect(src).toContain('callProvider: callAi');
+    // And the closure is never invoked by the handler itself.
+    expect(src).not.toMatch(/await callAi\(\)/);
   });
 
-  it("does not fabricate a balance from the pre-read", () => {
+  it("reads the RPC's ok flag rather than only its balance", () => {
+    expect(src).toContain('row.ok !== true');
+  });
+
+  it('does not fabricate a balance from the pre-read', () => {
     // `balance - cost` was the number returned when the debit failed.
     expect(src).not.toMatch(/balance\s*-\s*cost/);
-    expect(src).toContain('const balance = Number(spend.balance)');
+    expect(src).toContain('Number(row.balance)');
   });
 
   it('handles the RPC error instead of relying on a catch that never fires', () => {
-    // supabase-js RETURNS rpc errors; it does not throw them.
-    expect(src).toContain('error: spendErr');
-    expect(src).toMatch(/if \(spendErr\)/);
+    // supabase-js RETURNS rpc errors; it does not throw them. The spend
+    // adapter reads `error` and reports it as its own outcome rather than
+    // letting a falsy result read as "insufficient".
+    expect(src).toContain("console.error('spend_focus_points_v2 failed:'");
+    expect(src).toMatch(/return \{ kind: 'unavailable', error: error\.message \} as SpendResult/);
     expect(src).not.toContain('catch (_)');
   });
 
-  it('refuses an unaffordable request before spending money at Anthropic', () => {
-    const refuse = src.indexOf("code: 'INSUFFICIENT_CREDITS'");
-    const ai = src.indexOf('new Anthropic(');
+  it('refuses an unaffordable request before the provider is reached', () => {
+    const refuse = orch.indexOf('INSUFFICIENT_CREDITS');
+    const ai = orch.indexOf('deps.callProvider()');
     expect(refuse).toBeGreaterThan(-1);
     expect(refuse).toBeLessThan(ai);
+  });
+
+  it('an unaffordable request releases its claim, so the key is not burnt', () => {
+    // Nothing was charged and nothing was called, so the attempt must leave
+    // no trace -- otherwise topping up and retrying meets `in_progress`.
+    const insufficient = orch.indexOf("spend.kind === 'insufficient'");
+    const release = orch.indexOf('deps.release(', insufficient);
+    const ret = orch.indexOf('status: 402', insufficient);
+    expect(insufficient).toBeGreaterThan(-1);
+    expect(release).toBeGreaterThan(insufficient);
+    expect(release).toBeLessThan(ret);
   });
 });
 
 describe('every path out after the charge settles it', () => {
-  it('each empty-AI-response branch refunds first', () => {
-    // Four modes, four "the model gave us nothing" exits.
-    const refunds = src.match(/await refund\('ai_empty_response'\)/g) ?? [];
-    expect(refunds).toHaveLength(4);
+  it('each mode reports a refund reason instead of returning empty-handed', () => {
+    // Four modes, four "the model gave us nothing" exits -- plus the
+    // truncation guard. The branch names the reason; the orchestrator is what
+    // spends it, which is why the count lives here and the refund below.
+    const empty = src.match(/reason: 'ai_empty_response'/g) ?? [];
+    expect(empty).toHaveLength(4);
+    expect(src).toContain("reason: 'ai_truncated'");
   });
 
-  it('a thrown AI error refunds', () => {
-    expect(src).toContain("await refundOnThrow?.('ai_error')");
+  it('a refused provider result refunds and settles the key', () => {
+    const refused = orch.indexOf('if (!result.ok)');
+    const refund = orch.indexOf('deps.refund(', refused);
+    const fail = orch.indexOf('deps.fail(', refused);
+    expect(refused).toBeGreaterThan(-1);
+    expect(refund).toBeGreaterThan(refused);
+    expect(fail).toBeGreaterThan(refused);
   });
 
-  it('the refund handle is reachable from the catch block', () => {
-    // `refund` is declared inside `try`; the catch cannot see it. The hoisted
-    // handle is what makes the refund in the catch actually run, so its
-    // declaration must come before the try.
-    const handle = src.indexOf('let refundOnThrow');
-    const tryStart = src.indexOf('try {');
-    expect(handle).toBeGreaterThan(-1);
-    expect(handle).toBeLessThan(tryStart);
+  it('a thrown AI error refunds too', () => {
+    // The old hoisted `refundOnThrow` handle existed because `refund` was
+    // declared inside the `try` the catch could not see. The orchestrator has
+    // no such split: one try/catch around the one provider call, with the
+    // refund in scope, so the hazard is gone rather than worked around.
+    expect(orch).toMatch(/catch \(err\)[\s\S]{0,320}deps\.refund\(\{ requestId, reason: 'ai_error' \}\)/);
+    expect(src).not.toContain('refundOnThrow');
   });
 
   it('a refund that fails is recorded, not swallowed', () => {
@@ -120,15 +168,25 @@ describe('every path out after the charge settles it', () => {
   });
 
   it('the success path returns the database balance', () => {
-    expect(src).toContain('return json({ ...payload, balance, cost, replayed })');
+    expect(orch).toContain('balance: spend.balance');
+    expect(orch).toContain('replayed: false');
   });
 
   it('a replayed charge is not refunded by the retry that observed it', () => {
-    // `charged` is false for a replay, so the refund is a no-op. Otherwise a
-    // retry that failed would credit back a charge belonging to the first,
-    // successful attempt.
-    expect(src).toContain('let charged = !replayed');
-    expect(src).toContain('if (!charged) return');
+    // `charged` is false when the ledger already held the key, so the refund
+    // is skipped. Otherwise a retry that failed would credit back a charge
+    // belonging to the first, successful attempt.
+    expect(orch).toContain("const charged = spend.kind === 'charged'");
+    expect(orch.match(/if \(charged\) await deps\.refund\(/g)).toHaveLength(2);
+  });
+
+  it('a successful answer is stored before it is returned', () => {
+    // Otherwise a client that loses the response has no way back to the thing
+    // it paid for.
+    const complete = orch.indexOf('deps.complete(');
+    const ret = orch.indexOf('replayed: false');
+    expect(complete).toBeGreaterThan(-1);
+    expect(complete).toBeLessThan(ret);
   });
 });
 

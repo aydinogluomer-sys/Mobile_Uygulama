@@ -116,24 +116,27 @@ describe('a truncated response is refused, not scraped', () => {
     expect(guard).toBeLessThan(greedy);
   });
 
-  it('it refunds, because the user got nothing', () => {
+  it('it names a refund reason, because the user got nothing', () => {
     const branch = routineBranch();
     const guard = branch.indexOf("stop_reason === 'max_tokens'");
     const tail = branch.slice(guard, guard + 400);
-    expect(tail).toMatch(/await refund\('ai_truncated'\)/);
+    // The branch reports; `runIdempotentAiRequest` is what refunds on a
+    // `{ ok: false }` result -- see focusPointAtomicity for that half.
+    expect(tail).toMatch(/reason: 'ai_truncated'/);
     // And says what happened, rather than blaming the provider.
     expect(tail).toContain('yarım kaldı');
     expect(tail).not.toContain('AI servisi şu an yanıt veremedi');
   });
 
-  it('every paid exit from the routine branch still refunds', () => {
-    // The guard is a new way out of a branch that has already charged. A
-    // return that forgets the refund is the one mistake this whole area of
-    // the function exists to prevent.
+  it('every exit from the routine branch is a settled result, never a bare return', () => {
+    // The guard is a new way out of a branch that has already charged. An
+    // exit that reports neither success nor a refund reason is the one
+    // mistake this whole area of the function exists to prevent.
     const branch = routineBranch();
-    const returns = branch.match(/return json\(/g) ?? [];
-    const refunds = branch.match(/await refund\(/g) ?? [];
-    expect(returns.length).toBeGreaterThanOrEqual(2);
-    expect(refunds.length).toBe(returns.length);
+    const refusals = branch.match(/return \{ ok: false, reason: '[a-z_]+'/g) ?? [];
+    expect(refusals.length).toBeGreaterThanOrEqual(2);
+    // No exit smuggles an HTTP response out of the closure, which would skip
+    // the orchestrator's settlement entirely.
+    expect(branch).not.toMatch(/return json\(/);
   });
 });

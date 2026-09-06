@@ -1,5 +1,13 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.27.0';
+import {
+  fingerprintInput,
+  runIdempotentAiRequest,
+  type AiMode,
+  type BeginOutcome,
+  type ProviderResult,
+  type SpendResult,
+} from '../_shared/aiIdempotency.ts';
 
 const MAX_TOKENS = 400;          // Varsayılan çıktı token limiti (maliyet kontrolü)
 const INSIGHTS_MAX_TOKENS = 500; // İçgörü biraz daha uzun olabilir
@@ -55,9 +63,6 @@ Deno.serve(async (req: Request) => {
 
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return json({ error: 'Yetkisiz' }, 401);
-
-  // `catch` blogu `try` icinde tanimlanan `refund`'a erisemez; kanca burada.
-  let refundOnThrow: ((reason: string) => Promise<void>) | null = null;
 
   try {
     const supabase = createClient(
@@ -123,148 +128,228 @@ Deno.serve(async (req: Request) => {
     const requestId: string =
       clientKey.length >= 8 && clientKey.length <= 128 ? clientKey : crypto.randomUUID();
 
-    const { data: spendRows, error: spendErr } = await supabase.rpc('spend_focus_points_v2', {
-      p_amount: cost,
-      p_reason: `ai_${mode}`,
-      p_request_id: requestId,
-    });
-    if (spendErr) {
-      // Bir zamanlar yutulan hata. Ucretlendiremiyorsak isi yapmiyoruz.
-      console.error('spend_focus_points_v2 failed:', spendErr.message);
-      return json({ error: 'Kredi islemi yapilamadi, lutfen tekrar deneyin.' }, 503);
-    }
-    const spend = Array.isArray(spendRows) ? spendRows[0] : spendRows;
-    if (!spend || spend.ok !== true) {
-      const balance = Number(spend?.balance ?? 0);
-      return json({
-        error: `Yetersiz Focus Point. Bu işlem ${cost} FP gerektiriyor, bakiyen ${balance}.`,
-        code: 'INSUFFICIENT_CREDITS',
-        balance,
-        cost,
-      }, 402);
-    }
-    const balance = Number(spend.balance);
-    const replayed = spend.replayed === true;
+    // Bu anahtarin KIMLIGI. Sadece cagiranin kendi girdisi, sunucunun
+    // turettigi baglam degil: `coach` baglami (aliskanlik sayisi, irade)
+    // iki deneme arasinda kendiliginden degisir, ve onu kimlige katmak ayni
+    // sorunun mesru bir tekrarini "anahtar kotuye kullanimi" diye reddederdi.
+    // Katmamak guvenli, cunku ayni anahtar zaten SAKLANAN yaniti dondurur.
+    const identity: string[] =
+      mode === 'coach' ? [userMsg]
+      : mode === 'summarize' ? [transcript]
+      : mode === 'insights' ? [periodLabel, entriesText]
+      : [prompt];
 
-    // Bu noktadan sonra kullanicidan ucret ALINDI. Her cikis yolu ya cikti
-    // dondurmeli ya da iade etmeli; `charged` bunu izliyor.
-    let charged = !replayed;
-    const refund = async (reason: string) => {
-      if (!charged) return;
-      charged = false;
-      const { error } = await supabase.rpc('refund_focus_points', {
-        p_request_id: requestId,
-        p_reason: reason,
-      });
-      // Iade basarisiz olursa kullanici basarisiz bir cagri icin ucret odemis
-      // olur. Sessizce gecmiyoruz: mutabakat icin iz birakiliyor.
-      if (error) console.error('REFUND FAILED', { requestId, cost, reason, error: error.message });
+    // Anthropic'e giden TEK yol. `runIdempotentAiRequest` bunu ya bir kez
+    // cagirir ya da hic cagirmaz; tekrar eden bir anahtar icin asla.
+    const callAi = async (): Promise<ProviderResult> => {
+      const client = new Anthropic({ apiKey });
+
+      // ── AI çağrısı ──
+      let payload: Record<string, unknown>;
+      if (mode === 'coach') {
+        const ctx = body?.context ?? {};
+        const activeHabits = Array.isArray(ctx.activeHabits) ? ctx.activeHabits.slice(0, 20).join(', ') : '';
+        const contextLine = [
+          activeHabits ? `Aktif alışkanlıklar: ${activeHabits}.` : 'Aktif alışkanlık yok.',
+          typeof ctx.habitCount === 'number' ? `Toplam alışkanlık: ${ctx.habitCount}.` : '',
+          typeof ctx.pendingTaskCount === 'number' ? `Bekleyen görev: ${ctx.pendingTaskCount}.` : '',
+          ctx.willpower ? `İrade: ${ctx.willpower.used}/${ctx.willpower.daily_budget} kullanıldı, ${ctx.willpower.active_count}/${ctx.willpower.focus_capacity} aktif slot.` : '',
+        ].filter(Boolean).join(' ');
+
+        const message = await client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: MAX_TOKENS,
+          system: COACH_SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: `Bağlam: ${contextLine}\n\nKullanıcı: ${userMsg}` }],
+        });
+        const reply = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+        if (!reply) {
+          return { ok: false, reason: 'ai_empty_response', message: 'Yanıt alınamadı, tekrar deneyin.' };
+        }
+        payload = { reply };
+      } else if (mode === 'summarize') {
+        const message = await client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: MAX_TOKENS,
+          system: SUMMARY_SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: `Aşağıdaki AI koçluk sohbetini günlüğe eklenebilecek bir özet/yansıma haline getir:\n\n${transcript}` }],
+        });
+        const summary = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+        if (!summary) {
+          return { ok: false, reason: 'ai_empty_response', message: 'Özet oluşturulamadı, tekrar deneyin.' };
+        }
+        payload = { summary };
+      } else if (mode === 'insights') {
+        const message = await client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: INSIGHTS_MAX_TOKENS,
+          system: INSIGHTS_SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: `Dönem: ${periodLabel}. Aşağıdaki günlük kayıtlarını analiz edip içgörü ver:\n\n${entriesText}` }],
+        });
+        const insight = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+        if (!insight) {
+          return { ok: false, reason: 'ai_empty_response', message: 'İçgörü oluşturulamadı, tekrar deneyin.' };
+        }
+        payload = { insight };
+      } else {
+        const message = await client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: ROUTINE_MAX_TOKENS,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: prompt }],
+        });
+
+        // Kesilmiş bir yanıtı AYIKLAMAYA ÇALIŞMA.
+        //
+        // `stop_reason === 'max_tokens'` modelin cümlesinin ortasında
+        // durdurulduğunu söyler. Aşağıdaki `/\{[\s\S]*\}/` açgözlü olduğu için
+        // böyle bir metinde de EŞLEŞİR: ilk `{`den kalan son `}`e kadar alır,
+        // yani yarım kalmış `items` dizisinin içindeki bir alt nesnenin
+        // kapanışına. Ortaya makul görünen ama geçersiz bir JSON parçası çıkar,
+        // `JSON.parse` fırlatır, ve kullanıcı sağlayıcı hatası sanılan
+        // "AI servisi şu an yanıt veremedi" mesajını görür. Sağlayıcı çalışıyor;
+        // yanıt sığmıyor. Bunu burada, kendi adıyla yakalıyoruz.
+        if (message.stop_reason === 'max_tokens') {
+          return { ok: false, reason: 'ai_truncated', message: 'AI yanıtı yarım kaldı, tekrar deneyin.' };
+        }
+
+        const text = message.content[0].type === 'text' ? message.content[0].text : '';
+        const match = text.match(/\{[\s\S]*\}/);
+        if (!match) {
+          return { ok: false, reason: 'ai_empty_response', message: 'AI yanıt formatı geçersiz, tekrar deneyin.' };
+        }
+        payload = JSON.parse(match[0]);
+      }
+
+      return { ok: true, payload };
     };
-    refundOnThrow = refund;
 
-    const client = new Anthropic({ apiKey });
+    // Butun sira burada: iddia -> ucret -> saglayici -> saklama. Her adim
+    // dayanikli, ve tekrar eden bir anahtar ilk adimda cevaplanir.
+    const outcome = await runIdempotentAiRequest(
+      {
+        requestId,
+        mode: mode as AiMode,
+        fingerprint: await fingerprintInput(mode as AiMode, identity),
+        cost,
+      },
+      {
+        begin: async ({ requestId: id, mode: m, fingerprint }) => {
+          const { data, error } = await supabase.rpc('ai_request_begin', {
+            p_request_id: id, p_mode: m, p_fingerprint: fingerprint,
+          });
+          if (error) {
+            // Iddia edilemediyse cagriyi ENGELLE. Iddiasiz bir cagriyi ikinci
+            // bir cagridan alikoyacak hicbir sey yok.
+            console.error('ai_request_begin failed:', error.message);
+            return { kind: 'unavailable', error: error.message } as BeginOutcome;
+          }
+          const row = Array.isArray(data) ? data[0] : data;
+          switch (row?.outcome) {
+            case 'claimed': return { kind: 'claimed' };
+            case 'replay': return { kind: 'replay', response: (row.response ?? {}) as Record<string, unknown> };
+            case 'in_progress': return { kind: 'in_progress' };
+            case 'mismatch': return { kind: 'mismatch' };
+            case 'consumed': return { kind: 'consumed', error: row.error ?? null };
+            default: return { kind: 'unavailable', error: `unknown outcome: ${String(row?.outcome)}` };
+          }
+        },
 
-    // ── AI çağrısı ──
-    let payload: Record<string, unknown>;
-    if (mode === 'coach') {
-      const ctx = body?.context ?? {};
-      const activeHabits = Array.isArray(ctx.activeHabits) ? ctx.activeHabits.slice(0, 20).join(', ') : '';
-      const contextLine = [
-        activeHabits ? `Aktif alışkanlıklar: ${activeHabits}.` : 'Aktif alışkanlık yok.',
-        typeof ctx.habitCount === 'number' ? `Toplam alışkanlık: ${ctx.habitCount}.` : '',
-        typeof ctx.pendingTaskCount === 'number' ? `Bekleyen görev: ${ctx.pendingTaskCount}.` : '',
-        ctx.willpower ? `İrade: ${ctx.willpower.used}/${ctx.willpower.daily_budget} kullanıldı, ${ctx.willpower.active_count}/${ctx.willpower.focus_capacity} aktif slot.` : '',
-      ].filter(Boolean).join(' ');
+        complete: async ({ requestId: id, response }) => {
+          const { error } = await supabase.rpc('ai_request_complete', {
+            p_request_id: id, p_response: response,
+          });
+          // Yanit dondurulecek ama saklanamadi: kullanici cevabini alir,
+          // kaybederse geri getiremez. Sessiz gecmiyoruz.
+          if (error) console.error('ai_request_complete failed:', { requestId: id, error: error.message });
+        },
 
-      const message = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: MAX_TOKENS,
-        system: COACH_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `Bağlam: ${contextLine}\n\nKullanıcı: ${userMsg}` }],
-      });
-      const reply = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
-      if (!reply) {
-        await refund('ai_empty_response');
-        return json({ error: 'Yanıt alınamadı, tekrar deneyin.' }, 500);
-      }
-      payload = { reply };
-    } else if (mode === 'summarize') {
-      const message = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: MAX_TOKENS,
-        system: SUMMARY_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `Aşağıdaki AI koçluk sohbetini günlüğe eklenebilecek bir özet/yansıma haline getir:\n\n${transcript}` }],
-      });
-      const summary = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
-      if (!summary) {
-        await refund('ai_empty_response');
-        return json({ error: 'Özet oluşturulamadı, tekrar deneyin.' }, 500);
-      }
-      payload = { summary };
-    } else if (mode === 'insights') {
-      const message = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: INSIGHTS_MAX_TOKENS,
-        system: INSIGHTS_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `Dönem: ${periodLabel}. Aşağıdaki günlük kayıtlarını analiz edip içgörü ver:\n\n${entriesText}` }],
-      });
-      const insight = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
-      if (!insight) {
-        await refund('ai_empty_response');
-        return json({ error: 'İçgörü oluşturulamadı, tekrar deneyin.' }, 500);
-      }
-      payload = { insight };
-    } else {
-      const message = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: ROUTINE_MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: prompt }],
-      });
+        fail: async ({ requestId: id, error: reason }) => {
+          const { error } = await supabase.rpc('ai_request_fail', {
+            p_request_id: id, p_error: reason,
+          });
+          if (error) console.error('ai_request_fail failed:', { requestId: id, error: error.message });
+        },
 
-      // Kesilmiş bir yanıtı AYIKLAMAYA ÇALIŞMA.
-      //
-      // `stop_reason === 'max_tokens'` modelin cümlesinin ortasında
-      // durdurulduğunu söyler. Aşağıdaki `/\{[\s\S]*\}/` açgözlü olduğu için
-      // böyle bir metinde de EŞLEŞİR: ilk `{`den kalan son `}`e kadar alır,
-      // yani yarım kalmış `items` dizisinin içindeki bir alt nesnenin
-      // kapanışına. Ortaya makul görünen ama geçersiz bir JSON parçası çıkar,
-      // `JSON.parse` fırlatır, ve kullanıcı sağlayıcı hatası sanılan
-      // "AI servisi şu an yanıt veremedi" mesajını görür. Sağlayıcı çalışıyor;
-      // yanıt sığmıyor. Bunu burada, kendi adıyla yakalıyoruz.
-      if (message.stop_reason === 'max_tokens') {
-        await refund('ai_truncated');
-        return json({ error: 'AI yanıtı yarım kaldı, tekrar deneyin.' }, 500);
-      }
+        release: async ({ requestId: id }) => {
+          const { error } = await supabase.rpc('ai_request_release', { p_request_id: id });
+          if (error) console.error('ai_request_release failed:', { requestId: id, error: error.message });
+        },
 
-      const text = message.content[0].type === 'text' ? message.content[0].text : '';
-      const match = text.match(/\{[\s\S]*\}/);
-      if (!match) {
-        await refund('ai_empty_response');
-        return json({ error: 'AI yanıt formatı geçersiz, tekrar deneyin.' }, 500);
-      }
-      payload = JSON.parse(match[0]);
-    }
+        spend: async ({ requestId: id, mode: m, cost: amount }) => {
+          const { data, error } = await supabase.rpc('spend_focus_points_v2', {
+            p_amount: amount,
+            p_reason: `ai_${m}`,
+            p_request_id: id,
+          });
+          if (error) {
+            // Bir zamanlar yutulan hata. Ucretlendiremiyorsak isi yapmiyoruz.
+            console.error('spend_focus_points_v2 failed:', error.message);
+            return { kind: 'unavailable', error: error.message } as SpendResult;
+          }
+          const row = Array.isArray(data) ? data[0] : data;
+          if (!row || row.ok !== true) {
+            return { kind: 'insufficient', balance: Number(row?.balance ?? 0) };
+          }
+          return row.replayed === true
+            ? { kind: 'replayed', balance: Number(row.balance) }
+            : { kind: 'charged', balance: Number(row.balance) };
+        },
 
-    // Ucret zaten alindi; `balance` veritabanindan gelen GERCEK deger.
-    return json({ ...payload, balance, cost, replayed });
+        refund: async ({ requestId: id, reason }) => {
+          const { error } = await supabase.rpc('refund_focus_points', {
+            p_request_id: id,
+            p_reason: reason,
+          });
+          // Iade basarisiz olursa kullanici basarisiz bir cagri icin ucret
+          // odemis olur. Sessizce gecmiyoruz: mutabakat icin iz birakiliyor.
+          if (error) console.error('REFUND FAILED', { requestId: id, cost, reason, error: error.message });
+        },
+
+        callProvider: callAi,
+
+        readBalance: async () => {
+          // Tekrar yolunda bakiye OKUNUR, harcama RPC'si cagrilmaz: ucret
+          // alamayacak bir yolda ucret alabilen bir sey cagirmak yanlis olur.
+          const { data, error } = await supabase
+            .from('user_subscriptions')
+            .select('focus_points')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          if (error || !data) return null;
+          return Number((data as { focus_points: number }).focus_points);
+        },
+
+        describeError: describeProviderError,
+      },
+    );
+    return json(outcome.body, outcome.status);
 
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);
     console.error('generate-routine error:', raw);
-    // Ucret alindiysa iade et: AI adimi basarisiz oldu, kullanici odemis
-    // olmamali. `refundOnThrow` outer scope'ta, cunku `refund` try blogunun
-    // icinde tanimli.
-    await refundOnThrow?.('ai_error');
-    let msg = 'AI servisi şu an yanıt veremedi, lütfen sonra tekrar deneyin.';
-    if (/credit balance|billing|insufficient_quota|insufficient/i.test(raw)) {
-      msg = 'AI servisi geçici olarak kullanılamıyor (API kredisi yetersiz). Lütfen daha sonra tekrar deneyin.';
-    } else if (/rate.?limit|overloaded|429/i.test(raw)) {
-      msg = 'AI servisi şu an yoğun, biraz sonra tekrar dene.';
-    }
-    return json({ error: msg }, 500);
+    // Iade artik burada YAPILMAZ. Ucreti alan da, saglayiciyi cagiran da
+    // `runIdempotentAiRequest`; firlatma halinde iadeyi ve `failed` isaretini
+    // o yapar. Buraya ancak ucret alinmadan once olan bir hata duser.
+    return json({ error: describeProviderError(raw) }, 500);
   }
 });
+
+/**
+ * Ham saglayici hatasini kullanicinin okuyacagi bir cumleye cevirir.
+ *
+ * Hem `runIdempotentAiRequest` (firlatma yolunda) hem de disaridaki `catch`
+ * ayni esleme kullansin diye tek yerde.
+ */
+function describeProviderError(raw: string): string {
+  if (/credit balance|billing|insufficient_quota|insufficient/i.test(raw)) {
+    return 'AI servisi geçici olarak kullanılamıyor (API kredisi yetersiz). Lütfen daha sonra tekrar deneyin.';
+  }
+  if (/rate.?limit|overloaded|429/i.test(raw)) {
+    return 'AI servisi şu an yoğun, biraz sonra tekrar dene.';
+  }
+  return 'AI servisi şu an yanıt veremedi, lütfen sonra tekrar deneyin.';
+}
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
