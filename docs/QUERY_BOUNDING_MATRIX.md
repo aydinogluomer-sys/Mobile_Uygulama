@@ -31,6 +31,7 @@ query is unbounded; this does not.
 | `habitLogRepository.ts` | `fetchLogsForDate` | `habit_logs` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitLogRepository.ts` | `findHabitLog` | `habit_logs` | no | SINGLE_ROW | yes |
 | `habitLogRepository.ts` | `insertHabitLog` | `habit_logs` | no | WRITE | — |
+| `habitRepository.ts` | `countHabitsForInstall` | `habits` | yes | EXACT_COUNT | yes |
 | `habitRepository.ts` | `fetchHabits` | `habits` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitRepository.ts` | `insertHabit` | `habits` | no | WRITE | — |
 | `habitRepository.ts` | `insertRoutineHabits` | `habits` | no | WRITE | — |
@@ -84,12 +85,12 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **73**
-- collection SELECTs: **35**
+- queries: **74**
+- collection SELECTs: **36**
 - KEYSET_PAGE: **6**
 - DATE_WINDOW: **9**
 - BOUNDED_SEARCH: **4**
-- EXACT_COUNT: **1**
+- EXACT_COUNT: **2**
 - BOUNDED_DOMAIN_WINDOW: **15**
 - SINGLE_ROW: **9**
 - **UNCLASSIFIED: 0**

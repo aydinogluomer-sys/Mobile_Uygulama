@@ -39,13 +39,18 @@ export type OnboardingRow = {
   reminder_intent: boolean | null;
   status: OnboardingStatus;
   completed_at: string | null;
+  /** The install claimed by `status = 'installing'`; kept after completion. */
+  install_id: string | null;
+  /** How many habits that install should produce. */
+  install_expected_habits: number | null;
   created_at: string;
   updated_at: string;
 };
 
 const COLS =
   'user_id,onboarding_version,goals,primary_barrier,pace,preferred_dayparts,' +
-  'reminder_intent,status,completed_at,created_at,updated_at';
+  'reminder_intent,status,completed_at,install_id,install_expected_habits,' +
+  'created_at,updated_at';
 
 /** The caller's row, or `null` when they have never answered anything. */
 export async function fetchOnboarding(): Promise<RepoResult<OnboardingRow | null>> {
@@ -71,11 +76,20 @@ export async function fetchOnboarding(): Promise<RepoResult<OnboardingRow | null
 export async function writeOnboarding(input: {
   answers: OnboardingAnswers;
   status: OnboardingStatus;
+  /**
+   * The install identity, written with the claim BEFORE any habit exists.
+   *
+   * Omitting it leaves the stored value alone, so the completion write does
+   * not have to repeat the id it is completing -- and cannot accidentally
+   * erase the audit trail of which rows the plan produced.
+   */
+  installId?: string | null;
+  installExpectedHabits?: number | null;
 }): Promise<RepoResult<OnboardingRow>> {
   const u = await currentUserId();
   if (!u.ok) return u;
 
-  const row = {
+  const row: Record<string, unknown> = {
     user_id: u.userId,
     onboarding_version: ONBOARDING_VERSION,
     goals: input.answers.goals,
@@ -87,6 +101,10 @@ export async function writeOnboarding(input: {
     // Derived, never passed in — see the file doc.
     completed_at: input.status === 'completed' ? new Date().toISOString() : null,
   };
+  if (input.installId !== undefined) row.install_id = input.installId;
+  if (input.installExpectedHabits !== undefined) {
+    row.install_expected_habits = input.installExpectedHabits;
+  }
 
   const { data, error } = await supabase
     .from('user_onboarding')

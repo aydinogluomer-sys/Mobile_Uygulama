@@ -34,10 +34,18 @@ export type MockDb = {
   idSeq: number;
   /** Set to fail the next write, to exercise the error path. */
   failNext: { error: string } | null;
+  /**
+   * Set to fail the next READ.
+   *
+   * Separate from `failNext` on purpose: reads and writes are armed by
+   * different tests, and letting one queue serve both meant a test arming a
+   * write failure would have it consumed by whatever read happened first.
+   */
+  failNextRead: { error: string } | null;
 };
 
 export function createMockDb(): MockDb {
-  return { rows: {}, inserts: [], idSeq: 0, failNext: null };
+  return { rows: {}, inserts: [], idSeq: 0, failNext: null, failNextRead: null };
 }
 
 /**
@@ -86,6 +94,14 @@ function orMatch(row: MockRow, expression: string): boolean {
 
 export function makeSupabaseMock(db: MockDb, opts?: { userId?: string | null }) {
   const userId = opts?.userId === undefined ? 'u1' : opts.userId;
+
+  /** Consumes an armed read failure, if there is one. */
+  const takeReadFailure = () => {
+    if (!db.failNextRead) return null;
+    const e = db.failNextRead;
+    db.failNextRead = null;
+    return { data: null, error: { message: e.error } };
+  };
 
   const table = (t: string) => {
     db.rows[t] ??= [];
@@ -145,14 +161,20 @@ export function makeSupabaseMock(db: MockDb, opts?: { userId?: string | null }) 
           },
           limit(n: number) { rowLimit = n; return q; },
           single: async () => {
+            const failed = takeReadFailure();
+            if (failed) return failed;
             const r = db.rows[t].find((row) => matches(row, filters) && predicates.every((f) => f(row)));
             return r ? { data: r, error: null } : { data: null, error: { message: 'not found' } };
           },
           maybeSingle: async () => {
+            const failed = takeReadFailure();
+            if (failed) return failed;
             const r = db.rows[t].find((row) => matches(row, filters) && predicates.every((f) => f(row)));
             return { data: r ?? null, error: null };
           },
           then(onOk: (v: unknown) => unknown) {
+            const failed = takeReadFailure();
+            if (failed) return Promise.resolve({ ...failed, count: null }).then(onOk);
             const rows = applyOrderAndLimit(
               db.rows[t].filter((row) => matches(row, filters) && predicates.every((f) => f(row))),
             );

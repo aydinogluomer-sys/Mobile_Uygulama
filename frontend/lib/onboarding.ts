@@ -156,6 +156,29 @@ export const DAYPART_TO_PART_OF_DAY: Record<DaypartId, 'morning' | 'afternoon' |
 export const ONBOARDING_VERSION = 1;
 
 /**
+ * A fresh identity for one onboarding install.
+ *
+ * RFC-4122 v4 SHAPE, because `habits.install_id` is a `uuid` column and
+ * anything else is rejected by Postgres. Built from `Math.random` rather than
+ * `crypto.randomUUID()` for the reason already recorded in
+ * `services/focusPointService.newRequestId`: that global is absent on Hermes
+ * in some Expo runtimes, and a missing global here would throw on the path
+ * that installs the user's first habits.
+ *
+ * The weaker entropy is acceptable because of what this value has to be
+ * unique ACROSS: the habits of one account. A collision would need the same
+ * account to draw the same 122 bits twice, and the unique index
+ * `habits_install_id_name_uniq` turns even that into a rejected write rather
+ * than a silent merge.
+ */
+export function newInstallId(): string {
+  const hex = (n: number) => Math.floor(Math.random() * 16 ** n).toString(16).padStart(n, '0');
+  // 8-4-4-4-12, with the version nibble pinned to 4 and the variant to 8..b.
+  const variant = '89ab'[Math.floor(Math.random() * 4)];
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${variant}${hex(3)}-${hex(12)}`;
+}
+
+/**
  * `installing` is a DURABLE claim, not a transient UI flag: it is written to
  * `user_onboarding` before the habits are inserted and survives process
  * death, which is how a later session learns an install already happened.

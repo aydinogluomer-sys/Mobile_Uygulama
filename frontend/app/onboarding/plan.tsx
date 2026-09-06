@@ -38,6 +38,7 @@ export default function OnboardingPlanScreen() {
   const installError = useOnboardingStore((s) => s.installError);
   const installPhase = useOnboardingStore((s) => s.installPhase);
   const installedHabitCount = useOnboardingStore((s) => s.installedHabitCount);
+  const installExpectedHabits = useOnboardingStore((s) => s.installExpectedHabits);
   const completeInstall = useOnboardingStore((s) => s.completeInstall);
 
   /** Names the user removed from the preview. Local until install. */
@@ -52,7 +53,7 @@ export default function OnboardingPlanScreen() {
   // would put a fresh proposal on screen next to habits that already exist,
   // and the obvious next tap would install a second copy of them.
   useEffect(() => {
-    if (!plan && installPhase !== 'awaiting_completion') generatePlan();
+    if (!plan && installPhase !== 'awaiting_completion' && installPhase !== 'partial') generatePlan();
   }, [plan, generatePlan, installPhase]);
 
   async function handleFinish() {
@@ -95,6 +96,42 @@ export default function OnboardingPlanScreen() {
    * zero. The only action offered writes the completion; there is deliberately
    * no path from this screen back to the insert.
    */
+  /**
+   * Some of the plan's habits exist and some do not.
+   *
+   * Deliberately NOT resolved automatically. Re-running the install would put
+   * the whole plan on top of the part that landed; treating it as finished
+   * would silently accept a plan the user never got. So the numbers are shown
+   * and the only offered action says exactly what it does — the rest of the
+   * habits can be added from the habits screen, which already exists for that.
+   */
+  if (installPhase === 'partial') {
+    return (
+      <OnboardingScaffold
+        step={3}
+        totalSteps={3}
+        title="Kurulum yarım kaldı"
+        subtitle="Planının bir kısmı oluşturuldu. Var olanları koruyoruz; hiçbiri silinmeyecek."
+        primaryLabel="Bununla devam et"
+        onPrimary={handleFinish}
+        primaryLoading={installing}
+        primaryDisabled={installing}
+        error={installError}
+      >
+        <View style={s.recovery}>
+          <Ionicons name="warning-outline" size={20} color={colors.warning} />
+          <Text style={s.recoveryText}>
+            {installExpectedHabits > 0
+              ? `${installedHabitCount} / ${installExpectedHabits} alışkanlık oluşturuldu.`
+              : 'Bu kurulumun ne kadarının tamamlandığını doğrulayamadık.'}
+            {' '}Devam edersen bunlar kalır; kalanları Alışkanlıklar ekranından
+            istediğin zaman ekleyebilirsin.
+          </Text>
+        </View>
+      </OnboardingScaffold>
+    );
+  }
+
   if (installPhase === 'awaiting_completion') {
     return (
       <OnboardingScaffold

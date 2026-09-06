@@ -4,6 +4,7 @@ import {
   EMPTY_ANSWERS,
   SKIP_DEFAULT_ANSWERS,
   explainPlan,
+  newInstallId,
   normaliseAnswers,
   toggleDaypart as toggleDaypartPure,
   toggleGoal as toggleGoalPure,
@@ -17,6 +18,7 @@ import {
 import { buildStarterPlan, type StarterPlan } from '../lib/starterPlan';
 import { fetchOnboarding, writeOnboarding } from '../repositories/onboardingRepository';
 import { installProposal } from '../services/routineService';
+import { countHabitsForInstall } from '../repositories/habitRepository';
 import { evaluateProposal, validateRoutineProposal } from '../lib/routineProposal';
 import { ensurePermission } from '../lib/notifications';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
@@ -62,7 +64,7 @@ export type HydrationState = 'idle' | 'loading' | 'ready' | 'error';
  * write ONLY the completion — inserting again would give the user two of
  * every habit, which nothing in the schema would reject.
  */
-export type InstallPhase = 'idle' | 'installing' | 'awaiting_completion';
+export type InstallPhase = 'idle' | 'installing' | 'awaiting_completion' | 'partial';
 
 type OnboardingStore = {
   hydrationState: HydrationState;
@@ -78,8 +80,15 @@ type OnboardingStore = {
   installing: boolean;
   installError: string | null;
   installPhase: InstallPhase;
-  /** How many habits an earlier attempt left behind. Reported, not guessed. */
+  /**
+   * How many rows THIS install produced. Counted by `install_id`, never by how
+   * many habits the account happens to have.
+   */
   installedHabitCount: number;
+  /** How many it was supposed to produce, from the durable claim. */
+  installExpectedHabits: number;
+  /** The install being claimed or recovered. */
+  installId: string | null;
 
   permission: NotificationPermission;
 
@@ -184,6 +193,8 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
   installError: null,
   installPhase: 'idle',
   installedHabitCount: 0,
+  installExpectedHabits: 0,
+  installId: null,
 
   permission: 'unknown',
   personalizing: false,
@@ -217,25 +228,60 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
     if (status === 'installing') {
       /**
        * A durable claim from an earlier attempt, possibly from a previous
-       * process. Decide from the ACCOUNT, not from memory and not from a
-       * guess about habit names:
+       * process. Resolved by asking about THIS INSTALL, never about the
+       * account.
        *
-       *   0 habits  -> the insert provably never landed. There is nothing to
-       *                duplicate, so the whole install may run again.
-       *   n habits  -> the insert landed. Only the completion write is
-       *                missing, and re-inserting would double every habit.
+       * The account-wide habit count used to be the signal, and it was wrong
+       * for the one case that matters most: an existing user who reopens
+       * onboarding from Settings already has habits, so a crash BEFORE the
+       * new insert looked identical to a successful one, and the completion
+       * was written for a plan that was never installed. A count of the
+       * account's habits is not evidence about any particular install.
        *
-       * The count is the whole decision, and it is exact in both directions.
+       *   0 matching rows          -> the insert never landed; re-run is safe
+       *   exactly `expected` rows  -> it landed; only the completion retries
+       *   anything else            -> partial: an explicit state, not a guess
        */
-      await useHabitStore.getState().fetchHabits();
-      const installed = useHabitStore.getState().habits.length;
+      const claimedId = row?.install_id ?? null;
+      const expected = row?.install_expected_habits ?? 0;
+
+      if (!claimedId) {
+        // A claim with no identity cannot be verified either way — a row
+        // written by an older build, or hand-edited. Refusing to guess is the
+        // whole point of this rewrite, so it surfaces as a recoverable state
+        // rather than as a silent completion.
+        set({
+          hydrationState: 'ready', loadError: null, status, answers,
+          installPhase: 'partial', installedHabitCount: 0,
+          installExpectedHabits: expected, installId: null,
+        });
+        return;
+      }
+
+      const counted = await countHabitsForInstall(claimedId);
+      if (!counted.ok) {
+        // Cannot tell whether the install landed: the same class of failure
+        // as a failed row read, and it takes the same gate rather than a
+        // guess in either direction.
+        set({ hydrationState: 'error', loadError: counted.error });
+        return;
+      }
+
+      const installed = counted.data;
+      const phase: InstallPhase =
+        installed === 0 ? 'idle'
+          : installed === expected ? 'awaiting_completion'
+            : 'partial';
+
       set({
         hydrationState: 'ready',
         loadError: null,
         status,
         answers,
-        installPhase: installed > 0 ? 'awaiting_completion' : 'idle',
+        installPhase: phase,
         installedHabitCount: installed,
+        installExpectedHabits: expected,
+        installId: claimedId,
       });
       return;
     }
@@ -247,6 +293,8 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
       answers,
       installPhase: 'idle',
       installedHabitCount: 0,
+      installExpectedHabits: 0,
+      installId: row?.install_id ?? null,
     });
   },
 
@@ -303,6 +351,8 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
       installError: null,
       installPhase: 'idle',
       installedHabitCount: 0,
+      installExpectedHabits: 0,
+      installId: null,
       permission: 'unknown',
       personalizing: false,
     });
@@ -410,6 +460,16 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
     // branch can reach the insert.
     if (get().installPhase === 'awaiting_completion') return get().completeInstall();
 
+    // A partial install is the one state this function must NOT act on. Some
+    // of the plan's rows exist and some do not; running the insert again would
+    // write the whole plan on top of the part that landed, and the unique
+    // index would reject only the rows sharing the old id -- which this
+    // attempt would not carry. The screen shows the counts and asks.
+    if (get().installPhase === 'partial') {
+      set({ installError: 'Kurulum yarım kaldı. Ne yapılacağını seçmen gerekiyor.' });
+      return false;
+    }
+
     const { plan, installing } = get();
     if (!plan || installing) return false;
     if (plan.habits.length === 0) {
@@ -443,12 +503,27 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
         const evaluation = evaluateProposal(validation.proposal, { activeHabits: activeHabitLoadInputs() });
 
         // ── 1. the durable claim, before anything exists to duplicate ──
-        const claim = await writeOnboarding({ answers: get().answers, status: 'installing' });
+        //
+        // A FRESH id each attempt. Reusing one would let a re-run after a
+        // `0 matching rows` verdict collide with rows that verdict said were
+        // not there — and the whole point of the identity is that the two
+        // cases cannot be confused.
+        const installId = newInstallId();
+        const expected = plan.habits.length;
+        const claim = await writeOnboarding({
+          answers: get().answers,
+          status: 'installing',
+          installId,
+          installExpectedHabits: expected,
+        });
         if (!claim.ok) {
           set({ installing: false, installError: claim.error, installPhase: 'idle' });
           return false;
         }
-        set({ installPhase: 'installing', status: 'installing' });
+        set({
+          installPhase: 'installing', status: 'installing',
+          installId, installExpectedHabits: expected,
+        });
 
         // ── 2. the habits ──
         //
@@ -469,13 +544,21 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
             frequency_config: h.frequency_config,
           })),
           evaluation.toActivate,
+          // Stamped, so recovery can ask about THESE rows and nothing else.
+          installId,
         );
         if (!result.ok) {
           // Nothing was written, so the claim is retracted rather than left
           // to strand the account in recovery on the next launch. The plan is
           // kept: the user retries the same install.
-          await writeOnboarding({ answers: get().answers, status: 'pending' });
-          set({ installing: false, installError: result.error, installPhase: 'idle', status: 'pending' });
+          await writeOnboarding({
+            answers: get().answers, status: 'pending',
+            installId: null, installExpectedHabits: null,
+          });
+          set({
+            installing: false, installError: result.error, installPhase: 'idle',
+            status: 'pending', installId: null, installExpectedHabits: 0,
+          });
           return false;
         }
 

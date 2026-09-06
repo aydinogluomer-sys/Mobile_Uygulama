@@ -106,12 +106,19 @@ export type InstallResult =
   | { ok: true; habits: Habit[] }
   | { ok: false; error: string };
 
-/** Persists a validated, capacity-evaluated proposal as habits. */
+/**
+ * Persists a validated, capacity-evaluated proposal as habits.
+ *
+ * `installId` is optional and passed straight through. Callers that do not
+ * supply one -- the Routine Pack picker and the AI builder -- produce rows
+ * with `install_id = null`, exactly as before.
+ */
 export async function installProposal(
   habits: ProposalHabit[],
   toActivate: readonly string[],
+  installId?: string | null,
 ): Promise<InstallResult> {
   const rows = buildInstallRows(habits, toActivate);
-  const res = await insertRoutineHabits(rows);
+  const res = await insertRoutineHabits(rows, installId);
   return res.ok ? { ok: true, habits: res.data } : { ok: false, error: res.error };
 }

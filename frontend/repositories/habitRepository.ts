@@ -53,7 +53,19 @@ export type InstallHabitRow = {
  * Empty input is a no-op success (not an error) so a caller never needs a
  * special case for "the proposal had zero habits that made it this far".
  */
-export async function insertRoutineHabits(rows: InstallHabitRow[]): Promise<RepoResult<Habit[]>> {
+/**
+ * Inserts a routine/plan's habits, optionally stamping them with the install
+ * that produced them.
+ *
+ * `installId` is OPTIONAL and defaults to null, so a Routine Pack, an AI
+ * proposal or a hand-made habit is unchanged and stays invisible to install
+ * recovery. Only the onboarding installer passes one, and only rows carrying
+ * it can ever be counted as evidence that that install landed.
+ */
+export async function insertRoutineHabits(
+  rows: InstallHabitRow[],
+  installId?: string | null,
+): Promise<RepoResult<Habit[]>> {
   if (rows.length === 0) return { ok: true, data: [] };
 
   const u = await currentUserId();
@@ -75,6 +87,7 @@ export async function insertRoutineHabits(rows: InstallHabitRow[]): Promise<Repo
     urgency: 'not_urgent' as const,
     difficulty: r.difficulty,
     estimated_minutes: r.estimated_minutes,
+    install_id: installId ?? null,
   }));
 
   const { data, error } = await supabase
@@ -181,4 +194,34 @@ export async function searchHabits(query: string, limit = 8): Promise<RepoResult
     .limit(Math.min(limit, 25));
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as unknown as Habit[] };
+}
+
+/**
+ * How many habits THIS install produced, for THIS user.
+ *
+ * The question install recovery has to answer, and the one the previous
+ * implementation could not ask. It counted the account's habits instead, so
+ * an existing user with eight unrelated habits who reopened onboarding and
+ * crashed before the insert was told their new plan had landed — and the
+ * completion was written for habits that were never created.
+ *
+ * `install_id` is null on every habit that did not come from an onboarding
+ * install, so those rows cannot be counted here however many of them there
+ * are. `user_id` is filtered explicitly as well as by RLS, the same
+ * defence-in-depth as every other read in this layer.
+ *
+ * `head: true` asks Postgres for the count and no rows: recovery needs a
+ * number, and shipping the habits back to compare lengths would be a page of
+ * data fetched to be discarded.
+ */
+export async function countHabitsForInstall(installId: string): Promise<RepoResult<number>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { count, error } = await supabase
+    .from('habits')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', u.userId)
+    .eq('install_id', installId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: count ?? 0 };
 }

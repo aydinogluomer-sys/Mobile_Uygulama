@@ -10,10 +10,15 @@
  * re-ran only the completion write was simply false.
  *
  * The fix is a durable claim written BEFORE the habits exist
- * (`status: 'installing'`), which a later process can read. Recovery counts
- * the account's habits: zero means the insert provably never landed and the
- * whole install may re-run; more than zero means only the completion write is
- * missing. No habit names are matched and nothing is guessed.
+ * (`status: 'installing'`), which a later process can read.
+ *
+ * How that claim is RESOLVED is the subject of
+ * `onboardingInstallIdentity.test.ts`, and the first version of it was wrong:
+ * it counted the account's habits, which is evidence for a first-run user
+ * with an empty account and no evidence at all for an existing user
+ * personalizing over eight habits they already had. Resolution now counts
+ * rows carrying the install's own `install_id`. The fixtures here supply one
+ * for that reason — a claim without an identity is deliberately unresolvable.
  *
  * ## DEFECT 2 — a failed read let a new user reach Today
  *
@@ -73,7 +78,7 @@ import {
   resolveOnboardingRouting, useOnboardingStore, type RoutingInput,
 } from '../../store/onboardingStore';
 import { useHabitStore } from '../../store/habitStore';
-import type { OnboardingAnswers } from '../../lib/onboarding';
+import { newInstallId, type OnboardingAnswers } from '../../lib/onboarding';
 
 const ANSWERS: OnboardingAnswers = {
   goals: ['sleep'],
@@ -181,16 +186,18 @@ describe('AC-R01 insert succeeds, completion fails, retry finishes', () => {
 // ---------------------------------------------------------------------------
 describe('AC-R02 recovery after process death', () => {
   it('a fresh store recovers from the durable status alone', async () => {
-    // Simulate the previous process: habits in the table, `installing` on the
-    // server, and NOTHING in module memory.
+    // Simulate the previous process: the rows THAT INSTALL made, `installing`
+    // on the server with its identity, and NOTHING in module memory.
+    const installId = newInstallId();
     mockDb.rows.habits = [
-      { id: 'h1', user_id: 'u1', name: 'Sabit yatış saati', status: 'active' } as never,
-      { id: 'h2', user_id: 'u1', name: 'Işıkları kıs', status: 'active' } as never,
+      { id: 'h1', user_id: 'u1', name: 'Sabit yatış saati', status: 'active', install_id: installId } as never,
+      { id: 'h2', user_id: 'u1', name: 'Işıkları kıs', status: 'active', install_id: installId } as never,
     ];
     mockDb.rows.user_onboarding = [{
       id: 'r1', user_id: 'u1', onboarding_version: 1, goals: ['sleep'],
       primary_barrier: 'consistency', pace: 'balanced', preferred_dayparts: ['bedtime'],
       reminder_intent: null, status: 'installing', completed_at: null,
+      install_id: installId, install_expected_habits: 2,
       created_at: 'now', updated_at: 'now',
     } as never];
     useOnboardingStore.getState().resetForAccount();   // module memory is empty
@@ -200,7 +207,8 @@ describe('AC-R02 recovery after process death', () => {
     const s = useOnboardingStore.getState();
     expect(s.hydrationState).toBe('ready');
     expect(s.status).toBe('installing');
-    // Decided by counting the account's habits, not by remembering anything.
+    // Decided by counting the rows carrying THIS install's id, not the
+    // account's habits and not anything remembered.
     expect(s.installPhase).toBe('awaiting_completion');
     expect(s.installedHabitCount).toBe(2);
     // No plan is regenerated, so there is nothing an accidental tap could
@@ -213,11 +221,16 @@ describe('AC-R02 recovery after process death', () => {
   });
 
   it('installPlan from recovery cannot reach the insert path', async () => {
-    mockDb.rows.habits = [{ id: 'h1', user_id: 'u1', name: 'x', status: 'active' } as never];
+    const installId = newInstallId();
+    mockDb.rows.habits = [
+      { id: 'h1', user_id: 'u1', name: 'x', status: 'active', install_id: installId } as never,
+    ];
     mockDb.rows.user_onboarding = [{
       id: 'r1', user_id: 'u1', onboarding_version: 1, goals: [], primary_barrier: null,
       pace: 'balanced', preferred_dayparts: [], reminder_intent: null,
-      status: 'installing', completed_at: null, created_at: 'now', updated_at: 'now',
+      status: 'installing', completed_at: null,
+      install_id: installId, install_expected_habits: 1,
+      created_at: 'now', updated_at: 'now',
     } as never];
     await useOnboardingStore.getState().hydrate();
 
@@ -242,6 +255,7 @@ describe('AC-R03 a claim with nothing behind it is not stuck', () => {
       id: 'r1', user_id: 'u1', onboarding_version: 1, goals: ['sleep'],
       primary_barrier: null, pace: 'balanced', preferred_dayparts: [],
       reminder_intent: null, status: 'installing', completed_at: null,
+      install_id: newInstallId(), install_expected_habits: 3,
       created_at: 'now', updated_at: 'now',
     } as never];
 
