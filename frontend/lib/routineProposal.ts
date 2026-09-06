@@ -537,6 +537,35 @@ export function evaluateProposal(
 /** Top-level keys today's edge function actually sends. */
 const ALLOWED_EDGE_TOP_KEYS = new Set(['name', 'description', 'items']);
 
+/**
+ * The TRANSPORT ENVELOPE, which is not part of the proposal at all.
+ *
+ * The edge function never returns the AI payload on its own. Every success
+ * leaves through a single line:
+ *
+ *     return json({ ...payload, balance, cost, replayed });
+ *
+ * -- the debited Focus Point balance, the price, and whether the spend was an
+ * idempotent replay, merged into the SAME object as `{name, description,
+ * items}`. So the object this adapter receives always carries these three
+ * keys, and rejecting them as "unexpected field(s)" rejected every real,
+ * correctly-generated routine the product ever produced. Worse than a
+ * cosmetic failure: the edge function had already SUCCEEDED and charged 25
+ * Focus Points, so nothing refunded them -- the loss was created entirely on
+ * this side of the wire.
+ *
+ * The whole suite missed it because every fixture was hand-written as the AI
+ * payload alone; `__tests__/edge/generateRoutineResponseEnvelope.test.ts`
+ * builds its fixture from the edge function's own source instead, so the two
+ * cannot drift apart again.
+ *
+ * Kept SEPARATE from `ALLOWED_EDGE_TOP_KEYS` on purpose: these are tolerated,
+ * not accepted. `toCanonicalShape` copies only `name`/`description`/`items`,
+ * so an envelope field can never reach a `RoutineProposal`, and anything
+ * outside these two sets is still rejected exactly as before.
+ */
+const EDGE_ENVELOPE_KEYS = new Set(['balance', 'cost', 'replayed']);
+
 /** Per-item keys today's edge function actually sends (`SYSTEM_PROMPT`'s own
  *  item shape), PLUS `difficulty`/`estimated_minutes` -- not asked for
  *  today, but tolerated here so a response that DOES already include them
@@ -683,7 +712,9 @@ export function adaptEdgeRoutineResponse(raw: unknown): AdaptResult {
   if (hasForbiddenKey(raw)) {
     return { ok: false, errors: [{ path: '$', message: 'root object contains a forbidden key (__proto__ / constructor / prototype)' }] };
   }
-  const extraTop = Object.keys(raw).filter((k) => !ALLOWED_EDGE_TOP_KEYS.has(k) && !FORBIDDEN_KEYS.has(k));
+  const extraTop = Object.keys(raw).filter(
+    (k) => !ALLOWED_EDGE_TOP_KEYS.has(k) && !EDGE_ENVELOPE_KEYS.has(k) && !FORBIDDEN_KEYS.has(k),
+  );
   if (extraTop.length > 0) {
     return { ok: false, errors: [{ path: '$', message: `unexpected field(s): ${extraTop.join(', ')}` }] };
   }
