@@ -294,7 +294,7 @@ balances on its own rather than by being papered over.
 | 5 | **`google-auth` is not deployed.** | `functions/v1/google-auth` -> `404 NOT_FOUND`; 5 functions live, google-auth is not one | set `GOOGLE_CLIENT_ID/SECRET` (+ #3), then `supabase functions deploy google-auth` | §5 |
 | 6 | **The Anthropic account is out of credit,** so no AI feature can return output. | `generate-routine` log: `400 ... "Your credit balance is too low to access the Anthropic API"` | top up the Anthropic account | §10 scenario A |
 | 7 | **No crash-reporting sink.** Console only. | no DSN anywhere; `lib/crashReporting.ts` ships a transport seam and a dev sink | provide a DSN and attach a transport at boot | §22 |
-| 8 | **Bundle identifiers absent.** | `app.json` has no `ios.bundleIdentifier` / `android.package` | the owner chooses them against their own Apple/Google accounts and a domain they control | store release |
+| 8 | ~~**Bundle identifiers absent.**~~ **RESOLVED.** | was: `app.json` had no `ios.bundleIdentifier` / `android.package` | owner confirmed control of `aderyth.com`; both are now `com.aderyth.app` and the slug is `aderyth`, set in `app.json` and pinned by `brandingIdentity` / `crossProjectIsolation` | closed |
 
 Only **#1 blocks the merge**. The rest are integrations the app already fails
 closed on, and #8 is a store-release gate rather than a merge one. #1 is
@@ -496,11 +496,20 @@ That single fact also holds the recovery release sequence: re-applying
 `20260831_recovery_vocabulary` and deploying the v2 client is a coordinated
 step (§0b) that must not happen while the product cannot take a new user.
 
-**Store identifiers are pending the owner.** `ios.bundleIdentifier` and
-`android.package` are tied to their Apple and Google accounts and a domain they
-control; a guess like `com.atlas.app` can collide with a real listing, so they
-are asked for rather than invented. This is a store-release gate, not a merge
-one.
+**Store identifiers — settled.** They were pending the owner, because
+`ios.bundleIdentifier` and `android.package` are tied to their Apple and Google
+accounts and a domain they control, and a guess can collide with a real
+listing. Asking rather than inventing was the right call and the answer has
+since arrived: the owner controls `aderyth.com`, so the namespace is
+`com.aderyth` and both platforms use `com.aderyth.app`. The Expo slug moved to
+`aderyth` in the same change, which was safe precisely because no EAS project
+existed to be pointing at the old one. The URI scheme stays `atlas` — it is
+registered in the Notion and Google consoles and in the edge allowlist.
+
+Still open, and distinct from the above: the identifier is owner-approved but
+not yet **store-registered**. No App Store Connect or Play Console listing
+exists, so nothing has reserved the name. That check belongs before first
+publication.
 
 Two things that would have been merge blockers are closed rather than deferred:
 the Spotify flow is **securely disabled** instead of pointing at a deployment

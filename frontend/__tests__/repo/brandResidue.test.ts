@@ -75,7 +75,7 @@ function userFacingStrings(src: string): string[] {
  * gevşetmek değildir.
  */
 const FROZEN = [
-  /^atlas$/,                    // app.json scheme/slug — OAuth konsolları + allowlist
+  /^atlas$/,                    // app.json scheme — OAuth konsolları + allowlist
   /^atlas:\/\//,                // Linking.createURL ile kurulan callback'ler
   /^atlas_sync_queue_v1/,       // cihazdaki senkron kuyruğu
   /^atlas_notion_login_session/, // cihazdaki Notion oturumu
@@ -134,12 +134,22 @@ describe('kimlik alanları — ad değişti, makine değerleri değişmedi', () 
     expect(expo.name).toBe(NEW_NAME);
   });
 
-  it('deep-link şeması ve slug donduruldu', () => {
+  it('deep-link şeması donduruldu', () => {
     // Şemayı değiştirmek, OAuth konsollarındaki redirect URI'lerini ve
     // OAUTH_REDIRECT_ALLOWLIST edge secret'ını aynı anda değiştirmeyi
-    // gerektirir; onay verildikten SONRA kırılan bir akış üretir.
+    // gerektirir; onay verildikten SONRA kırılan bir akış üretir. Bu yüzden
+    // ürün adı Aderyth olsa da şema `atlas` kalır.
     expect(expo.scheme).toBe('atlas');
-    expect(expo.slug).toBe('atlas');
+  });
+
+  it('slug artık ürünün kendi adı', () => {
+    // Slug dondurulmuş DEĞİLDİ; yalnızca sahibi karar verene kadar
+    // bekliyordu. Şemadan farklı olarak hiçbir dış konsolda geçmiyor: EAS
+    // proje kimliğidir ve ortada EAS projesi yok (`extra.eas.projectId`
+    // yok, CLI oturumu yok), yani adı sabitlemek için en güvenli an burası.
+    // Şema ile slug'ın farklı olması kasıtlıdır.
+    expect(expo.slug).toBe('aderyth');
+    expect(expo.slug).not.toBe(expo.scheme);
   });
 });
 

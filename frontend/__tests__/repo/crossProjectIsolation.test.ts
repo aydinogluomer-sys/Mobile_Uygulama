@@ -169,12 +169,25 @@ describe('the active target is the canonical project', () => {
     expect(raw).not.toContain(DENIED);
     const expo = JSON.parse(raw).expo;
     expect(expo.name).toBe('Aderyth');
-    expect(expo.slug).toBe('atlas');
+    expect(expo.slug).toBe('aderyth');
+    // The scheme is deliberately NOT the product name: it is registered in the
+    // Notion and Google consoles and in the edge allowlist. See brandResidue.
     expect(expo.scheme).toBe('atlas');
-    // Bundle identifiers may legitimately be absent at this stage. What they
-    // must never be is somebody else's.
+
+    // The identifiers are no longer absent. The owner controls aderyth.com,
+    // which is what makes `com.aderyth` a namespace we may claim rather than a
+    // guess that could collide with a real listing.
+    expect(expo.ios?.bundleIdentifier).toBe('com.aderyth.app');
+    expect(expo.android?.package).toBe('com.aderyth.app');
+
+    // The isolation invariant this file exists for, unchanged and now applied
+    // to values that actually exist: neither may name the other project, and
+    // neither may carry a placeholder into a store submission.
     for (const id of [expo.ios?.bundleIdentifier, expo.android?.package]) {
-      if (id) expect(String(id)).not.toContain(DENIED);
+      expect(String(id)).not.toContain(DENIED);
+      expect(String(id)).not.toContain('placeholder');
+      expect(String(id)).not.toContain('sandbox');
+      expect(String(id)).not.toContain('example');
     }
   });
 

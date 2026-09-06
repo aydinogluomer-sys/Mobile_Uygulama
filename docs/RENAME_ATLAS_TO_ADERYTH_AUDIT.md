@@ -55,6 +55,12 @@ bundle identifiers are still outstanding. Renaming the slug belongs in the same
 decision as `ios.bundleIdentifier` and `android.package`, not in a branding
 pass. It stays until those values arrive.
 
+**Resolved.** Those values arrived: the owner confirmed control of
+`aderyth.com`, the identifiers landed as `com.aderyth.app`, and the slug moved
+to `aderyth` in the same change — still before any EAS project existed, so it
+was still free. The scheme did not move, and that split is deliberate; see
+section 1 and `docs/BRANDING.md`.
+
 ### 3. AsyncStorage keys
 
 ```

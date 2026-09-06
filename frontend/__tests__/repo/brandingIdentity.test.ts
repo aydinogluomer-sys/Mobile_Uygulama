@@ -120,6 +120,33 @@ describe('identity', () => {
     expect(config.name).toBe('Aderyth');
   });
 
+  it('the slug is the product name, because it becomes the EAS project', () => {
+    expect(config.slug).toBe('aderyth');
+  });
+
+  it('both stores get the same identifier, under a namespace the owner holds', () => {
+    // `com.aderyth` is the reverse of aderyth.com, which the owner controls.
+    // Until that was established these were deliberately absent -- an
+    // identifier guessed from a domain you do not own can collide with a real
+    // listing, and neither store lets you change it after publication.
+    //
+    // One identifier for both platforms: there is no reason for them to differ
+    // and every reason for support, analytics and deep links to see one name.
+    expect(config.ios?.bundleIdentifier).toBe('com.aderyth.app');
+    expect(config.android?.package).toBe('com.aderyth.app');
+    expect(config.ios?.bundleIdentifier).toBe(config.android?.package);
+  });
+
+  it('the identifiers are valid for both stores', () => {
+    for (const id of [config.ios?.bundleIdentifier, config.android?.package]) {
+      // Reverse-DNS, ASCII, no spaces. Android additionally forbids hyphens
+      // and requires every segment to be a legal Java identifier, so the
+      // stricter rule is applied to both -- they are the same string anyway.
+      expect(id).toMatch(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/);
+      expect(String(id).split('.').length).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   it('has a description, which the stores require', () => {
     expect(typeof config.description).toBe('string');
     expect(config.description.length).toBeGreaterThan(40);

@@ -116,11 +116,14 @@ all three in the same breath gives you an OAuth flow that fails at the
 redirect — *after* the user has granted consent, which is the worst place to
 fail. It is also invisible: nobody reads a URL scheme.
 
-`slug` was free at the time of the first rename and is no longer the point:
-it is the EAS project identifier and should be decided together with
-`ios.bundleIdentifier` and `android.package`, which are still outstanding. If
-those land as `com.<domain>.aderyth`, the slug can move with them in one
-change instead of two.
+`slug` was free at the time of the first rename, and the plan was to move it
+together with `ios.bundleIdentifier` and `android.package` in one change rather
+than two. That is what happened: the owner confirmed control of `aderyth.com`,
+the identifiers landed as `com.aderyth.app`, and the slug moved with them to
+`aderyth` in the same commit. It could move because it is the EAS project
+identifier and no EAS project existed yet — no `extra.eas.projectId`, no
+logged-in CLI — so nothing external was pointing at the old value. That is the
+whole difference between the slug and the scheme.
 
 Two AsyncStorage prefixes are frozen for a different reason —
 `atlas_sync_queue_v1` holds writes the user made offline that the server has
@@ -134,16 +137,32 @@ values.
 
 ## Still required, and why it is not done here
 
-**Bundle identifiers.** `ios.bundleIdentifier` and `android.package` are absent
-and a store build cannot proceed without them. They are deliberately not
-invented: an identifier is tied to the owner's Apple and Google developer
-accounts and to a domain they control, and a guess like `com.aderyth.app` can
-collide with a real listing. The owner must choose, e.g.:
+**Bundle identifiers — decided.** They were absent for a while, and
+deliberately so: an identifier is tied to the owner's Apple and Google
+developer accounts and to a domain they control, and a guess can collide with a
+real listing. Two audits recorded them as an owner decision rather than
+inventing one.
+
+The owner has since confirmed control of `aderyth.com` and `aderyth.app`, which
+makes `com.aderyth` a namespace this project may claim. Both platforms now
+carry the same identifier:
 
 ```json
-"ios":     { "bundleIdentifier": "com.<their-domain>.aderyth" },
-"android": { "package":          "com.<their-domain>.aderyth" }
+"slug":    "aderyth",
+"ios":     { "bundleIdentifier": "com.aderyth.app" },
+"android": { "package":          "com.aderyth.app" }
 ```
+
+The namespace comes from the reversed `aderyth.com`, not from reversing
+`aderyth.app`; `app` is the application component beneath the controlled
+namespace. One identifier serves both stores — there is no reason for them to
+differ and every reason for support, analytics and deep links to see one name.
+
+Two things this does NOT mean. The scheme is still `atlas`, for the reasons
+above, and slug ≠ scheme is intentional. And owner-approved is not
+store-registered: neither Apple nor Google has been asked to reserve
+`com.aderyth.app` yet, which is a step before first publication. Note that
+Android's package is immutable once a Play listing exists.
 
 **Real artwork.** Icon, feature graphic, and screenshots for both stores.
 

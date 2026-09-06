@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Aderyth",
-    "slug": "atlas",
+    "slug": "aderyth",
     "description": "Alışkanlıklarını irade ekonomisiyle yöneten, ADHD dostu bir karar çerçevesi. Alışkanlık takibi, odak seansları, telafi planları ve haftalık/aylık değerlendirme.",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -11,9 +11,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aderyth.app"
     },
     "android": {
+      "package": "com.aderyth.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#15140F"
