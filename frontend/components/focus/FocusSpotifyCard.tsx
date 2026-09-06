@@ -7,7 +7,7 @@ import { useSpotifyStore } from '../../store/spotifyStore';
 import { FOCUS_PLAYLISTS, type FocusPlaylist } from '../../lib/spotifyFocus';
 import { haptic } from '../../lib/haptics';
 import { colors } from '../../lib/tokens';
-import { SPOTIFY_OAUTH_ENABLED, SPOTIFY_OAUTH_DISABLED_REASON } from '../../lib/featureGates';
+import { SPOTIFY_OAUTH_ENABLED } from '../../lib/featureGates';
 
 const SPOTIFY = '#1DB954';
 
@@ -50,27 +50,25 @@ export default function FocusSpotifyCard() {
     else await play();
   }
 
-  // ── Bağlanma kapalı ──────────────────────────────────────────────────────
+  // ── Kapsam dışı: hiç gösterme ────────────────────────────────────────────
   //
-  // Honest unavailability, not a button that fails. The reason is stated
-  // instead of hidden: a feature that silently disappears reads as a bug, and
-  // a button that errors on tap wastes the user's attempt. The real refusal is
-  // in `spotifyStore.connect()`; this is what the person sees.
-  if (!connection && !SPOTIFY_OAUTH_ENABLED) {
-    return (
-      <View style={s.card}>
-        <View style={s.connectRow}>
-          <View style={[s.logo, { backgroundColor: colors.surfaceAlt }]}>
-            <Ionicons name="musical-notes" size={20} color={colors.textFaint} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.connectTitle}>Spotify</Text>
-            <Text style={s.connectSub}>{SPOTIFY_OAUTH_DISABLED_REASON}</Text>
-          </View>
-        </View>
-      </View>
-    );
-  }
+  // This used to render a card reading "Spotify — temporarily closed for
+  // security maintenance". That was the right thing to say while Spotify was
+  // still a feature waiting on a security fix: honest unavailability beats a
+  // button that fails.
+  //
+  // Spotify is no longer part of the MVP, so "temporarily" became the wrong
+  // word — the card now promises a return that is not scheduled, which is a
+  // worse lie than saying nothing. The surface is removed instead.
+  //
+  // A CONNECTED account still renders in full below, deliberately: anyone who
+  // linked Spotify under the old build must keep a way to disconnect. That is
+  // the same carve-out `featureGates.ts` names, and it costs nothing today —
+  // `spotify_accounts` holds zero rows.
+  //
+  // Nothing dormant is deleted. `spotifyStore.connect()` remains the real
+  // refusal for any other caller; this only stops the entry point being shown.
+  if (!connection && !SPOTIFY_OAUTH_ENABLED) return null;
 
   // ── Bağlı değil ──────────────────────────────────────────────────────────
   if (!connection) {

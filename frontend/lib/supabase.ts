@@ -172,11 +172,12 @@ export type Routine = {
 // 20260825'te eklenmişti. Sözlük 20260831_recovery_vocabulary ile tek'e
 // indirildi ve adaptör kaldırıldı.
 //
-// DEPLOY NOTU: bu branch yayınlanmadığı için canlı veritabanında o migration
-// şu an geri alınmış (20260831_recovery_vocabulary_compat_rollback) --
-// `main` legacy kelimeleri yazmaya devam edebilsin diye. Aşağıdaki sözlük
-// branch'in sözlüğüdür ve doğrudur; canlıya çıkmadan ÖNCE vocabulary
-// migration'ı yeniden uygulanmalı. Release gate: pre-merge audit §0b.
+// DEPLOY DURUMU: bu geçici geri alma KAPATILDI. Koordineli v2 sürümü
+// 20260906g_recovery_v2_vocabulary_release ile uygulandı; canlı
+// kbcuolhjjnmhjaarxxmu artık yalnızca aşağıdaki sözlüğü kabul ediyor
+// (strategy CHECK ve status CHECK v2, strategy DEFAULT 'complete_today').
+// Legacy kelimeler -- full/half/mini/reschedule, done/skipped -- canlıda
+// REDDEDİLİYOR; pre-merge audit §0b'deki release gate kapandı.
 export type RecoveryStrategy = 'complete_today' | 'push_tomorrow' | 'split_two_days' | 'skip';
 export type RecoveryStatus = 'planned' | 'completed' | 'expired' | 'cancelled';
 export type RecoveryDeficitType = 'numeric' | 'binary';
