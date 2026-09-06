@@ -26,6 +26,7 @@ import { currentUserId, type RepoResult } from './shared';
 import {
   ONBOARDING_VERSION,
   type OnboardingAnswers,
+  type OnboardingReturnStatus,
   type OnboardingStatus,
 } from '../lib/onboarding';
 
@@ -43,6 +44,11 @@ export type OnboardingRow = {
   install_id: string | null;
   /** How many habits that install should produce. */
   install_expected_habits: number | null;
+  /**
+   * The lifecycle status `status` had before the claim overwrote it with
+   * `installing`. Null whenever no install is in flight.
+   */
+  install_return_status: OnboardingReturnStatus | null;
   created_at: string;
   updated_at: string;
 };
@@ -50,7 +56,7 @@ export type OnboardingRow = {
 const COLS =
   'user_id,onboarding_version,goals,primary_barrier,pace,preferred_dayparts,' +
   'reminder_intent,status,completed_at,install_id,install_expected_habits,' +
-  'created_at,updated_at';
+  'install_return_status,created_at,updated_at';
 
 /** The caller's row, or `null` when they have never answered anything. */
 export async function fetchOnboarding(): Promise<RepoResult<OnboardingRow | null>> {
@@ -85,6 +91,17 @@ export async function writeOnboarding(input: {
    */
   installId?: string | null;
   installExpectedHabits?: number | null;
+  /**
+   * Where a failed install must return the user.
+   *
+   * Passed WITH the claim, in this one upsert, so a claim can never exist
+   * without the status it displaced -- which is the whole point: the rollback
+   * has to work in a process that was not running when the claim was made.
+   *
+   * Omitting it leaves the stored value alone, exactly like the two fields
+   * above, so the completion write does not have to restate it.
+   */
+  installReturnStatus?: OnboardingReturnStatus | null;
 }): Promise<RepoResult<OnboardingRow>> {
   const u = await currentUserId();
   if (!u.ok) return u;
@@ -104,6 +121,9 @@ export async function writeOnboarding(input: {
   if (input.installId !== undefined) row.install_id = input.installId;
   if (input.installExpectedHabits !== undefined) {
     row.install_expected_habits = input.installExpectedHabits;
+  }
+  if (input.installReturnStatus !== undefined) {
+    row.install_return_status = input.installReturnStatus;
   }
 
   const { data, error } = await supabase

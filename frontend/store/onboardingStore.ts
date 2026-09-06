@@ -11,7 +11,9 @@ import {
   type BarrierId,
   type DaypartId,
   type GoalId,
+  isReturnStatus,
   type OnboardingAnswers,
+  type OnboardingReturnStatus,
   type OnboardingStatus,
   type PaceId,
 } from '../lib/onboarding';
@@ -89,6 +91,16 @@ type OnboardingStore = {
   installExpectedHabits: number;
   /** The install being claimed or recovered. */
   installId: string | null;
+  /**
+   * Where a failed install puts the user back -- read from the row, not
+   * remembered from this process.
+   *
+   * The claim overwrites `status` with `installing`, so the status it
+   * displaced has to be kept somewhere, and this protocol survives process
+   * death: a value that lives only in this closure is gone precisely in the
+   * case the recovery exists for. Null when no install is in flight.
+   */
+  installReturnStatus: OnboardingReturnStatus | null;
 
   permission: NotificationPermission;
 
@@ -158,6 +170,30 @@ function activeHabitLoadInputs(): HabitLoadInput[] {
 }
 
 /**
+ * Where a failed install must return the user, given the status the claim is
+ * about to displace.
+ *
+ * Pure and exported so the rule can be asked directly for every input,
+ * including the two with no user-reachable screen: a retry over a claim this
+ * process did not make, and a call before the row was ever read.
+ */
+export function resolveReturnStatus(
+  current: OnboardingStatus | 'unknown',
+  claimed: OnboardingReturnStatus | null,
+): OnboardingReturnStatus {
+  // A retry over a claim that is already durable, possibly one an earlier
+  // process made. The status it displaced was recorded WITH that claim, and
+  // `installing` is not a place to go back to -- reading the current value
+  // here would make the second failure forget what the first one preserved.
+  if (current === 'installing') return claimed ?? 'pending';
+  // The row has not been read yet. `pending` is the only safe reading: it is
+  // the status of an account that has not finished a first run, so it can
+  // promote nobody into a state they never reached.
+  if (current === 'unknown') return 'pending';
+  return current;
+}
+
+/**
  * Re-entrancy guard for the install.
  *
  * Module scope, not store state: two taps landing in the same tick both read
@@ -195,6 +231,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
   installedHabitCount: 0,
   installExpectedHabits: 0,
   installId: null,
+  installReturnStatus: null,
 
   permission: 'unknown',
   personalizing: false,
@@ -244,6 +281,14 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
        */
       const claimedId = row?.install_id ?? null;
       const expected = row?.install_expected_habits ?? 0;
+      // Where a failure has to leave the user. Recovered from the ROW: this
+      // may be a different process from the one that made the claim, which is
+      // the entire reason the field is on the server and not in a closure. A
+      // row written before this column existed reads as null and falls back
+      // to `pending` -- the same answer the old code always gave, so nothing
+      // regresses, and every claim written since carries the real one.
+      const returnStatus: OnboardingReturnStatus =
+        isReturnStatus(row?.install_return_status) ? row.install_return_status : 'pending';
 
       if (!claimedId) {
         // A claim with no identity cannot be verified either way — a row
@@ -254,6 +299,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
           hydrationState: 'ready', loadError: null, status, answers,
           installPhase: 'partial', installedHabitCount: 0,
           installExpectedHabits: expected, installId: null,
+          installReturnStatus: returnStatus,
         });
         return;
       }
@@ -282,6 +328,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
         installedHabitCount: installed,
         installExpectedHabits: expected,
         installId: claimedId,
+        installReturnStatus: returnStatus,
       });
       return;
     }
@@ -295,6 +342,10 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
       installedHabitCount: 0,
       installExpectedHabits: 0,
       installId: row?.install_id ?? null,
+      // No claim is in flight, so there is nowhere to return to. Whatever the
+      // column holds is a leftover, and reading it as live state would let a
+      // later failure restore a status this account left long ago.
+      installReturnStatus: null,
     });
   },
 
@@ -309,7 +360,14 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
   completeInstall: async () => {
     const { installedHabitCount } = get();
     set({ installing: true, installError: null });
-    const saved = await writeOnboarding({ answers: get().answers, status: 'completed' });
+    // The install landed, so there is no longer anywhere to roll back TO --
+    // and leaving the field set would arm the next failure with a stale
+    // answer. Cleared in the same write that ends the lifecycle at
+    // `completed`, which is where a finished install ends regardless of
+    // whether it began at `pending`, `completed`, `legacy` or `skipped`.
+    const saved = await writeOnboarding({
+      answers: get().answers, status: 'completed', installReturnStatus: null,
+    });
     if (!saved.ok) {
       // Still recoverable, and still without duplicating: the phase stays
       // `awaiting_completion` and the durable status stays `installing`.
@@ -321,6 +379,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
       installError: null,
       status: 'completed',
       installPhase: 'idle',
+      installReturnStatus: null,
       plan: null,
       planReasons: [],
       personalizing: false,
@@ -353,6 +412,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
       installedHabitCount: 0,
       installExpectedHabits: 0,
       installId: null,
+      installReturnStatus: null,
       permission: 'unknown',
       personalizing: false,
     });
@@ -447,10 +507,18 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
    * previous version had no way to know. See `hydrate` for how `installing`
    * is resolved on a cold start.
    *
-   * A failure at (1) or (2) leaves no habits, so the row goes back to
-   * `pending` and the user simply tries again. A failure at (3) leaves the
-   * habits and the claim, and the retry is `completeInstall` — never this
-   * function's insert path.
+   * A failure at (1) or (2) leaves no habits, so the row goes back to where
+   * it was and the user simply tries again. WHERE IT WAS is the load-bearing
+   * word: this used to be hardcoded to `pending`, which was right only for a
+   * first run. An existing user personalising from Settings was `completed`,
+   * `legacy` or `skipped`, and a dropped connection during the insert filed
+   * them as owing a first run -- so the next launch pushed them into
+   * mandatory onboarding over a failure that wrote nothing. The displaced
+   * status is written WITH the claim (see `installReturnStatus`) so the
+   * rollback still knows it in a process that has restarted since.
+   *
+   * A failure at (3) leaves the habits and the claim, and the retry is
+   * `completeInstall` — never this function's insert path.
    */
   installPlan: async () => {
     if (installInFlight) return installInFlight;
@@ -510,11 +578,16 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
         // cases cannot be confused.
         const installId = newInstallId();
         const expected = plan.habits.length;
+        // Where a failure must put this user back, decided BEFORE the claim
+        // overwrites the status it is about to displace, and written in the
+        // same upsert so a claim can never exist without it.
+        const returnStatus = resolveReturnStatus(get().status, get().installReturnStatus);
         const claim = await writeOnboarding({
           answers: get().answers,
           status: 'installing',
           installId,
           installExpectedHabits: expected,
+          installReturnStatus: returnStatus,
         });
         if (!claim.ok) {
           set({ installing: false, installError: claim.error, installPhase: 'idle' });
@@ -523,6 +596,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
         set({
           installPhase: 'installing', status: 'installing',
           installId, installExpectedHabits: expected,
+          installReturnStatus: returnStatus,
         });
 
         // ── 2. the habits ──
@@ -551,13 +625,25 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
           // Nothing was written, so the claim is retracted rather than left
           // to strand the account in recovery on the next launch. The plan is
           // kept: the user retries the same install.
+          //
+          // `returnStatus`, never a literal. A hardcoded `pending` here is
+          // what demoted settled accounts to first-run, and it is invisible
+          // in the only case that matters -- a first-run user rolls back to
+          // `pending` either way, so the bug looked correct in exactly the
+          // test everyone writes first.
+          //
+          // The transient install metadata goes with it: id, expected count
+          // and the return status itself. Nothing is in flight any more, and
+          // a leftover return status would arm the NEXT failure with an
+          // answer from this one.
           await writeOnboarding({
-            answers: get().answers, status: 'pending',
-            installId: null, installExpectedHabits: null,
+            answers: get().answers, status: returnStatus,
+            installId: null, installExpectedHabits: null, installReturnStatus: null,
           });
           set({
             installing: false, installError: result.error, installPhase: 'idle',
-            status: 'pending', installId: null, installExpectedHabits: 0,
+            status: returnStatus, installId: null, installExpectedHabits: 0,
+            installReturnStatus: null,
           });
           return false;
         }

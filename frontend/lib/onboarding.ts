@@ -186,6 +186,27 @@ export function newInstallId(): string {
  */
 export type OnboardingStatus = 'pending' | 'installing' | 'completed' | 'skipped' | 'legacy';
 
+/**
+ * Where a failed install has to put the user back.
+ *
+ * Onboarding is not only a first run. An existing user opens it on purpose
+ * from Settings, so the status the claim overwrites is just as likely to be
+ * `completed`, `legacy` or `skipped` as it is to be `pending` -- and a
+ * transient insert failure must return them to whichever it was, not to the
+ * one status that means "you still owe us a first run".
+ *
+ * `installing` is deliberately excluded: it is the value the claim DISPLACES,
+ * never a destination. Returning to it would recover the user into the exact
+ * state the rollback exists to leave. Mirrors the CHECK in
+ * `supabase/migrations/20260906d_onboarding_install_return_status.sql`.
+ */
+export type OnboardingReturnStatus = Exclude<OnboardingStatus, 'installing'>;
+
+/** Narrows an untrusted stored value -- a row read, not a local literal. */
+export function isReturnStatus(value: unknown): value is OnboardingReturnStatus {
+  return value === 'pending' || value === 'completed' || value === 'skipped' || value === 'legacy';
+}
+
 export type OnboardingAnswers = {
   goals: GoalId[];
   primaryBarrier: BarrierId | null;

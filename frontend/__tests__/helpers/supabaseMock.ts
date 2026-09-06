@@ -42,10 +42,30 @@ export type MockDb = {
    * write failure would have it consumed by whatever read happened first.
    */
   failNextRead: { error: string } | null;
+  /**
+   * Fails every write to ONE table, until cleared.
+   *
+   * `failNext` cannot express the case this exists for. A sequence that
+   * writes to two different tables and must fail at the SECOND one -- the
+   * onboarding install writes its claim to `user_onboarding` and only then
+   * the habits to `habits` -- cannot be tested by arming `failNext`
+   * beforehand, because the claim consumes it and the code never reaches the
+   * branch under test. Targeting by table lets the first write really
+   * succeed.
+   *
+   * `onAttempt` fires at the moment the write is refused, which is the only
+   * point at which the database holds the state a crash would leave behind:
+   * the claim durable, nothing inserted. Tests snapshot the row there rather
+   * than hand-writing what they assume the claim looked like.
+   */
+  failTable: { table: string; error: string; onAttempt?: () => void } | null;
 };
 
 export function createMockDb(): MockDb {
-  return { rows: {}, inserts: [], idSeq: 0, failNext: null, failNextRead: null };
+  return {
+    rows: {}, inserts: [], idSeq: 0,
+    failNext: null, failNextRead: null, failTable: null,
+  };
 }
 
 /**
@@ -105,6 +125,27 @@ export function makeSupabaseMock(db: MockDb, opts?: { userId?: string | null }) 
 
   const table = (t: string) => {
     db.rows[t] ??= [];
+
+    /**
+     * Both write-failure hooks, in one place, so the four write paths cannot
+     * drift apart on which of them they honour.
+     *
+     * `failTable` is checked first and does NOT consume `failNext`: a test
+     * targeting one table must not silently disarm a one-shot failure another
+     * part of the same test is relying on.
+     */
+    const takeWriteFailure = (): { data: null; error: { message: string } } | null => {
+      if (db.failTable && db.failTable.table === t) {
+        db.failTable.onAttempt?.();
+        return { data: null, error: { message: db.failTable.error } };
+      }
+      if (db.failNext) {
+        const e = db.failNext; db.failNext = null;
+        return { data: null, error: { message: e.error } };
+      }
+      return null;
+    };
+
     return {
       select(_cols?: string, _o?: unknown) {
         const filters: Record<string, unknown> = {};
@@ -187,10 +228,8 @@ export function makeSupabaseMock(db: MockDb, opts?: { userId?: string | null }) 
       insert(payload: Record<string, unknown>) {
         const rowsIn = Array.isArray(payload) ? payload : [payload];
         const commit = () => {
-          if (db.failNext) {
-            const e = db.failNext; db.failNext = null;
-            return { data: null, error: { message: e.error } };
-          }
+          const failure = takeWriteFailure();
+          if (failure) return failure;
           const created = rowsIn.map((p) => {
             const row = { id: 'r' + ++db.idSeq, created_at: 'now', ...p } as MockRow;
             db.rows[t].push(row);
@@ -224,10 +263,8 @@ export function makeSupabaseMock(db: MockDb, opts?: { userId?: string | null }) 
       upsert(payload: Record<string, unknown>, opts?: { onConflict?: string }) {
         const keys = (opts?.onConflict ?? 'id').split(',').map((k) => k.trim());
         const commit = () => {
-          if (db.failNext) {
-            const e = db.failNext; db.failNext = null;
-            return { data: null, error: { message: e.error } };
-          }
+          const failure = takeWriteFailure();
+          if (failure) return failure;
           const existing = db.rows[t].find((row) => keys.every((k) => row[k] === payload[k]));
           if (existing) {
             Object.assign(existing, payload);
@@ -252,10 +289,8 @@ export function makeSupabaseMock(db: MockDb, opts?: { userId?: string | null }) 
       update(patch: Record<string, unknown>) {
         const filters: Record<string, unknown> = {};
         const apply = () => {
-          if (db.failNext) {
-            const e = db.failNext; db.failNext = null;
-            return { data: null, error: { message: e.error } };
-          }
+          const failure = takeWriteFailure();
+          if (failure) return failure;
           const hits = db.rows[t].filter((row) => matches(row, filters));
           hits.forEach((row) => Object.assign(row, patch));
           return { data: hits, error: null };
@@ -283,10 +318,8 @@ export function makeSupabaseMock(db: MockDb, opts?: { userId?: string | null }) 
       delete() {
         const filters: Record<string, unknown> = {};
         const run = () => {
-          if (db.failNext) {
-            const e = db.failNext; db.failNext = null;
-            return { data: null, error: { message: e.error } };
-          }
+          const failure = takeWriteFailure();
+          if (failure) return failure;
           const hits = db.rows[t].filter((row) => matches(row, filters));
           db.rows[t] = db.rows[t].filter((row) => !matches(row, filters));
           return { data: hits, error: null };
