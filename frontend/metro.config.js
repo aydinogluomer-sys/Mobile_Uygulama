@@ -1,7 +1,11 @@
 // metro.config.js
 const { getDefaultConfig } = require("expo/metro-config");
 const path = require('path');
-const { FileStore } = require('metro-cache');
+// SDK 55 moved Metro inside the `expo` package as `@expo/metro`, so
+// `metro-cache` is no longer hoisted to the project root and a bare require
+// of it fails when Expo loads this file. `@expo/metro/metro-cache` is the
+// re-export Expo ships for exactly this case; same FileStore, same cache.
+const { FileStore } = require('@expo/metro/metro-cache');
 
 const config = getDefaultConfig(__dirname);
 

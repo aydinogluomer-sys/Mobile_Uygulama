@@ -9,7 +9,6 @@
     "scheme": "atlas",
     "primaryColor": "#D97757",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.aderyth.app"
@@ -19,8 +18,7 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#15140F"
-      },
-      "edgeToEdgeEnabled": true
+      }
     },
     "web": {
       "bundler": "metro",
@@ -45,7 +43,10 @@
           "icon": "./assets/images/notification-icon.png",
           "color": "#D97757"
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

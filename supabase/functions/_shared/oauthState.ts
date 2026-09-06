@@ -64,7 +64,9 @@ function toBase64Url(bytes: Uint8Array): string {
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function fromBase64Url(s: string): Uint8Array | null {
+// Same TS 5.7+ narrowing as `hmac` below: `new Uint8Array(n)` really is backed
+// by an `ArrayBuffer`, so saying so lets the result flow into `hmac`.
+function fromBase64Url(s: string): Uint8Array<ArrayBuffer> | null {
   if (!/^[A-Za-z0-9\-_]+$/.test(s)) return null;
   const padded = s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4);
   try {
@@ -82,7 +84,13 @@ const dec = new TextDecoder();
 
 // ── signing ────────────────────────────────────────────────────────────────
 
-async function hmac(secret: string, data: Uint8Array): Promise<Uint8Array> {
+// `Uint8Array<ArrayBuffer>` rather than a bare `Uint8Array`: since TypeScript
+// 5.7 the type is generic over its backing buffer, and the bare form widens to
+// `ArrayBufferLike`, which includes `SharedArrayBuffer` and so no longer
+// satisfies `BufferSource`. Both callers pass `TextEncoder.encode(...)`, which
+// is already `Uint8Array<ArrayBuffer>`, so this narrows the signature to what
+// it always received. No runtime change.
+async function hmac(secret: string, data: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey(
     'raw',
     enc.encode(secret),
