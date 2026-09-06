@@ -10,6 +10,15 @@ web-build/
 expo-env.d.ts
 
 # Native
+#
+# `ios/` and `android/` are GENERATED, not authored: this is a managed
+# Expo project (main = expo-router/entry) and `npx expo prebuild` writes
+# both from app.json plus the config plugins. Neither has ever been
+# tracked. They were unignored, so any prebuild -- including the one
+# Step 7B needs -- would drop a few hundred untracked files into the
+# worktree and invite them into a commit.
+/ios/
+/android/
 .kotlin/
 *.orig.*
 *.jks
