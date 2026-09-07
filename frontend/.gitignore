@@ -27,6 +27,18 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# Build artifacts.
+#
+# EAS writes these when a build runs locally, and they are also what you get
+# when you download a cloud build to look inside it. None is authored, every
+# one is large, and one of them is a credential: `*.jks` above covers the
+# keystores Expo generates, `*.keystore` covers the ones that arrive under
+# the other conventional name.
+*.apk
+*.aab
+*.ipa
+*.keystore
+
 # Metro
 .metro-health-check*
 .metro-cache/
