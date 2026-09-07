@@ -160,5 +160,5 @@ function Band({ band, w, h }: { band: AmbientBand; w: number; h: number }) {
 }
 
 const s = StyleSheet.create({
-  layer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
+  layer: { ...StyleSheet.absoluteFill, overflow: 'hidden' },
 });

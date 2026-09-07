@@ -318,7 +318,7 @@ export default function CommandPalette() {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject },
+  backdrop: { ...StyleSheet.absoluteFill },
   container: {
     position: 'absolute',
     top: Platform.OS === 'ios' ? 80 : 60,

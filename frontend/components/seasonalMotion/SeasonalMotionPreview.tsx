@@ -69,7 +69,7 @@ export default function SeasonalMotionPreview({ visible, onClose }: { visible: b
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.black },
-  center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  center: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   centerNum: { fontSize: 64, fontWeight: '800', color: colors.white },
   centerLabel: { fontSize: 13, color: colors.white, marginTop: 4 },
   panel: { position: 'absolute', left: 16, right: 16, bottom: 36, backgroundColor: 'rgba(20,20,16,0.92)', borderRadius: 16, padding: 16, gap: 14, borderWidth: 1, borderColor: colors.border },
