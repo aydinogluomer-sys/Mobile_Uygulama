@@ -59,3 +59,62 @@ export const SPOTIFY_OAUTH_ENABLED = false;
 /** Shown where the connect button used to be. */
 export const SPOTIFY_OAUTH_DISABLED_REASON =
   'Spotify bağlantısı güvenlik bakımı nedeniyle geçici olarak kapalı.';
+
+/**
+ * Connecting a Notion workspace, and connecting a Google Calendar.
+ *
+ * ## Why these are off
+ *
+ * Neither works in production, and both were advertised as if they did.
+ * A Step-9 audit compared this repository against the live project and found
+ * the client offering `status: 'available'` for two integrations whose
+ * backends were not there:
+ *
+ *     google-auth  never deployed at all. Probed live: 404 NOT_FOUND, so
+ *                  every action -- status, url, callback, disconnect --
+ *                  failed. The screen called it on mount, which meant opening
+ *                  Integrations fired a 404 before the user touched anything.
+ *     notion-auth  deployed, but the pre-hardening build. Probed live, it
+ *                  answered with `state` as a bare 36-char UUID that nothing
+ *                  verifies, no redirect allowlist enforcement, and
+ *                  `client_id=undefined` -- so even the happy path ended at a
+ *                  Notion error page.
+ *
+ * The cause is the same for both and it is not code: `GOOGLE_CLIENT_ID`,
+ * `GOOGLE_CLIENT_SECRET`, `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET`,
+ * `OAUTH_STATE_SECRET` and `OAUTH_REDIRECT_ALLOWLIST` are all absent from the
+ * project's edge secrets. The hardened implementations in
+ * `supabase/functions/{google,notion}-auth` are finished and tested; they have
+ * nothing to authenticate with.
+ *
+ * The owner's decision was therefore to ship the MVP without them rather than
+ * guess at credentials. A feature that is honestly unavailable is better than
+ * one that is advertised and fails.
+ *
+ * ## What must be true before these become `true`
+ *
+ * 1. the six values above are configured as edge secrets;
+ * 2. `supabase/functions/google-auth` and `notion-auth` from THIS tree are
+ *    deployed (`tools/verify-edge-deployment.mjs` reports them MISSING today);
+ * 3. re-probed live: state is signed, a tampered state is refused, an
+ *    unallowlisted `redirect_uri` is refused before any token exchange, and
+ *    one account's state does not verify for another;
+ * 4. `supabase/functions/DEPLOYMENT.json` flips them back to `deploy: true`.
+ *
+ * ## What this does NOT touch
+ *
+ * The backend source stays. So do the stores, the callback handling and the
+ * catalog entries -- this is an availability decision, not a deletion. When
+ * the credentials exist, turning these two constants back on plus a deploy is
+ * the whole change.
+ *
+ * Nobody is mid-connection: `notion_integrations` and
+ * `google_calendar_integrations` were both empty when this was written, so
+ * unlike Spotify there is not even a connected-user path to preserve.
+ */
+export const NOTION_INTEGRATION_ENABLED = false;
+export const GOOGLE_CALENDAR_INTEGRATION_ENABLED = false;
+
+/** Neutral, truthful, and deliberately promises no date. */
+export const INTEGRATION_UNAVAILABLE_REASON =
+  'Bu entegrasyon bu sürümde henüz kullanılamıyor.';

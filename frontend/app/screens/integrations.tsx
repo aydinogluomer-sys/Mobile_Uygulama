@@ -11,6 +11,11 @@ import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 import IntegrationItemCard from '../../components/IntegrationItemCard';
 import { useNotionStore } from '../../store/notionStore';
 import { useGoogleCalendarStore } from '../../store/googleCalendarStore';
+import {
+  NOTION_INTEGRATION_ENABLED,
+  GOOGLE_CALENDAR_INTEGRATION_ENABLED,
+  INTEGRATION_UNAVAILABLE_REASON,
+} from '../../lib/featureGates';
 
 export default function IntegrationsScreen() {
   const [selected, setSelected] = useState<IntegrationCategory | null>(null);
@@ -29,16 +34,31 @@ export default function IntegrationsScreen() {
   const isConnected = !!connection;
   const isGoogleConnected = !!googleConnection;
 
-  useEffect(() => { fetchStatus(); fetchGoogleStatus(); }, [fetchStatus, fetchGoogleStatus]);
+  // Both of these are network calls, and both used to run on every open of
+  // this screen. `fetchGoogleStatus` hit `google-auth?action=status`, which is
+  // not deployed -- so simply arriving here produced a 404 before the user had
+  // touched anything. Gated at the source rather than at the button, because a
+  // disabled button does not stop an effect.
+  useEffect(() => {
+    if (NOTION_INTEGRATION_ENABLED) fetchStatus();
+    if (GOOGLE_CALENDAR_INTEGRATION_ENABLED) fetchGoogleStatus();
+  }, [fetchStatus, fetchGoogleStatus]);
 
   // Notion modalı açılınca OAuth URL'ini önceden çek → buton anında açılır
   useEffect(() => {
+    if (!NOTION_INTEGRATION_ENABLED) return;
     if (notionModal && !isConnected) prefetchAuthUrl();
   }, [notionModal, isConnected, prefetchAuthUrl]);
 
   const connectedCount = INTEGRATION_CATEGORIES.flatMap(c => c.items).filter(i => i.status === 'connected').length + (isConnected ? 1 : 0) + (isGoogleConnected ? 1 : 0);
 
   function handleItemPress(item: IntegrationItem) {
+    // Belt and braces: the catalog already renders these two as `comingSoon`,
+    // which leaves their onPress undefined, so this is unreachable today. It is
+    // guarded anyway because the status value and this handler live in
+    // different files, and only one of them has to be forgotten.
+    if (item.id === 'notion' && !NOTION_INTEGRATION_ENABLED) return;
+    if (item.id === 'calendar' && !GOOGLE_CALENDAR_INTEGRATION_ENABLED) return;
     if (item.id === 'notion')   { setSelected(null); setTimeout(() => setNotionModal(true), 100); }
     if (item.id === 'calendar') { setSelected(null); setTimeout(() => setGoogleModal(true), 100); }
   }
@@ -98,10 +118,16 @@ export default function IntegrationsScreen() {
         {/* Notion öne çıkan kart */}
         <TouchableOpacity
           style={[s.featureCard, isConnected && s.featureCardConnected]}
-          onPress={() => setNotionModal(true)}
+          onPress={NOTION_INTEGRATION_ENABLED ? () => setNotionModal(true) : undefined}
+          disabled={!NOTION_INTEGRATION_ENABLED}
           accessibilityRole="button"
-          accessibilityLabel={isConnected ? 'Notion, bağlı' : 'Notion, bağlanmaya hazır'}
-          accessibilityHint="Notion entegrasyon ayarlarını açar"
+          accessibilityLabel={
+            !NOTION_INTEGRATION_ENABLED
+              ? `Notion. ${INTEGRATION_UNAVAILABLE_REASON}`
+              : isConnected ? 'Notion, bağlı' : 'Notion, bağlanmaya hazır'
+          }
+          accessibilityState={{ disabled: !NOTION_INTEGRATION_ENABLED }}
+          accessibilityHint={NOTION_INTEGRATION_ENABLED ? 'Notion entegrasyon ayarlarını açar' : undefined}
         >
           <View style={s.featureLeft}>
             <View style={[s.featureIcon, { backgroundColor: '#f9731620' }]}>
@@ -112,12 +138,14 @@ export default function IntegrationsScreen() {
                 <Text style={s.featureTitle}>Notion</Text>
                 <View style={[s.badge, isConnected ? s.badgeConnected : s.badgeAvailable]}>
                   <Text style={[s.badgeText, isConnected ? s.badgeTextConnected : s.badgeTextAvailable]}>
-                    {isConnected ? '● Bağlı' : 'Hazır'}
+                    {!NOTION_INTEGRATION_ENABLED ? 'Yakında' : isConnected ? '● Bağlı' : 'Hazır'}
                   </Text>
                 </View>
               </View>
               <Text style={s.featureDesc}>
-                {isConnected ? `${connection.workspaceName} · Son sync: ${lastSynced ?? 'henüz yok'}` : 'Tek tuşla Notion hesabınıza bağlanın'}
+                {!NOTION_INTEGRATION_ENABLED
+                  ? INTEGRATION_UNAVAILABLE_REASON
+                  : isConnected ? `${connection.workspaceName} · Son sync: ${lastSynced ?? 'henüz yok'}` : 'Tek tuşla Notion hesabınıza bağlanın'}
               </Text>
             </View>
           </View>
@@ -127,10 +155,16 @@ export default function IntegrationsScreen() {
 {/* Google Calendar öne çıkan kart */}
         <TouchableOpacity
           style={[s.featureCard, isGoogleConnected && s.featureCardConnected]}
-          onPress={() => setGoogleModal(true)}
+          onPress={GOOGLE_CALENDAR_INTEGRATION_ENABLED ? () => setGoogleModal(true) : undefined}
+          disabled={!GOOGLE_CALENDAR_INTEGRATION_ENABLED}
           accessibilityRole="button"
-          accessibilityLabel={isGoogleConnected ? 'Takvim, bağlı' : 'Takvim, bağlanmaya hazır'}
-          accessibilityHint="Google Calendar entegrasyon ayarlarını açar"
+          accessibilityLabel={
+            !GOOGLE_CALENDAR_INTEGRATION_ENABLED
+              ? `Takvim. ${INTEGRATION_UNAVAILABLE_REASON}`
+              : isGoogleConnected ? 'Takvim, bağlı' : 'Takvim, bağlanmaya hazır'
+          }
+          accessibilityState={{ disabled: !GOOGLE_CALENDAR_INTEGRATION_ENABLED }}
+          accessibilityHint={GOOGLE_CALENDAR_INTEGRATION_ENABLED ? 'Google Calendar entegrasyon ayarlarını açar' : undefined}
         >
           <View style={s.featureLeft}>
             <View style={[s.featureIcon, { backgroundColor: '#4285F420' }]}> 
@@ -141,11 +175,15 @@ export default function IntegrationsScreen() {
                 <Text style={s.featureTitle}>Takvim</Text>
                 <View style={[s.badge, isGoogleConnected ? s.badgeConnected : s.badgeAvailable]}>
                   <Text style={[s.badgeText, isGoogleConnected ? s.badgeTextConnected : s.badgeTextAvailable]}>
-                    {isGoogleConnected ? '● Bağlı' : 'Hazır'}
+                    {!GOOGLE_CALENDAR_INTEGRATION_ENABLED ? 'Yakında' : isGoogleConnected ? '● Bağlı' : 'Hazır'}
                   </Text>
                 </View>
               </View>
-              <Text style={s.featureDesc}>{isGoogleConnected ? `${googleConnection?.calendarName}` : 'Google Calendar hesabınızı bağlayın'}</Text>
+              <Text style={s.featureDesc}>
+                {!GOOGLE_CALENDAR_INTEGRATION_ENABLED
+                  ? INTEGRATION_UNAVAILABLE_REASON
+                  : isGoogleConnected ? `${googleConnection?.calendarName}` : 'Google Calendar hesabınızı bağlayın'}
+              </Text>
             </View>
           </View>
           <Ionicons name="chevron-forward" size={16} color="#56544B" />
@@ -155,7 +193,7 @@ export default function IntegrationsScreen() {
 
         <View style={s.hint}>
           <Ionicons name="information-circle-outline" size={16} color="#56544B" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-          <Text style={s.hintText}>Notion ve Google Calendar bağlantısı hazır. Diğer entegrasyonlar yakında geliyor.</Text>
+          <Text style={s.hintText}>Entegrasyonlar yakında geliyor.</Text>
         </View>
       </ScrollView>
 

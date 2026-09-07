@@ -41,7 +41,10 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
         id: 'notion',
         title: 'Notion',
         description: "Alışkanlık ve görevleri Notion veritabanına aktarın. Integration Token ile bağlayın.",
-        status: 'available',
+        // Not 'available' in this release: the production notion-auth function
+        // is the pre-hardening build and its OAuth credentials were never
+        // configured, so the flow cannot complete. See lib/featureGates.ts.
+        status: 'comingSoon',
         iconName: 'document-text-outline',
       },
       {
@@ -49,7 +52,9 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
         title: 'Takvim',
         description:
           'Google Calendar hesabınızı bağlayarak takviminize habit blokları ekleyin.',
-        status: 'available',
+        // Not 'available' in this release: google-auth is not deployed at all
+        // (404 in production). See lib/featureGates.ts.
+        status: 'comingSoon',
         iconName: 'calendar-outline',
       },
       {

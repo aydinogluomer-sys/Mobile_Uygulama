@@ -11,6 +11,7 @@ import { colors, space, radius, font, shadow, fontFamily } from '../../lib/token
 import { Button } from '../../components/ui';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
 import { useNotionSessionStore } from '../../store/notionSessionStore';
+import { NOTION_INTEGRATION_ENABLED } from '../../lib/featureGates';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -62,13 +63,24 @@ export default function LoginScreen() {
 
           {/* Form */}
           <View style={s.form}>
-            <Button label="Notion ile Giriş" onPress={handleNotionLogin} loading={loading} size="lg" style={{ marginBottom: space.xs }} />
+            {/* Signing in with Notion goes through the same `notion-auth` edge
+                function as the Notion integration, and that function is not
+                deployed in this release (see lib/featureGates.ts). Leaving the
+                button here would put a guaranteed failure on the first screen
+                of the app, which is a worse place to find one than Settings.
+                The divider goes with it -- "or with e-mail" reads as an
+                orphan when there is nothing above it to be an alternative to. */}
+            {NOTION_INTEGRATION_ENABLED && (
+              <>
+                <Button label="Notion ile Giriş" onPress={handleNotionLogin} loading={loading} size="lg" style={{ marginBottom: space.xs }} />
 
-            <View style={s.dividerRow}>
-              <View style={s.dividerLine} />
-              <Text style={s.dividerText}>veya e-posta ile</Text>
-              <View style={s.dividerLine} />
-            </View>
+                <View style={s.dividerRow}>
+                  <View style={s.dividerLine} />
+                  <Text style={s.dividerText}>veya e-posta ile</Text>
+                  <View style={s.dividerLine} />
+                </View>
+              </>
+            )}
 
             <FloatingLabelInput
               label="E-posta"
