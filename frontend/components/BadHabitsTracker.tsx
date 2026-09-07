@@ -37,12 +37,6 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
     time_wasted_per_day: '',
   });
 
-  useEffect(() => {
-    if (visible) {
-      loadBadHabits();
-    }
-  }, [visible]);
-
   const loadBadHabits = async () => {
     setLoading(true);
     const res = await listBadHabits(null, 100);
@@ -54,6 +48,12 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
     setError(null);
     setBadHabits(res.data.rows);
   };
+
+  useEffect(() => {
+    if (visible) {
+      loadBadHabits();
+    }
+  }, [visible]);
 
   const handleAddBadHabit = async () => {
     const name = newHabit.name.trim();
