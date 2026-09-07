@@ -86,7 +86,16 @@ test('Drawer render ediliyor', () => layout.includes('<Drawer />'));
 test('HamburgerButton headerLeft', () => layout.includes('HamburgerButton'));
 test('Arama/komut girişi headerRight', () => layout.includes('headerRight') && layout.includes('HeaderActions') && layout.includes('useCommandStore'));
 const rootLayout = read('./app/_layout.tsx');
-test('Auth redirect /tabs/today', () => rootLayout.includes('/tabs/today'));
+// The destination moved out of app/_layout.tsx when onboarding routing became
+// a pure function: the layout now renders `router.replace(decision.to)` and
+// `resolveOnboardingRouting` in store/onboardingStore.ts owns every target.
+// Grepping the layout for the literal string therefore stopped describing the
+// app -- it was asserting on a file rather than on the behaviour, and had been
+// failing CI since that refactor while the redirect itself kept working (three
+// jest suites cover it). Assert both halves of the real wiring instead.
+const onboardingStore = read('./store/onboardingStore.ts');
+test('Auth redirect /tabs/today', () =>
+  onboardingStore.includes("to: '/tabs/today'") && rootLayout.includes('router.replace(decision.to)'));
 test('Supabase auth dinleniyor', () => rootLayout.includes('onAuthStateChange'));
 
 // 4. Drawer
