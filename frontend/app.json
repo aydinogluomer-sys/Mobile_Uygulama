@@ -51,6 +51,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d1de22a6-60f6-478b-8f24-0ae44f2c71ee"
+      }
+    },
+    "owner": "omeraydinoglu"
   }
 }
