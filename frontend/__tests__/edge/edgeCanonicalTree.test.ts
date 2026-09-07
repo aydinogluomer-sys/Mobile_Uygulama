@@ -27,7 +27,7 @@
  * next person can deploy from `supabase/functions/` without reading this
  * history first.
  */
-import { existsSync, readdirSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { stripComments } from '../helpers/sourceText';
 
@@ -44,7 +44,13 @@ describe('one canonical source tree', () => {
   });
 
   it('every function lives under supabase/functions', () => {
-    const slugs = readdirSync(CANON).filter((d) => !d.startsWith('_'));
+    // Directories only. `_shared` is a library rather than an endpoint, and
+    // DEPLOYMENT.json is the manifest saying which of these production is
+    // supposed to serve -- neither is a function, and listing raw entries
+    // made this assertion fail the moment a file was added beside them.
+    const slugs = readdirSync(CANON)
+      .filter((d) => !d.startsWith('_'))
+      .filter((d) => statSync(join(CANON, d)).isDirectory());
     expect(slugs.sort()).toEqual([
       'generate-routine', 'google-auth', 'notion-auth', 'notion-sync',
       'spotify-auth', 'subscription-webhook',

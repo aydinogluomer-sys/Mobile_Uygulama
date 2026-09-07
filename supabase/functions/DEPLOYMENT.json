@@ -1,0 +1,57 @@
+{
+  "_why": [
+    "Step 9 found repository edge source hardened and green under test while",
+    "production ran something else entirely: google-auth was never deployed at",
+    "all (404 to a feature the client advertises), notion-auth was still the",
+    "pre-hardening build minting unsigned bare-UUID OAuth state, and an old",
+    "vulnerable spotify-auth was still publicly reachable months after Spotify",
+    "left the MVP. Every edge test passed throughout, because they all read the",
+    "repository. Nothing anywhere stated what production was SUPPOSED to run.",
+    "",
+    "This file is that statement. `tools/verify-edge-deployment.mjs` checks it",
+    "against the live project at release time, and",
+    "__tests__/repo/edgeDeploymentManifest.test.ts keeps it honest with no",
+    "credentials at all, so an undeclared function cannot be added quietly.",
+    "",
+    "`deploy: false` is a decision, not an omission -- see spotify-auth."
+  ],
+  "functions": [
+    {
+      "slug": "generate-routine",
+      "deploy": true,
+      "verifyJwt": true,
+      "note": "Anthropic routine generation. Spends 25 FP through spend_focus_points_v2 and owns the durable idempotency ledger, so it must never be public."
+    },
+    {
+      "slug": "notion-sync",
+      "deploy": true,
+      "verifyJwt": true,
+      "note": "Authenticated sync. Reads the caller's own Notion integration row only."
+    },
+    {
+      "slug": "subscription-webhook",
+      "deploy": true,
+      "verifyJwt": false,
+      "note": "Provider webhook: the caller is RevenueCat, not a user, so there is no JWT to verify. Authentication is the REVENUECAT_WEBHOOK_SECRET bearer check inside the function."
+    },
+    {
+      "slug": "notion-auth",
+      "deploy": true,
+      "verifyJwt": false,
+      "requiredSecrets": ["NOTION_CLIENT_ID", "NOTION_CLIENT_SECRET", "OAUTH_STATE_SECRET", "OAUTH_REDIRECT_ALLOWLIST"],
+      "note": "OAuth start + callback, so it must accept an unauthenticated callback leg. Safety comes from the signed state, the uid binding and the redirect allowlist -- not from verify_jwt."
+    },
+    {
+      "slug": "google-auth",
+      "deploy": true,
+      "verifyJwt": false,
+      "requiredSecrets": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "OAUTH_STATE_SECRET", "OAUTH_REDIRECT_ALLOWLIST"],
+      "note": "Same shape as notion-auth. The client lists Google Calendar as an available integration, so production is expected to answer."
+    },
+    {
+      "slug": "spotify-auth",
+      "deploy": false,
+      "note": "OUTSIDE MVP. The deployed build (ezbr_sha256 977309e1...) minted an authorize URL for any redirect_uri it was handed and verified no state, so it was decommissioned in Step 10A rather than hardened. The hardened source is kept here on purpose: deleting it would lose the fix, and re-deploying it needs a rotated client secret plus a product decision, not a redeploy."
+    }
+  ]
+}
