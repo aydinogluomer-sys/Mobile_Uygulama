@@ -336,6 +336,14 @@ export default function AICoachScreen() {
               )}
               <Text style={[
                 s.bubbleText,
+                // `flex: 1` belongs ONLY to the bubbles that lay out as a row.
+                // Assistant and error bubbles put the sparkles icon beside the
+                // text, so the text has to claim the rest of that row. The user
+                // bubble has no icon and stays a column, where the very same
+                // declaration stops meaning "fill the row" and starts meaning
+                // "grow down the cross axis" -- which is what stretched a
+                // three-word message to the height of the conversation.
+                m.role !== 'user' && s.bubbleTextRow,
                 m.role === 'user' && s.bubbleTextUser,
                 m.role === 'error' && s.bubbleTextError,
               ]}>
@@ -553,7 +561,13 @@ const s = StyleSheet.create({
     backgroundColor: '#8b5cf620', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  bubbleText: { fontSize: 14, color: colors.text, lineHeight: 20, flex: 1 },
+  // Typography only -- deliberately no `flex` here. Every bubble shares this,
+  // but they do not share a flex direction: `bubbleAssistant` (which the error
+  // bubble also builds on) sets `flexDirection: 'row'`, while `bubbleUser`
+  // stays a column. A single `flex: 1` cannot be right for both.
+  bubbleText: { fontSize: 14, color: colors.text, lineHeight: 20 },
+  /** Row bubbles only: take the width left over beside the icon. */
+  bubbleTextRow: { flex: 1 },
   bubbleTextUser: { color: colors.white },
   bubbleTextError: { color: colors.error },
 
