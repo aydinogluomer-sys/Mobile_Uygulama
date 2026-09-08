@@ -22,6 +22,7 @@ import {
   type WebhookRow,
 } from '../../services/webhookService';
 import { buildBackup, renderBackup, type ExportFormat } from '../../services/exportService';
+import { deleteAccount } from '../../services/accountService';
 import { useRouter } from 'expo-router';
 import BadHabitsTracker from '../../components/BadHabitsTracker';
 import { useOnboardingStore } from '../../store/onboardingStore';
@@ -72,6 +73,7 @@ export default function SettingsScreen() {
   }
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
   const [seedingDemo, setSeedingDemo] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const loadWebhooks = async () => {
     const res = await listWebhooks();
@@ -135,6 +137,57 @@ export default function SettingsScreen() {
       loadWebhooks();
       setShowWebhookModal(true);
     }, 280);
+  };
+
+  /**
+   * Delete the account, behind two deliberate taps.
+   *
+   * Two confirmations rather than one because the action is irreversible and
+   * the first tap is a menu row -- but no further than two, and no
+   * type-the-word ceremony: making deletion tedious is the dark pattern this
+   * requirement exists to prevent. The wording states plainly what goes and
+   * that it cannot be undone.
+   *
+   * Nothing is shown as done until `deleteAccount` returns ok; on success the
+   * session ends and the root layout routes to the signed-out state on its
+   * own, so this screen does not navigate.
+   */
+  const handleDeleteAccount = () => {
+    if (deletingAccount) return;
+    Alert.alert(
+      'Hesabını Sil',
+      'Hesabın ve Aderyth\'te saklanan kişisel verilerin silinecek: alışkanlıkların, kayıtların, görevlerin, notların, günlüğün, hedeflerin, odak seansların ve AI Koç sohbetlerin.\n\nBu işlem geri alınamaz.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Devam Et',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Emin misin?',
+              'Son onay. Hesabın kalıcı olarak silinecek ve verilerin geri getirilemeyecek.',
+              [
+                { text: 'Vazgeç', style: 'cancel' },
+                {
+                  text: 'Hesabımı Sil',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setDeletingAccount(true);
+                    const res = await deleteAccount();
+                    setDeletingAccount(false);
+                    if (!res.ok) {
+                      Alert.alert('Hesap silinemedi', res.error);
+                    }
+                    // On success there is nothing to show: the session is gone
+                    // and the app is already on its way to the login screen.
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
   };
 
   const handleSeedDemoData = async () => {
@@ -376,6 +429,44 @@ export default function SettingsScreen() {
                 {seedingDemo ? <ActivityIndicator size="small" color="#87A678" /> : <Ionicons name="chevron-forward" size={20} color="#827E72" />}
               </TouchableOpacity>
             )}
+          </View>
+
+          {/* Account — privacy policy and the deletion the stores require */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Hesap</Text>
+
+            {renderSettingItem(
+              'shield-checkmark-outline',
+              'Gizlilik Politikası',
+              'Hangi verilerin saklanıyor ve neden',
+              () => router.push('/screens/privacy'),
+              colors.info
+            )}
+
+            <TouchableOpacity
+              style={[styles.settingItem, deletingAccount && styles.seedBtnDisabled]}
+              onPress={handleDeleteAccount}
+              disabled={deletingAccount}
+              accessibilityRole="button"
+              accessibilityLabel="Hesabı sil"
+              accessibilityHint="Hesabını ve kişisel verilerini kalıcı olarak siler"
+              accessibilityState={{ disabled: deletingAccount, busy: deletingAccount }}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: alphaHex(colors.error, '20') }]}>
+                  <Ionicons name="trash-outline" size={24} color={colors.error} />
+                </View>
+                <View style={styles.settingInfo}>
+                  <Text style={[styles.settingTitle, { color: colors.error }]}>Hesabı Sil</Text>
+                  <Text style={styles.settingSubtitle}>
+                    Hesabın ve verilerin kalıcı olarak silinir. Geri alınamaz.
+                  </Text>
+                </View>
+              </View>
+              {deletingAccount
+                ? <ActivityIndicator size="small" color={colors.error} />
+                : <Ionicons name="chevron-forward" size={20} color="#827E72" />}
+            </TouchableOpacity>
           </View>
 
           {/* Personalization */}

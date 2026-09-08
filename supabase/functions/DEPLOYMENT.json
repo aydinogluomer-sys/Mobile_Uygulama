@@ -35,15 +35,31 @@
       "note": "Provider webhook: the caller is RevenueCat, not a user, so there is no JWT to verify. Authentication is the REVENUECAT_WEBHOOK_SECRET bearer check inside the function."
     },
     {
+      "slug": "delete-account",
+      "deploy": true,
+      "verifyJwt": true,
+      "note": "Store requirement: an account created in-app must be deletable in-app. Derives the account from the verified JWT and never reads the request body, so no caller can name anyone else; the service role is used only after that check. Deletion is one auth.admin.deleteUser call and the 47 ON DELETE CASCADE foreign keys do the rest."
+    },
+    {
       "slug": "notion-auth",
       "deploy": false,
-      "requiredSecrets": ["NOTION_CLIENT_ID", "NOTION_CLIENT_SECRET", "OAUTH_STATE_SECRET", "OAUTH_REDIRECT_ALLOWLIST"],
+      "requiredSecrets": [
+        "NOTION_CLIENT_ID",
+        "NOTION_CLIENT_SECRET",
+        "OAUTH_STATE_SECRET",
+        "OAUTH_REDIRECT_ALLOWLIST"
+      ],
       "note": "Notion is intentionally unavailable in this MVP: none of the four secrets above is configured, so the flow cannot complete no matter what is deployed. The build that WAS live (v2, ezbr_sha256 22f2fde5...) predated the hardening -- it minted OAuth state as a bare UUID nothing verified, enforced no redirect allowlist, and resolved client_id to undefined -- so it was decommissioned in Step 10A rather than left reachable behind a disabled button. Zero rows existed in notion_integrations, so no user lost anything. The hardened source stays: re-enabling is configure the secrets, flip this to true, deploy, and flip NOTION_INTEGRATION_ENABLED in frontend/lib/featureGates.ts."
     },
     {
       "slug": "google-auth",
       "deploy": false,
-      "requiredSecrets": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "OAUTH_STATE_SECRET", "OAUTH_REDIRECT_ALLOWLIST"],
+      "requiredSecrets": [
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "OAUTH_STATE_SECRET",
+        "OAUTH_REDIRECT_ALLOWLIST"
+      ],
       "note": "Google Calendar is intentionally unavailable in this MVP, for the same reason as notion-auth: no Google credentials are configured. This one was never deployed at all, so there is nothing to decommission -- absent is already the intended state, and it is recorded here so the release check reads it as a decision instead of a forgotten deployment. Re-enabling is the same four steps, with GOOGLE_CALENDAR_INTEGRATION_ENABLED."
     },
     {

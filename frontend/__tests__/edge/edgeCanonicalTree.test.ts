@@ -52,8 +52,8 @@ describe('one canonical source tree', () => {
       .filter((d) => !d.startsWith('_'))
       .filter((d) => statSync(join(CANON, d)).isDirectory());
     expect(slugs.sort()).toEqual([
-      'generate-routine', 'google-auth', 'notion-auth', 'notion-sync',
-      'spotify-auth', 'subscription-webhook',
+      'delete-account', 'generate-routine', 'google-auth', 'notion-auth',
+      'notion-sync', 'spotify-auth', 'subscription-webhook',
     ]);
   });
 });
