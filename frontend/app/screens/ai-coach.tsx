@@ -1,7 +1,7 @@
 import { colors, alphaHex } from '../../lib/tokens';
 import { withEdgeDeadline } from '../../lib/edgeCall';
 import { newRequestId } from '../../services/focusPointService';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, Fragment } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Modal,
@@ -9,7 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, Stack } from 'expo-router';
-import { supabase } from '../../lib/supabase';
+import { supabase, type Habit } from '../../lib/supabase';
 import { useHabitStore } from '../../store/habitStore';
 import { useTaskStore } from '../../store/taskStore';
 import { useWillpowerStore } from '../../store/willpowerStore';
@@ -17,11 +17,24 @@ import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useJournalStore } from '../../store/journalStore';
 import { ACTION_COST } from '../../lib/subscription';
 import { extractInvokeError } from '../../lib/aiInvoke';
-import { todayLocal, ymd, addDaysLocal } from '../../lib/date';
+import { todayLocal, ymd, addDaysLocal, parseLocalDate } from '../../lib/date';
 import { habitCompletionRate, weekdayBreakdown, bestWeekday, worstWeekday, recoverySuccessRate } from '../../lib/behaviorIntelligence';
 import { planFromRow } from '../../lib/recovery';
 import { loadReviewData } from '../../services/reviewService';
 import { DOW_TR } from '../../lib/focusReport';
+import * as Clipboard from 'expo-clipboard';
+import * as Speech from 'expo-speech';
+import {
+  validateCoachActions,
+  coachActionToRoutineProposal,
+  resolveHabitQuery,
+  type CoachAction,
+  type CoachLogCompletion,
+} from '../../lib/coachActions';
+import CoachActionCard, { type StagedCoachAction } from '../../components/coach/CoachActionCard';
+import { useRoutineStore } from '../../store/routineStore';
+import { useLogStore } from '../../store/logStore';
+import { useSpeechInput } from '../../hooks/useSpeechInput';
 
 type Message = {
   id: string;
@@ -61,6 +74,26 @@ export default function AICoachScreen() {
   const [summaryText, setSummaryText] = useState('');
   const [summarySaving, setSummarySaving] = useState(false);
   const [summarySaved, setSummarySaved] = useState(false);
+
+  // ── Conversational actions ────────────────────────────────────────────
+  //
+  // `staged` is the ONLY bridge between what the model suggested and what
+  // gets written, and it is plain app state rather than something parsed back
+  // out of chat history. That matters: "Evet" in a later message is not a
+  // confirmation of anything specific, whereas a staged action names the
+  // habit, the date and the completion, and the card shows all three.
+  const [staged, setStaged] = useState<StagedCoachAction | null>(null);
+  const [stagedBusy, setStagedBusy] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+
+  const stageCoachProposal = useRoutineStore((s) => s.stageCoachProposal);
+  const confirmInstall = useRoutineStore((s) => s.confirmInstall);
+  const clearGenerated = useRoutineStore((s) => s.clearGenerated);
+  const logHabitWrite = useLogStore((s) => s.logHabit);
+
+  /** Dictation fills the composer. It never sends — see the hook's own doc. */
+  const speech = useSpeechInput(setInput);
 
   const hasConversation = messages.some((m) => m.role === 'user');
 
@@ -133,6 +166,139 @@ export default function AICoachScreen() {
 
   useEffect(() => { fetchToday(); fetchSub(); loadAnalyticsSummary(); }, [fetchToday, fetchSub, loadAnalyticsSummary]);
 
+  /**
+   * Turn a validated suggestion into something the user can look at.
+   *
+   * Nothing here writes. A habit/plan is handed to the routine pipeline's
+   * validator and capacity engine (the same one packs and AI routines use) so
+   * the preview shows the REAL activate-vs-queue outcome rather than a guess;
+   * a log is resolved against the user's own habits and refuses to choose when
+   * two of them match.
+   */
+  function stageFromActions(actions: CoachAction[]) {
+    const action = actions[0];
+    if (!action) return;
+
+    if (action.type === 'propose_habit' || action.type === 'propose_habit_plan') {
+      const proposal = coachActionToRoutineProposal(action);
+      if (!proposal) return;
+      const ok = stageCoachProposal(proposal);
+      if (!ok) {
+        setStaged({ kind: 'invalid', reasons: useRoutineStore.getState().proposalErrors ?? ['Öneri doğrulanamadı.'] });
+        return;
+      }
+      const st = useRoutineStore.getState();
+      setStaged({
+        kind: 'proposal',
+        title: proposal.title,
+        habitNames: proposal.habits.map((h) => h.name),
+        evaluation: st.evaluation,
+      });
+      return;
+    }
+
+    stageLog(action.habit_query, action.date, action.completion);
+  }
+
+  function stageLog(query: string, date: string, completion: CoachLogCompletion) {
+    const resolution = resolveHabitQuery(query, habits);
+    if (resolution.kind === 'none') { setStaged({ kind: 'nomatch', query }); return; }
+    if (resolution.kind === 'ambiguous') {
+      setStaged({ kind: 'ambiguous', candidates: resolution.candidates, date, completion });
+      return;
+    }
+    setStaged({ kind: 'log', habit: resolution.habit, date, completion });
+  }
+
+  /** Picking from the ambiguity card only narrows the target; it does not write. */
+  function handlePickCandidate(habit: Habit) {
+    setStaged((prev) =>
+      prev && prev.kind === 'ambiguous'
+        ? { kind: 'log', habit, date: prev.date, completion: prev.completion }
+        : prev,
+    );
+  }
+
+  function handleCancelStaged() {
+    setStaged(null);
+    clearGenerated();
+  }
+
+  /**
+   * The only place in this screen that persists anything.
+   *
+   * `stagedBusy` is the double-tap guard; the install path has its own
+   * (`installing` inside routineStore), and habit logs are reconciled on
+   * `habit_id + completed_at`, so a repeated confirmation updates one row
+   * rather than adding a second.
+   */
+  async function handleConfirmStaged() {
+    if (!staged || stagedBusy) return;
+    setStagedBusy(true);
+    try {
+      if (staged.kind === 'proposal') {
+        const ok = await confirmInstall();
+        setStaged(null);
+        setMessages((prev) => [...prev, {
+          id: Date.now().toString(),
+          role: ok ? 'assistant' : 'error',
+          content: ok
+            ? `✓ ${staged.habitNames.length} alışkanlık eklendi.`
+            : (useRoutineStore.getState().installError ?? 'Alışkanlıklar eklenemedi.'),
+        }]);
+        if (ok) clearGenerated();
+        return;
+      }
+
+      if (staged.kind === 'log') {
+        const when = parseLocalDate(staged.date) ?? new Date();
+        // The domain engine decides what a value MEANS. This passes the number
+        // and the habit's own target; it never computes done/partial/miss and
+        // never supplies XP.
+        const res = await logHabitWrite({
+          habitId: staged.habit.id,
+          date: when,
+          state: staged.completion.kind === 'state' ? staged.completion.state : 'done',
+          value: staged.completion.kind === 'value' ? staged.completion.value : undefined,
+          targetValue: staged.habit.daily_goal ?? undefined,
+          targetDirection: staged.habit.target_direction ?? undefined,
+        });
+        const ok = res?.ok !== false;
+        setStaged(null);
+        setMessages((prev) => [...prev, {
+          id: Date.now().toString(),
+          role: ok ? 'assistant' : 'error',
+          content: ok
+            ? `✓ ${staged.habit.name} kaydedildi.`
+            : 'Kayıt yazılamadı. Tekrar deneyebilirsin.',
+        }]);
+        return;
+      }
+
+      setStaged(null);
+    } finally {
+      setStagedBusy(false);
+    }
+  }
+
+  async function copyMessage(m: Message) {
+    await Clipboard.setStringAsync(m.content);
+    setCopiedId(m.id);
+    setTimeout(() => setCopiedId((cur) => (cur === m.id ? null : cur)), 1500);
+  }
+
+  function speakMessage(m: Message) {
+    if (speakingId === m.id) { Speech.stop(); setSpeakingId(null); return; }
+    Speech.stop();
+    setSpeakingId(m.id);
+    Speech.speak(m.content, {
+      language: 'tr-TR',
+      onDone: () => setSpeakingId((cur) => (cur === m.id ? null : cur)),
+      onStopped: () => setSpeakingId((cur) => (cur === m.id ? null : cur)),
+      onError: () => setSpeakingId((cur) => (cur === m.id ? null : cur)),
+    });
+  }
+
   async function send(text?: string) {
     const msg = (text ?? input).trim();
     if (!msg || loading) return;
@@ -195,6 +361,12 @@ export default function AICoachScreen() {
 
       if (typeof data?.balance === 'number') setBalance(data.balance);
       setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'assistant', content: reply }]);
+
+      // Structured suggestions are validated from scratch here, no matter what
+      // the server already did, and a rejected one is simply dropped: the user
+      // paid 5 FP for the reply above and a bad suggestion must not take it
+      // away. Staging is not writing -- see stageFromActions.
+      stageFromActions(validateCoachActions(data?.actions).actions);
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : 'Bir hata oluştu';
       setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'error', content: errMsg }]);
@@ -320,8 +492,13 @@ export default function AICoachScreen() {
           contentContainerStyle={s.messagesContent}
         >
           {messages.map((m) => (
+            /* The copy/speak controls are SIBLINGS of the bubble, never
+               children of it. Putting them inside would mean touching the
+               bubble's flex direction again, and that is the exact geometry
+               that stretched a three-word message to the height of the
+               conversation in Step 11A.1. This leaves those styles untouched. */
+            <Fragment key={m.id}>
             <View
-              key={m.id}
               style={[
                 s.bubble,
                 m.role === 'user' ? s.bubbleUser : s.bubbleAssistant,
@@ -350,7 +527,55 @@ export default function AICoachScreen() {
                 {m.content}
               </Text>
             </View>
+
+            <View style={[s.msgActions, m.role === 'user' ? s.msgActionsRight : s.msgActionsLeft]}>
+              <TouchableOpacity
+                onPress={() => copyMessage(m)}
+                hitSlop={10}
+                style={s.msgActionBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Mesajı kopyala"
+              >
+                <Ionicons
+                  name={copiedId === m.id ? 'checkmark' : 'copy-outline'}
+                  size={13}
+                  color={copiedId === m.id ? colors.success : colors.textGhost}
+                />
+                {copiedId === m.id && <Text style={s.msgActionText}>Kopyalandı</Text>}
+              </TouchableOpacity>
+
+              {m.role === 'assistant' && (
+                <TouchableOpacity
+                  onPress={() => speakMessage(m)}
+                  hitSlop={10}
+                  style={s.msgActionBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={speakingId === m.id ? 'Sesli okumayı durdur' : 'Yanıtı sesli oku'}
+                  accessibilityState={{ selected: speakingId === m.id }}
+                >
+                  <Ionicons
+                    name={speakingId === m.id ? 'stop-circle-outline' : 'volume-medium-outline'}
+                    size={14}
+                    color={speakingId === m.id ? colors.primary : colors.textGhost}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+            </Fragment>
           ))}
+
+          {/* The confirmation barrier. Rendered after the conversation so the
+              thing being confirmed is the last thing on screen. */}
+          {staged && (
+            <CoachActionCard
+              staged={staged}
+              busy={stagedBusy}
+              onConfirm={handleConfirmStaged}
+              onCancel={handleCancelStaged}
+              onPickCandidate={handlePickCandidate}
+            />
+          )}
+
           {loading && (
             // Yanıtın uzunluğu/şekli önceden bilinmiyor — burada iskelet değil,
             // "yazıyor" göstergesi doğru olan. Ekran okuyucuya da duyurulur.
@@ -382,8 +607,34 @@ export default function AICoachScreen() {
           ))}
         </ScrollView>
 
+        {/* Dictation state and failures are said out loud in text, because a
+            microphone that silently did nothing is indistinguishable from one
+            that is listening. */}
+        {(speech.listening || speech.error) && (
+          <Text style={s.micHint}>
+            {speech.listening ? 'Dinliyorum… Bitince mikrofona tekrar dokun.' : speech.error}
+          </Text>
+        )}
+
         {/* Input */}
         <View style={s.inputRow}>
+          {speech.available && (
+            <TouchableOpacity
+              style={[s.micBtn, speech.listening && s.micBtnActive]}
+              onPress={() => (speech.listening ? speech.stop() : speech.start())}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel={speech.listening ? 'Dinlemeyi durdur' : 'Sesli yanıt ver'}
+              accessibilityHint="Söylediklerin yazı kutusuna geçer; göndermeden önce düzenleyebilirsin"
+              accessibilityState={{ disabled: loading, selected: speech.listening }}
+            >
+              <Ionicons
+                name={speech.listening ? 'stop' : 'mic-outline'}
+                size={18}
+                color={speech.listening ? colors.primary : colors.textDim}
+              />
+            </TouchableOpacity>
+          )}
           <TextInput
             style={s.input}
             placeholder="Bir şey sor..."
@@ -570,6 +821,23 @@ const s = StyleSheet.create({
   bubbleTextRow: { flex: 1 },
   bubbleTextUser: { color: colors.white },
   bubbleTextError: { color: colors.error },
+
+  // Sits under the bubble, not inside it. `alignSelf` mirrors the bubble's own
+  // side so the controls stay with their message; nothing here can influence
+  // the bubble's height.
+  msgActions: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -4 },
+  msgActionsLeft: { alignSelf: 'flex-start', paddingLeft: 4 },
+  msgActionsRight: { alignSelf: 'flex-end', paddingRight: 4 },
+  msgActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, minHeight: 28 },
+  msgActionText: { fontSize: 11, color: colors.success, fontWeight: '600' },
+
+  micBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  micBtnActive: { backgroundColor: alphaHex(colors.primary, '22'), borderColor: colors.primary },
+  micHint: { fontSize: 11, color: colors.textFaint, paddingHorizontal: 16, paddingBottom: 4 },
 
   quickRow: { maxHeight: 44, borderTopWidth: 1, borderTopColor: colors.surface },
   quickContent: { paddingHorizontal: 12, paddingVertical: 6, gap: 8 },

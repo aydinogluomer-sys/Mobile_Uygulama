@@ -47,7 +47,14 @@
       "expo-font",
       "expo-image",
       "expo-asset",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Koça yazmak yerine konuşarak soru sorabilmen için mikrofona erişim gerekiyor. Mikrofon yalnızca sen mikrofon düğmesine bastığında açılır.",
+          "speechRecognitionPermission": "Söylediklerini yazıya çevirebilmek için konuşma tanıma gerekiyor. Metin, sen göndermeden önce yazı kutusunda düzenlenebilir."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -10,6 +10,12 @@ import {
 } from '../_shared/aiIdempotency.ts';
 
 const MAX_TOKENS = 400;          // Varsayılan çıktı token limiti (maliyet kontrolü)
+// Koç yanıtı artık düz metnin ARDINDAN isteğe bağlı bir eylem bloğu
+// taşıyabiliyor. 400 token yalnızca düz metin içindi; blok eklendiğinde JSON
+// ortasında kesilir ve `[[ACTIONS]]` açık kalırdı. Bu, kesilmiş bir öneriyi
+// ayrıştırmaya çalışmaktan değil, hiç üretmemekten daha kötüdür: metin de
+// yarıda kalır. Sınır yine de bağlı -- koç 5 FP ve tek çağrı olarak kalıyor.
+const COACH_MAX_TOKENS = 900;
 const INSIGHTS_MAX_TOKENS = 500; // İçgörü biraz daha uzun olabilir
 
 // Rutin modunun kendi bütçesi. Diğerleri düz metin döndürür; bu mod tek
@@ -36,7 +42,40 @@ const COACH_SYSTEM_PROMPT = `Sen "Aderyth AI Coach"sun — alışkanlık, görev
 
 Tarz: ADHD dostu, yargılamayan, motive edici ama gerçekçi. Türkçe konuş. Kısa ve net ol (en fazla 4-5 cümle ya da 3-4 madde). Somut, uygulanabilir öneri ver; gerektiğinde kullanıcının mevcut alışkanlıklarına atıfta bulun. Tıbbi/psikiyatrik tanı koyma.
 
-Sadece düz metin yanıt ver — JSON, markdown başlığı veya kod bloğu KULLANMA.`;
+Sadece düz metin yanıt ver — JSON, markdown başlığı veya kod bloğu KULLANMA.
+
+EYLEM ÖNERİSİ (isteğe bağlı, çoğu yanıtta GEREKMEZ):
+Kullanıcı açıkça yeni bir alışkanlık/plan istiyorsa ya da mevcut bir alışkanlığı yaptığını/yapmadığını söylüyorsa, düz metin yanıtının SONUNA tek bir blok ekleyebilirsin:
+
+[[ACTIONS]]
+{"actions":[ ... ]}
+[[/ACTIONS]]
+
+Kurallar:
+- Blok İSTEĞE BAĞLIDIR. Sıradan sohbette (motivasyon, tavsiye, soru) blok EKLEME.
+- En fazla 1 eylem öner.
+- Blok dışında JSON yazma. Blok, metnin en sonunda olmalı.
+- Sadece şu üç biçim geçerlidir:
+
+1) Tek alışkanlık:
+{"type":"propose_habit","habit":{"name":"Kitap Oku","tracking_type":"numeric","difficulty":3,"estimated_minutes":20}}
+
+2) Plan:
+{"type":"propose_habit_plan","title":"Kısa Haftalık Plan","goal":"Düzenli başlangıç","habits":[{...},{...}]}
+
+3) Kayıt:
+{"type":"log_habit","habit_query":"kitap oku","date":"today","completion":{"kind":"state","state":"done"}}
+{"type":"log_habit","habit_query":"kitap oku","date":"today","completion":{"kind":"value","value":10,"unit":"dakika"}}
+
+Alan kuralları:
+- tracking_type SADECE "binary" veya "numeric".
+- difficulty SADECE 1, 3 veya 5.
+- estimated_minutes tamsayı, 1-1440.
+- date SADECE "today", "yesterday" veya "YYYY-MM-DD".
+- completion.state SADECE "done", "partial", "miss" veya "skip".
+- ASLA user_id, habit_id, xp, cost, balance, tablo veya SQL yazma.
+- Alışkanlığın tamamlanma durumunu, XP'sini veya yüzdesini SEN hesaplama; sadece kullanıcının söylediğini aktar.
+- Bu blok yalnızca bir ÖNERİDİR. Kullanıcı onaylamadan hiçbir şey kaydedilmez; yanıtında "kaydettim/ekledim" gibi olmuş-bitmiş bir dil KULLANMA, "ekleyebilirim/işaretleyebilirim" de.`;
 
 const SUMMARY_SYSTEM_PROMPT = `Sen bir günlük yazma asistanısın. Kullanıcının "Aderyth AI Coach" ile yaptığı sohbeti, kullanıcının kendi günlüğüne ekleyebileceği, birinci tekil şahıs ("ben") ağzından kısa bir özet/yansıma haline getiriyorsun.
 
@@ -49,6 +88,39 @@ const INSIGHTS_SYSTEM_PROMPT = `Sen bir günlük analiz asistanısın. Kullanıc
 Tarz: Destekleyici, yargılamayan, Türkçe, ikinci tekil ("sen") ağzından. Şunlara odaklan: tekrar eden temalar ve duygular, ruh hali eğilimi, ilerleme/büyüme işaretleri, dikkat çeken zorluklar ve nazik + uygulanabilir bir-iki öneri. Özellikle kötü/negatif alışkanlıklarla mücadele ve duygusal dalgalanma örüntülerini fark et. Genelleme yapma; yalnızca kayıtlarda geçenlere dayan. Veri azsa bunu nazikçe belirt.
 
 En fazla 6-8 cümle ya da birkaç kısa madde. Sadece düz metin döndür — markdown başlığı, JSON veya kod bloğu KULLANMA.`;
+
+/**
+ * Split a coach answer into the prose the user reads and the optional action
+ * block the app may act on.
+ *
+ * The block is delimited rather than inferred, because "find the JSON in this
+ * text" is exactly the kind of guessing that ends with half a sentence being
+ * parsed as a habit name. If the markers are absent, malformed, truncated
+ * mid-JSON (the `max_tokens` case), or contain anything other than an array,
+ * the prose is returned intact and `actions` is empty.
+ *
+ * This never throws. A bad suggestion must not cost the user the reply they
+ * were charged for.
+ */
+function splitCoachActions(raw: string): { reply: string; actions: unknown[] } {
+  const start = raw.indexOf('[[ACTIONS]]');
+  if (start === -1) return { reply: raw.trim(), actions: [] };
+
+  const reply = raw.slice(0, start).trim();
+  const end = raw.indexOf('[[/ACTIONS]]', start);
+  // No closing marker means the model was cut off mid-block. Keep the prose,
+  // drop the fragment.
+  if (end === -1) return { reply, actions: [] };
+
+  const body = raw.slice(start + '[[ACTIONS]]'.length, end).trim();
+  try {
+    const parsed = JSON.parse(body);
+    const actions = Array.isArray(parsed) ? parsed : (parsed as { actions?: unknown }).actions;
+    return { reply, actions: Array.isArray(actions) ? actions : [] };
+  } catch {
+    return { reply, actions: [] };
+  }
+}
 
 const PERIOD_LABEL: Record<string, string> = {
   weekly: 'son bir hafta',
@@ -181,15 +253,21 @@ Deno.serve(async (req: Request) => {
 
         const message = await client.messages.create({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: MAX_TOKENS,
+          max_tokens: COACH_MAX_TOKENS,
           system: COACH_SYSTEM_PROMPT,
           messages: [{ role: 'user', content: `Bağlam: ${contextLine}\n\nKullanıcı: ${userMsg}` }],
         });
-        const reply = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+        const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+        const { reply, actions } = splitCoachActions(raw);
         if (!reply) {
           return { ok: false, reason: 'ai_empty_response', message: 'Yanıt alınamadı, tekrar deneyin.' };
         }
-        payload = { reply };
+        // `actions` is ALWAYS an array, and an unparseable block yields an
+        // empty one rather than an error: the user paid 5 FP for the reply,
+        // and a malformed suggestion must not take that away from them. The
+        // client validates this again from scratch -- nothing here is trusted
+        // downstream.
+        payload = { reply, actions };
       } else if (mode === 'summarize') {
         const message = await client.messages.create({
           model: 'claude-haiku-4-5-20251001',

@@ -55,7 +55,16 @@ function emitAnalytics(name: AnalyticsEventName, props: Record<string, unknown>)
  * sets `proposal` from an unvalidated value.
  */
 
-export type ProposalSource = 'ai' | 'pack';
+/**
+ * Where the staged proposal came from.
+ *
+ * `'coach'` is a third ENTRY POINT, not a third pipeline: a habit suggested in
+ * conversation goes through the same validator, the same capacity evaluation
+ * and the same `confirmInstall` as an AI routine or a pack. That is the whole
+ * reason it is a source value here rather than its own store — a second way to
+ * write habits is exactly what this gate exists to prevent.
+ */
+export type ProposalSource = 'ai' | 'pack' | 'coach';
 
 type RoutineStore = {
   routines: Routine[];
@@ -89,6 +98,10 @@ type RoutineStore = {
    *  guessed default. */
   pendingProposal: AdaptedRoutineProposal | null;
   loadPack: (key: RoutinePackKey) => void;
+  /** Stage a habit/plan suggested in AI Coach. Same validator, same capacity
+   *  evaluation, same `confirmInstall` as every other source — returns whether
+   *  the proposal survived validation so the caller can say so in chat. */
+  stageCoachProposal: (proposal: RoutineProposal) => boolean;
   clearGenerated: () => void;
   /** Step 1.5 of the pipeline, AI-only: turns `pendingProposal` into a real,
    *  capacity-evaluated `proposal` using one user-supplied
@@ -262,6 +275,38 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
     } catch (err) {
       set({ generateError: err instanceof Error ? err.message : 'Sunucu hatası.', generating: false });
     }
+  },
+
+  stageCoachProposal: (incoming) => {
+    // Deliberately re-validates a proposal the coach layer already checked.
+    // That is not redundant: `lib/coachActions.ts` validates the MODEL's
+    // output shape, this validates what is about to be installed, and the
+    // second one is the invariant `confirmInstall` actually relies on. A
+    // caller reaching this with something unvalidated must still fail here.
+    const validation = validateRoutineProposal(incoming);
+    if (!validation.ok) {
+      set({
+        proposalSource: 'coach',
+        proposal: null,
+        evaluation: null,
+        proposalErrors: validation.errors.map((e) => e.message),
+        pendingProposal: null,
+        installed: false,
+        installError: null,
+      });
+      return false;
+    }
+    const evaluation = evaluateProposal(validation.proposal, { activeHabits: activeHabitLoadInputs() });
+    set({
+      proposalSource: 'coach',
+      proposal: validation.proposal,
+      evaluation,
+      proposalErrors: null,
+      pendingProposal: null,
+      installed: false,
+      installError: null,
+    });
+    return true;
   },
 
   loadPack: (key) => {
