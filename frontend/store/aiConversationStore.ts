@@ -25,9 +25,10 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   listThreads, findThread, openThread, olderMessages, renameThread,
-  setThreadProject, resolveStagedAction, runCoachTurn,
+  setThreadProject, resolveStagedAction, updateStagedAction, runCoachTurn,
   type ConversationRow, type MessageRow, type StagedAction, type CoachInvokeResult,
 } from '../services/aiCoachService';
+import type { CoachAction } from '../lib/coachActions';
 
 /** Where the last-open thread id is remembered. Preference, never data. */
 const LAST_ACTIVE_KEY = 'aderyth.coach.lastConversationId';
@@ -79,6 +80,15 @@ type AiConversationStore = {
    */
   send: (text: string, deps: SendDeps) => Promise<{ ok: boolean; error?: string; stale?: boolean }>;
   resolvePending: (status: 'confirmed' | 'cancelled') => Promise<void>;
+  /**
+   * Persist an answer the user gave about the OPEN proposal.
+   *
+   * Deliberately does not touch `pendingAction`: the screen already shows the
+   * answered proposal, and replacing the object here would re-run the effect
+   * that stages it and preview the same thing twice. What this buys is the next
+   * OPEN of the conversation, which reads the row fresh.
+   */
+  updatePendingPayload: (action: CoachAction) => Promise<void>;
   reset: () => void;
 };
 
@@ -264,6 +274,12 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
    * Cleared locally first so a second tap has nothing to act on, then resolved
    * in the database, where `status = 'pending'` is the real boundary.
    */
+  updatePendingPayload: async (action) => {
+    const current = get().pendingAction;
+    if (!current) return;
+    await updateStagedAction(current.row.id, action);
+  },
+
   resolvePending: async (status) => {
     const current = get().pendingAction;
     if (!current) return;

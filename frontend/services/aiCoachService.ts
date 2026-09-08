@@ -37,7 +37,7 @@ import {
   fetchConversationsPage, createConversation, renameConversation,
   setConversationProject, deleteConversation, fetchConversation,
   fetchMessagesPage, insertMessage, fetchPendingAction, insertAction,
-  resolveAction, MAX_TITLE_LENGTH, MESSAGE_PAGE_SIZE,
+  resolveAction, updateActionPayload, MAX_TITLE_LENGTH, MESSAGE_PAGE_SIZE,
   type ConversationRow, type MessageRow, type ActionRow,
 } from '../repositories/aiConversationRepository';
 import { validateCoachActions, type CoachAction } from '../lib/coachActions';
@@ -163,6 +163,19 @@ export function resolveStagedAction(
   status: 'confirmed' | 'cancelled',
 ): Promise<RepoResult<ActionRow | null>> {
   return resolveAction(id, status);
+}
+
+/**
+ * Record an answer to a question the app asked about a staged proposal.
+ *
+ * "Hedef 20 dakika" is a decision the user made, and a decision that only
+ * exists in component state is one they have to make again after navigating
+ * away -- which is the same class of defect durable conversations exist to
+ * fix. The payload is revalidated on the way back out, exactly as if the model
+ * had produced it.
+ */
+export function updateStagedAction(id: string, payload: unknown): Promise<RepoResult<ActionRow | null>> {
+  return updateActionPayload(id, payload);
 }
 
 // ---------------------------------------------------------------------------

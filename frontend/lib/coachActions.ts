@@ -15,12 +15,19 @@
  *
  * A coach habit suggestion is converted into a `RoutineProposal` and handed to
  * `validateRoutineProposal`, which means capacity evaluation, the install
- * pipeline and the tracking-type rules stay in exactly one place. The
- * alternative -- a richer coach-only habit schema carrying `unit`, `target`
- * and `frequency` -- would have meant a second validator and a second write
- * path beside the routine one, which is the thing that file warns against.
- * "20 dakika kitap oku" therefore becomes a `numeric` habit with
- * `estimated_minutes: 20`, exactly as the routine pipeline already models it.
+ * pipeline and the tracking-type rules stay in exactly one place.
+ *
+ * That vocabulary was widened in 11A.2.2 rather than duplicated. It used to
+ * carry four fields, and this file used to say so approvingly: "20 dakika
+ * kitap oku" became a numeric habit with `estimated_minutes: 20` and nothing
+ * else. On a device that was wrong in a way nobody could see until they tried
+ * to log against it -- the habit had no `daily_goal`, so "bugün 10 dakika
+ * okudum" had no target to be partial of, and no `unit`, so the number was a
+ * number of nothing. `estimated_minutes` is what a habit COSTS;
+ * `daily_goal` is what counts as having done it. The fix was to teach the ONE
+ * schema both, not to grow a second one here -- see
+ * `lib/routineProposal.ts`'s `ProposalHabit`, whose optional semantic fields
+ * this file now mirrors and whose schedule validator it reuses verbatim.
  *
  * ## Untrusted input
  *
@@ -29,9 +36,14 @@
  * throws, because a bad suggestion must not cost the user the reply they paid
  * 5 FP for.
  */
-import type { Habit } from './supabase';
+import type { Habit, FrequencyConfig } from './supabase';
 import { todayLocal, ymd, addDaysLocal, parseLocalDate } from './date';
-import type { RoutineProposal } from './routineProposal';
+import {
+  validateFrequencyConfig,
+  TARGET_DIRECTIONS,
+  MAX_DAILY_GOAL,
+  type RoutineProposal,
+} from './routineProposal';
 
 // ---------------------------------------------------------------------------
 // Bounds. Every one of these exists to make a hostile or glitched response
@@ -64,7 +76,10 @@ const ALLOWED_KEYS: Record<CoachActionType, Set<string>> = {
   propose_habit_plan: new Set(['type', 'title', 'goal', 'habits']),
   log_habit: new Set(['type', 'habit_query', 'date', 'completion']),
 };
-const ALLOWED_HABIT_KEYS = new Set(['name', 'tracking_type', 'difficulty', 'estimated_minutes']);
+const ALLOWED_HABIT_KEYS = new Set([
+  'name', 'tracking_type', 'difficulty', 'estimated_minutes',
+  'unit', 'daily_goal', 'target_direction', 'frequency_config',
+]);
 const ALLOWED_COMPLETION_KEYS = new Set(['kind', 'state', 'value', 'unit']);
 
 /** Refused as an OWN property anywhere. `JSON.parse` makes `__proto__` an
@@ -85,11 +100,22 @@ const AUTHORITY_KEYS = new Set([
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * Structurally the same habit `lib/routineProposal.ts` validates, because it
+ * IS handed to that validator next. The four semantic fields are optional
+ * here for the same reason they are optional there: a plain yes/no habit has
+ * no target, and a source that does not state a schedule gets the install
+ * path's daily default rather than a guess.
+ */
 export type CoachProposalHabit = {
   name: string;
   tracking_type: 'binary' | 'numeric';
   difficulty: 1 | 3 | 5;
   estimated_minutes: number;
+  unit?: string | null;
+  daily_goal?: number | null;
+  target_direction?: 'at_least' | 'at_most' | null;
+  frequency_config?: FrequencyConfig;
 };
 
 export type CoachLogCompletion =
@@ -168,12 +194,49 @@ function readHabit(raw: unknown): CoachProposalHabit | null {
   const minutes = boundedInt(raw.estimated_minutes, 1, MAX_ESTIMATED_MINUTES);
   if (minutes === null) return null;
 
-  return {
+  const numeric = tt === 'numeric';
+  const habit: CoachProposalHabit = {
     name,
     tracking_type: tt as 'binary' | 'numeric',
     difficulty: difficulty as 1 | 3 | 5,
     estimated_minutes: minutes,
   };
+
+  // ── the measurement ─────────────────────────────────────────────────────
+  //
+  // `unit` and `daily_goal` travel together or not at all. Half of a
+  // measurement is worse than none: a target with no unit renders as
+  // "Hedef: 20", and a unit with no target is a label on nothing. Either
+  // half alone rejects the whole habit rather than dropping the other.
+  const hasGoal = raw.daily_goal !== undefined && raw.daily_goal !== null;
+  const hasUnit = raw.unit !== undefined && raw.unit !== null;
+  if (hasGoal !== hasUnit) return null;
+  if (hasGoal) {
+    if (!numeric) return null;
+    const goal = finiteNumber(raw.daily_goal, Number.MIN_VALUE, MAX_DAILY_GOAL);
+    if (goal === null || goal <= 0) return null;
+    const unit = boundedString(raw.unit, MAX_UNIT_LENGTH);
+    if (unit === null) return null;
+    habit.daily_goal = goal;
+    habit.unit = unit;
+  }
+
+  if (raw.target_direction !== undefined && raw.target_direction !== null) {
+    if (!numeric) return null;
+    if (typeof raw.target_direction !== 'string') return null;
+    if (!TARGET_DIRECTIONS.includes(raw.target_direction)) return null;
+    habit.target_direction = raw.target_direction as 'at_least' | 'at_most';
+  }
+
+  // The schedule is validated by the SAME function the routine proposal gate
+  // uses, so "Pzt=0 … Paz=6" and every refusal in it are stated once.
+  if (raw.frequency_config !== undefined) {
+    const fc = validateFrequencyConfig(raw.frequency_config, 'frequency_config');
+    if (!fc.frequency) return null;
+    habit.frequency_config = fc.frequency;
+  }
+
+  return habit;
 }
 
 function readCompletion(raw: unknown): CoachLogCompletion | null {

@@ -17,6 +17,7 @@ query is unbounded; this does not.
 | `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | WRITE | — |
 | `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | SINGLE_ROW | — |
 | `aiConversationRepository.ts` | `resolveAction` | `ai_conversation_actions` | no | WRITE | yes |
+| `aiConversationRepository.ts` | `updateActionPayload` | `ai_conversation_actions` | no | WRITE | yes |
 | `badHabitRepository.ts` | `fetchBadHabitsPage` | `bad_habits` | yes | KEYSET_PAGE | yes |
 | `badHabitRepository.ts` | `insertBadHabit` | `bad_habits` | no | WRITE | — |
 | `creditRepository.ts` | `fetchCreditTransactions` | `credit_transactions` | yes | BOUNDED_DOMAIN_WINDOW | yes |
@@ -94,7 +95,7 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **83**
+- queries: **84**
 - collection SELECTs: **38**
 - KEYSET_PAGE: **7**
 - DATE_WINDOW: **9**

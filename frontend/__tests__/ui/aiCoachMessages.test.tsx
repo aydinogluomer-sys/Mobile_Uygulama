@@ -103,6 +103,12 @@ jest.mock('../../repositories/aiConversationRepository', () => ({
     mockRows.actions.push(row);
     return { ok: true, data: row };
   },
+  updateActionPayload: async (id: string, payload: unknown) => {
+    const row = mockRows.actions.find((a) => a.id === id && a.status === 'pending');
+    if (!row) return { ok: true, data: null };
+    row.payload = payload;
+    return { ok: true, data: { ...row } };
+  },
   resolveAction: async (id: string, status: string) => {
     const row = mockRows.actions.find((a) => a.id === id && a.status === 'pending');
     if (!row) return { ok: true, data: null };

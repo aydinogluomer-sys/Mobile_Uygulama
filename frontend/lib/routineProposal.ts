@@ -60,6 +60,7 @@
  * "this AI response is garbage".
  */
 import type { TrackingType } from './habitEngine';
+import type { FrequencyConfig } from './supabase';
 import {
   dailyLoad,
   habitLoadPoints,
@@ -124,7 +125,44 @@ export const MAX_GOAL_LENGTH = 400;
 export const MAX_HABIT_NAME_LENGTH = 80;
 
 const ALLOWED_TOP_KEYS = new Set(['title', 'goal', 'habits']);
-const ALLOWED_HABIT_KEYS = new Set(['name', 'tracking_type', 'difficulty', 'estimated_minutes']);
+
+/**
+ * The four required fields, plus the four SEMANTIC ones added in 11A.2.2.
+ *
+ * The semantic four are what makes "her gün 20 dakika kitap oku" survive the
+ * trip from a sentence to a row. Before them the schema could only say
+ * `estimated_minutes: 20`, which is a different fact -- see
+ * MAX_ESTIMATED_MINUTES's neighbour `daily_goal` below, and this file's
+ * `validateHabit`.
+ */
+const ALLOWED_HABIT_KEYS = new Set([
+  'name', 'tracking_type', 'difficulty', 'estimated_minutes',
+  'unit', 'daily_goal', 'target_direction', 'frequency_config',
+]);
+
+/**
+ * Schedule keys a PROPOSAL may carry.
+ *
+ * `interval_days`, `range_start` and `range_end` are real `FrequencyConfig`
+ * fields and are deliberately absent. `lib/habitSchedule.ts`'s `isDueOn` --
+ * the function that decides which days a habit is actually due on -- does not
+ * read any of them; only the newer `scheduleKind` does. A proposal carrying
+ * "every 3 days" would therefore install a habit the scheduler treats as
+ * daily: a config that reads correctly and behaves wrongly. Refusing them is
+ * how this schema stays honest about what the app can actually keep.
+ */
+const ALLOWED_FREQUENCY_KEYS = new Set(['kind', 'days', 'part_of_day', 'count']);
+
+const FREQUENCY_KINDS = new Set(['daily', 'weekly', 'monthly']);
+const PARTS_OF_DAY = new Set(['morning', 'afternoon', 'evening']);
+export const TARGET_DIRECTIONS: readonly string[] = ['at_least', 'at_most'];
+
+/** A daily target no habit sanely exceeds. Pages, minutes, glasses, reps. */
+export const MAX_DAILY_GOAL = 100_000;
+export const MAX_UNIT_LENGTH = 24;
+/** Weekly count ceiling is 7; monthly is 31. Enforced per `kind`. */
+export const MAX_WEEKLY_COUNT = 7;
+export const MAX_MONTHLY_COUNT = 31;
 
 /** Keys that, if present as an OWN property anywhere in the input, are
  *  refused outright regardless of their value — a JSON payload naming these
@@ -144,17 +182,48 @@ const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
  *  was wrong, not just that something was. */
 export type ValidationError = { path: string; message: string };
 
-/** A single validated habit inside a `RoutineProposal`. Deliberately only
- *  the four fields plan §13's schema names — `frequency_config` and every
- *  other `Habit` column are NOT part of the AI-facing schema; the install
- *  path (routineStore.ts) supplies app-level defaults for those, which is
- *  not "coercion of AI data" because the AI is never asked to supply them
- *  (see this file's doc). */
+/**
+ * A single validated habit inside a `RoutineProposal`.
+ *
+ * ## Four required fields, four optional semantic ones
+ *
+ * The first four are plan §13's original schema and every source supplies
+ * them. The last four were added in 11A.2.2 because the schema could not
+ * express what a user had actually said.
+ *
+ * "Her gün 20 dakika kitap oku" used to become `estimated_minutes: 20` and
+ * nothing else, and those are not the same fact:
+ *
+ *   estimated_minutes  what it COSTS -- the effort the capacity and willpower
+ *                      calculations price the habit at;
+ *   daily_goal         what COUNTS as done -- the measurable target a logged
+ *                      value is judged against;
+ *   unit               what the number is IN (dakika / sayfa / bardak);
+ *   target_direction   which side of the target is success;
+ *   frequency_config   which days it is due on at all.
+ *
+ * A habit installed with only `estimated_minutes: 20` has no target, so
+ * "bugün 10 dakika okudum" cannot be `partial` -- there is nothing to be
+ * partial OF. That was the defect.
+ *
+ * All four stay OPTIONAL. A source that does not know them (a plain binary
+ * habit, an older caller) omits them and gets exactly the row it always got:
+ * `services/routineService.buildInstallRows` already defaults every one of
+ * them, and has since routine packs needed the same columns.
+ */
 export type ProposalHabit = {
   name: string;
   tracking_type: Extract<TrackingType, 'binary' | 'numeric'>;
   difficulty: 1 | 3 | 5;
   estimated_minutes: number;
+  /** What `daily_goal` counts in. Only meaningful with a numeric target. */
+  unit?: string | null;
+  /** The measurable target. NOT the effort estimate -- see this type's doc. */
+  daily_goal?: number | null;
+  /** Which side of `daily_goal` is success. Absent means `at_least`. */
+  target_direction?: 'at_least' | 'at_most' | null;
+  /** Which days it is due. Absent means the install path's daily default. */
+  frequency_config?: FrequencyConfig;
 };
 
 /** Plan §13's canonical schema, post-validation. Every field here is
@@ -220,6 +289,112 @@ function validateRequiredString(
   return errors;
 }
 
+/**
+ * Validates a proposal's `frequency_config` against the app's REAL schedule
+ * schema, and rejects anything the scheduler cannot honour.
+ *
+ * ## Weekday indexing is Monday = 0
+ *
+ * `lib/habitSchedule.ts`'s `weekdayIndex` is `(date.getDay() + 6) % 7`, so the
+ * app's `days` array is **Pzt=0 … Paz=6** -- NOT JavaScript's `getDay()`,
+ * where Sunday is 0. A model (or any caller) emitting `[0]` meaning Sunday
+ * would silently schedule Monday. The range is the same either way, so this
+ * cannot be caught by validation; it is caught by saying so, here and in the
+ * prompt that asks for it.
+ *
+ * ## What is refused, and why refusing beats coercing
+ *
+ * An unknown `kind`, a `days` array on a non-weekly schedule, a count outside
+ * its kind's real ceiling, a duplicate weekday -- all rejected rather than
+ * normalised. A schedule quietly rewritten into something else is a habit the
+ * user never agreed to, showing up on days they did not choose.
+ *
+ * `monthly` is accepted as a SHAPE, but note that `isDueOn` deliberately
+ * returns false for monthly habits (it has nowhere to store which day of the
+ * month), so a monthly habit is never counted as due. That is a pre-existing
+ * domain limitation documented in `habitSchedule.ts`, not something this
+ * validator introduces or can fix.
+ */
+export function validateFrequencyConfig(
+  raw: unknown,
+  path: string,
+): { errors: ValidationError[]; frequency: FrequencyConfig | null } {
+  const errors: ValidationError[] = [];
+  if (!isPlainObject(raw)) {
+    errors.push({ path, message: `${path}: expected an object, got ${describeType(raw)}` });
+    return { errors, frequency: null };
+  }
+  if (hasForbiddenKey(raw)) {
+    errors.push({ path, message: `${path}: contains a forbidden key (__proto__ / constructor / prototype)` });
+    return { errors, frequency: null };
+  }
+  const extra = Object.keys(raw).filter((k) => !ALLOWED_FREQUENCY_KEYS.has(k));
+  if (extra.length > 0) {
+    errors.push({ path, message: `${path}: unexpected field(s): ${extra.join(', ')} (allowed: ${[...ALLOWED_FREQUENCY_KEYS].join(', ')})` });
+  }
+
+  const kind = raw.kind;
+  if (typeof kind !== 'string' || !FREQUENCY_KINDS.has(kind)) {
+    errors.push({ path: `${path}.kind`, message: `${path}.kind: expected one of ${[...FREQUENCY_KINDS].join('/')}, got ${describeType(kind)}` });
+    return { errors, frequency: null };
+  }
+
+  const out: FrequencyConfig = { kind: kind as FrequencyConfig['kind'] };
+
+  if (raw.days !== undefined) {
+    if (kind !== 'weekly') {
+      errors.push({ path: `${path}.days`, message: `${path}.days: only meaningful with kind 'weekly', got '${kind}'` });
+    } else if (!Array.isArray(raw.days)) {
+      errors.push({ path: `${path}.days`, message: `${path}.days: expected an array, got ${describeType(raw.days)}` });
+    } else if (raw.days.length === 0 || raw.days.length > 7) {
+      errors.push({ path: `${path}.days`, message: `${path}.days: expected 1-7 weekdays, got ${raw.days.length}` });
+    } else {
+      const bad = raw.days.filter((d) => typeof d !== 'number' || !Number.isInteger(d) || d < 0 || d > 6);
+      if (bad.length > 0) {
+        errors.push({ path: `${path}.days`, message: `${path}.days: weekdays must be integers 0-6 (Pzt=0 … Paz=6)` });
+      } else if (new Set(raw.days as number[]).size !== raw.days.length) {
+        errors.push({ path: `${path}.days`, message: `${path}.days: contains a duplicate weekday` });
+      } else {
+        out.days = [...(raw.days as number[])].sort((a, b) => a - b);
+      }
+    }
+  }
+
+  if (raw.part_of_day !== undefined) {
+    if (!Array.isArray(raw.part_of_day)) {
+      errors.push({ path: `${path}.part_of_day`, message: `${path}.part_of_day: expected an array, got ${describeType(raw.part_of_day)}` });
+    } else if (raw.part_of_day.length === 0 || raw.part_of_day.length > 3) {
+      errors.push({ path: `${path}.part_of_day`, message: `${path}.part_of_day: expected 1-3 entries, got ${raw.part_of_day.length}` });
+    } else if (raw.part_of_day.some((v) => typeof v !== 'string' || !PARTS_OF_DAY.has(v))) {
+      errors.push({ path: `${path}.part_of_day`, message: `${path}.part_of_day: entries must be ${[...PARTS_OF_DAY].join('/')}` });
+    } else if (new Set(raw.part_of_day as string[]).size !== raw.part_of_day.length) {
+      errors.push({ path: `${path}.part_of_day`, message: `${path}.part_of_day: contains a duplicate` });
+    } else {
+      out.part_of_day = raw.part_of_day as FrequencyConfig['part_of_day'];
+    }
+  }
+
+  if (raw.count !== undefined) {
+    const ceiling = kind === 'monthly' ? MAX_MONTHLY_COUNT : MAX_WEEKLY_COUNT;
+    if (kind === 'daily') {
+      errors.push({ path: `${path}.count`, message: `${path}.count: meaningless with kind 'daily'` });
+    } else if (typeof raw.count !== 'number' || !Number.isInteger(raw.count) || raw.count < 1 || raw.count > ceiling) {
+      errors.push({ path: `${path}.count`, message: `${path}.count: expected an integer 1-${ceiling} for kind '${kind}'` });
+    } else {
+      out.count = raw.count;
+    }
+  }
+
+  // "Weekly" with neither days nor count pins to nothing: `isDueOn` returns
+  // false for every day of the year, so the habit is never due and never
+  // missed. Refused rather than installed as an invisible habit.
+  if (kind === 'weekly' && out.days === undefined && out.count === undefined) {
+    errors.push({ path, message: `${path}: kind 'weekly' needs either days or count -- without one the habit is never due` });
+  }
+
+  return errors.length > 0 ? { errors, frequency: null } : { errors: [], frequency: out };
+}
+
 // ---------------------------------------------------------------------------
 // Per-habit validation
 // ---------------------------------------------------------------------------
@@ -271,17 +446,83 @@ function validateHabit(
     errors.push({ path: `${path}.estimated_minutes`, message: `${path}.estimated_minutes: exceeds sane ceiling of ${MAX_ESTIMATED_MINUTES} minutes (one full day), got ${mins}` });
   }
 
+  // ── the semantic four ───────────────────────────────────────────────────
+  //
+  // Each is optional, and each is validated as strictly as the required four
+  // when present. A `daily_goal` on a binary habit is a contradiction rather
+  // than a harmless extra: nothing measures it, so it would sit in the row
+  // implying a target the engine can never judge against.
+
+  let unit: string | null | undefined;
+  if (raw.unit !== undefined && raw.unit !== null) {
+    if (typeof raw.unit !== 'string') {
+      errors.push({ path: `${path}.unit`, message: `${path}.unit: expected a string, got ${describeType(raw.unit)}` });
+    } else if (raw.unit.trim().length === 0 || raw.unit.length > MAX_UNIT_LENGTH) {
+      errors.push({ path: `${path}.unit`, message: `${path}.unit: expected 1-${MAX_UNIT_LENGTH} characters` });
+    } else if (tt !== 'numeric') {
+      errors.push({ path: `${path}.unit`, message: `${path}.unit: only meaningful on a numeric habit` });
+    } else {
+      unit = raw.unit.trim();
+    }
+  }
+
+  let dailyGoal: number | null | undefined;
+  if (raw.daily_goal !== undefined && raw.daily_goal !== null) {
+    if (typeof raw.daily_goal !== 'number' || !Number.isFinite(raw.daily_goal)) {
+      errors.push({ path: `${path}.daily_goal`, message: `${path}.daily_goal: expected a number, got ${describeType(raw.daily_goal)}` });
+    } else if (raw.daily_goal <= 0 || raw.daily_goal > MAX_DAILY_GOAL) {
+      errors.push({ path: `${path}.daily_goal`, message: `${path}.daily_goal: expected a positive number up to ${MAX_DAILY_GOAL}, got ${raw.daily_goal}` });
+    } else if (tt !== 'numeric') {
+      errors.push({ path: `${path}.daily_goal`, message: `${path}.daily_goal: only meaningful on a numeric habit -- a binary habit has nothing to measure` });
+    } else {
+      dailyGoal = raw.daily_goal;
+    }
+  }
+
+  let direction: 'at_least' | 'at_most' | null | undefined;
+  if (raw.target_direction !== undefined && raw.target_direction !== null) {
+    if (typeof raw.target_direction !== 'string' || !TARGET_DIRECTIONS.includes(raw.target_direction)) {
+      errors.push({ path: `${path}.target_direction`, message: `${path}.target_direction: expected one of ${TARGET_DIRECTIONS.join('/')}, got ${describeType(raw.target_direction)}` });
+    } else if (tt !== 'numeric') {
+      errors.push({ path: `${path}.target_direction`, message: `${path}.target_direction: only meaningful on a numeric habit` });
+    } else {
+      direction = raw.target_direction as 'at_least' | 'at_most';
+    }
+  }
+
+  let frequency: FrequencyConfig | undefined;
+  if (raw.frequency_config !== undefined) {
+    const fc = validateFrequencyConfig(raw.frequency_config, `${path}.frequency_config`);
+    errors.push(...fc.errors);
+    if (fc.frequency) frequency = fc.frequency;
+  }
+
+  // A numeric habit whose target has no unit, or a unit with no target, is
+  // half a measurement. The preview would read "Hedef: 20" or "Hedef: dakika".
+  if (dailyGoal !== undefined && unit === undefined) {
+    errors.push({ path: `${path}.unit`, message: `${path}: daily_goal given without a unit -- a target needs to be a target OF something` });
+  }
+  if (unit !== undefined && dailyGoal === undefined) {
+    errors.push({ path: `${path}.daily_goal`, message: `${path}: unit given without a daily_goal -- nothing to measure in ${String(raw.unit)}` });
+  }
+
   if (errors.length > 0) return { errors, habit: null };
 
-  return {
-    errors: [],
-    habit: {
-      name: (raw.name as string).trim(),
-      tracking_type: tt as Extract<TrackingType, 'binary' | 'numeric'>,
-      difficulty: diff as 1 | 3 | 5,
-      estimated_minutes: mins as number,
-    },
+  const habit: ProposalHabit = {
+    name: (raw.name as string).trim(),
+    tracking_type: tt as Extract<TrackingType, 'binary' | 'numeric'>,
+    difficulty: diff as 1 | 3 | 5,
+    estimated_minutes: mins as number,
   };
+  // Assigned rather than spread-with-undefined so an omitted field stays
+  // ABSENT: `{ unit: undefined }` and `{}` are the same to the install path
+  // but not to a deep-equality assertion, and the tests read these objects.
+  if (unit !== undefined) habit.unit = unit;
+  if (dailyGoal !== undefined) habit.daily_goal = dailyGoal;
+  if (direction !== undefined) habit.target_direction = direction;
+  if (frequency !== undefined) habit.frequency_config = frequency;
+
+  return { errors: [], habit };
 }
 
 // ---------------------------------------------------------------------------
@@ -372,19 +613,23 @@ export function validateRoutineProposal(raw: unknown): ValidationResult {
 // Capacity evaluation — step 2 of the plan §13 pipeline
 // ---------------------------------------------------------------------------
 
-/** The proposal schema carries no `frequency_config` (plan §13 does not name
- *  one), so every proposal habit is evaluated as a daily habit for capacity
- *  purposes. This mirrors `capacity.ts`'s OWN documented fallback for a
- *  missing config (`occurrencesPerWeek`: "no config recorded -- treat as
- *  daily, the app's own default") rather than inventing a new rule — it is
- *  not a guess this file introduces, it is the domain layer's existing
- *  default made explicit here for type-safety (`HabitLoadInput.frequency_config`
- *  is not optional). */
+/** A proposal habit priced for capacity.
+ *
+ *  This used to hard-code `{ kind: 'daily' }` because the schema had no
+ *  schedule to read. Now that it can carry one, a three-days-a-week habit is
+ *  priced as three days a week -- the same rule
+ *  `services/routineService.buildInstallRows` already applies when it derives
+ *  `willpower_cost`, so the number the user is shown in the preview and the
+ *  number the row is installed with come from the same schedule.
+ *
+ *  A habit with no schedule still falls back to daily, which is
+ *  `capacity.ts`'s own documented default for a missing config ("no config
+ *  recorded -- treat as daily, the app's own default"), not a new guess. */
 function toHabitLoadInput(h: ProposalHabit): HabitLoadInput {
   return {
     difficulty: h.difficulty,
     estimated_minutes: h.estimated_minutes,
-    frequency_config: { kind: 'daily' },
+    frequency_config: h.frequency_config ?? { kind: 'daily' },
     impact_level: null,
   };
 }

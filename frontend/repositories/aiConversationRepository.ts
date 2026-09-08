@@ -293,6 +293,38 @@ export async function insertAction(input: {
 }
 
 /**
+ * Replace a still-pending action's payload.
+ *
+ * The one thing that legitimately changes about a staged proposal before it is
+ * resolved: the user answered a question about it ("hedef 20 dakika", "her
+ * gün"). Persisting the answer is what stops the app asking again the next time
+ * the conversation is opened.
+ *
+ * Scoped to `status = 'pending'` for the same reason `resolveAction` is: a
+ * confirmed or cancelled action is finished, and finished proposals do not get
+ * rewritten. The payload written here has already been through
+ * `validateCoachActions`; it is stored exactly as untrusted as the model's own
+ * and revalidated on the way back out.
+ */
+export async function updateActionPayload(
+  id: string,
+  payload: unknown,
+): Promise<RepoResult<ActionRow | null>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error } = await supabase
+    .from('ai_conversation_actions')
+    .update({ payload: payload as never })
+    .eq('id', id)
+    .eq('user_id', u.userId)
+    .eq('status', 'pending')
+    .select(ACTION_COLS)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (data as ActionRow) ?? null };
+}
+
+/**
  * Resolve a staged action.
  *
  * Scoped to `status = 'pending'` on purpose: this is the idempotency boundary

@@ -83,9 +83,26 @@ describe('coach action block — the reply survives a bad block', () => {
 });
 
 describe('coach action block — the contract asked of the model', () => {
-  it('the block is optional and capped at one action', () => {
-    expect(SRC).toMatch(/İSTEĞE BAĞLIDIR/);
-    expect(SRC).toMatch(/En fazla 1 eylem/);
+  it('an actionable request may NOT degrade into prose', () => {
+    // This assertion is the inverse of the one it replaces. The prompt used to
+    // say the action block was "İSTEĞE BAĞLIDIR" (optional), and on a real
+    // device that is exactly what happened: "her gün 20 dakika kitap okuma
+    // alışkanlığı eklemek istiyorum" came back as encouraging prose with
+    // nothing to tap. Optional was the defect.
+    expect(SRC).not.toMatch(/İSTEĞE BAĞLIDIR/);
+    expect(SRC).toMatch(/SESSİZCE sadece metne dönüşmemeli/);
+    expect(SRC).toMatch(/TAM OLARAK BİR/);
+  });
+
+  it('ordinary chat is still explicitly action-free', () => {
+    // The other half of determinism: "motivasyonum düşük" must not manufacture
+    // a habit nobody asked for.
+    expect(SRC).toMatch(/Sıradan sohbet[\s\S]{0,120}actions: \[\]/);
+  });
+
+  it('one action at a time', () => {
+    expect(SRC).toMatch(/Aynı anda birden fazla eylem üretme/);
+    expect(SRC).toMatch(/maxItems: 1/);
   });
 
   it('only the three supported action types are described', () => {

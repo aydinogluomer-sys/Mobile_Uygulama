@@ -93,6 +93,12 @@ jest.mock('../../repositories/aiConversationRepository', () => ({
     mockRows.actions.push(row);
     return { ok: true, data: row };
   },
+  updateActionPayload: async (id: string, payload: unknown) => {
+    const row = mockRows.actions.find((a) => a.id === id && a.status === 'pending');
+    if (!row) return { ok: true, data: null };
+    row.payload = payload;
+    return { ok: true, data: { ...row } };
+  },
   resolveAction: async (id: string, status: string) => {
     const row = mockRows.actions.find((a) => a.id === id && a.status === 'pending');
     if (!row) return { ok: true, data: null };
@@ -142,9 +148,9 @@ jest.mock('../../hooks/useSpeechInput', () => ({
 }));
 
 const HABITS = [
-  { id: 'h1', name: 'Kitap Oku', status: 'active', tracking_type: 'numeric', unit: 'dakika', daily_goal: 20, target_direction: 'at_least' },
-  { id: 'h2', name: 'Kitap Özeti', status: 'active', tracking_type: 'binary', unit: null, daily_goal: null, target_direction: null },
-  { id: 'h3', name: 'Yürüyüş', status: 'active', tracking_type: 'binary', unit: null, daily_goal: null, target_direction: null },
+  { id: 'h1', name: 'Kitap Oku', status: 'active', behavior_type: 'positive', tracking_type: 'numeric', unit: 'dakika', daily_goal: 20, target_direction: 'at_least' },
+  { id: 'h2', name: 'Kitap Özeti', status: 'active', behavior_type: 'positive', tracking_type: 'binary', unit: null, daily_goal: null, target_direction: null },
+  { id: 'h3', name: 'Yürüyüş', status: 'active', behavior_type: 'positive', tracking_type: 'binary', unit: null, daily_goal: null, target_direction: null },
 ];
 jest.mock('../../store/habitStore', () => ({
   useHabitStore: Object.assign(() => ({ habits: HABITS }), { getState: () => ({ habits: HABITS }) }),
@@ -161,7 +167,10 @@ jest.mock('../../services/reviewService', () => ({
   loadReviewData: jest.fn(async () => { throw new Error('not needed'); }),
 }));
 
-const mockStageProposal = jest.fn(() => true);
+// Typed with its argument so a test can assert WHAT was staged, not just that
+// something was. `jest.fn(() => true)` gives an empty parameter tuple, and
+// `calls[0][0]` on that is a type error rather than a value.
+const mockStageProposal = jest.fn((_proposal: unknown) => true);
 const mockConfirmInstall = jest.fn(async () => true);
 const mockClearGenerated = jest.fn();
 const routineState = {
@@ -193,7 +202,28 @@ import { useAiConversationStore } from '../../store/aiConversationStore';
 
 const QUESTION = 'Haftalık plan öner';
 
-const OK_HABIT = { name: 'Kitap Oku', tracking_type: 'numeric', difficulty: 3, estimated_minutes: 20 };
+/**
+ * A COMPLETE proposal: the target, the unit and the schedule, not just a name.
+ *
+ * This used to be `{ name, tracking_type: 'numeric', difficulty, estimated_minutes }`
+ * and that is exactly the shape 11A.2.2 exists to stop shipping -- a numeric
+ * habit with no `daily_goal` installs as something nothing can be logged
+ * against. It now asks instead (see `INCOMPLETE_HABIT` below), so a test that
+ * wants to reach the preview has to supply a habit worth previewing.
+ */
+const OK_HABIT = {
+  name: 'Kitap Oku',
+  tracking_type: 'numeric',
+  difficulty: 3,
+  estimated_minutes: 20,
+  unit: 'dakika',
+  daily_goal: 20,
+  target_direction: 'at_least',
+  frequency_config: { kind: 'daily' },
+};
+
+/** Numeric, but the model never said what the target was. */
+const INCOMPLETE_HABIT = { name: 'Kitap Oku', tracking_type: 'numeric', difficulty: 3, estimated_minutes: 20 };
 
 /**
  * Rendered trees are unmounted after every test.
@@ -325,6 +355,85 @@ describe('the confirmation barrier', () => {
     expect(writeCount()).toBe(0);
   });
 
+  it('an incomplete habit asks for the target instead of installing a guess', async () => {
+    // "Kitap okuma alışkanlığı ekle" with no number. Installing a default
+    // target would put a number in the user's history they never chose.
+    mockInvoke.mockResolvedValue({
+      data: { reply: 'Ekleyebilirim.', actions: [{ type: 'propose_habit', habit: INCOMPLETE_HABIT }] },
+      error: null,
+    });
+    const tree = await render();
+    await ask(tree);
+
+    expect(textsSaying(tree, 'Bir şey eksik').length).toBeGreaterThan(0);
+    // Not staged, not evaluated, not written -- the question comes first.
+    expect(mockStageProposal).not.toHaveBeenCalled();
+    expect(writeCount()).toBe(0);
+    expect(buttonByLabel(tree, 'Onayla ve alışkanlıkları ekle')).toBeUndefined();
+  });
+
+  it('answering both questions reaches the preview, still without writing', async () => {
+    // Two taps, not a form: the target, then the schedule. Each is a field
+    // that changes what the habit MEANS, and neither is defaulted silently.
+    mockInvoke.mockResolvedValue({
+      data: { reply: 'Ekleyebilirim.', actions: [{ type: 'propose_habit', habit: INCOMPLETE_HABIT }] },
+      error: null,
+    });
+    const tree = await render();
+    await ask(tree);
+    await act(async () => { buttonByLabel(tree, 'Hedef 20 dakika')!.props.onPress(); });
+    // Still nothing staged -- the schedule is the next question.
+    expect(mockStageProposal).not.toHaveBeenCalled();
+    expect(writeCount()).toBe(0);
+    await act(async () => { buttonByLabel(tree, 'Her gün')!.props.onPress(); });
+
+    expect(mockStageProposal).toHaveBeenCalledTimes(1);
+    // The answer became the habit's real target, not an estimate.
+    const staged = mockStageProposal.mock.calls[0][0] as { habits: Record<string, unknown>[] };
+    expect(staged.habits[0]).toMatchObject({ daily_goal: 20, unit: 'dakika', target_direction: 'at_least' });
+    expect(buttonByLabel(tree, 'Onayla ve alışkanlıkları ekle')).toBeDefined();
+    expect(writeCount()).toBe(0);
+  });
+
+  it('a plan offers a CTA first, and the CTA is not a write', async () => {
+    mockInvoke.mockResolvedValue({
+      data: {
+        reply: 'İşte kısa bir plan.',
+        actions: [{
+          type: 'propose_habit_plan',
+          title: 'Kısa Haftalık Plan',
+          goal: 'Düzenli başlangıç',
+          habits: [OK_HABIT],
+        }],
+      },
+      error: null,
+    });
+    const tree = await render();
+    await ask(tree);
+
+    const cta = buttonByLabel(tree, 'Bu planı alışkanlıklara dönüştür');
+    expect(cta).toBeDefined();
+    expect(mockStageProposal).not.toHaveBeenCalled();
+    expect(writeCount()).toBe(0);
+
+    await act(async () => { cta!.props.onPress(); });
+    expect(buttonByLabel(tree, 'Onayla ve alışkanlıkları ekle')).toBeDefined();
+    expect(writeCount()).toBe(0);
+  });
+
+  it('the preview names the target and the schedule, not just the habit', async () => {
+    // A preview that lists names only is not a preview of what gets installed.
+    mockInvoke.mockResolvedValue({
+      data: { reply: 'Öneri', actions: [{ type: 'propose_habit', habit: OK_HABIT }] },
+      error: null,
+    });
+    const tree = await render();
+    await ask(tree);
+
+    expect(textsSaying(tree, 'Hedef: 20 dakika').length).toBeGreaterThan(0);
+    expect(textsSaying(tree, 'Her gün').length).toBeGreaterThan(0);
+  });
+
   it('a malformed action never reaches staging, and the reply survives', async () => {
     mockInvoke.mockResolvedValue({
       data: { reply: 'Yine de faydalı bir yanıt.', actions: [{ type: 'drop_table', habit: OK_HABIT }] },
@@ -384,6 +493,62 @@ describe('conversational logging', () => {
     expect(args.targetDirection).toBe('at_least');
     // No XP is ever supplied from here.
     expect(args.baseXp).toBeUndefined();
+  });
+
+  /**
+   * THE regression. `state` used to be hard-coded to `'done'` for every value
+   * completion, so ten minutes of a twenty-minute target was persisted as a
+   * completed day. Three rows, one target, three different verdicts -- and none
+   * of them decided by this screen.
+   */
+  it.each([
+    { said: 10, state: 'partial', label: 'Kısmi' },
+    { said: 20, state: 'done', label: 'Tamamlandı' },
+    { said: 30, state: 'done', label: 'Tamamlandı' },
+  ])('$said dakika against a 20 dakika target logs $state', async ({ said, state, label }) => {
+    mockInvoke.mockResolvedValue({
+      data: { reply: 'ok', actions: [logAction({ completion: { kind: 'value', value: said, unit: 'dakika' } })] },
+      error: null,
+    });
+    const tree = await render();
+    await ask(tree);
+
+    // Shown BEFORE the write, so the user is consenting to the real outcome.
+    expect(textsSaying(tree, label).length).toBeGreaterThan(0);
+    expect(writeCount()).toBe(0);
+
+    await act(async () => { buttonByLabel(tree, 'Kaydı işle')!.props.onPress(); });
+    const args = mockLogHabit.mock.calls[0][0];
+    expect(args.state).toBe(state);
+    expect(args.value).toBe(said);
+  });
+
+  it('a value in a unit the habit does not use is a question, not a write', async () => {
+    // "10 sayfa" against a habit measured in dakika. Writing it would put ten
+    // minutes of reading in as ten pages -- silently, and forever.
+    mockInvoke.mockResolvedValue({
+      data: { reply: 'ok', actions: [logAction({ completion: { kind: 'value', value: 10, unit: 'sayfa' } })] },
+      error: null,
+    });
+    const tree = await render();
+    await ask(tree);
+
+    expect(textsSaying(tree, 'Birim uyuşmuyor').length).toBeGreaterThan(0);
+    expect(buttonByLabel(tree, 'Kaydı işle')).toBeUndefined();
+    expect(writeCount()).toBe(0);
+  });
+
+  it('a unit that is only spelled differently is not a question', async () => {
+    // "dk" IS "dakika". Asking about that would be a pointless tap.
+    mockInvoke.mockResolvedValue({
+      data: { reply: 'ok', actions: [logAction({ completion: { kind: 'value', value: 10, unit: 'dk' } })] },
+      error: null,
+    });
+    const tree = await render();
+    await ask(tree);
+
+    expect(textsSaying(tree, 'Birim uyuşmuyor').length).toBe(0);
+    expect(buttonByLabel(tree, 'Kaydı işle')).toBeDefined();
   });
 
   it('an ambiguous habit asks instead of writing', async () => {

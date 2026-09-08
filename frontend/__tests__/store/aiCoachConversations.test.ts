@@ -174,6 +174,13 @@ jest.mock('../../repositories/aiConversationRepository', () => ({
     return { ok: true, data: { ...row } };
   },
 
+  updateActionPayload: async (id: string, payload: unknown) => {
+    const row = mockDb.actions.find((a) => a.id === id && a.user_id === mockDb.user && a.status === 'pending');
+    if (!row) return { ok: true, data: null };
+    row.payload = payload;
+    return { ok: true, data: { ...row } };
+  },
+
   resolveAction: async (id: string, status: 'confirmed' | 'cancelled') => {
     const row = mockDb.actions.find((a) => a.id === id && a.user_id === mockDb.user && a.status === 'pending');
     if (!row) return { ok: true, data: null };
@@ -519,6 +526,56 @@ describe('one thread never leaks into another', () => {
 
     expect(store().pendingAction?.row.id).toBe(staged);
     expect(mockDb.actions.find((a) => a.id === staged)?.status).toBe('pending');
+  });
+
+  it('a staged PLAN survives leaving the screen, and its status decides what comes back', async () => {
+    // §24 for the plan path specifically: the durable row is what makes a
+    // multi-habit preview resumable rather than something the user has to ask
+    // for again (and pay for again).
+    const plan = {
+      type: 'propose_habit_plan',
+      title: 'Kısa Haftalık Plan',
+      goal: 'Düzenli başlangıç',
+      habits: [
+        { name: 'Kitap Oku', tracking_type: 'numeric', difficulty: 3, estimated_minutes: 20,
+          unit: 'dakika', daily_goal: 20, target_direction: 'at_least', frequency_config: { kind: 'daily' } },
+        { name: 'Yürüyüş', tracking_type: 'binary', difficulty: 1, estimated_minutes: 30,
+          frequency_config: { kind: 'weekly', days: [0, 2, 4] } },
+      ],
+    };
+    await send('Bana kısa bir haftalık plan öner', 'İşte plan.', [plan]);
+    const id = store().activeId!;
+    const stagedId = store().pendingAction!.row.id;
+
+    await remount();
+    // Still there, and still the whole plan -- both habits with their targets.
+    const back = store().pendingAction;
+    expect(back?.row.id).toBe(stagedId);
+    expect(back?.action).toEqual(plan);
+
+    await store().resolvePending('cancelled');
+    await remount();
+    expect(store().pendingAction).toBeNull();
+    expect(mockDb.actions.find((a) => a.id === stagedId)?.status).toBe('cancelled');
+    expect(store().activeId).toBe(id);
+  });
+
+  it('an answered question is not asked again after leaving the screen', async () => {
+    // The clarification the user gave ("hedef 20 dakika") is a decision. A
+    // decision that lives only in component state is one they have to make
+    // again -- the same class of defect durable conversations exist to fix.
+    const bare = { name: 'Kitap Oku', tracking_type: 'numeric', difficulty: 3, estimated_minutes: 20 };
+    await send('Kitap okuma alışkanlığı ekle', 'Ekleyebilirim.', [{ type: 'propose_habit', habit: bare }]);
+    expect(store().pendingAction!.action).toEqual({ type: 'propose_habit', habit: bare });
+
+    const answered = {
+      type: 'propose_habit',
+      habit: { ...bare, unit: 'dakika', daily_goal: 20, target_direction: 'at_least', frequency_config: { kind: 'daily' } },
+    };
+    await store().updatePendingPayload(answered as never);
+
+    await remount();
+    expect(store().pendingAction?.action).toEqual(answered);
   });
 
   it('a resolved proposal never comes back as pending', async () => {

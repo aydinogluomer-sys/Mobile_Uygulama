@@ -42,40 +42,171 @@ const COACH_SYSTEM_PROMPT = `Sen "Aderyth AI Coach"sun — alışkanlık, görev
 
 Tarz: ADHD dostu, yargılamayan, motive edici ama gerçekçi. Türkçe konuş. Kısa ve net ol (en fazla 4-5 cümle ya da 3-4 madde). Somut, uygulanabilir öneri ver; gerektiğinde kullanıcının mevcut alışkanlıklarına atıfta bulun. Tıbbi/psikiyatrik tanı koyma.
 
-Sadece düz metin yanıt ver — JSON, markdown başlığı veya kod bloğu KULLANMA.
+YANIT BİÇİMİ — ZORUNLU:
+Her yanıtını SADECE \`coach_response\` aracını çağırarak ver. Serbest metin yazma; kullanıcının okuyacağı metin aracın \`reply\` alanına girer. \`actions\` alanı HER ZAMAN bir dizidir.
 
-EYLEM ÖNERİSİ (isteğe bağlı, çoğu yanıtta GEREKMEZ):
-Kullanıcı açıkça yeni bir alışkanlık/plan istiyorsa ya da mevcut bir alışkanlığı yaptığını/yapmadığını söylüyorsa, düz metin yanıtının SONUNA tek bir blok ekleyebilirsin:
+NE ZAMAN EYLEM ÜRETİLİR:
 
-[[ACTIONS]]
-{"actions":[ ... ]}
-[[/ACTIONS]]
+1) Sıradan sohbet (motivasyon, tavsiye, soru, bilgi) → \`actions: []\`.
+   Örnek: "Motivasyonum çok düşük." → yalnızca reply, boş actions.
 
-Kurallar:
-- Blok İSTEĞE BAĞLIDIR. Sıradan sohbette (motivasyon, tavsiye, soru) blok EKLEME.
-- En fazla 1 eylem öner.
-- Blok dışında JSON yazma. Blok, metnin en sonunda olmalı.
-- Sadece şu üç biçim geçerlidir:
+2) Kullanıcı AÇIKÇA plan istiyorsa → TAM OLARAK BİR \`propose_habit_plan\`.
+   Örnek: "Bana 3 maddelik kısa bir haftalık plan öner."
 
-1) Tek alışkanlık:
-{"type":"propose_habit","habit":{"name":"Kitap Oku","tracking_type":"numeric","difficulty":3,"estimated_minutes":20}}
+3) Kullanıcı AÇIKÇA yeni bir alışkanlık eklemek istiyorsa → TAM OLARAK BİR \`propose_habit\`.
+   Örnek: "Her gün 20 dakika kitap okuma alışkanlığı eklemek istiyorum."
 
-2) Plan:
-{"type":"propose_habit_plan","title":"Kısa Haftalık Plan","goal":"Düzenli başlangıç","habits":[{...},{...}]}
+4) Kullanıcı bir alışkanlığı YAPTIĞINI/YAPMADIĞINI söylüyorsa → TAM OLARAK BİR \`log_habit\`.
+   Örnek: "Bugünkü yürüyüşümü yaptım." → completion.kind = "state", state = "done".
+   Örnek: "Bugün 10 dakika kitap okudum." → completion.kind = "value", value = 10, unit = "dakika".
 
-3) Kayıt:
-{"type":"log_habit","habit_query":"kitap oku","date":"today","completion":{"kind":"state","state":"done"}}
-{"type":"log_habit","habit_query":"kitap oku","date":"today","completion":{"kind":"value","value":10,"unit":"dakika"}}
+Açık ve eyleme dönük bir istek SESSİZCE sadece metne dönüşmemeli: 2, 3 veya 4 durumundaysan eylemi ÜRET.
+Aynı anda birden fazla eylem üretme.
 
-Alan kuralları:
-- tracking_type SADECE "binary" veya "numeric".
-- difficulty SADECE 1, 3 veya 5.
-- estimated_minutes tamsayı, 1-1440.
-- date SADECE "today", "yesterday" veya "YYYY-MM-DD".
-- completion.state SADECE "done", "partial", "miss" veya "skip".
-- ASLA user_id, habit_id, xp, cost, balance, tablo veya SQL yazma.
-- Alışkanlığın tamamlanma durumunu, XP'sini veya yüzdesini SEN hesaplama; sadece kullanıcının söylediğini aktar.
-- Bu blok yalnızca bir ÖNERİDİR. Kullanıcı onaylamadan hiçbir şey kaydedilmez; yanıtında "kaydettim/ekledim" gibi olmuş-bitmiş bir dil KULLANMA, "ekleyebilirim/işaretleyebilirim" de.`;
+ALIŞKANLIK ALANLARININ ANLAMI — KARIŞTIRMA:
+- \`daily_goal\`: günlük ÖLÇÜLEBİLİR hedef (20 dakika, 8 bardak, 10 sayfa).
+- \`unit\`: bu sayının birimi ("dakika", "sayfa", "bardak", "tekrar").
+- \`estimated_minutes\`: alışkanlığın günlük TAHMİNİ SÜRE MALİYETİ (irade/kapasite hesabı için).
+- \`frequency_config\`: hangi günler yapılacağı.
+
+"Her gün 20 dakika kitap oku" için DOĞRU olan:
+  tracking_type: "numeric", unit: "dakika", daily_goal: 20, target_direction: "at_least",
+  frequency_config: { "kind": "daily" }, estimated_minutes: 20
+Sadece \`estimated_minutes: 20\` yazmak YANLIŞTIR — hedef kaybolur.
+
+BİLMEDİĞİNİ UYDURMA:
+Kullanıcı ölçülebilir bir hedef SÖYLEMEDİYSE \`unit\` ve \`daily_goal\` alanlarını HİÇ YAZMA (ikisi birlikte gelir ya da hiç gelmez). Uygulama eksiği kullanıcıya sorar. Sıklık belirtilmediyse \`frequency_config\` yazma.
+
+HAFTANIN GÜNLERİ — Pzt=0, Sal=1, Çar=2, Per=3, Cum=4, Cmt=5, Paz=6.
+JavaScript'in Pazar=0 düzeni DEĞİL. "Pazartesi, Çarşamba, Cuma" → { "kind": "weekly", "days": [0, 2, 4] }.
+
+ASLA user_id, habit_id, xp, cost, balance, tablo adı veya SQL yazma.
+Alışkanlığın tamamlanma durumunu, XP'sini veya yüzdesini SEN hesaplama; sadece kullanıcının söylediğini aktar.
+Eylemler yalnızca ÖNERİDİR. Kullanıcı onaylamadan hiçbir şey kaydedilmez; "kaydettim/ekledim" gibi olmuş-bitmiş bir dil KULLANMA, "ekleyebilirim/işaretleyebilirim" de.`;
+
+/**
+ * The habit shape the coach may propose.
+ *
+ * Mirrors `frontend/lib/routineProposal.ts`'s `ProposalHabit` field for field,
+ * because that validator is what actually decides whether the model's answer
+ * becomes a row. Declaring it here is not a second copy of the RULE -- the rule
+ * stays there and rejects anything that slips through -- it is how the model is
+ * told the shape in the first place, so the common case is a valid answer
+ * rather than a rejected one.
+ */
+const COACH_HABIT_SCHEMA = {
+  type: 'object',
+  properties: {
+    name: { type: 'string', maxLength: 80, description: 'Kısa alışkanlık adı, örn "Kitap Oku".' },
+    tracking_type: { type: 'string', enum: ['binary', 'numeric'], description: 'Ölçülebilir hedefi varsa numeric, yoksa binary.' },
+    difficulty: { type: 'integer', enum: [1, 3, 5], description: '1 Kolay, 3 Orta, 5 Zor.' },
+    estimated_minutes: { type: 'integer', minimum: 1, maximum: 1440, description: 'Günlük TAHMİNİ SÜRE maliyeti (dakika). Hedef değildir.' },
+    unit: { type: 'string', maxLength: 24, description: 'daily_goal birimi: "dakika", "sayfa", "bardak". daily_goal ile birlikte gelir.' },
+    daily_goal: { type: 'number', exclusiveMinimum: 0, maximum: 100000, description: 'Günlük ölçülebilir hedef. unit ile birlikte gelir. Kullanıcı söylemediyse YAZMA.' },
+    target_direction: { type: 'string', enum: ['at_least', 'at_most'], description: 'En az mı en çok mu. Varsayılan at_least.' },
+    frequency_config: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['daily', 'weekly', 'monthly'] },
+        days: {
+          type: 'array',
+          items: { type: 'integer', minimum: 0, maximum: 6 },
+          description: 'Yalnızca kind=weekly ile. Pzt=0 … Paz=6.',
+        },
+        count: { type: 'integer', minimum: 1, maximum: 31, description: 'Haftada/ayda kaç kez. kind=daily ile kullanılmaz.' },
+        part_of_day: { type: 'array', items: { type: 'string', enum: ['morning', 'afternoon', 'evening'] } },
+      },
+      required: ['kind'],
+      additionalProperties: false,
+    },
+  },
+  required: ['name', 'tracking_type', 'difficulty', 'estimated_minutes'],
+  additionalProperties: false,
+} as const;
+
+/**
+ * The ONE thing a coach turn may return.
+ *
+ * ## Why this replaced the `[[ACTIONS]]` block
+ *
+ * The old transport was prose with an OPTIONAL delimited JSON block appended.
+ * Two things were wrong with it and both showed up on a real device. It was
+ * optional, so "her gün 20 dakika kitap okuma alışkanlığı eklemek istiyorum"
+ * could legally come back as encouraging prose with nothing to tap. And it was
+ * a delimiter, so a truncated or slightly-off block degraded silently into no
+ * action at all rather than into an error anyone could see.
+ *
+ * A forced tool call fixes exactly that: the model cannot answer any other
+ * way, `actions` is a required array, and the shape is checked by the provider
+ * before the response is ever sent. It is still the SAME single request --
+ * `tools` rides along with the one `messages.create` call below, so a coach
+ * message still costs 5 FP and still makes one provider round trip.
+ *
+ * None of this makes the output trusted. `frontend/lib/coachActions.ts`
+ * revalidates every field from scratch, exactly as it did before.
+ */
+const COACH_TOOL = {
+  name: 'coach_response',
+  description: 'Kullanıcıya gösterilecek metni ve (varsa) tek bir yapılandırılmış eylem önerisini döndürür.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      reply: { type: 'string', description: 'Kullanıcının okuyacağı düz metin yanıt. Her zaman doldurulur.' },
+      actions: {
+        type: 'array',
+        maxItems: 1,
+        description: 'Sıradan sohbette boş dizi. Açık bir istek varsa tam olarak bir eylem.',
+        items: {
+          oneOf: [
+            {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['propose_habit'] },
+                habit: COACH_HABIT_SCHEMA,
+              },
+              required: ['type', 'habit'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['propose_habit_plan'] },
+                title: { type: 'string', maxLength: 100 },
+                goal: { type: 'string', maxLength: 400 },
+                habits: { type: 'array', minItems: 1, maxItems: 10, items: COACH_HABIT_SCHEMA },
+              },
+              required: ['type', 'title', 'goal', 'habits'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['log_habit'] },
+                habit_query: { type: 'string', maxLength: 80, description: 'Kullanıcının kastettiği alışkanlığın adı. ID ASLA yazma.' },
+                date: { type: 'string', description: '"today", "yesterday" veya "YYYY-MM-DD".' },
+                completion: {
+                  type: 'object',
+                  properties: {
+                    kind: { type: 'string', enum: ['state', 'value'] },
+                    state: { type: 'string', enum: ['done', 'partial', 'miss', 'skip'], description: 'kind=state ile.' },
+                    value: { type: 'number', minimum: 0, maximum: 100000, description: 'kind=value ile. Kullanıcının söylediği sayı.' },
+                    unit: { type: 'string', maxLength: 24, description: 'kind=value ile, kullanıcı birim söylediyse.' },
+                  },
+                  required: ['kind'],
+                  additionalProperties: false,
+                },
+              },
+              required: ['type', 'habit_query', 'date', 'completion'],
+              additionalProperties: false,
+            },
+          ],
+        },
+      },
+    },
+    required: ['reply', 'actions'],
+    additionalProperties: false,
+  },
+} as const;
 
 const SUMMARY_SYSTEM_PROMPT = `Sen bir günlük yazma asistanısın. Kullanıcının "Aderyth AI Coach" ile yaptığı sohbeti, kullanıcının kendi günlüğüne ekleyebileceği, birinci tekil şahıs ("ben") ağzından kısa bir özet/yansıma haline getiriyorsun.
 
@@ -90,14 +221,21 @@ Tarz: Destekleyici, yargılamayan, Türkçe, ikinci tekil ("sen") ağzından. Ş
 En fazla 6-8 cümle ya da birkaç kısa madde. Sadece düz metin döndür — markdown başlığı, JSON veya kod bloğu KULLANMA.`;
 
 /**
- * Split a coach answer into the prose the user reads and the optional action
- * block the app may act on.
+ * LEGACY FALLBACK ONLY -- no longer the action transport.
+ *
+ * `COACH_TOOL` above is how a coach turn answers now: a forced tool call whose
+ * `actions` array is required. This function survives for the one case that
+ * bypasses it -- a response that somehow arrives as a plain text block instead
+ * of a tool_use block -- so that such an answer still reaches the user as
+ * prose rather than as an error. It is a safety net under the new transport,
+ * not an alternative to it, and an action arriving this way is treated exactly
+ * as untrusted as one arriving through the tool.
  *
  * The block is delimited rather than inferred, because "find the JSON in this
  * text" is exactly the kind of guessing that ends with half a sentence being
  * parsed as a habit name. If the markers are absent, malformed, truncated
- * mid-JSON (the `max_tokens` case), or contain anything other than an array,
- * the prose is returned intact and `actions` is empty.
+ * mid-JSON, or contain anything other than an array, the prose is returned
+ * intact and `actions` is empty.
  *
  * This never throws. A bad suggestion must not cost the user the reply they
  * were charged for.
@@ -120,6 +258,37 @@ function splitCoachActions(raw: string): { reply: string; actions: unknown[] } {
   } catch {
     return { reply, actions: [] };
   }
+}
+
+/**
+ * Reads a coach turn out of the response content blocks.
+ *
+ * The tool block is the contract; the text block is the fallback. Both paths
+ * end in the same place -- a string the user reads and an array the client
+ * revalidates -- and neither can throw, because a coach turn that already cost
+ * 5 FP must still deliver its prose even when the structured half is unusable.
+ */
+function readCoachResponse(content: unknown[]): { reply: string; actions: unknown[] } {
+  for (const block of content as { type?: string; text?: string; name?: string; input?: unknown }[]) {
+    if (block?.type !== 'tool_use' || block.name !== COACH_TOOL.name) continue;
+    const input = block.input;
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return { reply: '', actions: [] };
+    const { reply, actions } = input as { reply?: unknown; actions?: unknown };
+    return {
+      reply: typeof reply === 'string' ? reply.trim() : '',
+      actions: Array.isArray(actions) ? actions : [],
+    };
+  }
+
+  // No tool block. Forced tool_choice makes this all but impossible, so the
+  // fallback exists to keep a surprising response readable rather than to be
+  // relied upon.
+  for (const block of content as { type?: string; text?: string }[]) {
+    if (block?.type === 'text' && typeof block.text === 'string') {
+      return splitCoachActions(block.text.trim());
+    }
+  }
+  return { reply: '', actions: [] };
 }
 
 /**
@@ -339,6 +508,13 @@ Deno.serve(async (req: Request) => {
           model: 'claude-haiku-4-5-20251001',
           max_tokens: COACH_MAX_TOKENS,
           system: COACH_SYSTEM_PROMPT,
+          // ONE request. `tools` rides along with the same call that produces
+          // the prose -- there is no second "extract the intent" inference, so
+          // the coach still costs one 5 FP charge and one provider round trip.
+          tools: [COACH_TOOL],
+          // FORCED. `auto` would leave "eklemek istiyorum" free to come back as
+          // prose with nothing to tap, which is the defect this replaces.
+          tool_choice: { type: 'tool', name: COACH_TOOL.name },
           messages: [
             // Conversation history first, then the current turn carrying the
             // app's deterministic domain context. The two are different things
@@ -348,15 +524,22 @@ Deno.serve(async (req: Request) => {
             { role: 'user', content: `Bağlam: ${contextLine}\n\nKullanıcı: ${userMsg}` },
           ],
         });
-        const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
-        const { reply, actions } = splitCoachActions(raw);
+
+        // A tool call cut off mid-argument is not a partial suggestion, it is
+        // an unparseable one. Named here rather than left to surface as a
+        // generic provider error, exactly as routine mode already does.
+        if (message.stop_reason === 'max_tokens') {
+          return { ok: false, reason: 'ai_truncated', message: 'AI yanıtı yarım kaldı, tekrar deneyin.' };
+        }
+
+        const { reply, actions } = readCoachResponse(message.content);
         if (!reply) {
           return { ok: false, reason: 'ai_empty_response', message: 'Yanıt alınamadı, tekrar deneyin.' };
         }
-        // `actions` is ALWAYS an array, and an unparseable block yields an
-        // empty one rather than an error: the user paid 5 FP for the reply,
-        // and a malformed suggestion must not take that away from them. The
-        // client validates this again from scratch -- nothing here is trusted
+        // `actions` is ALWAYS an array, and anything unreadable yields an empty
+        // one rather than an error: the user paid 5 FP for the reply, and a
+        // malformed suggestion must not take that away from them. The client
+        // validates this again from scratch -- nothing here is trusted
         // downstream.
         payload = { reply, actions };
       } else if (mode === 'summarize') {

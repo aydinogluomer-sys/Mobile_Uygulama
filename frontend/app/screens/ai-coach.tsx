@@ -27,10 +27,15 @@ import * as Speech from 'expo-speech';
 import {
   coachActionToRoutineProposal,
   resolveHabitQuery,
+  SINGLE_HABIT_GOAL,
   type CoachAction,
   type CoachLogCompletion,
 } from '../../lib/coachActions';
-import CoachActionCard, { type StagedCoachAction } from '../../components/coach/CoachActionCard';
+import CoachActionCard, { type StagedCoachAction, type ClarifyAnswer } from '../../components/coach/CoachActionCard';
+import { completionFor, stateForValue } from '../../services/habitLogService';
+import { firstMissingSemantic } from '../../lib/coachClarify';
+import { sameUnit } from '../../lib/units';
+import type { ProposalHabit } from '../../lib/routineProposal';
 import { useRoutineStore } from '../../store/routineStore';
 import { useLogStore } from '../../store/logStore';
 import { useSpeechInput } from '../../hooks/useSpeechInput';
@@ -43,6 +48,23 @@ type Message = {
   role: 'user' | 'assistant' | 'error';
   content: string;
 };
+
+/**
+ * What a completion MEANS for this habit, asked of the domain engine.
+ *
+ * AI Coach never decides done/partial/miss. For a value that is
+ * `stateForValue` -- tracking type, behaviour type, target and direction, in
+ * one place. For a state the user stated outright ("yaptım") it is that state,
+ * minus `skip`, which is a deliberate action rather than an outcome and has no
+ * place in a derived verdict.
+ */
+function derivedStateFor(
+  habit: Habit,
+  completion: CoachLogCompletion,
+): 'done' | 'partial' | 'miss' {
+  if (completion.kind === 'value') return stateForValue(habit, completion.value);
+  return completion.state === 'skip' ? 'miss' : completion.state;
+}
 
 const QUICK_PROMPTS = [
   'Alışkanlıklarımı analiz et',
@@ -79,6 +101,7 @@ export default function AICoachScreen() {
   const assignConversationProject = useAiConversationStore((st) => st.assignProject);
   const sendToStore = useAiConversationStore((st) => st.send);
   const resolvePendingAction = useAiConversationStore((st) => st.resolvePending);
+  const updatePendingPayload = useAiConversationStore((st) => st.updatePendingPayload);
   const loadMoreConversations = useAiConversationStore((st) => st.loadConversations);
 
   const [transient, setTransient] = useState<Message[]>([]);
@@ -229,6 +252,13 @@ export default function AICoachScreen() {
 
   useEffect(() => { fetchToday(); fetchSub(); loadAnalyticsSummary(); }, [fetchToday, fetchSub, loadAnalyticsSummary]);
 
+  /**
+   * Resolve a log against the user's REAL habits and show what it will mean.
+   *
+   * `derived` is the domain engine's answer, not this screen's: 10 against a
+   * target of 20 is `partial`, and the card says so BEFORE the write instead of
+   * the user finding out afterwards in the habit list.
+   */
   const stageLog = useCallback((query: string, date: string, completion: CoachLogCompletion) => {
     const resolution = resolveHabitQuery(query, habits);
     if (resolution.kind === 'none') { setStaged({ kind: 'nomatch', query }); return; }
@@ -236,42 +266,118 @@ export default function AICoachScreen() {
       setStaged({ kind: 'ambiguous', candidates: resolution.candidates, date, completion });
       return;
     }
-    setStaged({ kind: 'log', habit: resolution.habit, date, completion });
+    const habit = resolution.habit;
+
+    // "10 sayfa" against a habit measured in minutes is not a unit this app may
+    // reinterpret. Spellings of the SAME unit (dk / dakika) pass; a real
+    // disagreement becomes a question.
+    if (completion.kind === 'value' && completion.unit && !sameUnit(completion.unit, habit.unit)) {
+      setStaged({ kind: 'unitMismatch', habit, date, value: completion.value, unit: completion.unit });
+      return;
+    }
+
+    setStaged({ kind: 'log', habit, date, completion, derived: derivedStateFor(habit, completion) });
   }, [habits]);
+
+  /**
+   * Validate, capacity-evaluate and preview a habit list -- or ask for the one
+   * field that is genuinely missing.
+   *
+   * Clarification comes BEFORE validation on purpose. A numeric habit with no
+   * target PASSES the validator (the semantic fields are optional there, and
+   * have to be, because packs and older callers omit them) and would install as
+   * a habit nothing can ever be logged against. Asking is the difference
+   * between "Kitap Oku" and "Kitap Oku, 20 dakika, her gün".
+   */
+  const previewProposal = useCallback((title: string, goal: string, list: ProposalHabit[]) => {
+    const gap = firstMissingSemantic(list);
+    if (gap) {
+      setStaged({ kind: 'clarify', title, habits: list, index: gap.index, missing: gap.missing });
+      return;
+    }
+    const ok = stageCoachProposal({ title, goal, habits: list });
+    if (!ok) {
+      setStaged({ kind: 'invalid', reasons: useRoutineStore.getState().proposalErrors ?? ['Öneri doğrulanamadı.'] });
+      return;
+    }
+    setStaged({ kind: 'proposal', title, habits: list, evaluation: useRoutineStore.getState().evaluation });
+  }, [stageCoachProposal]);
 
   /**
    * Turn a validated suggestion into something the user can look at.
    *
-   * Nothing here writes. A habit/plan is handed to the routine pipeline's
-   * validator and capacity engine (the same one packs and AI routines use) so
-   * the preview shows the REAL activate-vs-queue outcome rather than a guess;
-   * a log is resolved against the user's own habits and refuses to choose when
-   * two of them match.
+   * Nothing here writes. A habit is handed to the routine pipeline's validator
+   * and capacity engine (the same one packs and AI routines use) so the preview
+   * shows the REAL activate-vs-queue outcome rather than a guess; a log is
+   * resolved against the user's own habits and refuses to choose when two of
+   * them match.
+   *
+   * A PLAN stops one step earlier, at an offer. Three habits becoming a
+   * confirmation sheet the instant the model answers is a lot of screen for
+   * something the user only asked to see; "Bu Planı Alışkanlıklara Dönüştür" is
+   * where they say they meant it.
    */
   const stageFromActions = useCallback((actions: CoachAction[]) => {
     const action = actions[0];
     if (!action) return;
 
-    if (action.type === 'propose_habit' || action.type === 'propose_habit_plan') {
+    if (action.type === 'propose_habit_plan') {
+      setStaged({ kind: 'planOffer', title: action.title, goal: action.goal, habits: action.habits });
+      return;
+    }
+
+    if (action.type === 'propose_habit') {
       const proposal = coachActionToRoutineProposal(action);
       if (!proposal) return;
-      const ok = stageCoachProposal(proposal);
-      if (!ok) {
-        setStaged({ kind: 'invalid', reasons: useRoutineStore.getState().proposalErrors ?? ['Öneri doğrulanamadı.'] });
-        return;
-      }
-      const st = useRoutineStore.getState();
-      setStaged({
-        kind: 'proposal',
-        title: proposal.title,
-        habitNames: proposal.habits.map((h) => h.name),
-        evaluation: st.evaluation,
-      });
+      previewProposal(proposal.title, proposal.goal, proposal.habits);
       return;
     }
 
     stageLog(action.habit_query, action.date, action.completion);
-  }, [stageCoachProposal, stageLog]);
+  }, [previewProposal, stageLog]);
+
+  /** The CTA under a plan. Still zero writes -- it opens the preview. */
+  function handleAcceptPlan() {
+    if (staged?.kind !== 'planOffer') return;
+    previewProposal(staged.title, staged.goal, staged.habits);
+  }
+
+  /**
+   * Fold one answered question back into the proposal and continue.
+   *
+   * The answer replaces exactly the field that was asked about; nothing else in
+   * the habit is touched, and the next gap (if any) is asked next. A habit
+   * missing both a target and a schedule costs two taps, not a form.
+   */
+  function handleClarify(answer: ClarifyAnswer) {
+    if (staged?.kind !== 'clarify') return;
+    const { title, habits: list, index } = staged;
+    const next: ProposalHabit[] = list.map((h, i) => {
+      if (i !== index) return h;
+      if (answer.missing === 'frequency') return { ...h, frequency_config: answer.frequency_config };
+      if (answer.daily_goal === null) {
+        // "Hedefsiz": a yes/no habit after all. BOTH halves of the measurement
+        // go, because half of one is not a valid habit.
+        const { unit: _unit, daily_goal: _goal, target_direction: _dir, ...rest } = h;
+        return { ...rest, tracking_type: 'binary' };
+      }
+      return {
+        ...h,
+        tracking_type: 'numeric',
+        daily_goal: answer.daily_goal,
+        unit: answer.unit,
+        target_direction: h.target_direction ?? 'at_least',
+      };
+    });
+    // Durable, so leaving and coming back does not ask the same question
+    // again. The screen has already moved on -- this only rewrites the row.
+    void updatePendingPayload(
+      next.length === 1
+        ? { type: 'propose_habit', habit: next[0] }
+        : { type: 'propose_habit_plan', title, goal: SINGLE_HABIT_GOAL, habits: next },
+    );
+    previewProposal(title, SINGLE_HABIT_GOAL, next);
+  }
 
 
   // A durable proposal belongs to the open conversation, so staging follows it
@@ -288,7 +394,13 @@ export default function AICoachScreen() {
   function handlePickCandidate(habit: Habit) {
     setStaged((prev) =>
       prev && prev.kind === 'ambiguous'
-        ? { kind: 'log', habit, date: prev.date, completion: prev.completion }
+        ? {
+            kind: 'log',
+            habit,
+            date: prev.date,
+            completion: prev.completion,
+            derived: derivedStateFor(habit, prev.completion),
+          }
         : prev,
     );
   }
@@ -325,25 +437,46 @@ export default function AICoachScreen() {
           id: Date.now().toString(),
           role: ok ? 'assistant' : 'error',
           content: ok
-            ? `✓ ${staged.habitNames.length} alışkanlık eklendi.`
+            ? `✓ ${staged.habits.length} alışkanlık eklendi.`
             : (useRoutineStore.getState().installError ?? 'Alışkanlıklar eklenemedi.'),
         }]);
         if (ok) clearGenerated();
         return;
       }
 
-      if (staged.kind === 'log') {
+      if (staged.kind === 'log' || staged.kind === 'unitMismatch') {
         const when = parseLocalDate(staged.date) ?? new Date();
-        // The domain engine decides what a value MEANS. This passes the number
-        // and the habit's own target; it never computes done/partial/miss and
-        // never supplies XP.
+        const habit = staged.habit;
+        // A confirmed mismatch means "yes, in the habit's own unit" -- the
+        // number is kept and the unit the user said is dropped, rather than
+        // converted into something nobody agreed to.
+        const completion: CoachLogCompletion = staged.kind === 'unitMismatch'
+          ? { kind: 'value', value: staged.value }
+          : staged.completion;
+
+        // THE defect this step closes. `state` used to be
+        // `completion.kind === 'state' ? completion.state : 'done'`, so ten
+        // minutes against a twenty-minute target was persisted as `done`. The
+        // comment above it said the domain engine decided; it did not, that
+        // line did, and it was wrong. `completionFor` IS that engine: it reads
+        // the habit's tracking type, behaviour type, target and direction and
+        // returns state, value and target together.
+        const intent = completion.kind === 'value'
+          ? completionFor(habit, completion.value)
+          : {
+              state: completion.state,
+              value: undefined as number | undefined,
+              targetValue: habit.daily_goal ?? undefined,
+              targetDirection: habit.target_direction ?? undefined,
+            };
+
         const res = await logHabitWrite({
-          habitId: staged.habit.id,
+          habitId: habit.id,
           date: when,
-          state: staged.completion.kind === 'state' ? staged.completion.state : 'done',
-          value: staged.completion.kind === 'value' ? staged.completion.value : undefined,
-          targetValue: staged.habit.daily_goal ?? undefined,
-          targetDirection: staged.habit.target_direction ?? undefined,
+          state: intent.state,
+          value: intent.value,
+          targetValue: intent.targetValue,
+          targetDirection: intent.targetDirection,
         });
         const ok = res?.ok !== false;
         if (ok) await resolvePendingAction('confirmed');
@@ -352,7 +485,7 @@ export default function AICoachScreen() {
           id: Date.now().toString(),
           role: ok ? 'assistant' : 'error',
           content: ok
-            ? `✓ ${staged.habit.name} kaydedildi.`
+            ? `✓ ${habit.name} kaydedildi.`
             : 'Kayıt yazılamadı. Tekrar deneyebilirsin.',
         }]);
         return;
@@ -687,6 +820,8 @@ export default function AICoachScreen() {
               onConfirm={handleConfirmStaged}
               onCancel={handleCancelStaged}
               onPickCandidate={handlePickCandidate}
+              onClarify={handleClarify}
+              onAcceptPlan={handleAcceptPlan}
             />
           )}
 
