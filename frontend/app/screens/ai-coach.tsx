@@ -95,6 +95,15 @@ export default function AICoachScreen() {
   /** Dictation fills the composer. It never sends — see the hook's own doc. */
   const speech = useSpeechInput(setInput);
 
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Leaving this screen must silence it: a half-read answer continuing to play
+  // over whatever the user opened next is not something anyone asked for, and
+  // the copy timer would otherwise touch state after unmount.
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    Speech.stop();
+  }, []);
+
   const hasConversation = messages.some((m) => m.role === 'user');
 
   // Deterministic analytics summary (plan §13: "send walking_completion_30d
@@ -109,7 +118,12 @@ export default function AICoachScreen() {
   const [analyticsSummary, setAnalyticsSummary] = useState<Record<string, string> | null>(null);
 
   useEffect(() => {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    // The delay lets the new bubble lay out before scrolling to it. The
+    // cleanup is the part that matters: without it every message left a live
+    // timer behind, and on unmount those still fired and reached for a
+    // ScrollView that no longer exists.
+    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    return () => clearTimeout(t);
   }, [messages]);
 
   // Deliberately a one-shot, not re-run when `habits` changes later in the
@@ -284,7 +298,12 @@ export default function AICoachScreen() {
   async function copyMessage(m: Message) {
     await Clipboard.setStringAsync(m.content);
     setCopiedId(m.id);
-    setTimeout(() => setCopiedId((cur) => (cur === m.id ? null : cur)), 1500);
+    // The "Kopyalandı" tick clears itself, and that timer must not outlive the
+    // screen: a stray callback firing after unmount sets state on a component
+    // that is gone. Held so it can be cancelled, and replaced rather than
+    // stacked when two messages are copied in quick succession.
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopiedId((cur) => (cur === m.id ? null : cur)), 1500);
   }
 
   function speakMessage(m: Message) {

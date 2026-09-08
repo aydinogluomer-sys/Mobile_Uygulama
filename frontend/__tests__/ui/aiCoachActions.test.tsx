@@ -115,11 +115,31 @@ const QUESTION = 'Haftalık plan öner';
 
 const OK_HABIT = { name: 'Kitap Oku', tracking_type: 'numeric', difficulty: 3, estimated_minutes: 20 };
 
+/**
+ * Rendered trees are unmounted after every test.
+ *
+ * Not tidiness: the copy tick clears itself on a 1500ms timer, which outlives
+ * a fast test. Leaving the screen mounted let that timer fire into a torn-down
+ * Jest environment and re-render, which surfaced as "import after teardown" —
+ * green tests, red job. Unmounting runs the screen's own cleanup, so this also
+ * checks that the cleanup exists.
+ */
+let mounted: TestRenderer.ReactTestRenderer | null = null;
+
 async function render() {
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => { tree = TestRenderer.create(<AICoachScreen />); });
+  mounted = tree;
   return tree;
 }
+
+afterEach(async () => {
+  if (mounted) {
+    const t = mounted;
+    mounted = null;
+    await act(async () => { t.unmount(); });
+  }
+});
 
 const buttonByLabel = (tree: TestRenderer.ReactTestRenderer, label: string) =>
   tree.root.findAllByType(TouchableOpacity).find((t) => t.props.accessibilityLabel === label);
