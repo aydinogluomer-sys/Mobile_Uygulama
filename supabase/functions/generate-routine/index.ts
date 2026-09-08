@@ -122,6 +122,79 @@ function splitCoachActions(raw: string): { reply: string; actions: unknown[] } {
   }
 }
 
+/**
+ * How much of a thread the model is shown.
+ *
+ * The full transcript is kept forever and the user can scroll all of it; this
+ * is the bounded slice that goes to Anthropic. Two limits, because either one
+ * alone is escapable: 16 messages stops a long chat growing without end, and
+ * 6000 characters stops sixteen essays doing the same. The newest turns are
+ * kept and the oldest are dropped, which is the half that "bunu haftada üçe
+ * çıkaralım" actually depends on.
+ *
+ * There is deliberately NO rolling summary yet. A summary is another model
+ * call, and this feature is not allowed to add a second charge to a 5 FP
+ * message; doing it for free on the server would still be a real provider cost
+ * appearing out of nowhere. So the cap is honest and stated rather than
+ * pretending the context is unlimited.
+ */
+const COACH_HISTORY_MESSAGES = 16;
+const COACH_HISTORY_CHARS = 6000;
+
+type CoachTurn = { role: 'user' | 'assistant'; content: string };
+
+/**
+ * The prior turns of ONE conversation, or null if the caller does not own it.
+ *
+ * Read through the CALLER'S client, not the service-role one. The explicit
+ * `user_id` filter would already be correct, but reading as the user means RLS
+ * is a second, independent barrier: a mistake in this function still cannot
+ * return another person's messages.
+ */
+async function loadCoachHistory(
+  client: ReturnType<typeof createClient>,
+  conversationId: string,
+  userId: string,
+  excludeRequestId: string,
+): Promise<CoachTurn[] | null> {
+  const { data: conv } = await client
+    .from('ai_conversations')
+    .select('id')
+    .eq('id', conversationId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (!conv) return null;
+
+  const { data, error } = await client
+    .from('ai_messages')
+    .select('role,content,created_at,request_id')
+    .eq('conversation_id', conversationId)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(COACH_HISTORY_MESSAGES + 4);
+  if (error || !data) return [];
+
+  // The client persists the current user message before calling, so it is
+  // already in this result. It is excluded here and re-added by the caller
+  // together with the app's deterministic context.
+  const prior = (data as { role: string; content: string; request_id: string | null }[])
+    .filter((m) => m.request_id !== excludeRequestId)
+    .slice(0, COACH_HISTORY_MESSAGES);
+
+  // Walk newest-first accumulating a character budget, then restore
+  // chronological order -- dropping from the OLD end, never the recent one.
+  const kept: CoachTurn[] = [];
+  let budget = COACH_HISTORY_CHARS;
+  for (const m of prior) {
+    if (m.role !== 'user' && m.role !== 'assistant') continue;
+    const cost = m.content.length;
+    if (cost > budget) break;
+    budget -= cost;
+    kept.push({ role: m.role, content: m.content });
+  }
+  return kept.reverse();
+}
+
 const PERIOD_LABEL: Record<string, string> = {
   weekly: 'son bir hafta',
   monthly: 'son bir ay',
@@ -251,11 +324,29 @@ Deno.serve(async (req: Request) => {
           ctx.willpower ? `İrade: ${ctx.willpower.used}/${ctx.willpower.daily_budget} kullanıldı, ${ctx.willpower.active_count}/${ctx.willpower.focus_capacity} aktif slot.` : '',
         ].filter(Boolean).join(' ');
 
+        // THIS conversation's prior turns, and only this one's. The id is
+        // verified against the caller before a single message is read, so a
+        // forged conversation_id yields no history rather than someone else's.
+        const conversationId = typeof body?.conversation_id === 'string' ? body.conversation_id : '';
+        const history = conversationId
+          ? await loadCoachHistory(supabase, conversationId, user.id, requestId)
+          : [];
+        if (conversationId && history === null) {
+          return { ok: false, reason: 'conversation_not_found', message: 'Sohbet bulunamadı.' };
+        }
+
         const message = await client.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: COACH_MAX_TOKENS,
           system: COACH_SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: `Bağlam: ${contextLine}\n\nKullanıcı: ${userMsg}` }],
+          messages: [
+            // Conversation history first, then the current turn carrying the
+            // app's deterministic domain context. The two are different things
+            // and are deliberately not blended: history is what was said, the
+            // context line is what is true in Aderyth right now.
+            ...(history ?? []),
+            { role: 'user', content: `Bağlam: ${contextLine}\n\nKullanıcı: ${userMsg}` },
+          ],
         });
         const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
         const { reply, actions } = splitCoachActions(raw);

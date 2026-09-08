@@ -30,6 +30,85 @@ import TestRenderer, { act } from 'react-test-renderer';
 jest.setTimeout(20000);
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
+
+// An in-memory stand-in for the conversation tables.
+//
+// The REPOSITORY is mocked rather than the store, so the real ordering --
+// persist user turn, call provider, persist assistant turn, then report
+// success, which lives in `services/aiCoachService.ts` -- is exercised by
+// these screen tests too. Only the database is fake.
+let mockRows: { conversations: any[]; messages: any[]; actions: any[] } = { conversations: [], messages: [], actions: [] };
+let mockSeq = 0;
+const mockNewId = (p: string) => `${p}-${++mockSeq}`;
+jest.mock('../../repositories/aiConversationRepository', () => ({
+  MAX_TITLE_LENGTH: 200,
+  MESSAGE_PAGE_SIZE: 40,
+  fetchConversationsPage: async () => ({ ok: true, data: { rows: [...mockRows.conversations], nextCursor: null, hasMore: false } }),
+  createConversation: async ({ title }: { title: string }) => {
+    const row = { id: mockNewId('conv'), user_id: 'u1', title, project_id: null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      last_message_at: new Date().toISOString(), archived_at: null };
+    mockRows.conversations.unshift(row);
+    return { ok: true, data: row };
+  },
+  renameConversation: async (id: string, title: string) => {
+    const row = mockRows.conversations.find((c) => c.id === id);
+    if (!row) return { ok: false, error: 'yok' };
+    row.title = title;
+    return { ok: true, data: { ...row } };
+  },
+  setConversationProject: async (id: string, projectId: string | null) => {
+    const row = mockRows.conversations.find((c) => c.id === id);
+    if (!row) return { ok: false, error: 'yok' };
+    row.project_id = projectId;
+    return { ok: true, data: { ...row } };
+  },
+  deleteConversation: async () => ({ ok: true, data: true }),
+  fetchConversation: async (id: string) => ({ ok: true, data: mockRows.conversations.find((c) => c.id === id) ?? null }),
+  fetchMessagesPage: async (conversationId: string) => ({
+    ok: true,
+    data: { rows: mockRows.messages.filter((m) => m.conversation_id === conversationId).slice().reverse(), hasMore: false },
+  }),
+  insertMessage: async (input: any) => {
+    // Mirrors the partial unique index: one assistant row per request_id.
+    if (input.role === 'assistant' && input.requestId) {
+      const dup = mockRows.messages.find((m) => m.conversation_id === input.conversationId && m.role === 'assistant' && m.request_id === input.requestId);
+      if (dup) return { ok: true, data: dup };
+    }
+    const row = { id: mockNewId('msg'), conversation_id: input.conversationId, user_id: 'u1',
+      role: input.role, content: input.content, request_id: input.requestId ?? null,
+      created_at: new Date(Date.now() + mockSeq).toISOString() };
+    mockRows.messages.push(row);
+    return { ok: true, data: row };
+  },
+  fetchPendingAction: async (conversationId: string) => ({
+    ok: true,
+    data: mockRows.actions.filter((a) => a.conversation_id === conversationId && a.status === 'pending').slice(-1)[0] ?? null,
+  }),
+  insertAction: async (input: any) => {
+    const row = { id: mockNewId('act'), conversation_id: input.conversationId,
+      assistant_message_id: input.assistantMessageId ?? null, user_id: 'u1',
+      action_type: input.actionType, payload: input.payload, status: 'pending',
+      created_at: new Date().toISOString(), resolved_at: null };
+    mockRows.actions.push(row);
+    return { ok: true, data: row };
+  },
+  resolveAction: async (id: string, status: string) => {
+    const row = mockRows.actions.find((a) => a.id === id && a.status === 'pending');
+    if (!row) return { ok: true, data: null };
+    row.status = status; row.resolved_at = new Date().toISOString();
+    return { ok: true, data: { ...row } };
+  },
+}));
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  getItem: async () => null, setItem: async () => undefined, removeItem: async () => undefined,
+}));
+
+jest.mock('../../store/projectStore', () => ({
+  useProjectStore: (sel?: (s: unknown) => unknown) => (sel ? sel({ projects: [] }) : { projects: [] }),
+}));
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
   Stack: Object.assign(() => null, { Screen: () => null }),
@@ -110,6 +189,7 @@ jest.mock('../../store/logStore', () => ({
 }));
 
 import AICoachScreen from '../../app/screens/ai-coach';
+import { useAiConversationStore } from '../../store/aiConversationStore';
 
 const QUESTION = 'Haftalık plan öner';
 
@@ -158,6 +238,12 @@ async function ask(tree: TestRenderer.ReactTestRenderer) {
 const writeCount = () => mockConfirmInstall.mock.calls.length + mockLogHabit.mock.calls.length;
 
 beforeEach(() => {
+  // The conversation store is module-level, so its `sending` flag and
+  // message list survive between tests unless reset -- which is exactly
+  // how one test's in-flight send silently swallowed the next one's.
+  useAiConversationStore.getState().reset();
+  mockRows = { conversations: [], messages: [], actions: [] };
+  mockSeq = 0;
   mockInvoke.mockReset();
   mockStageProposal.mockClear().mockReturnValue(true);
   mockConfirmInstall.mockClear().mockResolvedValue(true);
@@ -370,10 +456,12 @@ describe('copy and speak', () => {
     mockInvoke.mockResolvedValue({ data: { reply: 'cevap' }, error: null });
     const tree = await render();
     await ask(tree);
-    // Greeting + reply = two assistant messages; the user message adds none.
+    // One: the reply. The greeting is an empty-state placeholder rather than a
+    // stored message, so it disappears as soon as the thread has real turns --
+    // and the user's own message never gets a speak control.
     const speakButtons = tree.root.findAllByType(TouchableOpacity)
       .filter((t) => t.props.accessibilityLabel === 'Yanıtı sesli oku');
-    expect(speakButtons).toHaveLength(2);
+    expect(speakButtons).toHaveLength(1);
   });
 });
 

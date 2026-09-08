@@ -25,7 +25,6 @@ import { DOW_TR } from '../../lib/focusReport';
 import * as Clipboard from 'expo-clipboard';
 import * as Speech from 'expo-speech';
 import {
-  validateCoachActions,
   coachActionToRoutineProposal,
   resolveHabitQuery,
   type CoachAction,
@@ -35,6 +34,9 @@ import CoachActionCard, { type StagedCoachAction } from '../../components/coach/
 import { useRoutineStore } from '../../store/routineStore';
 import { useLogStore } from '../../store/logStore';
 import { useSpeechInput } from '../../hooks/useSpeechInput';
+import { useAiConversationStore } from '../../store/aiConversationStore';
+import ConversationSheet from '../../components/coach/ConversationSheet';
+import { useProjectStore } from '../../store/projectStore';
 
 type Message = {
   id: string;
@@ -56,13 +58,50 @@ export default function AICoachScreen() {
   const { state: wp, fetchToday } = useWillpowerStore();
   const { focusPoints, fetch: fetchSub, setBalance } = useSubscriptionStore();
   const appendEntry = useJournalStore((s) => s.appendEntry);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '0',
-      role: 'assistant',
-      content: 'Merhaba! Ben Aderyth AI Coach\'un. Alışkanlıkların, görevlerin ve hedeflerin hakkında sana yardımcı olabilirim. Ne öğrenmek istersin?',
-    },
-  ]);
+  // ── Durable transcript ────────────────────────────────────────────────
+  //
+  // The conversation lives in Supabase, not here. `transient` holds the two
+  // things that are NOT conversation and must not be persisted as if the model
+  // had said them: request errors, and the "✓ written" receipts after a
+  // confirmed action.
+  const storeMessages = useAiConversationStore((st) => st.messages);
+  const activeId = useAiConversationStore((st) => st.activeId);
+  const conversations = useAiConversationStore((st) => st.conversations);
+  const conversationsLoading = useAiConversationStore((st) => st.loadingConversations);
+  const conversationsHasMore = useAiConversationStore((st) => st.conversationsHasMore);
+  const pendingAction = useAiConversationStore((st) => st.pendingAction);
+  const hydrateConversations = useAiConversationStore((st) => st.hydrate);
+  const openConversation = useAiConversationStore((st) => st.openConversation);
+  const loadOlderMessages = useAiConversationStore((st) => st.loadOlderMessages);
+  const messagesHasMore = useAiConversationStore((st) => st.messagesHasMore);
+  const newChat = useAiConversationStore((st) => st.newChat);
+  const renameConversation = useAiConversationStore((st) => st.rename);
+  const assignConversationProject = useAiConversationStore((st) => st.assignProject);
+  const sendToStore = useAiConversationStore((st) => st.send);
+  const resolvePendingAction = useAiConversationStore((st) => st.resolvePending);
+  const loadMoreConversations = useAiConversationStore((st) => st.loadConversations);
+
+  const [transient, setTransient] = useState<Message[]>([]);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const projects = useProjectStore((st) => st.projects);
+
+  const GREETING: Message = {
+    id: 'greeting',
+    role: 'assistant',
+    content: 'Merhaba! Ben Aderyth AI Coach\'un. Alışkanlıkların, görevlerin ve hedeflerin hakkında sana yardımcı olabilirim. Ne öğrenmek istersin?',
+  };
+
+  const messages: Message[] = [
+    ...(storeMessages.length === 0 ? [GREETING] : storeMessages.map((m) => ({ id: m.id, role: m.role, content: m.content }))),
+    ...transient,
+  ];
+  const setMessages = (updater: (prev: Message[]) => Message[]) => {
+    // Only ever appends transient rows. Durable turns are written by the store.
+    setTransient((prev) => {
+      const next = updater([...prev]);
+      return next.filter((m) => !storeMessages.some((sm) => sm.id === m.id) && m.id !== 'greeting');
+    });
+  };
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [insufficientCredits, setInsufficientCredits] = useState(false);
@@ -117,6 +156,16 @@ export default function AICoachScreen() {
   const [analyticsHabits, setAnalyticsHabits] = useState<string[] | null>(null);
   const [analyticsSummary, setAnalyticsSummary] = useState<Record<string, string> | null>(null);
 
+  // Reopen the thread the user was last in. This is the reported defect:
+  // leaving AI Coach and returning must not silently start a fresh chat.
+  useEffect(() => { void hydrateConversations(); }, [hydrateConversations]);
+
+  // An error and a "✓ yazıldı" receipt belong to the thread they happened in.
+  // They are not conversation and are never persisted, so switching threads
+  // has to drop them -- otherwise thread A's "kredi yetersiz" sits underneath
+  // thread B's transcript, which is a leak even though no row moved.
+  useEffect(() => { setTransient([]); }, [activeId]);
+
   useEffect(() => {
     // The delay lets the new bubble lay out before scrolling to it. The
     // cleanup is the part that matters: without it every message left a live
@@ -124,7 +173,7 @@ export default function AICoachScreen() {
     // ScrollView that no longer exists.
     const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     return () => clearTimeout(t);
-  }, [messages]);
+  }, [storeMessages, transient]);
 
   // Deliberately a one-shot, not re-run when `habits` changes later in the
   // session -- same intentional "fetch once on mount" scope as `fetchToday`/
@@ -180,6 +229,16 @@ export default function AICoachScreen() {
 
   useEffect(() => { fetchToday(); fetchSub(); loadAnalyticsSummary(); }, [fetchToday, fetchSub, loadAnalyticsSummary]);
 
+  const stageLog = useCallback((query: string, date: string, completion: CoachLogCompletion) => {
+    const resolution = resolveHabitQuery(query, habits);
+    if (resolution.kind === 'none') { setStaged({ kind: 'nomatch', query }); return; }
+    if (resolution.kind === 'ambiguous') {
+      setStaged({ kind: 'ambiguous', candidates: resolution.candidates, date, completion });
+      return;
+    }
+    setStaged({ kind: 'log', habit: resolution.habit, date, completion });
+  }, [habits]);
+
   /**
    * Turn a validated suggestion into something the user can look at.
    *
@@ -189,7 +248,7 @@ export default function AICoachScreen() {
    * a log is resolved against the user's own habits and refuses to choose when
    * two of them match.
    */
-  function stageFromActions(actions: CoachAction[]) {
+  const stageFromActions = useCallback((actions: CoachAction[]) => {
     const action = actions[0];
     if (!action) return;
 
@@ -212,17 +271,18 @@ export default function AICoachScreen() {
     }
 
     stageLog(action.habit_query, action.date, action.completion);
-  }
+  }, [stageCoachProposal, stageLog]);
 
-  function stageLog(query: string, date: string, completion: CoachLogCompletion) {
-    const resolution = resolveHabitQuery(query, habits);
-    if (resolution.kind === 'none') { setStaged({ kind: 'nomatch', query }); return; }
-    if (resolution.kind === 'ambiguous') {
-      setStaged({ kind: 'ambiguous', candidates: resolution.candidates, date, completion });
-      return;
-    }
-    setStaged({ kind: 'log', habit: resolution.habit, date, completion });
-  }
+
+  // A durable proposal belongs to the open conversation, so staging follows it
+  // -- including on reopen, which is what makes a preview survive navigation.
+  // Declared after `stageFromActions` on purpose: a callback used by an effect
+  // has to exist before it, which is the same ordering rule that caught
+  // `loadBadHabits` during the SDK migration.
+  useEffect(() => {
+    if (!pendingAction) { setStaged(null); return; }
+    stageFromActions([pendingAction.action]);
+  }, [pendingAction, stageFromActions]);
 
   /** Picking from the ambiguity card only narrows the target; it does not write. */
   function handlePickCandidate(habit: Habit) {
@@ -236,6 +296,10 @@ export default function AICoachScreen() {
   function handleCancelStaged() {
     setStaged(null);
     clearGenerated();
+    // Closes the DURABLE row too. Without this the proposal would come back as
+    // pending the next time the conversation was opened, which is precisely
+    // the "cancelled action silently reappears" case.
+    void resolvePendingAction('cancelled');
   }
 
   /**
@@ -252,6 +316,10 @@ export default function AICoachScreen() {
     try {
       if (staged.kind === 'proposal') {
         const ok = await confirmInstall();
+        // Resolved pending -> confirmed. The repository scopes that update to
+        // rows still pending, so a second tap or a resumed app changes
+        // nothing: one staged proposal, one install.
+        if (ok) await resolvePendingAction('confirmed');
         setStaged(null);
         setMessages((prev) => [...prev, {
           id: Date.now().toString(),
@@ -278,6 +346,7 @@ export default function AICoachScreen() {
           targetDirection: staged.habit.target_direction ?? undefined,
         });
         const ok = res?.ok !== false;
+        if (ok) await resolvePendingAction('confirmed');
         setStaged(null);
         setMessages((prev) => [...prev, {
           id: Date.now().toString(),
@@ -322,9 +391,6 @@ export default function AICoachScreen() {
     const msg = (text ?? input).trim();
     if (!msg || loading) return;
     setInput('');
-
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: msg };
-    setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
     setInsufficientCredits(false);
     // One key per attempt: a retry of THIS message replays the first charge
@@ -338,54 +404,48 @@ export default function AICoachScreen() {
       const activeHabits = analyticsHabits ?? habits.filter((h) => h.status === 'active').map((h) => h.name);
       const pendingTasks = tasks.filter((t) => !t.completed).length;
 
-      const { data, error } = await withEdgeDeadline('AI Koç', (signal) =>
-        supabase.functions.invoke('generate-routine', {
-        signal,
-        body: {
-          message: msg,
-          context: {
-            activeHabits,
-            pendingTaskCount: pendingTasks,
-            habitCount: habits.length,
-            willpower: wp
-              ? { used: wp.used, daily_budget: wp.daily_budget, active_count: wp.active_count, focus_capacity: wp.focus_capacity }
-              : undefined,
-            // Additional deterministic behaviorIntelligence.ts summaries
-            // (best/worst weekday, recovery success). NOTE (see this task's
-            // Edge Function Findings): today's generate-routine coach prompt
-            // builder only reads ctx.activeHabits/habitCount/pendingTaskCount/
-            // willpower -- this field is not yet forwarded into the LLM
-            // prompt server-side. Sent anyway so the shape is correct and
-            // ready the moment that prompt builder is updated to read it;
-            // `activeHabits` above is where the enrichment actually reaches
-            // the model today.
-            analytics: analyticsSummary ?? undefined,
-          },
-          mode: 'coach',
-          request_id: requestId,
+      // The STORE owns the turn now, because the ordering matters more than
+      // the rendering: it persists the user message, calls the provider, and
+      // persists the answer BEFORE any of this reports success. What the
+      // screen supplies is the transport and the app's domain context.
+      const res = await sendToStore(msg, {
+        requestId,
+        invoke: async (payload) => {
+          const { data, error } = await withEdgeDeadline('AI Koç', (signal) =>
+            supabase.functions.invoke('generate-routine', {
+              signal,
+              body: {
+                ...payload,
+                context: {
+                  activeHabits,
+                  pendingTaskCount: pendingTasks,
+                  habitCount: habits.length,
+                  willpower: wp
+                    ? { used: wp.used, daily_budget: wp.daily_budget, active_count: wp.active_count, focus_capacity: wp.focus_capacity }
+                    : undefined,
+                  analytics: analyticsSummary ?? undefined,
+                },
+                mode: 'coach',
+              },
+            }));
+
+          if (error) {
+            // Sunucunun döndürdüğü gerçek hata mesajını çek (kredi, rate limit, vb.)
+            const { msg: emsg, code, balance } = await extractInvokeError(error);
+            if (typeof balance === 'number') setBalance(balance);
+            if (code === 'INSUFFICIENT_CREDITS') setInsufficientCredits(true);
+            throw new Error(emsg);
+          }
+          if (typeof data?.balance === 'number') setBalance(data.balance);
+          return data ?? {};
         },
-      }));
+      });
 
-      if (error) {
-        // Sunucunun döndürdüğü gerçek hata mesajını çek (kredi, rate limit, vb.)
-        const { msg, code, balance } = await extractInvokeError(error);
-        if (typeof balance === 'number') setBalance(balance);
-        if (code === 'INSUFFICIENT_CREDITS') setInsufficientCredits(true);
-        throw new Error(msg);
-      }
-
-      if (data?.error) throw new Error(data.error);
-      const reply = data?.reply;
-      if (!reply) throw new Error('Yanıt alınamadı, tekrar deneyin.');
-
-      if (typeof data?.balance === 'number') setBalance(data.balance);
-      setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'assistant', content: reply }]);
-
-      // Structured suggestions are validated from scratch here, no matter what
-      // the server already did, and a rejected one is simply dropped: the user
-      // paid 5 FP for the reply above and a bad suggestion must not take it
-      // away. Staging is not writing -- see stageFromActions.
-      stageFromActions(validateCoachActions(data?.actions).actions);
+      // A coach turn takes seconds and the user may open another conversation
+      // meanwhile. The store says so, and a failure that belongs to a thread
+      // nobody is looking at must not surface under the one they opened.
+      if (res.stale) return;
+      if (!res.ok) throw new Error(res.error ?? 'Bir hata oluştu');
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : 'Bir hata oluştu';
       setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'error', content: errMsg }]);
@@ -486,6 +546,31 @@ export default function AICoachScreen() {
         keyboardVerticalOffset={90}
       >
 
+        {/* Sohbet çubuğu: hangi sohbetteyiz, ve geçmiş */}
+        <View style={s.convBar}>
+          <TouchableOpacity
+            style={s.convBtn}
+            onPress={() => { void loadMoreConversations({ reset: true }); setSheetOpen(true); }}
+            accessibilityRole="button"
+            accessibilityLabel="Sohbet geçmişini aç"
+          >
+            <Ionicons name="chatbubbles-outline" size={15} color={colors.textDim} />
+            <Text style={s.convTitle} numberOfLines={1}>
+              {conversations.find((c) => c.id === activeId)?.title ?? 'Yeni Sohbet'}
+            </Text>
+            <Ionicons name="chevron-down" size={14} color={colors.textGhost} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={newChat}
+            hitSlop={8}
+            style={s.convNew}
+            accessibilityRole="button"
+            accessibilityLabel="Yeni sohbet başlat"
+          >
+            <Ionicons name="add" size={18} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+
         {/* Focus Point barı */}
         <View style={[s.fpBar, insufficientCredits && s.fpBarWarn]}>
           <View style={s.fpLeft}>
@@ -510,6 +595,16 @@ export default function AICoachScreen() {
           style={s.messages}
           contentContainerStyle={s.messagesContent}
         >
+          {messagesHasMore && (
+            <TouchableOpacity
+              onPress={() => void loadOlderMessages()}
+              style={s.olderBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Daha eski mesajları yükle"
+            >
+              <Text style={s.olderText}>Daha eski mesajlar</Text>
+            </TouchableOpacity>
+          )}
           {messages.map((m) => (
             /* The copy/speak controls are SIBLINGS of the bubble, never
                children of it. Putting them inside would mean touching the
@@ -603,6 +698,21 @@ export default function AICoachScreen() {
             </View>
           )}
         </ScrollView>
+
+        <ConversationSheet
+          visible={sheetOpen}
+          conversations={conversations}
+          activeId={activeId}
+          projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+          loading={conversationsLoading}
+          hasMore={conversationsHasMore}
+          onClose={() => setSheetOpen(false)}
+          onOpen={(id) => void openConversation(id)}
+          onNewChat={newChat}
+          onRename={(id, title) => renameConversation(id, title)}
+          onAssignProject={(id, projectId) => void assignConversationProject(id, projectId)}
+          onLoadMore={() => void loadMoreConversations()}
+        />
 
         {/* Quick prompts */}
         <ScrollView
@@ -857,6 +967,23 @@ const s = StyleSheet.create({
   },
   micBtnActive: { backgroundColor: alphaHex(colors.primary, '22'), borderColor: colors.primary },
   micHint: { fontSize: 11, color: colors.textFaint, paddingHorizontal: 16, paddingBottom: 4 },
+
+  convBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4,
+  },
+  convBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6,
+    minHeight: 36, paddingHorizontal: 10, borderRadius: 8,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  convTitle: { flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' },
+  convNew: {
+    width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  olderBtn: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 14, minHeight: 36, justifyContent: 'center' },
+  olderText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
 
   quickRow: { maxHeight: 44, borderTopWidth: 1, borderTopColor: colors.surface },
   quickContent: { paddingHorizontal: 12, paddingVertical: 6, gap: 8 },

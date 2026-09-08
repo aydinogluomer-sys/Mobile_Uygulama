@@ -52,6 +52,8 @@ const ORCHESTRATED: { store: string; service: string; why: string }[] = [
     why: 'completed / status / completed_at are one fact across three columns' },
   { store: 'focusStore.ts', service: 'focusService.ts',
     why: 'a task is only credited for a session the database accepted' },
+  { store: 'aiConversationStore.ts', service: 'aiCoachService.ts',
+    why: 'a coach turn writes the thread, both messages and the staged proposal in an order that must survive the app dying mid-answer' },
 ];
 
 /**
@@ -126,6 +128,8 @@ describe('services exist and hold real work', () => {
       anchors: ['elapsed <= 0', 'Math.floor('] },
     { service: 'exportService.ts', rule: 'pages are drained to the end, and an incomplete backup says so',
       anchors: ['truncated', 'nextCursor', 'headers: _omitted'] },
+    { service: 'aiCoachService.ts', rule: 'the answer is durable before the turn reports success, and a stored proposal is revalidated before it is offered again',
+      anchors: ["role: 'user'", "role: 'assistant'", 'validateCoachActions('] },
   ];
 
   it.each(RULES)('$service owns its rule: $rule', ({ service, anchors }) => {

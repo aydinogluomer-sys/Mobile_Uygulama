@@ -197,3 +197,55 @@ Verified live afterwards, including the regression side:
 | Defects found | 1 (`habit_logs` foreign habit id) — **fixed and re-verified live** |
 
 **RLS status: PASS.**
+
+
+---
+
+## Appendix A — AI Coach conversation tables (added 2026-09-08)
+
+The audit above is a point-in-time record of 50 tables and is left as it was
+written. Three tables were added afterwards by
+`supabase/migrations/20260908_ai_conversations.sql` (durable AI Coach threads),
+so they are verified here by the same method: two disposable users driven
+through PostgREST with real JWTs, plus an anonymous client. No result below
+comes from a service-role query.
+
+| Table | Class | RLS | Client policies |
+|---|---|---|---|
+| `ai_conversations` | A · owner-scoped | on | SELECT / INSERT / UPDATE / DELETE, all `auth.uid() = user_id` |
+| `ai_messages` | A · owner-scoped, **append-only** | on | SELECT / INSERT / DELETE — **no UPDATE policy, and UPDATE revoked from `authenticated`** |
+| `ai_conversation_actions` | A · owner-scoped | on | SELECT / INSERT / UPDATE / DELETE, all `auth.uid() = user_id` |
+
+**Live results** (A owns the rows, B attacks them):
+
+| Check | Result |
+|---|---|
+| B reads A's conversations | **0 rows** |
+| B reads A's messages | **0 rows** |
+| B renames A's conversation | **0 changed** |
+| B deletes A's conversation | **0 deleted** |
+| B inserts a message into A's conversation | **BLOCKED `42501`** |
+| B inserts a row carrying A's `user_id` | **BLOCKED `42501`** |
+| A files a conversation under **B's** project | **BLOCKED `42501`** |
+| anonymous client, all three tables | **BLOCKED `42501`** at the table grant |
+
+Two properties are specific to this feature rather than to RLS, and were
+proven in the same run:
+
+| Check | Result |
+|---|---|
+| second assistant row for the same `(conversation_id, request_id)` | **blocked** by the partial unique index |
+| user row sharing that `request_id` with its assistant row | **allowed** (the index is partial on purpose) |
+
+Probe rows were removed inside the run; all three tables were left at 0 rows.
+
+**Why `ai_messages` has no UPDATE.** A transcript is the record of what was
+said, and it is also the exact text the edge function replays to the model as
+history. If a row could be edited after the fact, "what did the model actually
+see" would stop being answerable. RLS refuses it (no policy) and the grant
+refuses it too, so neither alone is load-bearing.
+
+**Project assignment does not create a second project concept.** A conversation
+points at an existing `public.projects` row, and the INSERT/UPDATE policies
+require that project to belong to the caller — checked in the policy rather
+than in a `CHECK` constraint, because a constraint cannot see another table.

@@ -8,6 +8,15 @@ query is unbounded; this does not.
 
 | Repository | Operation | Table | Collection? | Bound | User scoped |
 |---|---|---|---|---|---|
+| `aiConversationRepository.ts` | `createConversation` | `ai_conversations` | no | WRITE | — |
+| `aiConversationRepository.ts` | `fetchConversation` | `ai_conversations` | no | SINGLE_ROW | yes |
+| `aiConversationRepository.ts` | `fetchConversationsPage` | `ai_conversations` | yes | KEYSET_PAGE | yes |
+| `aiConversationRepository.ts` | `fetchMessagesPage` | `ai_messages` | yes | BOUNDED_DOMAIN_WINDOW | yes |
+| `aiConversationRepository.ts` | `fetchPendingAction` | `ai_conversation_actions` | no | SINGLE_ROW | yes |
+| `aiConversationRepository.ts` | `insertAction` | `ai_conversation_actions` | no | WRITE | — |
+| `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | WRITE | — |
+| `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | SINGLE_ROW | — |
+| `aiConversationRepository.ts` | `resolveAction` | `ai_conversation_actions` | no | WRITE | yes |
 | `badHabitRepository.ts` | `fetchBadHabitsPage` | `bad_habits` | yes | KEYSET_PAGE | yes |
 | `badHabitRepository.ts` | `insertBadHabit` | `bad_habits` | no | WRITE | — |
 | `creditRepository.ts` | `fetchCreditTransactions` | `credit_transactions` | yes | BOUNDED_DOMAIN_WINDOW | yes |
@@ -85,12 +94,12 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **74**
-- collection SELECTs: **36**
-- KEYSET_PAGE: **6**
+- queries: **83**
+- collection SELECTs: **38**
+- KEYSET_PAGE: **7**
 - DATE_WINDOW: **9**
 - BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **2**
-- BOUNDED_DOMAIN_WINDOW: **15**
-- SINGLE_ROW: **9**
+- BOUNDED_DOMAIN_WINDOW: **16**
+- SINGLE_ROW: **12**
 - **UNCLASSIFIED: 0**
