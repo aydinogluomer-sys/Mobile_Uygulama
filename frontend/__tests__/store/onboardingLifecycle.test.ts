@@ -29,7 +29,7 @@
  * rollback that reads a variable in a dead process's memory is not a
  * rollback. `user_onboarding.install_return_status` is written in the SAME
  * upsert as the claim, so a claim can never exist without the status it
- * displaced. See `20260906d_onboarding_install_return_status.sql`.
+ * displaced. See `022_onboarding_install_return_status.sql`.
  *
  * CASE A  pending   → installing → insert fails → pending
  * CASE B  completed → installing → insert fails → completed, and a restart
@@ -414,7 +414,8 @@ describe('CASE F — the process dies holding the claim', () => {
     await store().hydrate();
     expect(store().status).toBe('installing');
     // Zero rows carry the claimed id, so the insert provably never landed and
-    // a full retry is safe — the 20260906c semantics, unchanged.
+    // a full retry is safe — the 021_onboarding_install_identity semantics,
+    // unchanged.
     expect(store().installedHabitCount).toBe(0);
     expect(store().installPhase).toBe('idle');
     // Recovered from the SERVER.

@@ -513,7 +513,7 @@ describe('recovery — FINDING A-03 is now structurally impossible (the adapter 
    * bijection in both directions.
    *
    * The bijection no longer exists, because the translation no longer exists.
-   * `20260831_recovery_vocabulary` made `recovery_plans.strategy` accept the
+   * `013_recovery_vocabulary` made `recovery_plans.strategy` accept the
    * domain's own four words, so there is nothing to map and no direction to
    * get backwards.
    *

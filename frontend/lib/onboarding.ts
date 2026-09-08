@@ -7,7 +7,7 @@
  * `consistency`, `gentle`) and rendered through a Turkish label looked up
  * here. Storing the label instead would make the database rows unqueryable
  * the first time a word is reworded, and would put UI copy inside a CHECK
- * constraint — `20260906_user_onboarding.sql` enumerates exactly these ids,
+ * constraint — `019_user_onboarding.sql` enumerates exactly these ids,
  * so the two have to agree and only the id half is allowed to be stable.
  *
  * ## What this file does NOT do
@@ -182,7 +182,7 @@ export function newInstallId(): string {
  * `installing` is a DURABLE claim, not a transient UI flag: it is written to
  * `user_onboarding` before the habits are inserted and survives process
  * death, which is how a later session learns an install already happened.
- * See `supabase/migrations/20260906b_user_onboarding_installing_status.sql`.
+ * See `supabase/migrations/020_user_onboarding_installing_status.sql`.
  */
 export type OnboardingStatus = 'pending' | 'installing' | 'completed' | 'skipped' | 'legacy';
 
@@ -198,7 +198,7 @@ export type OnboardingStatus = 'pending' | 'installing' | 'completed' | 'skipped
  * `installing` is deliberately excluded: it is the value the claim DISPLACES,
  * never a destination. Returning to it would recover the user into the exact
  * state the rollback exists to leave. Mirrors the CHECK in
- * `supabase/migrations/20260906d_onboarding_install_return_status.sql`.
+ * `supabase/migrations/022_onboarding_install_return_status.sql`.
  */
 export type OnboardingReturnStatus = Exclude<OnboardingStatus, 'installing'>;
 

@@ -84,12 +84,13 @@ type RecoveryStore = {
 // was described as "a no-op on the data". It was not: the narrowing dropped
 // `source_log_id`, `deficit_type`, `deficit_value`, `distributed_days` and
 // `completed_at`, on the stated grounds that the table had no columns for
-// them. It had — migration 20260825 added all five. So the store was erasing
+// them. It had — migration `005_phase1_core_engine` added all five. So the
+// store was erasing
 // five real fields from every row it handed out, and the deficit the plan was
 // built from was never visible to anything that read a plan back.
 //
 // The table now speaks the same vocabulary as the domain
-// (20260831_recovery_vocabulary), so a row IS a plan and there is nothing to
+// (013_recovery_vocabulary), so a row IS a plan and there is nothing to
 // translate.
 
 export const useRecoveryStore = create<RecoveryStore>((set, get) => ({

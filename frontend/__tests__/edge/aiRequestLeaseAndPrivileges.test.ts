@@ -3,7 +3,8 @@
  *
  * ## DEFECT 1 — the transition functions were callable by any signed-in user
  *
- * `20260906e` created four SECURITY DEFINER functions in `public` and never
+ * `023_ai_request_idempotency` created four SECURITY DEFINER functions in
+ * `public` and never
  * revoked EXECUTE. Postgres grants EXECUTE to PUBLIC by default and Supabase's
  * `anon`/`authenticated` inherit it, so every one of them was reachable from
  * the app's own client. RLS on `ai_requests` was no defence at all: a SECURITY
@@ -25,7 +26,8 @@
  * same way — a user could refund their own successful call, or pre-charge a key
  * at 5 FP and then spend it on a 25 FP routine.
  *
- * After `20260906f`, every one of those calls answers `42501 permission denied
+ * After `024_ai_request_privileges_and_lease`, every one of those calls
+ * answers `42501 permission denied
  * for function`, including the variants that name a different `p_user_id`.
  *
  * ## DEFECT 2 — an interrupted request stayed in_progress forever
@@ -61,7 +63,7 @@ import {
 
 const REPO = join(__dirname, '..', '..', '..');
 const MIGRATION = readFileSync(
-  join(REPO, 'supabase', 'migrations', '20260906f_ai_request_privileges_and_lease.sql'),
+  join(REPO, 'supabase', 'migrations', '024_ai_request_privileges_and_lease.sql'),
   'utf8',
 );
 const EDGE = readFileSync(
@@ -196,7 +198,7 @@ describe('CASE B — the client cannot fabricate a completion', () => {
 });
 
 // ---------------------------------------------------------------------------
-// The crash cases. The fake below models `20260906f`'s SQL: a lease, a sweep
+// The crash cases. The fake below models `024`'s SQL: a lease, a sweep
 // that only touches expired rows, and a refund that refuses to credit twice.
 // ---------------------------------------------------------------------------
 type Row = {

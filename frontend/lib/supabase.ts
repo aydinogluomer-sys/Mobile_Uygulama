@@ -58,7 +58,7 @@ export type Habit = {
   color: string | null;
   behavior_type: 'positive' | 'negative';
   // DB'nin `habits_tracking_type_check` kısıtının kabul ettiği dört değer.
-  // 'duration' ve 'abstinence' 20260825_phase1_core_engine.sql ile açıldı ve
+  // 'duration' ve 'abstinence' 005_phase1_core_engine.sql ile açıldı ve
   // 2026-08-30'da canlıya uygulandı — artık yazılabilir.
   //
   // `behavior_type` ile `tracking_type` İKİ AYRI kavramdır: ilki "bu alışkanlık
@@ -169,11 +169,11 @@ export type Routine = {
 // idi ve aradaki adaptör her kayıtta beş alanı sessizce düşürüyordu --
 // `deficit_value`, `distributed_days`, `source_log_id`, `deficit_type`,
 // `completed_at`. Gerekçesi "henüz sütunları yok" idi; oysa hepsi
-// 20260825'te eklenmişti. Sözlük 20260831_recovery_vocabulary ile tek'e
+// 005_phase1_core_engine ile eklenmişti. Sözlük 013_recovery_vocabulary ile tek'e
 // indirildi ve adaptör kaldırıldı.
 //
 // DEPLOY DURUMU: bu geçici geri alma KAPATILDI. Koordineli v2 sürümü
-// 20260906g_recovery_v2_vocabulary_release ile uygulandı; canlı
+// 025_recovery_v2_vocabulary_release ile uygulandı; canlı
 // kbcuolhjjnmhjaarxxmu artık yalnızca aşağıdaki sözlüğü kabul ediyor
 // (strategy CHECK ve status CHECK v2, strategy DEFAULT 'complete_today').
 // Legacy kelimeler -- full/half/mini/reschedule, done/skipped -- canlıda

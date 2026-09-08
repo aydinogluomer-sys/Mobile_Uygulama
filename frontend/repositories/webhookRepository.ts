@@ -1,5 +1,5 @@
 /**
- * `webhooks` data access.  (plan §8; migration 20260830_retire_legacy_backend)
+ * `webhooks` data access.  (plan §8; migration 009_retire_legacy_backend)
  *
  * Replaces `webhookAPI` in `utils/api.ts`. The endpoint it called had no
  * authentication and no owner column, so `GET /api/webhooks` returned every

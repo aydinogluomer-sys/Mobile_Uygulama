@@ -1,5 +1,5 @@
 /**
- * `monthly_reviews` read + upsert.  (plan §9; migration 20260831_monthly_reviews)
+ * `monthly_reviews` read + upsert.  (plan §9; migration 011_monthly_reviews)
  *
  * Replaces the AsyncStorage entry `monthly_review_<YYYY-MM>` that
  * `app/screens/monthly-review.tsx` wrote. That key had no account in it, so

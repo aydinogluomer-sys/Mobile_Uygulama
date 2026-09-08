@@ -372,7 +372,7 @@ export async function loadSyncQueue(userId: string): Promise<SyncQueueState> {
     // account, so this is strictly narrower, it happens once, and a
     // mis-attributed op is now rejected by the database anyway — habit_logs
     // requires the habit to belong to the caller (migration
-    // 20260830_habit_logs_ownership_check).
+    // 007_habit_logs_ownership_check).
     const legacy = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
     if (!legacy) return emptyQueueState();
     await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);

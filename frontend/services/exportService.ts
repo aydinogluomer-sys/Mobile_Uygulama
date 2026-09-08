@@ -47,7 +47,7 @@
  *     server-owned: a trigger awards it on insert and rolls it into
  *     `profiles.total_xp`. Importing logs re-fires that trigger, inflating a
  *     total the schema has three migrations defending
- *     (`20260831_xp_integrity`, `_ceiling_xp`, `_xp_drift_survives_purge`).
+ *     (`012_xp_integrity`, `015_ceiling_xp`, `016_xp_drift_survives_purge`).
  *     An import would have to suppress a trigger it cannot see from the
  *     client.
  *

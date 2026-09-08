@@ -9,12 +9,12 @@
  * (`source_log_id`, `deficit_type`, `deficit_value`, `distributed_days`,
  * `completed_at`, `status: planned|completed|expired|cancelled`) that the
  * live table does not have columns for yet -- the migration authored
- * alongside this file (`supabase/migrations/20260825_phase1_core_engine.sql`)
+ * alongside this file (`supabase/migrations/005_phase1_core_engine.sql`)
  * adds them, but it is NOT applied (Supabase is unreachable this phase).
  *
  * `RecoveryPlanV2` below is the persisted row plus one DERIVED field.
  * The adapter that used to translate two vocabularies is gone (see that
- * type's doc and migration 20260831_recovery_vocabulary),
+ * type's doc and migration 013_recovery_vocabulary),
  * usable the moment `recoveryStore.ts` is rewired -- itself a follow-up,
  * not done here (see the constraints on this task).
  */
@@ -28,7 +28,7 @@ import { type Ymd, ymd, addDaysLocal, parseLocalDate, daysBetweenLocal } from '.
 
 /**
  * Tracking types this module reasons about — identical to the persisted
- * `Habit['tracking_type']` vocabulary since `20260825_phase1_core_engine.sql`
+ * `Habit['tracking_type']` vocabulary since `005_phase1_core_engine.sql`
  * widened `habits_tracking_type_check` (applied to the canonical project on
  * 2026-08-30). All four values are live.
  */
@@ -185,8 +185,8 @@ export type RecoveryStatusV2 = RecoveryStatus;
  * wrong by the time anyone looked:
  *
  *  - the five columns — `source_log_id`, `deficit_type`, `deficit_value`,
- *    `distributed_days`, `completed_at` — were added by migration 20260825
- *    and had existed ever since, so the adapter was silently discarding real
+ *    `distributed_days`, `completed_at` — were added by migration
+ *    `005_phase1_core_engine` and had existed ever since, so the adapter was silently discarding real
  *    data on every save. A plan could not be reconstructed from what was
  *    stored: `deficitFor` computes how much is owed, and the number was
  *    thrown away on the way to the database;
@@ -194,7 +194,7 @@ export type RecoveryStatusV2 = RecoveryStatus;
  *    `skip <-> mini` and so on, where `mini` never meant `skip` — it meant a
  *    reduced-scope same-day attempt, a concept v2 has no word for.
  *
- * Migration 20260831_recovery_vocabulary made the table speak v2 and the
+ * Migration 013_recovery_vocabulary made the table speak v2 and the
  * adapter is gone. What remains is `scheduled_for`, which is DERIVED rather
  * than stored — see `planFromRow`.
  */

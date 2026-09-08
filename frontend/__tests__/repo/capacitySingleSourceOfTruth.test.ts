@@ -3,7 +3,7 @@
  *
  * ## The question
  *
- * Migration `20260825_phase1_core_engine.sql` §C created `daily_capacity`
+ * Migration `005_phase1_core_engine.sql` §C created `daily_capacity`
  * with columns that mirror `lib/capacity.dailyLoad`'s output one for one —
  * `habit_load, task_load, focus_load, overdue_pressure, raw_load,
  * normalised_load, band`, keyed `(user_id, capacity_date)`. Live it has RLS,

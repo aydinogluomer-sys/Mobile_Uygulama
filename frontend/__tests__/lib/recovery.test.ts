@@ -193,10 +193,11 @@ describe('planFromRow', () => {
    * "today's table cannot carry them".
    *
    * Both halves were wrong. The five columns had existed since migration
-   * 20260825, so the adapter was discarding real data; and `mini` never meant
+   * `005_phase1_core_engine`, so the adapter was discarding real data; and
+   * `mini` never meant
    * `skip` — it meant a reduced-scope same-day attempt, a size v2 has no word
    * for. The table now speaks the domain's vocabulary
-   * (20260831_recovery_vocabulary) and a row IS a plan.
+   * (013_recovery_vocabulary) and a row IS a plan.
    *
    * All that is left to do is derive `scheduled_for`, which is not a column
    * because storing it would be a second copy of facts already in the row.

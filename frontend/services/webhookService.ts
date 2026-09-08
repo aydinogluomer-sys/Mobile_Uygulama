@@ -1,5 +1,5 @@
 /**
- * Outbound webhooks.  (plan §8; migration 20260830_retire_legacy_backend)
+ * Outbound webhooks.  (plan §8; migration 009_retire_legacy_backend)
  *
  * ## Why delivery moved onto the device
  *

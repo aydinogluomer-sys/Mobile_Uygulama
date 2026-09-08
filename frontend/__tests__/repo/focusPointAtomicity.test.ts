@@ -31,7 +31,7 @@
  * whole fix — the debit must come before the AI client is used, and every
  * path out after the charge must either return output or refund. The
  * database side is verified separately, live, in the migration probes
- * recorded in 20260831_focus_point_atomicity.sql.
+ * recorded in 010_focus_point_atomicity.sql.
  *
  * ## Where these properties now live
  *

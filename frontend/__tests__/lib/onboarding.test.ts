@@ -3,7 +3,7 @@
  *
  * ## Why the ids are tested against the migration
  *
- * `20260906_user_onboarding.sql` enumerates the allowed goals, barriers,
+ * `019_user_onboarding.sql` enumerates the allowed goals, barriers,
  * paces and dayparts in CHECK constraints. If this file's list and that file's
  * list drift, the failure appears as a constraint violation the user reads as
  * "kaydedilemedi" — at the end of the flow, after they answered everything.
@@ -27,7 +27,7 @@ import {
 import * as onboarding from '../../lib/onboarding';
 
 const MIGRATION = readFileSync(
-  join(__dirname, '..', '..', '..', 'supabase', 'migrations', '20260906_user_onboarding.sql'),
+  join(__dirname, '..', '..', '..', 'supabase', 'migrations', '019_user_onboarding.sql'),
   'utf8',
 );
 

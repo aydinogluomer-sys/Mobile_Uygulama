@@ -14,7 +14,7 @@
  *
  * One statement: `auth.admin.deleteUser(user.id)`. Every one of the 47 tables
  * in `public` that references `auth.users` is declared `ON DELETE CASCADE`
- * (see `20260908b_account_deletion_cascade.sql` -- eight of them were not, and
+ * (see `027_account_deletion_cascade.sql` -- eight of them were not, and
  * this function would have failed outright on a foreign-key violation for any
  * user who had ever created a habit). The database performs the deletion as a
  * single transaction, so there is no half-deleted account to reason about.

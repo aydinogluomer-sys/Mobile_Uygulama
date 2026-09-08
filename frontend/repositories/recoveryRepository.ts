@@ -132,7 +132,7 @@ export async function insertRecoveryPlan(input: {
   // NOTE: habit ownership is enforced by RLS, not here. A client-side
   // pre-check would cost a round trip on every plan creation and stop
   // nothing -- anyone bypassing the app calls PostgREST directly. The
-  // control lives in `20260830_child_row_ownership.sql`, which requires
+  // control lives in `008_child_row_ownership.sql`, which requires
   // habit_id to belong to the caller in the INSERT/UPDATE policy.
 
   const { data, error } = await supabase

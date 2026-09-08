@@ -54,7 +54,7 @@ export const DURATION_UNIT = 'dakika';
  * Derives the V2 `TrackingType` from what is persisted.
  *
  * The DB's `habits_tracking_type_check` now accepts all four values
- * (widened by `20260825_phase1_core_engine.sql`, applied 2026-08-30), so the
+ * (widened by `005_phase1_core_engine.sql`, applied 2026-08-30), so the
  * persisted value is authoritative and this adapter simply honours it:
  *
  *  - `'numeric'` → `'numeric'`

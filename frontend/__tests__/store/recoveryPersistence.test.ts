@@ -6,11 +6,12 @@
  *         This acceptance criterion is the inverse of the one it replaces.
  *         The original read: "none of the plan's new-but-unapplied-migration
  *         columns are ever sent to Supabase", and it passed — while the five
- *         columns had existed since migration 20260825. The test was pinning
+ *         columns had existed since migration `005_phase1_core_engine`. The
+ *         test was pinning
  *         the data loss as correct behaviour, which is why nobody noticed
  *         that a saved plan could not say what it was answering.
  * AC-R02  there is no round trip to be lossless about. The table speaks the
- *         domain's vocabulary (20260831_recovery_vocabulary), so a row IS a
+ *         domain's vocabulary (013_recovery_vocabulary), so a row IS a
  *         plan; the adapter that translated `complete_today <-> full` and
  *         `skip <-> mini` is gone.
  * AC-R03  every existing exported action keeps its current external

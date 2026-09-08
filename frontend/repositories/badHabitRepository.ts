@@ -1,5 +1,5 @@
 /**
- * `bad_habits` data access.  (plan §8; migration 20260830_retire_legacy_backend)
+ * `bad_habits` data access.  (plan §8; migration 009_retire_legacy_backend)
  *
  * Replaces `badHabitAPI` in `utils/api.ts`, which called the FastAPI service
  * in `backend/server.py`. That service has no authentication at all and

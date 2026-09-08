@@ -18,7 +18,7 @@
  * tops the leaderboard every other user sees.
  *
  * Locking the function was necessary and not sufficient, because `add_xp` was
- * never the only way in. Migration 20260831_xp_integrity narrows the grant to
+ * never the only way in. Migration 012_xp_integrity narrows the grant to
  * `username`, the single column the app writes.
  *
  * ## What THIS file can check
@@ -125,7 +125,7 @@ describe('the one column the client owns', () => {
 
 describe('the canonical XP path is documented where it is enforced', () => {
   const mig = readFileSync(
-    join(ROOT, '..', 'supabase', 'migrations', '20260831_xp_integrity.sql'),
+    join(ROOT, '..', 'supabase', 'migrations', '012_xp_integrity.sql'),
     'utf8',
   );
 

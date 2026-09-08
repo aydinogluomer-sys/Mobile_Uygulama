@@ -103,7 +103,7 @@ export async function insertKeyResult(input: {
   const u = await currentUserId();
   if (!u.ok) return u;
   // NOTE: objective ownership is enforced by RLS, not here -- see
-  // `20260830_child_row_ownership.sql`. A client-side check would be a
+  // `008_child_row_ownership.sql`. A client-side check would be a
   // round trip that an attacker simply skips.
 
   const { data, error } = await supabase

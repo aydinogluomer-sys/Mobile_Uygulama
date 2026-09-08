@@ -28,7 +28,7 @@
  * about source text can answer that. So the orchestration lives in
  * `_shared/aiIdempotency.ts` behind injected dependencies, and every test here
  * COUNTS `callProvider` invocations against a fake database that mirrors the
- * SQL in `20260906e_ai_request_idempotency.sql` — including the atomicity that
+ * SQL in `023_ai_request_idempotency.sql` — including the atomicity that
  * makes the concurrency case meaningful.
  *
  *   A  first request        -> one debit, one provider call

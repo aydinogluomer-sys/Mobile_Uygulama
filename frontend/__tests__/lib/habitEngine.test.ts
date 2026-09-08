@@ -27,7 +27,7 @@ describe('adaptTrackingType', () => {
   //   'maps ANY negative habit to abstinence, regardless of tracking_type'
   //   'never produces duration -- todays schema cannot express it'
   //
-  // Both described a schema that no longer exists. `20260825_phase1_core_engine.sql`
+  // Both described a schema that no longer exists. `005_phase1_core_engine.sql`
   // widened `habits_tracking_type_check` to all four values and was applied to
   // the canonical project on 2026-08-30, and IMPLEMENTATION_V2 requires that
   // tracking_type and behavior_type stop overriding each other. These are

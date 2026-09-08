@@ -258,7 +258,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
 
     const row = res.data;
     // No row means a new account. The legacy backfill in
-    // `20260906_user_onboarding.sql` is what keeps existing users out of it.
+    // `019_user_onboarding.sql` is what keeps existing users out of it.
     const status = row?.status ?? 'pending';
     const answers = row ? normaliseAnswers(row) : EMPTY_ANSWERS;
 
