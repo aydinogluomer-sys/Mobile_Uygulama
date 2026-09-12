@@ -86,6 +86,47 @@ pass: Android `versionCode` **1**, iOS `buildNumber` **1**. The `production`
 profile sets `autoIncrement`, so the first store build takes the next value.
 `appVersionSource: remote` was left as-is.
 
+## Verified production artifact (Step 11B.1)
+
+Built on EAS from `af8aec4`, profile `production`, and inspected offline
+(protobuf manifest decoded, Hermes header checked, signer read with openssl):
+
+| | |
+|---|---|
+| Build | `151cc1a3-e36c-46b9-a319-2a91aab532e3` |
+| Artifact | `.aab`, 84,330,711 bytes, SHA-256 `c02e433a…c618b9` |
+| Package / version | `com.aderyth.app` · `1.0.0` · versionCode **3** |
+| `targetSdkVersion` / `minSdkVersion` | **36** / 24 |
+| Signer | EAS upload key, SHA-1 `3A:7E:76:6E:…:F1:04` (matches above) |
+| `android:debuggable` | absent (false) |
+| JS | `index.android.bundle`, Hermes bytecode (magic verified), 6.8 MB, `expo.modules.updates.ENABLED=false` |
+| Architecture | `libreactnative.so` + `libappmodules.so` (RN 0.86 — New Architecture only), `libhermesvm.so` |
+| Blocked permissions | `SYSTEM_ALERT_WINDOW`, `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE` — **all absent** |
+| `RECORD_AUDIO` | present; speech input only |
+| Purchase strings | `Abone Ol`, `Test modu`, `EN POPÜLER`, `Üyeliği Yükselt`, `Üyelik & Krediler`, `/screens/paywall` — **all absent** (searched latin1 + both UTF-16 alignments; the stale versionCode-2 AAB contained all six, so the probe is a positive control) |
+| Mock path | `mock_activate_subscription` absent from the bundle — the `__DEV__` branch was eliminated |
+| Secrets | no `service_role`, no `sb_secret_`, no Sentry token, no DSN-shaped string, zero JWT-shaped strings; the Supabase key present is the public `sb_publishable_…` |
+| Sentry | native libs present, `io.sentry.auto-init=false` (JS-initialised, inert without a DSN) |
+
+**Not to be uploaded anywhere in this step.** This is the artifact Step 11C
+would take to Internal testing.
+
+Observations that are not blockers, recorded so nobody rediscovers them:
+
+- The merged manifest carries `com.google.android.c2dm.permission.RECEIVE`,
+  Firebase Messaging meta-data and ~20 vendor `launcher.permission.*` badge
+  entries. All come from `expo-notifications` (FCM + ShortcutBadger). No
+  `googleServicesFile` is configured, so Firebase never initialises and no
+  push token is requested; the badge permissions are custom/signature-level.
+- `android:allowBackup` is `true` (Expo default). Android Auto Backup may
+  therefore include AsyncStorage — session token and offline queue — in the
+  user's device backup (end-to-end encrypted with the lock screen on
+  Android 9+). Not a store requirement either way; if the owner prefers
+  `false`, it is one `expo-build-properties` line and a rebuild.
+- The Sentry Android SDK ships its replay module as a transitive artifact
+  (`sentry-android-replay`). It is not enabled: no integration is registered
+  and both replay sample rates are 0 in `lib/sentryClient.ts`.
+
 ## Before Step 11C submission
 
 1. Resolve every `[ ]` above.
