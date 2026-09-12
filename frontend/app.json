@@ -10,7 +10,7 @@
     "primaryColor": "#D97757",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.aderyth.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -66,7 +66,8 @@
           "microphonePermission": "Koça yazmak yerine konuşarak soru sorabilmen için mikrofona erişim gerekiyor. Mikrofon yalnızca sen mikrofon düğmesine bastığında açılır.",
           "speechRecognitionPermission": "Söylediklerini yazıya çevirebilmek için konuşma tanıma gerekiyor. Metin, sen göndermeden önce yazı kutusunda düzenlenebilir."
         }
-      ]
+      ],
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gizlilik Politikası — Aderyth</title>
+<meta name="description" content="Aderyth hangi verileri saklar, neden saklar ve nasıl silersin.">
+<style>
+:root{--bg:#15140F;--surface:#1E1C16;--border:#2E2B22;--text:#EDE9DD;--dim:#BFBBAE;--faint:#827E72;--accent:#D97757}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:40px 20px 72px}
+h1{font-size:28px;margin:0 0 6px}
+h2{font-size:18px;margin:34px 0 10px;color:var(--text)}
+p,li{color:var(--dim)}
+li{margin:6px 0}
+.updated{color:var(--faint);font-size:13px;margin:0 0 28px}
+a{color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin:22px 0}
+.card p:last-child,.card ul:last-child{margin-bottom:0}
+footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--border);color:var(--faint);font-size:13px}
+nav{margin-bottom:26px;font-size:14px}
+nav a{margin-right:16px}
+@media (prefers-color-scheme: light){
+  :root{--bg:#FAF9F5;--surface:#fff;--border:#E4E0D6;--text:#1F1D17;--dim:#4A4740;--faint:#7C776C}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav><a href="/">Aderyth</a><a href="/support">Destek</a><a href="/delete-account">Hesap Silme</a></nav>
+
+<h1>Gizlilik Politikası</h1>
+<p class="updated">Aderyth · Son güncelleme: 8 Eylül 2026</p>
+
+<h2>Kısaca</h2>
+<div class="card">
+  <p>Aderyth, alışkanlıklarını ve odağını takip etmen için verilerini saklar.
+  Bu verileri satmıyoruz, reklam için kullanmıyoruz ve üçüncü taraf
+  reklam/izleme (tracking) SDK’sı içermiyoruz.</p>
+  <p>Hesabını ve verilerini uygulama içinden kalıcı olarak silebilirsin:
+  <strong>Ayarlar → Hesap → Hesabı Sil</strong>. Ayrıntılar için
+  <a href="/delete-account">Hesap ve Veri Silme</a>.</p>
+</div>
+
+<h2>Hesap bilgileri</h2>
+<p>Kayıt olurken e-posta adresin ve parolan alınır. Parola, kimlik doğrulama
+sağlayıcımız Supabase tarafından şifrelenmiş (hash) olarak saklanır; Aderyth
+parolanı düz metin olarak görmez. Ayrıca hesabına bağlı bir kullanıcı kimliği
+(id) ve isteğe bağlı bir kullanıcı adı tutulur.</p>
+
+<h2>Uygulamada oluşturduğun içerik</h2>
+<p>Alışkanlıkların ve tamamlama kayıtların, görevlerin, projelerin, notların,
+hedeflerin ve OKR’ların, rutinlerin, telafi planların, odak ve derin çalışma
+seansların, irade/kapasite kayıtların, bıraktığın alışkanlıklar, okuma listen,
+yaşam alanı kayıtların, takvim etkinliklerin ve haftalık/aylık
+değerlendirmelerin hesabına bağlı olarak saklanır. Günlük (journal) kayıtların
+serbest metindir ve hesabına bağlı saklanır.</p>
+<p>Bu verilere yalnızca sen erişebilirsin. Veritabanı satır düzeyinde güvenlik
+(RLS) ile korunur: her sorgu oturumdaki kimliğe göre sınırlanır.</p>
+
+<h2>AI Koç</h2>
+<p>AI Koç’a yazdığın mesajlar ve koçun yanıtları hesabına bağlı olarak
+saklanır; böylece sohbetlerin uygulamayı kapatıp açtığında kaybolmaz.</p>
+<p>Bir mesaj gönderdiğinde sunucumuz, yalnızca o sohbetin son mesajlarından
+oluşan sınırlı bir bağlam (en fazla 16 mesaj ve 6000 karakter) ile birlikte
+mesajını yapay zekâ sağlayıcımız <strong>Anthropic</strong>’e iletir. Buna ek
+olarak uygulamanın kendi özeti gönderilir: aktif alışkanlık adların,
+alışkanlık ve bekleyen görev sayın, günlük irade kullanımın.</p>
+<p>Sağlayıcı anahtarı yalnızca sunucudadır; uygulamanın içinde bulunmaz. Bir
+sohbetin içeriği yalnızca o sohbet için gönderilir, başka bir sohbete
+taşınmaz. Anthropic’in bu içeriği kendi tarafında ne kadar süre
+işlediği/sakladığı Aderyth’in kontrolünde değildir ve burada bir taahhüt
+olarak sunulmaz. Aderyth’in kendi tarafında sakladığı sohbetler, hesabını
+sildiğinde silinir.</p>
+<p>Ayrıca her AI isteği için teknik bir kayıt (istek kimliği, mod, durum,
+harcanan Focus Point) tutulur. Bu kayıt faturalandırma ve tekrar koruması
+içindir.</p>
+
+<h2>Sesle yazdırma</h2>
+<p>Mikrofon yalnızca sen mikrofon düğmesine bastığında açılır. Sürekli dinleme
+yoktur. Konuşmayı yazıya çevirme işini cihazının işletim sistemi yapar (iOS
+Speech, Android konuşma tanıma); cihaz ve sistem ayarlarına bağlı olarak bu
+işlem cihaz üzerinde ya da işletim sistemi sağlayıcısının sunucusunda
+gerçekleşebilir ve bu kısım Aderyth’in kontrolünde değildir.</p>
+<p>Aderyth ses kaydı tutmaz ve ses dosyası sunucuya göndermez. Yalnızca ortaya
+çıkan metin yazı kutusuna gelir; onu gönderip göndermemeye sen karar
+verirsin.</p>
+
+<h2>Çökme raporları</h2>
+<p>Uygulama beklenmedik şekilde çökerse, teknik bir hata raporu çökme izleme
+sağlayıcımız <strong>Sentry</strong>’ye gönderilir. Bu rapor yalnızca hatanın
+kendisini içerir: hata türü, hata mesajı ve çağrı yığını (stack trace) ile
+cihaz modeli, işletim sistemi sürümü ve uygulama sürümü.</p>
+<div class="card">
+  <p>Çökme raporunda <strong>bulunmayanlar</strong>, uygulama tarafında
+  açıkça engellenir:</p>
+  <ul>
+    <li>günlük (journal) metinlerin, notların ve AI Koç sohbetlerin;</li>
+    <li>alışkanlık, görev ve proje adların;</li>
+    <li>e-posta adresin, kullanıcı adın veya herhangi bir kullanıcı kimliği —
+    çökme raporları hiçbir hesapla ilişkilendirilmez;</li>
+    <li>oturum jetonların ve <code>Authorization</code> başlıkların;</li>
+    <li>ağ isteklerinin gövdeleri, adresleri ve sorgu parametreleri;</li>
+    <li>ekran kaydı / oturum tekrarı (session replay) — kullanılmıyor.</li>
+  </ul>
+  <p>Hata mesajları gönderilmeden önce ayrıca temizlenir: tırnak içindeki
+  değerler, adres satırındaki parametre değerleri, e-posta adresleri ve
+  jeton benzeri diziler kaldırılır ve mesaj uzunluğu sınırlandırılır.</p>
+</div>
+
+<h2>Abonelik ve Focus Point</h2>
+<p>Plan durumun ve Focus Point bakiyen hesabına bağlı saklanır. Focus Point
+harcamaların ve iadeleri bir işlem kaydı olarak tutulur. Bu sürümde uygulama
+içi satın alma bulunmamaktadır; ödeme bilgisi toplanmaz.</p>
+
+<h2>Bildirimler</h2>
+<p>Hatırlatıcılar cihazında yerel olarak zamanlanır. Aderyth uzaktan bildirim
+(push) göndermez ve cihazının push jetonunu toplamaz.</p>
+
+<h2>Liderlik tablosu</h2>
+<p>Liderlik tablosuna katıldığında kullanıcı adın, seviyen, toplam XP’in ve
+sıralaman diğer kullanıcılara görünür. E-posta adresin, içeriklerin ve
+alışkanlık adların liderlik tablosunda paylaşılmaz.</p>
+
+<h2>Toplamadıklarımız</h2>
+<ul>
+  <li>Reklam kimliği toplamıyoruz. Reklam ağı, analitik SDK’sı veya çapraz
+  uygulama izleme (tracking) kullanmıyoruz.</li>
+  <li>Konum verisi, kişiler, fotoğraflar veya cihaz depolamandaki dosyalar
+  toplanmaz.</li>
+  <li>Ödeme bilgisi toplanmaz.</li>
+</ul>
+
+<h2>Verilerin nerede saklanıyor</h2>
+<p>Veriler Supabase üzerinde barındırılan bir PostgreSQL veritabanında
+saklanır. Uygulama ile sunucu arasındaki tüm trafik HTTPS/TLS ile şifrelenir.
+Cihazında ayrıca oturum bilgin, çevrimdışı kayıt kuyruğun ve bazı tercihlerin
+yerel olarak saklanır.</p>
+
+<h2>Hizmet sağlayıcılar</h2>
+<ul>
+  <li><strong>Supabase</strong> — barındırma, veritabanı ve kimlik doğrulama.</li>
+  <li><strong>Anthropic</strong> — AI Koç ve AI rutin oluşturma isteklerinin
+  işlenmesi.</li>
+  <li><strong>Sentry</strong> — çökme raporlama.</li>
+</ul>
+
+<h2>Verilerini dışa aktarma</h2>
+<p>Ayarlar → Veri ve Gizlilik bölümünden verilerini JSON, CSV veya Excel
+biçiminde dışa aktarabilirsin. Bu dosya bir yedek değildir; geri yükleme
+yoktur.</p>
+
+<h2>Hesabını silme</h2>
+<p>Ayarlar → Hesap → Hesabı Sil ile hesabını kalıcı olarak silebilirsin. Silme
+işlemi geri alınamaz. Ayrıntılar ve uygulamaya erişemediğin durumdaki yol için
+<a href="/delete-account">Hesap ve Veri Silme</a>.</p>
+
+<h2>Çocukların gizliliği</h2>
+<p>Aderyth çocuklara yönelik değildir ve bilerek 13 yaşın altındaki
+kullanıcılardan veri toplamaz.</p>
+
+<h2>Değişiklikler ve iletişim</h2>
+<p>Bu politika güncellendiğinde bu sayfadaki tarih değişir. Sorular ve veri
+talepleri için <a href="mailto:{{DESTEK_EPOSTA}}">{{DESTEK_EPOSTA}}</a>.</p>
+
+<footer>{{YAYINCI}} · <a href="/support">Destek</a> · <a href="/delete-account">Hesap Silme</a></footer>
+</div>
+</body>
+</html>

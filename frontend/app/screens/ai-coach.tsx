@@ -712,13 +712,13 @@ export default function AICoachScreen() {
             <Text style={s.fpSub}>· mesaj {ACTION_COST.coach} FP</Text>
           </View>
           <TouchableOpacity
-            style={s.upgradeBtn}
-            onPress={() => router.push('/screens/paywall')}
+            style={s.creditsBtn}
+            onPress={() => router.push('/screens/focus-points')}
             accessibilityRole="button"
-            accessibilityLabel="Üyeliği yükselt"
+            accessibilityLabel="Focus Point bakiyeni aç"
           >
-            <Ionicons name="diamond-outline" size={13} color="#fff" />
-            <Text style={s.upgradeText}>Yükselt</Text>
+            <Ionicons name="flash-outline" size={13} color="#fff" />
+            <Text style={s.creditsText}>Krediler</Text>
           </TouchableOpacity>
         </View>
 
@@ -1042,11 +1042,11 @@ const s = StyleSheet.create({
   fpLeft: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   fpText: { fontSize: 14, fontWeight: '700', color: colors.warning },
   fpSub: { fontSize: 11, color: colors.textFaint },
-  upgradeBtn: {
+  creditsBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: colors.warning, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
   },
-  upgradeText: { fontSize: 12, fontWeight: '700', color: colors.white },
+  creditsText: { fontSize: 12, fontWeight: '700', color: colors.white },
 
   messages: { flex: 1 },
   messagesContent: { padding: 16, gap: 10, paddingBottom: 8 },

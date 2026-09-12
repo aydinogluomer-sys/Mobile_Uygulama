@@ -12,6 +12,7 @@ import { useLogStore } from '../store/logStore';
 import { resolveOnboardingRouting, useOnboardingStore } from '../store/onboardingStore';
 import OnboardingGate from '../components/onboarding/OnboardingGate';
 import { installGlobalErrorHandlers } from '../lib/crashReporting';
+import { initCrashReporting } from '../lib/sentryClient';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
 
 // Web OAuth popup callback'ini tamamla; aksi halde openAuthSessionAsync beklemede kalabilir.
@@ -29,6 +30,13 @@ WebBrowser.maybeCompleteAuthSession();
 // Fast Refresh sırasında modülün yeniden değerlendirilmesi olayları
 // ikiye katlamaz.
 installGlobalErrorHandlers();
+
+// Sentry, aynı gerekçeyle ve aynı anda: bir sink'i ilk render'dan SONRA
+// bağlamak, boot sırasında olan çökmeyi -- yani en çok rapor edilmesi
+// gereken çökmeyi -- kaçırırdı. `initCrashReporting` idempotent ve asla
+// throw etmez; DSN yoksa false döner ve uygulama Sentry hiç yokmuş gibi
+// davranır (geliştirmede console sink, üretimde sessizlik).
+initCrashReporting();
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);

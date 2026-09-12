@@ -25,16 +25,37 @@ this repository. `[ ]` = still open, with who has to do it.
 - [x] Privacy policy readable in-app.
 - [x] EAS `production` profile — store distribution, AAB, non-simulator iOS,
       `autoIncrement`, `appVersionSource: remote` preserved.
-- [ ] Monetization branch chosen and paywall made truthful — **owner**,
-      `OWNER_DECISIONS.md` #1.
-- [ ] iPad support decision — **owner**, #2.
-- [ ] Crash observability decision — **owner**, #3.
+- [x] Monetization: **FREE MVP** (owner, 2026-09-08). `paywall.tsx` deleted,
+      replaced by `focus-points.tsx`; all five purchase entry points changed;
+      `PAID_SUBSCRIPTIONS_ENABLED = false`. FP economics untouched.
+- [x] iPad: **iPhone-only** (owner, 2026-09-08). `ios.supportsTablet: false`.
+- [x] Crash observability: **Sentry** (owner, 2026-09-08). SDK + config plugin
+      installed, wired to the existing scrubbed funnel, no user content and no
+      identity sent. **Inert until the owner creates the DSN** — see below.
+- [x] `__tests__/repo/freeMvpReleaseShape.test.ts` guards all three, plus the
+      "no dead URL in the app" rule (24 assertions).
 
 ## External / accounts
 
-- [ ] Privacy policy public HTTPS URL — **owner**, #4.
-- [ ] Support URL / email — **owner**, #4.
-- [ ] Account deletion web URL — **owner**, #4 + `ACCOUNT_DELETION_WEB_REQUIREMENTS.md`.
+- [ ] **Sentry project + EAS environment values** — **owner**, #3. Nothing is
+      reported until these exist:
+      `EXPO_PUBLIC_SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT` (plain env,
+      `production`) and `SENTRY_AUTH_TOKEN` (**EAS secret**). Then change
+      `SENTRY_DISABLE_AUTO_UPLOAD` from `"true"` to `"false"` in
+      `eas.json` — it is `"true"` today only so the build does not fail on a
+      missing token, and it is what gates source-map upload.
+- [ ] Publish `docs/store/web/privacy.html` at `https://aderyth.com/privacy` —
+      **owner**, #4. Probed 2026-09-08: **404**.
+- [ ] Publish `docs/store/web/support.html` at `https://aderyth.com/support` —
+      **owner**, #4. Probed 2026-09-08: **404**.
+- [ ] Publish `docs/store/web/delete-account.html` at
+      `https://aderyth.com/delete-account` — **owner**, #4. Probed 2026-09-08:
+      **404**.
+- [ ] Fill `{{DESTEK_EPOSTA}}`, `{{SILME_SURESI}}`, `{{YAYINCI}}` in those
+      three files — **owner**. `grep -o '{{[A-Z_]*}}' docs/store/web/*.html`
+- [ ] After all three return 200: flip `PUBLIC_SITE_URLS_LIVE` to `true` in
+      `frontend/lib/featureGates.ts` (this is what shows the in-app Destek row),
+      then enter the URLs in both consoles. **The flag goes last.**
 - [ ] Apple Developer enrolment, App ID, distribution certificate, provisioning
       profile — **owner**, #5. Could not be verified: `eas credentials
       --platform ios` requires an interactive Apple login.

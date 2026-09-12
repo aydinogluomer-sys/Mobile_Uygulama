@@ -1,8 +1,16 @@
 # Account Deletion — Web Resource Requirements
 
-**Status: EXTERNAL_OWNER_ACTION_REQUIRED.** No public URL exists yet, and none
-has been invented. The final URL must be recorded here and in the Step 11B
-report when it is live.
+**Status: PAGE WRITTEN, NOT PUBLISHED.**
+
+The owner has chosen `https://aderyth.com/delete-account`, and the finished
+page is at **`docs/store/web/delete-account.html`** — self-contained HTML,
+ready to drop onto any static host. Probed 2026-09-08 the URL answers **404**,
+so it is not yet usable in Play Console.
+
+Two placeholders in that file must be filled first: `{{DESTEK_EPOSTA}}` and
+`{{SILME_SURESI}}`. Neither was invented.
+
+The draft copy below is what that page now says, kept here for review.
 
 Google Play requires a **publicly reachable web page** where a user can request
 account deletion, reachable *without* installing or signing into the app. The

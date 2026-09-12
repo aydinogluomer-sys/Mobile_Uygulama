@@ -50,7 +50,7 @@ export default function ScreensLayout() {
       <Stack.Screen name="goals" options={{ title: 'Hedefler' }} />
       <Stack.Screen name="ai-coach" options={{ title: 'AI Coach' }} />
       <Stack.Screen name="dashboard" options={{ title: 'Dashboard' }} />
-      <Stack.Screen name="paywall" options={{ title: 'Üyelik & Krediler' }} />
+      <Stack.Screen name="focus-points" options={{ title: 'Focus Points' }} />
       <Stack.Screen name="credit-history" options={{ title: 'Kredi Geçmişi' }} />
       <Stack.Screen name="okr" options={{ title: 'OKR' }} />
       <Stack.Screen name="leaderboard" options={{ title: 'Sıralama' }} />

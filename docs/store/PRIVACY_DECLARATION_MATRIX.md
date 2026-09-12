@@ -21,11 +21,12 @@ be checkable:
 | No advertising, no ad network | No ad SDK in the 39 runtime dependencies |
 | No tracking / no ATT prompt | No IDFA/AAID access, no tracking SDK, `NSUserTrackingUsageDescription` deliberately absent |
 | No analytics SDK | None in dependencies |
-| No crash-reporting SDK | None — see `OWNER_DECISIONS.md` item 3 |
+| No ad/analytics SDK bundled with crash reporting | Sentry is present (owner decision, Step 11B.1) and is configured with tracing, session tracking, replay and breadcrumbs all off |
 | No push token collected | `profiles.push_token` column exists but **no code writes it**; notifications are local (`scheduleNotificationAsync`) only |
 | No location, contacts, photos, files | No such permission or dependency |
 | No audio recording retained | `expo-speech-recognition` returns a transcript; no audio is stored or uploaded by Aderyth |
-| No payment data | No IAP and no payment SDK in this build |
+| No payment data | No IAP and no payment SDK in this build. Owner decision is FREE MVP; the paywall screen was removed entirely |
+| Crash reports carry no identity | `beforeSend` deletes `event.user`, which also removes the SDK's own random installation id |
 
 ---
 
@@ -46,11 +47,18 @@ across other companies' apps/sites; **none** of these are.
 | AI request metadata (request id, mode, status, cost) | Usage Data → Product Interaction | Yes | Yes | No | App Functionality, abuse/replay protection |
 | XP, level, badges, pets, quests, streaks | Usage Data → Product Interaction | Yes | Yes | No | App Functionality |
 | Microphone audio | — | **No** | — | — | Transcribed by the OS; Aderyth stores no audio |
-| Diagnostics / crash data | Diagnostics → Crash Data | **No** in this build | — | — | Revisit if a crash SDK is added |
+| Diagnostics / crash data | Diagnostics → Crash Data | **Yes** | **No — not linked** | No | App Functionality (diagnosing crashes) |
 
 **Third-party processing to declare:** AI Coach content is sent to **Anthropic**
-for processing. Apple treats this as collection by the app (it is collected and
-then processed by a service provider), not as tracking.
+for processing, and crash diagnostics are sent to **Sentry**. Apple treats both
+as collection by the app (collected, then processed by a service provider), not
+as tracking.
+
+**Why Crash Data is "not linked".** Apple's "linked to the user" means tied to
+identity. Aderyth attaches none: `lib/sentryClient.ts` deletes `event.user`
+before send, so neither an account id nor the SDK's own installation id
+leaves the device, and breadcrumbs — where an account-scoped URL would
+otherwise appear — are never recorded.
 
 `NEEDS_OWNER_CONFIRMATION` — whether the owner wishes to declare `Username` under
 *User Content* or *Identifiers*; both are defensible and the leaderboard makes it
@@ -77,7 +85,7 @@ Google's definitions used deliberately:
 | Focus Point / subscription state | App activity → Other actions | Yes | No | App functionality | Required | Yes | Yes |
 | Gamification (XP, level, badges) | App activity → Other actions | Yes | No | App functionality | Required | Yes | Yes |
 | Microphone audio | Audio → Voice or sound recordings | **No** | No | — | — | — | — |
-| Crash logs | App info & performance → Crash logs | **No** in this build | — | — | — | — | — |
+| Crash logs | App info & performance → Crash logs | **Yes** | No² | Diagnostics / app functionality | Optional | Yes (HTTPS/TLS) | n/a — not linked to an account³ | — |
 
 ¹ `NEEDS_OWNER_CONFIRMATION` — AI Coach text is transmitted to Anthropic. Under
 Google's definition a service provider is not "sharing", but the owner should
@@ -85,6 +93,16 @@ confirm the Anthropic arrangement is a processor relationship before answering
 "not shared". The **User Data policy still requires disclosure** of the
 third-party AI processing regardless of how this box is answered, and the
 privacy policy does disclose it.
+
+² Sentry is a service provider processing on Aderyth's behalf, the same
+analysis as Anthropic in footnote 1. Disclosure is required regardless of how
+the "shared" box is answered, and the privacy policy does disclose it.
+
+³ Play asks whether users can request deletion of each collected type. Crash
+logs are not associated with an account, so there is nothing to look up and
+delete per user; state that in the free-text explanation rather than claiming a
+deletion path that cannot exist. Every other row IS deletable, in-app and
+immediately.
 
 **Data deletion:** answer **"Users can request that their data be deleted"** and
 **"Users can delete their data in-app"** — Aderyth has both an in-app path
@@ -112,4 +130,5 @@ the privacy policy; declare `Username` as visible to other users.
 | Everything user-owned | Until the user deletes the account, then removed immediately |
 | Account deletion | Cascades across all 47 `public` tables holding a `user_id` — verified live in Step 11B |
 | Anthropic-side retention | **Not under Aderyth's control.** Not claimed either way in the policy |
+| Sentry-side retention | Set by the Sentry project's own retention policy, which the owner controls once the project exists. `NEEDS_OWNER_CONFIRMATION` |
 | Backups | `NEEDS_OWNER_CONFIRMATION` — Supabase project backup retention is a hosting setting; state it once confirmed |

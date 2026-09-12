@@ -72,7 +72,8 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
 
   // DEV-ONLY. mock_activate_subscription grants a paid tier with no payment
   // check, so its EXECUTE grant was revoked from anon/authenticated in
-  // migration 20260802181931. Calling it from a release build can only fail
+  // migration 003_emergency_gate_0_revoke_mock_activate_subscription.
+  // Calling it from a release build can only fail
   // with "permission denied", so the call is compiled out entirely rather
   // than left to fail at runtime with a misleading error.
   // Real activation must go through the RevenueCat webhook ->

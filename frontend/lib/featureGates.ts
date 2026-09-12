@@ -118,3 +118,107 @@ export const GOOGLE_CALENDAR_INTEGRATION_ENABLED = false;
 /** Neutral, truthful, and deliberately promises no date. */
 export const INTEGRATION_UNAVAILABLE_REASON =
   'Bu entegrasyon bu sürümde henüz kullanılamıyor.';
+
+/**
+ * Buying a paid subscription tier.
+ *
+ * ## Why this is off
+ *
+ * The owner's decision for the MVP is FREE. Until that changes there is no
+ * in-app purchase in this app at all: no StoreKit product, no Play Billing
+ * product, no entitlement source other than the server-side grant, and no
+ * payment processor.
+ *
+ * What made this a release blocker rather than a preference is what the app
+ * used to show anyway. `screens/paywall.tsx` advertised Nexus Plus and Nexus
+ * Pro with weekly/monthly/yearly prices, an "Abone Ol" button, and a footnote
+ * reading "Test modu: Abone Ol su an krediyi hemen yukler. Gercek odeme ...
+ * yayina cikmadan eklenecek." In a release build the button could only raise
+ * "purchase is not available", because `mock_activate_subscription` had its
+ * EXECUTE revoked server-side in `003_emergency_gate_0_revoke_mock_activate_subscription`.
+ *
+ * So a reviewer would have seen a price, a buy button that cannot buy, and an
+ * internal note about unfinished work. Apple 3.1.1 and Google Play's payments
+ * policy both reject that shape, and independently of the stores it is simply
+ * untrue.
+ *
+ * ## What must be true before this becomes `true`
+ *
+ * 1. the owner decides PAID and picks the billing layer (native IAP or a
+ *    service such as RevenueCat) -- this is a product and vendor decision,
+ *    not a code one;
+ * 2. real products exist in App Store Connect and Play Console with prices
+ *    that match whatever `lib/subscription.ts` renders;
+ * 3. purchases are verified SERVER-side and entitlement is written by the
+ *    service role only, never by the client;
+ * 4. restore, upgrade/downgrade, cancellation and expiry all work, and
+ *    "Manage subscription" is reachable from the app;
+ * 5. the store listings declare in-app purchases, and the privacy inventory
+ *    gains the payment processor.
+ *
+ * ## What this does NOT touch
+ *
+ * Focus Point economics are unchanged: the free grant, the per-action costs
+ * (`ACTION_COST`) and the monthly renewal all keep working exactly as before
+ * -- the FREE tier was always the one funded by the server-side grant. The
+ * tier definitions in `lib/subscription.ts` stay too, prices included, so
+ * that turning this back on is a rendering change rather than an
+ * archaeology exercise. This is an availability decision, not a deletion.
+ *
+ * The `__DEV__`-only mock activation in `store/subscriptionStore.ts` also
+ * stays: it never existed in a release build and it is how a developer
+ * exercises a funded account.
+ */
+export const PAID_SUBSCRIPTIONS_ENABLED = false;
+
+/**
+ * Shown where the plan cards used to be. States the fact and promises no
+ * date -- an unshipped feature with a deadline attached is a second thing to
+ * be wrong about.
+ */
+export const PAID_SUBSCRIPTIONS_DISABLED_REASON =
+  'Bu sürümde uygulama içi satın alma yok. Aderyth ücretsiz ve tüm özellikler açık.';
+
+/**
+ * Linking out to the public website.
+ *
+ * ## Why this is off
+ *
+ * The owner has chosen the three URLs the stores require —
+ * `https://aderyth.com/privacy`, `/support` and `/delete-account`. Probed on
+ * 2026-09-08, the domain resolves and `https://aderyth.com/` answers 200, but
+ * all three paths answer **404**. The content for them is written and ready to
+ * host in `docs/store/web/`; nobody has published it yet.
+ *
+ * A privacy link that 404s is worse than no link at all. It is a named
+ * rejection reason in both stores, and in the app it is a button that
+ * visibly fails — the exact shape of promise-you-cannot-keep this release
+ * pass exists to remove. So the URLs live here as data, unused, until they
+ * resolve.
+ *
+ * This is why the in-app privacy policy (`app/screens/privacy.tsx`) is a
+ * SCREEN rather than a link, and why the in-app account deletion is a direct
+ * flow rather than a redirect to the web. Neither depends on this gate.
+ * The website is supplementary: Google requires an externally reachable
+ * deletion page in addition to the in-app path, not instead of it.
+ *
+ * ## What must be true before this becomes `true`
+ *
+ * 1. all three pages return 200 over HTTPS with the content from
+ *    `docs/store/web/`;
+ * 2. the placeholders in that content are filled in — at minimum the support
+ *    e-mail address, which nobody has provided;
+ * 3. re-probed, and the same URLs are entered in App Store Connect and Play
+ *    Console.
+ */
+export const PUBLIC_SITE_URLS_LIVE = false;
+
+/**
+ * The owner's chosen public URLs. Defined even while unreachable so that
+ * publishing the pages is a one-line change here rather than a hunt.
+ */
+export const PUBLIC_SITE_URLS = {
+  privacy: 'https://aderyth.com/privacy',
+  support: 'https://aderyth.com/support',
+  deleteAccount: 'https://aderyth.com/delete-account',
+} as const;

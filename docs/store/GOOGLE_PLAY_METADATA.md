@@ -9,7 +9,7 @@ Draft copy for the owner. **Nothing has been submitted.**
 | Default language | Turkish (tr-TR) |
 | Category | Health & Fitness |
 | Tags | Habit tracker, Productivity, Self-improvement |
-| Content rating | Complete the IARC questionnaire. No ads, no purchases in this build, no user-to-user messaging. Usernames appear on a leaderboard |
+| Content rating | Complete the IARC questionnaire. No ads, no purchases (owner decision: FREE MVP), no user-to-user messaging. Usernames appear on a leaderboard |
 | Target audience | 13+ expected — confirm via the questionnaire |
 
 ## Short description (max 80)
@@ -25,9 +25,13 @@ limit and contains no Apple-specific wording.
 
 | Field | Value |
 |---|---|
-| Privacy policy | **EXTERNAL_OWNER_ACTION_REQUIRED** |
-| Support email | **EXTERNAL_OWNER_ACTION_REQUIRED** |
-| Account deletion URL | **EXTERNAL_OWNER_ACTION_REQUIRED** — see `ACCOUNT_DELETION_WEB_REQUIREMENTS.md` |
+| Privacy policy | `https://aderyth.com/privacy` — **NOT LIVE (404)** |
+| Support email | **EXTERNAL_OWNER_ACTION_REQUIRED** — no address has been provided; it is `{{DESTEK_EPOSTA}}` in `docs/store/web/` |
+| Account deletion URL | `https://aderyth.com/delete-account` — **NOT LIVE (404)**; see `ACCOUNT_DELETION_WEB_REQUIREMENTS.md` |
+
+All three probed 2026-09-08: the domain answers 200 at `/`, the three paths
+answer **404**. Page content is written and waiting in `docs/store/web/`.
+**Do not enter a URL until it returns 200.**
 
 ## Data safety
 
@@ -36,6 +40,8 @@ Fill from `PRIVACY_DECLARATION_MATRIX.md` §2. Two answers to get right:
 - **Data deletion:** users can delete data in-app **and** request deletion via
   the web resource.
 - **Encrypted in transit:** yes.
+- **Crash logs:** now collected (Sentry, added in Step 11B.1) and **not linked
+  to an account** — see `PRIVACY_DECLARATION_MATRIX.md` §2 footnote 3.
 
 ## App access
 

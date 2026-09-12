@@ -138,9 +138,9 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
               </View>
             ) : null}
             {generateError && /Focus Point/i.test(generateError) ? (
-              <TouchableOpacity style={styles.upgradeRow} onPress={() => { onClose(); router.push('/screens/paywall'); }}>
-                <Ionicons name="diamond-outline" size={14} color="#fff" />
-                <Text style={styles.upgradeRowText}>Üyeliği Yükselt</Text>
+              <TouchableOpacity style={styles.creditsRow} onPress={() => { onClose(); router.push('/screens/focus-points'); }}>
+                <Ionicons name="flash-outline" size={14} color="#fff" />
+                <Text style={styles.creditsRowText}>Focus Point bakiyem</Text>
               </TouchableOpacity>
             ) : null}
 
@@ -405,11 +405,11 @@ const styles = StyleSheet.create({
     borderRadius: 12, padding: 12, marginBottom: 16,
   },
   errorText: { flex: 1, fontSize: 13, color: colors.error, lineHeight: 18 },
-  upgradeRow: {
+  creditsRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     backgroundColor: colors.warning, borderRadius: 10, paddingVertical: 10, marginBottom: 16,
   },
-  upgradeRowText: { fontSize: 14, fontWeight: '700', color: colors.white },
+  creditsRowText: { fontSize: 14, fontWeight: '700', color: colors.white },
   fpHintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 10 },
   fpHintText: { fontSize: 12, color: colors.textDim },
 

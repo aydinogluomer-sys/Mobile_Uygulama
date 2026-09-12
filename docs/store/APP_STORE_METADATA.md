@@ -68,21 +68,33 @@ Alternatives: `Alışkanlık ve odak koçu` (23) · `ADHD dostu alışkanlık ta
 
 | Field | Value |
 |---|---|
-| Support URL | **EXTERNAL_OWNER_ACTION_REQUIRED** |
+| Support URL | `https://aderyth.com/support` — **NOT LIVE (404)** |
 | Marketing URL | optional — omit if none |
-| Privacy Policy URL | **EXTERNAL_OWNER_ACTION_REQUIRED** |
+| Privacy Policy URL | `https://aderyth.com/privacy` — **NOT LIVE (404)** |
 
-Both are required fields in App Store Connect. See `OWNER_DECISIONS.md` item 4.
+Both are required fields in App Store Connect. The owner has chosen the URLs
+and the page content is written (`docs/store/web/`), but both paths answered
+**404** when probed on 2026-09-08. **Do not enter them until they return 200** —
+a privacy URL that 404s is a rejection, not a warning. See
+`OWNER_DECISIONS.md` item 4.
 
 ## Screenshots
 
-Required sizes: 6.7" iPhone and 6.5" iPhone (and 12.9" iPad **only if
-`supportsTablet` stays true** — see `OWNER_DECISIONS.md` item 2).
+Required sizes: 6.7" iPhone and 6.5" iPhone. **No iPad screenshots** — the
+owner chose iPhone-only and `ios.supportsTablet` is now `false`
+(`OWNER_DECISIONS.md` item 2).
 
 Suggested six: Bugün dashboard · Alışkanlıklar with capacity bar · Habit detail
 with recovery plan · Odak timer · AI Coach with a confirmation card · Weekly
 review. **Not produced by this pass** — screenshots need a real device and
 real-looking data.
+
+## In-App Purchases
+
+**None.** The owner's decision is FREE MVP: no products, no subscription
+group, and nothing to configure in App Store Connect. Answer "No" to in-app
+purchases. The paywall screen was removed from the app entirely — see
+`OWNER_DECISIONS.md` item 1.
 
 ## App Review Information
 

@@ -79,10 +79,18 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+    title: 'Çökme raporları',
+    body: [
+      'Uygulama beklenmedik şekilde çökerse, teknik bir hata raporu çökme izleme sağlayıcımız Sentry’ye gönderilir. Rapor yalnızca hatanın kendisini içerir: hata türü, hata mesajı ve çağrı yığını ile cihaz modeli, işletim sistemi sürümü ve uygulama sürümü.',
+      'Çökme raporunda şunlar bulunmaz: günlük metinlerin, notların ve AI Koç sohbetlerin; alışkanlık, görev ve proje adların; e-posta adresin, kullanıcı adın veya herhangi bir kullanıcı kimliği; oturum jetonların; ağ isteklerinin gövdeleri ve adresleri. Ekran kaydı (session replay) kullanılmaz.',
+      'Hata mesajları gönderilmeden önce ayrıca temizlenir: tırnak içindeki değerler, adres satırındaki parametre değerleri, e-posta adresleri ve jeton benzeri diziler kaldırılır ve mesaj uzunluğu sınırlandırılır. Çökme raporları hiçbir hesapla ilişkilendirilmez.',
+    ],
+  },
+  {
     title: 'Abonelik ve Focus Point',
     body: [
       'Plan durumun ve Focus Point bakiyen hesabına bağlı saklanır. Focus Point harcamaların ve iadeleri bir işlem kaydı olarak tutulur.',
-      'Bu sürümde uygulama içi satın alma bulunmamaktadır; ödeme bilgisi toplanmaz.',
+      'Aderyth bu sürümde ücretsizdir. Uygulama içi satın alma, abonelik ve reklam yoktur; ödeme bilgisi toplanmaz. Yapay zekâ özellikleri her ay yenilenen ücretsiz Focus Point bakiyesiyle çalışır.',
     ],
   },
   {
@@ -102,7 +110,7 @@ const SECTIONS: Section[] = [
     body: [
       'Reklam kimliği toplamıyoruz. Reklam ağı, analitik SDK’sı veya çapraz uygulama izleme (tracking) kullanmıyoruz.',
       'Konum verisi, kişiler, fotoğraflar veya cihaz depolamandaki dosyalar toplanmaz.',
-      'Bu sürümde harici bir çökme raporlama servisi bulunmamaktadır.',
+      'Çökme raporlaması yalnızca teknik hata bilgisi gönderir; içeriklerini ya da kimliğini göndermez (bkz. "Çökme raporları").',
     ],
   },
   {
@@ -110,6 +118,14 @@ const SECTIONS: Section[] = [
     body: [
       'Veriler Supabase üzerinde barındırılan bir PostgreSQL veritabanında saklanır. Uygulama ile sunucu arasındaki tüm trafik HTTPS/TLS ile şifrelenir.',
       'Cihazında ayrıca oturum bilgin, çevrimdışı kayıt kuyruğun ve bazı tercihlerin yerel olarak saklanır.',
+    ],
+  },
+  {
+    title: 'Hizmet sağlayıcılar',
+    body: [
+      'Supabase — barındırma, veritabanı ve kimlik doğrulama.',
+      'Anthropic — AI Koç ve AI rutin oluşturma isteklerinin işlenmesi.',
+      'Sentry — çökme raporlama.',
     ],
   },
   {

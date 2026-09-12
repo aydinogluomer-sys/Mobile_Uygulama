@@ -70,11 +70,29 @@ sunucusunda gerçekleşebilir; bu kısım Aderyth'in kontrolünde değildir.
 
 Aderyth ses kaydı tutmaz ve ses dosyası sunucuya göndermez.
 
+## Çökme raporları
+
+Uygulama beklenmedik şekilde çökerse, teknik bir hata raporu çökme izleme
+sağlayıcımız **Sentry**'ye gönderilir. Rapor yalnızca hatanın kendisini
+içerir: hata türü, hata mesajı ve çağrı yığını ile cihaz modeli, işletim
+sistemi sürümü ve uygulama sürümü.
+
+Çökme raporunda şunlar bulunmaz: günlük metinlerin, notların ve AI Koç
+sohbetlerin; alışkanlık, görev ve proje adların; e-posta adresin, kullanıcı
+adın veya herhangi bir kullanıcı kimliği; oturum jetonların; ağ isteklerinin
+gövdeleri ve adresleri. Ekran kaydı (session replay) kullanılmaz.
+
+Hata mesajları gönderilmeden önce ayrıca temizlenir: tırnak içindeki değerler,
+adres satırındaki parametre değerleri, e-posta adresleri ve jeton benzeri
+diziler kaldırılır ve mesaj uzunluğu sınırlandırılır. Çökme raporları hiçbir
+hesapla ilişkilendirilmez.
+
 ## Abonelik ve Focus Point
 
 Plan durumun ve Focus Point bakiyen hesabına bağlı saklanır; harcamalar ve
-iadeler işlem kaydı olarak tutulur. Bu sürümde uygulama içi satın alma
-bulunmamaktadır; ödeme bilgisi toplanmaz.
+iadeler işlem kaydı olarak tutulur. Aderyth bu sürümde ücretsizdir: uygulama
+içi satın alma, abonelik ve reklam yoktur; ödeme bilgisi toplanmaz. Yapay zekâ
+özellikleri her ay yenilenen ücretsiz Focus Point bakiyesiyle çalışır.
 
 ## Bildirimler
 
@@ -91,7 +109,14 @@ alışkanlık adların paylaşılmaz.
 
 Reklam kimliği toplamıyoruz. Reklam ağı, analitik SDK'sı veya çapraz uygulama
 izleme kullanmıyoruz. Konum, kişiler, fotoğraflar veya cihaz depolamandaki
-dosyalar toplanmaz. Bu sürümde harici bir çökme raporlama servisi yoktur.
+dosyalar toplanmaz. Çökme raporlaması yalnızca teknik hata bilgisi gönderir;
+içeriklerini ya da kimliğini göndermez (bkz. "Çökme raporları").
+
+## Hizmet sağlayıcılar
+
+- **Supabase** — barındırma, veritabanı ve kimlik doğrulama.
+- **Anthropic** — AI Koç ve AI rutin oluşturma isteklerinin işlenmesi.
+- **Sentry** — çökme raporlama.
 
 ## Veriler nerede saklanıyor
 
@@ -128,5 +153,12 @@ için: `<DESTEK_EPOSTA>`.
 3. Legal review.
 4. Host at a stable HTTPS URL and record it in `OWNER_DECISIONS.md` item 4,
    `APP_STORE_METADATA.md` and `GOOGLE_PLAY_METADATA.md`.
-5. If a crash-reporting provider is later added, add it to "Toplamadıklarımız"
-   → move it into a "Çökme raporları" section instead.
+5. ~~If a crash-reporting provider is later added…~~ **Done** — Sentry was
+   added in Step 11B.1 and has its own "Çökme raporları" section.
+6. **Parity note.** The host-ready HTML at `docs/store/web/privacy.html` is the
+   version that goes on the website, and `app/screens/privacy.tsx` is the
+   in-app one. All three must say the same thing; if you edit one, edit all.
+7. **If the build ships without `EXPO_PUBLIC_SENTRY_DSN`,** Sentry is inert
+   and no crash data is collected at all. The policy still describes crash
+   reporting, which over-discloses rather than under-discloses — the safe
+   direction, and the intended end state is that the DSN is configured.

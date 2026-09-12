@@ -105,13 +105,13 @@ export default function JournalInsightsScreen() {
           <Text style={s.fpSub}>· içgörü {COST} FP</Text>
         </View>
         <TouchableOpacity
-          style={s.upgradeBtn}
-          onPress={() => router.push('/screens/paywall' as any)}
+          style={s.creditsBtn}
+          onPress={() => router.push('/screens/focus-points')}
           accessibilityRole="button"
-          accessibilityLabel="Üyeliği yükselt"
+          accessibilityLabel="Focus Point bakiyeni aç"
         >
-          <Ionicons name="diamond-outline" size={13} color="#fff" />
-          <Text style={s.upgradeText}>Yükselt</Text>
+          <Ionicons name="flash-outline" size={13} color="#fff" />
+          <Text style={s.creditsText}>Krediler</Text>
         </TouchableOpacity>
       </View>
 
@@ -211,11 +211,11 @@ const s = StyleSheet.create({
   fpLeft: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   fpText: { fontSize: 14, fontWeight: '700', color: colors.warning },
   fpSub: { fontSize: 11, color: colors.textFaint },
-  upgradeBtn: {
+  creditsBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: colors.warning, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
   },
-  upgradeText: { fontSize: 12, fontWeight: '700', color: colors.white },
+  creditsText: { fontSize: 12, fontWeight: '700', color: colors.white },
 
   tabs: { flexDirection: 'row', gap: 8, padding: 12, paddingBottom: 4 },
   tab: {

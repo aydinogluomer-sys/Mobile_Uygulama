@@ -1,157 +1,202 @@
 # Owner Decisions — Store Release
 
-Only decisions that have **actually been made** are recorded as made. Everything
-else is listed as open, with what each answer would cost, so the choice can be
-made once rather than re-litigated.
+Only decisions that have **actually been made** are recorded as made.
+Everything still open is listed as open, with what each answer would cost.
 
-Nothing in this file was decided by the engineering pass. Where a technical
-finding constrains an answer, the finding is given and the choice is still the
-owner's.
+Nothing here was decided by the engineering pass. Where a technical finding
+constrains an answer, the finding is given and the choice stays the owner's.
 
----
-
-## OPEN — 1. Monetization: FREE MVP or PAID subscriptions
-
-**Status:** UNRESOLVED — blocks store submission.
-
-**Why it cannot ship as-is.** `app/screens/paywall.tsx` today shows Plus/Pro
-tiers, weekly/monthly/yearly prices and an "Abone Ol" button. In a release
-build pressing it produces an alert saying purchase is not available, and the
-screen carries the line *"Test modu: Abone Ol şu an krediyi hemen yükler.
-Gerçek ödeme … yayına çıkmadan eklenecek."* A reviewer sees advertised prices,
-a buy button that does nothing, and an internal note about unfinished work.
-Apple 3.1.1 and Play's payments policy both reject that shape.
-
-**A. FREE MVP** — remove the price table and the "Abone Ol" affordances,
-replace the paywall with a truthful description of the free tier and its Focus
-Point grant, leave FP economics untouched. Smallest change, ships soonest, and
-nothing about the current server-side FP machinery is wasted: it keeps working
-for the free grant.
-
-**B. PAID** — implement StoreKit + Google Play Billing behind one entitlement
-source of truth, with restore, server-side verification, transaction
-idempotency, upgrade/downgrade, cancellation and expiry, plus store product
-IDs and sandbox/licence testers. This is a substantial piece of work with its
-own security review, and it needs a vendor decision of its own (a maintained
-native IAP layer, or a service such as RevenueCat). **No vendor or account has
-been chosen on the owner's behalf.**
-
-Prices, tier names and FP grants are **not** to be changed by engineering
-either way.
+Decisions 1, 2 and 3 were taken by the owner on **2026-09-08** (Step 11B.1).
 
 ---
 
-## OPEN — 2. iPad support
+## DECIDED — 1. Monetization: **FREE MVP**
 
-**Status:** UNRESOLVED.
+**Decision: FREE.** No in-app purchase, no subscription, no payment processor
+in this release.
 
-**Finding.** `app.json` sets `ios.supportsTablet: true`, and the resolved
-Info.plist consequently declares all four orientations for iPad
-(`UISupportedInterfaceOrientations~ipad`) while the app itself declares
-`orientation: portrait` and ships portrait-only iPhone orientations. No iPad
-layout work, iPad QA or iPad screenshots exist anywhere in the repository. So
-tablet support is currently switched on by default rather than by intent.
+**What shipped as a result.** `app/screens/paywall.tsx` is gone — deleted, not
+unlinked, because a file left in `app/screens/` is still a route. It is
+replaced by `app/screens/focus-points.tsx`, which shows the balance, what each
+AI action costs, and when the balance renews. Removed with it: the
+weekly/monthly/yearly period switcher, both price columns, the "EN POPÜLER"
+ribbon, both "Abone Ol" buttons and the "Test modu … gerçek ödeme … yayına
+çıkmadan eklenecek" footnote.
 
-**A. Keep iPad** — requires iPad layout acceptance testing and a separate set
-of iPad screenshots for App Store Connect.
+Five entry points were changed, not one — the screen, the AI Coach Focus Point
+bar, the journal-insights Focus Point bar, the "Üyeliği Yükselt" row inside
+`AIRoutineModal`, and the drawer's "Üyelik & Krediler" item. Each now reads
+"Krediler" / "Focus Points" and leads to a screen that promises nothing.
 
-**B. iPhone only for MVP** — set `supportsTablet: false`. One line, removes an
-untested surface and an asset requirement.
+**What did NOT change.** Focus Point economics: `ACTION_COST` (coach 5,
+routine 25, summarize 3, insights 5) and the 30 FP free grant are untouched,
+and `__tests__/repo/freeMvpReleaseShape.test.ts` asserts it. `lib/subscription.ts`
+keeps its tier definitions and prices so that reversing this is a rendering
+change rather than archaeology. The `__DEV__`-only mock activation stays; it
+never existed in a release build.
 
-Not changed silently, because it alters what the app claims to support.
-
----
-
-## OPEN — 3. Crash observability
-
-**Status:** UNRESOLVED.
-
-**Finding.** There is no crash reporting of any kind: no Sentry, Bugsnag,
-Crashlytics, native crash sink, source-map upload or release tagging in the
-39 runtime dependencies. There is no global JS exception handler and no
-top-level `ErrorBoundary`. A production crash today is invisible.
-
-**A. Sentry** — official SDK-57 integration; DSN via EAS environment, auth
-token via EAS secret, source maps uploaded, PII minimised, AI Coach and journal
-text scrubbed by default. Adds a processor to the privacy inventory.
-
-**B. Another named provider** — same constraints.
-
-**C. Accept no external sink for MVP** — legitimate, but then a crash is only
-visible through store console crash reports.
-
-**No external SaaS account has been opened.**
+**To reverse:** `PAID_SUBSCRIPTIONS_ENABLED` in `frontend/lib/featureGates.ts`,
+plus everything listed there under "What must be true before this becomes
+true". Reversing is a project, not a flag.
 
 ---
 
-## OPEN — 4. Public URLs
+## DECIDED — 2. iPad support: **NO — iPhone-only MVP**
 
-**Status:** UNRESOLVED — blocks store submission. All three are required
-fields in the store consoles and none exists today.
+**Decision: iPhone only.** `ios.supportsTablet` is now `false`.
 
-| URL | Needed by | Current |
-|---|---|---|
-| Privacy policy | App Store Connect + Play Console | none — in-app screen only |
-| Support | App Store Connect | none |
-| Account deletion request | Play Console (external web resource) | none |
+**Why it mattered.** It had been `true` by Expo default rather than by intent,
+which made the resolved Info.plist advertise all four iPad orientations
+(`UISupportedInterfaceOrientations~ipad`) for an app that declares
+`orientation: portrait` and ships portrait-only on iPhone. No iPad layout
+work, iPad QA or iPad screenshots exist anywhere in the repository.
 
-No placeholder domain has been invented and no broken link has been shipped.
-The in-app privacy screen (`app/screens/privacy.tsx`) exists so the *product*
-discloses correctly while the *listing* still needs a real HTTPS URL.
+**Consequence:** the App Store listing no longer needs iPad screenshots, and
+the app will not be offered on iPad.
 
-See `ACCOUNT_DELETION_WEB_REQUIREMENTS.md` for what the deletion page must say.
+---
+
+## DECIDED — 3. Crash observability: **SENTRY**
+
+**Decision: Sentry**, official SDK.
+
+**What shipped.** `@sentry/react-native@~7.11.0` plus its Expo config plugin,
+and `frontend/lib/sentryClient.ts`. It attaches to the seam
+`lib/crashReporting.ts` already had — one capture funnel, one swappable sink,
+one scrubber — rather than adding a second reporting philosophy.
+
+**What it sends:** error type, scrubbed message, scrubbed stack, device model,
+OS version, app version.
+
+**What it cannot send**, enforced four independent ways so no single mistake
+leaks:
+
+| Not sent | Mechanism |
+|---|---|
+| journal text, AI Coach transcripts, habit/task names | the existing scrubber runs on every event, at the funnel and again in `beforeSend` |
+| `Authorization: Bearer <supabase jwt>`, request bodies, PostgREST URLs | `delete event.request` |
+| any user identity, including the SDK's own random installation id | `delete event.user` |
+| console / http / navigation breadcrumbs | `beforeBreadcrumb: () => null` |
+| screen contents | no replay integration; both replay sample rates pinned at 0 |
+| request URLs via spans | `tracesSampleRate: 0`, auto performance tracing off |
+
+**Still outstanding — the owner must create these.** No Sentry account,
+organization or project exists, so no DSN is configured and **Sentry is inert
+in the current build** (`initCrashReporting()` returns false and the app
+behaves exactly as it did before). No account was opened and no secret value
+was invented.
+
+| Where | Name | Value | Notes |
+|---|---|---|---|
+| EAS environment variable (plain, `production`) | `EXPO_PUBLIC_SENTRY_DSN` | the project DSN | public by design — a DSN is write-only ingest and every shipped app embeds one |
+| EAS environment variable (plain, optional) | `EXPO_PUBLIC_SENTRY_ENVIRONMENT` | `production` | defaults to `production` in a release build if unset |
+| EAS environment variable (plain, `production`) | `SENTRY_ORG` | the org slug | build-time only, read by `sentry-cli` |
+| EAS environment variable (plain, `production`) | `SENTRY_PROJECT` | the project slug | build-time only |
+| **EAS secret** | `SENTRY_AUTH_TOKEN` | org auth token with `project:releases` | **secret** — never `EXPO_PUBLIC_`, never in git |
+| `frontend/eas.json` → `production.env` | `SENTRY_DISABLE_AUTO_UPLOAD` | change `"true"` → `"false"` | set to `"true"` today so the build does not fail on a missing token; **flipping it is what turns source-map upload on** |
+
+Create them with:
+
+```
+eas env:create --environment production --name EXPO_PUBLIC_SENTRY_DSN --value <dsn>
+eas env:create --environment production --name SENTRY_ORG --value <org-slug>
+eas env:create --environment production --name SENTRY_PROJECT --value <project-slug>
+eas env:create --environment production --name SENTRY_AUTH_TOKEN --value <token> --visibility secret
+```
+
+Then set `SENTRY_DISABLE_AUTO_UPLOAD` to `"false"` in `eas.json` and rebuild.
+Until that happens, crashes are not reported anywhere.
+
+---
+
+## DECIDED — 4. Public URLs: chosen, **but not live**
+
+**Decision:** the URLs are
+`https://aderyth.com/privacy`, `https://aderyth.com/support` and
+`https://aderyth.com/delete-account`.
+
+**Status: NOT PUBLISHED — blocks store submission.** Probed 2026-09-08:
+
+| URL | HTTP |
+|---|---|
+| `https://aderyth.com/` | **200** |
+| `https://aderyth.com/privacy` | **404** |
+| `https://aderyth.com/support` | **404** |
+| `https://aderyth.com/delete-account` | **404** |
+
+So the domain exists and resolves; the three pages do not. Host-ready,
+self-contained HTML for all three is written and waiting in
+`docs/store/web/`.
+
+Because they 404, **nothing in the app or in store metadata links to them
+yet** — `PUBLIC_SITE_URLS_LIVE` in `frontend/lib/featureGates.ts` is `false`,
+which is also what keeps the Settings → Destek row hidden. A privacy link that
+404s is a named rejection reason in both stores and a visibly broken button in
+the app.
+
+**Three placeholders must be filled before publishing.** None was invented:
+
+| Placeholder | What it is |
+|---|---|
+| `{{DESTEK_EPOSTA}}` | the support e-mail address |
+| `{{SILME_SURESI}}` | turnaround for a web deletion request (no SLA has been decided) |
+| `{{YAYINCI}}` | publisher / legal entity for the footer |
+
+**Owner action:** fill them, publish all three, confirm 200, then flip
+`PUBLIC_SITE_URLS_LIVE` to `true` and enter the URLs in both consoles. Order
+matters — the flag goes last.
 
 ---
 
 ## OPEN — 5. Apple Developer team and iOS signing
 
-**Status:** EXTERNAL ACCOUNT ACTION REQUIRED — blocks any iOS store artifact.
+**Status: EXTERNAL ACCOUNT ACTION REQUIRED — blocks any iOS store artifact.**
 
 `eas credentials --platform ios` cannot proceed without an interactive Apple
-account login, which was not performed. Therefore **none** of the following
-could be verified: Apple Developer Program enrolment, team membership, the
+account login, which was not performed. So **none** of the following could be
+verified: Apple Developer Program enrolment, team membership, the
 `com.aderyth.app` App ID, a distribution certificate, or a provisioning
 profile. No certificate was revoked, no membership purchased, no agreement
 accepted.
 
-**Owner action:** confirm Apple Developer Program enrolment, then run
-`eas credentials --platform ios` interactively (or `eas build --platform ios
---profile production`, which provisions on first run) and confirm the App ID
-`com.aderyth.app` is registrable under the team.
+Repository-side the iOS build is ready: bundle id `com.aderyth.app`,
+`supportsTablet: false`, `ITSAppUsesNonExemptEncryption: false`,
+`NSAllowsArbitraryLoads: false`, and a `production` EAS profile with
+`simulator: false`.
+
+See the step report for the exact manual sequence.
 
 ---
 
 ## OPEN — 6. Legal review of the privacy policy
 
-**Status:** DRAFT — owner/legal review required.
+**Status: DRAFT — owner/legal review required.**
 
-`docs/store/PRIVACY_POLICY_DRAFT.md` and `app/screens/privacy.tsx` describe the
-app's real data flows, written from the schema, the network paths and the
-dependency list. That makes them *accurate*, not *approved*. Publishing is a
-legal decision.
+`docs/store/PRIVACY_POLICY_DRAFT.md`, `docs/store/web/privacy.html` and
+`app/screens/privacy.tsx` describe the app's real data flows, written from the
+schema, the network paths and the dependency list, and now including Sentry.
+That makes them *accurate*, not *approved*. Publishing is a legal decision.
 
 ---
 
 ## OPEN — 7. Export compliance acknowledgement
 
-**Status:** technical finding complete; owner acknowledgement outstanding.
+**Status: technical finding complete; owner acknowledgement outstanding.**
 
 Technical result: **USES_NO_OR_ONLY_EXEMPT_ENCRYPTION** — evidence in
-`EXPORT_COMPLIANCE.md`. `ITSAppUsesNonExemptEncryption: false` has been set on
-that basis. The owner should confirm they accept the declaration; no
-`ITSEncryptionExportComplianceCode` was invented and this is not legal advice.
+`EXPORT_COMPLIANCE.md`, re-checked after adding Sentry (which uses OS HTTPS
+and adds no custom cryptography). `ITSAppUsesNonExemptEncryption: false` is
+set on that basis. No `ITSEncryptionExportComplianceCode` was invented and
+this is not legal advice.
 
 ---
 
 ## OPEN — 8. Google Play app registration
 
-**Status:** EXTERNAL ACCOUNT ACTION REQUIRED.
+**Status: EXTERNAL ACCOUNT ACTION REQUIRED.**
 
 Whether `com.aderyth.app` is reserved in Play Console could not be verified —
-no Play Console access was available and no Google service account key is
-configured on the EAS project. The package name is **not** in use by this
-project's EAS credentials for submission purposes.
+no Play Console access, and no Google service account key is configured on the
+EAS project.
 
-**Owner action:** create the app entry in Play Console under
-`com.aderyth.app`, and enrol in Play App Signing (the existing EAS upload
-keystore is suitable as the upload key — fingerprints in `RELEASE_CHECKLIST.md`).
+See the step report for the exact manual sequence.

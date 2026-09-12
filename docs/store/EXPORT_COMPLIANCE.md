@@ -15,7 +15,11 @@ legal advice**, and no `ITSEncryptionExportComplianceCode` has been invented.
 | VPN / tunnelling in the shipped app | None |
 | Cryptographic algorithms authored in app code | None |
 
-Method: the full 39-entry runtime dependency list was read, and the whole
+Re-checked in Step 11B.1 after adding `@sentry/react-native@~7.11.0`. Sentry
+transmits over the OS HTTPS stack and ships no cryptography of its own that
+would change this answer; the classification is unchanged.
+
+Method: the full runtime dependency list was read, and the whole
 `.ts`/`.tsx` source tree was searched for `crypto.subtle`, `require('crypto')`,
 `CryptoJS`, `node-forge`, `tweetnacl`, `libsodium`, `bcrypt`, `AES`, `RSA`,
 `createCipher` and `pbkdf2`. The only hit is a **comment** in

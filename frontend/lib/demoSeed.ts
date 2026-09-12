@@ -35,7 +35,7 @@ function plusDays(base: Date, days: number): Date {
  * marker distinguishing them from the user's own records afterwards, so in a
  * release build one tap silently contaminates real data.
  *
- * `__DEV__` is the same mechanism the paywall mock uses (subscriptionStore.ts,
+ * `__DEV__` is the same mechanism the subscription mock uses (subscriptionStore.ts,
  * task 1D-010), so there is one answer to "is this a development build".
  *
  * Exported so the UI can hide the entry point instead of offering a control

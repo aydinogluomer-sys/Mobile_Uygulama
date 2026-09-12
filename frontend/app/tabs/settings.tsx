@@ -11,6 +11,7 @@ import {
   Share,
   ActivityIndicator,
   Switch,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ import {
 } from '../../services/webhookService';
 import { buildBackup, renderBackup, type ExportFormat } from '../../services/exportService';
 import { deleteAccount } from '../../services/accountService';
+import { PUBLIC_SITE_URLS_LIVE, PUBLIC_SITE_URLS } from '../../lib/featureGates';
 import { useRouter } from 'expo-router';
 import BadHabitsTracker from '../../components/BadHabitsTracker';
 import { useOnboardingStore } from '../../store/onboardingStore';
@@ -441,6 +443,23 @@ export default function SettingsScreen() {
               'Hangi verilerin saklanıyor ve neden',
               () => router.push('/screens/privacy'),
               colors.info
+            )}
+
+            {/*
+              Destek, YALNIZCA sayfa gerçekten yayındayken gösterilir.
+              `PUBLIC_SITE_URLS_LIVE` bugün false: aderyth.com açılıyor ama
+              /support 404 dönüyor (2026-09-08 tarihinde ölçüldü). Açılmayan
+              bir bağlantıyı ayarlara koymak, kullanıcıya görünür biçimde
+              başarısız olan bir düğme koymaktır -- bu sürümde kaldırdığımız
+              söz-verip-tutamama biçiminin ta kendisi. Sayfa yayına
+              girdiğinde tek satır: lib/featureGates.ts.
+            */}
+            {PUBLIC_SITE_URLS_LIVE && renderSettingItem(
+              'help-buoy-outline',
+              'Destek',
+              'Yardım, hesap ve teknik sorunlar',
+              () => { Linking.openURL(PUBLIC_SITE_URLS.support).catch(() => {}); },
+              colors.teal
             )}
 
             <TouchableOpacity

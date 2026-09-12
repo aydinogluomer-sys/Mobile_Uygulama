@@ -33,7 +33,8 @@ export type SubscriptionRow = {
  *     if (!error && data) apply(set, data as SubRow);
  *
  * so a failure left the defaults in place — tier 'free', focusPoints 0 — and
- * the paywall could not tell "you are on free" from "we could not find out".
+ * the Focus Points screen could not tell "you are on free" from "we could
+ * not find out".
  */
 export async function getOrInitSubscription(): Promise<RepoResult<SubscriptionRow>> {
   const { data, error } = await supabase.rpc('get_or_init_subscription');
@@ -47,7 +48,8 @@ export async function getOrInitSubscription(): Promise<RepoResult<SubscriptionRo
  *
  * `mock_activate_subscription` grants a paid tier with no payment check, and
  * its EXECUTE grant was revoked from anon/authenticated in migration
- * 20260802181931. In a release build this can only ever fail with "permission
+ * 003_emergency_gate_0_revoke_mock_activate_subscription. In a release build
+ * this can only ever fail with "permission
  * denied", so the caller compiles it out; the guard is repeated here so the
  * function cannot be reached from a new call site that forgets.
  *

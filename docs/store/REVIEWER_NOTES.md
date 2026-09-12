@@ -69,16 +69,14 @@ listed here so the state is not mistaken for a bug.
 
 ## Subscriptions
 
-<<< FREE MVP >>>
-This build contains **no in-app purchases**. There is nothing to buy and no
-payment information is collected.
+This build contains **no in-app purchases**. There is nothing to buy, no
+subscription, no external payment link, and no payment information is
+collected. The AI features run on a free Focus Point balance that renews
+monthly; Ayarlar → menü → Focus Points shows the balance and what each action
+costs.
 
-<<< PAID >>>
-(To be completed if the paid branch is chosen — subscription names, durations,
-prices, restore path and sandbox tester instructions.)
-
-Delete whichever block does not apply before submitting. See
-`OWNER_DECISIONS.md` item 1.
+The owner's decision is FREE MVP (`OWNER_DECISIONS.md` item 1), and the
+paywall screen was removed from the app rather than merely unlinked.
 
 ## Supplying the credentials
 

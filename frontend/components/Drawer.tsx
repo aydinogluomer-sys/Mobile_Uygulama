@@ -61,7 +61,7 @@ const GROUPS: { title: string; items: DrawerItem[] }[] = [
   {
     title: 'SİSTEM',
     items: [
-      { label: 'Üyelik & Krediler', icon: 'diamond-outline', color: colors.warning, route: '/screens/paywall' },
+      { label: 'Focus Points', icon: 'flash-outline', color: colors.warning, route: '/screens/focus-points' },
       { label: 'Entegrasyonlar', icon: 'git-network-outline', color: colors.teal, route: '/screens/integrations' },
       { label: 'Ayarlar', icon: 'settings-outline', color: colors.textFaint, route: '/tabs/settings' },
       { label: 'İstatistikler', icon: 'stats-chart-outline', color: colors.accent, route: '/tabs/stats' },
