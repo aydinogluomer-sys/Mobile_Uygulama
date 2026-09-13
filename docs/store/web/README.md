@@ -13,22 +13,26 @@ Three static pages the stores require. **None of them is live.** Probed
 Each file is self-contained — no external CSS, JS, fonts or images — so it can
 be dropped onto any static host as-is.
 
-## Placeholders that MUST be filled before publishing
+## Owner-confirmed values (applied)
 
-They are written as `{{NAME}}` so an unfilled one is impossible to miss and
-trivial to grep. Nothing here was invented; each is a fact only the owner has.
+The pages were first written with `{{NAME}}` placeholders so that nothing
+would be invented on the owner's behalf. The owner has since confirmed all
+three values, and they are applied in every HTML file in this directory
+(commit `d225dfc`, 2026-09-13). No placeholder remains.
 
-| Placeholder | What it is | Why it is not filled in |
+| Was | Value | Where it appears |
 |---|---|---|
-| `{{DESTEK_EPOSTA}}` | the support e-mail address | none was provided; an unreachable contact in a store listing is worse than a missing one |
-| `{{SILME_SURESI}}` | turnaround for a web deletion request, e.g. "30 gün" | no SLA has been decided; a made-up one is a promise the owner never made |
-| `{{YAYINCI}}` | the publisher / legal entity shown in the footer | no legal identity has been confirmed |
+| `{{DESTEK_EPOSTA}}` | `support@aderyth.com` | contact link on all three pages (`mailto:` + visible text) |
+| `{{SILME_SURESI}}` | `30 gün` | turnaround for a web deletion request, `delete-account.html` |
+| `{{YAYINCI}}` | `Ömer Aydınoğlu` | publisher in the footer of all three pages |
 
-`grep -o '{{[A-Z_]*}}' docs/store/web/*.html | sort -u` lists what is left.
+`rg '\{\{[^}]+\}\}' docs/store/web/*.html` must return nothing; if a future
+edit reintroduces a placeholder, that command is how to catch it before
+publishing.
 
 ## Order of operations
 
-1. fill the placeholders;
+1. ~~fill the placeholders~~ — done, see above;
 2. publish all three and confirm each returns **200**;
 3. flip `PUBLIC_SITE_URLS_LIVE` to `true` in `frontend/lib/featureGates.ts`
    (this is what re-enables the in-app Support row);
