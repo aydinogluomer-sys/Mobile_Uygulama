@@ -1,5 +1,11 @@
 # Store Account Setup — manual owner steps
 
+> **Kapsam kararı (2026-09-13).** Bu belgedeki her iş, owner'ın kapsam eki
+> (`docs/plan/21_KAPSAM_EKI_2026-09-13.md` §6.3) gereği **ertelenmiş bir release/distribution
+> fazıdır** ve ürünün implementation-completeness hesabına **dahil değildir**.
+> İçerik hazır tutulur; store konsolu, Apple/Google hesap işlemleri ve yayın,
+> çekirdek implementation bittikten sonra ayrı bir fazda ele alınır.
+
 Everything here needs an interactive login to an account only the owner holds.
 None of it was performed, simulated or assumed by the engineering pass:
 **no certificate was created or revoked, no membership purchased, no agreement

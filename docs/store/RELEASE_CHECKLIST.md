@@ -1,5 +1,11 @@
 # Store Release Checklist
 
+> **Kapsam kararı (2026-09-13).** Bu belgedeki her iş, owner'ın kapsam eki
+> (`docs/plan/21_KAPSAM_EKI_2026-09-13.md` §6.3) gereği **ertelenmiş bir release/distribution
+> fazıdır** ve ürünün implementation-completeness hesabına **dahil değildir**.
+> İçerik hazır tutulur; store konsolu, Apple/Google hesap işlemleri ve yayın,
+> çekirdek implementation bittikten sonra ayrı bir fazda ele alınır.
+
 State as of Step 11B on `1267794` + this commit. `[x]` = done and verified in
 this repository. `[ ]` = still open, with who has to do it.
 

@@ -1,5 +1,10 @@
 # Host-ready pages for aderyth.com
 
+> **Kapsam kararı (2026-09-13):** bu üç sayfanın yayını **ERTELENDİ**
+> (`docs/plan/21_KAPSAM_EKI_2026-09-13.md` §6.3) — Aderyth web/frontend projesiyle birlikte
+> yayınlanacak. İçerik hazır tutulur; `PUBLIC_SITE_URLS_LIVE` URL'ler gerçekten
+> canlı olmadan açılmaz.
+
 Three static pages the stores require. **None of them is live.** Probed
 2026-09-08: `https://aderyth.com/` answers 200, but `/privacy`, `/support` and
 `/delete-account` all answer **404**.

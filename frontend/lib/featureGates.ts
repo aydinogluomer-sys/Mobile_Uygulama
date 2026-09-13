@@ -54,6 +54,8 @@
  * is on starting a new authorization, which is the only place the defect is
  * reachable.
  */
+// Owner scope decision 2026-09-13 (docs/plan/21_KAPSAM_EKI_2026-09-13.md §6.1): MVP DIŞI / ERTELENDİ.
+// Do not flip without a new, explicit owner decision.
 export const SPOTIFY_OAUTH_ENABLED = false;
 
 /** Shown where the connect button used to be. */
@@ -112,6 +114,8 @@ export const SPOTIFY_OAUTH_DISABLED_REASON =
  * `google_calendar_integrations` were both empty when this was written, so
  * unlike Spotify there is not even a connected-user path to preserve.
  */
+// Owner scope decision 2026-09-13 (docs/plan/21_KAPSAM_EKI_2026-09-13.md §6.1): both ERTELENDİ.
+// Do not flip without a new, explicit owner decision.
 export const NOTION_INTEGRATION_ENABLED = false;
 export const GOOGLE_CALENDAR_INTEGRATION_ENABLED = false;
 
@@ -169,6 +173,8 @@ export const INTEGRATION_UNAVAILABLE_REASON =
  * stays: it never existed in a release build and it is how a developer
  * exercises a funded account.
  */
+// Owner scope decision 2026-09-13 (docs/plan/21_KAPSAM_EKI_2026-09-13.md §6.1): ERTELENDİ.
+// Do not flip without a new, explicit owner decision.
 export const PAID_SUBSCRIPTIONS_ENABLED = false;
 
 /**
@@ -211,6 +217,8 @@ export const PAID_SUBSCRIPTIONS_DISABLED_REASON =
  * 3. re-probed, and the same URLs are entered in App Store Connect and Play
  *    Console.
  */
+// Owner scope decision 2026-09-13 (docs/plan/21_KAPSAM_EKI_2026-09-13.md §6.3): the web pages are
+// ERTELENDİ and this flag is YAPILMAYACAK until the URLs are actually live.
 export const PUBLIC_SITE_URLS_LIVE = false;
 
 /**

@@ -1,5 +1,9 @@
 # GoDaddy Websites + Marketing — sayfa yayınlama rehberi
 
+> **Kapsam kararı (2026-09-13):** yayın **ERTELENDİ** (`docs/plan/21_KAPSAM_EKI_2026-09-13.md` §6.3).
+> Bu rehber, web projesiyle birlikte yayın kararı verildiğinde kullanılmak
+> üzere hazır tutulur; şimdilik hiçbir adımı uygulanmaz.
+
 `aderyth.com`, GoDaddy **Websites + Marketing** (Website Builder) üzerinde
 barındırılıyor (Step 11B.1 deployment discovery: `Server: DPS/2.0.0`,
 `generator: Go Daddy Website Builder 8.0.0000`, NS `ns71/72.domaincontrol.com`).

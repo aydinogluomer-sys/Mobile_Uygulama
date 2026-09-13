@@ -1,5 +1,11 @@
 # Owner Decisions — Store Release
 
+> **Kapsam kararı (2026-09-13).** Bu belgedeki her iş, owner'ın kapsam eki
+> (`docs/plan/21_KAPSAM_EKI_2026-09-13.md` §6.3) gereği **ertelenmiş bir release/distribution
+> fazıdır** ve ürünün implementation-completeness hesabına **dahil değildir**.
+> İçerik hazır tutulur; store konsolu, Apple/Google hesap işlemleri ve yayın,
+> çekirdek implementation bittikten sonra ayrı bir fazda ele alınır.
+
 Only decisions that have **actually been made** are recorded as made.
 Everything still open is listed as open, with what each answer would cost.
 
@@ -80,11 +86,15 @@ leaks:
 | screen contents | no replay integration; both replay sample rates pinned at 0 |
 | request URLs via spans | `tracesSampleRate: 0`, auto performance tracing off |
 
-**Still outstanding — the owner must create these.** No Sentry account,
-organization or project exists, so no DSN is configured and **Sentry is inert
-in the current build** (`initCrashReporting()` returns false and the app
-behaves exactly as it did before). No account was opened and no secret value
-was invented.
+**Update 2026-09-13.** The owner created the Sentry project
+(`omer-aydinoglu / aderyth-mobile`) and all five EAS production variables;
+`SENTRY_AUTH_TOKEN` is `SENSITIVE`. `SENTRY_DISABLE_AUTO_UPLOAD` is `"false"`
+(commit `a8b3f4a`). Source-map upload is **verified PASS** on three builds
+(`677e477f` store AAB versionCode 4, `e6cef47e` +5, `2352cacd` +6). The
+**runtime ingest** (a real event arriving in the project) is still
+**UNVERIFIED** and is **deferred** by the scope addendum
+(`docs/plan/21_KAPSAM_EKI_2026-09-13.md` §6.4). The table below is kept as
+the record of what was required.
 
 | Where | Name | Value | Notes |
 |---|---|---|---|
@@ -134,17 +144,13 @@ which is also what keeps the Settings → Destek row hidden. A privacy link that
 404s is a named rejection reason in both stores and a visibly broken button in
 the app.
 
-**Three placeholders must be filled before publishing.** None was invented:
-
-| Placeholder | What it is |
-|---|---|
-| `{{DESTEK_EPOSTA}}` | the support e-mail address |
-| `{{SILME_SURESI}}` | turnaround for a web deletion request (no SLA has been decided) |
-| `{{YAYINCI}}` | publisher / legal entity for the footer |
-
-**Owner action:** fill them, publish all three, confirm 200, then flip
-`PUBLIC_SITE_URLS_LIVE` to `true` and enter the URLs in both consoles. Order
-matters — the flag goes last.
+**Update 2026-09-13.** The three placeholders are **filled** (owner-confirmed:
+`support@aderyth.com`, `30 gün`, `Ömer Aydınoğlu`; commit `d225dfc`) and
+GoDaddy paste-ready fragments exist in `docs/store/web/godaddy/`. Publishing is
+**deferred** by the scope addendum (§6.3): it happens with the Aderyth web
+project, and `PUBLIC_SITE_URLS_LIVE` stays `false` until the URLs are actually
+live. When that day comes: publish, confirm 200, flip the flag, enter the URLs
+in both consoles — in that order.
 
 ---
 
