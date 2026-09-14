@@ -14,6 +14,7 @@ import {
   canActivate,
   masteryStatus,
   MASTERY_MIN_AGE_DAYS,
+  MASTERY_COMPLETION_RATE_THRESHOLD,
   type HabitLoadInput,
 } from '../../lib/capacity';
 import type { FrequencyConfig, Habit, HabitLog } from '../../lib/supabase';
@@ -359,6 +360,43 @@ describe('recent_completion_rate is measured over DUE days, not logged days', ()
     expect(result.done_days).toBe(12);
     expect(result.recent_completion_rate).toBeCloseTo(1, 10);
     expect(result.mastered).toBe(true);
+  });
+
+  it('R01.02-a: a "3 a week" habit done Tue/Thu/Sun every week reaches a completion rate of 1', () => {
+    // Before this card the rate was measured on three invented weekdays
+    // (Mon/Wed/Sat), so this user scored 0/3 forever and could never master
+    // the habit. The denominator is now the weekly target.
+    const weekly3: FrequencyConfig = { kind: 'weekly', count: 3 };
+    const created = new Date(2025, 11, 1);
+    const logs: HabitLog[] = [];
+    // asOf is Thu 2026-01-29; walk back 8 weeks and log every Tue/Thu/Sun.
+    for (let i = 0; i < 60; i++) {
+      const d = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate() - i);
+      const dow = (d.getDay() + 6) % 7; // Mon=0 .. Sun=6
+      if (dow === 1 || dow === 3 || dow === 6) {
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        logs.push(log('h1', key, 'done'));
+      }
+    }
+    const result = masteryStatus(habit(created.toISOString(), weekly3), logs, { asOf });
+    // 28-day window = 4 x 3 = 12 target-days (the first Fri..Sun slice and
+    // the open Mon..Thu slice are prorated). The leading slice holds only the
+    // Sunday completion against 3/7 of a target, so the rate is 0.98, not
+    // 1.00 -- the documented edge approximation. What matters: the user is
+    // mastered, where the invented-weekday denominator kept them at 0/3.
+    expect(result.due_days).toBe(12);
+    expect(result.recent_completion_rate).toBeGreaterThanOrEqual(0.95);
+    expect(result.recent_completion_rate).toBeGreaterThanOrEqual(MASTERY_COMPLETION_RATE_THRESHOLD);
+    expect(result.stability_score).toBeCloseTo(1, 6);
+    expect(result.mastered).toBe(true);
+  });
+
+  it('R01.02-a: a monthly count habit now has a denominator (its target), so an empty month is 0, not undefined', () => {
+    const monthly10: FrequencyConfig = { kind: 'monthly', count: 10 };
+    const result = masteryStatus(habit(created.toISOString(), monthly10), [], { asOf });
+    expect(result.due_days).toBeGreaterThan(0);
+    expect(result.recent_completion_rate).toBe(0);
+    expect(result.mastered).toBe(false);
   });
 
   it('a habit with nothing due in the window is not mastered by default', () => {

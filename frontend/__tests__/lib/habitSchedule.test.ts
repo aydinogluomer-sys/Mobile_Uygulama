@@ -11,6 +11,7 @@
 import type { Habit, HabitLog } from '../../lib/supabase';
 import {
   isDueOn, weekdayIndex, scheduleKind, windowFor, isWindowSatisfied, streakBroken,
+  isEligibleOn, scheduledCompletionRate, periodStatus,
 } from '../../lib/habitSchedule';
 import { ymd } from '../../lib/date';
 
@@ -367,5 +368,153 @@ describe('streakBroken — date_range (§8.7)', () => {
 
   it('is not broken inside the range once logged', () => {
     expect(streakBroken(h, [mkLog('h1', WED, 'done')], WED)).toBe(false);
+  });
+});
+
+// =====================================================================================
+// R01.02-a — flexible count scheduling: eligibility vs obligation vs denominator
+//
+// `isDueOn` is the legacy OBLIGATION predicate (every production caller reads
+// `true` as "expected today; no log = miss"). `isEligibleOn` is the canonical
+// ELIGIBILITY predicate. They agree everywhere except count-based schedules,
+// where obligation per day does not exist -- and that disagreement is the point.
+// =====================================================================================
+
+describe('R01.02-a — isEligibleOn (canonical eligibility)', () => {
+  const weekly3 = habit({ frequency_config: { kind: 'weekly', count: 3 } });
+  const monthly10 = habit({ frequency_config: { kind: 'monthly', count: 10 } });
+
+  it('weekly count: eligible on every day of the week -- the user picks the days', () => {
+    expect(WEEK.map((d) => isEligibleOn(weekly3, d))).toEqual([true, true, true, true, true, true, true]);
+  });
+
+  it('weekly count: does NOT fabricate obligation days (the legacy predicate still does)', () => {
+    // A1 — Tue/Thu/Sun must be usable. Legacy says Mon/Wed/Sat; canonical says any day.
+    expect([TUE, THU, SUN].map((d) => isEligibleOn(weekly3, d))).toEqual([true, true, true]);
+    expect([TUE, THU, SUN].map((d) => isDueOn(weekly3, d))).toEqual([false, false, false]);
+  });
+
+  it('monthly count: eligible on every day of the month (legacy: never)', () => {
+    const sep12 = new Date(2026, 8, 12);
+    expect(isEligibleOn(monthly10, sep12)).toBe(true);
+    expect(isDueOn(monthly10, sep12)).toBe(false);
+  });
+
+  it('count <= 0: no target, so nothing is eligible', () => {
+    expect(isEligibleOn(habit({ frequency_config: { kind: 'weekly' } }), TUE)).toBe(false);
+    expect(isEligibleOn(habit({ frequency_config: { kind: 'monthly', count: 0 } }), TUE)).toBe(false);
+  });
+
+  it('A5 — fixed weekdays: only the configured days, identical to isDueOn', () => {
+    const tueThu = habit({ frequency_config: { kind: 'weekly', days: [1, 3] } });
+    expect(WEEK.map((d) => isEligibleOn(tueThu, d))).toEqual([false, true, false, true, false, false, false]);
+    expect(WEEK.map((d) => isEligibleOn(tueThu, d))).toEqual(WEEK.map((d) => isDueOn(tueThu, d)));
+  });
+
+  it('A6 — daily / every-N-days / date-range keep their behaviour', () => {
+    const daily = habit();
+    expect(WEEK.every((d) => isEligibleOn(daily, d))).toBe(true);
+
+    const every3 = habit({ frequency_config: { kind: 'daily', interval_days: 3 }, created_at: '2026-08-03T00:00:00Z' });
+    expect(WEEK.map((d) => isEligibleOn(every3, d))).toEqual([true, false, false, true, false, false, true]);
+
+    const ranged = habit({ frequency_config: { kind: 'daily', range_start: '2026-08-05', range_end: '2026-08-07' } });
+    expect(WEEK.map((d) => isEligibleOn(ranged, d))).toEqual([false, false, true, true, true, false, false]);
+  });
+
+  it('lifetime guards are shared with isDueOn: not before created_at, not after a dated end', () => {
+    const late = habit({ frequency_config: { kind: 'weekly', count: 3 }, created_at: '2026-08-06T00:00:00Z' });
+    expect(isEligibleOn(late, TUE)).toBe(false);
+    expect(isEligibleOn(late, THU)).toBe(true);
+    const ended = habit({ frequency_config: { kind: 'weekly', count: 3 }, end_condition: { kind: 'date', value: '2026-08-05' } as never });
+    expect(isEligibleOn(ended, WED)).toBe(true);
+    expect(isEligibleOn(ended, THU)).toBe(false);
+  });
+});
+
+describe('R01.02-a — scheduledCompletionRate on count-based schedules', () => {
+  const weekly3 = habit({ frequency_config: { kind: 'weekly', count: 3 } });
+  const week = { from: MON, to: SUN };
+
+  it('A1 — Tue/Thu/Sun for "3 a week" is 3/3, not 0/3 on invented weekdays', () => {
+    const r = scheduledCompletionRate(weekly3, [mkLog('h1', TUE, 'done'), mkLog('h1', THU, 'done'), mkLog('h1', SUN, 'done')], week);
+    expect(r.dueDays).toBe(3);
+    expect(r.doneDays).toBe(3);
+    expect(r.rate).toBe(1);
+  });
+
+  it('denominator is the period target (3), never 7 and never a weekday count', () => {
+    const r = scheduledCompletionRate(weekly3, [], week);
+    expect(r.dueDays).toBe(3);
+    expect(r.dueDays).not.toBe(7);
+    expect(r.rate).toBe(0);
+  });
+
+  it('A2 — three completions on Tuesday are one day of progress', () => {
+    const r = scheduledCompletionRate(weekly3, [mkLog('h1', TUE, 'done'), mkLog('h1', TUE, 'done'), mkLog('h1', TUE, 'partial')], week);
+    expect(r.doneDays).toBe(1);
+    expect(r.rate).toBeCloseTo(1 / 3, 10);
+  });
+
+  it('A3 — an open week seen through Friday is prorated, not charged for days that have not happened', () => {
+    // Mon..Fri = 5/7 of the week -> share 3 * 5/7; two done -> on pace, no fabricated miss.
+    const r = scheduledCompletionRate(weekly3, [mkLog('h1', TUE, 'done'), mkLog('h1', THU, 'done')], { from: MON, to: FRI });
+    expect(r.dueDays).toBeCloseTo(3 * 5 / 7, 5);
+    expect(r.doneDays).toBe(2);
+    expect(r.rate).toBeCloseTo(2 / (3 * 5 / 7), 5);
+    expect(r.rate).toBeLessThanOrEqual(1);
+  });
+
+  it('over-achievement is capped at 100% per period', () => {
+    const r = scheduledCompletionRate(weekly3, WEEK.map((d) => mkLog('h1', d, 'done')), week);
+    expect(r.doneDays).toBe(3);
+    expect(r.rate).toBe(1);
+  });
+
+  it('A4 — monthly "10 a month": denominator 10, not the number of calendar days', () => {
+    const monthly10 = habit({ frequency_config: { kind: 'monthly', count: 10 } });
+    const sep = (d: number) => new Date(2026, 8, d);
+    const full = scheduledCompletionRate(monthly10, [1, 3, 5, 9].map((d) => mkLog('h1', sep(d), 'done')), { from: sep(1), to: sep(30) });
+    expect(full.dueDays).toBe(10);
+    expect(full.dueDays).not.toBe(30);
+    expect(full.doneDays).toBe(4);
+    expect(full.rate).toBeCloseTo(0.4, 10);
+    // Through the 12th only: 12/30 of the month -> share 4; 4 done -> on pace, open period.
+    const open = scheduledCompletionRate(monthly10, [1, 3, 5, 9].map((d) => mkLog('h1', sep(d), 'done')), { from: sep(1), to: sep(12) });
+    expect(open.dueDays).toBeCloseTo(10 * 12 / 30, 5);
+    expect(open.rate).toBeCloseTo(1, 10);
+  });
+
+  it('a range spanning two weeks sums both targets', () => {
+    const r = scheduledCompletionRate(weekly3, [mkLog('h1', TUE, 'done'), mkLog('h1', new Date(2026, 7, 11), 'done')], { from: MON, to: new Date(2026, 7, 16) });
+    expect(r.dueDays).toBe(6);
+    expect(r.doneDays).toBe(2);
+  });
+
+  it('`since` prorates the first period from the day the habit existed', () => {
+    // Created Thursday: Thu..Sun = 4/7 of the week.
+    const r = scheduledCompletionRate(weekly3, [mkLog('h1', THU, 'done'), mkLog('h1', SUN, 'done')], { from: MON, to: SUN, since: THU });
+    expect(r.dueDays).toBeCloseTo(3 * 4 / 7, 5);
+    expect(r.doneDays).toBeCloseTo(3 * 4 / 7, 5); // 2 done, capped at the share
+    expect(r.rate).toBeCloseTo(1, 10);
+  });
+
+  it('no target -> nothing due (unchanged contract for callers that read dueDays === 0)', () => {
+    expect(scheduledCompletionRate(habit({ frequency_config: { kind: 'monthly' } }), [], week)).toEqual({ rate: 0, dueDays: 0, doneDays: 0 });
+  });
+
+  it('day-based schedules are untouched by this card: fixed Tue/Thu still counts due days', () => {
+    const tueThu = habit({ frequency_config: { kind: 'weekly', days: [1, 3] } });
+    const r = scheduledCompletionRate(tueThu, [mkLog('h1', TUE, 'done')], week);
+    expect(r).toEqual({ rate: 0.5, dueDays: 2, doneDays: 1 });
+  });
+
+  it('A7 — agrees with periodStatus on the same fixture', () => {
+    const logs = [mkLog('h1', TUE, 'done'), mkLog('h1', THU, 'done')];
+    const ps = periodStatus(weekly3, logs, WED, { asOf: SUN });
+    const r = scheduledCompletionRate(weekly3, logs, week);
+    expect(r.dueDays).toBe(ps.target);
+    expect(r.doneDays).toBe(ps.counted);
+    expect(ps.status).toBe('in_progress');
   });
 });

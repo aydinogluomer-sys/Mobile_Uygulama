@@ -33,13 +33,37 @@ export function weekdayIndex(date: Date): number {
  * The asymmetry that IS real lives in `isMissedOn` below: for a negative
  * habit, the absence of a log is not evidence of failure.
  */
-export function isDueOn(habit: Habit, date: Date): boolean {
+/**
+ * Was the habit alive on `date`? Not before it was created, not after a dated
+ * end condition. Shared by `isDueOn` (legacy obligation) and `isEligibleOn`
+ * (canonical eligibility) so the two cannot drift on the one rule they agree on.
+ */
+function withinLifetime(habit: Habit, date: Date): boolean {
   const ds = ymd(date);
   // Oluşturulmadan önceki günlerde due değil
   if (habit.created_at && ymd(new Date(habit.created_at)) > ds) return false;
   // Tarihli bitiş koşulu geçmişse due değil
   const ec = habit.end_condition;
   if (ec && ec.kind === 'date' && typeof ec.value === 'string' && ds > ec.value) return false;
+  return true;
+}
+
+/**
+ * LEGACY OBLIGATION PREDICATE — kept behaviour-identical on purpose.
+ *
+ * R01.02-a classified every production call site (recovery backlog, completion
+ * denominators, streaks, the calendar cell verdict, per-day load): all of them
+ * read `true` as "this day was expected; no log means a miss". None reads it as
+ * "may I log today". For count-based schedules that meaning is only satisfiable
+ * by inventing days, which `countDueDays` does. Turning the count branch into
+ * "every day" would therefore turn three invented misses into seven real ones.
+ *
+ * So this function is a compatibility bridge until R01.02-b moves consumers to
+ * `periodStatus` (period success) and `isEligibleOn` (eligibility). New code
+ * must not call it for count-based schedules.
+ */
+export function isDueOn(habit: Habit, date: Date): boolean {
+  if (!withinLifetime(habit, date)) return false;
 
   const kind = habit.frequency_config?.kind ?? 'daily';
   if (kind === 'daily') return true;
@@ -64,6 +88,14 @@ export function isDueOn(habit: Habit, date: Date): boolean {
 }
 
 /**
+ * LEGACY — fixed-distribution workaround; not on any canonical path.
+ *
+ * Sole caller: the count branch of `isDueOn` above (verified R01.02-a). Retained
+ * only so that predicate keeps its pinned behaviour (AC-H03 tests) until the
+ * consumers migrate in R01.02-b; then both go together. `isEligibleOn`,
+ * `periodStatus` and the count-mode path of `scheduledCompletionRate` never
+ * call it.
+ *
  * `count` haftalık hedefi için haftanın hangi günleri due sayılır.
  *
  * Günler haftaya MÜMKÜN OLDUĞUNCA EŞİT dağıtılır — 3 için Pzt/Çar/Cum gibi —
@@ -366,6 +398,16 @@ export function scheduledCompletionRate(
   logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>[],
   range: { from: Date; to: Date; since?: Date | null },
 ): ScheduledCompletion {
+  // Count-based schedules have no "due days" to enumerate. Their denominator is
+  // the PERIOD TARGET (3 for "3 a week", 10 for "10 a month"), never 7 calendar
+  // days and never the weekdays `countDueDays` used to invent; the day walk
+  // below would score a Tue/Thu/Sun user 0/3. Routed through the canonical
+  // evaluator instead (R01.02-a).
+  const sk = scheduleKind(habit);
+  if (sk.kind === 'weekly_count' || sk.kind === 'monthly_count') {
+    return periodCompletionRate(habit, logs, range);
+  }
+
   const fromYmd = ymd(range.from);
   const toYmd = ymd(range.to);
   const sinceYmd = range.since ? ymd(range.since) : null;
@@ -398,6 +440,95 @@ export function scheduledCompletionRate(
   }
 
   return { rate: dueDays === 0 ? 0 : doneDays / dueDays, dueDays, doneDays };
+}
+
+/**
+ * `scheduledCompletionRate` for count-based schedules, in period units.
+ *
+ * Every calendar period overlapping `[max(from, since), to]` contributes its
+ * TARGET to the denominator and its unique done/partial days (within the
+ * overlap) to the numerator -- both taken from `periodStatus`, so this can
+ * never disagree with the canonical evaluator on the same fixture. A period the
+ * range only partly covers (the current, still-open week; a 7-day bucket that
+ * straddles two calendar weeks) contributes its target PRORATED by the covered
+ * fraction: a week seen Mon..Wed carries 3 x 3/7, not 3 -- an open week is
+ * never charged for days that have not happened. The numerator is capped at
+ * the share so five completions in a "3 a week" period are 100%, not 166%.
+ *
+ * `dueDays` is therefore a target sum and may be fractional; callers already
+ * use it only as "was anything due at all".
+ *
+ * KNOWN APPROXIMATION, stated rather than hidden: proration assumes the user's
+ * completions spread evenly across a period. A range edge that cuts a period
+ * unevenly relative to the days the user actually chose moves the rate a few
+ * points either way -- a 28-day window ending on a Thursday sees Fri..Sun of
+ * its first week and charges 3/7 of the target while a Tue/Thu/Sun user only
+ * has Sunday there (0.98 instead of 1.00 in the mastery fixture). Full
+ * periods are exact. The alternative -- dropping partial periods -- would zero
+ * out every 7-day stability bucket, which is worse than a bounded edge error.
+ */
+function periodCompletionRate(
+  habit: Habit,
+  logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>[],
+  range: { from: Date; to: Date; since?: Date | null },
+): ScheduledCompletion {
+  const start = range.since && ymd(range.since) > ymd(range.from) ? range.since : range.from;
+  const startYmd = ymd(start);
+  const toYmd = ymd(range.to);
+  if (startYmd > toYmd) return { rate: 0, dueDays: 0, doneDays: 0 };
+
+  // Only what falls inside the range can count toward it.
+  const inRange = logs.filter((l) => {
+    const d = l.completed_at.slice(0, 10);
+    return d >= startYmd && d <= toYmd;
+  });
+
+  let due = 0;
+  let done = 0;
+  let cursor = start;
+  while (ymd(cursor) <= toYmd) {
+    const st = periodStatus(habit, inRange, cursor, { asOf: range.to });
+    if (st.target > 0) {
+      const overlapStart = ymd(st.periodStart) > startYmd ? st.periodStart : start;
+      const overlapEnd = ymd(st.periodEnd) < toYmd ? st.periodEnd : range.to;
+      const covered = daysBetweenLocal(overlapStart, overlapEnd) + 1;
+      const periodDays = daysBetweenLocal(st.periodStart, st.periodEnd) + 1;
+      const share = st.target * (covered / periodDays);
+      due += share;
+      done += Math.min(st.counted, share);
+    }
+    cursor = addDaysLocal(st.periodEnd, 1);
+  }
+
+  // Prorated shares are fractions of sevenths and thirtieths; round so the
+  // sum does not surface as 11.999999999999998 in a reasons string.
+  const dueDays = Math.round(due * 1e6) / 1e6;
+  const doneDays = Math.round(done * 1e6) / 1e6;
+  return { rate: dueDays === 0 ? 0 : doneDays / dueDays, dueDays, doneDays };
+}
+
+/**
+ * CANONICAL ELIGIBILITY -- "can the user log this habit on `date`?"
+ *
+ * This is the question `isDueOn` was never actually answering for anyone (see
+ * its doc). The two differ only where they must:
+ *
+ *   weekly count / monthly count   eligible on EVERY day of a period the habit
+ *                                  is alive in and has a target for. Whether the
+ *                                  period is met is `periodStatus`'s question;
+ *                                  no day is an obligation, so no day is a miss.
+ *   fixed weekdays                 only the configured days (unchanged)
+ *   daily / every N days / date range   as today (`dueOnExtended`)
+ *
+ * There is no yearly-date mode in the schema or in `scheduleKind`; none is
+ * fabricated here.
+ */
+export function isEligibleOn(habit: Habit, date: Date): boolean {
+  const sk = scheduleKind(habit);
+  if (sk.kind === 'weekly_count' || sk.kind === 'monthly_count') {
+    return sk.count > 0 && withinLifetime(habit, date);
+  }
+  return dueOnExtended(habit, date);
 }
 
 /**

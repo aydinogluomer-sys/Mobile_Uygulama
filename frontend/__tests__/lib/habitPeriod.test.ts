@@ -20,7 +20,9 @@
  * counting and calling an open period closed each turn a named case red.
  */
 import type { Habit, HabitLog } from '../../lib/supabase';
-import { periodStatus, streakBroken, isDueOn, isWindowSatisfied, weekdayIndex } from '../../lib/habitSchedule';
+import {
+  periodStatus, streakBroken, isDueOn, isWindowSatisfied, weekdayIndex, isEligibleOn, scheduledCompletionRate,
+} from '../../lib/habitSchedule';
 import { ymd } from '../../lib/date';
 
 function habit(over: Partial<Habit> = {}): Habit {
@@ -302,6 +304,37 @@ describe('day-based modes: the period is the day, eligibility is unchanged', () 
   it('daily habit created after the date -> not_scheduled (created_at guard inherited from isDueOn)', () => {
     const late = habit({ created_at: '2026-08-06T10:00:00Z' });
     expect(periodStatus(late, [], TUE, { asOf: SUN }).reason).toBe('not_scheduled');
+  });
+});
+
+describe('A7 — the canonical fixture gives one answer across evaluator, eligibility and rate', () => {
+  const logs = [log(TUE), log(THU), log(SUN)];
+
+  it('Tue/Thu/Sun: periodStatus satisfied, every day eligible, rate 3/3', () => {
+    const ps = periodStatus(weekly3, logs, SUN, { asOf: SUN });
+    const rate = scheduledCompletionRate(weekly3, logs, { from: MON, to: SUN });
+    expect(ps.status).toBe('satisfied');
+    expect([TUE, THU, SUN].every((d) => isEligibleOn(weekly3, d))).toBe(true);
+    expect(rate.doneDays).toBe(ps.counted);
+    expect(rate.dueDays).toBe(ps.target);
+    expect(rate.rate).toBe(1);
+  });
+
+  it('three same-day rows: evaluator counted 1 and rate doneDays 1 -- no contradiction', () => {
+    const dup = [log(TUE, 'done'), log(TUE, 'done'), log(TUE, 'partial')];
+    expect(periodStatus(weekly3, dup, WED, { asOf: WED }).counted).toBe(1);
+    expect(scheduledCompletionRate(weekly3, dup, { from: MON, to: SUN }).doneDays).toBe(1);
+  });
+
+  it('monthly 4/10 on the 12th: in_progress with remaining 6, and the rate is on pace, not failed', () => {
+    const monthly10 = habit({ frequency_config: { kind: 'monthly', count: 10 } });
+    const sep = (d: number) => new Date(2026, 8, d);
+    const mlogs = [1, 3, 5, 9].map((d) => log(sep(d)));
+    const ps = periodStatus(monthly10, mlogs, sep(12), { asOf: sep(12) });
+    const rate = scheduledCompletionRate(monthly10, mlogs, { from: sep(1), to: sep(12) });
+    expect(ps).toMatchObject({ status: 'in_progress', counted: 4, remaining: 6, target: 10 });
+    expect(rate.dueDays).toBeCloseTo(4, 10);
+    expect(rate.rate).toBeCloseTo(1, 10);
   });
 });
 

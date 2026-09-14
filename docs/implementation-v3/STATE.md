@@ -6,15 +6,15 @@ baseline_sha: 0ff1c74b0d8d922fd9bef46d3631a1cf443677e2
 guide_commit: ecfd4e3            # docs/plan/22_ADERYTH_CORE_IMPLEMENTATION_V3.md, verbatim
 scope_authority: docs/plan/21_KAPSAM_EKI_2026-09-13.md
 newer_owner_decision: none        # 2026-09-13
-completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a]
+completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a]
 active_card: null
-next_ready_card: R01.02-a
+next_ready_card: R01.02-b   # deps R01.01-a + R01.02-a both DONE -> READY
 critical_open_defects: []         # bilinen kusurlar kartlara bağlı; veri kaybı / hesap erişimi / FP kusuru yok
 known_defects_bound_to_cards:
   - id: KD-01
     where: frontend/lib/habitSchedule.ts:52-56,74-82
-    what: weekly `count` -> sabit gün dağılımı (countDueDays); Sal/Per/Paz kullanıcıya sahte 3 kaçırma. periodStatus (R01.01-a) doğru cevabı veriyor; isDueOn ve tüketiciler henüz değil
-    card: R01.02-a
+    what: weekly `count` -> sabit gün dağılımı (countDueDays). Kanonik yol (periodStatus, isEligibleOn, scheduledCompletionRate count-modu) R01.01-a/R01.02-a ile doğru; `isDueOn` bilinçli köprü (tüm çağıranlar obligation anlamında) -> tüketiciler R01.02-b'de geçer, sonra countDueDays+köprü kalkar
+    card: R01.02-b
   - id: KD-02
     where: frontend/app/tabs/today.tsx:64
     what: Bugün takvimi sormuyor; tüm aktif alışkanlıklar "kalan" sayılır
@@ -41,6 +41,7 @@ evidence_locations:
   - docs/implementation-v3/R00_CORE_JOURNEY_MAP.md
   - docs/implementation-v3/R00_TEST_MATRIX.md
   - docs/implementation-v3/STATE.md#r0101-a-evidence
+  - docs/implementation-v3/STATE.md#r0102-a-evidence
 gates_run_at_baseline:
   typecheck_ci: 0 errors
   lint_ci: 0 warnings
@@ -50,7 +51,7 @@ gates_run_at_baseline:
 timing:                           # R00.07 — dev / test / fix ayrı; erişim beklemesi ayrı
   R00: { dev_min: 21, test_min: 12, fix_min: 0, access_wait_min: 0, single_writer: true }
   R01.01-a: { dev_min: 25, test_min: 20, fix_min: 10, access_wait_min: 0, single_writer: true }
-  R01.02-a: { dev_min: null, test_min: null, fix_min: null }
+  R01.02-a: { dev_min: 30, test_min: 25, fix_min: 15, access_wait_min: 0, single_writer: true }   # fix: CRLF/LF karışımı, precision, import
   R01.02-b: { dev_min: null, test_min: null, fix_min: null }
 ```
 
@@ -64,6 +65,20 @@ timing:                           # R00.07 — dev / test / fix ayrı; erişim b
 - **Mutation proof:** (1) feed raw rows to the counter → 4 cases red; (2) open count period → `closed_unmet` → 7 cases red. Both reverted; tree green.
 - **Gates:** focused 8 suites 263/263 · `typecheck:ci` 0 · `lint:ci` 0 · full `jest --ci` **132/2091** (two consecutive runs; one earlier parallel run showed 3 suites red, not reproduced, names not captured — recorded as an unexplained flake next to the repo's standing worker-exit warning) · `run-tests.js` 145/145 · `git diff --check` clean.
 - **Consumer behaviour changed:** none. **Data/schema impact:** none.
+
+## R01.02-a evidence
+
+- **Branch/HEAD:** `feature/r01-period-status`, on top of `f6be768` (+ an unrelated `0828c8f` `.claude/settings.json` commit found on the branch, authored under the current session id at 06:54; not R01 work, left untouched, flagged).
+- **Call-site classification (from source):** `isDueOn` is read as **obligation** everywhere — recovery backlog/consecutive-miss (`recovery.tsx:95,116`), completion denominators (`reportMetrics.ts:124`, `behaviorIntelligence.ts:228,290`, `capacity.ts` via `scheduledCompletionRate`), streaks (`behaviorIntelligence.ts:355,396`), calendar cell miss verdict (`habit-detail.tsx:174`), per-day load sets (`weekly/monthly-review`, `insights`). **No** pure-eligibility caller. Today does not call it at all (status filter only).
+- **Compatibility strategy:** `isDueOn` unchanged (bridge; AC-H03 tests still pin it), `countDueDays` retained as legacy with its sole caller documented; **new** canonical `isEligibleOn` (count modes: every alive day with a target; fixed days: configured days; daily/every-N/date-range: `dueOnExtended`); lifetime guards extracted to `withinLifetime` (behaviour-identical) and shared.
+- **`scheduledCompletionRate`:** count modes now go through `periodStatus` per calendar period — denominator = period target (3 / 10), never 7 or a weekday set; unique done days; partial edge periods prorated by covered days (documented approximation: a Thursday-ending 28-day window scores a Tue/Thu/Sun user 0.98, not 1.00; verdict unchanged — mastered). Day-based modes untouched.
+- **Files (4 + this):** `frontend/lib/habitSchedule.ts` (+~160), `__tests__/lib/habitSchedule.test.ts` (+2 describes, 18 tests), `__tests__/lib/habitPeriod.test.ts` (+A7 describe, 3 tests), `__tests__/lib/capacity.test.ts` (+2 mastery cases). No consumer, schema or UI change.
+- **Acceptance:** A1 Tue/Thu/Sun → eligible ×3, rate 3/3, `periodStatus` satisfied · A2 3 same-day → 1 · A3 open week → prorated, no miss · A4 monthly 10 → denominator 10 (not 30), 4/10 open · A5 fixed Tue/Thu identical to `isDueOn` · A6 daily/every-N/date-range fixtures pass · A7 rate ↔ `periodStatus` agree (3 cases).
+- **Negative:** fixed-weekday distribution in canonical path RED; same-day dup inflating numerator RED; open period as miss RED; weekly denominator 7 RED; monthly denominator = calendar days RED (all as assertions).
+- **Mutation proof:** M1 fixed `[0,2,5]` map in `isEligibleOn` → 4 red; M2 dedup removed → 6 red; M3 weekly denominator 7 → 12 red. Reverted byte-identical; green.
+- **Gates:** focused 9 suites 300/300 (incl. `scopeAddendum`) · `typecheck:ci` 0 · `lint:ci` 0 · full `jest --ci` **132/2114** ×2 captured runs, no FAIL lines · `run-tests.js` 145/145 · `git diff --check` clean.
+- **Flake status:** no recurrence in two captured runs; standing "worker failed to exit" warning present once, scope not widened.
+- **Known remaining (separate cards):** consumer migration (R01.02-b), monthly production wiring, stale "migration bloklu" comments (KD-05), R01.03 tracking semantics, checklist (R01.04), pause/holiday intervals (R01.05), goal versioning (R01.05), timezone/week_start persistence (R01.06).
 
 ## Paket sınıflandırması (R00.02 özeti)
 
@@ -84,7 +99,7 @@ timing:                           # R00.07 — dev / test / fix ayrı; erişim b
 
 | CP | Durum | Not |
 |---|---|---|
-| CP01 Esnek hedef/geçmiş | **açık** | KD-01; aylık tüketilmiyor; sözleşme yok |
+| CP01 Esnek hedef/geçmiş | **kısmi** | kanonik motor + eligibility + count-denominator var (R01.01-a/R01.02-a); tüketiciler henüz `isDueOn` köprüsünde (R01.02-b) |
 | CP02 Kapasite/küçük adım/recovery | kısmi | recovery 4 yol var; yük seçimi + küçük adım yok |
 | CP03 Rutin yürütme | **yok** | runner yok |
 | CP04 Odak/bildirim | kısmi | odak var (KD-03); bildirim tek tetik (KD-04) |
@@ -130,8 +145,8 @@ effort: S
 next: R01.02-a
 ```
 
-**R01.02-a (READY, M) — sıradaki kart:** `isDueOn`'un `weekly_count` dalından `countDueDays` kaldırılır — sayı tabanlı modlarda **her gün uygundur** (kaçırma günlük değil dönemseldir); `scheduledCompletionRate` count modlarında paydayı `periodStatus` penceresinden alır. Kabul: T01 tüm `isDueOn` tüketicilerinde sahte kaçırma üretmez; mastery oranı Sal/Per/Paz için 1.0. Scope: `habitSchedule.ts`, `habitSchedule.test.ts`, `phase1Adversarial.test.ts` (gerekçeli güncelleme), `capacity` testleri.
-**R01.02-b (M):** tüketici geçişi — `reportMetrics`, `recovery.tsx`, `weekly/monthly-review`, `insights`, `behaviorIntelligence` → `periodStatus`; bayat "migration bloklu" yorumları düzeltilir (KD-05).
+**R01.02-a (DONE, M):** `isDueOn`'un `weekly_count` dalından `countDueDays` kaldırılır — sayı tabanlı modlarda **her gün uygundur** (kaçırma günlük değil dönemseldir); `scheduledCompletionRate` count modlarında paydayı `periodStatus` penceresinden alır. Kabul: T01 tüm `isDueOn` tüketicilerinde sahte kaçırma üretmez; mastery oranı Sal/Per/Paz için 1.0. Scope: `habitSchedule.ts`, `habitSchedule.test.ts`, `phase1Adversarial.test.ts` (gerekçeli güncelleme), `capacity` testleri.
+**R01.02-b (READY, M) — sıradaki kart:** tüketici geçişi — `reportMetrics`, `recovery.tsx`, `weekly/monthly-review`, `insights`, `behaviorIntelligence` → `periodStatus`; bayat "migration bloklu" yorumları düzeltilir (KD-05).
 
 ### "R01.02-a gerçekten ilk READY kart mı?" — cevap
 
