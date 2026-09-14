@@ -439,3 +439,277 @@ export function countsTowardAverage(
 ): boolean {
   return !!log || habit.behavior_type !== 'negative';
 }
+
+// =====================================================================================
+// V3 — Canonical period status (Implementation v3.0, R01.01-a; guide §7.1)
+//
+// ADDITIVE. Nothing above this line changed. `isDueOn`, `streakBroken`,
+// `windowFor` and `completedCountInWindow` keep their behaviour and their tests;
+// `periodStatus` CONSUMES them. It is the single answer to "where does this habit
+// stand in its period?" that the R01.02 consumer migration will route every
+// screen through, so that Bugün, detay, raporlar, recovery, review, bildirim ve
+// AI aynı sayıyı görür.
+//
+// What it separates that the older helpers conflate:
+//   - DAILY ELIGIBILITY ("can I log this today?", `isDueOn`) from PERIOD SUCCESS
+//     ("did I meet the week's target?"). For count modes the fixed-day mapping in
+//     `isDueOn` is precisely the defect R01 exists to remove (Sal/Per/Paz users
+//     scored as three misses); this evaluator never goes near `countDueDays`.
+//   - What is COUNTED (unique local days, sessions, amount) from what was TARGETED.
+//   - "not met YET" from "not met" -- an open period is never `closed_unmet`.
+//
+// What it does NOT do: invent data the schema does not hold. There is no session
+// identity in `habit_logs` (one row per habit per local day), so `unit:'sessions'`
+// is honestly `unknown`. There is no per-habit timezone or week-start column, so
+// the basis is the device-local day and a Monday week, and it SAYS so in every
+// result rather than pretending a persisted preference exists.
+// =====================================================================================
+
+/** What the period target is denominated in. */
+export type PeriodUnit = 'days' | 'sessions' | 'amount';
+
+/**
+ * Where the habit stands in the period that contains `date`.
+ *
+ *   not_started   open period, nothing counted yet
+ *   in_progress   open period, some progress, target not yet met
+ *   satisfied     target met (open or closed -- success does not expire)
+ *   closed_unmet  period is over (as of `asOf`) and the target was not met
+ *   paused        the habit is paused; nothing is evaluated
+ *   unknown       no target, unsupported unit, or not scheduled -- see `reason`
+ *
+ * Turkish labels for the UI are the consumer's job; these are API values.
+ */
+export type PeriodStatusKind =
+  | 'not_started' | 'in_progress' | 'satisfied' | 'closed_unmet' | 'paused' | 'unknown';
+
+/** Machine-readable explanation. Every `unknown` names its cause. */
+export type PeriodReason =
+  | 'ok'
+  | 'habit_paused'
+  | 'no_target'
+  | 'sessions_unsupported'
+  | 'amount_unsupported'
+  | 'not_scheduled'
+  | 'period_not_started'
+  | 'unreachable_in_remaining_days'
+  | 'skipped'
+  | 'explicit_miss'
+  | 'provisional_until_close';
+
+export type PeriodStatus = {
+  /** Local calendar bounds of the period, inclusive. Day-based modes: the day itself. */
+  periodStart: Date;
+  periodEnd: Date;
+  unit: PeriodUnit;
+  /** The target in `unit`. 0 when there is none. */
+  target: number;
+  /** Entries that contributed: unique local days for `days`, logs carrying a value for `amount`. */
+  counted: number;
+  /** Progress toward `target`, in `unit`. Equals `counted` for `days`. */
+  actual: number;
+  /** `max(target - actual, 0)`. 0 whenever the target is met or undefined. */
+  remaining: number;
+  status: PeriodStatusKind;
+  reason: PeriodReason;
+  /**
+   * What the calendar arithmetic assumed. Neither is persisted per habit
+   * (verified: `habits` has no `timezone` / `week_start` column), so the
+   * evaluator states its basis instead of implying a preference exists.
+   */
+  basis: { readonly timezone: 'device-local'; readonly weekStart: 'monday' };
+};
+
+export type PeriodStatusOptions = {
+  /**
+   * The moment "now" is judged from. Decides whether the period containing
+   * `date` is still open. Defaults to the real clock; tests pass it explicitly.
+   */
+  asOf?: Date;
+  /**
+   * Force the unit. `'sessions'` is accepted so callers can ask, and is answered
+   * honestly with `unknown`/`sessions_unsupported` until R05 introduces session
+   * identities. Omit to let the habit decide.
+   */
+  unit?: PeriodUnit;
+};
+
+const PERIOD_BASIS = Object.freeze({ timezone: 'device-local', weekStart: 'monday' } as const);
+
+type LogForPeriod = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'> & { value?: number | null };
+
+function unknownStatus(
+  periodStart: Date, periodEnd: Date, unit: PeriodUnit, reason: PeriodReason,
+): PeriodStatus {
+  return {
+    periodStart, periodEnd, unit,
+    target: 0, counted: 0, actual: 0, remaining: 0,
+    status: 'unknown', reason, basis: PERIOD_BASIS,
+  };
+}
+
+/**
+ * One representative log per (habit, local day), so that a day is counted once.
+ *
+ * `completedCountInWindow` counts ROWS and leans on the store's one-row-per-day
+ * invariant. That invariant holds in the database (`UNIQUE (habit_id, date)`),
+ * but not necessarily in the array a consumer hands over: an optimistic row
+ * next to its synced twin, a retried completion, a merged offline queue. The
+ * guide's rule is explicit -- "aynı gün üç kayıt üç gün değildir" -- so the
+ * evaluator collapses duplicates BEFORE counting instead of changing the
+ * helper's contract. Within a day, `done` beats `partial` beats the rest, so a
+ * day that was completed is not demoted by a stale partial row.
+ */
+function oneLogPerDay(habit: Habit, logs: LogForPeriod[]): LogForPeriod[] {
+  const rank = (state: string) => (state === 'done' ? 3 : state === 'partial' ? 2 : state === 'skip' ? 1 : 0);
+  const byDay = new Map<string, LogForPeriod>();
+  for (const l of logs) {
+    if (l.habit_id !== habit.id) continue;
+    const day = l.completed_at.slice(0, 10);
+    const cur = byDay.get(day);
+    if (!cur || rank(l.state) >= rank(cur.state)) byDay.set(day, l);
+  }
+  return Array.from(byDay.values());
+}
+
+/** Does the habit's own model measure an amount per day? `daily_goal` is the target. */
+function amountTarget(habit: Habit): number | null {
+  const measured = habit.tracking_type === 'numeric' || habit.tracking_type === 'duration';
+  const goal = habit.daily_goal;
+  return measured && typeof goal === 'number' && goal > 0 ? goal : null;
+}
+
+/**
+ * Canonical period evaluator.
+ *
+ * `date` selects the period; `opts.asOf` decides whether that period is over.
+ * Reuses the module's own machinery -- `scheduleKind` for the mode, `windowFor`
+ * for count-mode bounds, `completedCountInWindow` for unique done/partial days
+ * (its done+partial rule is AC-H07/AC-H08, inherited not re-decided), and the
+ * private `dueOnExtended` for day-based eligibility -- so there is one window
+ * engine, not two.
+ */
+export function periodStatus(
+  habit: Habit,
+  logs: LogForPeriod[],
+  date: Date,
+  opts: PeriodStatusOptions = {},
+): PeriodStatus {
+  const asOf = opts.asOf ?? new Date();
+  const window = windowFor(habit, date);
+  const periodStart = window ? window.start : date;
+  const periodEnd = window ? window.end : date;
+
+  // Sessions: the schema has no session identity (one log row per habit per
+  // local day), and counting days as sessions would be the fake count the
+  // guide forbids. Answered before anything else so the caller cannot mistake
+  // a day count for a session count.
+  if (opts.unit === 'sessions') {
+    return unknownStatus(periodStart, periodEnd, 'sessions', 'sessions_unsupported');
+  }
+
+  // Paused: nothing is evaluated. There is no pause-interval model in the
+  // schema, only the habit-level status; that is what this reflects.
+  if (habit.status === 'paused') {
+    const unit: PeriodUnit = opts.unit ?? (window ? 'days' : amountTarget(habit) ? 'amount' : 'days');
+    return { ...unknownStatus(periodStart, periodEnd, unit, 'habit_paused'), status: 'paused' };
+  }
+
+  const closed = ymd(asOf) > ymd(periodEnd);
+  const beforeStart = ymd(asOf) < ymd(periodStart);
+
+  // ---- Count modes: weekly_count / monthly_count -> unit 'days' ----------------
+  if (window) {
+    if (opts.unit === 'amount') {
+      // No period-level amount target exists in the model (daily_goal is per
+      // day, count is per period). Not aggregated, not guessed.
+      return unknownStatus(periodStart, periodEnd, 'amount', 'amount_unsupported');
+    }
+    const target = window.targetCount;
+    if (target <= 0) return unknownStatus(periodStart, periodEnd, 'days', 'no_target');
+
+    const counted = completedCountInWindow(habit, oneLogPerDay(habit, logs), window);
+    const remaining = Math.max(target - counted, 0);
+    const base = {
+      periodStart, periodEnd, unit: 'days' as const, target, counted, actual: counted, remaining, basis: PERIOD_BASIS,
+    };
+
+    if (counted >= target) return { ...base, status: 'satisfied', reason: 'ok' };
+    if (beforeStart) return { ...base, status: 'not_started', reason: 'period_not_started' };
+    if (closed) return { ...base, status: 'closed_unmet', reason: 'ok' };
+    if (counted === 0) return { ...base, status: 'not_started', reason: 'ok' };
+    // Open and short of target. `streakBroken` already knows whether the rest
+    // of the window can still carry it; surface that as a reason, not as a
+    // status -- the period is not over, so it is not failed.
+    const daysLeft = daysBetweenLocal(asOf, window.end) + 1;
+    const reason: PeriodReason = remaining > daysLeft ? 'unreachable_in_remaining_days' : 'ok';
+    return { ...base, status: 'in_progress', reason };
+  }
+
+  // ---- Day-based modes: daily / weekly_days / every_n_days / date_range -------
+  // The period is the day. Eligibility comes from the SAME predicate the
+  // day-based branch of `streakBroken` uses; `isDueOn`'s count-mode mapping is
+  // never reached here because count modes took the window branch above.
+  if (!dueOnExtended(habit, date)) {
+    const unit: PeriodUnit = opts.unit ?? (amountTarget(habit) ? 'amount' : 'days');
+    return unknownStatus(periodStart, periodEnd, unit, 'not_scheduled');
+  }
+
+  const ds = ymd(date);
+  const dayLogs = logs.filter((l) => l.habit_id === habit.id && l.completed_at.slice(0, 10) === ds);
+  // One log per habit per day is the store invariant; if it is violated the
+  // last one wins, matching `scheduledCompletionRate`'s documented tiebreak.
+  const log = dayLogs.length > 0 ? dayLogs[dayLogs.length - 1] : undefined;
+  const done = log?.state === 'done' || log?.state === 'partial';
+
+  const goal = amountTarget(habit);
+  const wantAmount = opts.unit === 'amount' || (opts.unit === undefined && goal !== null);
+  const unitForDay: PeriodUnit = wantAmount ? 'amount' : 'days';
+
+  // An excused day is out of both numerator and denominator -- the same rule
+  // `scheduledCompletionRate` and `habitStrength` apply. Not a success, not a
+  // failure, not "nothing happened": it is `unknown` with its own reason.
+  if (log?.state === 'skip') return unknownStatus(periodStart, periodEnd, unitForDay, 'skipped');
+
+  // An explicit `miss` is the user's (or the engine's ceiling) verdict on the
+  // day. The calendar has not closed the period; the log has. Reported as
+  // `closed_unmet` with a reason that says which of the two closed it.
+  const explicitMiss = log?.state === 'miss';
+
+  if (wantAmount) {
+    if (goal === null) return unknownStatus(periodStart, periodEnd, 'amount', 'amount_unsupported');
+    const value = typeof log?.value === 'number' ? log.value : null;
+    const counted = value === null ? 0 : 1;
+    const actual = value ?? 0;
+    // For `at_most` (ceiling) habits "remaining" has no meaning; the engine's
+    // `state` already carries the verdict. Reported as 0 rather than invented.
+    const remaining = habit.target_direction === 'at_most' ? 0 : Math.max(goal - actual, 0);
+    const base = {
+      periodStart, periodEnd, unit: 'amount' as const, target: goal, counted, actual, remaining, basis: PERIOD_BASIS,
+    };
+    // Satisfaction is decided by the same `state` the engine wrote
+    // (`completionFor`/`deriveState`), so ceiling and floor semantics are not
+    // re-derived here. A `partial` is progress, not satisfaction, for amount.
+    if (explicitMiss) return { ...base, status: 'closed_unmet', reason: 'explicit_miss' };
+    if (log?.state === 'done') {
+      // A ceiling met mid-day can still be exceeded before the day closes
+      // (guide §7.1: "sabah 1 kayıt, gün sonunda 3"). Satisfied, but flagged.
+      const provisional = habit.target_direction === 'at_most' && !closed;
+      return { ...base, status: 'satisfied', reason: provisional ? 'provisional_until_close' : 'ok' };
+    }
+    if (beforeStart) return { ...base, status: 'not_started', reason: 'period_not_started' };
+    if (closed) return { ...base, status: 'closed_unmet', reason: 'ok' };
+    if (counted === 0) return { ...base, status: 'not_started', reason: 'ok' };
+    return { ...base, status: 'in_progress', reason: 'ok' };
+  }
+
+  const counted = done ? 1 : 0;
+  const base = {
+    periodStart, periodEnd, unit: 'days' as const, target: 1, counted, actual: counted, remaining: done ? 0 : 1, basis: PERIOD_BASIS,
+  };
+  if (explicitMiss) return { ...base, status: 'closed_unmet', reason: 'explicit_miss' };
+  if (done) return { ...base, status: 'satisfied', reason: 'ok' };
+  if (beforeStart) return { ...base, status: 'not_started', reason: 'period_not_started' };
+  if (closed) return { ...base, status: 'closed_unmet', reason: 'ok' };
+  return { ...base, status: 'not_started', reason: 'ok' };
+}
