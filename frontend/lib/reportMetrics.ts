@@ -2,7 +2,7 @@ import { colors } from '../lib/tokens';
 import { eachDayOfInterval, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from 'date-fns';
 import { type Habit, type HabitLog } from './supabase';
 import { type FocusSessionRow } from './focusReport';
-import { countsTowardAverage, isDueOn } from './habitSchedule';
+import { countsTowardAverage, isDueOn, scheduleKind, scheduledCompletionRate } from './habitSchedule';
 import { isMeasurableTracking, completionRatio, type HabitLogState } from './habitEngine';
 import { parseLocalDate, ymd } from './date';
 
@@ -118,6 +118,16 @@ export function habitAveragePercent(params: {
   let total = 0;
   let dueCount = 0;
   for (const habit of habits) {
+    // R01.02-b — count-based schedules ("3 a week", "10 a month") have no due
+    // DAYS; walking days through `isDueOn` scored them on weekdays the user
+    // never chose. Their denominator is the period target and their numerator
+    // the unique done/partial days (AC-H07/H08), both from the canonical
+    // evaluator via `scheduledCompletionRate`, at 100 per counted day.
+    if (isCountBased(habit)) {
+      const r = countBasedProgress(habit, params.logs, params.start, params.end);
+      if (r) { dueCount += r.dueDays; total += r.doneDays * 100; }
+      continue;
+    }
     for (const day of days) {
       const dateObj = parseLocalDate(day);
       if (!dateObj) continue;
@@ -134,6 +144,33 @@ export function habitAveragePercent(params: {
 
   if (dueCount === 0) return 0;
   return Math.round(total / dueCount);
+}
+
+type ScheduleHabit = Pick<Habit, 'id' | 'frequency_config' | 'created_at' | 'end_condition' | 'behavior_type'>;
+
+function isCountBased(habit: ScheduleHabit): boolean {
+  const kind = scheduleKind(habit as Habit).kind;
+  return kind === 'weekly_count' || kind === 'monthly_count';
+}
+
+/**
+ * Period-unit progress for a count-based habit over `[start, end]`: `dueDays`
+ * is the (edge-prorated) target sum, `doneDays` the unique completed days.
+ * `since` is the habit's creation day so a habit born mid-period is not
+ * charged for the days before it existed. `null` when the range is invalid.
+ */
+function countBasedProgress(
+  habit: ScheduleHabit,
+  logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>[],
+  start: string,
+  end: string,
+): { dueDays: number; doneDays: number } | null {
+  const from = parseLocalDate(start);
+  const to = parseLocalDate(end);
+  if (!from || !to) return null;
+  const since = habit.created_at ? parseLocalDate(ymd(new Date(habit.created_at))) : null;
+  const r = scheduledCompletionRate(habit as Habit, logs, { from, to, since });
+  return { dueDays: r.dueDays, doneDays: r.doneDays };
 }
 
 export function calculateHabitCompletionRate(
@@ -164,11 +201,40 @@ export function summarizeHabitProgress(
 
   return activeHabits
     .map((habit) => {
+      // R01.02-b — `possibleDays` used to be the CALENDAR day count for every
+      // habit, so a Mon/Wed/Fri habit read "12/30" in the monthly review and
+      // a "3 a week" habit had no sensible denominator at all. It is now the
+      // same denominator the aggregate uses: due days for day-based schedules
+      // (skip and unlogged-negative days excluded, as in `habitAveragePercent`),
+      // the period target for count-based ones. `completedDays` is unchanged
+      // in meaning -- done/partial rows (AC-H07/H08) -- and for count modes it
+      // is the unique-day count from the canonical evaluator.
+      if (isCountBased(habit)) {
+        const r = countBasedProgress(habit, logs, start, end);
+        const possible = r ? Math.round(r.dueDays) : 0;
+        const completed = r ? Math.round(r.doneDays) : 0;
+        return {
+          id: habit.id,
+          name: habit.name,
+          color: habit.color ?? colors.accent,
+          percent: r && r.dueDays > 0 ? Math.round((r.doneDays / r.dueDays) * 100) : 0,
+          completedDays: completed,
+          possibleDays: possible,
+        };
+      }
+
       let completedDays = 0;
       let scoreTotal = 0;
+      let possibleDays = 0;
 
       for (const day of days) {
+        const dateObj = parseLocalDate(day);
+        if (!dateObj) continue;
+        if (!isDueOn(habit, dateObj)) continue;
         const log = logMap.get(`${habit.id}|${day}`);
+        if (log?.state === 'skip') continue;             // excused: out of both sides
+        if (!countsTowardAverage(habit, log)) continue;  // unlogged negative day: unknown
+        possibleDays += 1;
         if (!log) continue;
         // AC-H07 / AC-H08 — bir satırın VAR OLMASI tamamlandığı anlamına gelmez.
         // `miss` ve `skip` de satır yazar; bunları saymak "kaçırdım" demeyi
@@ -181,9 +247,9 @@ export function summarizeHabitProgress(
         id: habit.id,
         name: habit.name,
         color: habit.color ?? colors.accent,
-        percent: days.length > 0 ? Math.round(scoreTotal / days.length) : 0,
+        percent: possibleDays > 0 ? Math.round(scoreTotal / possibleDays) : 0,
         completedDays,
-        possibleDays: days.length,
+        possibleDays,
       };
     })
     .sort((left, right) => right.percent - left.percent);

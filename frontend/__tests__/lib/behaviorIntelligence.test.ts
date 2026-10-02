@@ -424,3 +424,106 @@ describe('streakStability', () => {
     expect(result.ok).toBe(false);
   });
 });
+
+// =============================================================================
+// R01.02-b -- count-based schedules ("3 a week", "10 a month")
+// =============================================================================
+
+/** Weekly habit with a count target and no fixed days. */
+function weeklyCountHabit(id: string, createdAt: string, count: number): BIHabit {
+  return {
+    id,
+    name: `weekly-count-${id}`,
+    behavior_type: 'positive',
+    created_at: `${createdAt}T00:00:00.000Z`,
+    end_condition: null,
+    frequency_config: { kind: 'weekly', count },
+  };
+}
+
+describe('R01.02-b -- habitCompletionRate on count-based schedules', () => {
+  // Week Mon 2026-08-03 .. Sun 2026-08-09.
+  it('Tue/Thu/Sun for "3 a week" is exactly 3/3 -- the invented Mon/Wed/Sat denominator is gone', () => {
+    const habit = weeklyCountHabit('c1', '2026-07-01', 3);
+    const logs = [log('c1', '2026-08-04', 'done'), log('c1', '2026-08-06', 'done'), log('c1', '2026-08-09', 'done')];
+    expect(habitCompletionRate(habit, logs, { start: '2026-08-03', end: '2026-08-09' })).toEqual({ ok: true, value: 1 });
+  });
+
+  it('two of three is 2/3, never 2/7', () => {
+    const habit = weeklyCountHabit('c1', '2026-07-01', 3);
+    const logs = [log('c1', '2026-08-04', 'done'), log('c1', '2026-08-06', 'partial')];
+    const r = habitCompletionRate(habit, logs, { start: '2026-08-03', end: '2026-08-09' });
+    expect(r.ok && r.value).toBeCloseTo(2 / 3, 10);
+  });
+
+  it('a count habit with no target is insufficient data, not 0', () => {
+    const habit = weeklyCountHabit('c1', '2026-07-01', 0);
+    expect(habitCompletionRate(habit, [log('c1', '2026-08-04', 'done')], { start: '2026-08-03', end: '2026-08-09' }).ok).toBe(false);
+  });
+});
+
+describe('R01.02-b -- weekdayBreakdown excludes count-based habits', () => {
+  it('a flexible habit contributes no weekday obligation, so no weekday rate', () => {
+    const habit = weeklyCountHabit('c1', '2026-07-01', 3);
+    const logs = [log('c1', '2026-08-04', 'done'), log('c1', '2026-08-06', 'done'), log('c1', '2026-08-09', 'done')];
+    const stats = weekdayBreakdown([habit], logs, { start: '2026-07-06', end: '2026-08-30' });
+    expect(stats.every((s) => s.scheduled === 0 && s.completed === 0)).toBe(true);
+    expect(bestWeekday(stats).ok).toBe(false); // honest: insufficient, not "Tuesday is your best day"
+  });
+
+  it('fixed-day habits still produce weekday stats alongside a flexible one', () => {
+    const fixed = weeklyDaysHabit('f1', '2026-07-01', [1]); // Tuesdays only
+    const flex = weeklyCountHabit('c1', '2026-07-01', 3);
+    const logs = [log('f1', '2026-08-04', 'done'), log('c1', '2026-08-04', 'done')];
+    const stats = weekdayBreakdown([fixed, flex], logs, { start: '2026-08-03', end: '2026-08-09' });
+    expect(stats[1]).toMatchObject({ weekday: 1, scheduled: 1, completed: 1 });
+  });
+});
+
+describe('R01.02-b -- streaks on count-based schedules are counted in PERIODS', () => {
+  const habit = weeklyCountHabit('c1', '2026-07-01', 3);
+  // Weeks: Jul 13-19, Jul 20-26, Jul 27-Aug 2 (all 3/3); current week Aug 3-9 with 1 done as of Wed Aug 5.
+  const satisfied = (mon: string) => {
+    const d = new Date(mon + 'T00:00:00');
+    return [1, 3, 6].map((off) => log('c1', ymd(addDaysLocal(d, off)), 'done')); // Tue/Thu/Sun
+  };
+  const logs = [...satisfied('2026-07-13'), ...satisfied('2026-07-20'), ...satisfied('2026-07-27'), log('c1', '2026-08-04', 'done')];
+
+  it('currentStreak: three satisfied weeks, the open current week is transparent -> 3', () => {
+    expect(currentStreak(habit, logs, new Date(2026, 7, 5))).toBe(3);
+  });
+
+  it('currentStreak: an unmet closed week breaks the run', () => {
+    const broken = [...satisfied('2026-07-13'), ...satisfied('2026-07-27'), log('c1', '2026-08-04', 'done')]; // Jul 20-26 missing
+    expect(currentStreak(habit, broken, new Date(2026, 7, 5))).toBe(1);
+  });
+
+  it('currentStreak: once the current week is satisfied it counts', () => {
+    const now = [...logs, log('c1', '2026-08-06', 'done'), log('c1', '2026-08-09', 'done')];
+    expect(currentStreak(habit, now, new Date(2026, 7, 9))).toBe(4);
+  });
+
+  it('longestStreak: longest run of satisfied weeks, unmet week resets', () => {
+    const gap = [...satisfied('2026-07-06'), ...satisfied('2026-07-13'), ...satisfied('2026-07-27')]; // Jul 20-26 unmet
+    expect(longestStreak(habit, gap, { since: new Date(2026, 6, 6), asOf: new Date(2026, 7, 2) })).toBe(2);
+  });
+
+  it('a habit with day-based schedule keeps its day streak semantics (unchanged path)', () => {
+    const daily = dailyHabit('d1', '2026-08-01');
+    const dl = [log('d1', '2026-08-03', 'done'), log('d1', '2026-08-04', 'done')];
+    expect(currentStreak(daily, dl, new Date(2026, 7, 4))).toBe(2);
+  });
+});
+
+describe('R01.02-b -- fragility and trend see period rates for count-based habits', () => {
+  it('weekly rates come from the target: 3/3 then 2/3', () => {
+    const habit = weeklyCountHabit('c1', '2026-06-01', 3);
+    const wk = (mon: string, offs: number[]) => offs.map((o) => log('c1', ymd(addDaysLocal(new Date(mon + 'T00:00:00'), o)), 'done'));
+    const logs = [
+      ...wk('2026-07-13', [1, 3, 6]), ...wk('2026-07-20', [1, 3]), ...wk('2026-07-27', [1, 3, 6]), ...wk('2026-08-03', [1, 3]),
+    ];
+    const r = habitFragility(habit, logs, { weeks: 4, asOf: new Date(2026, 7, 9) });
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.value.weeklyRates.map((x) => Math.round(x * 100))).toEqual([100, 67, 100, 67]);
+  });
+});

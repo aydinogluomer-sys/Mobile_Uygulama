@@ -43,7 +43,7 @@ import type { FocusSessionRow } from '../../lib/focusReport';
 import { colors, space, font } from '../../lib/tokens';
 import { Card, SectionHeader, EmptyState, IconCircle, Skeleton, SkeletonLines } from '../../components/ui';
 import { ymd, ymdFromIso, parseLocalDate, addDaysLocal } from '../../lib/date';
-import { isDueOn } from '../../lib/habitSchedule';
+import { carriesDayLoad } from '../../lib/habitSchedule';
 import { dailyLoad, LOAD_BANDS, type TaskLoadItem } from '../../lib/capacity';
 import {
   calculateHabitCompletionRate, focusMinutesFromSessions, getWeekBounds, getMonthBounds,
@@ -92,6 +92,9 @@ function countOverloadDays(params: {
   activeHabits: Habit[];
   allTasks: Task[];
   focusSessions: { started_at: string; completed_seconds: number }[];
+  // R01.02-b -- `carriesDayLoad` needs completions to tell an open, unmet
+  // count period from a satisfied one. Day-based habits ignore it.
+  habitLogs: ReviewLogRow[];
 }): number {
   const startDate = parseLocalDate(params.start);
   const endDate = parseLocalDate(params.end);
@@ -101,7 +104,7 @@ function countOverloadDays(params: {
   for (const day of days) {
     const dateObj = parseLocalDate(day);
     if (!dateObj) continue;
-    const habitsDue = params.activeHabits.filter((h) => isDueOn(h, dateObj));
+    const habitsDue = params.activeHabits.filter((h) => carriesDayLoad(h, params.habitLogs, dateObj));
     // `Task` (store/taskStore.ts) has no `estimated_minutes` field -- map to
     // `TaskLoadItem` (an intentionally all-optional weak type) so `dailyLoad`
     // falls back to its own `DEFAULT_TASK_MINUTES` per task, same as every
@@ -321,7 +324,7 @@ export default function InsightsScreen() {
   const fragile = mostFragileHabit(activeHabits, logs, { asOf: today });
 
   // ---- Kapasite ---------------------------------------------------------
-  const habitsDueToday = activeHabits.filter((h) => isDueOn(h, today));
+  const habitsDueToday = activeHabits.filter((h) => carriesDayLoad(h, logs, today));
   const tasksDueToday: TaskLoadItem[] = tasks
     .filter((t) => t.due_date === todayYmd && t.status !== 'cancelled')
     .map(() => ({}));
@@ -332,7 +335,7 @@ export default function InsightsScreen() {
   const todayLoad = dailyLoad({ habits: habitsDueToday, tasks: tasksDueToday, focusMinutes: focusMinutesToday, overdueCount: overdueCountToday });
   const todayBandLabel = LOAD_BANDS.find((b) => b.key === todayLoad.band)?.label ?? todayLoad.band;
   const overloadDaysThisWeek = countOverloadDays({
-    start: weekRange.start, end: weekRange.end, activeHabits, allTasks: tasks, focusSessions,
+    start: weekRange.start, end: weekRange.end, activeHabits, allTasks: tasks, focusSessions, habitLogs: logs,
   });
 
   // ---- Telafi -----------------------------------------------------------
@@ -358,7 +361,7 @@ export default function InsightsScreen() {
     rate: habitCompletionRate(h, logs, { start: start30d, end: todayYmd }),
   }));
   const overloadDaysThisMonth = countOverloadDays({
-    start: monthRange.start, end: monthRange.end, activeHabits, allTasks: tasks, focusSessions,
+    start: monthRange.start, end: monthRange.end, activeHabits, allTasks: tasks, focusSessions, habitLogs: logs,
   });
 
   const weeklyDigestData = weeklyDigest({

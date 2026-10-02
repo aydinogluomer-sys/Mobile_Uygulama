@@ -91,7 +91,7 @@
  *    uses the more correct denominator while keeping the same variance math.
  */
 import type { Habit, HabitLog } from './supabase';
-import { isDueOn, weekdayIndex } from './habitSchedule';
+import { isDueOn, weekdayIndex, scheduleKind, scheduledCompletionRate, periodStatus } from './habitSchedule';
 import { isCompletedState } from './reportMetrics';
 import { habitStrength, type StrengthLog } from './habitStrength';
 import type { RecoveryPlanV2 } from './recovery';
@@ -176,6 +176,17 @@ export const MIN_WEEKS_FOR_FRAGILITY = 3;
  */
 export const MAX_STREAK_LOOKBACK_DAYS = 3650;
 
+/**
+ * The period analogue of `MAX_STREAK_LOOKBACK_DAYS` for `periodStreakBack` /
+ * `periodStreakLongest`, which advance a whole week or month per iteration.
+ * Reusing the day bound there would stretch the same "~10 years" intent to 70
+ * years (weekly) or 300 (monthly), so the ceiling is scaled to periods: 520
+ * weeks is ~10 years, and 520 months is far past any real history. As with the
+ * day bound the loops stop much earlier in practice -- at the first
+ * `closed_unmet` period, or at `created_at`.
+ */
+const MAX_STREAK_LOOKBACK_PERIODS = 520;
+
 // ---------------------------------------------------------------------------
 // shared day-walking helpers (private)
 // ---------------------------------------------------------------------------
@@ -194,6 +205,67 @@ function buildLogIndex(logs: BILog[]): Map<string, BILog['state']> {
     map.set(`${l.habit_id}|${l.completed_at.slice(0, 10)}`, l.state);
   }
   return map;
+}
+
+function isCountBased(habit: BIHabit): boolean {
+  const kind = scheduleKind(habit as Habit).kind;
+  return kind === 'weekly_count' || kind === 'monthly_count';
+}
+
+function createdDate(habit: BIHabit): Date | null {
+  return habit.created_at ? parseLocalDate(ymdFromIso(habit.created_at)) : null;
+}
+
+/** The index back into rows for one habit -- what the canonical evaluator consumes. */
+function logsFromIndex(habit: BIHabit, logIndex: Map<string, BILog['state']>): BILog[] {
+  const prefix = `${habit.id}|`;
+  const out: BILog[] = [];
+  for (const [key, state] of logIndex) {
+    if (key.startsWith(prefix)) out.push({ habit_id: habit.id, completed_at: key.slice(prefix.length), state });
+  }
+  return out;
+}
+
+/**
+ * Consecutive satisfied PERIODS for a count-based habit, walking backwards
+ * from the period containing `asOf`. The open current period is transparent
+ * unless already satisfied: it has time left, so it neither counts nor
+ * breaks -- the period analogue of "not due today". A `closed_unmet` period
+ * ends the run. Unit is periods (weeks or months), stated in the callers' docs.
+ */
+function periodStreakBack(habit: BIHabit, logs: BILog[], asOf: Date): number {
+  const created = createdDate(habit);
+  let count = 0;
+  let cursor = asOf;
+  for (let i = 0; i < MAX_STREAK_LOOKBACK_PERIODS; i++) {
+    const st = periodStatus(habit as Habit, logs, cursor, { asOf });
+    if (st.status === 'unknown' || st.status === 'paused') break;
+    if (created && ymd(st.periodEnd) < ymd(created)) break;
+    if (st.status === 'satisfied') count += 1;
+    else if (st.status === 'closed_unmet') break;
+    // not_started / in_progress: open period, transparent
+    cursor = addDaysLocal(st.periodStart, -1);
+    if (created && ymd(cursor) < ymd(created) && ymd(st.periodStart) <= ymd(created)) break;
+  }
+  return count;
+}
+
+/**
+ * Longest run of consecutive satisfied periods between `since` and `asOf`,
+ * walked forward. Open periods are transparent, `closed_unmet` resets.
+ */
+function periodStreakLongest(habit: BIHabit, logs: BILog[], since: Date, asOf: Date): number {
+  let running = 0;
+  let max = 0;
+  let cursor = since;
+  for (let i = 0; i < MAX_STREAK_LOOKBACK_PERIODS && ymd(cursor) <= ymd(asOf); i++) {
+    const st = periodStatus(habit as Habit, logs, cursor, { asOf });
+    if (st.status === 'unknown' || st.status === 'paused') break;
+    if (st.status === 'satisfied') { running += 1; if (running > max) max = running; }
+    else if (st.status === 'closed_unmet') running = 0;
+    cursor = addDaysLocal(st.periodEnd, 1);
+  }
+  return max;
 }
 
 /** Inclusive list of local `YYYY-MM-DD` strings from `start` to `end`. Empty if `start > end` or either is unparseable. */
@@ -220,6 +292,18 @@ function dueDayStats(
   logIndex: Map<string, BILog['state']>,
   days: Ymd[],
 ): { scheduled: number; completed: number } {
+  // R01.02-b — count-based schedules have no per-day obligation. `scheduled`
+  // is the period target (edge-prorated over `days`) and `completed` the
+  // unique done/partial days, both from the canonical evaluator. Fractional
+  // `scheduled` is fine for every ratio built on this.
+  if (isCountBased(habit) && days.length > 0) {
+    const from = parseLocalDate(days[0]);
+    const to = parseLocalDate(days[days.length - 1]);
+    if (from && to) {
+      const r = scheduledCompletionRate(habit as Habit, logsFromIndex(habit, logIndex), { from, to, since: createdDate(habit) });
+      return { scheduled: r.dueDays, completed: r.doneDays };
+    }
+  }
   let scheduled = 0;
   let completed = 0;
   for (const d of days) {
@@ -284,6 +368,13 @@ export function weekdayBreakdown(habits: BIHabit[], logs: BILog[], range: { star
   const totals = Array.from({ length: 7 }, (_, i) => ({ weekday: i, scheduled: 0, completed: 0 }));
 
   for (const habit of habits) {
+    // R01.02-b — a count-based habit has no per-weekday obligation, so it has
+    // no per-weekday "scheduled" and therefore no weekday rate: "Monday 0%"
+    // for a "3 a week" habit is exactly the fabricated daily judgement the
+    // period model exists to remove. Such habits are excluded here; the
+    // insufficient-data gate in `bestWeekday`/`worstWeekday` handles a user
+    // whose habits are all flexible.
+    if (isCountBased(habit)) continue;
     for (const d of days) {
       const date = parseLocalDate(d);
       if (!date) continue;
@@ -345,6 +436,10 @@ export function worstWeekday(stats: WeekdayStat[]): Result<WeekdayStat> {
  * reading" (see file doc).
  */
 export function currentStreak(habit: BIHabit, logs: BILog[], asOf: Date = new Date()): number {
+  // R01.02-b — for a count-based habit the streak is counted in PERIODS
+  // (consecutive satisfied weeks/months), not days: a "3 a week" habit has
+  // no due day to be missed. See `periodStreakBack` for the open-period rule.
+  if (isCountBased(habit)) return periodStreakBack(habit, logs.filter((l) => l.habit_id === habit.id), asOf);
   const logIndex = buildLogIndex(logs.filter((l) => l.habit_id === habit.id));
   const createdYmd = habit.created_at ? ymdFromIso(habit.created_at) : '';
   let count = 0;
@@ -385,6 +480,8 @@ export function longestStreak(habit: BIHabit, logs: BILog[], opts: { since?: Dat
   const asOf = opts.asOf ?? new Date();
   const createdDate = habit.created_at ? parseLocalDate(ymdFromIso(habit.created_at)) : null;
   const since = opts.since ?? createdDate ?? asOf;
+  // R01.02-b — periods, not days, for count-based schedules (see `currentStreak`).
+  if (isCountBased(habit)) return periodStreakLongest(habit, logs.filter((l) => l.habit_id === habit.id), since, asOf);
   const logIndex = buildLogIndex(logs.filter((l) => l.habit_id === habit.id));
   const days = iterateYmd(ymd(since), ymd(asOf));
 

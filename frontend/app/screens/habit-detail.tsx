@@ -37,7 +37,7 @@ import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines } from '../../components/ui';
 import { haptic } from '../../lib/haptics';
 import { addDaysLocal, parseLocalDate, ymd, ymdFromIso, type Ymd } from '../../lib/date';
-import { isDueOn } from '../../lib/habitSchedule';
+import { isCountBasedSchedule, isDueOn } from '../../lib/habitSchedule';
 import { completionPercent, isMeasurableTracking } from '../../lib/habitEngine';
 import { habitStrength, type StrengthLog } from '../../lib/habitStrength';
 import {
@@ -163,17 +163,26 @@ function rangeStartFor(days: number | null, sinceYmd: Ymd, todayD: Date): Ymd {
 type DayCell = { date: Ymd; state: CalendarDayState | 'future'; value: number | null };
 
 /**
- * Per-day verdict for the calendar/history views. Reuses `isDueOn` (the
- * schedule oracle) rather than re-deciding due-ness, and treats a due day
- * with no log the same way `lib/habitSchedule.streakBroken` does -- as a
- * miss, not a fabricated "unknown".
+ * Per-day verdict for the calendar/history views. Reuses the schedule oracle
+ * rather than re-deciding due-ness, and treats a DUE day with no log the same
+ * way `lib/habitSchedule.streakBroken` does -- as a miss, not a fabricated
+ * "unknown".
+ *
+ * R01.02-b -- a count schedule ("3 a week") gets a different rule, because it
+ * has no per-day obligation to miss. Routing it through `isDueOn` was wrong in
+ * BOTH directions: the invented Mon/Wed/Sat were painted as misses, and a real
+ * Tuesday completion came back `not_scheduled`, so the work the user actually
+ * did was hidden from its own calendar. Here a log is the only thing that can
+ * give such a day a state; an unlogged one owes nothing. Whether the PERIOD was
+ * met is `periodStatus`'s question, not a cell's.
  */
 function dayCellFor(habit: Habit, logIndex: Map<Ymd, HabitDetailLogRow>, dateObj: Date, todayYmd: Ymd): DayCell {
   const d = ymd(dateObj);
   if (d > todayYmd) return { date: d, state: 'future', value: null };
-  if (!isDueOn(habit, dateObj)) return { date: d, state: 'not_scheduled', value: null };
   const log = logIndex.get(d);
-  if (!log) return { date: d, state: 'miss', value: null };
+  const countBased = isCountBasedSchedule(habit);
+  if (!countBased && !isDueOn(habit, dateObj)) return { date: d, state: 'not_scheduled', value: null };
+  if (!log) return { date: d, state: countBased ? 'not_scheduled' : 'miss', value: null };
   if (log.state === 'done') return { date: d, state: 'full', value: log.value };
   if (log.state === 'partial') return { date: d, state: 'partial', value: log.value };
   if (log.state === 'skip') return { date: d, state: 'skip', value: log.value };

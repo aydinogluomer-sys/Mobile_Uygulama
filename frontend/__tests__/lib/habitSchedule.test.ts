@@ -12,6 +12,7 @@ import type { Habit, HabitLog } from '../../lib/supabase';
 import {
   isDueOn, weekdayIndex, scheduleKind, windowFor, isWindowSatisfied, streakBroken,
   isEligibleOn, scheduledCompletionRate, periodStatus,
+  isCountBasedSchedule, carriesDayLoad,
 } from '../../lib/habitSchedule';
 import { ymd } from '../../lib/date';
 
@@ -516,5 +517,90 @@ describe('R01.02-a — scheduledCompletionRate on count-based schedules', () => 
     expect(r.dueDays).toBe(ps.target);
     expect(r.doneDays).toBe(ps.counted);
     expect(ps.status).toBe('in_progress');
+  });
+});
+
+describe('R01.02-b — isCountBasedSchedule', () => {
+  it('is true only for the "N per period" shapes', () => {
+    expect(isCountBasedSchedule(habit({ frequency_config: { kind: 'weekly', count: 3 } }))).toBe(true);
+    expect(isCountBasedSchedule(habit({ frequency_config: { kind: 'monthly', count: 10 } }))).toBe(true);
+  });
+
+  it('is false for every day-pinned shape', () => {
+    expect(isCountBasedSchedule(habit({ frequency_config: { kind: 'daily' } }))).toBe(false);
+    expect(isCountBasedSchedule(habit({ frequency_config: { kind: 'weekly', days: [0, 2, 4] } }))).toBe(false);
+    expect(isCountBasedSchedule(habit({ frequency_config: { kind: 'daily', interval_days: 3 } }))).toBe(false);
+  });
+});
+
+describe('R01.02-b — carriesDayLoad (the per-day LOAD question)', () => {
+  const weekly3 = habit({ frequency_config: { kind: 'weekly', count: 3 } });
+
+  // The whole point of the helper: day-based schedules must be untouched, so
+  // the three review/insights screens cannot regress for them.
+  it('is identical to isDueOn for every day-based shape', () => {
+    const shapes: Habit[] = [
+      habit({ frequency_config: { kind: 'daily' } }),
+      habit({ frequency_config: { kind: 'weekly', days: [0, 2, 4] } }),
+      habit({ frequency_config: { kind: 'daily', interval_days: 3 } }),
+      habit({ frequency_config: { kind: 'weekly' } }),            // neither days nor count
+    ];
+    for (const h of shapes) {
+      for (const d of WEEK) {
+        expect(carriesDayLoad(h, [], d)).toBe(isDueOn(h, d));
+      }
+    }
+  });
+
+  it('an untouched "3 a week" carries load on every day of the week, not three invented ones', () => {
+    // isDueOn's countDueDays answer here is Mon/Wed/Sat only.
+    expect(WEEK.every((d) => carriesDayLoad(weekly3, [], d))).toBe(true);
+    expect(WEEK.filter((d) => isDueOn(weekly3, d))).toHaveLength(3);
+  });
+
+  it('stops carrying load once the weekly target is met', () => {
+    const done3 = [mkLog('h1', MON, 'done'), mkLog('h1', TUE, 'done'), mkLog('h1', WED, 'done')];
+    // Satisfied as of Wednesday -> Thu..Sun are free.
+    expect(carriesDayLoad(weekly3, done3, THU)).toBe(false);
+    expect(carriesDayLoad(weekly3, done3, SUN)).toBe(false);
+  });
+
+  it('judges each day by what it BEGAN owing, not by how the period ended', () => {
+    const done3 = [mkLog('h1', MON, 'done'), mkLog('h1', TUE, 'done'), mkLog('h1', WED, 'done')];
+    // Each of these three days opened with the target still unmet, so each
+    // carried work -- even though the week was eventually satisfied. Walking a
+    // past week must not retroactively erase the load its days had, and the day
+    // the user DID the work must not be the one that reads as free.
+    expect(carriesDayLoad(weekly3, done3, MON)).toBe(true);
+    expect(carriesDayLoad(weekly3, done3, TUE)).toBe(true);
+    expect(carriesDayLoad(weekly3, done3, WED)).toBe(true);
+  });
+
+  it('a partially met week still carries load on the remaining days', () => {
+    const one = [mkLog('h1', TUE, 'done')];
+    expect(carriesDayLoad(weekly3, one, FRI)).toBe(true);
+    expect(carriesDayLoad(weekly3, one, SUN)).toBe(true);
+  });
+
+  it('monthly count behaves the same way across its own period', () => {
+    const monthly10 = habit({ frequency_config: { kind: 'monthly', count: 10 } });
+    const d5 = new Date(2026, 7, 5);
+    const d20 = new Date(2026, 7, 20);
+    expect(carriesDayLoad(monthly10, [], d5)).toBe(true);
+    // isDueOn is false for monthly on every single day -- it never loaded at all.
+    expect(isDueOn(monthly10, d5)).toBe(false);
+    const ten = Array.from({ length: 10 }, (_, i) => mkLog('h1', new Date(2026, 7, i + 1), 'done'));
+    expect(carriesDayLoad(monthly10, ten, d20)).toBe(false);
+  });
+
+  it('carries nothing for a paused habit or a target of zero', () => {
+    expect(carriesDayLoad(habit({ status: 'paused', frequency_config: { kind: 'weekly', count: 3 } }), [], WED)).toBe(false);
+    expect(carriesDayLoad(habit({ frequency_config: { kind: 'weekly', count: 0 } }), [], WED)).toBe(false);
+  });
+
+  it('carries nothing before the habit existed', () => {
+    const later = habit({ created_at: '2026-08-06T00:00:00Z', frequency_config: { kind: 'weekly', count: 3 } });
+    expect(carriesDayLoad(later, [], MON)).toBe(false);   // 03 Aug, before created_at
+    expect(carriesDayLoad(later, [], THU)).toBe(true);    // 06 Aug
   });
 });

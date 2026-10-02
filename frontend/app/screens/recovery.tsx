@@ -13,7 +13,7 @@ import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import { useRecoveryStore } from '../../store/recoveryStore';
 import { deficitFor, type TrackingTypeV2 } from '../../lib/recovery';
-import { isDueOn, isMissedOn } from '../../lib/habitSchedule';
+import { isCountBasedSchedule, isDueOn, isMissedOn } from '../../lib/habitSchedule';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton } from '../../components/ui';
@@ -90,6 +90,15 @@ export default function RecoveryScreen() {
   // Bugün "kaçırıldı" sayılmaz — bugün henüz "bekliyor" (Bugün/Alışkanlıklar ekranında).
   const backlogEntries: { habit: Habit; date: string; kind: 'missed' | 'partial' }[] = [];
   for (const h of activeHabits) {
+    // R01.02-b -- a count schedule ("3 a week") has NO per-day obligation, so it
+    // has no missed day either. `isDueOn` used to answer with invented weekdays,
+    // which filled this backlog with make-up offers for days the user never chose
+    // while ignoring the ones they actually worked (R00 journey map row 6). The
+    // real unit for these is a closed unmet PERIOD and its remaining count
+    // (`periodStatus`); surfacing that needs a period row this day-keyed list
+    // cannot express, so it is the follow-up card. Skipping is the correct
+    // interim: a wrong-day make-up offer is worse than none.
+    if (isCountBasedSchedule(h)) continue;
     for (let k = 1; k <= LOOKBACK; k++) {
       const dObj = subDays(new Date(), k);
       if (!isDueOn(h, dObj)) continue;
@@ -110,6 +119,9 @@ export default function RecoveryScreen() {
 
   // Üst üste kaçırılan due-gün sayısı (dünden geri; yapılan/kısmı gün seriyi kırar)
   function consecutiveMissedDue(h: Habit): number {
+    // Consecutive MISSED DUE DAYS is undefined for a count schedule -- see the
+    // backlog loop above. 0 means "no day-level run", not "doing fine".
+    if (isCountBasedSchedule(h)) return 0;
     let run = 0;
     for (let k = 1; k <= LOOKBACK; k++) {
       const dObj = subDays(new Date(), k);

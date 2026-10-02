@@ -199,3 +199,84 @@ describe('AC-H09 — history does not change when a habit is paused today', () =
     expect(after).toBe(before);
   });
 });
+
+// =============================================================================
+// R01.02-b — count-based schedules in the report metrics
+//
+// "3 a week" and "10 a month" used to be walked day by day through `isDueOn`,
+// which invented Mon/Wed/Sat for count=3 -- so a Tue/Thu/Sun user scored 0%
+// in every report. The denominator is now the period target and the numerator
+// the unique completed days, both from the canonical evaluator.
+// =============================================================================
+
+describe('R01.02-b — habitAveragePercent on count-based schedules', () => {
+  const weekly3 = { ...h(), frequency_config: { kind: 'weekly', count: 3 } } as Habit;
+  const tueThuSun = ['2026-08-04', '2026-08-06', '2026-08-09'].map((d) => log({ completed_at: d }));
+
+  it('Tue/Thu/Sun for "3 a week" is 100%, not 0% on invented weekdays', () => {
+    expect(habitAveragePercent({ habits: [weekly3], logs: tueThuSun, start: WEEK_START, end: WEEK_END })).toBe(100);
+  });
+
+  it('the denominator is the target (3): two done days read 67%, never 2/7', () => {
+    const pct = habitAveragePercent({ habits: [weekly3], logs: tueThuSun.slice(0, 2), start: WEEK_START, end: WEEK_END });
+    expect(pct).toBe(67);
+    expect(pct).not.toBe(Math.round((2 / 7) * 100));
+  });
+
+  it('three rows on one day are one day of progress', () => {
+    const dup = ['2026-08-04', '2026-08-04', '2026-08-04'].map((d) => log({ completed_at: d }));
+    expect(habitAveragePercent({ habits: [weekly3], logs: dup, start: WEEK_START, end: WEEK_END })).toBe(33);
+  });
+
+  it('monthly "10 a month": 4 done over the full month is 40%, not 4/30', () => {
+    const monthly10 = { ...h(), frequency_config: { kind: 'monthly', count: 10 } } as Habit;
+    const logs = ['2026-09-01', '2026-09-03', '2026-09-05', '2026-09-09'].map((d) => log({ completed_at: d }));
+    const pct = habitAveragePercent({ habits: [monthly10], logs, start: '2026-09-01', end: '2026-09-30' });
+    expect(pct).toBe(40);
+    expect(pct).not.toBe(Math.round((4 / 30) * 100));
+  });
+
+  it('pools correctly with a daily habit: 3/3 target-days + 7/7 due days = 100%', () => {
+    const daily = { ...h(), id: 'h2' } as Habit;
+    const dailyLogs = ['03', '04', '05', '06', '07', '08', '09'].map((d) => log({ habit_id: 'h2', completed_at: `2026-08-${d}` }));
+    expect(habitAveragePercent({ habits: [weekly3, daily], logs: [...tueThuSun, ...dailyLogs], start: WEEK_START, end: WEEK_END })).toBe(100);
+  });
+
+  it('a habit created mid-week is not charged for the days before it existed', () => {
+    const late = { ...weekly3, created_at: '2026-08-06T09:00:00Z' } as Habit; // Thursday
+    // Thu..Sun = 4/7 of the target (1.71); Thu + Sun done = capped at share -> 100%
+    expect(habitAveragePercent({ habits: [late], logs: tueThuSun.slice(1), start: WEEK_START, end: WEEK_END })).toBe(100);
+  });
+});
+
+describe('R01.02-b — summarizeHabitProgress uses the schedule for possibleDays', () => {
+  it('count-based: possibleDays is the target, completedDays the unique done days', () => {
+    const weekly3 = { ...h(), frequency_config: { kind: 'weekly', count: 3 } } as Habit;
+    const r = summarizeHabitProgress([weekly3], ['2026-08-04', '2026-08-06', '2026-08-09'].map((d) => log({ completed_at: d })), WEEK_START, WEEK_END);
+    expect(r[0]).toMatchObject({ possibleDays: 3, completedDays: 3, percent: 100 });
+  });
+
+  it('count-based: same-day duplicates do not inflate completedDays', () => {
+    const weekly3 = { ...h(), frequency_config: { kind: 'weekly', count: 3 } } as Habit;
+    const r = summarizeHabitProgress([weekly3], ['2026-08-04', '2026-08-04'].map((d) => log({ completed_at: d })), WEEK_START, WEEK_END);
+    expect(r[0]).toMatchObject({ possibleDays: 3, completedDays: 1, percent: 33 });
+  });
+
+  it('fixed weekdays: possibleDays is the due-day count (3), no longer the 7 calendar days -- AC-H04 applied to the rows', () => {
+    const monWedFri = { ...h(), frequency_config: { kind: 'weekly', days: [0, 2, 4] } } as Habit;
+    const r = summarizeHabitProgress([monWedFri], ['2026-08-03', '2026-08-05', '2026-08-07'].map((d) => log({ completed_at: d })), WEEK_START, WEEK_END);
+    expect(r[0]).toMatchObject({ possibleDays: 3, completedDays: 3, percent: 100 });
+    expect(r[0].possibleDays).not.toBe(7);
+  });
+
+  it('daily habits keep their numbers: 7 possible, skip excused from both sides', () => {
+    const r = summarizeHabitProgress([h()], [log({ completed_at: '2026-08-03' }), log({ completed_at: '2026-08-04', state: 'skip' })], WEEK_START, WEEK_END);
+    expect(r[0]).toMatchObject({ possibleDays: 6, completedDays: 1, percent: 17 });
+  });
+
+  it('monthly: possibleDays is the target (10), not the 30 calendar days', () => {
+    const monthly10 = { ...h(), frequency_config: { kind: 'monthly', count: 10 } } as Habit;
+    const r = summarizeHabitProgress([monthly10], ['2026-09-01', '2026-09-03', '2026-09-05', '2026-09-09'].map((d) => log({ completed_at: d })), '2026-09-01', '2026-09-30');
+    expect(r[0]).toMatchObject({ possibleDays: 10, completedDays: 4, percent: 40 });
+  });
+});

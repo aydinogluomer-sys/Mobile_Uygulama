@@ -15,11 +15,12 @@ import {
 } from '../../lib/reportMetrics';
 import { ymdFromIso, ymd, parseLocalDate, type Ymd } from '../../lib/date';
 import { dailyLoad, type TaskLoadItem } from '../../lib/capacity';
-import { isDueOn } from '../../lib/habitSchedule';
+import { carriesDayLoad } from '../../lib/habitSchedule';
 import { recoverySuccessRate, type Result } from '../../lib/behaviorIntelligence';
 import { planFromRow } from '../../lib/recovery';
 import {
   logsForPeriod,
+  type ReviewLogRow,
   recoveryForPeriod,
   loadWeeklyReflection as fetchWeeklyReview,
   saveWeeklyReflection as upsertWeeklyReview,
@@ -75,8 +76,9 @@ const EMPTY_AUTO_METRICS: AutoMetrics = {
 /**
  * How many days in `[start, end]` had a `dailyLoad` band of `aşırı` --
  * plan §12's "Capacity overload days". Walks each local day, asks which
- * ACTIVE habits were due that day (`isDueOn`, schedule-aware, same oracle
- * `habit-detail.tsx`/`behaviorIntelligence.ts` use), which tasks were due
+ * ACTIVE habits carried work that day (`carriesDayLoad` -- `isDueOn` for
+ * day-based schedules, open-and-unmet period for count-based ones, so a
+ * "3 a week" habit no longer loads invented weekdays), which tasks were due
  * that day, how many tasks were already overdue as of that day, and how
  * many focus minutes were logged that day -- exactly `dailyLoad`'s four
  * inputs (lib/capacity.ts) -- then classifies the resulting band via
@@ -91,6 +93,9 @@ function countOverloadDays(params: {
   activeHabits: Habit[];
   allTasks: Task[];
   focusSessions: { started_at: string; completed_seconds: number }[];
+  // R01.02-b -- `carriesDayLoad` needs completions to tell an open, unmet
+  // count period from a satisfied one. Day-based habits ignore it.
+  habitLogs: ReviewLogRow[];
 }): number {
   const startDate = parseLocalDate(params.start);
   const endDate = parseLocalDate(params.end);
@@ -101,7 +106,7 @@ function countOverloadDays(params: {
   for (const day of days) {
     const dateObj = parseLocalDate(day);
     if (!dateObj) continue;
-    const habitsDue = params.activeHabits.filter((h) => isDueOn(h, dateObj));
+    const habitsDue = params.activeHabits.filter((h) => carriesDayLoad(h, params.habitLogs, dateObj));
     // `Task` (store/taskStore.ts) has no `estimated_minutes` field -- map to
     // `TaskLoadItem` (an intentionally all-optional weak type) so `dailyLoad`
     // falls back to its own `DEFAULT_TASK_MINUTES` per task, same as every
@@ -245,6 +250,7 @@ export default function WeeklyReviewScreen() {
       : { ok: false, reason: 'Telafi verisi yüklenemedi.' };
     const overloadDays = countOverloadDays({
       start, end, activeHabits, allTasks: tasks, focusSessions: weekSessions,
+      habitLogs: logsRes.ok ? logsRes.data : [],
     });
 
     setAutoMetrics({

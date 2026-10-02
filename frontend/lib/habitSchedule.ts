@@ -58,9 +58,27 @@ function withinLifetime(habit: Habit, date: Date): boolean {
  * by inventing days, which `countDueDays` does. Turning the count branch into
  * "every day" would therefore turn three invented misses into seven real ones.
  *
- * So this function is a compatibility bridge until R01.02-b moves consumers to
- * `periodStatus` (period success) and `isEligibleOn` (eligibility). New code
- * must not call it for count-based schedules.
+ * So this function is a compatibility bridge, and as of R01.02-b it is a bridge
+ * with no traffic on the count lane: NO production caller can hand a count-based
+ * habit to it any more. Each one guards first --
+ *
+ *   lib/reportMetrics.ts:134,:233          `isCountBased` early return/continue
+ *   lib/behaviorIntelligence.ts:312,:381,  `isCountBased` early return/continue
+ *                        :450,:493
+ *   app/screens/recovery.tsx:104,:128      `isCountBasedSchedule(h)` skip
+ *   app/screens/habit-detail.tsx           count cells never consult it
+ *   weekly-review / monthly-review /       `carriesDayLoad`, whose count lane
+ *   insights                               never calls through
+ *   dueOnExtended (below)                  only reached from guarded callers
+ *
+ * The count branch and `countDueDays` are therefore dead for every real input,
+ * and `__tests__/repo/periodConsumerMigration.test.ts` pins that. They are still
+ * here on purpose: `isDueOn` is exported API whose count behaviour is pinned by
+ * the AC-H03 tests, so deleting the branch means rewriting a deliberate test
+ * contract -- an owner decision, not a side effect of this card.
+ *
+ * New code must not call this for count-based schedules: use `periodStatus`
+ * (period success), `isEligibleOn` (eligibility) or `carriesDayLoad` (day load).
  */
 export function isDueOn(habit: Habit, date: Date): boolean {
   if (!withinLifetime(habit, date)) return false;
@@ -90,11 +108,17 @@ export function isDueOn(habit: Habit, date: Date): boolean {
 /**
  * LEGACY — fixed-distribution workaround; not on any canonical path.
  *
- * Sole caller: the count branch of `isDueOn` above (verified R01.02-a). Retained
- * only so that predicate keeps its pinned behaviour (AC-H03 tests) until the
- * consumers migrate in R01.02-b; then both go together. `isEligibleOn`,
- * `periodStatus` and the count-mode path of `scheduledCompletionRate` never
- * call it.
+ * Sole caller: the count branch of `isDueOn` above (verified R01.02-a, re-
+ * verified R01.02-b). After R01.02-b every production path guards count
+ * schedules before reaching that branch, so this function no longer runs for
+ * any real habit -- see the caller table on `isDueOn`.
+ *
+ * It is NOT deleted, and that is a decision rather than an oversight: the
+ * AC-H03 tests pin `isDueOn`'s count behaviour on purpose (they were written
+ * before the fix and observed to fail), and `isDueOn` stays exported. Removing
+ * the branch means rewriting that pinned contract, which the owner should
+ * sanction explicitly. `isEligibleOn`, `periodStatus`, `carriesDayLoad` and the
+ * count-mode path of `scheduledCompletionRate` never call it.
  *
  * `count` haftalık hedefi için haftanın hangi günleri due sayılır.
  *
@@ -128,10 +152,11 @@ function countDueDays(count: number): number[] {
 // fonksiyonlar onları TÜKETİR, değiştirmez.
 //
 // `FrequencyConfig` artık üç opsiyonel alan daha taşıyor (`interval_days`,
-// `range_start`, `range_end` — bkz. lib/supabase.ts). Bunlar bugün hiçbir yerde
-// persist edilmiyor (migration bloklu); yalnızca bu modülün V2 fonksiyonları onları
-// okuyor. Var olan hiçbir satır bu alanları taşımadığı için (hepsi undefined),
-// eski davranış tamamen korunuyor.
+// `range_start`, `range_end` — bkz. lib/supabase.ts). DB tarafı jsonb'dir ve
+// bunları kabul eder (canlıda doğrulandı, R00); persist edilmemelerinin sebebi
+// istemci validator'ıdır (`routineProposal.ALLOWED_FREQUENCY_KEYS`), migration
+// değil. Bu modülün V2/V3 fonksiyonları onları okur; var olan hiçbir satır bu
+// alanları taşımadığı için (hepsi undefined) eski davranış tamamen korunuyor.
 // =====================================================================================
 
 /** `scheduleKind`'ın döndürdüğü ayrık (discriminated) görünüm — §8.7'nin altı modu. */
@@ -151,9 +176,9 @@ export type ScheduleKind =
  *     tarih penceresi tanımlamışsa bu, o pencere içinde HER GÜN due anlamına gelir.
  *     SINIR — bilerek: date_range bugün haftalık-gün/haftalık-sayı deseniyle
  *     BİRLEŞTİRİLEMİYOR ("Pzt/Çar/Cum, ama yalnızca 1-15 Ağustos" ifade edilemez).
- *     Bu basitleştirme kabul edilebilir çünkü migration bloklu olduğu sürece hiçbir
- *     kombinasyon zaten kalıcı hâle gelemiyor; V1 kapsamı yalnızca "bu pencerede her
- *     gün" senaryosunu kapsıyor.
+ *     Bu basitleştirme kabul edilebilir çünkü istemci validator'ı bu alanları henüz
+ *     kabul etmiyor ve hiçbir kombinasyon kalıcı hâle gelmiyor; V1 kapsamı yalnızca
+ *     "bu pencerede her gün" senaryosunu kapsıyor.
  *  2. `kind: 'daily'` + `interval_days > 1` → `'every_n_days'`. `interval_days`
  *     verilmemiş veya `<=1` ise sıradan `'daily'` olarak kalır — bu, var olan hiçbir
  *     `kind:'daily'` satırının (hepsi `interval_days` taşımıyor) anlamını değiştirmez.
@@ -843,4 +868,63 @@ export function periodStatus(
   if (beforeStart) return { ...base, status: 'not_started', reason: 'period_not_started' };
   if (closed) return { ...base, status: 'closed_unmet', reason: 'ok' };
   return { ...base, status: 'not_started', reason: 'ok' };
+}
+
+// =====================================================================================
+// R01.02-b — per-day LOAD, for the screens that ask "how much does this day carry?"
+// =====================================================================================
+
+/**
+ * Does `habit` put work on `date` that the user could still discharge that day?
+ *
+ * This is the question `dailyLoad`'s `habits` argument actually asks, and it is
+ * NOT `isDueOn`. For a day-based schedule the two coincide, so those habits keep
+ * their exact previous behaviour. For a count-based one ("3 a week", "10 a
+ * month") `isDueOn` answered it by inventing fixed weekdays via `countDueDays`,
+ * which put load on Mon/Wed/Fri for a Tue/Thu/Sun user and none on the days they
+ * actually worked.
+ *
+ * The period-aware answer: a count-based habit carries load on every day its
+ * period is still open and the target is not yet met, and none once it is. So
+ * "3 a week" finished by Wednesday stops loading Thu-Sun, and a week left at 1/3
+ * loads every remaining day -- no invented weekdays in either direction.
+ *
+ * `date` is judged AS OF ITSELF, not as of now: walking a past week must see what
+ * was still outstanding on each of its days, not what the week eventually became.
+ * A `paused`/`unknown` period carries nothing.
+ */
+/**
+ * Is this a "N per period" schedule ("3 a week", "10 a month") rather than one
+ * pinned to particular days?
+ *
+ * The distinction decides whether a DAY-level verdict exists at all. A count
+ * schedule has no per-day obligation, so "was this day missed?" has no answer
+ * for it -- only "was the period met?" (`periodStatus`). Callers that produce
+ * per-day misses must consult this first; `isDueOn` answers them by inventing
+ * weekdays and is the defect R01 removes.
+ */
+export function isCountBasedSchedule(habit: Habit): boolean {
+  const kind = scheduleKind(habit).kind;
+  return kind === 'weekly_count' || kind === 'monthly_count';
+}
+
+export function carriesDayLoad(habit: Habit, logs: LogForPeriod[], date: Date): boolean {
+  if (!isCountBasedSchedule(habit)) {
+    return isDueOn(habit, date); // day-based: unchanged, deliberately
+  }
+  if (!isEligibleOn(habit, date)) return false;
+  // `periodStatus`'s `asOf` decides whether the period is CLOSED; it does not
+  // hide later completions, so the logs must be clipped as well -- otherwise a
+  // week finished on Wednesday would read as zero-load on Monday too, and a week
+  // nobody touched would be the only kind that ever looks busy.
+  //
+  // The clip is STRICTLY BEFORE `date`: the question is what the day BEGAN owing.
+  // Including the day's own completion would make exactly the days the user did
+  // the work the days that count as free. With this rule a "3 a week" habit
+  // finished Mon-Wed carries load on Mon, Tue and Wed and nothing after -- three
+  // loaded days for a target of three, on the days it actually happened.
+  const ds = ymd(date);
+  const before = logs.filter((l) => l.completed_at.slice(0, 10) < ds);
+  const st = periodStatus(habit, before, date, { asOf: date });
+  return st.status === 'not_started' || st.status === 'in_progress';
 }

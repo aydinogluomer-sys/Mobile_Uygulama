@@ -4,6 +4,7 @@ import {
   saveMonthlyReflection,
   logsForPeriod,
   recoveryForPeriod,
+  type ReviewLogRow,
 } from '../../services/reviewService';
 import { currentUser } from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
@@ -24,7 +25,7 @@ import { colors, hexA, alphaHex } from '../../lib/tokens';
 import { buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions, reportBadge, summarizeHabitProgress, type ReportBadge } from '../../lib/reportMetrics';
 import { ymdFromIso, ymd, parseLocalDate } from '../../lib/date';
 import { dailyLoad, type TaskLoadItem } from '../../lib/capacity';
-import { isDueOn } from '../../lib/habitSchedule';
+import { carriesDayLoad } from '../../lib/habitSchedule';
 import {
   completionTrend, strongestHabit, mostFragileHabit, recoverySuccessRate,
   type Trend, type Result,
@@ -100,6 +101,9 @@ function countOverloadDays(params: {
   activeHabits: Habit[];
   allTasks: Task[];
   focusSessions: { started_at: string; completed_seconds: number }[];
+  // R01.02-b -- `carriesDayLoad` needs completions to tell an open, unmet
+  // count period from a satisfied one. Day-based habits ignore it.
+  habitLogs: ReviewLogRow[];
 }): number {
   const startDate = parseLocalDate(params.start);
   const endDate = parseLocalDate(params.end);
@@ -110,7 +114,7 @@ function countOverloadDays(params: {
   for (const day of days) {
     const dateObj = parseLocalDate(day);
     if (!dateObj) continue;
-    const habitsDue = params.activeHabits.filter((h) => isDueOn(h, dateObj));
+    const habitsDue = params.activeHabits.filter((h) => carriesDayLoad(h, params.habitLogs, dateObj));
     // `Task` (store/taskStore.ts) has no `estimated_minutes` field -- map to
     // `TaskLoadItem` (an intentionally all-optional weak type) so `dailyLoad`
     // falls back to its own `DEFAULT_TASK_MINUTES` per task, same as every
@@ -276,8 +280,8 @@ export default function MonthlyReviewScreen() {
     const strongest = strongestHabit(activeHabits, logsForBI, { asOf });
     const fragile = mostFragileHabit(activeHabits, logsForBI, { asOf });
 
-    const capacityOverloadThisMonth = countOverloadDays({ start, end, activeHabits, allTasks: tasks, focusSessions: monthSessions });
-    const capacityOverloadPrevMonth = countOverloadDays({ start: prevStart, end: prevEnd, activeHabits, allTasks: tasks, focusSessions: prevMonthSessions });
+    const capacityOverloadThisMonth = countOverloadDays({ start, end, activeHabits, allTasks: tasks, focusSessions: monthSessions, habitLogs: logsForBI });
+    const capacityOverloadPrevMonth = countOverloadDays({ start: prevStart, end: prevEnd, activeHabits, allTasks: tasks, focusSessions: prevMonthSessions, habitLogs: logsForBI });
 
     const recoveryPlans = recoveryRes.ok ? recoveryRes.data : [];
     const thisMonthPlans = recoveryPlans.filter((p) => p.target_date >= start && p.target_date <= end);
