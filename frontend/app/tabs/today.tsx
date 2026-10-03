@@ -18,11 +18,96 @@ import RecoveryRailCard from '../../components/today/RecoveryRailCard';
 import { buildTodayNarrative } from '../../lib/todayNarrative';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { todayLocal } from '../../lib/date';
+import { todayLocal, parseLocalDate } from '../../lib/date';
 import {
   Card, SectionHeader, EmptyState, ProgressRing, IconCircle, WillpowerBand, SyncStatusBadge,
 } from '../../components/ui';
 import { isMeasurableTracking } from '../../lib/habitEngine';
+import { isEligibleOn, scheduleKind } from '../../lib/habitSchedule';
+import type { Habit } from '../../lib/supabase';
+
+// =====================================================================================
+// R01.06-a — Bugün takvimi SORAR.
+//
+// Eskiden bu ekran yalnız `status === 'active'` filtresi uyguluyordu: Pzt/Çar/Cum
+// alışkanlığı Salı da "kalan adım" sayılıyor, yüzdenin paydasına giriyordu.
+// Artık günün yüzeyleri `isEligibleOn` (saf, log istemez) ile süzülmüş listeyi
+// kullanır. `carriesDayLoad` BİLEREK kullanılmıyor: dönem logu ister, bu ekran
+// yalnız bugünün logunu yükler. Sonuç: "haftada 3" hedefi dolsa da her gün
+// görünür (loglanabilir); "bu hafta doldu" soluklaştırması ayrı kart (R01.06-b).
+// =====================================================================================
+
+/**
+ * Takvim BELİRSİZ mi — yani `isEligibleOn`'un `false`'u "bugün değil" değil,
+ * "bilmiyorum" mu demek?
+ *
+ *  - sayı modu (`weekly_count`/`monthly_count`) ama hedef yok: `scheduleKind`
+ *    ne gün ne sayı taşıyan bir `kind:'weekly'` (ya da sayısız `monthly`)
+ *    satırını `count: 0` olarak sınıflar ve `isEligibleOn` her gün `false` döner.
+ *  - sabit gün modu ama `days` içinde geçerli (0..6 tamsayı) tek bir gün yok:
+ *    `includes` hiçbir gün eşleşmez, yine her gün `false`.
+ *
+ * İki durumda da kâhinin cevabı "hiçbir gün" olur; bu bir takvim değil, eksik veri.
+ */
+export function isScheduleAmbiguous(habit: Habit): boolean {
+  const sk = scheduleKind(habit);
+  if (sk.kind === 'weekly_count' || sk.kind === 'monthly_count') return sk.count <= 0;
+  if (sk.kind === 'weekly_days') {
+    return !sk.days.some((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+  }
+  return false;
+}
+
+/**
+ * Bugün'ün alışkanlıkları = aktif ∩ (o güne uygun ∪ takvimi belirsiz).
+ *
+ * FAIL-OPEN: takvim belirsizse GÖSTER. Belirsiz satırı gizlemek, kullanıcının
+ * loglayabildiği (ve bu karttan önce Bugün'de gördüğü) bir alışkanlığı ondan
+ * saklamak olur — ve gizlendiğini söyleyen hiçbir yüzey yoktur. Fazladan bir
+ * satır görmek, var olan bir işi kaybetmekten ucuzdur. Bu, `isEligibleOn` /
+ * `scheduleKind` değiştirilerek değil burada çözülür: kâhinin "belirsizlikte az
+ * say" ilkesi raporlar için doğru, "neyi göstereyim" sorusu için yanlış.
+ */
+export function selectTodayHabits(habits: Habit[], date: Date): Habit[] {
+  return habits.filter(
+    (h) => h.status === 'active' && (isEligibleOn(h, date) || isScheduleAmbiguous(h)),
+  );
+}
+
+export type TodayHabitSummary = { total: number; completed: number; remaining: number; pct: number };
+
+/**
+ * Yüzde ve "N adım kaldı" TEK paydadan gelir (`total` = Bugün'ün listesi);
+ * ayrı ayrı hesaplanırsa biri takvimi sorar, öteki sormaz ve birbirini yalanlar.
+ * `total === 0` iken yüzde 0'dır — sıfıra bölme yok.
+ *
+ * Pay, paydanın içinden sayılır: `completedHabits`'te olup Bugün'ün listesinde
+ * olmayan bir alışkanlık (ör. Salı başka ekrandan loglanmış bir Pzt/Çar/Cum)
+ * yüzdeyi 100'ün üstüne ya da "kalan"ı eksiye itemez.
+ */
+export function summarizeTodayHabits(todayHabits: Habit[], completedHabits: Habit[]): TodayHabitSummary {
+  const total = todayHabits.length;
+  const doneIds = new Set(completedHabits.map((h) => h.id));
+  const completed = todayHabits.filter((h) => doneIds.has(h.id)).length;
+  return { total, completed, remaining: total - completed, pct: total > 0 ? completed / total : 0 };
+}
+
+/**
+ * Metrik kartı ve halka kartının alt metni.
+ *
+ * `activeCount` (toplam aktif) burada GERÇEKTEN kastedilen sayıdır: "hiç
+ * ritüelin yok, oluştur" ile "ritüellerin var ama bugün planlı değil" farklı
+ * cümlelerdir. İkincisinde kullanıcıya oluşturma önermek yanlış olur.
+ */
+export function todayHabitCopy(summary: TodayHabitSummary, activeCount: number): { metricSub: string; ringSub: string } {
+  if (activeCount === 0) return { metricSub: 'ilk ritüelini oluştur', ringSub: 'Henüz aktif bir ritüel yok' };
+  if (summary.total === 0) return { metricSub: 'bugün planlı ritüel yok', ringSub: 'Bugün planlı ritüel yok' };
+  if (summary.remaining === 0) return { metricSub: 'günlük seri tamam', ringSub: 'Günlük seri tamamlandı' };
+  return {
+    metricSub: `${summary.remaining} adım kaldı`,
+    ringSub: `${summary.completed}/${summary.total} tamamlandı`,
+  };
+}
 
 // ISO hafta numarası (1–53)
 function isoWeek(d: Date): number {
@@ -61,11 +146,17 @@ export default function TodayScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
 
+  // Toplam aktif — YALNIZ "hiç ritüel yok" boş-durumunu ayırt etmek için
+  // (`todayHabitCopy`). Hiçbir gün-yüzeyinde payda değildir.
   const activeHabits = habits.filter((h) => h.status === 'active');
-  const completedHabits = activeHabits.filter((h) => {
+  // Günün yüzeyleri (liste, sayaç, yüzde, kalan, anlatı) bunu kullanır.
+  const todayHabits = selectTodayHabits(habits, parseLocalDate(today) ?? now);
+  const completedHabits = todayHabits.filter((h) => {
     const log = getLogForHabit(h.id);
     return log?.state === 'done' || log?.state === 'partial';
   });
+  const habitSummary = summarizeTodayHabits(todayHabits, completedHabits);
+  const habitCopy = todayHabitCopy(habitSummary, activeHabits.length);
 
   const todayTasks = dueToday();
   const overdueList = overdue();
@@ -83,8 +174,8 @@ export default function TodayScreen() {
     setRefreshing(false);
   }
 
-  const habitPct = activeHabits.length > 0 ? completedHabits.length / activeHabits.length : 0;
-  const remainingHabits = activeHabits.length - completedHabits.length;
+  const habitPct = habitSummary.pct;
+  const remainingHabits = habitSummary.remaining;
   const plannedRecovery = recoveryPlans.filter((p) => p.status === 'planned').length;
 
   const eyebrow = `${DAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]} · ${isoWeek(now)}. hafta`;
@@ -94,7 +185,7 @@ export default function TodayScreen() {
     overdueCount: overdueList.length,
     todayTaskCount: todayTasks.length,
     remainingHabits,
-    totalHabits: activeHabits.length,
+    totalHabits: habitSummary.total,
     focusSessions: sessionsCompleted,
   });
 
@@ -116,8 +207,8 @@ export default function TodayScreen() {
     {
       eyebrow: 'Alışkanlık',
       value: `${Math.round(habitPct * 100)}%`,
-      sub: activeHabits.length === 0 ? 'ilk ritüelini oluştur' : remainingHabits === 0 ? 'günlük seri tamam' : `${remainingHabits} adım kaldı`,
-      tone: activeHabits.length > 0 && remainingHabits === 0 ? 'ok' : 'mute',
+      sub: habitCopy.metricSub,
+      tone: habitSummary.total > 0 && remainingHabits === 0 ? 'ok' : 'mute',
       onPress: () => router.push('/tabs/timeline' as any),
     },
     {
@@ -278,9 +369,7 @@ export default function TodayScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={s.ringTitle}>Bugünün ritüelleri</Text>
                   <Text style={s.ringSub}>
-                    {activeHabits.length === 0
-                      ? 'Henüz aktif bir ritüel yok'
-                      : remainingHabits === 0 ? 'Günlük seri tamamlandı' : `${completedHabits.length}/${activeHabits.length} tamamlandı`}
+                    {habitCopy.ringSub}
                   </Text>
                 </View>
               </View>
@@ -296,7 +385,7 @@ export default function TodayScreen() {
               </Card>
             )}
 
-            {activeHabits.length > 0 && (
+            {todayHabits.length > 0 && (
               <Card padding="lg">
                 <SectionHeader
                   title="RİTÜELLER · BUGÜN"
@@ -305,7 +394,7 @@ export default function TodayScreen() {
                   onAction={() => router.push('/tabs/timeline' as any)}
                 />
                 <View style={{ gap: space.sm }}>
-                  {activeHabits.slice(0, isWide ? 4 : activeHabits.length).map((h) => {
+                  {todayHabits.slice(0, isWide ? 4 : todayHabits.length).map((h) => {
                     const log = getLogForHabit(h.id);
                     const done = log?.state === 'done' || log?.state === 'partial';
                     const col = h.color ?? colors.primary;

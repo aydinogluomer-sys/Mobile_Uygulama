@@ -6,7 +6,7 @@ baseline_sha: 0ff1c74b0d8d922fd9bef46d3631a1cf443677e2
 guide_commit: ecfd4e3            # docs/plan/22_ADERYTH_CORE_IMPLEMENTATION_V3.md, verbatim
 scope_authority: docs/plan/21_KAPSAM_EKI_2026-09-13.md
 newer_owner_decision: none        # 2026-09-13
-completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b]
+completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a]
 active_card: null
 next_ready_card: R01.03     # tracking semantics; deps R01.01-a + R01.02-a + R01.02-b all DONE
 critical_open_defects: []         # bilinen kusurlar kartlara bağlı; veri kaybı / hesap erişimi / FP kusuru yok
@@ -17,9 +17,10 @@ known_defects_bound_to_cards:
     what: R01.02-b sonrası HİÇBİR üretim çağıranı count-tabanlı alışkanlığı `isDueOn`'a veremiyor (her çağıran önce guard'lıyor; guard = __tests__/repo/periodConsumerMigration.test.ts). Kod silinmedi -> AC-H03 testleri `isDueOn`'un count davranışını BİLEREK pinliyor ve `isDueOn` dışa açık API; dalı silmek bu test sözleşmesini yeniden yazmak demek
     card: SAHİP KARARI bekliyor (silme = AC-H03 yeniden yazımı)
   - id: KD-02
-    where: frontend/app/tabs/today.tsx:64
-    what: Bugün takvimi sormuyor; tüm aktif alışkanlıklar "kalan" sayılır
-    card: R01.06 / R03.01
+    status: RESOLVED (R01.06-a) — kalan: "bu hafta doldu" soluklaştırması R01.06-b
+    where: frontend/app/tabs/today.tsx (`selectTodayHabits`)
+    what: Bugün takvimi sormuyordu; tüm aktif alışkanlıklar "kalan" sayılıyordu. Artık gün-yüzeyleri `isEligibleOn` + fail-open ile süzülüyor
+    card: R01.06-a (DONE) / R01.06-b / R03.01
   - id: KD-03
     where: frontend/store/focusStore.ts:220,257
     what: resume `sessionStartedAt`'i yeniler; pause ayrılmaz; oturum kalıcı değil
@@ -45,6 +46,7 @@ evidence_locations:
   - docs/implementation-v3/STATE.md#r0101-a-evidence
   - docs/implementation-v3/STATE.md#r0102-a-evidence
   - docs/implementation-v3/STATE.md#r0102-b-evidence
+  - docs/implementation-v3/STATE.md#r0106-a-evidence
 gates_run_at_baseline:
   typecheck_ci: 0 errors
   lint_ci: 0 warnings
@@ -56,6 +58,7 @@ timing:                           # R00.07 — dev / test / fix ayrı; erişim b
   R01.01-a: { dev_min: 25, test_min: 20, fix_min: 10, access_wait_min: 0, single_writer: true }
   R01.02-a: { dev_min: 30, test_min: 25, fix_min: 15, access_wait_min: 0, single_writer: true }   # fix: CRLF/LF karışımı, precision, import
   R01.02-b: { dev_min: 75, test_min: 60, fix_min: 30, access_wait_min: 0, single_writer: true }   # fix: kayıp flake logu, clip semantiği, bayat kendi yorumum
+  R01.06-a: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
 ```
 
 ## R01.01-a evidence
@@ -202,6 +205,112 @@ pause/holiday intervals + goal versioning; R01.06 timezone/week_start
 persistence; recovery's **period-deficit make-up surface** ("you were 2 short last
 week") -- the day-keyed backlog list cannot express a period row, so the interim
 behaviour is to offer nothing rather than a wrong-day make-up.
+
+## R01.06-a evidence
+
+- **Branch/HEAD:** `feature/r01-period-status`, on top of `96de9be`. No new branch.
+- **Files (4):** `frontend/app/tabs/today.tsx`; `frontend/__tests__/lib/todaySchedule.test.ts`
+  (new, 22 tests); `frontend/__tests__/repo/todayScheduleScoped.test.ts` (new, guard,
+  9 tests); this file. `lib/habitSchedule.ts` **untouched** (behaviour and text);
+  `isDueOn`, `countDueDays`, AC-H03 tests untouched; `app/tabs/habits.tsx` untouched.
+- **Defect (verified before the change):** `today.tsx` made zero calls to the
+  schedule oracle -- `activeHabits = habits.filter(status === 'active')` was the
+  list, the completed count, the percentage denominator, "N adım kaldı", the ring
+  subtitle and `buildTodayNarrative`'s `totalHabits`.
+
+### What changed on the screen
+
+Three pure, exported selectors in `today.tsx` (no new lib file):
+
+| Function | Question |
+|---|---|
+| `selectTodayHabits(habits, date)` | active ∩ (`isEligibleOn(h, date)` ∪ `isScheduleAmbiguous(h)`) |
+| `summarizeTodayHabits(todayHabits, completedHabits)` | `{ total, completed, remaining, pct }` from ONE denominator; completed is counted *inside* `todayHabits`, so a log for a habit not on today's list (e.g. a Mon/Wed/Fri habit logged on Tuesday from timeline) cannot push pct over 100 or remaining below 0; `pct = 0` when `total = 0` |
+| `todayHabitCopy(summary, activeCount)` | the two subtitles |
+
+| Surface | Before | After |
+|---|---|---|
+| Ritüeller list (`RİTÜELLER · BUGÜN`) + its visibility condition | `activeHabits` | `todayHabits` |
+| completed count | `activeHabits.filter(done)` | `todayHabits.filter(done)` |
+| `habitPct` / ProgressRing / metric value | / `activeHabits.length` | `habitSummary.pct` |
+| "N adım kaldı" / metric tone | `activeHabits.length - completed` | `habitSummary.remaining` / `total > 0` |
+| ring subtitle `x/y tamamlandı` | y = all active | y = today's total |
+| `buildTodayNarrative({ remainingHabits, totalHabits })` | all active | today's |
+
+**The one place `activeHabits` stays, with an inline comment:** `todayHabitCopy(habitSummary,
+activeHabits.length)` -- telling "no habits at all → create your first" apart from
+"habits exist, none scheduled today" (new copy: `bugün planlı ritüel yok` /
+`Bugün planlı ritüel yok`). Offering "create your first ritual" to someone with
+five habits on their rest day would be wrong; that distinction genuinely needs
+the total. It is never a denominator.
+
+**Day input:** `parseLocalDate(todayLocal()) ?? now` -- the same local day the
+screen already uses to load today's logs; weekday mapping stays inside
+`habitSchedule.weekdayIndex` (no `getDay()` added; the existing `getDay()` is the
+eyebrow label only, pinned by the guard).
+
+**Why not `carriesDayLoad`:** it needs period logs; this screen only loads today's
+(`fetchLogsForDate(today)`). Accepted consequence: a "3 a week" habit whose target
+is met stays visible every day (it can still be logged). "Already done this week"
+dimming is R01.06-b, not done here.
+
+### Fail-open (mandatory)
+
+`scheduleKind` classifies a `kind:'weekly'` row with neither `days` nor `count` as
+`weekly_count`/`count: 0`, and `isEligibleOn` then says `false` on every day. Such
+rows were visible on Bugün before this card. Hiding them would hide a loggable
+habit with no surface saying so. Rule: **if the schedule is ambiguous, show it.**
+
+Implemented on the screen side only (`isScheduleAmbiguous`), not by changing the
+oracle -- the oracle's "under-count when unsure" principle is right for reports
+and wrong for "what do I show". Ambiguous = count mode with target ≤ 0 (weekly
+*or* monthly without a count), or fixed-day mode whose `days` holds no valid
+0..6 integer index (`includes` would never match). Ambiguous rows bypass the
+lifetime check too, i.e. they behave exactly as before this card.
+
+**Behaviour change worth stating:** a habit whose dated `end_condition` has
+passed (or whose `created_at` is in the future) is no longer on Bugün, because
+`isEligibleOn` applies the lifetime guard. It is still listed in `habits.tsx`.
+
+### Acceptance
+
+| | Result | Evidence |
+|---|---|---|
+| A1 | Mon/Wed/Fri absent Tue, present Wed; week mask `[T,F,T,F,T,F,F]` | `todaySchedule.test.ts` A1 ×4 |
+| A2 | "3 a week" present 7/7 days | A2 ×2 |
+| A3 | "10 a month" present 31/31 days of Aug 2026 | A3 |
+| A4 | `interval_days: 3` from Mon → Mon/Thu/Sun; `range_start..end` Wed..Fri → only Wed-Fri (fixtures; client validator still rejects the keys) | A4 ×2 |
+| A5 | weekly with no days/count, `days: [] + count: 0`, monthly without count, `days: [9]` → all visible; well-formed schedules NOT ambiguous | A5 ×5 |
+| A6 | pct and remaining from one total (2/1/1/0.5); denominator 0 → pct 0, finite, empty-state copy in both variants; out-of-list completion not counted | A6 ×6 |
+| A7 | `habits.tsx` unchanged (`git diff` empty), still `habits.filter(status === 'active')`, no schedule filter | guard `A7` + diff |
+
+Negative assertions (not comments): Tuesday MWF in denominator → red; count habit
+hidden on any day → red; ambiguous row hidden → red.
+
+### Mutation proof (each reverted byte-identical, sha256 `05785803…46bb4fa` verified OK)
+
+- **M1** selector's `isEligibleOn(h, date)` → `(() => true)()`: **13 / 31 red** (2 guard +
+  A1 ×3, A4 ×2, end-condition ×1, A6 ×5). First attempt of M1 lost the behaviour
+  suite to `Cannot find module './elements/ForeignObject'` from `react-native-svg`
+  (file present on disk; Jest's own message says it found it) -- a resolver/
+  environment failure, not a test verdict. Re-run: 13 red, as listed.
+- **M2** fail-open branch removed (`|| isScheduleAmbiguous(h)` dropped): **5 / 31 red**
+  (1 guard + A5 ×4).
+
+### Gates
+
+- `typecheck:ci` exit 0 · `lint:ci` exit 0 (`--max-warnings=0`) · `git diff --check` clean
+- `run-tests.js` **145/145**. First run after the change was 144/145: check
+  `Alışkanlık metrik kartı` requires the identifier `completedHabits` in
+  `today.tsx`. `run-tests.js` is out of scope, so the screen keeps a real
+  `const completedHabits = todayHabits.filter(...)` that feeds the summary
+  (not a comment to satisfy a substring). Pinned by the guard.
+- focused: 2 suites **31/31**
+- full `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB`, two consecutive runs: **135 suites / 2189
+  tests**, 0 FAIL lines, 0 OOM/SIGTERM/`Command failed` markers (baseline 133 / 2158;
+  +2 suites, +31 tests).
+- **Not done:** no device/emulator observation (none installed on this host). The
+  render itself was not exercised by RNTL; the selectors are.
 
 ## Paket sınıflandırması (R00.02 özeti)
 
