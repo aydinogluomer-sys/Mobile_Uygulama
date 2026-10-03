@@ -101,7 +101,7 @@ export default function RecoveryScreen() {
     if (isCountBasedSchedule(h)) continue;
     for (let k = 1; k <= LOOKBACK; k++) {
       const dObj = subDays(new Date(), k);
-      // R01.02-c — day lane: `isCountBasedSchedule(h)` above. `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+      // R01.02-c — day lane: `isCountBasedSchedule(h)` above. `isEligibleOn` = `isDueOn` for daily/weekly_days; it adds the every_n_days interval. The date range is not a mode: it is the lifetime envelope (`withinLifetime`) both read.
       if (!isEligibleOn(h, dObj)) continue;
       const d = format(dObj, 'yyyy-MM-dd');
       const key = `${h.id}|${d}`;
@@ -126,7 +126,7 @@ export default function RecoveryScreen() {
     let run = 0;
     for (let k = 1; k <= LOOKBACK; k++) {
       const dObj = subDays(new Date(), k);
-      // R01.02-c — day lane: `isCountBasedSchedule(h)` above. `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+      // R01.02-c — day lane: `isCountBasedSchedule(h)` above. `isEligibleOn` = `isDueOn` for daily/weekly_days; it adds the every_n_days interval. The date range is not a mode: it is the lifetime envelope (`withinLifetime`) both read.
       if (!isEligibleOn(h, dObj)) continue;
       const key = `${h.id}|${format(dObj, 'yyyy-MM-dd')}`;
       if (doneSet.has(key) || partialSet.has(key)) break;

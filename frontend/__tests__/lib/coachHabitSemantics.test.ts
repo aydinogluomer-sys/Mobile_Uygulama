@@ -197,12 +197,58 @@ describe('frequency_config is validated against the app’s real schedule schema
     expect(ok({ kind: 'daily', count: 3 })).toBeNull();
   });
 
-  it('refuses schedule fields the scheduler does not read', () => {
-    // `interval_days` and the date range are real FrequencyConfig fields that
-    // `isDueOn` ignores. Accepting them would install a config that reads
-    // correctly and behaves as plain daily.
-    expect(ok({ kind: 'daily', interval_days: 3 })).toBeNull();
-    expect(ok({ kind: 'daily', range_start: '2026-01-01' })).toBeNull();
+  // R01.02-d — this test was "refuses schedule fields the scheduler does not
+  // read", reasoning that `isDueOn` ignores interval_days and the date range, so
+  // accepting them would install a config that reads right and behaves as plain
+  // daily. That reason is gone: every day-lane consumer asks `isEligibleOn`
+  // (R01.02-c) and the range is a lifetime envelope (R01.02-d1). The test is
+  // turned to the ACCEPT side and widened; what it really protected -- nothing
+  // the scheduler cannot honour slips through, and no unknown field passes
+  // silently -- is kept below as explicit refusals.
+  it('accepts the schedule fields the scheduler now reads, unchanged', () => {
+    expect(ok({ kind: 'daily', interval_days: 3 })).toEqual({ kind: 'daily', interval_days: 3 });
+    expect(ok({ kind: 'daily', range_start: '2026-01-01' })).toEqual({ kind: 'daily', range_start: '2026-01-01' });
+    expect(ok({ kind: 'daily', range_end: '2026-01-31' })).toEqual({ kind: 'daily', range_end: '2026-01-31' });
+    expect(ok({ kind: 'daily', interval_days: 365, range_start: '2026-08-11', range_end: '2026-08-20' }))
+      .toEqual({ kind: 'daily', interval_days: 365, range_start: '2026-08-11', range_end: '2026-08-20' });
+    // the range is an envelope: it combines with every kind
+    expect(ok({ kind: 'weekly', count: 3, range_start: '2026-08-05', range_end: '2026-08-20' }))
+      .toEqual({ kind: 'weekly', count: 3, range_start: '2026-08-05', range_end: '2026-08-20' });
+    expect(ok({ kind: 'weekly', days: [4, 0, 2], range_start: '2026-08-05' }))
+      .toEqual({ kind: 'weekly', days: [0, 2, 4], range_start: '2026-08-05' });
+    expect(ok({ kind: 'monthly', count: 10, range_end: '2026-12-31' }))
+      .toEqual({ kind: 'monthly', count: 10, range_end: '2026-12-31' });
+    // a one-day range is a valid range
+    expect(ok({ kind: 'daily', range_start: '2026-08-05', range_end: '2026-08-05' })).not.toBeNull();
+  });
+
+  it('refuses an interval the schedule cannot mean -- never coerces it to daily', () => {
+    expect(ok({ kind: 'weekly', count: 3, interval_days: 3 })).toBeNull();   // only with daily
+    expect(ok({ kind: 'monthly', count: 3, interval_days: 3 })).toBeNull();
+    expect(ok({ kind: 'daily', interval_days: 1 })).toBeNull();               // NEGATIVE: not silently plain daily
+    expect(ok({ kind: 'daily', interval_days: 0 })).toBeNull();
+    expect(ok({ kind: 'daily', interval_days: -3 })).toBeNull();
+    expect(ok({ kind: 'daily', interval_days: 3.5 })).toBeNull();
+    expect(ok({ kind: 'daily', interval_days: 366 })).toBeNull();
+    expect(ok({ kind: 'daily', interval_days: '3' })).toBeNull();
+    expect(ok({ kind: 'daily', interval_days: null })).toBeNull();
+  });
+
+  it('refuses a range that is not a real, ordered pair of calendar days', () => {
+    expect(ok({ kind: 'daily', range_start: '2026-08-20', range_end: '2026-08-05' })).toBeNull(); // NEGATIVE: start > end
+    expect(ok({ kind: 'daily', range_start: '2026-02-30' })).toBeNull();
+    expect(ok({ kind: 'daily', range_end: '5 Ağustos' })).toBeNull();
+    expect(ok({ kind: 'daily', range_start: '' })).toBeNull();
+    expect(ok({ kind: 'daily', range_start: 20260805 })).toBeNull();
+    expect(ok({ kind: 'daily', range_start: '2026-8-5' })).toBeNull();
+    expect(ok({ kind: 'daily', range_end: null })).toBeNull();
+  });
+
+  it('still refuses a field nobody defined', () => {
+    // NEGATIVE: an unknown key must never pass silently.
+    expect(ok({ kind: 'daily', foo: 1 })).toBeNull();
+    expect(ok({ kind: 'daily', interval_days: 3, intervalDays: 3 })).toBeNull();
+    expect(ok({ kind: 'daily', range: ['2026-08-05', '2026-08-20'] })).toBeNull();
   });
 
   it('refuses an unknown kind rather than defaulting to daily', () => {

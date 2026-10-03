@@ -71,6 +71,7 @@ import {
   type LoadBandKey,
 } from './capacity';
 import { DIFFICULTY_LEVELS } from './triage';
+import { parseLocalDate } from './date';
 
 // ---------------------------------------------------------------------------
 // Schema constants — every bound a validator rejection below cites.
@@ -143,15 +144,15 @@ const ALLOWED_HABIT_KEYS = new Set([
 /**
  * Schedule keys a PROPOSAL may carry.
  *
- * `interval_days`, `range_start` and `range_end` are real `FrequencyConfig`
- * fields and are deliberately absent. `lib/habitSchedule.ts`'s `isDueOn` --
- * the function that decides which days a habit is actually due on -- does not
- * read any of them; only the newer `scheduleKind` does. A proposal carrying
- * "every 3 days" would therefore install a habit the scheduler treats as
- * daily: a config that reads correctly and behaves wrongly. Refusing them is
- * how this schema stays honest about what the app can actually keep.
+ * `interval_days`, `range_start` and `range_end` used to be refused here: the
+ * scheduler's day walks went through `isDueOn`, which reads none of them, so
+ * "every 3 days" would have installed a habit treated as daily. That reason is
+ * gone (R01.02-d): every day-lane consumer asks `isEligibleOn` (R01.02-c), and
+ * the date range is a lifetime ENVELOPE that combines with any shape
+ * (R01.02-d1). Each new key is validated below in the same refuse-don't-coerce
+ * style as the others. An unknown key is still refused.
  */
-const ALLOWED_FREQUENCY_KEYS = new Set(['kind', 'days', 'part_of_day', 'count']);
+const ALLOWED_FREQUENCY_KEYS = new Set(['kind', 'days', 'part_of_day', 'count', 'interval_days', 'range_start', 'range_end']);
 
 const FREQUENCY_KINDS = new Set(['daily', 'weekly', 'monthly']);
 const PARTS_OF_DAY = new Set(['morning', 'afternoon', 'evening']);
@@ -163,6 +164,10 @@ export const MAX_UNIT_LENGTH = 24;
 /** Weekly count ceiling is 7; monthly is 31. Enforced per `kind`. */
 export const MAX_WEEKLY_COUNT = 7;
 export const MAX_MONTHLY_COUNT = 31;
+/** "Every N days": 2 is the smallest that is not plain daily; a year is the
+ *  longest cycle a habit plausibly has. 1 (and 0) are refused, not coerced. */
+export const MIN_INTERVAL_DAYS = 2;
+export const MAX_INTERVAL_DAYS = 365;
 
 /** Keys that, if present as an OWN property anywhere in the input, are
  *  refused outright regardless of their value — a JSON payload naming these
@@ -309,6 +314,22 @@ function validateRequiredString(
  * normalised. A schedule quietly rewritten into something else is a habit the
  * user never agreed to, showing up on days they did not choose.
  *
+ * ## The three keys accepted since R01.02-d
+ *
+ *   interval_days   "every N days". Only with kind 'daily' (that is the shape
+ *                   `scheduleKind` reads it on), an integer 2-365. 1 and 0 are
+ *                   REFUSED, not turned into plain daily. The cycle is counted
+ *                   from max(created_at, range_start) -- `habitSchedule.ts`.
+ *   range_start /   a lifetime ENVELOPE (R01.02-d1), not a shape: it combines
+ *   range_end       with every kind and clips the days that shape is due on.
+ *                   Each end is optional (one-sided ranges are valid), must be
+ *                   a real local calendar day ('2026-02-30' is refused, not
+ *                   rolled into March), and start may not be after end.
+ *
+ * Until R01.02-d all three were refused because the scheduler's day walks
+ * ignored them; R01.02-c (consumers ask `isEligibleOn`) and R01.02-d1 (range as
+ * envelope) removed that reason. Any OTHER key is still refused.
+ *
  * `monthly` is accepted as a SHAPE, but note that `isDueOn` deliberately
  * returns false for monthly habits (it has nowhere to store which day of the
  * month), so a monthly habit is never counted as due. That is a pre-existing
@@ -383,6 +404,45 @@ export function validateFrequencyConfig(
     } else {
       out.count = raw.count;
     }
+  }
+
+  // "Every N days" is a variant of DAILY (`scheduleKind`: daily + interval > 1
+  // -> every_n_days); with weekly/monthly it means nothing. 1 or 0 is refused,
+  // NOT rewritten to plain daily: the caller said something the schedule
+  // cannot mean, and silently reinterpreting it is the coercion this file
+  // exists to forbid.
+  if (raw.interval_days !== undefined) {
+    if (kind !== 'daily') {
+      errors.push({ path: `${path}.interval_days`, message: `${path}.interval_days: only meaningful with kind 'daily', got '${kind}'` });
+    } else if (typeof raw.interval_days !== 'number' || !Number.isInteger(raw.interval_days)) {
+      errors.push({ path: `${path}.interval_days`, message: `${path}.interval_days: expected an integer, got ${describeType(raw.interval_days)}${typeof raw.interval_days === 'number' ? ` ${raw.interval_days}` : ''}` });
+    } else if (raw.interval_days < MIN_INTERVAL_DAYS || raw.interval_days > MAX_INTERVAL_DAYS) {
+      errors.push({ path: `${path}.interval_days`, message: `${path}.interval_days: expected ${MIN_INTERVAL_DAYS}-${MAX_INTERVAL_DAYS} (1 is plain daily -- send kind 'daily' without it), got ${raw.interval_days}` });
+    } else {
+      out.interval_days = raw.interval_days;
+    }
+  }
+
+  // The date range is an ENVELOPE (R01.02-d1), so it combines with every
+  // `kind` and either end may be absent (a one-sided range is valid). Each
+  // end must be a REAL local calendar day: `parseLocalDate` rejects
+  // '2026-02-30' instead of rolling it into March.
+  const rangeEnd = (key: 'range_start' | 'range_end'): string | null => {
+    const v = raw[key];
+    if (v === undefined) return null;
+    if (typeof v !== 'string' || parseLocalDate(v) === null) {
+      errors.push({ path: `${path}.${key}`, message: `${path}.${key}: expected a real calendar date 'YYYY-MM-DD', got ${typeof v === 'string' ? `'${v}'` : describeType(v)}` });
+      return null;
+    }
+    return v;
+  };
+  const rangeStart = rangeEnd('range_start');
+  const rangeFinish = rangeEnd('range_end');
+  if (rangeStart !== null && rangeFinish !== null && rangeStart > rangeFinish) {
+    errors.push({ path: `${path}.range_start`, message: `${path}: range_start ${rangeStart} is after range_end ${rangeFinish}` });
+  } else {
+    if (rangeStart !== null) out.range_start = rangeStart;
+    if (rangeFinish !== null) out.range_end = rangeFinish;
   }
 
   // "Weekly" with neither days nor count pins to nothing: `isDueOn` returns

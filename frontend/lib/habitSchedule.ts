@@ -261,9 +261,20 @@ function dueOnExtended(habit: Habit, date: Date): boolean {
   const sk = scheduleKind(habit);
 
   if (sk.kind === 'every_n_days') {
-    if (!isDueOn(habit, date)) return false; // temel korumalar (behavior_type/created_at/end_condition) önce
-    if (!habit.created_at) return true; // referans yoksa daraltamayız — temel korumaya güven
-    const anchor = parseLocalDate(ymd(new Date(habit.created_at)));
+    if (!isDueOn(habit, date)) return false; // temel korumalar (behavior_type/created_at/end_condition/aralık) önce
+    // ÇAPA = max(created_at, range_start) — SAHİP KARARI, R01.02-d.
+    // Döngü `created_at`'ten sayılınca aralık kullanıcıya açıklanamıyordu:
+    // 1 Ağustos'ta kurulmuş "3 günde bir", aralık 11–20 ise 13/16/19 verir ve
+    // pencerenin İLK günü atlanır. Aralık başlangıcı daha geçse döngü oradan
+    // başlar (11/14/17/20). Aralık yoksa max = created_at: aralıksız hiçbir
+    // alışkanlık etkilenmez. İkisi de yoksa daraltamayız — temel korumaya güven
+    // (R01.02-c tuzak 2).
+    const created = habit.created_at ? parseLocalDate(ymd(new Date(habit.created_at))) : null;
+    const rs = habit.frequency_config?.range_start;
+    const rangeStart = rs ? parseLocalDate(rs) : null;
+    const anchor = created && rangeStart
+      ? (ymd(rangeStart) > ymd(created) ? rangeStart : created)
+      : (created ?? rangeStart);
     if (!anchor) return true;
     const diff = daysBetweenLocal(anchor, date);
     if (diff < 0) return false;

@@ -6,9 +6,9 @@ baseline_sha: 0ff1c74b0d8d922fd9bef46d3631a1cf443677e2
 guide_commit: ecfd4e3            # docs/plan/22_ADERYTH_CORE_IMPLEMENTATION_V3.md, verbatim
 scope_authority: docs/plan/21_KAPSAM_EKI_2026-09-13.md
 newer_owner_decision: none        # 2026-09-13
-completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1]
+completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1, R01.02-d]
 active_card: null
-next_ready_card: R01.02-d   # validator + UI for interval_days / range_*; consumers (R01.02-c) and the range envelope (R01.02-d1, KD-06 closed) are done -- önce tüketici, sonra validator
+next_ready_card: R01.02-e   # UI form fields for interval_days / range_*; consumers (R01.02-c), envelope (R01.02-d1) and validator (R01.02-d) done. KD-07 (pricing) should be decided before the form opens the mode to every user
 critical_open_defects: []         # bilinen kusurlar kartlara bağlı; veri kaybı / hesap erişimi / FP kusuru yok
 known_defects_bound_to_cards:
   - id: KD-01
@@ -41,6 +41,11 @@ known_defects_bound_to_cards:
     where: frontend/lib/habitSchedule.ts scheduleKind (range önce gelir) + dueOnExtended date_range dalı -> isDueOn count dalı -> countDueDays
     what: "`kind:weekly` + `count` + `range_start/end` satırı `date_range` sınıflanıyor, hiçbir count guard'ına takılmıyor; gün-şeridinde countDueDays günleri (Pzt/Çar/Cmt) icat ediliyordu, aralıkla kırpılmış (5,8,10,12,15,17,19 Ağustos). Aynı kök: `daily + interval_days:3 + aralık` interval'i kaybedip aralıktaki 18 günün hepsini due sayıyordu. Düzeltme: aralık şekilden çıkarılıp `withinLifetime` zarfına taşındı; `ScheduleKind`'dan `date_range` silindi"
     card: R01.02-d1 (DONE)
+  - id: KD-07
+    status: OPEN -- R01.02-d ile ERİŞİLEBİLİR oldu (AI Coach artık interval_days taşıyan alışkanlık kurabiliyor)
+    where: "frontend/lib/triage.ts costBreakdown (FREQ_FACTOR yalnız `kind`'a bakar) -> computeWillpowerCost (buildInstallRows'un yazdığı willpower_cost); frontend/lib/capacity.ts occurrencesPerWeek (daily -> 7 * (count ?? 1)) -> frequencyWeight 1.0"
+    what: "İkisi de `interval_days` okumuyor: 'her 3 günde bir' alışkanlık günlük gibi FİYATLANIYOR (irade bedeli daily faktörüyle, kapasite yükü haftada 7 / ağırlık 1.0; doğrusu ~2.33 / ~0.33). Takvim doğru (R01.02-c/d1); bedel ve yük fazla. Bu kartın kapsamı dışında (triage.ts / capacity.ts) bırakıldı, düzeltilmedi"
+    card: R01.02-e öncesi karar (form modu herkese açmadan) ya da ayrı fiyatlama kartı
 deferred_ids: [D01, D02, D03, D04, D05, D06, D07, D08, D09]
 cancelled_ids: [X01, X02, X03]
 core_implementation: IN_PROGRESS
@@ -56,6 +61,7 @@ evidence_locations:
   - docs/implementation-v3/STATE.md#r0106-a-evidence
   - docs/implementation-v3/STATE.md#r0102-c-evidence
   - docs/implementation-v3/STATE.md#r0102-d1-evidence
+  - docs/implementation-v3/STATE.md#r0102-d-evidence
 gates_run_at_baseline:
   typecheck_ci: 0 errors
   lint_ci: 0 warnings
@@ -70,6 +76,7 @@ timing:                           # R00.07 — dev / test / fix ayrı; erişim b
   R01.06-a: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
   R01.02-c: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
   R01.02-d1: { access_wait_min: 0, single_writer: true }  # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı. Not: önceki iki "d1 bitti" raporu bu çalışma kopyasında iz bırakmamıştı; bu koşu 3524e26'dan sıfırdan yapıldı
+  R01.02-d: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
 ```
 
 ## R01.01-a evidence
@@ -502,12 +509,115 @@ Negative assertions: invented weekday pattern → red; interval+range every day 
 
 ### Open for R01.02-d (not decided here)
 
-- `every_n_days` anchors on `created_at`, not on `range_start`: "every 3 days,
+- **Decided in R01.02-d (owner):** anchor = max(created_at, range_start) -- see below. Original note:
+  `every_n_days` anchors on `created_at`, not on `range_start`: "every 3 days,
   10-20 Aug" for a habit created 1 Aug cycles from 1 Aug. Unchanged by this card
   (trap 2 of R01.02-c pins the anchor rule); the validator/UI card should decide
   whether a range re-anchors the cycle.
 - Target proration for cut periods: R01.05.
 - `isWindowSatisfied` (no production consumer -- grep finds only a comment in behaviorIntelligence.ts) still uses the calendar window.
+
+## R01.02-d evidence
+
+- **Branch/HEAD:** `feature/r01-period-status`, on top of `1cd0bc9` (verified at start, tree clean).
+- **What it opens:** `validateFrequencyConfig` (`lib/routineProposal.ts`) accepts
+  `interval_days`, `range_start`, `range_end`. Callers: `lib/coachActions.ts`
+  (AI Coach `propose_habit`) and `validateRoutineProposal`. Traced to the row:
+  `coachActionToRoutineProposal` → `validateRoutineProposal` →
+  `services/routineService.buildInstallRows` passes `frequency_config` through
+  untouched; `habitRepository` selects/maps it whole. No layer filters keys.
+  DB is unconstrained jsonb -- **no migration written or needed.**
+
+### Accepted / refused (refuse-don't-coerce, same style as days / part_of_day / count)
+
+| Config | Verdict |
+|---|---|
+| `{daily, interval_days: 3}` / `365` | accepted as given |
+| `{daily, interval_days: 1 \| 0 \| -3 \| 3.5 \| 366 \| '3' \| null}` | refused -- 1/0 are NOT turned into plain daily |
+| `{weekly \| monthly, …, interval_days: 3}` | refused (only meaningful with daily) |
+| `range_start` / `range_end` alone (one-sided) | accepted |
+| both, start ≤ end (incl. a one-day range) | accepted |
+| range with every kind (`weekly`+`count`, `weekly`+`days`, `monthly`+`count`, `daily`+interval) | accepted -- envelope |
+| `start > end` | refused |
+| `'2026-02-30'`, `'5 Ağustos'`, `''`, `'2026-8-5'`, a number, `null` | refused (`parseLocalDate`, the repo's leaf date module -- no hand regex) |
+| unknown key (`foo`, `intervalDays`, `range`) | refused, as before |
+| `__proto__` / `constructor` next to the new keys | refused, as before |
+
+`MIN_INTERVAL_DAYS = 2`, `MAX_INTERVAL_DAYS = 365` exported next to the count
+ceilings. The allow-list doc and `validateFrequencyConfig`'s doc rewritten (why
+each key is now accepted; the `monthly` limitation note kept).
+
+### Anchor — owner decision, R01.02-d
+
+`dueOnExtended`'s `every_n_days` cycle now counts from **max(created_at,
+range_start)**. Counted from `created_at`, "every 3 days, 11-20 Aug, created
+1 Aug" gave 13/16/19 -- the window's first day skipped, which cannot be
+explained to a user. Now 11/14/17/20. No range → max is `created_at` →
+range-less habits unaffected (A7). No `created_at` but a range → the range
+start anchors. Neither → not narrowed (R01.02-c trap 2 kept). Rationale written
+at the code site, marked "SAHİP KARARI, R01.02-d".
+
+### Retargeted test
+
+`coachHabitSemantics.test.ts` "refuses schedule fields the scheduler does not
+read": its stated reason (`isDueOn` ignores the fields) was voided by R01.02-c
+and d1. Not deleted -- turned to the ACCEPT side and widened into 4 tests:
+accepts (7 shapes incl. range with every kind), refuses bad intervals (9
+cases), refuses bad ranges (7 cases), still refuses unknown fields (3 cases).
+The value it protected -- nothing unknown passes silently -- kept explicitly.
+
+### The 9 stale comments (KD-05 class), fixed
+
+R01.02-c's "`isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range."
+was wrong twice after d1 (`date_range` is no longer a mode; range clipping is in
+`withinLifetime`, so BOTH predicates apply it). Replaced in all 9 places --
+`reportMetrics.ts` ×2, `behaviorIntelligence.ts` ×4, `recovery.tsx` ×2,
+`habit-detail.tsx` ×1 -- with: "`isEligibleOn` = `isDueOn` for
+daily/weekly_days; it adds the every_n_days interval. The date range is not a
+mode: it is the lifetime envelope (`withinLifetime`) both read." Diff: 9 comment
+lines, 0 code lines. No `date_range` mention left outside `habitSchedule.ts`'s
+own history notes.
+
+### Acceptance
+
+| | Result |
+|---|---|
+| A1 | `{daily, interval 3}` accepted; with weekly refused; 1, 0, 3.5 refused |
+| A2 | `{weekly, count 3, 08-05..08-20}` accepted unchanged; evaluated `weekly_count`, eligible every day 5..20 |
+| A3 | one-sided ranges accepted |
+| A4 | start > end refused; `'2026-02-30'`, `'5 Ağustos'`, `''`, number refused |
+| A5 | `foo` refused; `__proto__` / `constructor` still refused, also next to the new keys |
+| A6 | validator → `scheduleKind` + `isEligibleOn`: created 1 Aug, every 3 days, 11-20 Aug → **11, 14, 17, 20** (asserted ≠ 13/16/19); created 13 Aug → 13/16/19 (max); no `created_at` → 11/14/17/20; August denominator 4 |
+| A7 | **validator:** 34-config corpus without the new keys (11 valid, 23 invalid) captured at `1cd0bc9`, re-run after: verdicts, `frequency` objects, error paths and messages identical, except the allowed-key list inside 2 unknown-field messages, which grows by the three keys (normalised in the comparison and pinned exactly in its own test). **calendar:** `rangelessOutputs` re-captured at `1cd0bc9` before the anchor change and after it -- byte-identical (`cmp`); `rangelessPreservation.test.ts` keeps pinning it |
+| A8 | AI Coach `propose_habit` with `{daily, interval 3, 11-20 Aug}`: accepted, action equal to the input; through `coachActionToRoutineProposal` → `validateRoutineProposal` → `buildInstallRows`: `frequency_config` identical on the row. `interval_days: 1` from the coach rejected, not installed |
+
+Negative assertions: interval 1 accepted → red; start > end accepted → red;
+unknown key accepted → red; any range-less day output changed → red.
+
+### Mutation proof (6 focused suites, 214 tests; each reverted byte-identical, sha256 of both source files verified)
+
+- **M1** the three keys out of `ALLOWED_FREQUENCY_KEYS`: **10 / 214 red**
+- **M2** start ≤ end check removed: **1 / 214 red**
+- **M3** anchor back to `created_at`: **3 / 214 red** -- all A6; `rangelessPreservation` (A7) stayed GREEN, as required
+- **M4** (extra) `MIN_INTERVAL_DAYS` 2 → 1: **2 / 214 red** (validator + coach path)
+- 0 suite-level failures.
+
+### Gates
+
+- `typecheck:ci` exit 0 · `lint:ci` exit 0 · `run-tests.js` **145/145** · `git diff --check` clean
+- focused 6 suites **214/214**
+- full `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB`, two consecutive runs: **140 suites / 2321 tests** each, 0 FAIL lines, 0 OOM/SIGTERM/`Command failed` markers (base 139 / 2271: +1 suite, +50 tests)
+- **Not done:** no screen rendered in this card; no device/emulator (none on this host). `HabitOnboarding.tsx` untouched; `habit-detail.tsx` only its one comment line.
+
+### Found, recorded, not fixed: KD-07 (now reachable)
+
+Opening the validator makes "every N days" installable by the AI Coach, and
+the cost side does not read `interval_days`: `triage.costBreakdown`'s
+`FREQ_FACTOR` keys on `kind` only, and `capacity.occurrencesPerWeek` returns 7
+for `daily`. An every-3-days habit is therefore priced and loaded as daily
+(should be ~2.33/week, weight ~0.33). The calendar is right; willpower cost and
+capacity load are high. Outside this card's files; flagged so it is decided
+before R01.02-e opens the mode to every user via the form.
 
 ## Paket sınıflandırması (R00.02 özeti)
 

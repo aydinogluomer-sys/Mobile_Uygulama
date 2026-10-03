@@ -181,7 +181,7 @@ export function dayCellFor(habit: Habit, logIndex: Map<Ymd, HabitDetailLogRow>, 
   if (d > todayYmd) return { date: d, state: 'future', value: null };
   const log = logIndex.get(d);
   const countBased = isCountBasedSchedule(habit);
-  // R01.02-c — day lane: `!countBased` short-circuits first. `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+  // R01.02-c — day lane: `!countBased` short-circuits first. `isEligibleOn` = `isDueOn` for daily/weekly_days; it adds the every_n_days interval. The date range is not a mode: it is the lifetime envelope (`withinLifetime`) both read.
   if (!countBased && !isEligibleOn(habit, dateObj)) return { date: d, state: 'not_scheduled', value: null };
   if (!log) return { date: d, state: countBased ? 'not_scheduled' : 'miss', value: null };
   if (log.state === 'done') return { date: d, state: 'full', value: log.value };
