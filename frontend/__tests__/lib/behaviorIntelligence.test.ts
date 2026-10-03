@@ -527,3 +527,62 @@ describe('R01.02-b -- fragility and trend see period rates for count-based habit
     expect(r.ok && r.value.weeklyRates.map((x) => Math.round(x * 100))).toEqual([100, 67, 100, 67]);
   });
 });
+
+// ===========================================================================
+// R01.02-c — every_n_days / date_range on the day lane
+//
+// Streaks, completion rate and the weekday breakdown walked days through
+// `isDueOn`, which ignores interval_days and ranges. "Every 3 days" therefore
+// had two phantom due days in three: an unlogged off day broke the streak.
+// ===========================================================================
+
+describe('R01.02-c — behaviorIntelligence on every_n_days / date_range', () => {
+  // created Mon 2026-08-03 local -> due Mon 03, Thu 06, Sun 09, ...
+  const every3: BIHabit = {
+    id: 'n3', name: 'n3', behavior_type: 'positive',
+    created_at: '2026-08-03T09:00:00', end_condition: null,
+    frequency_config: { kind: 'daily', interval_days: 3 },
+  };
+  const done3 = [log('n3', '2026-08-03', 'done'), log('n3', '2026-08-06', 'done'), log('n3', '2026-08-09', 'done')];
+  const SUN = new Date(2026, 7, 9);
+
+  it('A1 — completion rate over its due days only: 3/3', () => {
+    const r = habitCompletionRate(every3, done3, { start: '2026-08-03', end: '2026-08-09' });
+    expect(r).toEqual({ ok: true, value: 1 });
+  });
+
+  it('A1 — off days are transparent to the streak (red if an unlogged off day breaks it)', () => {
+    expect(currentStreak(every3, done3, SUN)).toBe(3);
+    expect(longestStreak(every3, done3, { since: new Date(2026, 7, 3), asOf: SUN })).toBe(3);
+  });
+
+  it('A1 — a real miss on a due day still breaks it', () => {
+    const logs = [log('n3', '2026-08-03', 'done'), log('n3', '2026-08-06', 'miss'), log('n3', '2026-08-09', 'done')];
+    expect(currentStreak(every3, logs, SUN)).toBe(1);
+  });
+
+  it('A1 — weekday breakdown only schedules Mon, Thu, Sun', () => {
+    const wb = weekdayBreakdown([every3], done3, { start: '2026-08-03', end: '2026-08-09' });
+    expect(wb.map((w) => w.scheduled)).toEqual([1, 0, 0, 1, 0, 0, 1]);
+  });
+
+  it('A4 — date range Wed..Fri: streak over the range, outside days transparent', () => {
+    const ranged: BIHabit = { ...dailyHabit('rg', '2026-07-01'), frequency_config: { kind: 'daily', range_start: '2026-08-05', range_end: '2026-08-07' } };
+    const logs = [log('rg', '2026-08-05', 'done'), log('rg', '2026-08-06', 'done'), log('rg', '2026-08-07', 'done')];
+    expect(currentStreak(ranged, logs, SUN)).toBe(3);
+    expect(habitCompletionRate(ranged, logs, { start: '2026-08-03', end: '2026-08-09' })).toEqual({ ok: true, value: 1 });
+  });
+
+  it('A5 — Mon/Wed/Fri + range: Thursday inside the range is still not due', () => {
+    const both: BIHabit = { ...weeklyDaysHabit('wr', '2026-07-01', [0, 2, 4]), frequency_config: { kind: 'weekly', days: [0, 2, 4], range_start: '2026-08-05', range_end: '2026-08-09' } };
+    const wb = weekdayBreakdown([both], [], { start: '2026-08-03', end: '2026-08-09' });
+    // Mon 03 is before the range; Wed 05 and Fri 07 only.
+    expect(wb.map((w) => w.scheduled)).toEqual([0, 0, 1, 0, 1, 0, 0]);
+  });
+
+  it('A8 — count-based streaks still count PERIODS (R01.02-b unchanged)', () => {
+    const w3: BIHabit = { ...dailyHabit('w3', '2026-07-01'), frequency_config: { kind: 'weekly', count: 3 } };
+    const logs = [log('w3', '2026-08-04', 'done'), log('w3', '2026-08-06', 'done'), log('w3', '2026-08-09', 'done')];
+    expect(currentStreak(w3, logs, SUN)).toBe(1); // one satisfied week, not 3 days
+  });
+});

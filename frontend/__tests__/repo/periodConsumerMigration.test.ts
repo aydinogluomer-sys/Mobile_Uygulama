@@ -63,19 +63,28 @@ describe('R01.02-b — day-level miss detection excludes count schedules', () =>
   });
 });
 
+/** Call sites only: `isEligibleOn(` not on a comment line. */
+function callsIsEligibleOn(src: string): boolean {
+  return src
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*(\*|\/\/)/.test(l))
+    .some((l) => /\bisEligibleOn\s*\(/.test(l));
+}
+
 describe('R01.02-b — the library consumers no longer reach the count branch', () => {
-  // Both files still call `isDueOn` for DAY-based schedules, which is correct
-  // and deliberate. What must hold is that a count-based habit returns before
-  // the day walk, so `countDueDays` can never see one.
+  // R01.02-c moved the day walk from `isDueOn` to `isEligibleOn` (identical for
+  // daily/weekly_days, and the only predicate that sees interval_days and date
+  // ranges). What R01.02-b pinned still must hold for the new call: a count-based
+  // habit returns before the day walk.
   for (const f of ['lib/reportMetrics.ts', 'lib/behaviorIntelligence.ts']) {
-    it(`${f} short-circuits count schedules before any isDueOn day walk`, () => {
+    it(`${f} short-circuits count schedules before any day-walk eligibility call`, () => {
       const src = read(f);
       expect(src).toMatch(/isCountBased\(/);
       expect(src).toMatch(/scheduledCompletionRate|periodStatus/);
-      // Every `isDueOn` call must be inside a function that has already handled
-      // the count case: assert the guard appears before the first call site.
+      // assert the guard appears before the first day-walk call site.
       const firstGuard = src.search(/if \(isCountBased\(/);
-      const firstCall = src.split(/\r?\n/).findIndex((l) => !/^\s*(\*|\/\/)/.test(l) && /\bisDueOn\s*\(/.test(l));
+      const firstCall = src.split(/\r?\n/).findIndex((l) => !/^\s*(\*|\/\/)/.test(l) && /\bisEligibleOn\s*\(/.test(l));
+      expect(firstCall).toBeGreaterThan(-1);
       const firstCallOffset = src.split(/\r?\n/).slice(0, firstCall).join('\n').length;
       expect(firstGuard).toBeGreaterThan(-1);
       expect(firstGuard).toBeLessThan(firstCallOffset);
@@ -102,7 +111,9 @@ describe('R01.02-b — countDueDays is retained on purpose, not forgotten', () =
   });
 
   it('has no production caller that can pass it a count-based habit', () => {
-    // Every file that still calls `isDueOn` must guard count schedules first.
+    // These four files used to call `isDueOn` (R01.02-b asserted that they
+    // still did). Since R01.02-c they call `isEligibleOn` on the day lane and
+    // `isDueOn` not at all -- and they still guard count schedules first.
     // habit-detail is the one that used to not, and the reason this is a test.
     const guarded: [string, RegExp][] = [
       ['lib/reportMetrics.ts', /isCountBased\(/],
@@ -112,8 +123,73 @@ describe('R01.02-b — countDueDays is retained on purpose, not forgotten', () =
     ];
     for (const [f, guard] of guarded) {
       const src = read(f);
-      expect(callsIsDueOn(src)).toBe(true);   // still a day-based consumer
-      expect(src).toMatch(guard);             // but count schedules branch away
+      expect(callsIsDueOn(src)).toBe(false);      // R01.02-c: no direct isDueOn
+      expect(callsIsEligibleOn(src)).toBe(true);  // still a day-based consumer
+      expect(src).toMatch(guard);                 // but count schedules branch away
     }
+  });
+});
+
+describe('R01.02-c — the day lane asks isEligibleOn, so interval_days / date ranges are seen', () => {
+  // `isDueOn` reads kind/days/count only. Anything that walks days through it
+  // treats "every 3 days" as "every day" and ignores range bounds, while
+  // streakBroken / isEligibleOn / periodStatus (through `dueOnExtended`) do not:
+  // one module, two answers. Each anchored line below is the exact day-lane
+  // call; a mention in a comment neither satisfies nor breaks it.
+  const DAY_LANE: [string, RegExp[]][] = [
+    ['lib/reportMetrics.ts', [
+      /^\s*if \(!isEligibleOn\(habit as Habit, dateObj\)\) continue;/,   // habitAveragePercent
+      /^\s*if \(!isEligibleOn\(habit, dateObj\)\) continue;/,            // summarizeHabitProgress
+    ]],
+    ['lib/behaviorIntelligence.ts', [
+      /^\s*if \(!isEligibleOn\(habit as Habit, date\)\) continue; \/\/ `as Habit`/, // dueDayStats
+      /^\s*if \(!isEligibleOn\(habit as Habit, date\)\) continue;$/,                // weekdayBreakdown
+      /^\s*if \(!isEligibleOn\(habit as Habit, cursor\)\) \{/,                      // currentStreak
+      /^\s*if \(!isEligibleOn\(habit as Habit, date\)\) continue; \/\/ transparent/, // longestStreak
+    ]],
+    ['app/screens/recovery.tsx', [
+      /^\s*if \(!isEligibleOn\(h, dObj\)\) continue;$/,
+    ]],
+    ['app/screens/habit-detail.tsx', [
+      /^\s*if \(!countBased && !isEligibleOn\(habit, dateObj\)\) return \{ date: d, state: 'not_scheduled'/,
+    ]],
+    ['lib/habitSchedule.ts', [
+      /^\s*if \(!isEligibleOn\(habit, cursor\)\) continue;$/,            // scheduledCompletionRate day branch
+      /^\s*return isEligibleOn\(habit, date\);$/,                        // carriesDayLoad day branch
+    ]],
+  ];
+
+  for (const [f, patterns] of DAY_LANE) {
+    it(`${f}: every day-lane call is isEligibleOn`, () => {
+      const lines = read(f).split(/\r?\n/);
+      for (const re of patterns) expect(lines.some((l) => re.test(l))).toBe(true);
+    });
+  }
+
+  it('recovery.tsx makes BOTH day walks (backlog + consecutiveMissedDue) through isEligibleOn', () => {
+    const lines = read('app/screens/recovery.tsx').split(/\r?\n/);
+    expect(lines.filter((l) => /^\s*if \(!isEligibleOn\(h, dObj\)\) continue;$/.test(l))).toHaveLength(2);
+  });
+
+  it('inside habitSchedule.ts, isDueOn is called only by dueOnExtended (base guards)', () => {
+    const src = read('lib/habitSchedule.ts');
+    const start = src.indexOf('function dueOnExtended(');
+    const end = src.indexOf('\n}', start);
+    expect(start).toBeGreaterThan(-1);
+    const calls = src
+      .split(/\r?\n/)
+      .map((l, i) => ({ l, i }))
+      .filter(({ l }) => !/^\s*(\*|\/\/)/.test(l) && /\bisDueOn\s*\(/.test(l) && !/export function isDueOn/.test(l));
+    const startLine = src.slice(0, start).split(/\r?\n/).length - 1;
+    const endLine = src.slice(0, end).split(/\r?\n/).length;
+    expect(calls.length).toBe(3);
+    for (const { i } of calls) {
+      expect(i).toBeGreaterThanOrEqual(startLine);
+      expect(i).toBeLessThanOrEqual(endLine);
+    }
+  });
+
+  it('dueOnExtended stays private (isEligibleOn is its public door)', () => {
+    expect(read('lib/habitSchedule.ts')).not.toMatch(/export function dueOnExtended/);
   });
 });

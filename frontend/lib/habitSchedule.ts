@@ -60,16 +60,23 @@ function withinLifetime(habit: Habit, date: Date): boolean {
  *
  * So this function is a compatibility bridge, and as of R01.02-b it is a bridge
  * with no traffic on the count lane: NO production caller can hand a count-based
- * habit to it any more. Each one guards first --
+ * habit to it any more.
  *
- *   lib/reportMetrics.ts:134,:233          `isCountBased` early return/continue
- *   lib/behaviorIntelligence.ts:312,:381,  `isCountBased` early return/continue
- *                        :450,:493
- *   app/screens/recovery.tsx:104,:128      `isCountBasedSchedule(h)` skip
- *   app/screens/habit-detail.tsx           count cells never consult it
- *   weekly-review / monthly-review /       `carriesDayLoad`, whose count lane
- *   insights                               never calls through
- *   dueOnExtended (below)                  only reached from guarded callers
+ * As of R01.02-c it has no direct production caller outside this module at all.
+ * The day-lane consumers (reportMetrics, behaviorIntelligence, recovery,
+ * habit-detail, `scheduledCompletionRate`, `carriesDayLoad`) call `isEligibleOn`
+ * instead -- identical for daily/weekly_days, and the only predicate that sees
+ * `interval_days` / `range_start` / `range_end`. Each still guards count
+ * schedules first. The remaining caller is `dueOnExtended` (below), which uses
+ * it for the base guards.
+ *
+ * ONE HOLE, pre-existing and recorded (STATE.md KD-06), not closed here: a
+ * `weekly` row with `count` AND `range_start`/`range_end` is classified
+ * `date_range` by `scheduleKind` (range wins, kind is not consulted), so it is
+ * not count-based to any guard, and `dueOnExtended`'s range branch then calls
+ * this function, whose count branch invents weekdays. No such row can be
+ * written today (the client validator rejects the range keys); R01.02-d must
+ * decide the combination before it opens them.
  *
  * The count branch and `countDueDays` are therefore dead for every real input,
  * and `__tests__/repo/periodConsumerMigration.test.ts` pins that. They are still
@@ -454,7 +461,10 @@ export function scheduledCompletionRate(
   for (let cursor = range.from; ymd(cursor) <= toYmd; cursor = addDaysLocal(cursor, 1)) {
     const day = ymd(cursor);
     if (sinceYmd && day < sinceYmd) continue;   // the habit did not exist yet
-    if (!isDueOn(habit, cursor)) continue;
+    // R01.02-c — day lane only (count modes returned above via `scheduleKind`).
+    // `isEligibleOn` == `dueOnExtended` here: identical to `isDueOn` for
+    // daily/weekly_days, and the only path that honours interval_days/ranges.
+    if (!isEligibleOn(habit, cursor)) continue;
 
     const log = byDay.get(day);
     if (log?.state === 'skip') continue;        // excused: out of both sides
@@ -910,7 +920,9 @@ export function isCountBasedSchedule(habit: Habit): boolean {
 
 export function carriesDayLoad(habit: Habit, logs: LogForPeriod[], date: Date): boolean {
   if (!isCountBasedSchedule(habit)) {
-    return isDueOn(habit, date); // day-based: unchanged, deliberately
+    // R01.02-c — day lane (guard: the `if` above). `isEligibleOn` is `isDueOn`
+    // for daily/weekly_days and additionally narrows every_n_days/date_range.
+    return isEligibleOn(habit, date);
   }
   if (!isEligibleOn(habit, date)) return false;
   // `periodStatus`'s `asOf` decides whether the period is CLOSED; it does not

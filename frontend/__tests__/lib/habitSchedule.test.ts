@@ -14,7 +14,7 @@ import {
   isEligibleOn, scheduledCompletionRate, periodStatus,
   isCountBasedSchedule, carriesDayLoad,
 } from '../../lib/habitSchedule';
-import { ymd } from '../../lib/date';
+import { addDaysLocal, ymd } from '../../lib/date';
 
 /** Minimal positive habit; override what a case cares about. */
 function habit(over: Partial<Habit> = {}): Habit {
@@ -538,11 +538,15 @@ describe('R01.02-b — carriesDayLoad (the per-day LOAD question)', () => {
 
   // The whole point of the helper: day-based schedules must be untouched, so
   // the three review/insights screens cannot regress for them.
-  it('is identical to isDueOn for every day-based shape', () => {
+  // R01.02-c — this test used to list `interval_days: 3` among the shapes
+  // identical to `isDueOn`. That pinned the split brain the card removes:
+  // `isDueOn` ignores interval_days, so "every 3 days" carried load EVERY day.
+  // daily / weekly_days / the malformed weekly row keep the identity; the
+  // interval shape moves to the next test, against `isEligibleOn`.
+  it('is identical to isDueOn for daily, weekly_days and the malformed weekly row', () => {
     const shapes: Habit[] = [
       habit({ frequency_config: { kind: 'daily' } }),
       habit({ frequency_config: { kind: 'weekly', days: [0, 2, 4] } }),
-      habit({ frequency_config: { kind: 'daily', interval_days: 3 } }),
       habit({ frequency_config: { kind: 'weekly' } }),            // neither days nor count
     ];
     for (const h of shapes) {
@@ -550,6 +554,12 @@ describe('R01.02-b — carriesDayLoad (the per-day LOAD question)', () => {
         expect(carriesDayLoad(h, [], d)).toBe(isDueOn(h, d));
       }
     }
+  });
+
+  it('R01.02-c — every_n_days carries load only on its interval days (not every day)', () => {
+    const h = habit({ created_at: '2026-08-03T09:00:00', frequency_config: { kind: 'daily', interval_days: 3 } });
+    expect(WEEK.map((d) => carriesDayLoad(h, [], d))).toEqual([true, false, false, true, false, false, true]);
+    for (const d of WEEK) expect(carriesDayLoad(h, [], d)).toBe(isEligibleOn(h, d));
   });
 
   it('an untouched "3 a week" carries load on every day of the week, not three invented ones', () => {
@@ -602,5 +612,76 @@ describe('R01.02-b — carriesDayLoad (the per-day LOAD question)', () => {
     const later = habit({ created_at: '2026-08-06T00:00:00Z', frequency_config: { kind: 'weekly', count: 3 } });
     expect(carriesDayLoad(later, [], MON)).toBe(false);   // 03 Aug, before created_at
     expect(carriesDayLoad(later, [], THU)).toBe(true);    // 06 Aug
+  });
+});
+
+// ===========================================================================
+// R01.02-c — the day lane in this module asks isEligibleOn
+// ===========================================================================
+
+describe('R01.02-c — scheduledCompletionRate / carriesDayLoad on every_n_days / date_range', () => {
+  const every3 = habit({ id: 'n3', created_at: '2026-08-03T09:00:00', frequency_config: { kind: 'daily', interval_days: 3 } });
+
+  it('A1 — every 3 days: 3 due days in the week (Mon/Thu/Sun), not 7', () => {
+    const r = scheduledCompletionRate(every3, [], { from: MON, to: SUN });
+    expect(r.dueDays).toBe(3);
+    expect(r.dueDays).not.toBe(7); // NEGATIVE
+  });
+
+  it('A1 — done on the due days only scores 1.0', () => {
+    const logs = [mkLog('n3', MON, 'done'), mkLog('n3', THU, 'done'), mkLog('n3', SUN, 'done')];
+    expect(scheduledCompletionRate(every3, logs, { from: MON, to: SUN })).toEqual({ rate: 1, dueDays: 3, doneDays: 3 });
+  });
+
+  it('A2 — the predicate recovery walks with is time-of-day independent (it passes subDays(now, k))', () => {
+    // recovery.tsx calls isEligibleOn(h, subDays(new Date(), k)): a mid-afternoon
+    // instant, not local midnight. Off days must stay off at any hour.
+    const at = (d: Date, hh: number, mm: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm);
+    expect(WEEK.map((d) => isEligibleOn(every3, at(d, 14, 37)))).toEqual([true, false, false, true, false, false, true]);
+    expect(WEEK.map((d) => isEligibleOn(every3, at(d, 23, 59)))).toEqual([true, false, false, true, false, false, true]);
+  });
+
+  it('A4 — range Wed..Fri: due days 3; outside days carry no load', () => {
+    const ranged = habit({ id: 'rg', frequency_config: { kind: 'daily', range_start: '2026-08-05', range_end: '2026-08-07' } });
+    expect(scheduledCompletionRate(ranged, [], { from: MON, to: SUN }).dueDays).toBe(3);
+    expect(WEEK.map((d) => carriesDayLoad(ranged, [], d))).toEqual([false, false, true, true, true, false, false]);
+  });
+
+  it('A5 (trap 1) — weekly days + range keeps the weekday restriction (red if swallowed)', () => {
+    const both = habit({ id: 'wr', frequency_config: { kind: 'weekly', days: [0, 2, 4], range_start: '2026-08-05', range_end: '2026-08-09' } });
+    expect(scheduleKind(both).kind).toBe('date_range'); // range wins classification...
+    // ...but dueOnExtended's range branch calls isDueOn first, so only Wed/Fri survive.
+    expect(WEEK.map((d) => isEligibleOn(both, d))).toEqual([false, false, true, false, true, false, false]);
+    expect(scheduledCompletionRate(both, [], { from: MON, to: SUN }).dueDays).toBe(2);
+    expect(isEligibleOn(both, THU)).toBe(false);
+  });
+
+  it('A6 (trap 2) — interval_days without created_at is not narrowed: every day', () => {
+    const noAnchor = habit({ id: 'na', created_at: undefined, frequency_config: { kind: 'daily', interval_days: 3 } } as Partial<Habit>);
+    expect(WEEK.every((d) => isEligibleOn(noAnchor, d))).toBe(true);
+    expect(scheduledCompletionRate(noAnchor, [], { from: MON, to: SUN }).dueDays).toBe(7);
+  });
+
+  it('A7 — isEligibleOn is isDueOn for daily and weekly_days over a full year', () => {
+    const shapes = [
+      habit({ frequency_config: { kind: 'daily' } }),
+      habit({ frequency_config: { kind: 'weekly', days: [0, 2, 4] } }),
+      habit({ frequency_config: { kind: 'weekly', days: [6] } }),
+      habit({ created_at: '2026-03-15T10:00:00', end_condition: { kind: 'date', value: '2026-09-01' }, frequency_config: { kind: 'weekly', days: [1, 3, 5] } } as Partial<Habit>),
+    ];
+    for (const h of shapes) {
+      for (let i = 0; i < 366; i++) {
+        const d = addDaysLocal(new Date(2026, 0, 1), i);
+        expect(isEligibleOn(h, d)).toBe(isDueOn(h, d));
+      }
+    }
+  });
+
+  it('KD-06 (pre-existing, recorded not fixed) — weekly count + range is classified date_range, not count-based', () => {
+    // Pins the CLASSIFICATION only, so R01.02-d sees it: such a row passes every
+    // count guard and reaches isDueOn's count branch through dueOnExtended.
+    const h = habit({ frequency_config: { kind: 'weekly', count: 3, range_start: '2026-08-05', range_end: '2026-08-20' } });
+    expect(scheduleKind(h).kind).toBe('date_range');
+    expect(isCountBasedSchedule(h)).toBe(false);
   });
 });

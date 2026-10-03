@@ -280,3 +280,72 @@ describe('R01.02-b — summarizeHabitProgress uses the schedule for possibleDays
     expect(r[0]).toMatchObject({ possibleDays: 10, completedDays: 4, percent: 40 });
   });
 });
+
+// ===========================================================================
+// R01.02-c — the day lane sees interval_days and date ranges
+//
+// Before this card `habitAveragePercent` / `summarizeHabitProgress` walked days
+// through `isDueOn`, which reads kind/days/count only: "every 3 days" was due
+// EVERY day (two phantom misses in three) and a date range was ignored, while
+// `isEligibleOn` / `streakBroken` / `periodStatus` in the same module honoured
+// both. They now ask `isEligibleOn`.
+// ===========================================================================
+
+describe('R01.02-c — reportMetrics on every_n_days / date_range', () => {
+  // created Monday 2026-08-03 (local) -> due Mon 03, Thu 06, Sun 09
+  const every3 = { ...h(), id: 'n3', created_at: '2026-08-03T09:00:00', frequency_config: { kind: 'daily', interval_days: 3 } } as Habit;
+  const ranged = { ...h(), id: 'rg', frequency_config: { kind: 'daily', range_start: '2026-08-05', range_end: '2026-08-07' } } as Habit;
+  const doneOn = (id: string, days: string[]) => days.map((d) => log({ habit_id: id, completed_at: d, state: 'done' }));
+
+  it('A1 — every 3 days, done on its three due days: 100%, possibleDays 3', () => {
+    const logs = doneOn('n3', ['2026-08-03', '2026-08-06', '2026-08-09']);
+    expect(habitAveragePercent({ habits: [every3], logs, start: WEEK_START, end: WEEK_END })).toBe(100);
+    const [row] = summarizeHabitProgress([every3], logs, WEEK_START, WEEK_END);
+    expect(row).toMatchObject({ completedDays: 3, possibleDays: 3, percent: 100 });
+  });
+
+  it('NEGATIVE A1 — the denominator is not 7 (red if every day is due)', () => {
+    const [row] = summarizeHabitProgress([every3], [], WEEK_START, WEEK_END);
+    expect(row.possibleDays).toBe(3);
+    expect(row.possibleDays).not.toBe(7);
+  });
+
+  it('A1 — the days between are neither due nor missed: a log there does not move the score', () => {
+    const logs = [...doneOn('n3', ['2026-08-03', '2026-08-06', '2026-08-09']),
+      log({ habit_id: 'n3', completed_at: '2026-08-04', state: 'miss' })];
+    expect(habitAveragePercent({ habits: [every3], logs, start: WEEK_START, end: WEEK_END })).toBe(100);
+  });
+
+  it('A4 — date range Wed..Fri: only those three days are due', () => {
+    const logs = doneOn('rg', ['2026-08-05', '2026-08-06', '2026-08-07']);
+    expect(habitAveragePercent({ habits: [ranged], logs, start: WEEK_START, end: WEEK_END })).toBe(100);
+    const [row] = summarizeHabitProgress([ranged], logs, WEEK_START, WEEK_END);
+    expect(row.possibleDays).toBe(3);
+  });
+
+  it('NEGATIVE A4 — a day outside the range is not due (red if it counts)', () => {
+    const [row] = summarizeHabitProgress([ranged], [], WEEK_START, WEEK_END);
+    expect(row.possibleDays).not.toBe(7);
+  });
+
+  it('A5 — Mon/Wed/Fri + range Wed 05..Sun 16: only Mon/Wed/Fri inside the range (5 days)', () => {
+    const both = { ...h(), id: 'wr', frequency_config: { kind: 'weekly', days: [0, 2, 4], range_start: '2026-08-05', range_end: '2026-08-16' } } as Habit;
+    const [row] = summarizeHabitProgress([both], [], '2026-08-03', '2026-08-16');
+    // in range: Wed 05, Fri 07, Mon 10, Wed 12, Fri 14 -- not Mon 03 (before), not Tue/Thu/Sat/Sun
+    expect(row.possibleDays).toBe(5);
+    expect(row.possibleDays).not.toBe(12);   // NEGATIVE: weekday restriction swallowed by the range
+  });
+
+  it('A6 — interval_days without created_at is not narrowed: every day due', () => {
+    const noAnchor = { ...h(), id: 'na', created_at: undefined, frequency_config: { kind: 'daily', interval_days: 3 } } as unknown as Habit;
+    const [row] = summarizeHabitProgress([noAnchor], [], WEEK_START, WEEK_END);
+    expect(row.possibleDays).toBe(7);
+  });
+
+  it('A8 — a count-based habit is untouched: denominator is the period target', () => {
+    const w3 = { ...h(), id: 'w3', frequency_config: { kind: 'weekly', count: 3 } } as Habit;
+    const logs = doneOn('w3', ['2026-08-04', '2026-08-06', '2026-08-09']);
+    const [row] = summarizeHabitProgress([w3], logs, WEEK_START, WEEK_END);
+    expect(row).toMatchObject({ completedDays: 3, possibleDays: 3, percent: 100 });
+  });
+});

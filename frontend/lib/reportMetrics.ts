@@ -2,7 +2,7 @@ import { colors } from '../lib/tokens';
 import { eachDayOfInterval, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from 'date-fns';
 import { type Habit, type HabitLog } from './supabase';
 import { type FocusSessionRow } from './focusReport';
-import { countsTowardAverage, isDueOn, scheduleKind, scheduledCompletionRate } from './habitSchedule';
+import { countsTowardAverage, isEligibleOn, scheduleKind, scheduledCompletionRate } from './habitSchedule';
 import { isMeasurableTracking, completionRatio, type HabitLogState } from './habitEngine';
 import { parseLocalDate, ymd } from './date';
 
@@ -131,7 +131,8 @@ export function habitAveragePercent(params: {
     for (const day of days) {
       const dateObj = parseLocalDate(day);
       if (!dateObj) continue;
-      if (!isDueOn(habit as Habit, dateObj)) continue;
+      // R01.02-c — day lane: `isCountBased` returned above. `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+      if (!isEligibleOn(habit as Habit, dateObj)) continue;
       const log = logMap.get(`${habit.id}|${day}`);
       // An unlogged day for a NEGATIVE habit is unknown, not a zero. Scoring
       // it zero would claim the user failed on every day they did not open
@@ -230,7 +231,8 @@ export function summarizeHabitProgress(
       for (const day of days) {
         const dateObj = parseLocalDate(day);
         if (!dateObj) continue;
-        if (!isDueOn(habit, dateObj)) continue;
+        // R01.02-c — day lane: `isCountBased` returned above. `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+        if (!isEligibleOn(habit, dateObj)) continue;
         const log = logMap.get(`${habit.id}|${day}`);
         if (log?.state === 'skip') continue;             // excused: out of both sides
         if (!countsTowardAverage(habit, log)) continue;  // unlogged negative day: unknown

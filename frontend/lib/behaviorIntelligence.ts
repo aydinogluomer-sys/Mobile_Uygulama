@@ -91,7 +91,7 @@
  *    uses the more correct denominator while keeping the same variance math.
  */
 import type { Habit, HabitLog } from './supabase';
-import { isDueOn, weekdayIndex, scheduleKind, scheduledCompletionRate, periodStatus } from './habitSchedule';
+import { isEligibleOn, weekdayIndex, scheduleKind, scheduledCompletionRate, periodStatus } from './habitSchedule';
 import { isCompletedState } from './reportMetrics';
 import { habitStrength, type StrengthLog } from './habitStrength';
 import type { RecoveryPlanV2 } from './recovery';
@@ -309,7 +309,8 @@ function dueDayStats(
   for (const d of days) {
     const date = parseLocalDate(d);
     if (!date) continue;
-    if (!isDueOn(habit as Habit, date)) continue; // `as Habit` -- same cast reportMetrics.ts already uses for this Pick.
+    // R01.02-c — day lane: count schedules returned above (`isCountBased && days.length`; an empty `days` never enters this loop). `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+    if (!isEligibleOn(habit as Habit, date)) continue; // `as Habit` -- same cast reportMetrics.ts already uses for this Pick.
     const state = logIndex.get(`${habit.id}|${d}`);
     if (state === 'skip') continue; // excluded from BOTH sides -- see file doc.
     scheduled += 1;
@@ -378,7 +379,8 @@ export function weekdayBreakdown(habits: BIHabit[], logs: BILog[], range: { star
     for (const d of days) {
       const date = parseLocalDate(d);
       if (!date) continue;
-      if (!isDueOn(habit as Habit, date)) continue;
+      // R01.02-c — day lane: `if (isCountBased(habit)) continue;` above. `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+      if (!isEligibleOn(habit as Habit, date)) continue;
       const state = logIndex.get(`${habit.id}|${d}`);
       if (state === 'skip') continue;
       const wd = weekdayIndex(date);
@@ -447,7 +449,8 @@ export function currentStreak(habit: BIHabit, logs: BILog[], asOf: Date = new Da
   for (let i = 0; i < MAX_STREAK_LOOKBACK_DAYS; i++) {
     const d = ymd(cursor);
     if (createdYmd && d < createdYmd) break; // habit did not exist yet on this day.
-    if (!isDueOn(habit as Habit, cursor)) {
+    // R01.02-c — day lane: `isCountBased` returned at the top of `currentStreak`. `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+    if (!isEligibleOn(habit as Habit, cursor)) {
       cursor = addDaysLocal(cursor, -1);
       continue;
     }
@@ -490,7 +493,8 @@ export function longestStreak(habit: BIHabit, logs: BILog[], opts: { since?: Dat
   for (const d of days) {
     const date = parseLocalDate(d);
     if (!date) continue;
-    if (!isDueOn(habit as Habit, date)) continue; // transparent
+    // R01.02-c — day lane: `isCountBased` returned at the top of `longestStreak`. `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+    if (!isEligibleOn(habit as Habit, date)) continue; // transparent
     const state = logIndex.get(`${habit.id}|${d}`);
     if (state === 'skip') continue; // transparent
     if (state && isCompletedState(state)) {

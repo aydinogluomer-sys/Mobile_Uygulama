@@ -37,7 +37,7 @@ import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines } from '../../components/ui';
 import { haptic } from '../../lib/haptics';
 import { addDaysLocal, parseLocalDate, ymd, ymdFromIso, type Ymd } from '../../lib/date';
-import { isCountBasedSchedule, isDueOn } from '../../lib/habitSchedule';
+import { isCountBasedSchedule, isEligibleOn } from '../../lib/habitSchedule';
 import { completionPercent, isMeasurableTracking } from '../../lib/habitEngine';
 import { habitStrength, type StrengthLog } from '../../lib/habitStrength';
 import {
@@ -176,12 +176,13 @@ type DayCell = { date: Ymd; state: CalendarDayState | 'future'; value: number | 
  * give such a day a state; an unlogged one owes nothing. Whether the PERIOD was
  * met is `periodStatus`'s question, not a cell's.
  */
-function dayCellFor(habit: Habit, logIndex: Map<Ymd, HabitDetailLogRow>, dateObj: Date, todayYmd: Ymd): DayCell {
+export function dayCellFor(habit: Habit, logIndex: Map<Ymd, HabitDetailLogRow>, dateObj: Date, todayYmd: Ymd): DayCell {
   const d = ymd(dateObj);
   if (d > todayYmd) return { date: d, state: 'future', value: null };
   const log = logIndex.get(d);
   const countBased = isCountBasedSchedule(habit);
-  if (!countBased && !isDueOn(habit, dateObj)) return { date: d, state: 'not_scheduled', value: null };
+  // R01.02-c — day lane: `!countBased` short-circuits first. `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+  if (!countBased && !isEligibleOn(habit, dateObj)) return { date: d, state: 'not_scheduled', value: null };
   if (!log) return { date: d, state: countBased ? 'not_scheduled' : 'miss', value: null };
   if (log.state === 'done') return { date: d, state: 'full', value: log.value };
   if (log.state === 'partial') return { date: d, state: 'partial', value: log.value };

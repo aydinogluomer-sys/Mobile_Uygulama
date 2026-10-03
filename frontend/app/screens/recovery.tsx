@@ -13,7 +13,7 @@ import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import { useRecoveryStore } from '../../store/recoveryStore';
 import { deficitFor, type TrackingTypeV2 } from '../../lib/recovery';
-import { isCountBasedSchedule, isDueOn, isMissedOn } from '../../lib/habitSchedule';
+import { isCountBasedSchedule, isEligibleOn, isMissedOn } from '../../lib/habitSchedule';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton } from '../../components/ui';
@@ -101,7 +101,8 @@ export default function RecoveryScreen() {
     if (isCountBasedSchedule(h)) continue;
     for (let k = 1; k <= LOOKBACK; k++) {
       const dObj = subDays(new Date(), k);
-      if (!isDueOn(h, dObj)) continue;
+      // R01.02-c — day lane: `isCountBasedSchedule(h)` above. `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+      if (!isEligibleOn(h, dObj)) continue;
       const d = format(dObj, 'yyyy-MM-dd');
       const key = `${h.id}|${d}`;
       if (doneSet.has(key)) continue;
@@ -125,7 +126,8 @@ export default function RecoveryScreen() {
     let run = 0;
     for (let k = 1; k <= LOOKBACK; k++) {
       const dObj = subDays(new Date(), k);
-      if (!isDueOn(h, dObj)) continue;
+      // R01.02-c — day lane: `isCountBasedSchedule(h)` above. `isEligibleOn` = `isDueOn` for daily/weekly_days, + every_n_days/date_range.
+      if (!isEligibleOn(h, dObj)) continue;
       const key = `${h.id}|${format(dObj, 'yyyy-MM-dd')}`;
       if (doneSet.has(key) || partialSet.has(key)) break;
       run++;

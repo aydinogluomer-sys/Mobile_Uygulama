@@ -6,15 +6,16 @@ baseline_sha: 0ff1c74b0d8d922fd9bef46d3631a1cf443677e2
 guide_commit: ecfd4e3            # docs/plan/22_ADERYTH_CORE_IMPLEMENTATION_V3.md, verbatim
 scope_authority: docs/plan/21_KAPSAM_EKI_2026-09-13.md
 newer_owner_decision: none        # 2026-09-13
-completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a]
+completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c]
 active_card: null
-next_ready_card: R01.03     # tracking semantics; deps R01.01-a + R01.02-a + R01.02-b all DONE
+next_ready_card: R01.02-d   # validator + UI for interval_days / range_*; consumer side done in R01.02-c (önce tüketici, sonra validator). KD-06 must be decided there
 critical_open_defects: []         # bilinen kusurlar kartlara bağlı; veri kaybı / hesap erişimi / FP kusuru yok
 known_defects_bound_to_cards:
   - id: KD-01
     status: NEUTRALISED (kod duruyor, canlı girdisi yok)
     where: frontend/lib/habitSchedule.ts countDueDays + isDueOn count dalı
     what: R01.02-b sonrası HİÇBİR üretim çağıranı count-tabanlı alışkanlığı `isDueOn`'a veremiyor (her çağıran önce guard'lıyor; guard = __tests__/repo/periodConsumerMigration.test.ts). Kod silinmedi -> AC-H03 testleri `isDueOn`'un count davranışını BİLEREK pinliyor ve `isDueOn` dışa açık API; dalı silmek bu test sözleşmesini yeniden yazmak demek
+    r01_02_c: doğrudan üretim çağıranı kalmadı -- gün-şeridi `isEligibleOn` soruyor; `isDueOn`'u yalnız modül-içi `dueOnExtended` çağırıyor. İSTİSNA KD-06 (bugün yazılamayan kombinasyon)
     card: SAHİP KARARI bekliyor (silme = AC-H03 yeniden yazımı)
   - id: KD-02
     status: RESOLVED (R01.06-a) — kalan: "bu hafta doldu" soluklaştırması R01.06-b
@@ -34,6 +35,11 @@ known_defects_bound_to_cards:
     where: frontend/lib/supabase.ts:30, frontend/lib/habitSchedule.ts (V2 başlığı)
     what: "migration bloklu" yorumları bayattı — DB jsonb kabul ediyor, engel istemci validator'ı (routineProposal.ALLOWED_FREQUENCY_KEYS). Yorumlar doğrulanmış gerçekle değiştirildi
     card: R01.02-b (DONE)
+  - id: KD-06
+    status: OPEN, LATENT (kullanıcıya ulaşamaz -- validator range_* anahtarlarını reddediyor)
+    where: frontend/lib/habitSchedule.ts scheduleKind (range önce gelir) + dueOnExtended date_range dalı -> isDueOn count dalı -> countDueDays
+    what: "`kind:weekly` + `count` + `range_start/end` satırı `date_range` sınıflanır, hiçbir count guard'ına takılmaz; gün-şeridinde countDueDays günleri (Pzt/Çar/Cmt) icat edilir, aralıkla kırpılmış. R01.02-c öncesi de vardı (doğrudan isDueOn -> countDueDays, aralıksız); bu kart onu açmadı, kaydetti. Sınıflandırma testle pinli (habitSchedule.test.ts KD-06)"
+    card: R01.02-d (validator açılmadan karar -- kombinasyonu reddet ya da scheduleKind önceliğini sahip kararıyla değiştir)
 deferred_ids: [D01, D02, D03, D04, D05, D06, D07, D08, D09]
 cancelled_ids: [X01, X02, X03]
 core_implementation: IN_PROGRESS
@@ -47,6 +53,7 @@ evidence_locations:
   - docs/implementation-v3/STATE.md#r0102-a-evidence
   - docs/implementation-v3/STATE.md#r0102-b-evidence
   - docs/implementation-v3/STATE.md#r0106-a-evidence
+  - docs/implementation-v3/STATE.md#r0102-c-evidence
 gates_run_at_baseline:
   typecheck_ci: 0 errors
   lint_ci: 0 warnings
@@ -59,6 +66,7 @@ timing:                           # R00.07 — dev / test / fix ayrı; erişim b
   R01.02-a: { dev_min: 30, test_min: 25, fix_min: 15, access_wait_min: 0, single_writer: true }   # fix: CRLF/LF karışımı, precision, import
   R01.02-b: { dev_min: 75, test_min: 60, fix_min: 30, access_wait_min: 0, single_writer: true }   # fix: kayıp flake logu, clip semantiği, bayat kendi yorumum
   R01.06-a: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
+  R01.02-c: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
 ```
 
 ## R01.01-a evidence
@@ -311,6 +319,92 @@ hidden on any day → red; ambiguous row hidden → red.
   +2 suites, +31 tests).
 - **Not done:** no device/emulator observation (none installed on this host). The
   render itself was not exercised by RNTL; the selectors are.
+
+## R01.02-c evidence
+
+- **Branch/HEAD:** `feature/r01-period-status`, on top of `fc6ddff`. No new branch.
+- **Defect (split brain in one module):** `interval_days` / `range_start` /
+  `range_end` were read only through private `dueOnExtended` (`streakBroken`,
+  `isEligibleOn`, `periodStatus`). Every other day walk asked `isDueOn`, which
+  reads kind/days/count only: "every 3 days" was due EVERY day there and range
+  bounds were ignored. Latent today (the client validator rejects the keys);
+  fixed before R01.02-d opens them -- consumer first, validator second.
+
+### Call sites swapped `isDueOn` -> `isEligibleOn` (11), each with its count guard
+
+All 11 verified by reading the source, not assumed. Every guard classifies via
+`scheduleKind` (`isCountBased` in reportMetrics/behaviorIntelligence is a local
+`scheduleKind(...).kind === 'weekly_count' | 'monthly_count'`, identical to
+`isCountBasedSchedule`). So `isEligibleOn`'s count branch (every day true) is
+unreachable from these lines. No site lacked a guard; none was skipped.
+
+| Call site | Function | Count guard (before the call) |
+|---|---|---|
+| `lib/habitSchedule.ts` | `scheduledCompletionRate` day walk | `sk.kind === 'weekly_count' \|\| 'monthly_count'` -> `periodCompletionRate` return |
+| `lib/habitSchedule.ts` | `carriesDayLoad` day branch | `if (!isCountBasedSchedule(habit))` |
+| `lib/reportMetrics.ts` | `habitAveragePercent` | `if (isCountBased(habit)) { ...; continue; }` |
+| `lib/reportMetrics.ts` | `summarizeHabitProgress` | `if (isCountBased(habit)) { return {...} }` |
+| `lib/behaviorIntelligence.ts` | `dueDayStats` | `if (isCountBased(habit) && days.length > 0) return` -- with empty `days` the loop never runs |
+| `lib/behaviorIntelligence.ts` | `weekdayBreakdown` | `if (isCountBased(habit)) continue;` |
+| `lib/behaviorIntelligence.ts` | `currentStreak` | `if (isCountBased(habit)) return periodStreakBack(...)` |
+| `lib/behaviorIntelligence.ts` | `longestStreak` | `if (isCountBased(habit)) return periodStreakLongest(...)` |
+| `app/screens/recovery.tsx` | backlog loop | `if (isCountBasedSchedule(h)) continue;` |
+| `app/screens/recovery.tsx` | `consecutiveMissedDue` | `if (isCountBasedSchedule(h)) return 0;` |
+| `app/screens/habit-detail.tsx` | `dayCellFor` | `!countBased && ...` short-circuit |
+
+Also: the now-unused `isDueOn` import dropped from the four consumer files;
+`dayCellFor` exported (pure function, for the A3 test). `isDueOn` body,
+`countDueDays`, `scheduleKind`, `dueOnExtended` (still private) untouched;
+`isDueOn`'s DOC caller table rewritten (it listed the old callers).
+`routineProposal.ALLOWED_FREQUENCY_KEYS`, UI, `featureGates.ts` untouched.
+
+### Finding recorded, not fixed: KD-06
+
+`scheduleKind` puts range first, so `weekly` + `count` + `range_*` is
+`date_range`: not count-based to any guard, and `dueOnExtended`'s range branch
+calls `isDueOn`, whose count branch runs `countDueDays` (invented Mon/Wed/Sat).
+This predates the card (before, the same row went straight to `isDueOn` ->
+`countDueDays`, without even the range clip), cannot be written today, and the
+fix is a classification decision (`scheduleKind` -- out of scope) or a
+validator rule (R01.02-d). Classification pinned by a test; `isDueOn`'s doc
+names it; KD-01 now carries the exception.
+
+### Acceptance
+
+| | Result | Evidence |
+|---|---|---|
+| A1 | every 3 days from Mon: due Mon/Thu/Sun = 3 in the week; done on those → 100% / rate 1 / streak 3; a `miss` row on an off day moves nothing | reportMetrics ×3, behaviorIntelligence ×4, habitSchedule ×2 |
+| A2 | recovery's predicate is `isEligibleOn` for both walks (guard pins exactly 2 lines); off days stay off at 14:37 and 23:59 (recovery passes `subDays(now, k)`, not midnight) | guard + habitSchedule A2. **Not rendered**: the backlog is inline in the component |
+| A3 | habit-detail cells: due days `miss`, the days between `not_scheduled`; range days outside → `not_scheduled` | habitDetailDayCell ×4 |
+| A4 | range Wed..Fri: 3 due days in every consumer; outside days no load | reportMetrics ×2, behaviorIntelligence, habitSchedule, habitDetailDayCell |
+| A5 | trap 1: Mon/Wed/Fri + range keeps the weekday filter (Thu inside range not due; 5 days over 2 weeks) -- `dueOnExtended` calls `isDueOn` first; not "fixed" | habitSchedule, reportMetrics, behaviorIntelligence |
+| A6 | trap 2: no `created_at` → not narrowed, 7/7 due -- kept | habitSchedule, reportMetrics |
+| A7 | daily / weekly_days unchanged: (1) `isEligibleOn === isDueOn` over 366 days for 4 shapes; (2) `daySchedulePreservation.test.ts` -- 8 consumer outputs (incl. the six the card names, plus `scheduledCompletionRate` and `weekdayBreakdown`) for 4 habits over 28 days, expected values **captured by running the fixture at `fc6ddff` before any edit**, then compared after: byte-identical JSON | 8 tests |
+| A8 | count habits: period target denominator, period streak, logged-only cells -- unchanged | reportMetrics, behaviorIntelligence, habitDetailDayCell |
+
+Negative assertions (not comments): every-3-days denominator 7 → red; out-of-range day due → red; weekday filter swallowed by range → red.
+
+**One existing test updated, with reason:** `habitSchedule.test.ts` "carriesDayLoad
+is identical to isDueOn for every day-based shape" listed `interval_days: 3`
+among the identical shapes -- i.e. it pinned the defect. Split: the identity
+stays for daily / weekly_days / the malformed weekly row; interval moves to a
+new test against `isEligibleOn` with the explicit Mon/Thu/Sun mask.
+`periodConsumerMigration.test.ts`: the two R01.02-b assertions that the four
+consumers "still call `isDueOn`" now assert they call `isEligibleOn` and not
+`isDueOn` (the guard-before-call ordering check kept, retargeted).
+
+### Mutation proof (focused 6 suites, 193 tests; each reverted byte-identical, sha256 verified for all 5 source files)
+
+- **Ma** all 11 calls back to `isDueOn` (= revert the card): **29 / 193 red**, 0 suite-level. The 8 A7 preservation tests stay GREEN under it -- the expected result if the swap is neutral for daily/weekly_days.
+- **Ma'** one call (`summarizeHabitProgress`) back: **7 / 193 red** (5 reportMetrics + 2 guard).
+- **Mb** `dueOnExtended` every-N modulo `=== 0` → `=== 1`: **18 / 193 red** (incl. 4 pre-existing streakBroken/isEligibleOn tests).
+
+### Gates
+
+- `typecheck:ci` exit 0 · `lint:ci` exit 0 · `run-tests.js` **145/145** · `git diff --check` clean
+- focused 12 suites **321/321**
+- full `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB`, two consecutive runs: **137 suites / 2235 tests** each, 0 FAIL lines, 0 OOM/SIGTERM/`Command failed` markers (base 135 / 2189: +2 suites, +46 tests)
+- **Not done:** no device/emulator observation (none on this host); recovery and habit-detail were not rendered.
 
 ## Paket sınıflandırması (R00.02 özeti)
 
