@@ -30,7 +30,9 @@ import { syncAllReminders } from '../../lib/notifications';
 import { colors, radius, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { WillpowerBand, SectionHeader, EmptyState, ProgressBar } from '../../components/ui';
-import { isMeasurableTracking, deriveState, adaptTrackingType } from '../../lib/habitEngine';
+import { isMeasurableTracking } from '../../lib/habitEngine';
+// R01.03-a: a measurable entry's total and state come from the service, not this screen.
+import { measuredEntryFor } from '../../services/habitLogService';
 
 const DELETE_REASONS = [
   'Artık ihtiyacım yok',
@@ -113,31 +115,21 @@ export default function TimelineScreen() {
     if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
   };
 
-  const handleMeasurableSubmit = async (value: number) => {
+  // R01.03-a — the modal's number is what the user ADDS; what is written is the
+  // DAY'S TOTAL, and its state comes from the service, for both directions.
+  // This screen used to decide the state itself (`value >= remaining` for
+  // at_least, the raw entry for at_most) and wrote `done` rows at 40%.
+  const handleMeasurableSubmit = async (entered: number) => {
     if (!measureHabit) return;
-    const direction = measureHabit.target_direction ?? 'at_least';
-    // `remaining` is a FLOOR concept ("how much is still missing"), so it is
-    // meaningless for a ceiling: for "at most 2", entering 0 is a complete
-    // day and `value >= remaining` would call it partial. The state comes
-    // from the domain function, which knows the direction.
-    const state =
-      direction === 'at_most'
-        ? deriveState({
-            trackingType: adaptTrackingType(measureHabit),
-            value,
-            target: measureHabit.daily_goal,
-            direction,
-          })
-        : value >= getRemainingValue(measureHabit.id, measureHabit.daily_goal ?? 0, selectedDate)
-          ? 'done'
-          : 'partial';
+    const prior = getLogForHabit(measureHabit.id, selectedDate)?.value;
+    const intent = measuredEntryFor(measureHabit, prior, entered);
     const res = await logHabit({
       habitId: measureHabit.id,
       date: selectedDate,
-      state,
-      value,
-      targetValue: measureHabit.daily_goal ?? 0,
-      targetDirection: direction,
+      state: intent.state,
+      value: intent.value,
+      targetValue: intent.targetValue,
+      targetDirection: intent.targetDirection,
     });
     if (!res.ok) {
       Alert.alert('Kaydedilemedi', res.error);
@@ -547,11 +539,9 @@ export default function TimelineScreen() {
       <MeasurableInputModal
         visible={measureHabit !== null}
         habit={measureHabit}
-        currentValue={
-          measureHabit
-            ? (measureHabit.daily_goal ?? 0) - getRemainingValue(measureHabit.id, measureHabit.daily_goal ?? 0, selectedDate)
-            : 0
-        }
+        // The day's real total so far -- not `goal - remaining`, which clamps at
+        // the goal and hid a ceiling already exceeded.
+        currentValue={measureHabit ? (getLogForHabit(measureHabit.id, selectedDate)?.value ?? 0) : 0}
         onClose={() => setMeasureHabit(null)}
         onConfirm={handleMeasurableSubmit}
       />

@@ -6,10 +6,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Habit } from '../lib/supabase';
+// R01.03-a: the same add the screen's write uses, so the preview cannot disagree with what is saved.
+import { dayTotalAfterEntry } from '../services/habitLogService';
 
 interface Props {
   visible: boolean;
   habit: Habit | null;
+  /** The day's total so far (the row's `value`, 0 if none) -- NOT clamped at the goal. */
   currentValue: number;
   onClose: () => void;
   onConfirm: (value: number) => void;
@@ -20,16 +23,32 @@ export default function MeasurableInputModal({ visible, habit, currentValue, onC
 
   if (!habit) return null;
 
-  const remaining = Math.max(0, (habit.daily_goal ?? 0) - currentValue);
-  const pct = habit.daily_goal ? Math.min(100, Math.round((currentValue / habit.daily_goal) * 100)) : 0;
+  const ceiling = habit.target_direction === 'at_most';
+  const goal = habit.daily_goal ?? 0;
+  const remaining = Math.max(0, goal - currentValue);
+  const pct = goal ? Math.min(100, Math.round((currentValue / goal) * 100)) : 0;
+  const unit = habit.unit ?? '';
+  // R01.03-a: the number typed here is ADDED to today's total; the total is
+  // what gets saved. For a ceiling ("en çok 2"), 0 is a meaningful entry -- a
+  // clean day -- so it is accepted; for a floor it would change nothing.
+  const parsed = parseFloat(input.replace(',', '.'));
+  const valid = !isNaN(parsed) && (ceiling ? parsed >= 0 : parsed > 0);
+  const totalAfter = valid ? dayTotalAfterEntry(currentValue, parsed) : null;
 
   function handleConfirm() {
-    const val = parseFloat(input);
-    if (!isNaN(val) && val > 0) {
-      onConfirm(val);
+    if (valid) {
+      onConfirm(parsed);
       setInput('');
     }
   }
+
+  const statusLine = ceiling
+    ? currentValue > goal
+      ? `Sınır aşıldı: bugün ${currentValue} ${unit} (en çok ${goal})`
+      : `Bugün ${currentValue} ${unit} · sınıra ${remaining} ${unit} kaldı`
+    : remaining > 0
+      ? `Bugün ${currentValue} ${unit} · ${remaining} ${unit} kaldı`
+      : `Hedef tamamlandı! (bugün ${currentValue} ${unit})`;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -53,22 +72,24 @@ export default function MeasurableInputModal({ visible, habit, currentValue, onC
             <Text style={styles.progressText}>{pct}%</Text>
           </View>
 
-          <Text style={styles.remaining}>
-            {remaining > 0
-              ? `${remaining} ${habit.unit ?? ''} kaldı`
-              : `Hedef tamamlandı!`}
-          </Text>
+          <Text style={styles.remaining}>{statusLine}</Text>
 
-          <Text style={styles.label}>Ne kadar ekleyelim? ({habit.unit})</Text>
+          <Text style={styles.label}>Bugüne ne kadar ekleyelim? ({unit})</Text>
           <TextInput
             style={styles.input}
-            placeholder={`Örn: ${Math.ceil(remaining / 2)}`}
+            placeholder={ceiling ? 'Örn: 1 (hiç yoksa 0)' : `Örn: ${Math.ceil(remaining / 2)}`}
             placeholderTextColor="#827E72"
             keyboardType="numeric"
             value={input}
             onChangeText={setInput}
+            accessibilityLabel={`Bugüne eklenecek miktar, ${unit}. Bugünkü toplam ${currentValue}.`}
             autoFocus
           />
+          <Text style={styles.remaining} accessibilityLiveRegion="polite">
+            {totalAfter !== null
+              ? `Girdiğin sayı bugünkü toplama eklenir. Kaydedince bugün: ${totalAfter} ${unit}`
+              : 'Girdiğin sayı bugünkü toplama eklenir; kaydedilen, günün toplamıdır.'}
+          </Text>
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>

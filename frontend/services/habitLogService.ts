@@ -93,11 +93,14 @@ export function toPatch(intent: CompletionIntent): LogPatch {
 
 /**
  * The state a logged VALUE implies for a habit, given its own tracking type,
- * target and direction.
+ * target and direction. `value` is the DAY'S TOTAL (see `measuredEntryFor`).
  *
  * Screens used to work this out themselves — `value >= remaining ? 'done' :
  * 'partial'`, which is floor arithmetic and calls a perfect ceiling day
- * partial. There is one answer and it lives here.
+ * partial. There is one answer and it lives here. (R01.03-a: this doc used to
+ * claim that while `app/tabs/timeline.tsx` still did it; the screen now hands
+ * the day total to `measuredEntryFor` and no screen decides a state. Pinned by
+ * `__tests__/repo/measurableStateAuthority.test.ts`.)
  */
 export function stateForValue(
   habit: Pick<Habit, 'tracking_type' | 'behavior_type' | 'daily_goal' | 'target_direction'>,
@@ -124,6 +127,48 @@ export function completionFor(
     targetDirection: habit.target_direction ?? undefined,
     baseXp,
   };
+}
+
+/**
+ * R01.03-a — THE CONTRACT: `habit_logs.value` is THE DAY'S TOTAL, never the
+ * amount of one entry. (Owner decision.)
+ *
+ * Why: `completionRatio`, `habitLogPercent` and `habitStrength` already read
+ * `value` against `daily_goal` as a same-day ratio; a ceiling (`at_most`)
+ * already reads it as absolute; and with `UNIQUE (habit_id, date)` a row
+ * describes a DAY, not an event. Writing an increment made the row lie: "6 then
+ * 4 more" against 10 was stored as `value: 4, state: 'done'` -- 40% to every
+ * ratio reader, "done" to every state reader -- and the day's real total was
+ * lost.
+ *
+ * Adding is still how the user enters it ("4 ekle"); this is where the add
+ * happens, once. `priorDayValue` is the value already on the day's row
+ * (`undefined`/`null` = none). A non-finite or negative prior counts as 0; a
+ * non-finite or negative entry adds nothing. Rounded to 1e-6 so 0.1 + 0.2 is
+ * not written as 0.30000000000000004.
+ */
+export function dayTotalAfterEntry(priorDayValue: number | null | undefined, entered: number): number {
+  const prior = typeof priorDayValue === 'number' && Number.isFinite(priorDayValue) && priorDayValue > 0 ? priorDayValue : 0;
+  const add = Number.isFinite(entered) && entered > 0 ? entered : 0;
+  return Math.round((prior + add) * 1e6) / 1e6;
+}
+
+/**
+ * The intent for one measurable entry: the day total after it, and the state,
+ * XP and target derived FROM THAT TOTAL by `completionFor`. Screens call this
+ * and pass the result to `logStore.logHabit` unchanged -- they never decide a
+ * state themselves. Same rule for both directions: for a ceiling ("en çok 2")
+ * a second entry adds to the day as well (2 then 1 more is 3, over the limit),
+ * where the old screen wrote the latest entry alone and hid the overshoot.
+ */
+export function measuredEntryFor(
+  habit: Pick<Habit, 'tracking_type' | 'behavior_type' | 'daily_goal' | 'target_direction'>,
+  priorDayValue: number | null | undefined,
+  entered: number,
+  baseXp = DEFAULT_BASE_XP,
+): CompletionIntent & { value: number } {
+  const total = dayTotalAfterEntry(priorDayValue, entered);
+  return { ...completionFor(habit, total, baseXp), value: total };
 }
 
 export type PersistResult =

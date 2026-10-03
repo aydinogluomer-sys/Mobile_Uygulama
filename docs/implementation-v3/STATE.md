@@ -6,9 +6,9 @@ baseline_sha: 0ff1c74b0d8d922fd9bef46d3631a1cf443677e2
 guide_commit: ecfd4e3            # docs/plan/22_ADERYTH_CORE_IMPLEMENTATION_V3.md, verbatim
 scope_authority: docs/plan/21_KAPSAM_EKI_2026-09-13.md
 newer_owner_decision: none        # 2026-09-13
-completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1, R01.02-d, R01.02-d2, R01.02-e]
+completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1, R01.02-d, R01.02-d2, R01.02-e, R01.03-a]
 active_card: null
-next_ready_card: R01.03     # tracking semantics (guide §R01.03: boolean/numeric/duration/abstinence + at_least/at_most, partial, undo across consumers). R01.02 chain (c/d1/d/d2/e) DONE. Open, not blocking: KD-08, KD-09, KD-10, R01.06-b
+next_ready_card: R01.03-b   # undo: a day back to "no record" (habitLogRepository has insert/update, NO delete) -- new capability + UI. R01.03-a (value = day total, state from the service) DONE. Open, not blocking: KD-08..KD-12, R01.06-b
 critical_open_defects: []         # bilinen kusurlar kartlara bağlı; veri kaybı / hesap erişimi / FP kusuru yok
 known_defects_bound_to_cards:
   - id: KD-01
@@ -61,6 +61,21 @@ known_defects_bound_to_cards:
     where: üretim verisi, habits.frequency_config
     what: "R01.02-e öncesi form 'Aylık' için {kind:monthly} (count yok) ve hiç gün seçilmemiş 'Haftalık' için {kind:weekly, days:[]} ya da {kind:weekly} yazabiliyordu: hedefsiz satırlar (hiçbir gün due değil, raporlara girmez, Bugün'de yalnız fail-open ile görünür). Ayrıca part_of_day:[] yazılabiliyordu (validator reddeder; takvim etkilenmez). Kaç satır olduğu SAYILMADI (Supabase okuma bu kartta yapılmadı); düzeltme/backfill ayrı karar"
     card: sahip kararı (önce salt-okunur sayım, sonra backfill ya da kullanıcıya düzeltme istemi)
+  - id: KD-11
+    status: OPEN -- SAYIM YAPILMADI (üretim projesi INACTIVE), karar bekliyor; KD-10'un kardeşi
+    where: üretim verisi, habit_logs.value (ölçülebilir alışkanlıklar)
+    what: "R01.03-a öncesi timeline aynı güne İKİNCİ ölçülebilir girişte günün toplamı yerine yalnız SON girişi yazıyordu (at_least: 6 + 4 -> value 4, state done; at_most: 2 + 1 -> value 1, state done). Bu satırlarda value günün gerçek toplamından KÜÇÜK ve state ile çelişebilir. Gerçek toplam geri kazanılamaz (artımlar saklanmadı). Bu kart yalnız YENİ yazmaları düzeltir; migration/backfill yok"
+    card: sahip kararı (salt-okunur tespit: ölçülebilir + state done + value < daily_goal (at_least) satırları; sonra işaretleme ya da bırakma)
+  - id: KD-12
+    status: OPEN (R01.03-a taramasında bulundu, düzeltilmedi -- düzeltmek değer UYDURMAK demek)
+    where: frontend/app/screens/recovery.tsx handleLogNow; frontend/services/recoveryService.ts makeupFor
+    what: "Telafi yolları ölçülebilir alışkanlıkta state'i kendi seçiyor, stateForValue'dan geçmiyor: (1) geçmiş günü 'yaptım' -> state done, value YOK -> completionRatio (at_least) 0 okur: satır kendi içinde çelişir. (2) makeupFor tam telafi -> done, value yok (aynı). (3) split_two_days -> partial, value = round(hedef x 0.5): hedef 1 iken value 1 = hedef (stateForValue done der), at_most'ta value sınırın altında (stateForValue done der) -> partial ile çelişir"
+    card: ayrı kart (telafi için değer sözleşmesi: 'yaptım' ölçülebilirde hedef kadar mı, değer sorulur mu -- sahip kararı)
+  - id: R01.03-b
+    status: OPEN (kart, R01.03-a kapsam dışı bıraktı)
+    where: frontend/repositories/habitLogRepository.ts (insertHabitLog / updateHabitLog var, delete YOK)
+    what: "Bir günü 'kayıtsız'a döndürmek (geri alma) imkânsız: yanlış girilen ölçülebilir değer ancak üzerine yazılarak (ya da miss ile) düzeltilebilir; toplam sözleşmesiyle 'son girişi geri al' da yok. Yeni yetenek + UI"
+    card: R01.03-b
 deferred_ids: [D01, D02, D03, D04, D05, D06, D07, D08, D09]
 cancelled_ids: [X01, X02, X03]
 core_implementation: IN_PROGRESS
@@ -79,6 +94,7 @@ evidence_locations:
   - docs/implementation-v3/STATE.md#r0102-d-evidence
   - docs/implementation-v3/STATE.md#r0102-d2-evidence
   - docs/implementation-v3/STATE.md#r0102-e-evidence
+  - docs/implementation-v3/STATE.md#r0103-a-evidence
 gates_run_at_baseline:
   typecheck_ci: 0 errors
   lint_ci: 0 warnings
@@ -96,6 +112,7 @@ timing:                           # R00.07 — dev / test / fix ayrı; erişim b
   R01.02-d: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
   R01.02-d2: { access_wait_min: 0, single_writer: true }  # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
   R01.02-e: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
+  R01.03-a: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
 ```
 
 ## R01.01-a evidence
@@ -860,6 +877,92 @@ setKind wiping the envelope → red; any Günlük / Haftalık+günler output cha
 
 - **KD-09:** habit-detail only DISPLAYS the frequency; an installed interval / range / count cannot be edited afterwards.
 - **KD-10:** target-less rows already in production (old "Aylık", "Haftalık" with no day, `part_of_day: []`) -- **not counted**, no Supabase read was made; backfill is an owner decision.
+
+## R01.03-a evidence
+
+- **Branch/HEAD:** `feature/r01-period-status`, on top of `5ef17bd` (verified at start, tree clean).
+- **Defect (verified in source):** `app/tabs/timeline.tsx` `handleMeasurableSubmit`
+  decided the state itself -- `value >= getRemainingValue(...) ? 'done' :
+  'partial'` for at_least, `deriveState(raw entry)` for at_most -- and wrote
+  the ENTRY as `value`. `services/habitLogService.stateForValue`'s doc claimed
+  screens no longer did this. Measured on the corpus at `5ef17bd`: the old
+  screen produced **1,472 at_least rows with `state: 'done'` and `value` below
+  the target**.
+
+### The contract (owner decision)
+
+**`habit_logs.value` = THE DAY'S TOTAL**, never one entry. Reason, written at
+`measuredEntryFor`: `completionRatio`, `habitLogPercent` and `habitStrength`
+already read `value` against `daily_goal` as a same-day ratio; a ceiling
+already reads it as absolute; with `UNIQUE (habit_id, date)` a row describes a
+DAY, not an event. Adding remains how the user enters it; the add happens once,
+in the service.
+
+### What changed
+
+| File | Change |
+|---|---|
+| `services/habitLogService.ts` | NEW `dayTotalAfterEntry(prior, entered)` (guards: bad prior → 0, bad/negative entry adds 0, 1e-6 rounding) and `measuredEntryFor(habit, prior, entered)` = `completionFor(habit, total)` with `value: total`. `stateForValue` doc updated. Existing functions untouched (A7: byte-identical) |
+| `app/tabs/timeline.tsx` | submit: no direction branch, no `getRemainingValue`, no state; reads the day's prior `value`, calls `measuredEntryFor`, passes the intent to `logHabit`. Modal now gets the day's real total (was `goal − remaining`, which clamps at the goal and hid an exceeded ceiling). `deriveState`/`adaptTrackingType` imports dropped |
+| `components/MeasurableInputModal.tsx` | "Bugüne ne kadar ekleyelim?", "Girdiğin sayı bugünkü toplama eklenir", live "Kaydedince bugün: N" (same `dayTotalAfterEntry` as the write); direction-aware status ("sınıra N kaldı", "Sınır aşıldı"); input labelled for screen readers; a ceiling may enter **0** (a clean day -- the card's A3 case was not enterable before: the modal required `> 0`) |
+| `store/logStore.ts` | `getRemainingValue` documented DISPLAY ONLY |
+
+### Every measurable entry path, scanned
+
+| Path | Status |
+|---|---|
+| `app/tabs/timeline.tsx` modal | **fixed** (above) |
+| `app/screens/ai-coach.tsx` + `lib/coachActions.ts` `log_habit` | on contract: `completionFor(habit, completion.value)` -- the coach's value is the day's amount, state from the service. Caveat (not fixed): "4 dakika daha" phrased as an increment would be stored as the day total; the coach does not read the day's prior value |
+| `components/coach/CoachActionCard.tsx` | display + consent only; writes through ai-coach above |
+| `app/tabs/habits.tsx`, `app/screens/habit-detail.tsx` | no write path |
+| `app/tabs/today.tsx` | binary toggle only; measurable rows route to timeline |
+| `app/screens/recovery.tsx` "yaptım" / `services/recoveryService.makeupFor` | **NOT on contract, not fixed → KD-12**: done without a value (ratio readers see 0), and split make-up picks `partial` itself (contradicts `stateForValue` at target 1 and for ceilings). Fixing means inventing a value -- owner decision |
+| `lib/demoSeed.ts` | consistent (walk is boolean; water 1200/2000 partial; read 20/15 done) |
+
+### Acceptance
+
+| | Result |
+|---|---|
+| A1 | target 10, 6 logged, +4 → `value 10`, `done` (old: `value 4`, `done` -- asserted on the verbatim old screen) |
+| A2 | target 10, 6 logged, +1 → `value 7`, `partial` |
+| A3 | ceiling first entries identical to the old screen for every reachable input (asserted over the corpus). **Correction to the card's example:** "en çok 2" with 3 is `partial`, not `miss` -- the engine (unchanged) grades an overshoot proportionally (`1 − (v − limit)/limit` = 0.5); 4 is `miss`. Tests assert the engine's real rule |
+| A4 | sweep 168 habits (4 tracking × 3 directions × 7 targets × 2 behaviours) × 11 prior values × 11 entries = **20,328 rows**: `stateForValue(habit, row.value) === row.state` for every one; the old screen contradicted itself on reachable inputs (asserted > 0) |
+| A5 | every reachable `done` row reads ratio ≥ 1 (at_least) or `value ≤ limit` (at_most); `partial` at_least rows read strictly between 0 and 1 |
+| A6 | guard `measurableStateAuthority.test.ts`: no `value >=` / `>= getRemainingValue` on any code line of timeline; the submit body contains no `deriveState`/`stateForValue`/`getRemainingValue`/direction/state literal; every remaining `getRemainingValue` use is display; no `>= remaining` state choice in all of `app/` + `components/`; modal text and shared add pinned |
+| A7 | captured at `5ef17bd` before any edit, SHA-256 pinned: `stateForValue`/`completionFor`/`toPatch` over 1,848 inputs and the `xpFor` sweep (396) -- **byte-identical**; the old screen (copied verbatim, checked against `git show`) over 20,328 inputs -- reproduces the capture. Every reachable FIRST entry of a day writes exactly what the old screen wrote. Boolean paths (`handleYesNoTap`, today, recovery) untouched; report modules untouched and their R01.02 preservation suites green |
+| A8 | `logHabit` still the only write; `measuredEntryFor` writes nothing; `layerBoundary` and `logHabitErrorsSurfaced` green |
+
+**The expected change, pinned separately:** a reachable SECOND entry of the day
+writes `prior + entered` with the state of that total. **One thing beyond the
+card's wording, stated rather than hidden:** the card expected this only for
+`at_least`. The modal says "ekleyelim" for BOTH directions, so under "value = the
+day's total" a ceiling's second entry adds too: "en çok 2", 2 then +1 → 3
+(`partial`), 2 then +2 → 4 (`miss`). The old screen wrote the latest entry alone
+(1 → `done`, 2 → `done`), hiding the overshoot -- the "same field, two
+meanings" defect the card itself names. Pinned by its own test.
+
+(Corpus rows with `entered = 0` on at_least differ from the old screen --
+`partial` → `miss`, and `done` at a 0/absent target -- but the modal refuses
+`0` for a floor, so they are unreachable; excluded from the claims, not hidden.)
+
+### Mutation proof (2 suites, 30 tests; each reverted byte-identical, sha256 of both files verified)
+
+- **M1** raw entry written (no total): **5 / 30 red** (A1, A2, the increment negative, ceiling second entry, the pinned change)
+- **M2** screen produces the state itself (`intent.value >= goal ? 'done' : 'partial'`): **3 / 30 red** (A6 guard)
+- **M3** at_most forced through the at_least rule: **8 / 30 red** (A3 ×4 incl. first-entry identity, A4, A5, A7 first-entry, pinned change)
+- 0 suite-level failures.
+
+### Gates
+
+- `typecheck:ci` exit 0 · `lint:ci` exit 0 · `run-tests.js` **145/145** · `git diff --check` clean
+- full `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB`, two consecutive runs: **146 suites / 2444 tests** each, 0 FAIL lines, 0 OOM/SIGTERM/`Command failed` markers (base 144 / 2414: +2 suites, +30 tests)
+- **Not done:** no screen rendered, no device/emulator (none on this host); no Supabase read (production project INACTIVE, per the card).
+
+### Recorded, not done
+
+- **KD-11:** rows written before this card by a same-day second entry hold the last entry, not the total -- not counted, not migrated.
+- **KD-12:** recovery's measurable writes are off-contract (above).
+- **R01.03-b:** undo -- `habitLogRepository` has insert/update and no delete; a day cannot return to "no record".
 
 ## Paket sınıflandırması (R00.02 özeti)
 

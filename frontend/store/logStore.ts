@@ -587,6 +587,10 @@ export const useLogStore = create<LogStore>((set, get) => {
       return get().logs.find((l) => l.habit_id === habitId && l.completed_at === dateStr);
     },
 
+    // DISPLAY ONLY ("3 kaldı"). Never a state input: the state of a measurable
+    // day is derived from the day's TOTAL by services/habitLogService
+    // (`measuredEntryFor` -> `stateForValue`). `value >= remaining` was floor
+    // arithmetic on an increment and wrote `done` rows at 40% (R01.03-a).
     getRemainingValue: (habitId, targetValue, date) => {
       const log = get().getLogForHabit(habitId, date);
       const done = log?.value ?? 0;
