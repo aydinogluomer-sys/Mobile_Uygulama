@@ -4,6 +4,8 @@
 import { colors } from '../lib/tokens';
 import type { Habit, EndCondition } from './supabase';
 import { isMeasurableTracking } from './habitEngine';
+// One-way: capacity -> habitSchedule -> date/supabase(types); none imports triage.
+import { occurrencesPerWeek } from './capacity';
 
 export type ImpactLevel = 'critical' | 'high' | 'medium' | 'low';
 export type Urgency = 'urgent' | 'not_urgent';
@@ -130,18 +132,54 @@ export type CostInput = {
   impact_level: ImpactLevel | null;
   behavior_type: 'positive' | 'negative';
   tracking_type: Habit['tracking_type'];
-  frequency_config: { kind: 'daily' | 'weekly' | 'monthly' };
+  /** `interval_days` (with kind 'daily'): "every N days" -- R01.02-d2. */
+  frequency_config: { kind: 'daily' | 'weekly' | 'monthly'; interval_days?: number };
   estimated_minutes?: number;
 };
 
+// Elle ayarlanmış YARGI tablosu, oransal değil: 7 kat sıklık farkı yalnız 1.43
+// kat bedel farkı. Bu üç değer aşağıdaki interpolasyonun çapalarıdır; değişmez.
 const FREQ_FACTOR: Record<string, number> = { daily: 1.0, weekly: 0.7, monthly: 0.5 };
+
+/**
+ * Frequency factor for an "every N days" habit (R01.02-d2, KD-07).
+ *
+ * Read off FREQ_FACTOR's own three anchors by occurrences per week,
+ * piecewise-linearly -- monthly (~0.23/wk) 0.5, weekly (1/wk) 0.7, daily
+ * (7/wk) 1.0 -- and clamped at both ends, so no new constant enters the
+ * table and an interval habit is never cheaper than a less frequent kind.
+ * NOT 1/N: that would price "every 3 days" (0.33) below weekly (0.7) though
+ * it happens more often. Anchor frequencies come from `occurrencesPerWeek`,
+ * the same mapping capacity uses, so cost and load agree on "how often".
+ */
+function intervalFreqFactor(perWeek: number): number {
+  const anchors: [number, number][] = [
+    [occurrencesPerWeek({ kind: 'monthly' }), FREQ_FACTOR.monthly],
+    [occurrencesPerWeek({ kind: 'weekly' }), FREQ_FACTOR.weekly],
+    [occurrencesPerWeek({ kind: 'daily' }), FREQ_FACTOR.daily],
+  ];
+  if (perWeek <= anchors[0][0]) return anchors[0][1];
+  for (let i = 1; i < anchors.length; i++) {
+    const [x1, y1] = anchors[i];
+    if (perWeek <= x1) {
+      const [x0, y0] = anchors[i - 1];
+      return y0 + ((perWeek - x0) / (x1 - x0)) * (y1 - y0);
+    }
+  }
+  return anchors[anchors.length - 1][1];
+}
 const IMPACT_BONUS: Record<ImpactLevel, number> = { critical: 1.5, high: 1.0, medium: 0.5, low: 0 };
 
 // Şeffaf maliyet dökümü — her faktörün katkısı
 export function costBreakdown(input: CostInput) {
   const diff = input.difficulty || 3;
-  const freqKind = input.frequency_config?.kind ?? 'daily';
-  const freqFactor = FREQ_FACTOR[freqKind] ?? 1.0;
+  const fc = input.frequency_config;
+  const freqKind = fc?.kind ?? 'daily';
+  // "Her N günde bir" yalnız daily + interval_days > 1 ise; aksi hâlde tablo aynen.
+  const intervalDays = freqKind === 'daily' && typeof fc?.interval_days === 'number' && fc.interval_days > 1
+    ? fc.interval_days : null;
+  const perWeek = intervalDays !== null ? occurrencesPerWeek(fc) : null;
+  const freqFactor = perWeek !== null ? intervalFreqFactor(perWeek) : (FREQ_FACTOR[freqKind] ?? 1.0);
   const base = diff * freqFactor;
   const behaviorBonus = input.behavior_type === 'negative' ? 1.5 : 0;
   const impactBonus = input.impact_level ? IMPACT_BONUS[input.impact_level] : 0;
@@ -156,6 +194,9 @@ export function costBreakdown(input: CostInput) {
     diff, freqKind, freqFactor, base,
     behaviorBonus, impactBonus, trackingBonus, timeBonus, mins,
     raw, cost,
+    // Şeffaflık: çarpan bir interval'den türediyse kaynağı da dökümde. Yalnız
+    // interval satırlarında eklenir; diğer girdilerin dökümü birebir aynı kalır.
+    ...(intervalDays !== null ? { freqSource: 'interval' as const, intervalDays, perWeek } : {}),
   };
 }
 

@@ -6,9 +6,9 @@ baseline_sha: 0ff1c74b0d8d922fd9bef46d3631a1cf443677e2
 guide_commit: ecfd4e3            # docs/plan/22_ADERYTH_CORE_IMPLEMENTATION_V3.md, verbatim
 scope_authority: docs/plan/21_KAPSAM_EKI_2026-09-13.md
 newer_owner_decision: none        # 2026-09-13
-completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1, R01.02-d]
+completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1, R01.02-d, R01.02-d2]
 active_card: null
-next_ready_card: R01.02-e   # UI form fields for interval_days / range_*; consumers (R01.02-c), envelope (R01.02-d1) and validator (R01.02-d) done. KD-07 (pricing) should be decided before the form opens the mode to every user
+next_ready_card: R01.02-e   # UI form fields for interval_days / range_*; consumers (R01.02-c), envelope (R01.02-d1), validator (R01.02-d) and pricing (R01.02-d2, KD-07 closed) done. KD-08 (range vs load) open, not blocking
 critical_open_defects: []         # bilinen kusurlar kartlara bağlı; veri kaybı / hesap erişimi / FP kusuru yok
 known_defects_bound_to_cards:
   - id: KD-01
@@ -42,10 +42,15 @@ known_defects_bound_to_cards:
     what: "`kind:weekly` + `count` + `range_start/end` satırı `date_range` sınıflanıyor, hiçbir count guard'ına takılmıyor; gün-şeridinde countDueDays günleri (Pzt/Çar/Cmt) icat ediliyordu, aralıkla kırpılmış (5,8,10,12,15,17,19 Ağustos). Aynı kök: `daily + interval_days:3 + aralık` interval'i kaybedip aralıktaki 18 günün hepsini due sayıyordu. Düzeltme: aralık şekilden çıkarılıp `withinLifetime` zarfına taşındı; `ScheduleKind`'dan `date_range` silindi"
     card: R01.02-d1 (DONE)
   - id: KD-07
-    status: OPEN -- R01.02-d ile ERİŞİLEBİLİR oldu (AI Coach artık interval_days taşıyan alışkanlık kurabiliyor)
+    status: RESOLVED (R01.02-d2) -- occurrencesPerWeek interval_days okuyor (7/N); triage çarpanı tablonun kendi çapaları arasında interpolasyonla. Kayıtlı willpower_cost değerleri geriye dönük yeniden hesaplanmadı (bilerek)
     where: "frontend/lib/triage.ts costBreakdown (FREQ_FACTOR yalnız `kind`'a bakar) -> computeWillpowerCost (buildInstallRows'un yazdığı willpower_cost); frontend/lib/capacity.ts occurrencesPerWeek (daily -> 7 * (count ?? 1)) -> frequencyWeight 1.0"
     what: "İkisi de `interval_days` okumuyor: 'her 3 günde bir' alışkanlık günlük gibi FİYATLANIYOR (irade bedeli daily faktörüyle, kapasite yükü haftada 7 / ağırlık 1.0; doğrusu ~2.33 / ~0.33). Takvim doğru (R01.02-c/d1); bedel ve yük fazla. Bu kartın kapsamı dışında (triage.ts / capacity.ts) bırakıldı, düzeltilmedi"
-    card: R01.02-e öncesi karar (form modu herkese açmadan) ya da ayrı fiyatlama kartı
+    card: R01.02-d2 (DONE)
+  - id: KD-08
+    status: OPEN (bilinçli kapsam dışı, R01.02-d2)
+    where: frontend/lib/capacity.ts occurrencesPerWeek / frequencyWeight; frontend/lib/triage.ts costBreakdown
+    what: "Tarih aralığı (range_start/range_end) bedel ve yükte okunmuyor: aralığı BİTMİŞ ya da henüz BAŞLAMAMIŞ bir alışkanlık haftalık ortalama yük taşımaya devam eder. Frekans değil yaşam süresi sorusu; occurrencesPerWeek takvim günüyle değil haftalık ortalamayla çalışıyor. Gün-bazlı yük ekranları (weekly/monthly-review, insights) zaten carriesDayLoad ile aralık dışı günü saymıyor -- açık kalan: aktif-alışkanlık kapasite kapısı (canActivate) ve kurulumda yazılan willpower_cost"
+    card: ayrı kart (yaşam süresi/zarf ile kapasite)
 deferred_ids: [D01, D02, D03, D04, D05, D06, D07, D08, D09]
 cancelled_ids: [X01, X02, X03]
 core_implementation: IN_PROGRESS
@@ -62,6 +67,7 @@ evidence_locations:
   - docs/implementation-v3/STATE.md#r0102-c-evidence
   - docs/implementation-v3/STATE.md#r0102-d1-evidence
   - docs/implementation-v3/STATE.md#r0102-d-evidence
+  - docs/implementation-v3/STATE.md#r0102-d2-evidence
 gates_run_at_baseline:
   typecheck_ci: 0 errors
   lint_ci: 0 warnings
@@ -77,6 +83,7 @@ timing:                           # R00.07 — dev / test / fix ayrı; erişim b
   R01.02-c: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
   R01.02-d1: { access_wait_min: 0, single_writer: true }  # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı. Not: önceki iki "d1 bitti" raporu bu çalışma kopyasında iz bırakmamıştı; bu koşu 3524e26'dan sıfırdan yapıldı
   R01.02-d: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
+  R01.02-d2: { access_wait_min: 0, single_writer: true }  # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
 ```
 
 ## R01.01-a evidence
@@ -618,6 +625,115 @@ for `daily`. An every-3-days habit is therefore priced and loaded as daily
 (should be ~2.33/week, weight ~0.33). The calendar is right; willpower cost and
 capacity load are high. Outside this card's files; flagged so it is decided
 before R01.02-e opens the mode to every user via the form.
+
+## R01.02-d2 evidence
+
+- **Branch/HEAD:** `feature/r01-period-status`, on top of `70bd0d6` (verified at start, tree clean).
+- **Defect (KD-07), verified in source before editing:** `lib/triage.ts`
+  `costBreakdown` priced by `frequency_config.kind` only (`FREQ_FACTOR`), and
+  `lib/capacity.ts` `occurrencesPerWeek` returned `7 * (count ?? 1)` for
+  `daily` -- neither file mentioned `interval_days`. "Every 3 days" was costed
+  with factor 1.0 and loaded at weight 1.0 (7/week).
+
+### The rule
+
+- **Load (`capacity.ts`):** `occurrencesPerWeek`'s daily branch: `interval_days > 1`
+  → `7 / N` a week, times `count` when given; absent or `<= 1` → exactly as
+  before. `frequencyWeight` (and its 1.0 clamp) untouched. `occurrencesPerWeek`
+  is now EXPORTED so it stays the one frequency → occurrences mapping.
+- **Cost (`triage.ts`):** for `daily` + `interval_days > 1` only, the factor is
+  read off `FREQ_FACTOR`'s own three anchors by occurrences per week,
+  piecewise-linearly -- monthly (~0.23/wk) 0.5, weekly (1/wk) 0.7, daily (7/wk)
+  1.0 -- clamped at both ends. *One sentence:* the table is a hand-tuned
+  judgement, so an interval habit is priced where its frequency falls between
+  the table's own values, never by `1/N` (which would put "every 3 days" at
+  0.33, below weekly). Anchor frequencies come from `occurrencesPerWeek`, so cost
+  and load cannot disagree on "how often". `FREQ_FACTOR`'s three values unchanged.
+- **Deviation from the card, stated:** the card names two anchors (weekly,
+  daily). `interval_days` reaches 365 (validator), so below 1/week the
+  two-anchor rule is undefined: clamping at 0.7 would make "every 30 days"
+  dearer than `monthly` (0.5) at the same frequency. The table's third value
+  (monthly) is used as the lower anchor; still no new constant.
+- **Import direction checked:** `capacity` → `habitSchedule` → `date` /
+  `supabase` (types); none imports `triage`, so `triage → capacity` is acyclic.
+- **Transparency (A6):** `costBreakdown` adds `freqSource: 'interval'`,
+  `intervalDays`, `perWeek` -- ONLY on interval rows, so every other breakdown
+  object is byte-identical (A7).
+- `CostInput.frequency_config` gains `interval_days?: number`. `tsc` showed no
+  break in `routineProposal.ts` / `routineService.ts` / `HabitOnboarding.tsx`;
+  none was edited.
+- **Not retro-computed:** `willpower_cost` stored on existing rows is untouched;
+  only new computations change.
+
+### Monotonicity (generated from the code, not hand-written)
+
+| schedule | /week | load weight | cost factor | cost (diff 5, pos) |
+|---|---|---|---|---|
+| daily | 7.000 | 1.000 | 1.000 | 5 |
+| every 2 days | 3.500 | 0.500 | 0.825 | 4 |
+| every 3 days | 2.333 | 0.333 | 0.767 | 4 |
+| every 4 days | 1.750 | 0.250 | 0.737 | 4 |
+| every 5 days | 1.400 | 0.200 | 0.720 | 4 |
+| every 6 days | 1.167 | 0.167 | 0.708 | 4 |
+| every 7 days | 1.000 | 0.143 | 0.700 | 4 |
+| every 8 days | 0.875 | 0.125 | 0.668 | 3 |
+| every 9 days | 0.778 | 0.111 | 0.642 | 3 |
+| every 10 days | 0.700 | 0.100 | 0.622 | 3 |
+| every 11 days | 0.636 | 0.091 | 0.606 | 3 |
+| every 12 days | 0.583 | 0.083 | 0.592 | 3 |
+| every 13 days | 0.538 | 0.077 | 0.580 | 3 |
+| every 14 days | 0.500 | 0.071 | 0.570 | 3 |
+| every 30 days | 0.233 | 0.033 | 0.501 | 3 |
+| weekly (1/wk) | 1.000 | 0.143 | 0.700 | 4 |
+| monthly (1/mo) | 0.230 | 0.033 | 0.500 | 3 |
+
+Load weight falls as 1/N; the cost factor falls monotonically from 1.0 to the
+monthly floor 0.5; every 7 days = weekly in both; every 30 days ≈ monthly.
+
+### Acceptance
+
+| | Result |
+|---|---|
+| A1 | every 3 days: 7/3 = 2.333/week, weight 0.333 (was 1.0); cost factor 0.767 (was 1.0) |
+| A2 | every 2 days 3.5/week; every 7 days 1/week, same load as `weekly count 1` and `weekly days [3]` |
+| A3 | load and factor AND rounded cost non-increasing over interval 1..14 (and 7..365 for the factor, floor 0.5); interval 1 ≡ plain daily (breakdown `toEqual`) |
+| A4 | daily ≥ every 2 ≥ … ≥ every 7 ≥ weekly ≥ monthly, for the factor and for the rounded cost at difficulty 1/3/5 × positive/negative; every 3 days never cheaper than weekly |
+| A5 | interval + count: 14/3/week (weight 2/3); 17.5/week clamps to weight 1.0 and factor 1.0 |
+| A6 | breakdown shows `freqSource: 'interval'`, `intervalDays`, `perWeek`, and `base = diff × freqFactor`; non-interval breakdowns carry none of these keys |
+| A7 | **byte-identical.** Corpus (`__tests__/helpers/costCorpus.ts`): 30 frequency shapes -- every kind, `count` variants, ranges, `interval_days` 1/0/-3 (must stay daily), interval on weekly/monthly (not "every N days") -- × difficulty × minutes (360 load inputs) and × behaviour (incl. negative) × tracking (boolean/numeric/duration) × impact (4500 cost inputs), 4 whole days. Captured at `70bd0d6` before any edit (`occurrencesPerWeek`/`frequencyWeight` from a verbatim copy of that file with only `export` added), re-run after: `cmp` identical (732,682 bytes). Pinned in `costPreservation.test.ts` by SHA-256 per function + whole, with the small arrays verbatim |
+| A8 | `capacitySingleSourceOfTruth` green; new source checks: triage imports `occurrencesPerWeek` from capacity, contains no `7 /` or interval division of its own, and `function occurrencesPerWeek` is defined in exactly one production module |
+
+Negative assertions: every 3 days priced/loaded as daily → red; every 3 days cheaper than weekly → red; cost rising with the interval → red; any non-interval output changed → red (A7).
+
+### Mutation proof (4 focused suites, 76 tests; each reverted byte-identical, sha256 of both files verified)
+
+- **M1** interval read removed from `occurrencesPerWeek`: **12 / 76 red** (6 capacity + 6 triage -- triage reads the same mapping)
+- **M2** triage factor `1 / interval_days`: **7 / 76 red**, incl. both A4 ordering tests and "never cheaper than weekly"
+- **M3** interpolation inverted (rarer = dearer): **7 / 76 red**, incl. both A3 monotonicity tests and both A4 tests
+- 0 suite-level failures; `costPreservation` (A7) stayed GREEN under all three -- none of them touches a non-interval input.
+
+### Gates
+
+- `typecheck:ci` exit 0 · `lint:ci` exit 0 · `run-tests.js` **145/145** · `git diff --check` clean
+- focused 7 suites **202/202**
+- full `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB`, two consecutive runs: **142 suites / 2355 tests** each, 0 FAIL lines, 0 OOM/SIGTERM/`Command failed` markers (base 140 / 2321: +2 suites, +34 tests)
+- **Not done:** no screen rendered; no device/emulator (none on this host).
+
+### Out of scope, recorded: KD-08
+
+The date range does not reach cost or load: a habit whose range has ended (or
+not begun) still carries its weekly-average load in `canActivate` (it adds
+`habitLoadPoints` directly) and in the stored `willpower_cost`. Day-keyed load
+screens already skip out-of-range days (`carriesDayLoad` → `withinLifetime`).
+A lifetime question, not a frequency one -- separate card. Target proration
+stays R01.05.
+
+### Process note
+
+The card says the previous card broke the no-push rule. For the record: the
+R01.02-d push (`1cd0bc9..70bd0d6`) was done on the owner's explicit "push et"
+instruction in the session, after the card's own report had stopped at the
+commit. This card: commit only -- no push, no merge, no PR.
 
 ## Paket sınıflandırması (R00.02 özeti)
 

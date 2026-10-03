@@ -8,6 +8,7 @@ import {
   habitLoad,
   habitLoadPoints,
   dailyLoad,
+  occurrencesPerWeek,
   LOAD_BANDS,
   bandFor,
   capacityAdvice,
@@ -434,5 +435,62 @@ describe('recent_completion_rate is measured over DUE days, not logged days', ()
     // 28 window days minus the one skipped.
     expect(result.due_days).toBe(27);
     expect(result.done_days).toBe(1);
+  });
+});
+
+// ===========================================================================
+// R01.02-d2 (KD-07) — capacity load reads interval_days
+//
+// `occurrencesPerWeek`'s daily branch ignored `interval_days`: "every 3 days"
+// was loaded as 7 a week (weight 1.0). The calendar has honoured the interval
+// since R01.02-c; the load side now does too, through the same single mapping.
+// ===========================================================================
+
+describe('R01.02-d2 — occurrencesPerWeek / load for "every N days"', () => {
+  const every = (n: number, extra: Partial<FrequencyConfig> = {}): FrequencyConfig => ({ kind: 'daily', interval_days: n, ...extra });
+  // difficulty 5 / 90 minutes: difficulty and duration weights are exactly 1.0,
+  // so habitLoad IS frequencyWeight.
+  const weightOf = (f: FrequencyConfig) => habitLoad({ difficulty: 5, estimated_minutes: 90, frequency_config: f, impact_level: null });
+
+  it('A1 — every 3 days: 7/3 a week, weight 1/3', () => {
+    expect(occurrencesPerWeek(every(3))).toBeCloseTo(7 / 3, 12);
+    expect(weightOf(every(3))).toBeCloseTo(1 / 3, 12);
+  });
+
+  it('NEGATIVE A1 — every 3 days is not loaded as daily (red if weight 1.0)', () => {
+    expect(weightOf(every(3))).not.toBeCloseTo(weightOf({ kind: 'daily' }), 3);
+    expect(occurrencesPerWeek(every(3))).toBeLessThan(7);
+  });
+
+  it('A2 — every 2 days: 3.5; every 7 days: 1, the same load as a weekly habit', () => {
+    expect(occurrencesPerWeek(every(2))).toBeCloseTo(3.5, 12);
+    expect(occurrencesPerWeek(every(7))).toBeCloseTo(1, 12);
+    expect(weightOf(every(7))).toBeCloseTo(weightOf({ kind: 'weekly', count: 1 }), 12);
+    expect(weightOf(every(7))).toBeCloseTo(weightOf({ kind: 'weekly', days: [3] }), 12);
+  });
+
+  it('A3 — load never rises as the interval grows (1..14); interval 1 is plain daily', () => {
+    const w = Array.from({ length: 14 }, (_, i) => weightOf(every(i + 1)));
+    for (let i = 1; i < w.length; i++) expect(w[i]).toBeLessThanOrEqual(w[i - 1]);
+    expect(w[0]).toBe(weightOf({ kind: 'daily' }));
+    expect(occurrencesPerWeek(every(1))).toBe(occurrencesPerWeek({ kind: 'daily' }));
+  });
+
+  it('A5 — interval and count both count; the 1.0 clamp holds', () => {
+    expect(occurrencesPerWeek(every(3, { count: 2 }))).toBeCloseTo(14 / 3, 12);
+    expect(weightOf(every(3, { count: 2 }))).toBeCloseTo(2 / 3, 12);
+    expect(occurrencesPerWeek(every(2, { count: 5 }))).toBeCloseTo(17.5, 12);
+    expect(weightOf(every(2, { count: 5 }))).toBe(1);   // clamped, not 2.5
+  });
+
+  it('the date range is not read here (weekly average, not a calendar -- KD-08)', () => {
+    expect(occurrencesPerWeek(every(3, { range_start: '2026-08-05', range_end: '2026-08-06' }))).toBeCloseTo(7 / 3, 12);
+  });
+
+  it('a whole day: an every-3-days habit adds a third of a daily one', () => {
+    const base = { difficulty: 5, estimated_minutes: 90, impact_level: null } as const;
+    const daily = dailyLoad({ habits: [{ ...base, frequency_config: { kind: 'daily' } }] }).raw;
+    const third = dailyLoad({ habits: [{ ...base, frequency_config: every(3) }] }).raw;
+    expect(third).toBeCloseTo(daily / 3, 9);
   });
 });

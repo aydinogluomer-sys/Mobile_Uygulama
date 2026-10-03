@@ -81,11 +81,28 @@ function frequencyWeight(freq: FrequencyConfig): number {
   return clamp(perWeek / 7, 0, 1);
 }
 
-function occurrencesPerWeek(freq: FrequencyConfig): number {
+/**
+ * How many times a week the schedule asks for the habit, on average.
+ *
+ * The ONE frequency -> occurrences mapping in the app: `frequencyWeight`
+ * (capacity load) and `triage.costBreakdown` (willpower cost, R01.02-d2) both
+ * read it, so the two cannot disagree about how often a habit happens.
+ *
+ * `daily` + `interval_days > 1` ("every N days", R01.02-d2 / KD-07): 7 / N a
+ * week (times `count` when given). Before this the branch ignored the
+ * interval, so "every 3 days" was loaded as 7 a week instead of ~2.33.
+ * `interval_days` absent or <= 1 is plain daily, exactly as before. The date
+ * range (`range_start`/`range_end`) is deliberately NOT read here: this is a
+ * weekly average, not a calendar -- see STATE.md KD-08.
+ */
+export function occurrencesPerWeek(freq: FrequencyConfig): number {
   if (!freq) return 7; // no config recorded -- treat as daily, the app's own default
   switch (freq.kind) {
-    case 'daily':
-      return 7 * (freq.count ?? 1);
+    case 'daily': {
+      const n = freq.interval_days;
+      const perDay = typeof n === 'number' && n > 1 ? 1 / n : 1;
+      return 7 * perDay * (freq.count ?? 1);
+    }
     case 'weekly':
       if (freq.days && freq.days.length > 0) return freq.days.length;
       return freq.count ?? 1;
