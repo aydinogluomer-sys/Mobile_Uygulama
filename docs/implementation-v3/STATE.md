@@ -6,9 +6,9 @@ baseline_sha: 0ff1c74b0d8d922fd9bef46d3631a1cf443677e2
 guide_commit: ecfd4e3            # docs/plan/22_ADERYTH_CORE_IMPLEMENTATION_V3.md, verbatim
 scope_authority: docs/plan/21_KAPSAM_EKI_2026-09-13.md
 newer_owner_decision: none        # 2026-09-13
-completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1, R01.02-d, R01.02-d2]
+completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1, R01.02-d, R01.02-d2, R01.02-e]
 active_card: null
-next_ready_card: R01.02-e   # UI form fields for interval_days / range_*; consumers (R01.02-c), envelope (R01.02-d1), validator (R01.02-d) and pricing (R01.02-d2, KD-07 closed) done. KD-08 (range vs load) open, not blocking
+next_ready_card: R01.03     # tracking semantics (guide §R01.03: boolean/numeric/duration/abstinence + at_least/at_most, partial, undo across consumers). R01.02 chain (c/d1/d/d2/e) DONE. Open, not blocking: KD-08, KD-09, KD-10, R01.06-b
 critical_open_defects: []         # bilinen kusurlar kartlara bağlı; veri kaybı / hesap erişimi / FP kusuru yok
 known_defects_bound_to_cards:
   - id: KD-01
@@ -51,6 +51,16 @@ known_defects_bound_to_cards:
     where: frontend/lib/capacity.ts occurrencesPerWeek / frequencyWeight; frontend/lib/triage.ts costBreakdown
     what: "Tarih aralığı (range_start/range_end) bedel ve yükte okunmuyor: aralığı BİTMİŞ ya da henüz BAŞLAMAMIŞ bir alışkanlık haftalık ortalama yük taşımaya devam eder. Frekans değil yaşam süresi sorusu; occurrencesPerWeek takvim günüyle değil haftalık ortalamayla çalışıyor. Gün-bazlı yük ekranları (weekly/monthly-review, insights) zaten carriesDayLoad ile aralık dışı günü saymıyor -- açık kalan: aktif-alışkanlık kapasite kapısı (canActivate) ve kurulumda yazılan willpower_cost"
     card: ayrı kart (yaşam süresi/zarf ile kapasite)
+  - id: KD-09
+    status: OPEN (R01.02-e kapsam dışı bıraktı)
+    where: frontend/app/screens/habit-detail.tsx (frekansı yalnız GÖSTERİR)
+    what: "Kurulmuş bir alışkanlığın sıklığı (interval_days, tarih aralığı, haftada/ayda N) sonradan DEĞİŞTİRİLEMİYOR; yalnız oluşturma formu (HabitOnboarding) bunları üretebiliyor. Ayrıca habit-detail scheduleLabel kendi kind-bazlı etiketini üretiyor, lib/frequencyForm.frequencySummary kullanmıyor"
+    card: ayrı kart (alışkanlık düzenleme)
+  - id: KD-10
+    status: OPEN -- SAYIM YAPILMADI, karar bekliyor
+    where: üretim verisi, habits.frequency_config
+    what: "R01.02-e öncesi form 'Aylık' için {kind:monthly} (count yok) ve hiç gün seçilmemiş 'Haftalık' için {kind:weekly, days:[]} ya da {kind:weekly} yazabiliyordu: hedefsiz satırlar (hiçbir gün due değil, raporlara girmez, Bugün'de yalnız fail-open ile görünür). Ayrıca part_of_day:[] yazılabiliyordu (validator reddeder; takvim etkilenmez). Kaç satır olduğu SAYILMADI (Supabase okuma bu kartta yapılmadı); düzeltme/backfill ayrı karar"
+    card: sahip kararı (önce salt-okunur sayım, sonra backfill ya da kullanıcıya düzeltme istemi)
 deferred_ids: [D01, D02, D03, D04, D05, D06, D07, D08, D09]
 cancelled_ids: [X01, X02, X03]
 core_implementation: IN_PROGRESS
@@ -68,6 +78,7 @@ evidence_locations:
   - docs/implementation-v3/STATE.md#r0102-d1-evidence
   - docs/implementation-v3/STATE.md#r0102-d-evidence
   - docs/implementation-v3/STATE.md#r0102-d2-evidence
+  - docs/implementation-v3/STATE.md#r0102-e-evidence
 gates_run_at_baseline:
   typecheck_ci: 0 errors
   lint_ci: 0 warnings
@@ -84,6 +95,7 @@ timing:                           # R00.07 — dev / test / fix ayrı; erişim b
   R01.02-d1: { access_wait_min: 0, single_writer: true }  # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı. Not: önceki iki "d1 bitti" raporu bu çalışma kopyasında iz bırakmamıştı; bu koşu 3524e26'dan sıfırdan yapıldı
   R01.02-d: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
   R01.02-d2: { access_wait_min: 0, single_writer: true }  # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
+  R01.02-e: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
 ```
 
 ## R01.01-a evidence
@@ -734,6 +746,120 @@ The card says the previous card broke the no-push rule. For the record: the
 R01.02-d push (`1cd0bc9..70bd0d6`) was done on the owner's explicit "push et"
 instruction in the session, after the card's own report had stopped at the
 commit. This card: commit only -- no push, no merge, no PR.
+
+## R01.02-e evidence
+
+- **Branch/HEAD:** `feature/r01-period-status`, on top of `6895c44` (verified at start, tree clean).
+- **Defect (verified in source before editing):** step 3 of `HabitOnboarding`
+  expressed 2 of the 5 shapes. "Aylık" wrote `{ kind: 'monthly' }` and "Haftalık"
+  with no day wrote `{ kind: 'weekly' }` / `days: []` -- count 0, no target, due
+  on no day. No count, interval or range input existed. `setKind` reset the
+  config to `{ kind }`, silently dropping `part_of_day`.
+- **Files:** `components/HabitOnboarding.tsx`; NEW `lib/frequencyForm.ts` (pure
+  transitions + summary; the card's §11 "saf yardımcılar"); NEW tests
+  `__tests__/lib/frequencyForm.test.ts` (40), `__tests__/repo/habitFormFrequency.test.ts`
+  (19), helper `__tests__/helpers/legacyFrequencyForm.ts`. `run-tests.js` needed
+  no change (145/145 as is). No package added; `habitSchedule` / `routineProposal`
+  / `capacity` / `triage` behaviour untouched (only constants imported).
+
+### What the form can produce now
+
+| UI | `frequency_config` | `scheduleKind` |
+|---|---|---|
+| Günlük · Her gün | `{ kind: 'daily' }` | daily |
+| Günlük · 2/3/7 günde bir, or typed 2–365 | `{ kind: 'daily', interval_days: N }` | every_n_days |
+| Haftalık · Haftada N kez (default) | `{ kind: 'weekly', count: 1–7 }` | weekly_count |
+| Haftalık · Belirli günler | `{ kind: 'weekly', days: [...] }` (≥1 day to continue) | weekly_days |
+| Aylık · Ayda N kez | `{ kind: 'monthly', count: 1–31 }` | monthly_count |
+| any of the above + "Yalnızca şu tarihler arasında" | `+ range_start? / range_end?` | same shape, envelope |
+
+Start presets: Hemen / 1 hafta sonra / 1 ay sonra; end presets: Süresiz / 7 / 30 /
+90 gün (inclusive, from the start or today) -- the `end_condition` ready-button
+pattern, no date-picker dependency.
+
+### Rules and defaults (each written at the code site)
+
+- **setKind (`setFrequencyKind`):** shape fields (`days`, `count`,
+  `interval_days`) belong to the old shape and are dropped -- carrying
+  Pzt/Çar/Cum into "Aylık" would be a schedule nobody picked. `range_*` and
+  `part_of_day` are not shapes and are KEPT. Re-selecting the current kind
+  changes nothing (the old form reset it).
+- **Defaults:** weekly → `count: 3` (the commonest stated weekly goal, room
+  both ways in 1–7); monthly → `count: 1` (the smallest real target: "Aylık"
+  says nothing about how often, so commit to the least). Untouched "Devam" on
+  any kind yields a target.
+- **Weekly days XOR count** (`setWeeklyMode`): `scheduleKind` reads `days` first and
+  would silently ignore a `count` beside it. "Belirli günler" starts with no day
+  picked -- exactly the old form's state after "Haftalık", so the old day path
+  is reproduced byte-for-byte -- and `canProceed` (step 3 →
+  `isFrequencyComplete`) blocks "Devam" until a day is chosen, with a visible
+  hint. `toggleWeekday` is a no-op outside days mode.
+- **Interval:** "Her gün", 1, 0, empty or garbage REMOVE `interval_days`; never
+  written as 1 (the validator refuses 1 rather than coercing). >365 clamps to 365.
+- **Envelope:** start after end drops the end (one-sided, valid); an end before
+  the start is refused; an impossible day is refused.
+- **Bounds** `MAX_WEEKLY_COUNT`, `MAX_MONTHLY_COUNT`, `MIN/MAX_INTERVAL_DAYS`
+  imported from `routineProposal.ts`; no literal bound in `frequencyForm.ts`.
+- **Cost (A10):** every frequency change goes through `applyAndRecost`, so the
+  stored `willpower_cost` (summary, `canActivate`) follows the schedule. Before,
+  step 3 used plain `setForm`, so changing the frequency left the cost stale until
+  a step-4/5 control was touched. Step 5's breakdown now says "3 günde bir"
+  with the interpolated factor instead of "günlük".
+- **Summary (Adım 5):** `frequencySummary` (from `scheduleKind`, so it cannot
+  claim a shape the engine does not read) replaces the kind-only `freqLabel` in
+  step 7 and is shown live under step 3: "Her gün", "3 günde bir", "Haftada 3
+  kez", "Haftada 3 gün · Pzt, Çar, Cum", "Ayda 10 kez", "… · 5–20 Ağustos arası",
+  "5 Ağustos itibarıyla", "20 Ağustos tarihine kadar".
+
+### Found and fixed on the way (by the state-space test)
+
+1. `toggleWeekday` had no mode guard -- reachable as `days` next to `count`
+   (A2) or `days` on daily (validator-refused). Guarded.
+2. **Pre-existing:** picking then un-picking a time of day left
+   `part_of_day: []`, which `validateFrequencyConfig` refuses ("expected 1-3
+   entries") -- the old form could produce a config the AI Coach path rejects.
+   Now the key is removed. This is the ONE intended A7 difference (below).
+
+### Acceptance
+
+| | Result |
+|---|---|
+| A1 | over every state reachable from the default form (BFS depth 3 over all 35 UI actions + 400 deterministic 40-step walks; >1000 distinct states, all 5 shapes reached): every complete state is one of the 5 shapes, count > 0 in count modes, ≥1 weekday in days mode, eligible on ≥1 day; the ONLY incomplete reachable state is "belirli günler" with no day yet, which `canProceed` blocks |
+| A2 | no reachable state has `days` and `count` together; sub-mode switch clears the other field |
+| A3 | monthly default 1; stepper clamps to 1..31; `count: 0` unreachable; NaN ignored |
+| A4 | interval 2/3/7/typed 2–365; 1/0/negative/empty/garbage remove the key; >365 → 365; only on daily |
+| A5 | envelope on all five shapes, one-sided allowed, start > end unreachable in every explored state |
+| A6 | 6 source states × 3 target kinds: valid after every switch, envelope + `part_of_day` kept, shape fields cleared, same kind = no-op |
+| A7 | 304 old paths ("Günlük" 160, "Haftalık + belirli günler" 144) replayed through the old step-3 logic (copied verbatim from `6895c44`:345-361, checked against `git show`) and the new: **292 byte-identical**; the other **12 differ only by `part_of_day: []` being dropped**, and all 12 old outputs are refused by the validator (asserted) |
+| A8 | every complete reachable state passes `validateFrequencyConfig` with `errors: []` and comes back unchanged (validator sorts `days`; compared sorted) |
+| A9 | the controls block (8 touchables + 1 text input) scanned tag by tag with a comment/string-blind tokenizer (self-tested on a synthetic violation): every touchable has role, non-empty label and state; exclusive choices are `radio` in 5 labelled `radiogroup`s, weekdays `checkbox` with full names ("Pazartesi", not "Pzt"), steppers `button` with `disabled` state, live regions on the count and summary; source order = decision order (kind → how often → days/count → dates → summary); every target reuses `dayBtn`/`freqBtn` (`wideChip` adds only horizontal padding). `screenAccessibility` (app/screens only -- it never covered this component) and `uiPrimitivesAccessibility` green. **Not verified on a device / with a screen reader** |
+| A10 | `computeWillpowerCost`: every 3 days < daily at the form defaults and at difficulty 5; form recosts on every frequency change (guard-pinned) |
+
+Negative assertions: count 0 reachable → red; days + count together → red;
+setKind wiping the envelope → red; any Günlük / Haftalık+günler output change
+(beyond the named `part_of_day: []` fix) → red.
+
+### Mutation proof (2 suites, 59 tests; each reverted byte-identical, sha256 of both files verified)
+
+- **M1** count defaults → 0: **12 / 59 red** (A1, A6)
+- **M2a** component `setKind` back to `{ kind }` reset: **3 / 59 red** (guard)
+- **M2b** `setFrequencyKind` back to `{ kind }`: **23 / 59 red** (A1, A3, A6)
+- **M3** days and count written together: **4 / 59 red** (A2, A7)
+- **M4** (extra) one radio's `accessibilityLabel` removed: **1 / 59 red** (A9)
+- 0 suite-level failures. (An earlier M2b attempt failed to apply -- CRLF anchor
+  on an LF file -- and was re-run after fixing the anchor; the file was restored
+  byte-identical in both runs.)
+
+### Gates
+
+- `typecheck:ci` exit 0 · `lint:ci` exit 0 · `run-tests.js` **145/145** (unchanged) · `git diff --check` clean
+- full `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB`, two consecutive runs: **144 suites / 2414 tests** each, 0 FAIL lines, 0 OOM/SIGTERM/`Command failed` markers (base 142 / 2355: +2 suites, +59 tests)
+- **Not done:** no screen rendered (no RNTL test written; logic proven on the pure layer + source guard), no device/emulator (none on this host).
+
+### Recorded, not done
+
+- **KD-09:** habit-detail only DISPLAYS the frequency; an installed interval / range / count cannot be edited afterwards.
+- **KD-10:** target-less rows already in production (old "Aylık", "Haftalık" with no day, `part_of_day: []`) -- **not counted**, no Supabase read was made; backfill is an owner decision.
 
 ## Paket sınıflandırması (R00.02 özeti)
 
