@@ -34,9 +34,33 @@ export function weekdayIndex(date: Date): number {
  * habit, the absence of a log is not evidence of failure.
  */
 /**
+ * Is `date` inside the habit's optional `range_start`..`range_end` (inclusive,
+ * local days)? Either end may be absent, which leaves that side open. A habit
+ * with no range is inside it on every day -- so nothing without a range can
+ * change because of this function.
+ *
+ * R01.02-d1: the range is an ENVELOPE, like `created_at` and a dated
+ * `end_condition`, not a schedule SHAPE. It used to be a shape (`scheduleKind`
+ * returned `'date_range'` before looking at `kind`), which replaced the real
+ * shape: "3 a week, 5-20 Aug" lost its count and got invented weekdays
+ * (KD-06); "every 3 days, 3-20 Aug" lost its interval and became every day.
+ */
+function withinRange(habit: Habit, date: Date): boolean {
+  const fc = habit.frequency_config;
+  if (!fc?.range_start && !fc?.range_end) return true;
+  const ds = ymd(date);
+  if (fc.range_start && ds < fc.range_start) return false;
+  if (fc.range_end && ds > fc.range_end) return false;
+  return true;
+}
+
+/**
  * Was the habit alive on `date`? Not before it was created, not after a dated
- * end condition. Shared by `isDueOn` (legacy obligation) and `isEligibleOn`
- * (canonical eligibility) so the two cannot drift on the one rule they agree on.
+ * end condition, not outside its date range. Shared by `isDueOn` (legacy
+ * obligation) and `isEligibleOn` (canonical eligibility) so the two cannot
+ * drift on the one rule they agree on -- and, because both read it first, the
+ * range envelope covers every day shape (via `isDueOn`) and every count shape
+ * (via `isEligibleOn`'s count branch) from this one place.
  */
 function withinLifetime(habit: Habit, date: Date): boolean {
   const ds = ymd(date);
@@ -45,6 +69,8 @@ function withinLifetime(habit: Habit, date: Date): boolean {
   // Tarihli bitiş koşulu geçmişse due değil
   const ec = habit.end_condition;
   if (ec && ec.kind === 'date' && typeof ec.value === 'string' && ds > ec.value) return false;
+  // Tarih aralığı (zarf) dışında due değil
+  if (!withinRange(habit, date)) return false;
   return true;
 }
 
@@ -70,13 +96,11 @@ function withinLifetime(habit: Habit, date: Date): boolean {
  * schedules first. The remaining caller is `dueOnExtended` (below), which uses
  * it for the base guards.
  *
- * ONE HOLE, pre-existing and recorded (STATE.md KD-06), not closed here: a
- * `weekly` row with `count` AND `range_start`/`range_end` is classified
- * `date_range` by `scheduleKind` (range wins, kind is not consulted), so it is
- * not count-based to any guard, and `dueOnExtended`'s range branch then calls
- * this function, whose count branch invents weekdays. No such row can be
- * written today (the client validator rejects the range keys); R01.02-d must
- * decide the combination before it opens them.
+ * KD-06 (closed in R01.02-d1): a `weekly` row with `count` AND a date range
+ * used to be classified `date_range`, slip every count guard and reach the
+ * count branch below through `dueOnExtended`. The range is now an envelope in
+ * `withinLifetime`; `scheduleKind` reports such a row as `weekly_count`, so the
+ * guards catch it like any other count schedule.
  *
  * The count branch and `countDueDays` are therefore dead for every real input,
  * and `__tests__/repo/periodConsumerMigration.test.ts` pins that. They are still
@@ -166,45 +190,42 @@ function countDueDays(count: number): number[] {
 // alanları taşımadığı için (hepsi undefined) eski davranış tamamen korunuyor.
 // =====================================================================================
 
-/** `scheduleKind`'ın döndürdüğü ayrık (discriminated) görünüm — §8.7'nin altı modu. */
+/** `scheduleKind`'ın döndürdüğü ayrık (discriminated) görünüm — beş zamanlama ŞEKLİ. */
 export type ScheduleKind =
   | { readonly kind: 'daily' }
   | { readonly kind: 'weekly_days'; readonly days: number[] }
   | { readonly kind: 'weekly_count'; readonly count: number }
   | { readonly kind: 'monthly_count'; readonly count: number }
-  | { readonly kind: 'every_n_days'; readonly intervalDays: number }
-  | { readonly kind: 'date_range'; readonly start: string | null; readonly end: string | null };
+  | { readonly kind: 'every_n_days'; readonly intervalDays: number };
 
 /**
- * `habit.frequency_config`'i §8.7'nin altı zamanlama moduna sınıflandırır.
+ * `habit.frequency_config`'i beş zamanlama ŞEKLİNE sınıflandırır.
  *
- * Öncelik sırası (en spesifikten en genele):
- *  1. `range_start`/`range_end` verilmişse → `'date_range'`. Kullanıcı açık bir
- *     tarih penceresi tanımlamışsa bu, o pencere içinde HER GÜN due anlamına gelir.
- *     SINIR — bilerek: date_range bugün haftalık-gün/haftalık-sayı deseniyle
- *     BİRLEŞTİRİLEMİYOR ("Pzt/Çar/Cum, ama yalnızca 1-15 Ağustos" ifade edilemez).
- *     Bu basitleştirme kabul edilebilir çünkü istemci validator'ı bu alanları henüz
- *     kabul etmiyor ve hiçbir kombinasyon kalıcı hâle gelmiyor; V1 kapsamı yalnızca
- *     "bu pencerede her gün" senaryosunu kapsıyor.
- *  2. `kind: 'daily'` + `interval_days > 1` → `'every_n_days'`. `interval_days`
+ * Tarih aralığı (`range_start`/`range_end`) bir şekil DEĞİLDİR ve burada
+ * okunmaz (R01.02-d1). Aralık, `created_at` ve tarihli `end_condition` gibi bir
+ * ZARF'tır: şekli değiştirmez, şeklin geçerli olduğu günleri kırpar —
+ * `withinLifetime` (→ `withinRange`). Böylece "Pzt/Çar/Cum, yalnız 1-15 Ağustos",
+ * "haftada 3, yalnız 5-20 Ağustos" ve "3 günde bir, yalnız 3-20 Ağustos" hepsi
+ * kendi şekilleriyle değerlendirilir. Eskiden aralık önce kontrol edilip
+ * `'date_range'` dönülüyordu; bu, şeklin YERİNE geçiyordu ve sessizce yanlış
+ * gün üretiyordu (KD-06: uydurma Pzt/Çar/Cmt; interval tamamen kayboluyordu).
+ *
+ * Öncelik sırası:
+ *  1. `kind: 'daily'` + `interval_days > 1` → `'every_n_days'`. `interval_days`
  *     verilmemiş veya `<=1` ise sıradan `'daily'` olarak kalır — bu, var olan hiçbir
  *     `kind:'daily'` satırının (hepsi `interval_days` taşımıyor) anlamını değiştirmez.
- *  3. `kind: 'weekly'` + `days` doluysa → `'weekly_days'` (mevcut `isDueOn` davranışıyla
+ *  2. `kind: 'weekly'` + `days` doluysa → `'weekly_days'` (mevcut `isDueOn` davranışıyla
  *     birebir aynı gün kümesi).
- *  4. `kind: 'weekly'` + `days` boş/yok → `'weekly_count'`. `count` yoksa/≤0 ise
+ *  3. `kind: 'weekly'` + `days` boş/yok → `'weekly_count'`. `count` yoksa/≤0 ise
  *     `count: 0` döner (bkz. `windowFor`/`streakBroken` — hedef 0 iken "bozulacak"
  *     bir şey yoktur, `isDueOn`'un "belirsizlikte az say" ilkesiyle tutarlı).
- *  5. `kind: 'monthly'` → `'monthly_count'`. `isDueOn` aylık deseni bilerek
+ *  4. `kind: 'monthly'` → `'monthly_count'`. `isDueOn` aylık deseni bilerek
  *     desteklemiyor (dosya başındaki not); burada da aynı dürüstlükle `count` yoksa
  *     `0` döner — "ayda kaç kez" hesaba katılamıyorsa hedef karşılanamaz sayılmaz,
  *     yalnızca hiç sayılmaz.
  */
 export function scheduleKind(habit: Habit): ScheduleKind {
   const fc = habit.frequency_config;
-
-  if (fc?.range_start || fc?.range_end) {
-    return { kind: 'date_range', start: fc.range_start ?? null, end: fc.range_end ?? null };
-  }
 
   const kind = fc?.kind ?? 'daily';
 
@@ -228,11 +249,13 @@ export function scheduleKind(habit: Habit): ScheduleKind {
 }
 
 /**
- * `isDueOn`'un GENİŞLETİLMİŞ hâli — yalnızca bu modülün V2 alanlarını (`every_n_days`,
- * `date_range`) hesaba katar. `isDueOn`'un kendisi BİLEREK değiştirilmedi; bu ayrı,
- * modül-içi bir yardımcıdır ve `streakBroken`'ın gün-bazlı dallarında kullanılır.
- * `weekly_count`/`monthly_count` bu fonksiyona hiç girmez — onlar pencere bazlı
- * değerlendirilir (bkz. `windowFor`/`streakBroken`).
+ * `isDueOn`'un GENİŞLETİLMİŞ hâli — `every_n_days` aralığını hesaba katar.
+ * `isDueOn`'un kendisi BİLEREK değiştirilmedi; bu ayrı, modül-içi bir yardımcıdır
+ * ve `streakBroken`'ın gün-bazlı dallarında kullanılır. `weekly_count`/`monthly_count`
+ * bu fonksiyona hiç girmez — onlar pencere bazlı değerlendirilir (bkz. `windowFor`/`streakBroken`).
+ *
+ * Tarih aralığı burada ayrı bir dal DEĞİL (R01.02-d1): her yol önce `isDueOn`'u
+ * çağırır, o da önce `withinLifetime`'ı — aralık zarfı oradadır.
  */
 function dueOnExtended(habit: Habit, date: Date): boolean {
   const sk = scheduleKind(habit);
@@ -247,15 +270,7 @@ function dueOnExtended(habit: Habit, date: Date): boolean {
     return diff % Math.max(1, sk.intervalDays) === 0;
   }
 
-  if (sk.kind === 'date_range') {
-    if (!isDueOn(habit, date)) return false; // temel korumalar önce
-    const ds = ymd(date);
-    if (sk.start && ds < sk.start) return false;
-    if (sk.end && ds > sk.end) return false;
-    return true;
-  }
-
-  return isDueOn(habit, date); // daily / weekly_days — davranış değişmedi
+  return isDueOn(habit, date); // daily / weekly_days — davranış değişmedi (aralık zarfı isDueOn içinde)
 }
 
 /** Sayaç-tabanlı (weekly_count/monthly_count) bir alışkanlığın değerlendirildiği pencere. */
@@ -288,6 +303,23 @@ export function windowFor(habit: Habit, date: Date): ScheduleWindow | null {
 }
 
 /**
+ * The part of a count-mode period that lies inside the habit's date range
+ * (R01.02-d1 envelope), or `null` when none of it does. With no range the
+ * slice is the window itself -- the same object, so range-less arithmetic is
+ * untouched. The PERIOD (and its nominal target) stays the calendar window;
+ * only where work can happen and be counted is clipped.
+ */
+function rangeSlice(habit: Habit, window: { start: Date; end: Date }): { start: Date; end: Date } | null {
+  const fc = habit.frequency_config;
+  if (!fc?.range_start && !fc?.range_end) return window;
+  const rs = fc.range_start ? parseLocalDate(fc.range_start) : null;
+  const re = fc.range_end ? parseLocalDate(fc.range_end) : null;
+  const start = rs && ymd(rs) > ymd(window.start) ? rs : window.start;
+  const end = re && ymd(re) < ymd(window.end) ? re : window.end;
+  return ymd(start) > ymd(end) ? null : { start, end };
+}
+
+/**
  * `logs` içinde, `window` aralığına düşen (dahil) `done`/`partial` sayısı.
  *
  * `isCompletedState` (lib/reportMetrics.ts) burada BİLEREK yeniden import edilmedi:
@@ -314,7 +346,7 @@ function completedCountInWindow(
 
 /**
  * Sayaç-tabanlı bir alışkanlığın penceresi, hedefini KARŞILAMIŞ mı?
- * Pencere kavramı olmayan modlarda (`daily`/`weekly_days`/`every_n_days`/`date_range`)
+ * Pencere kavramı olmayan modlarda (`daily`/`weekly_days`/`every_n_days`)
  * bilinçli olarak `true` döner — "boş sorgu, boş doğru": bu fonksiyon onlar için
  * anlamsızdır ve `false` dönmesi çağıranı yanlışlıkla "kaçırıldı" sonucuna
  * götürebilirdi. Bu modların kaçırma tespiti tamamen `streakBroken`'ın gün-bazlı
@@ -344,7 +376,7 @@ export function isWindowSatisfied(
  * azsa) bozulmuş sayılır. `skip` günleri bu sayıma hiç girmez (ne pay ne payda) —
  * dolayısıyla bir skip, kalan günleri azaltmaz ve tek başına akışı bozamaz.
  *
- * Gün-bazlı modlar (`daily`/`weekly_days`/`every_n_days`/`date_range`) için: yalnızca
+ * Gün-bazlı modlar (`daily`/`weekly_days`/`every_n_days`) için: yalnızca
  * `date` gerçekten due İSE ve o gün için `done`/`partial` bir log YOKSA bozulmuş
  * sayılır. `skip` burada da AÇIKÇA cezasızdır: due bir günün logu `skip` ise akış
  * bozulmaz (§8.5 — "skip akış cezası yaratmamalı").
@@ -358,14 +390,18 @@ export function streakBroken(
 
   if (sk.kind === 'weekly_count' || sk.kind === 'monthly_count') {
     if (sk.count <= 0) return false; // hedef yok → bozulacak bir şey yok
+    if (!withinRange(habit, date)) return false; // aralık (zarf) dışı: due değil → bozulacak bir şey yok
 
     const window = windowFor(habit, date);
     if (!window) return false; // teorik olarak ulaşılamaz (sk zaten sayaç-tabanlı); savunma amaçlı
+    // Aralıksız alışkanlıkta dilim = pencere (davranış birebir aynı).
+    const slice = rangeSlice(habit, window);
+    if (!slice) return false;
 
-    const doneSoFar = completedCountInWindow(habit, logs, window);
+    const doneSoFar = completedCountInWindow(habit, logs, slice);
     if (doneSoFar >= window.targetCount) return false; // hedef zaten karşılandı
 
-    const remainingDays = daysBetweenLocal(date, window.end) + 1; // `date` dahil, pencere sonuna kalan gün
+    const remainingDays = daysBetweenLocal(date, slice.end) + 1; // `date` dahil, dilim sonuna kalan gün
     if (remainingDays <= 0) return true; // pencere bitti, hedef karşılanmadı
     return (window.targetCount - doneSoFar) > remainingDays; // kalan günlerle bile yetişilemez mi?
   }
@@ -794,7 +830,14 @@ export function periodStatus(
     const target = window.targetCount;
     if (target <= 0) return unknownStatus(periodStart, periodEnd, 'days', 'no_target');
 
-    const counted = completedCountInWindow(habit, oneLogPerDay(habit, logs), window);
+    // R01.02-d1 — the date range is an envelope: only the slice of this period
+    // that lies inside it counts and can still be worked. With no range the
+    // slice IS the window, so everything below is unchanged for those habits.
+    const slice = rangeSlice(habit, window);
+    if (!slice) return unknownStatus(periodStart, periodEnd, 'days', 'not_scheduled'); // period wholly outside the range
+    const cut = ymd(slice.start) !== ymd(window.start) || ymd(slice.end) !== ymd(window.end);
+
+    const counted = completedCountInWindow(habit, oneLogPerDay(habit, logs), slice);
     const remaining = Math.max(target - counted, 0);
     const base = {
       periodStart, periodEnd, unit: 'days' as const, target, counted, actual: counted, remaining, basis: PERIOD_BASIS,
@@ -803,16 +846,29 @@ export function periodStatus(
     if (counted >= target) return { ...base, status: 'satisfied', reason: 'ok' };
     if (beforeStart) return { ...base, status: 'not_started', reason: 'period_not_started' };
     if (closed) return { ...base, status: 'closed_unmet', reason: 'ok' };
-    if (counted === 0) return { ...base, status: 'not_started', reason: 'ok' };
     // Open and short of target. `streakBroken` already knows whether the rest
     // of the window can still carry it; surface that as a reason, not as a
-    // status -- the period is not over, so it is not failed.
-    const daysLeft = daysBetweenLocal(asOf, window.end) + 1;
-    const reason: PeriodReason = remaining > daysLeft ? 'unreachable_in_remaining_days' : 'ok';
-    return { ...base, status: 'in_progress', reason };
+    // status -- the period is not over, so it is not failed. Days left are
+    // counted inside the slice: a range that ends Thursday leaves no Friday.
+    const from = ymd(asOf) > ymd(slice.start) ? asOf : slice.start;
+    const daysLeft = Math.max(daysBetweenLocal(from, slice.end) + 1, 0);
+    const unreachable = remaining > daysLeft;
+    // KNOWN LIMIT, R01.05's (goal versioning), stated rather than hidden: the
+    // target stays NOMINAL in a period the range cuts -- "3 a week" with only
+    // two days of the week inside the range still asks for 3, and is therefore
+    // unreachable. That verdict is reported here, never a silently wrong count.
+    // Prorating the target is a design decision this card does not make.
+    //
+    // `counted === 0` keeps its pre-existing `'ok'` reason for a period the
+    // range does NOT cut (A7: range-less habits are byte-identical); only a cut
+    // period, where the shortfall is structural, says unreachable up front.
+    if (counted === 0) {
+      return { ...base, status: 'not_started', reason: cut && unreachable ? 'unreachable_in_remaining_days' : 'ok' };
+    }
+    return { ...base, status: 'in_progress', reason: unreachable ? 'unreachable_in_remaining_days' : 'ok' };
   }
 
-  // ---- Day-based modes: daily / weekly_days / every_n_days / date_range -------
+  // ---- Day-based modes: daily / weekly_days / every_n_days (range: envelope) -
   // The period is the day. Eligibility comes from the SAME predicate the
   // day-based branch of `streakBroken` uses; `isDueOn`'s count-mode mapping is
   // never reached here because count modes took the window branch above.
@@ -921,7 +977,7 @@ export function isCountBasedSchedule(habit: Habit): boolean {
 export function carriesDayLoad(habit: Habit, logs: LogForPeriod[], date: Date): boolean {
   if (!isCountBasedSchedule(habit)) {
     // R01.02-c — day lane (guard: the `if` above). `isEligibleOn` is `isDueOn`
-    // for daily/weekly_days and additionally narrows every_n_days/date_range.
+    // for daily/weekly_days and additionally narrows every_n_days; the date range is in its lifetime envelope.
     return isEligibleOn(habit, date);
   }
   if (!isEligibleOn(habit, date)) return false;

@@ -6,9 +6,9 @@ baseline_sha: 0ff1c74b0d8d922fd9bef46d3631a1cf443677e2
 guide_commit: ecfd4e3            # docs/plan/22_ADERYTH_CORE_IMPLEMENTATION_V3.md, verbatim
 scope_authority: docs/plan/21_KAPSAM_EKI_2026-09-13.md
 newer_owner_decision: none        # 2026-09-13
-completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c]
+completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1]
 active_card: null
-next_ready_card: R01.02-d   # validator + UI for interval_days / range_*; consumer side done in R01.02-c (önce tüketici, sonra validator). KD-06 must be decided there
+next_ready_card: R01.02-d   # validator + UI for interval_days / range_*; consumers (R01.02-c) and the range envelope (R01.02-d1, KD-06 closed) are done -- önce tüketici, sonra validator
 critical_open_defects: []         # bilinen kusurlar kartlara bağlı; veri kaybı / hesap erişimi / FP kusuru yok
 known_defects_bound_to_cards:
   - id: KD-01
@@ -16,6 +16,7 @@ known_defects_bound_to_cards:
     where: frontend/lib/habitSchedule.ts countDueDays + isDueOn count dalı
     what: R01.02-b sonrası HİÇBİR üretim çağıranı count-tabanlı alışkanlığı `isDueOn`'a veremiyor (her çağıran önce guard'lıyor; guard = __tests__/repo/periodConsumerMigration.test.ts). Kod silinmedi -> AC-H03 testleri `isDueOn`'un count davranışını BİLEREK pinliyor ve `isDueOn` dışa açık API; dalı silmek bu test sözleşmesini yeniden yazmak demek
     r01_02_c: doğrudan üretim çağıranı kalmadı -- gün-şeridi `isEligibleOn` soruyor; `isDueOn`'u yalnız modül-içi `dueOnExtended` çağırıyor. İSTİSNA KD-06 (bugün yazılamayan kombinasyon)
+    r01_02_d1: KD-06 istisnası KAPANDI -- aralık artık şekil değil zarf; weekly+count+range `weekly_count` sınıflanır ve count guard'larına takılır. `dueOnExtended` içinde 2 isDueOn çağrısı kaldı (every_n_days temel koruma + daily/weekly_days)
     card: SAHİP KARARI bekliyor (silme = AC-H03 yeniden yazımı)
   - id: KD-02
     status: RESOLVED (R01.06-a) — kalan: "bu hafta doldu" soluklaştırması R01.06-b
@@ -36,10 +37,10 @@ known_defects_bound_to_cards:
     what: "migration bloklu" yorumları bayattı — DB jsonb kabul ediyor, engel istemci validator'ı (routineProposal.ALLOWED_FREQUENCY_KEYS). Yorumlar doğrulanmış gerçekle değiştirildi
     card: R01.02-b (DONE)
   - id: KD-06
-    status: OPEN, LATENT (kullanıcıya ulaşamaz -- validator range_* anahtarlarını reddediyor)
+    status: RESOLVED (R01.02-d1) -- ikinci delik (interval_days + aralık -> aralıktaki her gün) de kapandı
     where: frontend/lib/habitSchedule.ts scheduleKind (range önce gelir) + dueOnExtended date_range dalı -> isDueOn count dalı -> countDueDays
-    what: "`kind:weekly` + `count` + `range_start/end` satırı `date_range` sınıflanır, hiçbir count guard'ına takılmaz; gün-şeridinde countDueDays günleri (Pzt/Çar/Cmt) icat edilir, aralıkla kırpılmış. R01.02-c öncesi de vardı (doğrudan isDueOn -> countDueDays, aralıksız); bu kart onu açmadı, kaydetti. Sınıflandırma testle pinli (habitSchedule.test.ts KD-06)"
-    card: R01.02-d (validator açılmadan karar -- kombinasyonu reddet ya da scheduleKind önceliğini sahip kararıyla değiştir)
+    what: "`kind:weekly` + `count` + `range_start/end` satırı `date_range` sınıflanıyor, hiçbir count guard'ına takılmıyor; gün-şeridinde countDueDays günleri (Pzt/Çar/Cmt) icat ediliyordu, aralıkla kırpılmış (5,8,10,12,15,17,19 Ağustos). Aynı kök: `daily + interval_days:3 + aralık` interval'i kaybedip aralıktaki 18 günün hepsini due sayıyordu. Düzeltme: aralık şekilden çıkarılıp `withinLifetime` zarfına taşındı; `ScheduleKind`'dan `date_range` silindi"
+    card: R01.02-d1 (DONE)
 deferred_ids: [D01, D02, D03, D04, D05, D06, D07, D08, D09]
 cancelled_ids: [X01, X02, X03]
 core_implementation: IN_PROGRESS
@@ -54,6 +55,7 @@ evidence_locations:
   - docs/implementation-v3/STATE.md#r0102-b-evidence
   - docs/implementation-v3/STATE.md#r0106-a-evidence
   - docs/implementation-v3/STATE.md#r0102-c-evidence
+  - docs/implementation-v3/STATE.md#r0102-d1-evidence
 gates_run_at_baseline:
   typecheck_ci: 0 errors
   lint_ci: 0 warnings
@@ -67,6 +69,7 @@ timing:                           # R00.07 — dev / test / fix ayrı; erişim b
   R01.02-b: { dev_min: 75, test_min: 60, fix_min: 30, access_wait_min: 0, single_writer: true }   # fix: kayıp flake logu, clip semantiği, bayat kendi yorumum
   R01.06-a: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
   R01.02-c: { access_wait_min: 0, single_writer: true }   # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı
+  R01.02-d1: { access_wait_min: 0, single_writer: true }  # dev/test/fix dakikaları ölçülmedi; tahmin yazılmadı. Not: önceki iki "d1 bitti" raporu bu çalışma kopyasında iz bırakmamıştı; bu koşu 3524e26'dan sıfırdan yapıldı
 ```
 
 ## R01.01-a evidence
@@ -405,6 +408,106 @@ consumers "still call `isDueOn`" now assert they call `isEligibleOn` and not
 - focused 12 suites **321/321**
 - full `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB`, two consecutive runs: **137 suites / 2235 tests** each, 0 FAIL lines, 0 OOM/SIGTERM/`Command failed` markers (base 135 / 2189: +2 suites, +46 tests)
 - **Not done:** no device/emulator observation (none on this host); recovery and habit-detail were not rendered.
+
+## R01.02-d1 evidence
+
+- **Branch/HEAD:** `feature/r01-period-status`, on top of `3524e26`. Verified at
+  start: HEAD `3524e26`, tree clean, none of the card's changes present.
+- **Defect, measured at `3524e26` before editing:** `weekly + count 3 + range
+  08-05..08-20` was `date_range`, not count-based, eligible on 5, 8, 10, 12, 15,
+  17, 19 Aug (countDueDays' Mon/Wed/Sat, clipped) = KD-06. `daily + interval 3 +
+  range 08-03..08-20` was eligible on all 18 days -- the interval was lost.
+
+### What moved where (all in `lib/habitSchedule.ts`)
+
+| Before | After |
+|---|---|
+| `scheduleKind`: `if (range_start \|\| range_end) return { kind: 'date_range' }` before reading `kind` -- the range replaced the shape | early return removed; reports the real shape (5 modes). Priority-list comment and the "SINIR — bilerek" paragraph rewritten: the old note called the combination "not expressible"; it was silently WRONG |
+| `ScheduleKind` union had `date_range` (6 members) | `date_range` removed (5). `tsc` clean -- no production code compared against the literal |
+| `dueOnExtended` had a `date_range` branch | removed; every path calls `isDueOn` first, which calls `withinLifetime` |
+| `withinLifetime`: `created_at` + dated `end_condition` | + `withinRange` (new private helper): `ds < range_start` or `ds > range_end` → false; either end optional; no range → always true |
+| count branches of `streakBroken` / `periodStatus` used the calendar window | new private `rangeSlice` (window ∩ range; for a range-less habit it returns the window object itself): `streakBroken` returns false outside the range and counts/remaining-days inside the slice; `periodStatus` returns `unknown/not_scheduled` for a period wholly outside the range, counts only in-range completions, and computes days left inside the slice |
+
+Why the envelope in `withinLifetime` is enough for eligibility: `isDueOn` calls
+it first (all day shapes) and `isEligibleOn`'s count branch is `sk.count > 0 &&
+withinLifetime(...)` (all count shapes). The two window-based count branches
+(`streakBroken`, `periodStatus`) do not go through it, which is why A4 needed
+`rangeSlice` -- otherwise `streakBroken(w3, [], 08-22)` would read "3 left, 2
+days" as broken on a day outside the range.
+
+Not touched: `isDueOn`'s body and count branch, `countDueDays`, AC-H03 tests,
+`ALLOWED_FREQUENCY_KEYS`, UI, `featureGates.ts`. `dueOnExtended` stays private.
+Comments in other files that say "+ every_n_days/date_range" (R01.02-c) were
+left as they are: still true in meaning (ranges are honoured), outside scope.
+
+### Period target — decision, not silent behaviour (A6)
+
+The target stays NOMINAL in a period the range cuts (no proration -- R01.05,
+goal versioning). Known limit, written at the code site: if the slice is
+shorter than the target, the period cannot be met, and `periodStatus` SAYS so:
+`not_started`/`in_progress` with reason `unreachable_in_remaining_days` while
+open, `closed_unmet` after. A cut period that can still make it reports `ok`.
+For a period the range does NOT cut, `counted === 0` keeps its pre-existing
+`'ok'` reason (A7). `periodCompletionRate` (reports) inherits this: weeks wholly
+outside the range contribute target 0; weeks it touches contribute their
+nominal target.
+
+### Acceptance
+
+| | Result |
+|---|---|
+| A1 | `weekly+count:3+range`: `weekly_count`, `isCountBasedSchedule` true, eligible on every one of Aug 5..20 (16 days), none outside; `[5,8,10,12,15,17,19]` asserted ABSENT. Monthly count + range same |
+| A2 | `interval 3 + range 08-03..08-20`: 03, 06, 09, 12, 15, 18 -- length 6, not 18, no 21; August due-day denominator 6 |
+| A3 | `weekly_days [0,2,4] + range`: 5, 7, 10, 12, 14, 17, 19 (Mon/Wed/Fri only), kind `weekly_days` -- output unchanged, now by design |
+| A4 | out-of-range days (1, 4, 21, 22, 31 Aug) false for `isDueOn`, `isEligibleOn`, `carriesDayLoad` (day + count shapes); `scheduledCompletionRate` 16 not 31; `streakBroken` false outside for day + count; `periodStatus` `not_scheduled`; `summarizeHabitProgress` 16 (day) / 9 = 3×3 (count, only weeks touched); `habitAveragePercent` 100; `currentStreak` 16, `habitCompletionRate` 1, `weekdayBreakdown` Σscheduled 16 |
+| A5 | only `range_start` → nothing before, open after; only `range_end` → open back to `created_at`, nothing after; both bounds inclusive |
+| A6 | range from Sat 08-08 (2 days of the week for 3): `not_started`/`unreachable` with 0 logged, `in_progress`/`unreachable` with 1, `closed_unmet` after; range Mon..Wed ending mid-week → `unreachable`; 08-05..08-09 (5 days) → `ok`, target 3 (not prorated) |
+| A7 | **range-less: byte-identical.** `rangelessOutputs` (8 habits: daily, weekly_days, weekly_count, monthly_count, every_n_days, malformed weekly, dated end, negative born mid-window × 12 functions, 42 days, periodStatus every day) captured at `3524e26` with lib untouched, compared after the change: `cmp` identical; pinned in `rangelessPreservation.test.ts` (13 tests). R01.02-c's `daySchedulePreservation` (8 tests) also still green |
+| A8 | `ScheduleKind` has 5 members; `typecheck:ci` 0 |
+
+Negative assertions: invented weekday pattern → red; interval+range every day → red; any out-of-range day due in any consumer → red; any range-less output changed → red (A7 test).
+
+### Existing tests retargeted (none deleted, none narrowed)
+
+- `habitSchedule.test.ts` "range_start/range_end produces date_range, regardless
+  of the underlying kind" → "does not change the shape": asserts the underlying
+  kind for ALL five shapes plus a one-sided range (was: one daily case).
+- `habitSchedule.test.ts` A5 (trap 1): only the `toBe('date_range')` line →
+  `'weekly_days'`, with the reason; behaviour assertions unchanged and green.
+- `habitSchedule.test.ts` KD-06: pinned the defect (`date_range`, not count-based)
+  → pins the fixed behaviour (card A1), same fixture, plus a negative.
+- `periodConsumerMigration.test.ts` (`__tests__/repo`, outside the card's file
+  list but broken by this card's mechanics): `isDueOn` calls inside
+  `dueOnExtended` 3 → 2, because the range branch went; the "only inside
+  `dueOnExtended`" invariant kept.
+- `streakBroken — date_range` (4 tests): **no change needed, all green** -- no
+  behaviour regression. `phase1Adversarial.test.ts` mentions date_range only in
+  a header comment; `coachHabitSemantics.test.ts` asserts the validator still
+  REJECTS `range_start` -- untouched and green.
+
+### Mutation proof (9 focused suites, 267 tests; each reverted byte-identical, sha256 `d77d7b45…b112af` verified)
+
+- **M1** range clip removed from `withinLifetime`: **27 / 267 red**
+- **M2** bounds made exclusive (`<`→`<=`, `>`→`>=`): **22 / 267 red**
+- **M3** `scheduleKind`'s early return put back (= revert the card): **17 / 267 red**
+- **M4** (extra) `rangeSlice` ignores the range: **5 / 267 red** (A4 periodStatus/report, A6)
+- 0 suite-level failures; the 13 range-less preservation tests stayed GREEN under all four -- the expected result for a change that must be neutral without a range.
+
+### Gates
+
+- `typecheck:ci` exit 0 · `lint:ci` exit 0 · `run-tests.js` **145/145** · `git diff --check` clean
+- focused 13 suites **413/413**
+- full `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB`, two consecutive runs: **139 suites / 2271 tests** each, 0 FAIL lines, 0 OOM/SIGTERM/`Command failed` markers (base 137 / 2235: +2 suites, +36 tests)
+- **Not done:** no device/emulator observation (none on this host).
+
+### Open for R01.02-d (not decided here)
+
+- `every_n_days` anchors on `created_at`, not on `range_start`: "every 3 days,
+  10-20 Aug" for a habit created 1 Aug cycles from 1 Aug. Unchanged by this card
+  (trap 2 of R01.02-c pins the anchor rule); the validator/UI card should decide
+  whether a range re-anchors the cycle.
+- Target proration for cut periods: R01.05.
+- `isWindowSatisfied` (no production consumer -- grep finds only a comment in behaviorIntelligence.ts) still uses the calendar window.
 
 ## Paket sınıflandırması (R00.02 özeti)
 

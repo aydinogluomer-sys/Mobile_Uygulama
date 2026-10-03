@@ -207,9 +207,20 @@ describe('scheduleKind', () => {
     expect(scheduleKind(habit({ frequency_config: { kind: 'daily' } }))).toEqual({ kind: 'daily' });
   });
 
-  it('range_start/range_end produces date_range, regardless of the underlying kind', () => {
-    const h = habit({ frequency_config: { kind: 'daily', range_start: '2026-08-05', range_end: '2026-08-07' } });
-    expect(scheduleKind(h)).toEqual({ kind: 'date_range', start: '2026-08-05', end: '2026-08-07' });
+  // R01.02-d1 — this used to assert `{ kind: 'date_range' }` "regardless of the
+  // underlying kind": the range REPLACED the shape, which is exactly how KD-06
+  // invented weekdays and how interval_days got lost. The range is now an
+  // envelope (`withinLifetime`), so classification must report the underlying
+  // shape -- checked for every shape, not just the daily one this case had.
+  it('range_start/range_end does not change the shape: scheduleKind reports the underlying kind', () => {
+    const r = { range_start: '2026-08-05', range_end: '2026-08-07' };
+    expect(scheduleKind(habit({ frequency_config: { kind: 'daily', ...r } }))).toEqual({ kind: 'daily' });
+    expect(scheduleKind(habit({ frequency_config: { kind: 'weekly', days: [0, 2, 4], ...r } }))).toEqual({ kind: 'weekly_days', days: [0, 2, 4] });
+    expect(scheduleKind(habit({ frequency_config: { kind: 'weekly', count: 3, ...r } }))).toEqual({ kind: 'weekly_count', count: 3 });
+    expect(scheduleKind(habit({ frequency_config: { kind: 'monthly', count: 10, ...r } }))).toEqual({ kind: 'monthly_count', count: 10 });
+    expect(scheduleKind(habit({ frequency_config: { kind: 'daily', interval_days: 3, ...r } }))).toEqual({ kind: 'every_n_days', intervalDays: 3 });
+    // only one end given: still the shape
+    expect(scheduleKind(habit({ frequency_config: { kind: 'daily', range_end: '2026-08-07' } }))).toEqual({ kind: 'daily' });
   });
 });
 
@@ -649,8 +660,12 @@ describe('R01.02-c — scheduledCompletionRate / carriesDayLoad on every_n_days 
 
   it('A5 (trap 1) — weekly days + range keeps the weekday restriction (red if swallowed)', () => {
     const both = habit({ id: 'wr', frequency_config: { kind: 'weekly', days: [0, 2, 4], range_start: '2026-08-05', range_end: '2026-08-09' } });
-    expect(scheduleKind(both).kind).toBe('date_range'); // range wins classification...
-    // ...but dueOnExtended's range branch calls isDueOn first, so only Wed/Fri survive.
+    // R01.02-d1 — this line used to read `toBe('date_range')` ("range wins
+    // classification"): the weekday filter survived only because the old range
+    // branch happened to call isDueOn first. The range is now an envelope, so the
+    // shape is reported as itself and the filter holds by design. The behaviour
+    // assertions below are unchanged.
+    expect(scheduleKind(both).kind).toBe('weekly_days');
     expect(WEEK.map((d) => isEligibleOn(both, d))).toEqual([false, false, true, false, true, false, false]);
     expect(scheduledCompletionRate(both, [], { from: MON, to: SUN }).dueDays).toBe(2);
     expect(isEligibleOn(both, THU)).toBe(false);
@@ -677,11 +692,17 @@ describe('R01.02-c — scheduledCompletionRate / carriesDayLoad on every_n_days 
     }
   });
 
-  it('KD-06 (pre-existing, recorded not fixed) — weekly count + range is classified date_range, not count-based', () => {
-    // Pins the CLASSIFICATION only, so R01.02-d sees it: such a row passes every
-    // count guard and reaches isDueOn's count branch through dueOnExtended.
+  // R01.02-d1 — this test pinned the KD-06 DEFECT (classified `date_range`, not
+  // count-based) so the next card would see it. R01.02-d1 closes KD-06; the test
+  // now pins the fixed BEHAVIOUR instead (card A1). Same fixture.
+  it('KD-06 closed (R01.02-d1) — weekly count + range is count-based and eligible every day inside the range', () => {
     const h = habit({ frequency_config: { kind: 'weekly', count: 3, range_start: '2026-08-05', range_end: '2026-08-20' } });
-    expect(scheduleKind(h).kind).toBe('date_range');
-    expect(isCountBasedSchedule(h)).toBe(false);
+    expect(scheduleKind(h)).toEqual({ kind: 'weekly_count', count: 3 });
+    expect(isCountBasedSchedule(h)).toBe(true);
+    const aug = (d: number) => new Date(2026, 7, d);
+    const eligible = Array.from({ length: 31 }, (_, i) => i + 1).filter((d) => isEligibleOn(h, aug(d)));
+    expect(eligible).toEqual(Array.from({ length: 16 }, (_, i) => i + 5)); // 5..20, every day
+    // NEGATIVE: the invented countDueDays pattern (Mon/Wed/Sat, clipped) is gone
+    expect(eligible).not.toEqual([5, 8, 10, 12, 15, 17, 19]);
   });
 });

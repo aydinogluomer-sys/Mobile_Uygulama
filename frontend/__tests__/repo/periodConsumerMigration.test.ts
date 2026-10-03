@@ -182,7 +182,10 @@ describe('R01.02-c — the day lane asks isEligibleOn, so interval_days / date r
       .filter(({ l }) => !/^\s*(\*|\/\/)/.test(l) && /\bisDueOn\s*\(/.test(l) && !/export function isDueOn/.test(l));
     const startLine = src.slice(0, start).split(/\r?\n/).length - 1;
     const endLine = src.slice(0, end).split(/\r?\n/).length;
-    expect(calls.length).toBe(3);
+    // R01.02-d1: 3 -> 2. dueOnExtended's `date_range` branch (and its isDueOn
+    // call) is gone -- the range is an envelope in withinLifetime now. The two
+    // left are the every_n_days base guard and the daily/weekly_days fallthrough.
+    expect(calls.length).toBe(2);
     for (const { i } of calls) {
       expect(i).toBeGreaterThanOrEqual(startLine);
       expect(i).toBeLessThanOrEqual(endLine);
