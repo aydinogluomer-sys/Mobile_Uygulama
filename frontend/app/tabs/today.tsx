@@ -18,12 +18,14 @@ import RecoveryRailCard from '../../components/today/RecoveryRailCard';
 import { buildTodayNarrative } from '../../lib/todayNarrative';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { todayLocal, parseLocalDate } from '../../lib/date';
+import { todayLocal, parseLocalDate, startOfWeekLocal, ymd } from '../../lib/date';
 import {
   Card, SectionHeader, EmptyState, ProgressRing, IconCircle, WillpowerBand, SyncStatusBadge,
 } from '../../components/ui';
 import { isMeasurableTracking } from '../../lib/habitEngine';
-import { isEligibleOn, scheduleKind } from '../../lib/habitSchedule';
+import { isEligibleOn, scheduleKind, isCountBasedSchedule, periodStatus } from '../../lib/habitSchedule';
+// R01.06-b — the current period's logs, so a "3 a week" already met can step aside.
+import { logsForPeriod, type ReviewLogRow } from '../../services/reviewService';
 import type { Habit } from '../../lib/supabase';
 
 // =====================================================================================
@@ -68,10 +70,61 @@ export function isScheduleAmbiguous(habit: Habit): boolean {
  * `scheduleKind` değiştirilerek değil burada çözülür: kâhinin "belirsizlikte az
  * say" ilkesi raporlar için doğru, "neyi göstereyim" sorusu için yanlış.
  */
-export function selectTodayHabits(habits: Habit[], date: Date): Habit[] {
+/**
+ * R01.06-b — was this count-based habit's CURRENT period already met before
+ * `date` began?
+ *
+ * "3 a week" finished by Wednesday has no work left on Thursday, but R01.06-a
+ * had only today's log and kept it in "N adım kaldı" all week. Only logs
+ * STRICTLY BEFORE `date` count -- the same "what did the day begin owing" rule
+ * as `carriesDayLoad` -- so a habit finished TODAY stays in today's list and
+ * reads as done, instead of vanishing the moment it is ticked. Day-based
+ * habits are never "period done": they have no period.
+ */
+export function isPeriodDoneBefore(habit: Habit, date: Date, periodLogs: readonly ReviewLogRow[]): boolean {
+  if (!isCountBasedSchedule(habit)) return false;
+  const ds = ymd(date);
+  const before = periodLogs.filter((l) => l.habit_id === habit.id && l.completed_at.slice(0, 10) < ds);
+  return periodStatus(habit, before, date, { asOf: date }).status === 'satisfied';
+}
+
+/**
+ * Today's work. `periodLogs` (R01.06-b) is optional ON PURPOSE: until the
+ * period's logs have loaded -- or if loading fails -- nothing is hidden for
+ * lack of evidence, and the list is exactly R01.06-a's. Hiding a habit because
+ * a fetch has not answered yet would be the fail-closed mistake fail-open
+ * exists to prevent.
+ */
+export function selectTodayHabits(habits: Habit[], date: Date, periodLogs: readonly ReviewLogRow[] | null = null): Habit[] {
   return habits.filter(
-    (h) => h.status === 'active' && (isEligibleOn(h, date) || isScheduleAmbiguous(h)),
+    (h) => h.status === 'active'
+      && (isEligibleOn(h, date) || isScheduleAmbiguous(h))
+      && !(periodLogs && isPeriodDoneBefore(h, date, periodLogs)),
   );
+}
+
+/** "bu hafta tamam" / "bu ay tamam" — the period the habit is counted in. */
+export function periodDoneLabel(habit: Habit): string {
+  return scheduleKind(habit).kind === 'monthly_count' ? 'bu ay tamam' : 'bu hafta tamam';
+}
+
+/** R01.06-b — the habits that stepped aside because their period is already met. */
+export function selectPeriodDoneHabits(habits: Habit[], date: Date, periodLogs: readonly ReviewLogRow[] | null): Habit[] {
+  if (!periodLogs) return [];
+  return habits.filter(
+    (h) => h.status === 'active' && isEligibleOn(h, date) && isPeriodDoneBefore(h, date, periodLogs),
+  );
+}
+
+/**
+ * The window that covers the current week AND month: a week can start in the
+ * previous month (Mon 28 Sep .. Sun 4 Oct), so the month alone would miss its
+ * first days.
+ */
+export function periodWindowStart(date: Date): string {
+  const week = startOfWeekLocal(date);
+  const month = new Date(date.getFullYear(), date.getMonth(), 1);
+  return ymd(week < month ? week : month);
 }
 
 export type TodayHabitSummary = { total: number; completed: number; remaining: number; pct: number };
@@ -145,12 +198,16 @@ export default function TodayScreen() {
   const { plans: recoveryPlans, fetchPlans } = useRecoveryStore();
 
   const [refreshing, setRefreshing] = useState(false);
+  // R01.06-b — null until loaded, and on failure: see `selectTodayHabits`.
+  const [periodLogs, setPeriodLogs] = useState<ReviewLogRow[] | null>(null);
 
   // Toplam aktif — YALNIZ "hiç ritüel yok" boş-durumunu ayırt etmek için
   // (`todayHabitCopy`). Hiçbir gün-yüzeyinde payda değildir.
   const activeHabits = habits.filter((h) => h.status === 'active');
   // Günün yüzeyleri (liste, sayaç, yüzde, kalan, anlatı) bunu kullanır.
-  const todayHabits = selectTodayHabits(habits, parseLocalDate(today) ?? now);
+  const todayDate = parseLocalDate(today) ?? now;
+  const todayHabits = selectTodayHabits(habits, todayDate, periodLogs);
+  const periodDoneHabits = selectPeriodDoneHabits(habits, todayDate, periodLogs);
   const completedHabits = todayHabits.filter((h) => {
     const log = getLogForHabit(h.id);
     return log?.state === 'done' || log?.state === 'partial';
@@ -162,9 +219,14 @@ export default function TodayScreen() {
   const overdueList = overdue();
   const pendingTasks = tasks.filter((t) => !t.completed && t.status === 'pending').slice(0, 5);
 
+  const loadPeriodLogs = useCallback(async () => {
+    const res = await logsForPeriod({ start: periodWindowStart(parseLocalDate(today) ?? new Date()), end: today });
+    setPeriodLogs(res.ok ? res.data : null);
+  }, [today]);
+
   const load = useCallback(async () => {
-    await Promise.all([fetchHabits(), fetchLogsForDate(today), fetchTasks(), fetchToday(), fetchPlans()]);
-  }, [fetchHabits, fetchLogsForDate, fetchPlans, fetchTasks, fetchToday, today]);
+    await Promise.all([fetchHabits(), fetchLogsForDate(today), fetchTasks(), fetchToday(), fetchPlans(), loadPeriodLogs()]);
+  }, [fetchHabits, fetchLogsForDate, fetchPlans, fetchTasks, fetchToday, loadPeriodLogs, today]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -425,6 +487,32 @@ export default function TodayScreen() {
               </Card>
             )}
 
+            {/* R01.06-b — dönemi bugünden önce dolmuş sayı hedefleri: kalan iş değil,
+                ama hâlâ görünür ve fazladan kaydedilebilir. */}
+            {periodDoneHabits.length > 0 && (
+              <Card padding="lg">
+                <SectionHeader title="BU DÖNEM TAMAM" variant="overline" />
+                <View style={{ gap: space.sm }}>
+                  {periodDoneHabits.map((h) => (
+                    <TouchableOpacity
+                      key={h.id}
+                      activeOpacity={0.75}
+                      style={[s.habitRow, s.habitRowPeriodDone]}
+                      onPress={() => onHabitTap(h)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${h.name}, ${periodDoneLabel(h)}. Yine de kaydetmek için dokun.`}
+                    >
+                      <View style={[s.habitCheck, { borderColor: colors.success, backgroundColor: hexA(colors.success, 0.25) }]}>
+                        <Ionicons name="checkmark-done" size={14} color={colors.success} />
+                      </View>
+                      <Text style={[s.habitName, s.habitNameDone]} numberOfLines={1}>{h.name}</Text>
+                      <Text style={s.periodDoneTag}>{periodDoneLabel(h)}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </Card>
+            )}
+
             <RecoveryRailCard
               plans={recoveryPlans}
               today={today}
@@ -438,6 +526,9 @@ export default function TodayScreen() {
 }
 
 const s = StyleSheet.create({
+  // R01.06-b — dimmed, not hidden: the work is done, the habit is still there.
+  habitRowPeriodDone: { opacity: 0.55 },
+  periodDoneTag: { fontSize: 11, color: colors.success, fontWeight: '600', marginLeft: 'auto' },
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   content: { width: '100%', maxWidth: 1240, alignSelf: 'center', paddingVertical: space.xl, paddingBottom: 96 },

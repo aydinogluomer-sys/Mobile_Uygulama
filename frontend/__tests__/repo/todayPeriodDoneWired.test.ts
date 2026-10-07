@@ -1,0 +1,30 @@
+/**
+ * R01.06-b — the Today screen actually loads the period's logs and hands them
+ * to the selectors. The selectors are tested in lib/todayPeriodDone.test.ts;
+ * without this guard the screen could keep calling them with no logs and every
+ * one of those tests would still pass.
+ */
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { stripComments } from '../helpers/sourceText';
+
+const src = stripComments(readFileSync(join(__dirname, '..', '..', 'app/tabs/today.tsx'), 'utf8'));
+
+describe('R01.06-b — Today is wired to the period logs', () => {
+  it('loads the week+month window through the review service', () => {
+    expect(src).toMatch(/logsForPeriod\(\{ start: periodWindowStart\(/);
+    expect(src).toMatch(/loadPeriodLogs\(\)\]\);/);   // part of the screen's load
+  });
+  it('a failed load is null (fail-open), never an empty list', () => {
+    expect(src).toMatch(/setPeriodLogs\(res\.ok \? res\.data : null\);/);
+  });
+  it('both groups are selected from the same logs', () => {
+    expect(src).toMatch(/const todayHabits = selectTodayHabits\(habits, todayDate, periodLogs\);/);
+    expect(src).toMatch(/const periodDoneHabits = selectPeriodDoneHabits\(habits, todayDate, periodLogs\);/);
+  });
+  it('the period-done group is rendered, dimmed, and still tappable', () => {
+    expect(src).toMatch(/title="BU DÖNEM TAMAM"/);
+    expect(src).toMatch(/style=\{\[s\.habitRow, s\.habitRowPeriodDone\]\}/);
+    expect(src).toMatch(/periodDoneHabits\.map\(\(h\) => \(/);
+  });
+});

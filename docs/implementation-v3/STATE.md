@@ -49,7 +49,7 @@ known_defects_bound_to_cards:
     r01_02_d1: KD-06 istisnası KAPANDI -- aralık artık şekil değil zarf; weekly+count+range `weekly_count` sınıflanır ve count guard'larına takılır. `dueOnExtended` içinde 2 isDueOn çağrısı kaldı (every_n_days temel koruma + daily/weekly_days)
     card: SAHİP KARARI bekliyor (silme = AC-H03 yeniden yazımı)
   - id: KD-02
-    status: RESOLVED (R01.06-a) — kalan: "bu hafta doldu" soluklaştırması R01.06-b
+    status: RESOLVED (R01.06-a + R01.06-b, 2026-10-07) -- Bugün artık hafta+ay penceresinin loglarını yüklüyor (reviewService.logsForPeriod, periodWindowStart: önceki aya taşan haftayı da kapsar); dönemi BUGÜNDEN ÖNCE dolmuş sayı tabanlı alışkanlık listeden ve paydadan çıkıp soluk 'BU DÖNEM TAMAM' grubuna gidiyor (hâlâ dokunulabilir, fazladan kaydedilebilir). Yalnız bugünden ÖNCEKİ loglar sayılır (carriesDayLoad ile aynı 'günün başladığı borç' kuralı) -> bugün tamamlanan habit anında kaybolmaz. Loglar yüklenmemişse/başarısızsa NULL -> R01.06-a davranışı (fail-open). Testler: lib/todayPeriodDone.test.ts (15), repo/todayPeriodDoneWired.test.ts (4). Mutasyonlar 3/3/1
     where: frontend/app/tabs/today.tsx (`selectTodayHabits`)
     what: Bugün takvimi sormuyordu; tüm aktif alışkanlıklar "kalan" sayılıyordu. Artık gün-yüzeyleri `isEligibleOn` + fail-open ile süzülüyor
     card: R01.06-a (DONE) / R01.06-b / R03.01
