@@ -81,8 +81,19 @@ jobs:
       - name: Lint (whole repo, warnings are failures)
         run: npm run lint:ci
 
+      # `--maxWorkers=2` is not a speed knob, it is the gate's reliability.
+      # jest-expo spins a React Native module registry per worker (~0.3-0.6 GB).
+      # At the default worker count the suite dies in ways that look like test
+      # failures but are not: V8 `Zone Allocation failed - process out of
+      # memory`, `jest worker ... terminated ... signal=SIGTERM`, and
+      # `Command failed: git ls-files` from the repo guards that fork a child.
+      # The signature is a run with failed SUITES and zero failed TESTS, and a
+      # different suite falling over each time. Measured on the dev machine
+      # (7.85 GB RAM): nine distinct suites across four red runs, none of them
+      # reproducible in isolation. A hosted runner has more headroom, but the
+      # same cliff is there and a gate that goes red at random is not a gate.
       - name: Unit tests (jest --ci)
-        run: npx jest --ci
+        run: npx jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB
 
       - name: Structural gate (run-tests.js)
         run: node run-tests.js

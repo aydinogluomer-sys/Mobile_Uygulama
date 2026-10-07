@@ -5,7 +5,21 @@ implementation_version: 3.0
 baseline_sha: 0ff1c74b0d8d922fd9bef46d3631a1cf443677e2
 guide_commit: ecfd4e3            # docs/plan/22_ADERYTH_CORE_IMPLEMENTATION_V3.md, verbatim
 scope_authority: docs/plan/21_KAPSAM_EKI_2026-09-13.md
-newer_owner_decision: none        # 2026-09-13
+# 2026-10-07 — PDF 'Aderyth Çekirdek Kapsam ve Budama' sahip tarafından verildi ve
+# mevcut teknik borç envanteriyle birleştirilerek F01->F08 faz planına dönüştürüldü.
+# ÇELİŞKİ ÇÖZÜMÜ (sahip kararı): kapsam eki geçerli -- PDF'in F04'teki widget /
+# Live Activities / kilit ekranı maddeleri ERTELENMİŞ kalır; PDF'in geri kalanı
+# (F13/F14/F15/F12 iptalleri, 5 sütun, faz sırası) uygulanır.
+core_plan: P0..P9 (F01 kalanı -> F02 -> F03 sync -> F05 runner -> F04 bildirim -> F06 günlük -> F07 yedek -> F08 AI -> kapanış)
+db_state: FROZEN  # üretim DB'si 2026-10-03'te boş bulundu; sahip yedek kontrolü bitene kadar
+                  # Supabase'e yazma/okuma YOK. Migration dosyaları yazılır, UYGULANMAZ.
+
+newer_owner_decision: 2026-10-07  # PDF 'Çekirdek Kapsam ve Budama' + dört karar:
+  # 1) kapsam çelişkisinde 2026-09-13 eki geçerli (widget/Live Activity ERTELENMİŞ kalır)
+  # 2) DB dondurulur, sahip yedeği kontrol edecek
+  # 3) KD-12: telafide ölçülebilir 'yaptım' ölçüm modalını açar, değer uydurulmaz
+  # 4) KD-01: countDueDays + isDueOn count dalı DURUR, guard testi yeterli
+
 completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1, R01.02-d, R01.02-d2, R01.02-e, R01.03-a]
 active_card: null
 next_ready_card: R01.03-b   # undo: a day back to "no record" (habitLogRepository has insert/update, NO delete) -- new capability + UI. R01.03-a (value = day total, state from the service) DONE. Open, not blocking: KD-08..KD-12, R01.06-b
