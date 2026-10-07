@@ -12,6 +12,22 @@ scope_authority: docs/plan/21_KAPSAM_EKI_2026-09-13.md
 # (F13/F14/F15/F12 iptalleri, 5 sütun, faz sırası) uygulanır.
 core_plan: P0..P9 (F01 kalanı -> F02 -> F03 sync -> F05 runner -> F04 bildirim -> F06 günlük -> F07 yedek -> F08 AI -> kapanış)
 db_state: FROZEN  # üretim DB'si 2026-10-03'te boş bulundu; sahip yedek kontrolü bitene kadar
+schema_reproducible_from_repo: NO  # 2026-10-07 tespiti -- KRİTİK:
+  # supabase/migrations/001..027 TAM ŞEMA DEĞİL, uzakta elle kurulmuş bir temelin
+  # üstüne deltalar. Repoda CREATE TABLE edilen yalnız ~17 tablo var (habits,
+  # habit_logs, willpower_state, routines, routine_items, notion/gcal integrations,
+  # daily_capacity, bad_habits, webhooks, monthly_reviews, user_onboarding,
+  # ai_requests, ai_conversations, ai_messages, ai_conversation_actions).
+  # TANIMSIZ (uygulama kullanıyor): profiles, tasks, goals, journal_entries,
+  # weekly_reviews, journal_insights, focus_sessions, focus_tasks,
+  # deep_work_sessions, recovery_plans, credit_transactions ve diğerleri.
+  # TANIMSIZ fonksiyon/tetikleyici: fn_habit_log_set_xp, fn_habit_log_award,
+  # add_xp (XP), FP RPC'leri. Migration dışında tek .sql dosyası da yok.
+  # SONUÇ: boş DB'ye 001..027 uygulamak ÇALIŞAN uygulama VERMEZ. Supabase yedeği
+  # şemanın kendisini kurtarmanın tek yolu. Yedek yoksa şema uygulama kodundan
+  # (lib/supabase.ts tipleri, repository select'leri, edge functions, RLS
+  # matrisi dokümanı) yeniden türetilmeli -- ayrı, büyük ve riskli bir faz.
+  # 2026-10-03'te 'şema repodan kurulabilir' denmişti; YANLIŞTI, bu kayıt düzeltir.
                   # Supabase'e yazma/okuma YOK. Migration dosyaları yazılır, UYGULANMAZ.
 
 newer_owner_decision: 2026-10-07  # PDF 'Çekirdek Kapsam ve Budama' + dört karar:
@@ -86,7 +102,7 @@ known_defects_bound_to_cards:
     what: "Telafi yolları ölçülebilir alışkanlıkta state'i kendi seçiyor, stateForValue'dan geçmiyor: (1) geçmiş günü 'yaptım' -> state done, value YOK -> completionRatio (at_least) 0 okur: satır kendi içinde çelişir. (2) makeupFor tam telafi -> done, value yok (aynı). (3) split_two_days -> partial, value = round(hedef x 0.5): hedef 1 iken value 1 = hedef (stateForValue done der), at_most'ta value sınırın altında (stateForValue done der) -> partial ile çelişir"
     card: ayrı kart (telafi için değer sözleşmesi: 'yaptım' ölçülebilirde hedef kadar mı, değer sorulur mu -- sahip kararı)
   - id: R01.03-b
-    status: OPEN (kart, R01.03-a kapsam dışı bıraktı)
+    status: BLOCKED (2026-10-07) -- DURMA NOKTASI S11. habit_logs DELETE'i RLS izin veriyor (habit_logs_self FOR ALL) AMA XP tetikleyicisi (fn_habit_log_award) yalnız POZİTİF delta ekliyor; silme XP'yi geri almıyor (012_xp_integrity.sql kendi yorumu). DELETE ile geri alma = XP çiftliği (kaydet +XP -> geri al -> kaydet +XP). Düzeltmek AFTER DELETE ile OLD.xp çıkaran sunucu tarafı değişiklik ister; fn_habit_log_award'ın TANIMI REPODA YOK (bkz. schema_reproducible_from_repo: NO), körlemesine create-or-replace mevcut davranışı ezer. Önkoşul: yedekten/uzaktan gerçek tetikleyici tanımı + migration uygulama izni (S2).
     where: frontend/repositories/habitLogRepository.ts (insertHabitLog / updateHabitLog var, delete YOK)
     what: "Bir günü 'kayıtsız'a döndürmek (geri alma) imkânsız: yanlış girilen ölçülebilir değer ancak üzerine yazılarak (ya da miss ile) düzeltilebilir; toplam sözleşmesiyle 'son girişi geri al' da yok. Yeni yetenek + UI"
     card: R01.03-b
