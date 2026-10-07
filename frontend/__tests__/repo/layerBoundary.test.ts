@@ -82,6 +82,9 @@ const UI_ONLY = new Set([
   'themeStore.ts', 'drawerStore.ts', 'commandStore.ts',
   'notionStore.ts', 'notionSessionStore.ts', 'spotifyStore.ts',
   'googleCalendarStore.ts', 'lifeAreasStore.ts',
+  // R05.02 — device-local only (AsyncStorage, per account) until migration 030
+  // is applied; its one server effect is a habit log through logStore.
+  'routineRunnerStore.ts',
 ]);
 
 describe('services exist and hold real work', () => {

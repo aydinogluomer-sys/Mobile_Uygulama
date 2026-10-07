@@ -217,6 +217,29 @@ r05_01_a_pack_fields: DONE (P4, 2026-10-07) -- rutin paketi kurulumu paketin ala
   daily_goal, target_direction, frequency_config) doğrulayıcıdan geçer; ikon (doğrulanmayan, uygulama
   yazımı) stagedIcons ile kuruluma ada göre eklenir, başka kaynakta null. Test
   store/routinePackInstallKeepsFields (3; eski kodda 3/3 kırmızı).
+r05_runner: DONE-PENDING-MIGRATION (P4, 2026-10-07) -- R05.01/02/04/07 + R05.05 kısmi + R05.08 şablonlar.
+  lib/routineRunner.ts: ŞABLON -> değişmez ŞABLON SÜRÜMLERİ -> OTURUM anlık görüntüsü. Oturum içi
+  ekle/çıkar/sırala/süre düzelt yalnız oturumu değiştirir; 'şablona uygula' ayrı açık eylem -> yeni
+  sürüm (eski sürümler kalır); yerleşik şablon değişmez, kullanıcının kopyası olur. Kurallar: adımı
+  yalnız kullanıcı tamamlar (süre dolması 'Süre doldu, tamamlamak sana kalmış' der, tamamlamaz);
+  atlanan yapılmış sayılmaz; tamamlanan adım düzenlenebilir (done/skipped/açık); geri dönüş işareti
+  korur; tamamlanınca sıradaki AÇIK adıma geçer; bitir işaretsizleri işaretsiz bırakır; aktif süre
+  KD-03 saati (mola sayılmaz). Eski routines/routine_items = AI öneri geçmişi, yürütücü varlığı
+  DEĞİL (guard). R05.07: alışkanlığa bağlı adım tamamlanınca mevcut kayıt yolundan oturum başına BİR
+  KEZ done; ölçülebilir alışkanlık buradan ASLA kaydedilmez (KD-12). Oturumun kendisi XP vermez.
+  store/routineRunnerStore: cihaz-yerel, hesap başına anahtar; app kill sonrası oturum DURAKLATILMIŞ
+  döner, son kayıt anında kapatılır (15 sn heartbeat + arka plana geçişte kayıt). Ekran
+  app/screens/routine-runner.tsx (sıradaki adım, sayaç, tamamla/geç/geri/duraklat/bitir, liste,
+  oturumu düzenle, özet, şablona uygula); Bugün rail'inde RUTİN kartı. R05.05: ekran okuyucuya
+  sıradaki adım duyurusu + süre dolunca tek titreşim; SESLİ duyuru YOK (expo-speech yeni native
+  bağımlılık -> DURMA NOKTASI S13), sessiz telefon yapısı gereği sessiz. Yerleşik şablonlar: Sabah,
+  Akşam, Çalışma başlangıcı. MIGRATION 030_routine_runner.sql YAZILDI, UYGULANMADI.
+  Testler lib/routineRunner (16), store/routineRunnerStore (8), repo/routineRunnerWired (8).
+  Mutasyonlar 11/11 (U1 'oturum şablon dizisini paylaşır' EŞDEĞER mutant: tüm oturum işlemleri yeni
+  dizi/nesne üretir, paylaşım gözlemlenemez; listeden çıkarıldı). layerBoundary'de UI_ONLY'e
+  gerekçesiyle eklendi.
+new_stop_point_S13: expo-speech (sesli adım duyurusu, R05.05) -- yeni native bağımlılık, sahip onayı +
+  development build gerekir. Onaylanmadıkça ekran okuyucu duyurusu + titreşim ile sınırlı.
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

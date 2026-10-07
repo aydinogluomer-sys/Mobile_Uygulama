@@ -19,6 +19,8 @@ import RecoveryRailCard from '../../components/today/RecoveryRailCard';
 import SmallStartSheet from '../../components/SmallStartSheet';
 // R02 — task changes that need the user: retry or give up.
 import OutboxIssues from '../../components/OutboxIssues';
+// R05.02 — the routine runner's entry, and a session in progress.
+import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
 import type { SmallStepParent } from '../../lib/smallStart';
 // R01.05 — habits on a dated break, and the holiday mode for all of them.
 import TimeOffSheet from '../../components/TimeOffSheet';
@@ -245,6 +247,7 @@ export default function TodayScreen() {
 
   const { habits, fetchHabits, pauses, timeOffAvailable, addTimeOff, endTimeOff, checklistItems } = useHabitStore();
   const [checklistFor, setChecklistFor] = useState<Habit | null>(null);
+  const runnerSession = useRoutineRunnerStore((st) => st.session);
   // §18: `pendingSyncCount` / `deadSyncCount` burada okunuyor çünkü alışkanlık
   // tamamlama bu ekranda oluyor (`onHabitTap` -> `logHabit`). Dokunuşun
   // yapıldığı yerde durumu göstermek, kullanıcının "kaydedildi mi?" sorusunu
@@ -723,6 +726,15 @@ export default function TodayScreen() {
                 </View>
               </Card>
             )}
+
+            <Card padding="lg" onPress={() => router.push('/screens/routine-runner' as any)}>
+              <SectionHeader title="RUTİN" variant="overline" />
+              <Text style={s.breakNote}>
+                {runnerSession && runnerSession.status !== 'finished'
+                  ? `${runnerSession.templateName} sürüyor · ${Object.keys(runnerSession.results).length}/${runnerSession.steps.length} — devam et`
+                  : 'Sabah, akşam ya da çalışma rutinini adım adım başlat.'}
+              </Text>
+            </Card>
 
             <RecoveryRailCard
               plans={recoveryPlans}
