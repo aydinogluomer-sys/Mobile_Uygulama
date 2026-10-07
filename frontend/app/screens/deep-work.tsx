@@ -9,6 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Skeleton } from '../../components/ui';
 import { useDeepWorkStore } from '../../store/deepWorkStore';
 import { todayLocal } from '../../lib/date';
+// R05.06 — the shared duration contract (active time, breaks left out).
+import { parseManualMinutes } from '../../lib/focusDuration';
 
 const QUICK_DURATIONS = [25, 45, 60, 90];
 
@@ -17,13 +19,18 @@ export default function DeepWorkScreen() {
   const [modal, setModal] = useState(false);
   const [subject, setSubject] = useState('');
   const [minutes, setMinutes] = useState('60');
+  const [entryError, setEntryError] = useState<string | null>(null);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
   async function handleAdd() {
-    const m = parseInt(minutes, 10);
-    if (!subject.trim() || isNaN(m) || m <= 0) return;
-    await addSession(subject.trim(), m);
+    if (!subject.trim()) return;
+    const parsed = parseManualMinutes(minutes);
+    if (!parsed.ok) { setEntryError(parsed.reason); return; }
+    const saved = await addSession(subject.trim(), parsed.minutes);
+    // A failed save keeps the sheet open with what was typed.
+    if (!saved) { setEntryError('Seans kaydedilemedi. Tekrar dene.'); return; }
+    setEntryError(null);
     setSubject('');
     setMinutes('60');
     setModal(false);
@@ -165,13 +172,13 @@ export default function DeepWorkScreen() {
               autoFocus
             />
 
-            <Text style={s.fieldLabel}>Süre</Text>
+            <Text style={s.fieldLabel}>Aktif süre (molalar hariç)</Text>
             <View style={s.quickRow}>
               {QUICK_DURATIONS.map((d) => (
                 <TouchableOpacity
                   key={d}
                   style={[s.quickBtn, minutes === String(d) && s.quickBtnActive]}
-                  onPress={() => setMinutes(String(d))}
+                  onPress={() => { setMinutes(String(d)); setEntryError(null); }}
                   accessibilityRole="button"
                   accessibilityLabel={`${d} dakika`}
                   accessibilityState={{ selected: minutes === String(d) }}
@@ -187,9 +194,12 @@ export default function DeepWorkScreen() {
               placeholder="Dakika (özel)"
               placeholderTextColor="#56544B"
               value={minutes}
-              onChangeText={setMinutes}
+              onChangeText={(t) => { setMinutes(t); setEntryError(null); }}
               keyboardType="numeric"
             />
+            {entryError && (
+              <Text style={s.entryError} accessibilityRole="alert">{entryError}</Text>
+            )}
 
             <TouchableOpacity
               style={[s.saveBtn, (!subject.trim() || !minutes) && s.saveBtnDisabled]}
@@ -269,5 +279,6 @@ const s = StyleSheet.create({
 
   saveBtn: { backgroundColor: colors.teal, borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 4 },
   saveBtnDisabled: { opacity: 0.4 },
+  entryError: { fontSize: 12, color: colors.error, marginTop: -4, marginBottom: 12 },
   saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 });

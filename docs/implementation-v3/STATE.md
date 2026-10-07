@@ -121,6 +121,16 @@ r03_05_recovery_preview: DONE (P2, 2026-10-07) -- telafi planlama sayfasında 'O
   (capacity.oneOccurrencePoints; haftalık alışkanlığın telafisi bir seansın yedide biri değil),
   strateji payı ile (split_two_days 0.5, skip 0). yüksek/aşırı'da öneri metni. Önizleme; planı
   ENGELLEMEZ. Testler lib/makeupLoadPreview (9), repo/recoveryLoadPreviewWired (4). Mutasyonlar 1/1/1.
+r05_06_duration_contract: DONE (P4, 2026-10-07) -- lib/focusDuration.ts tek süre sözleşmesi: iki kaynak
+  (focus_sessions.completed_seconds, deep_work_sessions.duration_minutes) AKTİF odak süresi demek; mola
+  dahil değil (pomodoro saati duraklatmada akmaz, mola fazı satır yazmaz, elle girişte 'Aktif süre
+  (molalar hariç)'). secondsToMinutes reportMetrics + focusReport'un tek dönüşümü. Elle süre
+  parseManualMinutes: 1..720 tam dakika, aksi REDDEDİLİR (eski repo max(0,round(x)) ile 0 dakikalık
+  seans yazabiliyordu; ekran parseInt ile '60dk'yi 60, '1.5'i 1 okuyordu). Ekran kayıt başarısızsa
+  sayfayı açık tutar (eskiden sessizce kapanıyordu). İki kaynak BİLEREK ayrı toplam: aynı saati hem
+  pomodoro hem elle giren kullanıcı birleşik toplamda iki kez sayılırdı. Hiçbir odak yüzeyi XP vermez
+  (guard). Testler lib/focusDuration (8), repo/focusDurationContract (7; eski kodda 5 kırmızı).
+  Mutasyonlar 4/4.
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

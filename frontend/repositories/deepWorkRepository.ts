@@ -13,6 +13,7 @@
 import { supabase } from '../lib/supabase';
 import { currentUserId, deleteOwned, type RepoResult } from './shared';
 import { ymd } from '../lib/date';
+import { parseManualMinutes } from '../lib/focusDuration';
 
 export type DeepWorkRow = {
   id: string;
@@ -46,9 +47,13 @@ export async function insertDeepWorkSession(input: {
   minutes: number;
   date: string;
 }): Promise<RepoResult<DeepWorkRow>> {
+  // R05.06 — a duration outside the contract is refused, not clamped: the
+  // old `max(0, round(x))` stored a 0-minute session for a bad value.
+  const parsed = parseManualMinutes(input.minutes);
+  if (!parsed.ok) return { ok: false, error: parsed.reason };
   const u = await currentUserId();
   if (!u.ok) return u;
-  const minutes = Math.max(0, Math.round(input.minutes));
+  const minutes = parsed.minutes;
   const { data, error } = await supabase
     .from('deep_work_sessions')
     .insert({ user_id: u.userId, subject: input.subject, duration_minutes: minutes, date: input.date })

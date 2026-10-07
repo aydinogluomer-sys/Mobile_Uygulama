@@ -5,6 +5,8 @@ import { type FocusSessionRow } from './focusReport';
 import { countsTowardAverage, isEligibleOn, scheduleKind, scheduledCompletionRate } from './habitSchedule';
 import { isMeasurableTracking, completionRatio, type HabitLogState } from './habitEngine';
 import { parseLocalDate, ymd } from './date';
+// R05.06 — the one seconds->minutes rule for focus time.
+import { secondsToMinutes } from './focusDuration';
 
 export type ReportRange = 'week' | 'month';
 export type ReportBadge = {
@@ -259,7 +261,7 @@ export function summarizeHabitProgress(
 
 export function focusMinutesFromSessions(sessions: Pick<FocusSessionRow, 'completed_seconds'>[]): number {
   const totalSeconds = sessions.reduce((sum, session) => sum + (session.completed_seconds || 0), 0);
-  return Math.round(totalSeconds / 60);
+  return secondsToMinutes(totalSeconds);
 }
 
 export function reportBadge(params: {

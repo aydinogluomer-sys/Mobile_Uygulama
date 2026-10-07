@@ -2,6 +2,8 @@
 // Artifact (POS v2) FocusReport mantığının RN karşılığı. mode='work' = odak seansı.
 
 import { ymd, ymdFromIso, startOfWeekLocal } from './date';
+// R05.06 — the one seconds->minutes rule for focus time.
+import { secondsToMinutes } from './focusDuration';
 
 export type FocusSessionRow = {
   id: string;
@@ -144,7 +146,7 @@ export function ranking(sessions: FocusSessionRow[]): Ranking {
 }
 
 export function fmtDuration(sec: number): string {
-  const m = Math.round(sec / 60);
+  const m = secondsToMinutes(sec);
   if (m === 0) return '0d';
   const h = Math.floor(m / 60), mm = m % 60;
   return h > 0 ? `${h}s ${mm}d` : `${m}d`;
