@@ -12,6 +12,10 @@
  */
 import type { Habit, RecoveryPlan, RecoveryStrategy } from '../lib/supabase';
 import { isMeasurableTracking } from '../lib/habitEngine';
+// R01.03-a's one place where an amount becomes a state. KD-12: the make-up
+// paths go through it too, so a recovery row can never say `done` while its
+// value says 0%.
+import { measuredEntryFor } from './habitLogService';
 import {
   deleteRecoveryPlan,
   fetchPlannedRecoveryPlans,
@@ -60,12 +64,46 @@ export function isOverdue(plan: Pick<RecoveryPlan, 'target_date' | 'status'>, to
 }
 
 /**
- * What a make-up actually logs, given the strategy the user chose.
+ * Does a make-up for this habit need an AMOUNT from the user?
  *
- * `half` and `mini` are deliberately PARTIAL completions — the point of the
- * recovery engine is that a reduced version still counts, so recording them
- * as `done` would inflate the streak and the XP for work that was not done.
- * The value is derived from the habit's own target, never from the caller.
+ * KD-12: it does for every measurable habit with a target, and the amount is
+ * asked for rather than invented (owner decision, 2026-10-07). The old code
+ * wrote `done` with no value, which every ratio reader scores 0% -- the user
+ * caught up and their completion rate counted it as nothing.
+ */
+export function makeupNeedsValue(
+  habit: Pick<Habit, 'tracking_type' | 'daily_goal'> | undefined,
+): boolean {
+  return !!(habit && isMeasurableTracking(habit.tracking_type) && habit.daily_goal);
+}
+
+/**
+ * What to prefill the amount prompt with. A reduced strategy suggests half the
+ * target -- a suggestion the user can overwrite, not a number written on their
+ * behalf. `null` when the habit needs no amount.
+ */
+export function makeupSuggestedValue(
+  plan: Pick<RecoveryPlan, 'strategy'>,
+  habit: Pick<Habit, 'tracking_type' | 'daily_goal'> | undefined,
+): number | null {
+  if (!makeupNeedsValue(habit)) return null;
+  const goal = habit!.daily_goal as number;
+  return plan.strategy === 'split_two_days' ? Math.max(1, Math.round(goal * 0.5)) : goal;
+}
+
+/**
+ * What a make-up logs for a habit that carries NO amount (boolean/abstinence).
+ *
+ * `split_two_days` is deliberately a PARTIAL completion — the point of the
+ * recovery engine is that a reduced version still counts, so recording it as
+ * `done` would inflate the streak and the XP for work that was not done.
+ *
+ * KD-12 — measurable habits no longer come through here. They used to, and it
+ * produced rows that contradicted themselves: `done` with no value (0% to
+ * `completionRatio`), and `partial` with `value = round(goal * 0.5)` which for
+ * a goal of 1 is the whole goal (`stateForValue` says `done`). For those,
+ * `completePlanWithMakeup` asks for the amount and derives the state from it,
+ * so the two can never disagree. `makeupNeedsValue` is the gate.
  */
 export function makeupFor(
   plan: Pick<RecoveryPlan, 'strategy'>,
@@ -106,13 +144,39 @@ export async function completePlanWithMakeup(params: {
   writeLog: (input: {
     habitId: string;
     date: Date;
-    state: 'done' | 'partial';
+    // `miss` is reachable on the measurable path and is deliberately not
+    // narrowed away: a ceiling habit made up with an amount OVER its limit
+    // was a missed day, and saying otherwise is the contradiction KD-12 is
+    // about. `skip` is in the union only because `CompletionIntent` carries the
+    // full log-state type; neither make-up path can produce it.
+    // The non-measurable path still only ever produces done/partial.
+    state: 'done' | 'partial' | 'miss' | 'skip';
     value?: number;
     targetValue?: number;
     targetDirection?: 'at_least' | 'at_most';
   }) => Promise<{ ok: boolean; error?: string }>;
+  /**
+   * KD-12 — the amount the user entered for a measurable habit, and the value
+   * already on the target day's row. Required when `makeupNeedsValue(habit)`;
+   * ignored otherwise. `enteredValue` is an ADDITION to `priorDayValue`, the
+   * same contract the measurable modal and `timeline` use (R01.03-a).
+   */
+  enteredValue?: number;
+  priorDayValue?: number | null;
 }): Promise<CompleteWithMakeupResult> {
-  const { state, value } = makeupFor(params.plan, params.habit);
+  const needsValue = makeupNeedsValue(params.habit);
+  if (needsValue && typeof params.enteredValue !== 'number') {
+    // Caller bug, not a user error: the screen must ask first. Failing here
+    // beats inventing a number, which is exactly what KD-12 was.
+    return { ok: false, error: 'Bu alışkanlık için miktar gerekiyor.', stage: 'log' };
+  }
+
+  // Measurable: the amount decides the state (`measuredEntryFor` -> `stateForValue`),
+  // so the row can never say `done` while its value reads 0%. Non-measurable:
+  // `makeupFor`, where `split_two_days` is still a deliberate `partial`.
+  const { state, value } = needsValue
+    ? measuredEntryFor(params.habit!, params.priorDayValue ?? null, params.enteredValue as number)
+    : makeupFor(params.plan, params.habit);
   const [y, mo, d] = params.plan.target_date.split('-').map(Number);
 
   const logged = await params.writeLog({

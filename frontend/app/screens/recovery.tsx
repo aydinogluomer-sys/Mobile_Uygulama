@@ -19,7 +19,11 @@ import { haptic } from '../../lib/haptics';
 import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton } from '../../components/ui';
 import { todayLocal } from '../../lib/date';
 import { logsForHabitsSince as fetchHabitLogsForHabitsSince } from '../../services/habitService';
-import { completePlanWithMakeup } from '../../services/recoveryService';
+import { completePlanWithMakeup, makeupNeedsValue, makeupSuggestedValue } from '../../services/recoveryService';
+// KD-12 — a measurable make-up asks for the amount instead of inventing one;
+// the state then comes from the value, exactly as the timeline does (R01.03-a).
+import { measuredEntryFor } from '../../services/habitLogService';
+import MeasurableInputModal from '../../components/MeasurableInputModal';
 
 // Telafi gününü hesaplayan hızlı seçenekler (date-picker dep yok)
 function nextSaturdayOffset(): number {
@@ -63,6 +67,13 @@ export default function RecoveryScreen() {
   // başlığı (10.000 hedef / 8.000 fiili -> 2.000 eksik) bu olmadan çalışmaz.
   const [valueMap, setValueMap] = useState<Record<string, number>>({});
   const [loggingId, setLoggingId] = useState<string | null>(null);
+
+  // KD-12 — the amount prompt for a measurable make-up. `planId` null means the
+  // retroactive "yaptım" on a backlog day; otherwise a recovery plan is being
+  // closed and the service writes the log and the plan together.
+  const [makeupTarget, setMakeupTarget] = useState<
+    { habit: Habit; date: string; planId: string | null; prior: number; suggested: number | null } | null
+  >(null);
 
   // Planlama sheet'i
   const [planTarget, setPlanTarget] = useState<Habit | null>(null);
@@ -149,6 +160,15 @@ export default function RecoveryScreen() {
     return `${diff} gün önce`;
   }
 
+  // KD-12 — the day the amount prompt is writing to. "5 Ağustos", used as
+  // "5 Ağustos gününe": the explicit `gününe` avoids the Turkish dative
+  // suffix having to agree with the month's vowels, which "Ağustos'a" /
+  // "Eylül'e" would.
+  function makeupDayText(date: string): string {
+    const [y, mo, d] = date.split('-').map(Number);
+    return format(new Date(y, mo - 1, d), 'd MMMM', { locale: tr });
+  }
+
   const computeStreaks = useCallback(async (habitIds: string[]) => {
     if (habitIds.length === 0) return;
     const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
@@ -219,7 +239,24 @@ export default function RecoveryScreen() {
   }
 
   // Geçmiş bir günü retroaktif "yaptım" olarak işaretle
+  //
+  // KD-12 — for a measurable habit this used to write `done` with NO value,
+  // which `completionRatio` reads as 0%: the user caught the day up and their
+  // completion rate counted it as nothing. The amount is asked for now; the
+  // state is derived from it, so the row cannot contradict itself.
   async function handleLogNow(habitId: string, date: string) {
+    const habit = habitById(habitId);
+    if (makeupNeedsValue(habit)) {
+      haptic.select();
+      setMakeupTarget({
+        habit: habit!,
+        date,
+        planId: null,
+        prior: valueMap[`${habitId}|${date}`] ?? 0,
+        suggested: habit!.daily_goal ?? null,
+      });
+      return;
+    }
     haptic.success();
     setLoggingId(`${habitId}|${date}`);
     const [y, mo, d] = date.split('-').map(Number);
@@ -300,6 +337,21 @@ export default function RecoveryScreen() {
   }
 
   async function handleCompletePlan(plan: typeof plans[number]) {
+    const planHabit = habitById(plan.habit_id);
+    if (makeupNeedsValue(planHabit)) {
+      // KD-12 — same rule as the backlog "yaptım": ask, never invent. The
+      // suggestion is sized by the strategy (`split_two_days` -> half), and the
+      // user can overwrite it.
+      haptic.select();
+      setMakeupTarget({
+        habit: planHabit!,
+        date: plan.target_date,
+        planId: plan.id,
+        prior: valueMap[`${plan.habit_id}|${plan.target_date}`] ?? 0,
+        suggested: makeupSuggestedValue(plan, planHabit),
+      });
+      return;
+    }
     haptic.success();
     // What a make-up logs (done vs partial, and the reduced value) and the
     // rule that the LOG is written before the plan is closed both live in
@@ -317,6 +369,55 @@ export default function RecoveryScreen() {
     }
     await refreshSets();
     if (plan.target_date === today) await fetchLogsForDate(today);
+  }
+
+  /**
+   * KD-12 — the amount the user entered for a measurable make-up.
+   *
+   * The entry is an ADDITION to whatever that day already holds, and the state
+   * is derived from the resulting total (`measuredEntryFor` -> `stateForValue`),
+   * never chosen here. A plan goes through `completePlanWithMakeup` so the log
+   * and the plan are still written in that order; a backlog day writes directly.
+   * A failure leaves the modal open so the entry is not lost.
+   */
+  async function handleMakeupConfirm(entered: number) {
+    if (!makeupTarget) return;
+    const { habit, date, planId, prior } = makeupTarget;
+    haptic.success();
+
+    if (planId) {
+      const plan = plans.find((pl) => pl.id === planId);
+      if (!plan) { setMakeupTarget(null); return; }
+      const res = await completePlanWithMakeup({
+        plan,
+        habit,
+        writeLog: (input) => logHabit(input),
+        enteredValue: entered,
+        priorDayValue: prior,
+      });
+      if (!res.ok) { Alert.alert('Kaydedilemedi', res.error); return; }
+      await refreshSets();
+      if (plan.target_date === today) await fetchLogsForDate(today);
+      setMakeupTarget(null);
+      return;
+    }
+
+    setLoggingId(`${habit.id}|${date}`);
+    const [y, mo, d] = date.split('-').map(Number);
+    const intent = measuredEntryFor(habit, prior, entered);
+    const res = await logHabit({
+      habitId: habit.id,
+      date: new Date(y, mo - 1, d),
+      state: intent.state,
+      value: intent.value,
+      targetValue: intent.targetValue,
+      targetDirection: intent.targetDirection,
+    });
+    if (!res.ok) { Alert.alert('Kaydedilemedi', res.error); setLoggingId(null); return; }
+    await refreshSets();
+    if (date === today) await fetchLogsForDate(today);
+    setLoggingId(null);
+    setMakeupTarget(null);
   }
 
   const totalMissed = backlogEntries.filter((e) => e.kind === 'missed').length;
@@ -666,6 +767,16 @@ export default function RecoveryScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* KD-12 — ölçülebilir telafide miktar sorulur; değer uydurulmaz. */}
+      <MeasurableInputModal
+        visible={makeupTarget !== null}
+        habit={makeupTarget?.habit ?? null}
+        currentValue={makeupTarget?.prior ?? 0}
+        dayLabel={makeupTarget ? `${makeupDayText(makeupTarget.date)} gününe` : undefined}
+        onClose={() => setMakeupTarget(null)}
+        onConfirm={handleMakeupConfirm}
+      />
     </SafeAreaView>
   );
 }

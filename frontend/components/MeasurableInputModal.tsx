@@ -14,11 +14,19 @@ interface Props {
   habit: Habit | null;
   /** The day's total so far (the row's `value`, 0 if none) -- NOT clamped at the goal. */
   currentValue: number;
+  /**
+   * KD-12 — the day the entry lands on, when it is NOT today. Recovery opens
+   * this modal for a past day; saying "bugün" there would tell the user the
+   * wrong thing about their own data. A phrase that reads before "ne kadar
+   * ekleyelim?", e.g. "5 Ağustos gününe". Omitted = today, and today's copy is
+   * left exactly as it was.
+   */
+  dayLabel?: string;
   onClose: () => void;
   onConfirm: (value: number) => void;
 }
 
-export default function MeasurableInputModal({ visible, habit, currentValue, onClose, onConfirm }: Props) {
+export default function MeasurableInputModal({ visible, habit, currentValue, dayLabel, onClose, onConfirm }: Props) {
   const [input, setInput] = useState('');
 
   if (!habit) return null;
@@ -49,6 +57,15 @@ export default function MeasurableInputModal({ visible, habit, currentValue, onC
     : remaining > 0
       ? `Bugün ${currentValue} ${unit} · ${remaining} ${unit} kaldı`
       : `Hedef tamamlandı! (bugün ${currentValue} ${unit})`;
+  // KD-12 — the same four lines for a past day. Kept separate so today's
+  // wording above stays byte-for-byte what it was.
+  const pastStatusLine = ceiling
+    ? currentValue > goal
+      ? `Sınır aşıldı: o gün ${currentValue} ${unit} (en çok ${goal})`
+      : `O gün ${currentValue} ${unit} · sınıra ${remaining} ${unit} kaldı`
+    : remaining > 0
+      ? `O gün ${currentValue} ${unit} · ${remaining} ${unit} kaldı`
+      : `Hedef tamamlandı! (o gün ${currentValue} ${unit})`;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -72,9 +89,11 @@ export default function MeasurableInputModal({ visible, habit, currentValue, onC
             <Text style={styles.progressText}>{pct}%</Text>
           </View>
 
-          <Text style={styles.remaining}>{statusLine}</Text>
+          <Text style={styles.remaining}>{dayLabel ? pastStatusLine : statusLine}</Text>
 
-          <Text style={styles.label}>Bugüne ne kadar ekleyelim? ({unit})</Text>
+          {dayLabel
+            ? <Text style={styles.label}>{dayLabel} ne kadar ekleyelim? ({unit})</Text>
+            : <Text style={styles.label}>Bugüne ne kadar ekleyelim? ({unit})</Text>}
           <TextInput
             style={styles.input}
             placeholder={ceiling ? 'Örn: 1 (hiç yoksa 0)' : `Örn: ${Math.ceil(remaining / 2)}`}
@@ -82,13 +101,19 @@ export default function MeasurableInputModal({ visible, habit, currentValue, onC
             keyboardType="numeric"
             value={input}
             onChangeText={setInput}
-            accessibilityLabel={`Bugüne eklenecek miktar, ${unit}. Bugünkü toplam ${currentValue}.`}
+            accessibilityLabel={dayLabel
+              ? `${dayLabel} eklenecek miktar, ${unit}. O günkü toplam ${currentValue}.`
+              : `Bugüne eklenecek miktar, ${unit}. Bugünkü toplam ${currentValue}.`}
             autoFocus
           />
           <Text style={styles.remaining} accessibilityLiveRegion="polite">
-            {totalAfter !== null
-              ? `Girdiğin sayı bugünkü toplama eklenir. Kaydedince bugün: ${totalAfter} ${unit}`
-              : 'Girdiğin sayı bugünkü toplama eklenir; kaydedilen, günün toplamıdır.'}
+            {dayLabel
+              ? totalAfter !== null
+                ? `Girdiğin sayı o günkü toplama eklenir. Kaydedince o gün: ${totalAfter} ${unit}`
+                : 'Girdiğin sayı o günkü toplama eklenir; kaydedilen, günün toplamıdır.'
+              : totalAfter !== null
+                ? `Girdiğin sayı bugünkü toplama eklenir. Kaydedince bugün: ${totalAfter} ${unit}`
+                : 'Girdiğin sayı bugünkü toplama eklenir; kaydedilen, günün toplamıdır.'}
           </Text>
 
           <View style={styles.actions}>
