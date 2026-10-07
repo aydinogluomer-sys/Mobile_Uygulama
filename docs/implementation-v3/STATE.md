@@ -330,10 +330,13 @@ open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gü
   gerekmediği sahip kararı. Engelleyici değil.
 deferred_ids: [D01, D02, D03, D04, D05, D06, D07, D08, D09]
 cancelled_ids: [X01, X02, X03]
-core_implementation: IN_PROGRESS
-core_quality: NOT_MEASURED
+core_implementation: DONE_WITH_STOP_POINTS   # 2026-10-07: F01-F08 plan executed; open items are owner decisions S1-S14 (see R10_ACCEPTANCE_REPORT.md)
+core_quality: GATES_GREEN_DEVICE_NR   # typecheck/lint/run-tests/jest(2x)/diff-check green; device + user measurements N/R (S8)
 release_readiness: DEFERRED
 evidence_locations:
+  - docs/implementation-v3/R10_ACCEPTANCE_REPORT.md
+  - docs/implementation-v3/PR_DESCRIPTION.md
+  - docs/implementation-v3/R02_OFFLINE_MATRIX.md
   - docs/implementation-v3/R00_GAP_INVENTORY.md
   - docs/implementation-v3/R00_CORE_JOURNEY_MAP.md
   - docs/implementation-v3/R00_TEST_MATRIX.md
