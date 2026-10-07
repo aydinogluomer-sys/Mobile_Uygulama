@@ -50,6 +50,7 @@ old filenames.
 | 029 | `029_habit_checklists.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 | 030 | `030_routine_runner.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 | 031 | `031_moods_and_review_actions.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
+| 032 | `032_coach_actions_v2.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 
 Keep this table when adding a migration: the old names are cited throughout
 `docs/audit/`, `docs/plan/`, `PROGRESS.md` and the audit reports, which are

@@ -309,6 +309,21 @@ p7_r08_backup: DONE-PARTIAL-BY-DESIGN (P7, 2026-10-07) -- 'tam yedek & restore' 
   Mutasyonlar 16/16 (S4 'okunamayan hesap boş sayılır' ilk turda sağ -> test eklendi).
 new_stop_point_S14: expo-document-picker (+ dosya okuma) -- dışa aktarımı dosyadan seçmek için yeni native
   bağımlılık. Onaylanmadıkça yapıştırma ile.
+p8_r09_coach: DONE-GATED (P8, 2026-10-07).
+  R09.02: ikinci eylem seti -- edit_habit_schedule (frequencyEditPatch, R01.05 sürümlü), pause_habit
+    (tarihli ara; geçmişten başlamaz), move_task (outbox), suggest_small_step (startSmallStep, görevi
+    tamamlamaz), lighten_today (R09.04; kullanıcı listeyi düzenler, yalnız bugün 'skip', hedef değişmez).
+    Dört yer AYNI listeyi söyler (guard): istemci doğrulayıcı (lib/coachActionsV2), edge araç şeması +
+    istem kuralları 5-9 (generate-routine KAYNAĞI; deploy = S3), DB CHECK (migration 032, YAZILDI,
+    UYGULANMADI), repository satır tipi. YENİ kapı COACH_ACTIONS_V2_ENABLED = false (mevcut 5 false kapı
+    değişmedi); kapalıyken bu tipler 'unknown action type' olarak reddedilir -> eski CHECK'e asla satır
+    gitmez. Açma sırası: 032 uygula (S2) -> edge deploy (S3) -> kapıyı aç.
+  R09.03: her koç yazımı ÖNCE hedefin parmak izini aşamalama anındakiyle karşılaştırır (alışkanlık:
+    izleme/hedef/yön/birim/durum/takvim/davranış; görev: başlık/tamam/durum/tarih/updated_at). Değişmişse
+    YAZMAZ (v2 kart uyarır; mevcut log yolu güncel alışkanlıkla yeniden önizler), yoksa düşürür. Eski
+    davranış: log yolu aşamalamadaki anlık görüntüyle yazıyordu.
+  Testler lib/coachActionsV2 (13), repo/coachV2Wired (6). Mutasyonlar 12/12, TABAN YEŞİL DOĞRULANARAK (C1 ilk turda sağ -> iki dalda
+  erken dönüş guard'ı eklendi; o guard'ın ilk regex'i şablon dizgisindeki } yüzünden baştan kırmızıydı ve "öldü" sonucu geçersizdi -- tam geçit yakaladı, regex düzeltildi, koşuculara taban kontrolü eklendi).
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

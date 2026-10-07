@@ -16,6 +16,7 @@
  *               conversation must not be loadable in one query, and the
  *               conversation list must not grow into a full-table scan.
  */
+import type { V2ActionType } from '../lib/coachActionsV2';
 import { supabase } from '../lib/supabase';
 import {
   currentUserId, fetchPage, updateOwned, deleteOwned,
@@ -48,7 +49,8 @@ export type ActionRow = {
   conversation_id: string;
   assistant_message_id: string | null;
   user_id: string;
-  action_type: 'propose_habit' | 'propose_habit_plan' | 'log_habit';
+  /** R09.02 adds the second set (behind COACH_ACTIONS_V2_ENABLED; migration 032). */
+  action_type: 'propose_habit' | 'propose_habit_plan' | 'log_habit' | V2ActionType;
   payload: unknown;
   status: 'pending' | 'confirmed' | 'cancelled';
   created_at: string;

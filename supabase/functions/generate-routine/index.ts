@@ -60,7 +60,20 @@ NE ZAMAN EYLEM ÜRETİLİR:
    Örnek: "Bugünkü yürüyüşümü yaptım." → completion.kind = "state", state = "done".
    Örnek: "Bugün 10 dakika kitap okudum." → completion.kind = "value", value = 10, unit = "dakika".
 
-Açık ve eyleme dönük bir istek SESSİZCE sadece metne dönüşmemeli: 2, 3 veya 4 durumundaysan eylemi ÜRET.
+5) Kullanıcı bir alışkanlığın GÜNLERİNİ/SIKLIĞINI değiştirmek istiyorsa → TAM OLARAK BİR \`edit_habit_schedule\`.
+   Örnek: "Yürüyüşü haftada 3'e indir." → frequency_config: { "kind": "weekly", "count": 3 }
+
+6) Kullanıcı bir alışkanlığa BELİRLİ GÜNLER İÇİN ARA vermek istiyorsa → TAM OLARAK BİR \`pause_habit\`.
+   Örnek: "Gelecek hafta spora ara vereceğim." → from / until tarihleri. Geçmiş bir günden başlatma.
+
+7) Kullanıcı bir görevi BAŞKA BİR GÜNE almak istiyorsa → TAM OLARAK BİR \`move_task\`.
+
+8) Kullanıcı bir işe BAŞLAYAMADIĞINI söylüyorsa → TAM OLARAK BİR \`suggest_small_step\` (somut, 2-15 dakikalık ilk adım).
+
+9) Kullanıcı BUGÜN yorgun/bitkin olduğunu ve daha az yapmak istediğini söylüyorsa → TAM OLARAK BİR \`lighten_today\`
+   (bugün kenara konabilecek alışkanlıkların adları; kullanıcı listeyi düzenler; hedefler değişmez).
+
+Açık ve eyleme dönük bir istek SESSİZCE sadece metne dönüşmemeli: 2-9 durumlarından birindeysen eylemi ÜRET.
 Aynı anda birden fazla eylem üretme.
 
 ALIŞKANLIK ALANLARININ ANLAMI — KARIŞTIRMA:
@@ -197,6 +210,59 @@ const COACH_TOOL = {
                 },
               },
               required: ['type', 'habit_query', 'date', 'completion'],
+              additionalProperties: false,
+            },
+            // R09.02 — the second set. The app accepts these only while
+            // COACH_ACTIONS_V2_ENABLED is on (after migration 032 is applied).
+            {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['edit_habit_schedule'] },
+                habit_query: { type: 'string', maxLength: 80 },
+                frequency_config: COACH_HABIT_SCHEMA.properties.frequency_config,
+              },
+              required: ['type', 'habit_query', 'frequency_config'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['pause_habit'] },
+                habit_query: { type: 'string', maxLength: 80 },
+                from: { type: 'string', description: '"today" veya "YYYY-MM-DD". Geçmiş olamaz.' },
+                until: { type: 'string', description: '"YYYY-MM-DD"; boş bırakılırsa kullanıcı açana kadar.' },
+              },
+              required: ['type', 'habit_query', 'from'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['move_task'] },
+                task_query: { type: 'string', maxLength: 80, description: 'Görevin başlığı. ID ASLA yazma.' },
+                date: { type: 'string', description: '"today", "yesterday" veya "YYYY-MM-DD".' },
+              },
+              required: ['type', 'task_query', 'date'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['suggest_small_step'] },
+                task_query: { type: 'string', maxLength: 80 },
+                step: { type: 'string', maxLength: 120 },
+                minutes: { type: 'integer', minimum: 1, maximum: 60 },
+              },
+              required: ['type', 'task_query', 'step', 'minutes'],
+              additionalProperties: false,
+            },
+            {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['lighten_today'] },
+                habit_queries: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string', maxLength: 80 } },
+              },
+              required: ['type', 'habit_queries'],
               additionalProperties: false,
             },
           ],

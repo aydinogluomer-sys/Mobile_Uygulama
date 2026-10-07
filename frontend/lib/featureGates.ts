@@ -230,3 +230,13 @@ export const PUBLIC_SITE_URLS = {
   support: 'https://aderyth.com/support',
   deleteAccount: 'https://aderyth.com/delete-account',
 } as const;
+
+/**
+ * R09.02 — the coach's second action set (schedule edit, dated break, task
+ * move, small step, lighter day). FALSE until both server halves are live:
+ * migration 032 (the action_type CHECK) is applied (S2) and the
+ * generate-routine edge function with the new tool schema is deployed (S3).
+ * Until then the client refuses these types exactly as it refuses any
+ * unknown one, so a staged row can never hit the old CHECK.
+ */
+export const COACH_ACTIONS_V2_ENABLED = false;

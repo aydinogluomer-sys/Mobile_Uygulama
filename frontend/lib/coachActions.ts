@@ -36,6 +36,8 @@
  * throws, because a bad suggestion must not cost the user the reply they paid
  * 5 FP for.
  */
+import { isV2Type, readActionV2, type CoachActionV2 } from './coachActionsV2';
+import { COACH_ACTIONS_V2_ENABLED } from './featureGates';
 import type { Habit, FrequencyConfig } from './supabase';
 import { todayLocal, ymd, addDaysLocal, parseLocalDate } from './date';
 import {
@@ -123,6 +125,7 @@ export type CoachLogCompletion =
   | { kind: 'value'; value: number; unit?: string };
 
 export type CoachAction =
+  | CoachActionV2
   | { type: 'propose_habit'; habit: CoachProposalHabit }
   | { type: 'propose_habit_plan'; title: string; goal: string; habits: CoachProposalHabit[] }
   | { type: 'log_habit'; habit_query: string; date: string; completion: CoachLogCompletion };
@@ -295,12 +298,14 @@ export function resolveCoachDate(spec: unknown, now: Date = new Date()): string 
 // Validation
 // ---------------------------------------------------------------------------
 
-function readAction(raw: unknown): CoachAction | string {
+function readAction(raw: unknown, v2: boolean): CoachAction | string {
   if (!isPlainObject(raw)) return 'not an object';
   if (hasForbiddenKey(raw)) return 'forbidden key';
   if (hasAuthorityKey(raw)) return 'action tried to supply authority (ownership/price/xp)';
 
   const type = raw.type;
+  // R09.02 — the second action set, only while its gate is on (see featureGates).
+  if (v2 && isV2Type(type)) return readActionV2(raw, todayLocal());
   if (typeof type !== 'string' || !(ACTION_TYPES as readonly string[]).includes(type)) {
     return 'unknown action type';
   }
@@ -349,7 +354,8 @@ function readAction(raw: unknown): CoachAction | string {
  * or wholly discarded. A missing/empty `actions` is the normal case -- most
  * coach turns are conversation, not intent.
  */
-export function validateCoachActions(raw: unknown): CoachActionsResult {
+export function validateCoachActions(raw: unknown, opts: { v2?: boolean } = {}): CoachActionsResult {
+  const v2 = opts.v2 ?? COACH_ACTIONS_V2_ENABLED;
   if (raw === undefined || raw === null) return { actions: [], rejected: [] };
   if (!Array.isArray(raw)) return { actions: [], rejected: [{ index: -1, reason: 'actions not an array' }] };
 
@@ -357,7 +363,7 @@ export function validateCoachActions(raw: unknown): CoachActionsResult {
   const rejected: RejectedAction[] = [];
 
   raw.slice(0, MAX_COACH_ACTIONS).forEach((item, index) => {
-    const parsed = readAction(item);
+    const parsed = readAction(item, v2);
     if (typeof parsed === 'string') rejected.push({ index, reason: parsed });
     else actions.push(parsed);
   });

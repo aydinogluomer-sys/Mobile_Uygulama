@@ -32,6 +32,9 @@ import {
   type CoachLogCompletion,
 } from '../../lib/coachActions';
 import CoachActionCard, { type StagedCoachAction, type ClarifyAnswer } from '../../components/coach/CoachActionCard';
+// R09.02 — the second action set (gated): its own card, its own checks.
+import CoachActionCardV2 from '../../components/coach/CoachActionCardV2';
+import { habitFingerprint, isV2Type, staleness, type CoachActionV2 } from '../../lib/coachActionsV2';
 import { completionFor, stateForValue } from '../../services/habitLogService';
 import { firstMissingSemantic } from '../../lib/coachClarify';
 import { sameUnit } from '../../lib/units';
@@ -145,6 +148,7 @@ export default function AICoachScreen() {
   // confirmation of anything specific, whereas a staged action names the
   // habit, the date and the completion, and the card shows all three.
   const [staged, setStaged] = useState<StagedCoachAction | null>(null);
+  const [stagedV2, setStagedV2] = useState<CoachActionV2 | null>(null);
   const [stagedBusy, setStagedBusy] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
@@ -320,6 +324,7 @@ export default function AICoachScreen() {
   const stageFromActions = useCallback((actions: CoachAction[]) => {
     const action = actions[0];
     if (!action) return;
+    if (isV2Type(action.type)) { setStagedV2(action as CoachActionV2); return; }
 
     if (action.type === 'propose_habit_plan') {
       setStaged({ kind: 'planOffer', title: action.title, goal: action.goal, habits: action.habits });
@@ -333,7 +338,7 @@ export default function AICoachScreen() {
       return;
     }
 
-    stageLog(action.habit_query, action.date, action.completion);
+    if (action.type === 'log_habit') stageLog(action.habit_query, action.date, action.completion);
   }, [previewProposal, stageLog]);
 
   /** The CTA under a plan. Still zero writes -- it opens the preview. */
@@ -446,7 +451,24 @@ export default function AICoachScreen() {
 
       if (staged.kind === 'log' || staged.kind === 'unitMismatch') {
         const when = parseLocalDate(staged.date) ?? new Date();
-        const habit = staged.habit;
+        // R09.03 — the card was staged against the habit AS IT WAS. If it was
+        // edited (goal, unit, tracking, status, schedule) or removed since,
+        // the preview no longer describes this write: re-preview or drop.
+        const live = useHabitStore.getState().habits.find((h) => h.id === staged.habit.id);
+        const freshness = staleness(habitFingerprint(staged.habit), live, habitFingerprint);
+        if (freshness === 'gone') {
+          await resolvePendingAction('cancelled');
+          setStaged(null);
+          setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'error', content: `${staged.habit.name} artık yok; kayıt yazılmadı.` }]);
+          return;
+        }
+        if (freshness === 'changed') {
+          const c: CoachLogCompletion = staged.kind === 'unitMismatch' ? { kind: 'value', value: staged.value, unit: staged.unit } : staged.completion;
+          stageLog(live!.name, staged.date, c);
+          setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'assistant', content: 'Bu alışkanlık sen bakarken değişti; önizleme güncellendi. Tekrar onayla.' }]);
+          return;
+        }
+        const habit = live!;
         // A confirmed mismatch means "yes, in the habit's own unit" -- the
         // number is kept and the unit the user said is dropped, rather than
         // converted into something nobody agreed to.
@@ -813,6 +835,17 @@ export default function AICoachScreen() {
 
           {/* The confirmation barrier. Rendered after the conversation so the
               thing being confirmed is the last thing on screen. */}
+          {stagedV2 && (
+            <CoachActionCardV2
+              action={stagedV2}
+              onDone={(ok, message) => {
+                void resolvePendingAction(ok ? 'confirmed' : 'cancelled');
+                setStagedV2(null);
+                setMessages((prev) => [...prev, { id: Date.now().toString(), role: ok ? 'assistant' : 'error', content: message }]);
+              }}
+            />
+          )}
+
           {staged && (
             <CoachActionCard
               staged={staged}
