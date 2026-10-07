@@ -30,6 +30,13 @@ import {
 } from '../repositories/habitLogRepository';
 import { evaluateActivation, refund, spend, type ActivationVerdict } from './capacityService';
 import type { WillpowerStateRow } from '../repositories/willpowerRepository';
+import {
+  deletePause, fetchGoalVersions, fetchPauses, insertPause, setPauseEnd, upsertGoalVersions,
+} from '../repositories/habitPauseRepository';
+import {
+  endPauseOn, validatePause, versionRowsForEdit,
+  type GoalVersion, type PauseDraft, type PauseInterval,
+} from '../lib/habitPauses';
 
 export type { HabitDetailLogRow };
 
@@ -120,3 +127,60 @@ export const heatmapLogs = (params: Parameters<typeof fetchHabitLogsHeatmap>[0])
   fetchHabitLogsHeatmap(params);
 export const habitIdsCompletedSince = (params: Parameters<typeof fetchHabitIdsCompletedSince>[0]) =>
   fetchHabitIdsCompletedSince(params);
+
+// ── R01.05 — dated time off (pause / holiday) and goal versions ────────────
+
+export type TimeOff = { available: boolean; pauses: PauseInterval[]; versions: GoalVersion[] };
+
+/**
+ * Both lists, or `available: false` while migration 028 has not run. A
+ * failed read (refused, offline) is an error, never "no pauses".
+ */
+export async function loadTimeOff(): Promise<{ ok: true; data: TimeOff } | { ok: false; error: string }> {
+  const [p, v] = await Promise.all([fetchPauses(), fetchGoalVersions()]);
+  if (!p.ok) return { ok: false, error: p.error };
+  if (!v.ok) return { ok: false, error: v.error };
+  return { ok: true, data: { available: p.data.available && v.data.available, pauses: p.data.rows, versions: v.data.rows } };
+}
+
+/** A pause for one habit, or a holiday (`habitId` null), checked before it is written. */
+export async function addTimeOff(params: {
+  habitId: string | null;
+  draft: PauseDraft;
+  today: string;
+  existing: readonly PauseInterval[];
+}): Promise<{ ok: true; pause: PauseInterval } | { ok: false; error: string }> {
+  const mine = params.existing.filter((x) => x.habit_id === params.habitId);
+  const check = validatePause(params.draft, params.today, mine);
+  if (!check.ok) return { ok: false, error: check.reason };
+  const res = await insertPause(params.habitId, params.draft);
+  if (!res.ok) return { ok: false, error: res.error };
+  return { ok: true, pause: res.data };
+}
+
+/** End a pause today: it covered up to yesterday, or never started and is removed. */
+export async function endTimeOff(pause: PauseInterval, today: string): Promise<{ ok: true; pause: PauseInterval | null } | { ok: false; error: string }> {
+  const step = endPauseOn(pause, today);
+  if (step.action === 'delete') {
+    const res = await deletePause(pause.id);
+    return res.ok ? { ok: true, pause: null } : { ok: false, error: res.error };
+  }
+  const res = await setPauseEnd(pause.id, step.end_date);
+  return res.ok ? { ok: true, pause: res.data } : { ok: false, error: res.error };
+}
+
+/**
+ * The version rows a schedule/goal edit writes. Called AFTER the habit patch
+ * succeeded: a version written for a patch that then failed would claim a
+ * goal the habit never had. A failed version write is reported, not fatal --
+ * the habit change stands and the past is scored as it was before R01.05.
+ */
+export async function recordGoalVersion(
+  habit: Pick<Habit, 'id' | 'created_at' | 'frequency_config' | 'daily_goal' | 'target_direction' | 'goal_versions'>,
+  next: Pick<GoalVersion, 'frequency_config' | 'daily_goal' | 'target_direction'>,
+  today: string,
+): Promise<{ ok: true; versions: GoalVersion[] } | { ok: false; error: string }> {
+  const rows = versionRowsForEdit(habit, next, today);
+  const res = await upsertGoalVersions(rows);
+  return res.ok ? { ok: true, versions: res.data } : { ok: false, error: res.error };
+}

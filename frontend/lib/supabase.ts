@@ -1,3 +1,4 @@
+import type { PauseInterval, GoalVersion } from './habitPauses';
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
@@ -87,6 +88,13 @@ export type Habit = {
   life_area: string | null;     // yaşam alanı kategorisi (LIFE_AREAS anahtarı)
   end_condition: EndCondition | null;
   created_at: string;
+  /**
+   * R01.05 — attached IN MEMORY by the store (habit_pauses: own pauses + holidays);
+   * NOT a habits column. Stripped from every habit write (habitRepository).
+   */
+  pause_intervals?: PauseInterval[];
+  /** R01.05 — effective-dated goal/schedule versions (habit_goal_versions), in memory only. */
+  goal_versions?: GoalVersion[];
 };
 
 export type ReminderConfig = { time: string; enabled: boolean } | null;

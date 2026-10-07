@@ -42,6 +42,9 @@ import { isCountBasedSchedule, isEligibleOn } from '../../lib/habitSchedule';
 // with the same controls (one component, one set of pure transitions).
 import { frequencySummary, frequencyEditPatch, isFrequencyComplete } from '../../lib/frequencyForm';
 import FrequencyEditor from '../../components/FrequencyEditor';
+// R01.05 — a dated break for this habit, and the holiday it may be in.
+import TimeOffSheet from '../../components/TimeOffSheet';
+import { activePauseOn } from '../../lib/habitPauses';
 import { completionPercent, isMeasurableTracking } from '../../lib/habitEngine';
 import { habitStrength, type StrengthLog } from '../../lib/habitStrength';
 import {
@@ -210,10 +213,12 @@ function trendIcon(direction: 'improving' | 'declining' | 'flat'): keyof typeof 
 // ui/ primitives (plan: reuse ui/, do not invent new ones)
 // ---------------------------------------------------------------------------
 
-function InfoRow({ icon, label, value, onEdit, editLabel }: {
+function InfoRow({ icon, label, value, onEdit, editLabel, editIcon = 'create-outline' }: {
   icon: keyof typeof Ionicons.glyphMap; label: string; value: string;
   /** KD-09 — when set, the row offers an edit button with this a11y label. */
   onEdit?: () => void; editLabel?: string;
+  /** R01.05 — the button's glyph, when it is not an edit. */
+  editIcon?: keyof typeof Ionicons.glyphMap;
 }) {
   return (
     <View style={s.infoRow}>
@@ -229,7 +234,7 @@ function InfoRow({ icon, label, value, onEdit, editLabel }: {
           accessibilityRole="button"
           accessibilityLabel={editLabel ?? `${label} düzenle`}
         >
-          <Ionicons name="create-outline" size={16} color={colors.accent} />
+          <Ionicons name={editIcon} size={16} color={colors.accent} />
         </TouchableOpacity>
       )}
     </View>
@@ -268,8 +273,10 @@ function InsightRow<T>({ icon, label, result, formatOk }: {
 
 export default function HabitDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { habits, fetchHabits, updateHabit } = useHabitStore();
+  const { habits, fetchHabits, updateHabit, pauses, timeOffAvailable, addTimeOff, endTimeOff } = useHabitStore();
   const habit = habits.find((h) => h.id === id) ?? null;
+  // R01.05 — this habit's current or upcoming break, and any holiday today.
+  const [timeOffOpen, setTimeOffOpen] = useState(false);
 
   const [logs, setLogs] = useState<HabitDetailLogRow[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
@@ -409,6 +416,25 @@ export default function HabitDetailScreen() {
     }
   }
 
+  // R01.05 — the break that is on now or still ahead (a past one is history).
+  const ownBreak = pauses.find(
+    (p) => p.habit_id === habit.id && p.kind === 'pause' && (p.end_date === null || p.end_date >= todayYmd),
+  ) ?? null;
+  const holidayToday = activePauseOn({ pause_intervals: pauses.filter((p) => p.habit_id === null) }, today);
+
+  function confirmEndBreak(pauseId: string) {
+    Alert.alert('Arayı bitir', 'Bu alışkanlık bugünden itibaren yeniden takvimine döner.', [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Bitir',
+        onPress: async () => {
+          const res = await endTimeOff(pauseId);
+          if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
+        },
+      },
+    ]);
+  }
+
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
@@ -472,6 +498,16 @@ export default function HabitDetailScreen() {
                   value={habit.daily_goal != null ? `${habit.daily_goal}${habit.unit ? ` ${habit.unit}` : ''}` : '—'}
                 />
               )}
+              <InfoRow
+                icon="cafe-outline"
+                label="Ara"
+                value={ownBreak
+                  ? `${ownBreak.start_date} → ${ownBreak.end_date ?? 'sen açana kadar'}`
+                  : holidayToday ? 'Tatil modunda' : 'Yok'}
+                onEdit={ownBreak ? () => confirmEndBreak(ownBreak.id) : () => setTimeOffOpen(true)}
+                editLabel={ownBreak ? 'Arayı bitir' : 'Ara ver'}
+                editIcon={ownBreak ? 'play-outline' : 'cafe-outline'}
+              />
               <InfoRow icon="compass-outline" label="Yaşam Alanı" value={area ? area.label : '—'} />
               <InfoRow icon="flash-outline" label="İrade Maliyeti" value={String(habit.willpower_cost)} />
               {habit.end_condition && (
@@ -628,6 +664,12 @@ export default function HabitDetailScreen() {
         <View style={s.sheetOverlay}>
           <View style={s.sheet}>
             <Text style={s.sheetTitle}>Sıklığı düzenle</Text>
+            {/* R01.05 — say which days the new goal judges. */}
+            <Text style={s.versionNote}>
+              {timeOffAvailable
+                ? 'Yeni sıklık bugünden itibaren geçerli; geçmiş günler eski hedefle değerlendirilmeye devam eder.'
+                : 'Not: sunucu güncellemesi beklendiği için geçmiş günler de yeni sıklıkla değerlendirilir.'}
+            </Text>
             <ScrollView style={s.sheetBody} keyboardShouldPersistTaps="handled">
               {freqDraft && <FrequencyEditor value={freqDraft} onChange={setFreqDraft} />}
             </ScrollView>
@@ -654,12 +696,26 @@ export default function HabitDetailScreen() {
           </View>
         </View>
       </Modal>
+      <TimeOffSheet
+        visible={timeOffOpen}
+        kind="pause"
+        habitName={habit.name}
+        today={todayYmd}
+        available={timeOffAvailable === true}
+        onClose={() => setTimeOffOpen(false)}
+        onConfirm={async (draft) => {
+          const res = await addTimeOff(habit.id, draft);
+          if (res.ok) setTimeOffOpen(false);
+          return res;
+        }}
+      />
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  versionNote: { fontSize: 12, color: colors.textFaint, lineHeight: 17, marginBottom: space.sm },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl },
   scroll: { padding: space.lg, paddingBottom: space.xxl },
 

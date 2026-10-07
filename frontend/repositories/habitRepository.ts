@@ -18,6 +18,7 @@
  * gets the same typed `RepoResult` convention every other repository uses,
  * instead of a second ad-hoc insert call site.
  */
+import { stripTimeOff } from '../lib/habitPauses';
 import { supabase } from '../lib/supabase';
 import type { Habit, FrequencyConfig } from '../lib/supabase';
 import { currentUserId, deleteOwned, updateOwned, type RepoResult } from './shared';
@@ -111,7 +112,8 @@ export async function updateHabit(
   if (!u.ok) return u;
   return updateOwned<Habit>({
     table: 'habits', id, userId: u.userId,
-    patch: updates as Record<string, unknown>, columns: HABIT_COLUMNS,
+    // R01.05 — pause_intervals / goal_versions are in-memory only.
+    patch: stripTimeOff(updates) as Record<string, unknown>, columns: HABIT_COLUMNS,
   });
 }
 
@@ -170,7 +172,7 @@ export async function insertHabit(
   if (!u.ok) return u;
   const { data, error } = await supabase
     .from('habits')
-    .insert({ ...habit, user_id: u.userId })
+    .insert({ ...stripTimeOff(habit), user_id: u.userId })
     .select(HABIT_COLUMNS)
     .single();
   if (error) return { ok: false, error: error.message };

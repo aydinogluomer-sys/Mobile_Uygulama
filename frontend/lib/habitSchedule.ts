@@ -1,5 +1,7 @@
 import { addDaysLocal, daysBetweenLocal, parseLocalDate, startOfWeekLocal, ymd } from './date';
 import type { Habit, HabitLog } from './supabase';
+// R01.05 — dated pause/holiday intervals and effective-dated goal versions.
+import { habitOn, isPausedOn, pausedDaysIn, pausedTarget, versionSegments } from './habitPauses';
 
 // HabitOnboarding WEEKDAYS = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz']
 // → saklanan frequency_config.days indeksi: 0=Pazartesi … 6=Pazar.
@@ -86,6 +88,8 @@ function withinLifetime(habit: Habit, date: Date): boolean {
   if (ec && ec.kind === 'date' && typeof ec.value === 'string' && ds > ec.value) return false;
   // Tarih aralığı (zarf) dışında due değil
   if (!withinRange(habit, date)) return false;
+  // R01.05 — a dated pause or holiday: not due, not eligible, not a miss.
+  if (isPausedOn(habit, date)) return false;
   return true;
 }
 
@@ -127,6 +131,7 @@ function withinLifetime(habit: Habit, date: Date): boolean {
  * (period success), `isEligibleOn` (eligibility) or `carriesDayLoad` (day load).
  */
 export function isDueOn(habit: Habit, date: Date): boolean {
+  habit = habitOn(habit, date); // R01.05 — the goal that applied that day
   if (!withinLifetime(habit, date)) return false;
 
   const kind = habit.frequency_config?.kind ?? 'daily';
@@ -273,6 +278,7 @@ export function scheduleKind(habit: Habit): ScheduleKind {
  * çağırır, o da önce `withinLifetime`'ı — aralık zarfı oradadır.
  */
 function dueOnExtended(habit: Habit, date: Date): boolean {
+  habit = habitOn(habit, date); // R01.05
   const sk = scheduleKind(habit);
 
   if (sk.kind === 'every_n_days') {
@@ -311,6 +317,7 @@ export type ScheduleWindow = { start: Date; end: Date; targetCount: number };
  * (bkz. `lib/date.ts`), varsayılmadı, doğrulandı.
  */
 export function windowFor(habit: Habit, date: Date): ScheduleWindow | null {
+  habit = habitOn(habit, date); // R01.05
   const sk = scheduleKind(habit);
 
   if (sk.kind === 'weekly_count') {
@@ -412,11 +419,13 @@ export function streakBroken(
   logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>[],
   date: Date,
 ): boolean {
+  habit = habitOn(habit, date); // R01.05
   const sk = scheduleKind(habit);
 
   if (sk.kind === 'weekly_count' || sk.kind === 'monthly_count') {
     if (sk.count <= 0) return false; // hedef yok → bozulacak bir şey yok
     if (!withinRange(habit, date)) return false; // aralık (zarf) dışı: due değil → bozulacak bir şey yok
+    if (isPausedOn(habit, date)) return false; // R01.05 — duraklatılmış gün: seri köprü kurar
 
     const window = windowFor(habit, date);
     if (!window) return false; // teorik olarak ulaşılamaz (sk zaten sayaç-tabanlı); savunma amaçlı
@@ -424,12 +433,18 @@ export function streakBroken(
     const slice = rangeSlice(habit, window);
     if (!slice) return false;
 
-    const doneSoFar = completedCountInWindow(habit, logs, slice);
-    if (doneSoFar >= window.targetCount) return false; // hedef zaten karşılandı
+    // R01.05 — duraklatma/tatil dönem hedefini kaybedilen gün oranında küçültür.
+    const windowDays = daysBetweenLocal(window.start, window.end) + 1;
+    const target = pausedTarget(window.targetCount, windowDays, pausedDaysIn(habit, window.start, window.end));
+    if (target <= 0) return false;
 
-    const remainingDays = daysBetweenLocal(date, slice.end) + 1; // `date` dahil, dilim sonuna kalan gün
+    const doneSoFar = completedCountInWindow(habit, logs, slice);
+    if (doneSoFar >= target) return false; // hedef zaten karşılandı
+
+    // `date` dahil, dilim sonuna kalan gün -- duraklatılmış günler çalışılamaz.
+    const remainingDays = daysBetweenLocal(date, slice.end) + 1 - pausedDaysIn(habit, date, slice.end);
     if (remainingDays <= 0) return true; // pencere bitti, hedef karşılanmadı
-    return (window.targetCount - doneSoFar) > remainingDays; // kalan günlerle bile yetişilemez mi?
+    return (target - doneSoFar) > remainingDays; // kalan günlerle bile yetişilemez mi?
   }
 
   // Gün-bazlı modlar
@@ -488,6 +503,30 @@ export type ScheduledCompletion = {
 };
 
 export function scheduledCompletionRate(
+  habit: Habit,
+  logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>[],
+  range: { from: Date; to: Date; since?: Date | null },
+): ScheduledCompletion {
+  // R01.05 — a range that spans a goal change is scored per version: each
+  // part against the goal that applied to it, then summed. With no versions
+  // there is one segment and this is the call it always was.
+  const segments = versionSegments(habit, range.from, range.to);
+  if (segments.length > 1) {
+    let due = 0;
+    let done = 0;
+    for (const seg of segments) {
+      const r = scheduledCompletionRateFor(habitOn(habit, seg.from), logs, { from: seg.from, to: seg.to, since: range.since });
+      due += r.dueDays;
+      done += r.doneDays;
+    }
+    const dueDays = Math.round(due * 1e6) / 1e6;
+    const doneDays = Math.round(done * 1e6) / 1e6;
+    return { rate: dueDays === 0 ? 0 : doneDays / dueDays, dueDays, doneDays };
+  }
+  return scheduledCompletionRateFor(habitOn(habit, range.from), logs, range);
+}
+
+function scheduledCompletionRateFor(
   habit: Habit,
   logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>[],
   range: { from: Date; to: Date; since?: Date | null },
@@ -621,6 +660,7 @@ function periodCompletionRate(
  * fabricated here.
  */
 export function isEligibleOn(habit: Habit, date: Date): boolean {
+  habit = habitOn(habit, date); // R01.05
   const sk = scheduleKind(habit);
   if (sk.kind === 'weekly_count' || sk.kind === 'monthly_count') {
     return sk.count > 0 && withinLifetime(habit, date);
@@ -823,6 +863,7 @@ export function periodStatus(
   date: Date,
   opts: PeriodStatusOptions = {},
 ): PeriodStatus {
+  habit = habitOn(habit, date); // R01.05 — the goal that applied in this period
   const asOf = opts.asOf ?? new Date();
   const window = windowFor(habit, date);
   const periodStart = window ? window.start : date;
@@ -836,8 +877,10 @@ export function periodStatus(
     return unknownStatus(periodStart, periodEnd, 'sessions', 'sessions_unsupported');
   }
 
-  // Paused: nothing is evaluated. There is no pause-interval model in the
-  // schema, only the habit-level status; that is what this reflects.
+  // Paused (legacy): the undated, whole-habit `status = 'paused'` -- nothing
+  // is evaluated, in any period. R01.05's dated pauses/holidays are handled
+  // per day below (day modes) and per period (count modes), so they leave the
+  // rest of the habit's history as it happened.
   if (habit.status === 'paused') {
     const unit: PeriodUnit = opts.unit ?? (window ? 'days' : amountTarget(habit) ? 'amount' : 'days');
     return { ...unknownStatus(periodStart, periodEnd, unit, 'habit_paused'), status: 'paused' };
@@ -853,8 +896,13 @@ export function periodStatus(
       // day, count is per period). Not aggregated, not guessed.
       return unknownStatus(periodStart, periodEnd, 'amount', 'amount_unsupported');
     }
-    const target = window.targetCount;
-    if (target <= 0) return unknownStatus(periodStart, periodEnd, 'days', 'no_target');
+    if (window.targetCount <= 0) return unknownStatus(periodStart, periodEnd, 'days', 'no_target');
+    // R01.05 — a pause/holiday shrinks the period target with the days it
+    // takes ("3 a week" with 4 days paused asks for 2); a fully paused period
+    // is `paused`, not failed.
+    const windowDays = daysBetweenLocal(window.start, window.end) + 1;
+    const target = pausedTarget(window.targetCount, windowDays, pausedDaysIn(habit, window.start, window.end));
+    if (target <= 0) return { ...unknownStatus(periodStart, periodEnd, 'days', 'habit_paused'), status: 'paused' };
 
     // R01.02-d1 — the date range is an envelope: only the slice of this period
     // that lies inside it counts and can still be worked. With no range the
@@ -877,7 +925,9 @@ export function periodStatus(
     // status -- the period is not over, so it is not failed. Days left are
     // counted inside the slice: a range that ends Thursday leaves no Friday.
     const from = ymd(asOf) > ymd(slice.start) ? asOf : slice.start;
-    const daysLeft = Math.max(daysBetweenLocal(from, slice.end) + 1, 0);
+    const daysLeft = ymd(from) > ymd(slice.end)
+      ? 0
+      : Math.max(daysBetweenLocal(from, slice.end) + 1 - pausedDaysIn(habit, from, slice.end), 0);
     const unreachable = remaining > daysLeft;
     // KNOWN LIMIT, R01.05's (goal versioning), stated rather than hidden: the
     // target stays NOMINAL in a period the range cuts -- "3 a week" with only
@@ -898,6 +948,11 @@ export function periodStatus(
   // The period is the day. Eligibility comes from the SAME predicate the
   // day-based branch of `streakBroken` uses; `isDueOn`'s count-mode mapping is
   // never reached here because count modes took the window branch above.
+  // R01.05 — a paused/holiday day says so, rather than 'not_scheduled'.
+  if (isPausedOn(habit, date)) {
+    const unit: PeriodUnit = opts.unit ?? (amountTarget(habit) ? 'amount' : 'days');
+    return { ...unknownStatus(periodStart, periodEnd, unit, 'habit_paused'), status: 'paused' };
+  }
   if (!dueOnExtended(habit, date)) {
     const unit: PeriodUnit = opts.unit ?? (amountTarget(habit) ? 'amount' : 'days');
     return unknownStatus(periodStart, periodEnd, unit, 'not_scheduled');
@@ -1001,6 +1056,7 @@ export function isCountBasedSchedule(habit: Habit): boolean {
 }
 
 export function carriesDayLoad(habit: Habit, logs: LogForPeriod[], date: Date): boolean {
+  habit = habitOn(habit, date); // R01.05
   if (!isCountBasedSchedule(habit)) {
     // R01.02-c — day lane (guard: the `if` above). `isEligibleOn` is `isDueOn`
     // for daily/weekly_days and additionally narrows every_n_days; the date range is in its lifetime envelope.

@@ -141,6 +141,28 @@ r03_03_small_start: DONE (P2, 2026-10-07) -- Bugün'deki her açık görevde 'k�
   hiçbir kayıt/XP/FP yok. Odak ekranı 'KÜÇÜK ADIM · N dk' + 'Asıl iş: X — bu adım onu tamamlamaz'.
   Yan düzeltme: halka ilerlemesi açık oturumun kendi planını (clock.plannedSeconds) kullanır.
   Testler lib/smallStart (10), store/focusSmallStep (10), repo/smallStartWired (6). Mutasyonlar 7/7.
+r01_05_time_off_and_goal_versions: DONE-PENDING-MIGRATION (P2, 2026-10-07) -- skip / ara (pause) / tatil
+  AYRI modellendi (lib/habitPauses.ts). skip = tek gün log (değişmedi). Ara = tek alışkanlık için tarih
+  aralığı, tatil = habit_id NULL ile bütün alışkanlıklar. Motor tek noktadan okur: withinLifetime
+  duraklatılmış günü dışlar (uygun değil, paydada yok, kaçırma değil, yük yok); periodStatus gün
+  modunda 'paused'/habit_paused; sayı modunda dönem hedefi kaybedilen gün oranında YUKARI yuvarlanarak
+  küçülür (haftada 3, 4 gün ara -> 2), tüm dönem araysa 'paused'; streakBroken küçülmüş hedef + kalan
+  çalışılabilir günle. ESKİ status='paused' davranışı korunur (tarihsiz, geçmişi de gizler -- test
+  bunu karşıtlık olarak pinler); yeni aralar geçmişe dokunmaz. Hedef sürümleme: habitOn(habit, gün)
+  o gün geçerli frequency_config/daily_goal/target_direction'ı verir; scheduledCompletionRate aralığı
+  sürüm sınırlarında böler (gün<->sayı modu geçişinde her parça kendi algoritmasıyla). İlk düzenleme
+  eski config için oluşturma gününden baseline + bugünden yeni satır yazar; sürüm YALNIZ habit yazımı
+  kabul edildikten sonra. Mevcut 'Duraklat' (aktif->kuyruk, irade iadesi) farklı eylem: UI'da 'Ara ver'.
+  Bellek-içi alanlar (pause_intervals, goal_versions) her habits yazımından ayıklanır.
+  UI: habit-detail 'Ara' satırı (ver / bitir), sıklık düzenlemede hangi günleri yargıladığı yazılı;
+  Bugün 'ARADA' grubu, 'TATİL MODU' kartı + 'Birkaç gün ara: tatil modu'. TimeOffSheet atla ile
+  farkı ve hedef/oran/seri/hatırlatıcı etkisini gösterir.
+  MIGRATION: supabase/migrations/028_habit_pauses_and_goal_versions.sql YAZILDI, UYGULANMADI (S1/S2).
+  İstemci yalnız eksik tabloda (PGRST205/42P01) fail-open: available=false, davranış R01.05 öncesiyle
+  birebir, sayfa 'sunucu güncellemesini bekliyor' der ve kaydetmez. Başka hata = hata.
+  KALAN: bildirimlerin aradaki alışkanlığı atlaması R04.01'e (isPausedOn hazır).
+  Testler lib/habitPauses (22), lib/habitScheduleTimeOff (19), store/habitStoreTimeOff (9),
+  repo/habitTimeOffWired (8). Mutasyonlar 14/14 (ilk turda 3 sağ kaldı -> ayırt eden 3 test eklendi).
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

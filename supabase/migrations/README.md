@@ -46,6 +46,7 @@ old filenames.
 | 025 | `025_recovery_v2_vocabulary_release.sql` | `20260906151909` | `20260906g_…` |
 | 026 | `026_ai_conversations.sql` | `20260908041021` + `20260908041055` | `20260908_ai_conversations.sql` |
 | 027 | `027_account_deletion_cascade.sql` | `20260908133800` | `20260908b_…` |
+| 028 | `028_habit_pauses_and_goal_versions.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 
 Keep this table when adding a migration: the old names are cited throughout
 `docs/audit/`, `docs/plan/`, `PROGRESS.md` and the audit reports, which are

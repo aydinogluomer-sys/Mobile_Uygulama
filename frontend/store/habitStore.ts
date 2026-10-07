@@ -10,7 +10,11 @@ import {
   patchHabit as repoUpdateHabit,
   purgeHabit as repoPurgeHabit,
   restoreHabit as repoRestoreHabit,
+  loadTimeOff, addTimeOff as addTimeOffOp, endTimeOff as endTimeOffOp, recordGoalVersion,
 } from '../services/habitService';
+// R01.05 — dated pauses/holidays and goal versions, attached to each habit.
+import { attachTimeOff, changesGoal, type GoalVersion, type PauseDraft, type PauseInterval } from '../lib/habitPauses';
+import { todayLocal } from '../lib/date';
 // Static import (task Phase-1 CODER-F, W1). Was `await import('./willpowerStore')`
 // -- no circular dependency requires deferring it (willpowerStore.ts has no
 // import back on this file), and the dynamic form is unexecutable under this
@@ -57,6 +61,13 @@ type HabitInsert = Omit<Habit, 'id' | 'created_at' | 'user_id'>;
 type HabitStore = {
   habits: Habit[];
   loading: boolean;
+  /** R01.05 — every pause and holiday of this user. */
+  pauses: PauseInterval[];
+  goalVersions: GoalVersion[];
+  /** R01.05 — false while migration 028 has not run; null until known. */
+  timeOffAvailable: boolean | null;
+  addTimeOff: (habitId: string | null, draft: PauseDraft) => Promise<{ ok: true } | { ok: false; error: string }>;
+  endTimeOff: (pauseId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   fetchHabits: () => Promise<void>;
   addHabit: (habit: HabitInsert) => Promise<Habit | null>;
   updateHabit: (id: string, updates: Partial<Habit>) => Promise<void>;
@@ -70,12 +81,44 @@ type HabitStore = {
 export const useHabitStore = create<HabitStore>((set, get) => ({
   habits: [],
   loading: false,
+  pauses: [],
+  goalVersions: [],
+  timeOffAvailable: null,
 
   fetchHabits: async () => {
     set({ loading: true });
-    const res = await repoFetchHabits();
-    if (res.ok) set({ habits: res.data });
+    const [res, off] = await Promise.all([repoFetchHabits(), loadTimeOff()]);
+    if (off.ok) {
+      set({ pauses: off.data.pauses, goalVersions: off.data.versions, timeOffAvailable: off.data.available });
+    }
+    // A failed time-off read keeps what was loaded before (and stays unknown
+    // the first time) rather than presenting "no pauses" as a fact.
+    if (res.ok) {
+      const { pauses, goalVersions } = get();
+      set({ habits: attachTimeOff(res.data, pauses, goalVersions) });
+    }
     set({ loading: false });
+  },
+
+  addTimeOff: async (habitId, draft) => {
+    if (get().timeOffAvailable !== true) return { ok: false, error: 'Bu özellik sunucu güncellemesini bekliyor.' };
+    const res = await addTimeOffOp({ habitId, draft, today: todayLocal(), existing: get().pauses });
+    if (!res.ok) return res;
+    const pauses = [...get().pauses, res.pause];
+    set((st) => ({ pauses, habits: attachTimeOff(st.habits, pauses, st.goalVersions) }));
+    return { ok: true };
+  },
+
+  endTimeOff: async (pauseId) => {
+    const target = get().pauses.find((p) => p.id === pauseId);
+    if (!target) return { ok: false, error: 'Kayıt bulunamadı.' };
+    const res = await endTimeOffOp(target, todayLocal());
+    if (!res.ok) return res;
+    const pauses = res.pause
+      ? get().pauses.map((p) => (p.id === pauseId ? res.pause! : p))
+      : get().pauses.filter((p) => p.id !== pauseId);
+    set((st) => ({ pauses, habits: attachTimeOff(st.habits, pauses, st.goalVersions) }));
+    return { ok: true };
   },
 
   addHabit: async (habitData) => {
@@ -108,7 +151,23 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
   },
 
   updateHabit: async (id, updates) => {
+    const before = get().habits.find((h) => h.id === id);
     const res = await repoUpdateHabit(id, updates);
+    // R01.05 — a schedule/goal edit takes effect from today; the past keeps
+    // the goal it had. Only once the habit write is accepted, and only when
+    // the versions table exists.
+    if (res.ok && before && changesGoal(updates) && get().timeOffAvailable === true) {
+      const v = await recordGoalVersion(before, {
+        frequency_config: updates.frequency_config ?? before.frequency_config,
+        daily_goal: updates.daily_goal !== undefined ? updates.daily_goal : before.daily_goal,
+        target_direction: updates.target_direction !== undefined ? updates.target_direction : before.target_direction,
+      }, todayLocal());
+      if (v.ok) {
+        const keys = new Set(v.versions.map((x) => `${x.habit_id}|${x.effective_from}`));
+        const goalVersions = [...get().goalVersions.filter((x) => !keys.has(`${x.habit_id}|${x.effective_from}`)), ...v.versions];
+        set((st) => ({ goalVersions, habits: attachTimeOff(st.habits, st.pauses, goalVersions) }));
+      }
+    }
     if (res.ok) {
       let merged: Habit | undefined;
       set((state) => ({

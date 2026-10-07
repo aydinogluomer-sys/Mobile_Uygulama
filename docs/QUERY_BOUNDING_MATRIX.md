@@ -41,6 +41,10 @@ query is unbounded; this does not.
 | `habitLogRepository.ts` | `fetchLogsForDate` | `habit_logs` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitLogRepository.ts` | `findHabitLog` | `habit_logs` | no | SINGLE_ROW | yes |
 | `habitLogRepository.ts` | `insertHabitLog` | `habit_logs` | no | WRITE | — |
+| `habitPauseRepository.ts` | `fetchGoalVersions` | `habit_goal_versions` | yes | BOUNDED_DOMAIN_WINDOW | yes |
+| `habitPauseRepository.ts` | `fetchPauses` | `habit_pauses` | yes | BOUNDED_DOMAIN_WINDOW | yes |
+| `habitPauseRepository.ts` | `insertPause` | `habit_pauses` | no | WRITE | — |
+| `habitPauseRepository.ts` | `upsertGoalVersions` | `habit_goal_versions` | no | WRITE | — |
 | `habitRepository.ts` | `countHabitsForInstall` | `habits` | yes | EXACT_COUNT | yes |
 | `habitRepository.ts` | `fetchHabits` | `habits` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitRepository.ts` | `insertHabit` | `habits` | no | WRITE | — |
@@ -95,12 +99,12 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **84**
-- collection SELECTs: **38**
+- queries: **88**
+- collection SELECTs: **40**
 - KEYSET_PAGE: **7**
 - DATE_WINDOW: **9**
 - BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **2**
-- BOUNDED_DOMAIN_WINDOW: **16**
+- BOUNDED_DOMAIN_WINDOW: **18**
 - SINGLE_ROW: **12**
 - **UNCLASSIFIED: 0**

@@ -18,6 +18,9 @@ import RecoveryRailCard from '../../components/today/RecoveryRailCard';
 // R03.03 — start small: first step of a task as its own focus session.
 import SmallStartSheet from '../../components/SmallStartSheet';
 import type { SmallStepParent } from '../../lib/smallStart';
+// R01.05 — habits on a dated break, and the holiday mode for all of them.
+import TimeOffSheet from '../../components/TimeOffSheet';
+import { activePauseOn, isPausedOn } from '../../lib/habitPauses';
 import { buildTodayNarrative } from '../../lib/todayNarrative';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
@@ -108,10 +111,17 @@ export function selectTodayHabits(
 ): Habit[] {
   return habits.filter(
     (h) => h.status === 'active'
+      // R01.05 — a dated break wins over the ambiguous-schedule fail-open.
+      && !isPausedOn(h, date)
       && (isEligibleOn(h, date) || isScheduleAmbiguous(h))
       && !(periodLogs && isPeriodDoneBefore(h, date, periodLogs))
       && !setAside.has(h.id),
   );
+}
+
+/** R01.05 — the active habits on a dated break (own pause or holiday) today. */
+export function selectOnBreakHabits(habits: Habit[], date: Date): Habit[] {
+  return habits.filter((h) => h.status === 'active' && isPausedOn(h, date));
 }
 
 const NO_IDS: ReadonlySet<string> = new Set<string>();
@@ -228,7 +238,7 @@ export default function TodayScreen() {
   const today = todayLocal();
   const now = new Date();
 
-  const { habits, fetchHabits } = useHabitStore();
+  const { habits, fetchHabits, pauses, timeOffAvailable, addTimeOff, endTimeOff } = useHabitStore();
   // §18: `pendingSyncCount` / `deadSyncCount` burada okunuyor çünkü alışkanlık
   // tamamlama bu ekranda oluyor (`onHabitTap` -> `logHabit`). Dokunuşun
   // yapıldığı yerde durumu göstermek, kullanıcının "kaydedildi mi?" sorusunu
@@ -257,6 +267,10 @@ export default function TodayScreen() {
   const todayHabits = selectTodayHabits(habits, todayDate, periodLogs, lightDayIds);
   const setAsideHabits = selectSetAsideHabits(habits, todayDate, periodLogs, lightDayIds);
   const periodDoneHabits = selectPeriodDoneHabits(habits, todayDate, periodLogs);
+  // R01.05
+  const onBreakHabits = selectOnBreakHabits(habits, todayDate);
+  const holiday = activePauseOn({ pause_intervals: pauses.filter((p) => p.habit_id === null) }, todayDate);
+  const [holidayOpen, setHolidayOpen] = useState(false);
   const completedHabits = todayHabits.filter((h) => {
     const log = getLogForHabit(h.id);
     return log?.state === 'done' || log?.state === 'partial';
@@ -588,6 +602,17 @@ export default function TodayScreen() {
                     <Text style={s.lightDayBtnText}>Bugün daha az yapabilirim</Text>
                   </TouchableOpacity>
                 )}
+                {!holiday && (
+                  <TouchableOpacity
+                    style={s.lightDayBtn}
+                    onPress={() => { haptic.select(); setHolidayOpen(true); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Tatil modu. Birkaç gün bütün alışkanlıklara ara ver."
+                  >
+                    <Ionicons name="airplane-outline" size={14} color={colors.textDim} />
+                    <Text style={s.lightDayBtnText}>Birkaç gün ara: tatil modu</Text>
+                  </TouchableOpacity>
+                )}
               </Card>
             )}
 
@@ -613,6 +638,50 @@ export default function TodayScreen() {
                       <Text style={s.setAsideTag}>bugün kenarda</Text>
                     </TouchableOpacity>
                   ))}
+                </View>
+              </Card>
+            )}
+
+            {/* R01.05 — tatil modu açıksa söyle, tek dokunuşla bitirilebilsin */}
+            {holiday && (
+              <Card padding="lg">
+                <SectionHeader title="TATİL MODU" variant="overline" />
+                <Text style={s.breakNote}>
+                  {holiday.end_date ? `${holiday.end_date} tarihine kadar` : 'Sen bitirene kadar'} bütün alışkanlıklar arada:
+                  hesaba girmez, seriler köprü kurar, hatırlatıcı gelmez.
+                </Text>
+                <TouchableOpacity
+                  style={s.lightDayBtn}
+                  onPress={async () => {
+                    const res = await endTimeOff(holiday.id);
+                    if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Tatili bugün bitir"
+                >
+                  <Ionicons name="play-outline" size={14} color={colors.textDim} />
+                  <Text style={s.lightDayBtnText}>Tatili bugün bitir</Text>
+                </TouchableOpacity>
+              </Card>
+            )}
+
+            {/* R01.05 — kendi arası (ya da tatil) olan alışkanlıklar: kalan iş değil */}
+            {onBreakHabits.length > 0 && (
+              <Card padding="lg">
+                <SectionHeader title="ARADA" variant="overline" />
+                <View style={{ gap: space.sm }}>
+                  {onBreakHabits.map((h) => {
+                    const p = activePauseOn(h, todayDate);
+                    return (
+                      <View key={h.id} style={[s.habitRow, s.habitRowPeriodDone]} accessible accessibilityLabel={`${h.name}, arada${p?.end_date ? `, ${p.end_date} tarihine kadar` : ''}.`}>
+                        <View style={[s.habitCheck, { borderColor: colors.borderStrong }]}>
+                          <Ionicons name="cafe-outline" size={14} color={colors.textDim} />
+                        </View>
+                        <Text style={s.habitName} numberOfLines={1}>{h.name}</Text>
+                        <Text style={s.setAsideTag}>{p?.end_date ? `${p.end_date}'e kadar` : 'arada'}</Text>
+                      </View>
+                    );
+                  })}
                 </View>
               </Card>
             )}
@@ -653,6 +722,19 @@ export default function TodayScreen() {
       </ScrollView>
 
       {/* R03.02 — "Bugün daha az yapabilirim" */}
+      <TimeOffSheet
+        visible={holidayOpen}
+        kind="holiday"
+        today={today}
+        available={timeOffAvailable === true}
+        onClose={() => setHolidayOpen(false)}
+        onConfirm={async (draft) => {
+          const res = await addTimeOff(null, draft);
+          if (res.ok) setHolidayOpen(false);
+          return res;
+        }}
+      />
+
       <SmallStartSheet
         parent={smallStartFor}
         onClose={() => setSmallStartFor(null)}
@@ -731,6 +813,7 @@ const s = StyleSheet.create({
   setAsideTag: { fontSize: 11, color: colors.textDim, fontWeight: '600', marginLeft: 'auto' },
   lightDayBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: space.md, paddingVertical: 6 },
   lightDayBtnText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
+  breakNote: { fontSize: 13, color: colors.textDim, lineHeight: 19 },
   sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg },
   sheetTitle: { ...font.title, fontSize: 18, color: colors.text, marginBottom: space.sm },
