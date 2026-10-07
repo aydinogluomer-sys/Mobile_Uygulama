@@ -26,18 +26,22 @@
  * array; switching ranges or tabs never re-fetches.
  */
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 
 import { useHabitStore } from '../../store/habitStore';
-import type { Habit } from '../../lib/supabase';
+import type { Habit, FrequencyConfig } from '../../lib/supabase';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines } from '../../components/ui';
 import { haptic } from '../../lib/haptics';
 import { addDaysLocal, parseLocalDate, ymd, ymdFromIso, type Ymd } from '../../lib/date';
 import { isCountBasedSchedule, isEligibleOn } from '../../lib/habitSchedule';
+// KD-09 — the schedule is shown with the same sentence the form uses, and edited
+// with the same controls (one component, one set of pure transitions).
+import { frequencySummary, frequencyEditPatch, isFrequencyComplete } from '../../lib/frequencyForm';
+import FrequencyEditor from '../../components/FrequencyEditor';
 import { completionPercent, isMeasurableTracking } from '../../lib/habitEngine';
 import { habitStrength, type StrengthLog } from '../../lib/habitStrength';
 import {
@@ -190,24 +194,6 @@ export function dayCellFor(habit: Habit, logIndex: Map<Ymd, HabitDetailLogRow>, 
   return { date: d, state: 'miss', value: log.value };
 }
 
-function scheduleLabel(habit: Habit): string {
-  const fc = habit.frequency_config;
-  const kind = fc?.kind ?? 'daily';
-  if (kind === 'daily') return 'Her gün';
-  if (kind === 'weekly') {
-    if (fc?.days && fc.days.length > 0) {
-      return fc.days.slice().sort((a, b) => a - b).map((d) => DOW_TR[d]).join(', ');
-    }
-    if (typeof fc?.count === 'number' && fc.count > 0) return `Haftada ${fc.count} kez`;
-    return 'Haftalık';
-  }
-  if (kind === 'monthly') {
-    if (typeof fc?.count === 'number' && fc.count > 0) return `Ayda ${fc.count} kez`;
-    return 'Aylık';
-  }
-  return 'Belirsiz';
-}
-
 function trendLabel(direction: 'improving' | 'declining' | 'flat'): string {
   if (direction === 'improving') return 'Yükseliyor';
   if (direction === 'declining') return 'Düşüyor';
@@ -224,13 +210,28 @@ function trendIcon(direction: 'improving' | 'declining' | 'flat'): keyof typeof 
 // ui/ primitives (plan: reuse ui/, do not invent new ones)
 // ---------------------------------------------------------------------------
 
-function InfoRow({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
+function InfoRow({ icon, label, value, onEdit, editLabel }: {
+  icon: keyof typeof Ionicons.glyphMap; label: string; value: string;
+  /** KD-09 — when set, the row offers an edit button with this a11y label. */
+  onEdit?: () => void; editLabel?: string;
+}) {
   return (
     <View style={s.infoRow}>
       {/* süs ikonu — etiket/değer zaten okunuyor, ekran okuyucuda tekrar etmesin */}
       <Ionicons name={icon} size={15} color={colors.textFaint} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
       <Text style={s.infoLabel}>{label}</Text>
       <Text style={s.infoValue} numberOfLines={1}>{value}</Text>
+      {onEdit && (
+        <TouchableOpacity
+          onPress={onEdit}
+          style={s.infoEdit}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={editLabel ?? `${label} düzenle`}
+        >
+          <Ionicons name="create-outline" size={16} color={colors.accent} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -267,12 +268,15 @@ function InsightRow<T>({ icon, label, result, formatOk }: {
 
 export default function HabitDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { habits, fetchHabits } = useHabitStore();
+  const { habits, fetchHabits, updateHabit } = useHabitStore();
   const habit = habits.find((h) => h.id === id) ?? null;
 
   const [logs, setLogs] = useState<HabitDetailLogRow[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [tab, setTab] = useState<TabKey>('genel');
+  // KD-09 — the schedule draft while the editor is open; null = closed.
+  const [freqDraft, setFreqDraft] = useState<FrequencyConfig | null>(null);
+  const [savingFreq, setSavingFreq] = useState(false);
   const [rangeKey, setRangeKey] = useState<string>('30');
 
   const today = new Date();
@@ -385,6 +389,26 @@ export default function HabitDetailScreen() {
     if (calMonth === 11) { setCalYear((y) => y + 1); setCalMonth(0); } else setCalMonth((m) => m + 1);
   }
 
+  /**
+   * KD-09 — save an edited schedule. `frequencyEditPatch` decides whether the
+   * willpower cost follows the new schedule (it does unless the user picked it
+   * by hand). Nothing is written while the schedule has no target -- the same
+   * gate the creation form's "Devam" uses.
+   */
+  async function handleSaveFreq() {
+    if (!habit || !freqDraft || !isFrequencyComplete(freqDraft)) return;
+    setSavingFreq(true);
+    try {
+      await updateHabit(habit.id, frequencyEditPatch(habit, freqDraft));
+      haptic.success();
+      setFreqDraft(null);
+    } catch (e) {
+      Alert.alert('Kaydedilemedi', e instanceof Error ? e.message : 'Sıklık güncellenemedi.');
+    } finally {
+      setSavingFreq(false);
+    }
+  }
+
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
@@ -434,7 +458,13 @@ export default function HabitDetailScreen() {
 
             <SectionHeader title="Alışkanlık Bilgisi" variant="title" style={{ marginTop: space.lg }} />
             <Card padding="md">
-              <InfoRow icon="repeat-outline" label="Sıklık" value={scheduleLabel(habit)} />
+              <InfoRow
+                icon="repeat-outline"
+                label="Sıklık"
+                value={frequencySummary(habit.frequency_config)}
+                onEdit={() => { haptic.select(); setFreqDraft(habit.frequency_config); }}
+                editLabel="Sıklığı düzenle"
+              />
               {isNumeric && (
                 <InfoRow
                   icon="flag-outline"
@@ -592,6 +622,38 @@ export default function HabitDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* KD-09 — sıklık düzenleme: oluşturma formuyla aynı kontroller */}
+      <Modal visible={freqDraft !== null} transparent animationType="slide" onRequestClose={() => setFreqDraft(null)}>
+        <View style={s.sheetOverlay}>
+          <View style={s.sheet}>
+            <Text style={s.sheetTitle}>Sıklığı düzenle</Text>
+            <ScrollView style={s.sheetBody} keyboardShouldPersistTaps="handled">
+              {freqDraft && <FrequencyEditor value={freqDraft} onChange={setFreqDraft} />}
+            </ScrollView>
+            <View style={s.sheetActions}>
+              <TouchableOpacity
+                style={s.sheetCancel}
+                onPress={() => setFreqDraft(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Vazgeç"
+              >
+                <Text style={s.sheetCancelText}>Vazgeç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.sheetSave, (!freqDraft || !isFrequencyComplete(freqDraft) || savingFreq) && s.sheetSaveDisabled]}
+                onPress={handleSaveFreq}
+                disabled={!freqDraft || !isFrequencyComplete(freqDraft) || savingFreq}
+                accessibilityRole="button"
+                accessibilityLabel="Sıklığı kaydet"
+                accessibilityState={{ disabled: !freqDraft || !isFrequencyComplete(freqDraft) || savingFreq }}
+              >
+                <Text style={s.sheetSaveText}>{savingFreq ? 'Kaydediliyor…' : 'Kaydet'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -629,6 +691,23 @@ const s = StyleSheet.create({
   },
   infoLabel: { fontSize: 13, color: colors.textFaint, flex: 1 },
   infoValue: { fontSize: 13, color: colors.text, fontWeight: '600', maxWidth: '55%' },
+  infoEdit: { marginLeft: space.sm, padding: 2 },
+  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
+    padding: space.lg, maxHeight: '85%',
+  },
+  sheetTitle: { ...font.title, fontSize: 18, color: colors.text, marginBottom: space.md },
+  sheetBody: { flexGrow: 0 },
+  sheetActions: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
+  sheetCancel: {
+    flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center',
+    borderWidth: 1, borderColor: colors.border,
+  },
+  sheetCancelText: { color: colors.textDim, fontWeight: '600' },
+  sheetSave: { flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', backgroundColor: colors.accent },
+  sheetSaveDisabled: { opacity: 0.4 },
+  sheetSaveText: { color: colors.white, fontWeight: '700' },
 
   rangeStripContent: { gap: space.sm, paddingBottom: space.xs },
   rangeSummary: { fontSize: 13, color: colors.textDim, marginTop: space.sm, marginBottom: space.sm, lineHeight: 18 },

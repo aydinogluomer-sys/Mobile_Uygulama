@@ -14,12 +14,13 @@
  * proposed by the AI Coach are the same shape. The bounds are imported from
  * there, never restated.
  */
-import type { FrequencyConfig } from './supabase';
+import type { FrequencyConfig, Habit } from './supabase';
 import {
   MAX_WEEKLY_COUNT, MAX_MONTHLY_COUNT, MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS, validateFrequencyConfig,
 } from './routineProposal';
 import { scheduleKind } from './habitSchedule';
 import { parseLocalDate } from './date';
+import { computeWillpowerCost, type CostInput } from './triage';
 
 /**
  * Defaults a kind switch lands on, so pressing "Devam" without touching
@@ -220,4 +221,34 @@ export function frequencySummary(fc: FrequencyConfig): string {
   }
   const r = rangeSummary(fc);
   return r ? `${shape} · ${r}` : shape;
+}
+
+/**
+ * KD-09 — what to write when an installed habit's schedule is edited.
+ *
+ * The willpower cost depends on the schedule (an "every 3 days" habit costs
+ * less than a daily one since R01.02-d2), so a schedule edit should move it --
+ * but only if nobody chose it by hand. The creation form lets the user pick the
+ * cost directly, and silently overwriting that choice because they changed
+ * the days would be a quiet edit to a field they did not touch. So: if the
+ * stored cost is exactly what the formula gave for the OLD schedule, the user
+ * left it to the formula and it is recomputed for the new one; otherwise it is
+ * theirs and is kept. `willpower_cost` is omitted from the patch when it does
+ * not change.
+ */
+export function frequencyEditPatch(
+  habit: Pick<Habit, 'difficulty' | 'impact_level' | 'behavior_type' | 'tracking_type' | 'estimated_minutes' | 'willpower_cost' | 'frequency_config'>,
+  next: FrequencyConfig,
+): { frequency_config: FrequencyConfig; willpower_cost?: number } {
+  const costOf = (fc: FrequencyConfig) => computeWillpowerCost({
+    difficulty: habit.difficulty,
+    impact_level: habit.impact_level,
+    behavior_type: habit.behavior_type,
+    tracking_type: habit.tracking_type,
+    estimated_minutes: habit.estimated_minutes ?? undefined,
+    frequency_config: fc,
+  } as CostInput);
+  if (habit.willpower_cost !== costOf(habit.frequency_config)) return { frequency_config: next };
+  const cost = costOf(next);
+  return cost === habit.willpower_cost ? { frequency_config: next } : { frequency_config: next, willpower_cost: cost };
 }

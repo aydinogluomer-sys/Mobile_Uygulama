@@ -10,6 +10,14 @@
  * component (in `components/`) was never covered. The new controls block is
  * scanned here, tag by tag, with a tokenizer that ignores comments and strings
  * -- and the tokenizer is tested on a synthetic violation first.
+ *
+ * KD-09 — the controls were extracted into `components/FrequencyEditor.tsx` so
+ * habit-detail can edit a habit's schedule with the SAME controls. Every
+ * assertion about the controls now reads that file; the ones about what the
+ * FORM does with a change (recost, the Devam gate, the summary, DEFAULT_FORM)
+ * still read the form. Nothing was dropped -- each moved with the code it
+ * describes, and two were added: the form hands the editor its recosting
+ * `updateFreq`, and the editor never writes `frequency_config` itself.
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -19,21 +27,33 @@ const read = (p: string) => readFileSync(join(root, p), 'utf8');
 const codeLines = (src: string) => src.split(/\r?\n/).filter((l) => !/^\s*(\*|\/\/|\/\*|\{\/\*)/.test(l));
 
 const FORM = 'components/HabitOnboarding.tsx';
+const EDITOR = 'components/FrequencyEditor.tsx';
 const LIB = 'lib/frequencyForm.ts';
 
 describe('R01.02-e — the form builds frequency_config only through lib/frequencyForm', () => {
   const code = codeLines(read(FORM));
+  const ed = codeLines(read(EDITOR));
 
   it('NEGATIVE — the old `{ kind }` reset is gone (red if it comes back)', () => {
     expect(code.some((l) => /frequency_config:\s*\{\s*kind\s*\}/.test(l))).toBe(false);
+    expect(ed.some((l) => /frequency_config:\s*\{\s*kind\s*\}/.test(l))).toBe(false);
   });
 
   it('setKind goes through setFrequencyKind', () => {
-    expect(code.some((l) => /function setKind\(kind: FrequencyConfig\['kind'\]\) \{ updateFreq\(setFrequencyKind\(freq, kind\)\); \}/.test(l))).toBe(true);
+    expect(ed.some((l) => /function setKind\(kind: FrequencyConfig\['kind'\]\) \{ updateFreq\(setFrequencyKind\(freq, kind\)\); \}/.test(l))).toBe(true);
   });
 
   it('every frequency change is recosted (A10)', () => {
     expect(code.some((l) => /if \(next !== freq\) applyAndRecost\(\{ frequency_config: next \}\);/.test(l))).toBe(true);
+  });
+
+  it('KD-09 — the form hands the shared editor its recosting updateFreq', () => {
+    expect(code.some((l) => /<FrequencyEditor value=\{freq\} onChange=\{updateFreq\} \/>/.test(l))).toBe(true);
+  });
+
+  it('KD-09 — the editor never writes frequency_config itself; it only calls onChange', () => {
+    expect(ed.filter((l) => /frequency_config:/.test(l))).toEqual([]);
+    expect(ed.some((l) => /if \(next !== freq\) onChange\(next\);/.test(l))).toBe(true);
   });
 
   it('no other frequency_config is written in the form (only DEFAULT_FORM and updateFreq)', () => {
@@ -43,15 +63,15 @@ describe('R01.02-e — the form builds frequency_config only through lib/frequen
   });
 
   it('has a count input (stepper) for weekly-count and monthly', () => {
-    expect(code.filter((l) => /updateFreq\(setFrequencyCount\(freq, \(freq\.count \?\? 1\) [-+] 1\)\)/.test(l))).toHaveLength(2);
-    expect(code.some((l) => /freq\.kind === 'monthly' \|\| \(freq\.kind === 'weekly' && weeklyMode === 'count'\)/.test(l))).toBe(true);
+    expect(ed.filter((l) => /updateFreq\(setFrequencyCount\(freq, \(freq\.count \?\? 1\) [-+] 1\)\)/.test(l))).toHaveLength(2);
+    expect(ed.some((l) => /freq\.kind === 'monthly' \|\| \(freq\.kind === 'weekly' && weeklyMode === 'count'\)/.test(l))).toBe(true);
   });
 
   it('has the weekly sub-modes, the interval and the date envelope', () => {
-    expect(code.some((l) => /updateFreq\(setWeeklyMode\(freq, m\)\)/.test(l))).toBe(true);
-    expect(code.some((l) => /updateFreq\(setIntervalDays\(freq, n\)\)/.test(l))).toBe(true);
-    expect(code.some((l) => /updateFreq\(setRangeStart\(freq, target\)\)/.test(l))).toBe(true);
-    expect(code.some((l) => /updateFreq\(setRangeEnd\(freq, target\)\)/.test(l))).toBe(true);
+    expect(ed.some((l) => /updateFreq\(setWeeklyMode\(freq, m\)\)/.test(l))).toBe(true);
+    expect(ed.some((l) => /updateFreq\(setIntervalDays\(freq, n\)\)/.test(l))).toBe(true);
+    expect(ed.some((l) => /updateFreq\(setRangeStart\(freq, target\)\)/.test(l))).toBe(true);
+    expect(ed.some((l) => /updateFreq\(setRangeEnd\(freq, target\)\)/.test(l))).toBe(true);
   });
 
   it('"Devam" on step 3 is blocked while the schedule has no target', () => {
@@ -64,6 +84,7 @@ describe('R01.02-e — the form builds frequency_config only through lib/frequen
 
   it('no new dependency: no date-picker import', () => {
     expect(read(FORM)).not.toMatch(/datetimepicker|date-picker|DateTimePicker/i);
+    expect(read(EDITOR)).not.toMatch(/datetimepicker|date-picker|DateTimePicker/i);
   });
 });
 
@@ -174,7 +195,7 @@ describe('A9 — the scanner itself (a broken scanner must not pass silently)', 
 });
 
 describe('A9 — every touchable in the new frequency controls is labelled, roled and stateful', () => {
-  const raw = block(read(FORM));
+  const raw = block(read(EDITOR));
   const tags = openingTags(raw, 'TouchableOpacity');
 
   it('the block really contains the controls (not a vacuous pass)', () => {
@@ -199,7 +220,7 @@ describe('A9 — every touchable in the new frequency controls is labelled, role
   });
 
   it('weekday labels are full names for screen readers, not "Pzt"', () => {
-    expect(read(FORM)).toMatch(/const WEEKDAY_NAMES = \['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'\];/);
+    expect(read(EDITOR)).toMatch(/const WEEKDAY_NAMES = \['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'\];/);
     expect(raw).toMatch(/accessibilityLabel=\{WEEKDAY_NAMES\[i\]\}/);
   });
 
@@ -213,7 +234,7 @@ describe('A9 — every touchable in the new frequency controls is labelled, role
 
   it('touch targets reuse dayBtn / freqBtn (wideChip only adds horizontal padding)', () => {
     for (const t of tags) expect(t).toMatch(/styles\.(dayBtn|freqBtn)\b/);
-    expect(read(FORM)).toMatch(/wideChip: \{ paddingHorizontal: 4 \},/);
+    expect(read(EDITOR)).toMatch(/wideChip: \{ paddingHorizontal: 4 \},/);
   });
 });
 
