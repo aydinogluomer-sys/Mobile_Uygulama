@@ -36,6 +36,7 @@ newer_owner_decision: 2026-10-07  # PDF 'Çekirdek Kapsam ve Budama' + dört kar
   # 3) KD-12: telafide ölçülebilir 'yaptım' ölçüm modalını açar, değer uydurulmaz
   # 4) KD-01: countDueDays + isDueOn count dalı DURUR, guard testi yeterli
 
+active_plan: CORE_AUDIT.md   # 2026-10-07: tam R00..R11 denetimi; önceki 'tamamlandı' iddiası alt kümeye dayalıydı ve geri çekildi
 completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1, R01.02-d, R01.02-d2, R01.02-e, R01.03-a]
 active_card: null
 next_ready_card: R01.03-b   # undo: a day back to "no record" (habitLogRepository has insert/update, NO delete) -- new capability + UI. R01.03-a (value = day total, state from the service) DONE. Open, not blocking: KD-08..KD-12, R01.06-b
@@ -330,7 +331,7 @@ open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gü
   gerekmediği sahip kararı. Engelleyici değil.
 deferred_ids: [D01, D02, D03, D04, D05, D06, D07, D08, D09]
 cancelled_ids: [X01, X02, X03]
-core_implementation: DONE_WITH_STOP_POINTS   # 2026-10-07: F01-F08 plan executed; open items are owner decisions S1-S14 (see R10_ACCEPTANCE_REPORT.md)
+core_implementation: IN_PROGRESS   # 2026-10-07: CORE_AUDIT.md'de PARTIAL/NOT_STARTED kartlar var; önceki DONE iddiası geri çekildi
 core_quality: GATES_GREEN_DEVICE_NR   # typecheck/lint/run-tests/jest(2x)/diff-check green; device + user measurements N/R (S8)
 release_readiness: DEFERRED
 evidence_locations:
