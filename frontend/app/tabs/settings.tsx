@@ -30,6 +30,10 @@ import BadHabitsTracker from '../../components/BadHabitsTracker';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { seedDemoData, isSeedingAllowed } from '../../lib/demoSeed';
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
+// R08 — check an export and merge what is missing; never a full restore.
+import RestorePanel from '../../components/RestorePanel';
+import CsvImportPanel from '../../components/CsvImportPanel';
+import { currentUser } from '../../lib/session';
 import IntegrationItemCard from '../../components/IntegrationItemCard';
 import {
   INTEGRATION_CATEGORIES,
@@ -108,7 +112,9 @@ export default function SettingsScreen() {
       // endpoints this replaces read the entire database with no user filter
       // on a service with no authentication, and the Excel/CSV pair were
       // opened in the system browser -- see services/exportService.ts.
-      const backup = await buildBackup();
+      // R08 — the manifest names the account, so the file can be checked later.
+      const me = await currentUser();
+      const backup = await buildBackup(new Date(), { userId: me?.id ?? null });
 
       if (backup.failed.length > 0) {
         Alert.alert(
@@ -358,8 +364,9 @@ export default function SettingsScreen() {
                 written rather than written badly.
               */}
               <Text style={styles.exportSubtitle}>
-                Bu bir yedek değildir — geri yükleme yoktur. Dosya yalnızca
-                okumak ve analiz etmek içindir.
+                Bu tam bir yedek değildir — tam geri yükleme yoktur. JSON dosyası
+                aşağıda doğrulanıp eksik kayıtlar hesabına eklenebilir; alışkanlık
+                kayıtları, odak oturumları ve webhook&apos;lar geri yüklenemez.
               </Text>
               
               <View style={styles.exportButtons}>
@@ -408,6 +415,8 @@ export default function SettingsScreen() {
                   )}
                 </TouchableOpacity>
               </View>
+              <RestorePanel />
+              <CsvImportPanel />
             </View>
 
             {/* DEMO-001B - sadece gelistirme derlemesinde. Kaynak koruma

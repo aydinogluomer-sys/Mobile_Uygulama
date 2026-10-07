@@ -30,7 +30,7 @@
  * to the end, and if it hits the safety cap it says so in `truncated`
  * instead of pretending.
  *
- * ## Why there is NO import, and why the word "backup" was removed
+ * ## Why there is NO full import, and why the word "backup" was removed
  *
  * This produces a document to read, not a snapshot to restore. It was being
  * presented as a "yedek" (backup), which promises the opposite — and four
@@ -63,6 +63,15 @@
  * feature. The honest fix was to stop claiming it: the UI says "Verileri Dışa
  * Aktar" and states in plain words that there is no import.
  *
+ * R08 (2026-10-07) did not change any of the above; it added a CHECKED,
+ * PARTIAL merge next to it, in `services/restoreService.ts` -- never in this
+ * file, which still only goes one way. Format 3 carries a manifest (account,
+ * per-collection count + checksum); a dry run verifies it and shows what
+ * would be added; only collections whose insert has no side effect are ever
+ * written (`lib/backupFormat.REGISTRY`) -- never `habit_logs`, never focus
+ * sessions, never webhooks -- and nothing existing is overwritten. That is
+ * honest as a partial merge; it is still not a restore of the account.
+ *
  * A real restore is a separate piece of work: it needs the full collection
  * set, id remapping across the foreign keys (`habit_logs.habit_id`,
  * `tasks.project_id`, `key_results.okr_id`), a server-side path that can
@@ -88,8 +97,12 @@ import { fetchBadHabitsPage } from '../repositories/badHabitRepository';
 import { fetchWebhooks } from '../repositories/webhookRepository';
 import type { Cursor, Page, RepoResult } from '../repositories/shared';
 import { toExcelXML, type ExcelSheet, type ExcelCell } from '../lib/focusReport';
+// R08.01/02 — the manifest (account, per-collection count + checksum) that a
+// later check-and-merge (services/restoreService) verifies before reading.
+import { buildManifest, type Manifest } from '../lib/backupFormat';
 
-export const EXPORT_FORMAT_VERSION = 2;
+/** 3: adds `manifest`. The collections themselves are unchanged from 2. */
+export const EXPORT_FORMAT_VERSION = 3;
 
 /** Hard ceiling per collection, so one huge account cannot exhaust memory. */
 const MAX_ROWS = 5_000;
@@ -112,6 +125,8 @@ export type Backup = {
   bad_habits: unknown[];
   webhooks: unknown[];
   notes_on_contents: string[];
+  /** Absent only when no account could be resolved; such a file can never be read back. */
+  manifest?: Manifest;
 };
 
 /**
@@ -140,7 +155,7 @@ export async function drain<T extends { id: string }>(
 }
 
 /** Everything the signed-in user owns, as one object. */
-export async function buildBackup(now: Date = new Date()): Promise<Backup> {
+export async function buildBackup(now: Date = new Date(), opts: { userId?: string | null } = {}): Promise<Backup> {
   const truncated: string[] = [];
   const failed: { collection: string; error: string }[] = [];
 
@@ -186,11 +201,21 @@ export async function buildBackup(now: Date = new Date()): Promise<Backup> {
       )
     : [];
 
+  const safeWebhooks = (webhooks as { headers?: unknown }[]).map(({ headers: _omitted, ...rest }) => rest);
+  const userId = opts.userId ?? null;
+  const manifest = userId
+    ? buildManifest(userId, now.toISOString(), {
+        habits, habit_logs: habitLogs, tasks, projects, goals, notes,
+        journal_entries: journal, focus_sessions: focus, bad_habits: badHabits, webhooks: safeWebhooks,
+      })
+    : undefined;
+
   return {
     format_version: EXPORT_FORMAT_VERSION,
     export_date: now.toISOString(),
     truncated,
     failed,
+    ...(manifest ? { manifest } : {}),
     habits,
     habit_logs: habitLogs,
     tasks,
@@ -201,7 +226,7 @@ export async function buildBackup(now: Date = new Date()): Promise<Backup> {
     focus_sessions: focus,
     bad_habits: badHabits,
     // Registrations without their headers -- see the module note.
-    webhooks: (webhooks as { headers?: unknown }[]).map(({ headers: _omitted, ...rest }) => rest),
+    webhooks: safeWebhooks,
     notes_on_contents: [
       'Yalnızca bu hesaba ait kayıtlar. Webhook başlıkları (headers) güvenlik gerekçesiyle dışarıda bırakıldı.',
       truncated.length ? `Sınıra takılan ve eksik kalan bölümler: ${truncated.join(', ')}.` : 'Tüm bölümler eksiksiz.',

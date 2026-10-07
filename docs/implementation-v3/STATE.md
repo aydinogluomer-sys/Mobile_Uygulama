@@ -285,6 +285,30 @@ p6_r07_journal_moods: DONE (P6, 2026-10-07; R07.02/R07.06 cihaz-yerel + migratio
     henüz yapılmadı' der.
   Testler lib/journalAndMoods (21), repo/journalP6Wired (9). Mutasyonlar 13/13. layerBoundary UI_ONLY'e
   moodStore eklendi.
+p7_r08_backup: DONE-PARTIAL-BY-DESIGN (P7, 2026-10-07) -- 'tam yedek & restore' DEĞİL, dürüstçe sınırlı.
+  R08.01/02: dışa aktarma biçim 3 = manifest (hesap, koleksiyon başına sayı + FNV-1a sağlaması --
+    bütünlük, imza değil); sayfalar sonuna kadar (değişmedi), kesilmiş dosya geri okunmaz.
+  R08.03: kuru çalıştırma (lib/restorePlan + restoreService.dryRunRestore): sürüm, manifest, hesap,
+    kesilme, sayı/sağlama; koleksiyon başına eklenecek / zaten var / çakışma (hesabınki korunur) /
+    bağlantısı kopuk / başka hesabın / geri yüklenmeyecek+neden. HİÇBİR ŞEY YAZILMAZ; hesap
+    okunamazsa 'boş' sayılmaz, reddedilir.
+  R08.04: güvenli birleştirme: yalnız eksik kimlikler eklenir, mevcut ezilmez/silinmez; ebeveyn önce
+    (proje->görev), başarısız ebeveyn çocukları tutar; 50'lik parçalar arasında iptal; aynı dosya
+    ikinci kez 0 ekleme; alışkanlıklar 'waiting' gelir (kapasite kapısı atlanmaz); günlük tarih başına
+    tekil (aynı gün farklı kimlik = çakışma).
+  R08.05: XP/FP/seviye/tier/abonelik/token/headers dosyadan ASLA alınmaz (ayıklanır, raporlanır);
+    habit_logs (XP tetikleyicisi, S11), focus_sessions (puan), webhooks (başlıksız) geri yüklenemez.
+  R08.06: genel CSV (görev / günlük): ayrıştırma (tırnak, ;/,), başlıktan tahmin + elle sütun eşleme,
+    önizleme, rapor (geçersiz / dosyada tekrar / hesapta var), yalnız geçerli+yeni satırlar. Alışkanlık
+    kaydı CSV'si YOK (XP). Habitify/Daylio dönüştürücüsü YOK (S6, gerçek anonim örnek gerekir).
+  Girdi yapıştırma ile (dosya seçici yeni native bağımlılık -> DURMA NOKTASI S14).
+  'Dışa aktarma bir yedek değildir' karar kapısı guard'ı (exportIsNotABackup) GEREKÇESİYLE yeniden
+    hedeflendi: dışa aktarma hâlâ tek yönlü; birleştirme ayrı serviste, kuru çalıştırmadan sonra; ekran
+    'tam geri yükleme yoktur' ve geri gelmeyenleri sayar; logs/focus/webhooks registry'de restorable:false.
+  Testler lib/backupRestore (10), services/restoreService (6), lib/csvImport (8); exportBackup biçim 3.
+  Mutasyonlar 16/16 (S4 'okunamayan hesap boş sayılır' ilk turda sağ -> test eklendi).
+new_stop_point_S14: expo-document-picker (+ dosya okuma) -- dışa aktarımı dosyadan seçmek için yeni native
+  bağımlılık. Onaylanmadıkça yapıştırma ile.
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

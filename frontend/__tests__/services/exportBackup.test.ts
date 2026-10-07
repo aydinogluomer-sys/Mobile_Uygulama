@@ -127,7 +127,8 @@ describe('buildBackup', () => {
   it('gathers the collections and stamps the format', async () => {
     const b = await buildBackup(new Date('2026-08-30T10:00:00Z'));
     expect(b.export_date).toBe('2026-08-30T10:00:00.000Z');
-    expect(b.format_version).toBe(2);
+    // R08: format 3 adds the manifest; the collections are unchanged.
+    expect(b.format_version).toBe(3);
     expect(b.habits).toHaveLength(1);
     expect(b.habit_logs).toHaveLength(1);
     expect(b.failed).toEqual([]);

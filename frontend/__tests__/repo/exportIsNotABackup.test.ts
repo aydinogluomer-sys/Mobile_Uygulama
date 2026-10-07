@@ -75,11 +75,16 @@ describe('nothing user-facing calls it a backup', () => {
     expect(visible(service)).not.toContain('# Aderyth yedek');
   });
 
-  it('the UI says outright that there is no restore', () => {
+  it('the UI says outright that there is no FULL restore, and names what never comes back', () => {
     // The one place the word may still appear: it appears in order to be
     // denied. Checked as rendered text, not as a string literal.
-    expect(visible(settings)).toContain('Bu bir yedek değildir');
-    expect(visible(settings)).toContain('geri yükleme yoktur');
+    // R08 revisited this: a checked, partial merge now exists (see below),
+    // so "geri yükleme yoktur" became "tam geri yükleme yoktur" -- and the
+    // screen must name what is never restored, so the partial merge cannot
+    // read as a full one.
+    expect(visible(settings)).toContain('Bu tam bir yedek değildir');
+    expect(visible(settings)).toContain('tam geri yükleme yoktur');
+    expect(visible(settings)).toMatch(/alışkanlık\s+kayıtları, odak oturumları ve webhook/);
   });
 });
 
@@ -94,13 +99,29 @@ describe('no import path exists', () => {
     expect(code).not.toMatch(/export\s+const\s+(import|restore|parse)[A-Z]/);
   });
 
-  it('settings does not offer a restore action', () => {
+  // R08 revisited the "no import" decision instead of drifting past it: a
+  // checked, partial merge exists, and these pin what keeps it honest.
+  it('the merge lives outside the export, behind a dry run', () => {
     expect(stripComments(settings)).not.toMatch(/restoreBackup|importBackup|handleImport|handleRestore/);
+    const panel = stripComments(readFileSync(join(ROOT, 'components', 'RestorePanel.tsx'), 'utf8'));
+    // the write takes a plan, and the only plan comes from the dry run
+    expect(panel).toMatch(/const r = await dryRunRestore\(text\);/);
+    expect(panel).toMatch(/await executeRestore\(plan,/);
+  });
+
+  it('habit logs, focus sessions and webhooks are never restorable; nothing existing is overwritten', () => {
+    const fmt = stripComments(readFileSync(join(ROOT, 'lib', 'backupFormat.ts'), 'utf8'));
+    for (const n of ['habit_logs', 'focus_sessions', 'webhooks']) {
+      expect(fmt).toMatch(new RegExp(`name: '${n}', restorable: false`));
+    }
+    const repo = stripComments(readFileSync(join(ROOT, 'repositories', 'restoreRepository.ts'), 'utf8'));
+    expect(repo).not.toMatch(/\.update\(|\.upsert\(|\.delete\(/);
+    expect(repo).not.toMatch(/'habit_logs'|'focus_sessions'|'webhooks'/);
   });
 
   it('the file still says WHY, so the next person does not rediscover it', () => {
     // The decision is only durable while its reasons travel with it.
-    expect(service).toContain('Why there is NO import');
+    expect(service).toContain('Why there is NO full import');
     expect(service).toContain('habit_logs');
     expect(service).toContain('truncated');
   });
