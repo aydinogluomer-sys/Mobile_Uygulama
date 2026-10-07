@@ -210,6 +210,13 @@ p3_r02_outbox: PARTIAL (P3, 2026-10-07) -- S7'ye bağlı olmayan kısım yapıld
   Testler lib/outbox (22), services/outboxRunner (13), fixtures/taskOutboxScenarios (8),
   repo/taskOutboxWired (9); syncLifecycleWired rozet guard'ı niyetiyle yeniden hedeflendi.
   Mutasyonlar 20/20.
+r05_01_a_pack_fields: DONE (P4, 2026-10-07) -- rutin paketi kurulumu paketin alanlarını KORUR. Kusur:
+  routineStore.loadPack paketi doğrulama için packToProposal ile 4 alana indiriyor ve kurulum O
+  indirgenmiş öneriyle yapılıyordu ("Su hedefi, 8 bardak" birimsiz/hedefsiz evet-hayır kuruluyordu;
+  servis alanları zaten destekliyordu, onboarding yolu doğruydu). Artık anlamsal dört alan (unit,
+  daily_goal, target_direction, frequency_config) doğrulayıcıdan geçer; ikon (doğrulanmayan, uygulama
+  yazımı) stagedIcons ile kuruluma ada göre eklenir, başka kaynakta null. Test
+  store/routinePackInstallKeepsFields (3; eski kodda 3/3 kırmızı).
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

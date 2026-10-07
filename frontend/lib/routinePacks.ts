@@ -177,21 +177,40 @@ export function packLoad(pack: RoutinePack): number {
   return pack.habits.reduce((sum, h) => sum + habitLoadPoints(toHabitLoadInput(h)), 0);
 }
 
-/** Down-converts a pack to the exact canonical shape `validateRoutineProposal`
- *  expects -- a pack is "just" an app-authored proposal, not a bypass of the
- *  AI gate. Every pack is expected to pass this validator; that expectation
- *  is asserted directly in `__tests__/lib/routinePacks.test.ts`. */
+/** Converts a pack to the exact shape `validateRoutineProposal` expects -- a
+ *  pack is "just" an app-authored proposal, not a bypass of the AI gate.
+ *  Every pack is expected to pass this validator; that expectation is
+ *  asserted directly in `__tests__/lib/routinePacks.test.ts`.
+ *
+ *  R05.01 — the validator's SEMANTIC fields (unit, daily_goal,
+ *  target_direction, frequency_config) go through it too. This used to strip
+ *  a pack down to the four canonical fields, and the install then used that
+ *  stripped proposal: "Su, 8 bardak" installed as a bare yes/no habit with no
+ *  unit, no target and a default daily schedule. The icon is not part of the
+ *  validated schema; `packIcons` carries it to the install separately. */
 export function packToProposal(pack: RoutinePack): RoutineProposal {
   return {
     title: pack.title,
     goal: pack.goal,
-    habits: pack.habits.map((h): ProposalHabit => ({
-      name: h.name,
-      tracking_type: h.tracking_type,
-      difficulty: h.difficulty,
-      estimated_minutes: h.estimated_minutes,
-    })),
+    habits: pack.habits.map((h): ProposalHabit => {
+      const out: ProposalHabit = {
+        name: h.name,
+        tracking_type: h.tracking_type,
+        difficulty: h.difficulty,
+        estimated_minutes: h.estimated_minutes,
+      };
+      if (h.unit != null) out.unit = h.unit;
+      if (h.daily_goal != null) out.daily_goal = h.daily_goal;
+      if (h.target_direction != null) out.target_direction = h.target_direction;
+      out.frequency_config = h.frequency_config;
+      return out;
+    }),
   };
+}
+
+/** R05.01 — each pack habit's icon by name, for the install. */
+export function packIcons(pack: RoutinePack): Record<string, string> {
+  return Object.fromEntries(pack.habits.map((h) => [h.name.trim(), h.icon]));
 }
 
 export function findRoutinePack(key: string): RoutinePack | undefined {

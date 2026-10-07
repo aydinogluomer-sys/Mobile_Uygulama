@@ -14,7 +14,7 @@ import {
   type AdaptedRoutineProposal,
   type ProposalCompletion,
 } from '../lib/routineProposal';
-import { findRoutinePack, packToProposal, type RoutinePackKey } from '../lib/routinePacks';
+import { findRoutinePack, packIcons, packToProposal, type RoutinePackKey } from '../lib/routinePacks';
 import { installProposal, listRoutines as repoFetchRoutines } from '../services/routineService';
 import type { HabitLoadInput } from '../lib/capacity';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
@@ -81,6 +81,8 @@ type RoutineStore = {
   // a pack gets exactly the same validation + capacity treatment an AI
   // response does, never a bypass. Only ever consumed by confirmInstall. ──
   proposalSource: ProposalSource | null;
+  /** R05.01 — the staged pack's icons by habit name; null for any other source. */
+  stagedIcons: Record<string, string> | null;
   proposal: RoutineProposal | null;
   /** Non-null when validation FAILED (a clear, user-facing reason per
    *  problem -- never a crash and never a silent no-op, Gate D) OR when a
@@ -159,6 +161,8 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
   generateError: null,
 
   proposalSource: null,
+
+  stagedIcons: null,
   proposal: null,
   proposalErrors: null,
   evaluation: null,
@@ -180,6 +184,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       generating: true,
       generateError: null,
       proposalSource: null,
+      stagedIcons: null,
       proposal: null,
       proposalErrors: null,
       evaluation: null,
@@ -227,7 +232,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       if (!adapted.ok) {
         set({
           generating: false,
-          proposalSource: 'ai',
+          proposalSource: 'ai', stagedIcons: null,
           proposalErrors: adapted.errors.map((e) => e.message),
           pendingProposal: null,
         });
@@ -254,7 +259,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
         // to evaluate capacity against yet, and NOTHING is guessed.
         set({
           generating: false,
-          proposalSource: 'ai',
+          proposalSource: 'ai', stagedIcons: null,
           pendingProposal: adapted.proposal,
           proposalErrors: adapted.proposal.missingFieldNotices,
           proposal: null,
@@ -266,7 +271,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       const evaluation = evaluateProposal(adapted.proposal, { activeHabits: activeHabitLoadInputs() });
       set({
         generating: false,
-        proposalSource: 'ai',
+        proposalSource: 'ai', stagedIcons: null,
         proposal: adapted.proposal,
         evaluation,
         proposalErrors: null,
@@ -286,7 +291,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
     const validation = validateRoutineProposal(incoming);
     if (!validation.ok) {
       set({
-        proposalSource: 'coach',
+        proposalSource: 'coach', stagedIcons: null,
         proposal: null,
         evaluation: null,
         proposalErrors: validation.errors.map((e) => e.message),
@@ -298,7 +303,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
     }
     const evaluation = evaluateProposal(validation.proposal, { activeHabits: activeHabitLoadInputs() });
     set({
-      proposalSource: 'coach',
+      proposalSource: 'coach', stagedIcons: null,
       proposal: validation.proposal,
       evaluation,
       proposalErrors: null,
@@ -337,6 +342,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
     const evaluation = evaluateProposal(validation.proposal, { activeHabits: activeHabitLoadInputs() });
     set({
       proposalSource: 'pack',
+      stagedIcons: packIcons(pack),
       proposal: validation.proposal,
       evaluation,
       proposalErrors: null,
@@ -350,6 +356,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
   clearGenerated: () => set({
     generateError: null,
     proposalSource: null,
+    stagedIcons: null,
     proposal: null,
     proposalErrors: null,
     evaluation: null,
@@ -386,15 +393,20 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
   // `evaluation.toActivate` habits install as 'active', everything else
   // (`evaluation.toQueue`) installs as 'waiting' -- never force-activated.
   confirmInstall: async () => {
-    const { proposal, evaluation, installing, proposalSource } = get();
+    const { proposal, evaluation, installing, proposalSource, stagedIcons } = get();
     if (!proposal || !evaluation || installing) return false;
+    // A pack's icons ride along; any other source has none to add.
+    const icons = proposalSource === 'pack' ? stagedIcons : null;
 
     set({ installing: true, installError: null });
     try {
       // Row construction, the derived willpower cost and the
       // activate-vs-queue decision are domain rules and live in
       // `services/routineService.buildInstallRows`.
-      const result = await installProposal(proposal.habits, evaluation.toActivate);
+      const result = await installProposal(
+        proposal.habits.map((h) => (icons?.[h.name] ? { ...h, icon: icons[h.name] } : h)),
+        evaluation.toActivate,
+      );
       if (!result.ok) {
         set({ installing: false, installError: result.error });
         return false;
