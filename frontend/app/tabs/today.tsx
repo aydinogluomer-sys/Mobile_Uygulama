@@ -21,6 +21,9 @@ import type { SmallStepParent } from '../../lib/smallStart';
 // R01.05 — habits on a dated break, and the holiday mode for all of them.
 import TimeOffSheet from '../../components/TimeOffSheet';
 import { activePauseOn, isPausedOn } from '../../lib/habitPauses';
+// R01.04 — a habit with steps opens its checklist instead of a one-tap toggle.
+import ChecklistSheet from '../../components/ChecklistSheet';
+import { itemsOn } from '../../lib/habitChecklist';
 import { buildTodayNarrative } from '../../lib/todayNarrative';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
@@ -238,7 +241,8 @@ export default function TodayScreen() {
   const today = todayLocal();
   const now = new Date();
 
-  const { habits, fetchHabits, pauses, timeOffAvailable, addTimeOff, endTimeOff } = useHabitStore();
+  const { habits, fetchHabits, pauses, timeOffAvailable, addTimeOff, endTimeOff, checklistItems } = useHabitStore();
+  const [checklistFor, setChecklistFor] = useState<Habit | null>(null);
   // §18: `pendingSyncCount` / `deadSyncCount` burada okunuyor çünkü alışkanlık
   // tamamlama bu ekranda oluyor (`onHabitTap` -> `logHabit`). Dokunuşun
   // yapıldığı yerde durumu göstermek, kullanıcının "kaydedildi mi?" sorusunu
@@ -366,6 +370,10 @@ export default function TodayScreen() {
 
   // Binary alışkanlık → yerinde tamamla; numerik → timeline'a yönlen.
   async function onHabitTap(h: typeof habits[number]) {
+    if (itemsOn(checklistItems, h.id, today).length > 0) {
+      setChecklistFor(h);
+      return;
+    }
     if (isMeasurableTracking(h.tracking_type)) {
       router.push('/tabs/timeline' as any);
       return;
@@ -722,6 +730,8 @@ export default function TodayScreen() {
       </ScrollView>
 
       {/* R03.02 — "Bugün daha az yapabilirim" */}
+      <ChecklistSheet habit={checklistFor} day={today} onClose={() => setChecklistFor(null)} />
+
       <TimeOffSheet
         visible={holidayOpen}
         kind="holiday"

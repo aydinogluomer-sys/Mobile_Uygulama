@@ -33,6 +33,11 @@ query is unbounded; this does not.
 | `focusTaskRepository.ts` | `insertFocusTask` | `focus_tasks` | no | WRITE | — |
 | `goalRepository.ts` | `fetchGoalsPage` | `goals` | yes | KEYSET_PAGE | yes |
 | `goalRepository.ts` | `insertGoal` | `goals` | no | WRITE | — |
+| `habitChecklistRepository.ts` | `deleteCheck` | `habit_checklist_checks` | no | WRITE | yes |
+| `habitChecklistRepository.ts` | `fetchChecklistChecks` | `habit_checklist_checks` | yes | DATE_WINDOW | yes |
+| `habitChecklistRepository.ts` | `fetchChecklistItems` | `habit_checklist_items` | yes | BOUNDED_DOMAIN_WINDOW | yes |
+| `habitChecklistRepository.ts` | `insertCheck` | `habit_checklist_checks` | no | WRITE | — |
+| `habitChecklistRepository.ts` | `insertChecklistItem` | `habit_checklist_items` | no | WRITE | — |
 | `habitLogRepository.ts` | `fetchHabitIdsCompletedSince` | `habit_logs` | yes | DATE_WINDOW | yes |
 | `habitLogRepository.ts` | `fetchHabitLogsForHabit` | `habit_logs` | yes | DATE_WINDOW | yes |
 | `habitLogRepository.ts` | `fetchHabitLogsForHabitsSince` | `habit_logs` | yes | DATE_WINDOW | yes |
@@ -99,12 +104,12 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **88**
-- collection SELECTs: **40**
+- queries: **93**
+- collection SELECTs: **42**
 - KEYSET_PAGE: **7**
-- DATE_WINDOW: **9**
+- DATE_WINDOW: **10**
 - BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **2**
-- BOUNDED_DOMAIN_WINDOW: **18**
+- BOUNDED_DOMAIN_WINDOW: **19**
 - SINGLE_ROW: **12**
 - **UNCLASSIFIED: 0**

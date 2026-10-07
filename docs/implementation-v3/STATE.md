@@ -163,6 +163,20 @@ r01_05_time_off_and_goal_versions: DONE-PENDING-MIGRATION (P2, 2026-10-07) -- sk
   KALAN: bildirimlerin aradaki alışkanlığı atlaması R04.01'e (isPausedOn hazır).
   Testler lib/habitPauses (22), lib/habitScheduleTimeOff (19), store/habitStoreTimeOff (9),
   repo/habitTimeOffWired (8). Mutasyonlar 14/14 (ilk turda 3 sağ kaldı -> ayırt eden 3 test eklendi).
+r01_04_habit_checklist: DONE-PENDING-MIGRATION (P2, 2026-10-07) -- alışkanlık kontrol listesi
+  (lib/habitChecklist.ts): şablon ADIMLAR (zorunlu/isteğe bağlı, sıralı, en çok 12, 80 karakter;
+  silinmez ARŞİVLENİR) + GÜN ÖRNEĞİ (bir adım bir günde en çok bir kez işaretlenir). Geçmiş gün
+  o gün sahip olduğu adımlarla okunur (sonradan eklenen geriye uzanmaz, sonradan arşivlenen o
+  güne aittir). Gün kaydı işaretlerden türer, uygulamanın geri kalanının yazdığı durumlarla:
+  tüm zorunlular -> done, bir şey işaretli ama zorunluların hepsi değil -> partial, yalnız isteğe
+  bağlı adımlar varsa herhangi biri -> done, hiç işaret kalmadıysa ve gün kaydı varsa -> miss
+  (Bugün'deki ikinci dokunuşla aynı; log silinemez, S11), kayıt yoksa hiçbir şey. İşaret ancak
+  sunucu kabul ettikten sonra gösterilir. Görev alt listesiyle AYRI tablo/tip (guard). Bugün:
+  adımı olan alışkanlığa dokunmak tek-dokunuş toggle yerine ChecklistSheet açar; habit-detail
+  'Kontrol Listesi' bölümünde ChecklistEditor (ekle, zorunlu<->isteğe bağlı, kaldır=arşiv).
+  MIGRATION: 029_habit_checklists.sql YAZILDI, UYGULANMADI (S1/S2); eksik tabloda fail-open,
+  editör 'sunucu güncellemesini bekliyor' der. Testler lib/habitChecklist (14),
+  store/habitStoreChecklist (6), repo/habitChecklistWired (8). Mutasyonlar 10/10.
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

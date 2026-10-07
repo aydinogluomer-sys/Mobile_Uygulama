@@ -34,6 +34,10 @@ import {
   deletePause, fetchGoalVersions, fetchPauses, insertPause, setPauseEnd, upsertGoalVersions,
 } from '../repositories/habitPauseRepository';
 import {
+  deleteCheck, fetchChecklistChecks, fetchChecklistItems, insertCheck, insertChecklistItem, patchChecklistItem,
+} from '../repositories/habitChecklistRepository';
+import { nextPosition, validateItem, type ChecklistCheck, type ChecklistItem } from '../lib/habitChecklist';
+import {
   endPauseOn, validatePause, versionRowsForEdit,
   type GoalVersion, type PauseDraft, type PauseInterval,
 } from '../lib/habitPauses';
@@ -183,4 +187,39 @@ export async function recordGoalVersion(
   const rows = versionRowsForEdit(habit, next, today);
   const res = await upsertGoalVersions(rows);
   return res.ok ? { ok: true, versions: res.data } : { ok: false, error: res.error };
+}
+
+// ── R01.04 — habit checklists ───────────────────────────────────────────────
+
+export type Checklists = { available: boolean; items: ChecklistItem[]; checks: ChecklistCheck[] };
+
+/** Items and recent checks, or `available: false` while migration 029 has not run. */
+export async function loadChecklists(sinceDay: string): Promise<{ ok: true; data: Checklists } | { ok: false; error: string }> {
+  const [i, c] = await Promise.all([fetchChecklistItems(), fetchChecklistChecks(sinceDay)]);
+  if (!i.ok) return { ok: false, error: i.error };
+  if (!c.ok) return { ok: false, error: c.error };
+  return { ok: true, data: { available: i.data.available && c.data.available, items: i.data.rows, checks: c.data.rows } };
+}
+
+/** A new step at the end of the habit's list, checked against the limits first. */
+export async function addChecklistItem(params: {
+  habitId: string; title: string; required: boolean; existing: readonly ChecklistItem[];
+}): Promise<{ ok: true; item: ChecklistItem } | { ok: false; error: string }> {
+  const check = validateItem(params.title, params.existing, params.habitId);
+  if (!check.ok) return { ok: false, error: check.reason };
+  const res = await insertChecklistItem({
+    habit_id: params.habitId, title: check.title, required: params.required,
+    position: nextPosition(params.existing, params.habitId),
+  });
+  return res.ok ? { ok: true, item: res.data } : { ok: false, error: res.error };
+}
+
+/** Required/optional, or archive (never delete: past days keep the steps they had). */
+export async function editChecklistItem(id: string, patch: { required?: boolean; archived_at?: string }) {
+  return patchChecklistItem(id, patch);
+}
+
+/** Tick or untick one step for one day. */
+export async function setCheck(check: ChecklistCheck, on: boolean) {
+  return on ? insertCheck(check) : deleteCheck(check);
 }

@@ -14,6 +14,8 @@ const mockSvc = {
 jest.mock('../../services/habitService', () => ({
   listHabits: jest.fn(async () => ({ ok: true, data: mockSvc.habits })),
   loadTimeOff: jest.fn(async () => mockSvc.timeOff),
+  // R01.04 — fetchHabits also loads checklists; not under test here.
+  loadChecklists: jest.fn(async () => ({ ok: true, data: { available: true, items: [], checks: [] } })),
   patchHabit: jest.fn(async (id: string, updates: any) => (mockSvc.patchOk ? { ok: true, data: { id, ...updates } } : { ok: false, error: 'refused' })),
   recordGoalVersion: jest.fn(async (habit: any, next: any, today: string) => {
     mockSvc.versionCalls.push({ habit, next, today });

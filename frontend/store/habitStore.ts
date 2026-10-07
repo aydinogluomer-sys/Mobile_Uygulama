@@ -11,10 +11,13 @@ import {
   purgeHabit as repoPurgeHabit,
   restoreHabit as repoRestoreHabit,
   loadTimeOff, addTimeOff as addTimeOffOp, endTimeOff as endTimeOffOp, recordGoalVersion,
+  loadChecklists, addChecklistItem as addChecklistItemOp, editChecklistItem, setCheck,
 } from '../services/habitService';
+// R01.04 — checklists: template steps + per-day checks.
+import { progressOn, type ChecklistCheck, type ChecklistItem, type ChecklistProgress } from '../lib/habitChecklist';
+import { addDaysLocal, todayLocal, ymd } from '../lib/date';
 // R01.05 — dated pauses/holidays and goal versions, attached to each habit.
 import { attachTimeOff, changesGoal, type GoalVersion, type PauseDraft, type PauseInterval } from '../lib/habitPauses';
-import { todayLocal } from '../lib/date';
 // Static import (task Phase-1 CODER-F, W1). Was `await import('./willpowerStore')`
 // -- no circular dependency requires deferring it (willpowerStore.ts has no
 // import back on this file), and the dynamic form is unexecutable under this
@@ -67,6 +70,15 @@ type HabitStore = {
   /** R01.05 — false while migration 028 has not run; null until known. */
   timeOffAvailable: boolean | null;
   addTimeOff: (habitId: string | null, draft: PauseDraft) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** R01.04 */
+  checklistItems: ChecklistItem[];
+  checklistChecks: ChecklistCheck[];
+  checklistAvailable: boolean | null;
+  addChecklistItem: (habitId: string, title: string, required: boolean) => Promise<{ ok: true } | { ok: false; error: string }>;
+  setChecklistItemRequired: (itemId: string, required: boolean) => Promise<{ ok: true } | { ok: false; error: string }>;
+  archiveChecklistItem: (itemId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Tick/untick; returns the day's progress after the write. */
+  toggleCheck: (habitId: string, itemId: string, day: string) => Promise<{ ok: true; progress: ChecklistProgress } | { ok: false; error: string }>;
   endTimeOff: (pauseId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   fetchHabits: () => Promise<void>;
   addHabit: (habit: HabitInsert) => Promise<Habit | null>;
@@ -84,10 +96,17 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
   pauses: [],
   goalVersions: [],
   timeOffAvailable: null,
+  checklistItems: [],
+  checklistChecks: [],
+  checklistAvailable: null,
 
   fetchHabits: async () => {
     set({ loading: true });
-    const [res, off] = await Promise.all([repoFetchHabits(), loadTimeOff()]);
+    const since = ymd(addDaysLocal(new Date(), -35));
+    const [res, off, lists] = await Promise.all([repoFetchHabits(), loadTimeOff(), loadChecklists(since)]);
+    if (lists.ok) {
+      set({ checklistItems: lists.data.items, checklistChecks: lists.data.checks, checklistAvailable: lists.data.available });
+    }
     if (off.ok) {
       set({ pauses: off.data.pauses, goalVersions: off.data.versions, timeOffAvailable: off.data.available });
     }
@@ -107,6 +126,43 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     const pauses = [...get().pauses, res.pause];
     set((st) => ({ pauses, habits: attachTimeOff(st.habits, pauses, st.goalVersions) }));
     return { ok: true };
+  },
+
+  addChecklistItem: async (habitId, title, required) => {
+    if (get().checklistAvailable !== true) return { ok: false, error: 'Bu özellik sunucu güncellemesini bekliyor.' };
+    const res = await addChecklistItemOp({ habitId, title, required, existing: get().checklistItems });
+    if (!res.ok) return res;
+    set((st) => ({ checklistItems: [...st.checklistItems, res.item] }));
+    return { ok: true };
+  },
+
+  setChecklistItemRequired: async (itemId, required) => {
+    const res = await editChecklistItem(itemId, { required });
+    if (!res.ok) return { ok: false, error: res.error };
+    set((st) => ({ checklistItems: st.checklistItems.map((i) => (i.id === itemId ? { ...i, required } : i)) }));
+    return { ok: true };
+  },
+
+  archiveChecklistItem: async (itemId) => {
+    const at = new Date().toISOString();
+    const res = await editChecklistItem(itemId, { archived_at: at });
+    if (!res.ok) return { ok: false, error: res.error };
+    set((st) => ({ checklistItems: st.checklistItems.map((i) => (i.id === itemId ? { ...i, archived_at: at } : i)) }));
+    return { ok: true };
+  },
+
+  toggleCheck: async (habitId, itemId, day) => {
+    if (get().checklistAvailable !== true) return { ok: false, error: 'Bu özellik sunucu güncellemesini bekliyor.' };
+    const on = !get().checklistChecks.some((c) => c.item_id === itemId && c.day === day);
+    const check: ChecklistCheck = { item_id: itemId, habit_id: habitId, day };
+    const res = await setCheck(check, on);
+    // A refused write leaves the tick as it was -- never shown as saved.
+    if (!res.ok) return { ok: false, error: res.error };
+    const checks = on
+      ? [...get().checklistChecks, check]
+      : get().checklistChecks.filter((c) => !(c.item_id === itemId && c.day === day));
+    set({ checklistChecks: checks });
+    return { ok: true, progress: progressOn(get().checklistItems, checks, habitId, day) };
   },
 
   endTimeOff: async (pauseId) => {

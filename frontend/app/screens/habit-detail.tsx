@@ -44,6 +44,8 @@ import { frequencySummary, frequencyEditPatch, isFrequencyComplete } from '../..
 import FrequencyEditor from '../../components/FrequencyEditor';
 // R01.05 — a dated break for this habit, and the holiday it may be in.
 import TimeOffSheet from '../../components/TimeOffSheet';
+// R01.04 — the steps one occurrence of this habit is made of.
+import ChecklistEditor from '../../components/ChecklistEditor';
 import { activePauseOn } from '../../lib/habitPauses';
 import { completionPercent, isMeasurableTracking } from '../../lib/habitEngine';
 import { habitStrength, type StrengthLog } from '../../lib/habitStrength';
@@ -513,6 +515,11 @@ export default function HabitDetailScreen() {
               {habit.end_condition && (
                 <InfoRow icon="hourglass-outline" label="Bitiş Koşulu" value={endConditionLabel(habit.end_condition)} />
               )}
+            </Card>
+
+            <SectionHeader title="Kontrol Listesi" variant="title" style={{ marginTop: space.lg }} />
+            <Card padding="md">
+              <ChecklistEditor habitId={habit.id} />
             </Card>
           </View>
         )}
