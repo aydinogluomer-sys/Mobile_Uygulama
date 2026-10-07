@@ -5,8 +5,14 @@ import {
   setFrequencyKind, setWeeklyMode, weeklyModeOf, toggleWeekday,
   setFrequencyCount, setIntervalDays, setRangeStart, setRangeEnd, countCeiling,
   frequencySummary, rangeSummary, INTERVAL_PRESETS,
+  monthlyModeOf, setMonthlyMode, toggleMonthDay, setShortMonth, setYearlyDate, setLeapDay,
 } from '../lib/frequencyForm';
+import { MONTH_MAX_DAYS } from '../lib/routineProposal';
 import { todayLocal, parseLocalDate, addDaysLocal, ymd as ymdOf } from '../lib/date';
+
+/** R01.02 — month names for the yearly date. */
+const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+const KIND_LABEL: Record<FrequencyConfig['kind'], string> = { daily: 'Günlük', weekly: 'Haftalık', monthly: 'Aylık', yearly: 'Yıllık' };
 
 /**
  * The frequency controls: kind, weekly sub-mode, which days / how many, the
@@ -47,17 +53,17 @@ export default function FrequencyEditor({
     <>
       {/* R01.02-e:freq-controls:start */}
       <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel="Sıklık türü">
-        {(['daily', 'weekly', 'monthly'] as const).map((k) => (
+        {(['daily', 'weekly', 'monthly', 'yearly'] as const).map((k) => (
           <TouchableOpacity
             key={k}
             style={[styles.freqBtn, freq.kind === k && styles.freqBtnSelected]}
             onPress={() => setKind(k)}
             accessibilityRole="radio"
-            accessibilityLabel={k === 'daily' ? 'Günlük' : k === 'weekly' ? 'Haftalık' : 'Aylık'}
+            accessibilityLabel={KIND_LABEL[k]}
             accessibilityState={{ selected: freq.kind === k, checked: freq.kind === k }}
           >
             <Text style={[styles.freqBtnText, freq.kind === k && styles.freqBtnTextSelected]}>
-              {k === 'daily' ? 'Günlük' : k === 'weekly' ? 'Haftalık' : 'Aylık'}
+              {KIND_LABEL[k]}
             </Text>
           </TouchableOpacity>
         ))}
@@ -153,7 +159,106 @@ export default function FrequencyEditor({
         </>
       )}
 
-      {(freq.kind === 'monthly' || (freq.kind === 'weekly' && weeklyMode === 'count')) && (
+      {/* R01.02 — monthly: N a month XOR fixed days of the month. */}
+      {freq.kind === 'monthly' && (
+        <View style={[styles.row, { marginTop: 20 }]} accessibilityRole="radiogroup" accessibilityLabel="Aylık tür">
+          {(['count', 'days'] as const).map((m) => {
+            const sel = monthlyModeOf(freq) === m;
+            const label = m === 'count' ? 'Ayda N kez' : 'Ayın günleri';
+            return (
+              <TouchableOpacity key={m} style={[styles.freqBtn, sel && styles.freqBtnSelected]} onPress={() => updateFreq(setMonthlyMode(freq, m))}
+                accessibilityRole="radio" accessibilityLabel={label} accessibilityState={{ selected: sel, checked: sel }}>
+                <Text style={[styles.freqBtnText, sel && styles.freqBtnTextSelected]}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+      {freq.kind === 'monthly' && monthlyModeOf(freq) === 'days' && (
+        <>
+          <Text style={[styles.label, { marginTop: 16 }]}>Ayın hangi günleri?</Text>
+          <View style={styles.daysRow}>
+            {Array.from({ length: MONTH_MAX_DAYS[0] }, (_, i) => i + 1).map((d) => {
+              const on = (freq.month_days ?? []).includes(d);
+              return (
+                <TouchableOpacity key={d} style={[styles.dayBtn, on && styles.dayBtnSelected]} onPress={() => updateFreq(toggleMonthDay(freq, d))}
+                  accessibilityRole="checkbox" accessibilityLabel={`Ayın ${d}. günü`} accessibilityState={{ checked: on }}>
+                  <Text style={[styles.dayBtnText, on && styles.dayBtnTextSelected]}>{d}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {(freq.month_days ?? []).some((d) => d > 28) && (
+            <>
+              <Text style={[styles.label, { marginTop: 12 }]}>Bu gün olmayan aylarda (ör. Şubat, Nisan)</Text>
+              <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel="Kısa ay kuralı">
+                {(['skip', 'last_day'] as const).map((p) => {
+                  const sel = freq.short_month === p;
+                  const label = p === 'skip' ? 'O ay atla' : 'Ayın son gününe al';
+                  return (
+                    <TouchableOpacity key={p} style={[styles.freqBtn, sel && styles.freqBtnSelected]} onPress={() => updateFreq(setShortMonth(freq, p))}
+                      accessibilityRole="radio" accessibilityLabel={label} accessibilityState={{ selected: sel, checked: sel }}>
+                      <Text style={[styles.freqBtnText, sel && styles.freqBtnTextSelected]}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </>
+      )}
+
+      {/* R01.02 — yearly date; 29 February asks what happens in other years. */}
+      {freq.kind === 'yearly' && (
+        <>
+          <Text style={[styles.label, { marginTop: 16 }]}>Hangi ay?</Text>
+          <View style={styles.daysRow}>
+            {MONTHS.map((name, i) => {
+              const on = freq.month === i + 1;
+              return (
+                <TouchableOpacity key={name} style={[styles.dayBtn, on && styles.dayBtnSelected]} onPress={() => updateFreq(setYearlyDate(freq, i + 1, freq.day ?? 1))}
+                  accessibilityRole="radio" accessibilityLabel={name} accessibilityState={{ selected: on, checked: on }}>
+                  <Text style={[styles.dayBtnText, on && styles.dayBtnTextSelected]}>{name.slice(0, 3)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <View style={[styles.row, { marginTop: 12, alignItems: 'center' }]}>
+            <TouchableOpacity style={styles.dayBtn} onPress={() => updateFreq(setYearlyDate(freq, freq.month ?? 1, (freq.day ?? 1) - 1))}
+              disabled={(freq.day ?? 1) <= 1}
+              accessibilityRole="button" accessibilityLabel="Günü bir azalt" accessibilityState={{ disabled: (freq.day ?? 1) <= 1 }}>
+              <Text style={styles.dayBtnText}>−</Text>
+            </TouchableOpacity>
+            <Text style={[styles.endUnit, { minWidth: 110, textAlign: 'center' }]} accessibilityLiveRegion="polite">
+              {freq.day ?? 1} {MONTHS[(freq.month ?? 1) - 1]}
+            </Text>
+            <TouchableOpacity style={styles.dayBtn} onPress={() => updateFreq(setYearlyDate(freq, freq.month ?? 1, (freq.day ?? 1) + 1))}
+              disabled={(freq.day ?? 1) >= MONTH_MAX_DAYS[(freq.month ?? 1) - 1]}
+              accessibilityRole="button" accessibilityLabel="Günü bir artır" accessibilityState={{ disabled: (freq.day ?? 1) >= MONTH_MAX_DAYS[(freq.month ?? 1) - 1] }}>
+              <Text style={styles.dayBtnText}>+</Text>
+            </TouchableOpacity>
+          </View>
+          {freq.month === 2 && freq.day === 29 && (
+            <>
+              <Text style={[styles.label, { marginTop: 12 }]}>Artık yıl olmayan yıllarda</Text>
+              <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel="29 Şubat kuralı">
+                {(['feb28', 'mar1', 'skip'] as const).map((p) => {
+                  const sel = freq.leap_day === p;
+                  const label = p === 'feb28' ? '28 Şubat' : p === 'mar1' ? '1 Mart' : 'O yıl atla';
+                  return (
+                    <TouchableOpacity key={p} style={[styles.freqBtn, sel && styles.freqBtnSelected]} onPress={() => updateFreq(setLeapDay(freq, p))}
+                      accessibilityRole="radio" accessibilityLabel={label} accessibilityState={{ selected: sel, checked: sel }}>
+                      <Text style={[styles.freqBtnText, sel && styles.freqBtnTextSelected]}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </>
+      )}
+
+      {((freq.kind === 'monthly' && monthlyModeOf(freq) === 'count') || (freq.kind === 'weekly' && weeklyMode === 'count')) && (
         <View style={[styles.row, { marginTop: 16, alignItems: 'center' }]}>
           <TouchableOpacity
             style={[styles.dayBtn, (freq.count ?? 1) <= 1 && styles.buttonDisabled]}

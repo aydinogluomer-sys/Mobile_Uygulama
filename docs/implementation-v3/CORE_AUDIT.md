@@ -21,7 +21,7 @@ Durumlar: **DONE** (dosya + test + commit; test kabul cümlesini karşılıyor) 
 | Kart | Durum | Kanıt / eksik |
 |---|---|---|
 | R01.01 | DONE | `lib/habitSchedule.ts` `periodStatus` · `__tests__/lib/habitPeriod.test.ts` (T01/T03: açık dönem başarısız değil) · `f6be768`, `b155588` |
-| R01.02 | PARTIAL | günlük/hafta günü/esnek hafta-ay/her N gün/tarih aralığı DONE (`habitSchedule.test.ts`, `5ef17bd`, `1cd0bc9`, `70bd0d6`); **eksik: yıllık tarih kuralı, ayın 29/30/31'i politikası, yıllık 29 Şubat** (`habitSchedule.ts:659` "no yearly-date mode") |
+| R01.02 | DONE | günlük/hafta günü/esnek hafta-ay/her N gün/tarih aralığı (`5ef17bd`, `1cd0bc9`, `70bd0d6`) + **ayın günleri ve yıllık tarih**: `lib/habitSchedule.ts` `monthDayMatches` (29/30/31: açık `skip`/`last_day`), `yearlyDateMatches` (29 Şubat: açık `feb28`/`mar1`/`skip`, 100/400 kuralı), `dueOnExtended` zarf içinde; `lib/routineProposal.ts` doğrulayıcı politika olmadan geç gün/29 Şubat'ı reddeder; `components/FrequencyEditor.tsx` Yıllık + Ayın günleri + kural seçimi; hafta başı Pazartesi · `__tests__/lib/monthYearRules.test.ts` (25), `__tests__/ui/frequencyEditor.test.tsx` (+4 render) · mutasyon 30/31 (1 eşdeğer: `x > last`↔`x >= last`, `includes` dalı önce döner) · commit R01.02 |
 | R01.03 | BLOCKED (S11) | ölçüm/yön/kısmi DONE (`habitEngine.test.ts`, `f6721bf`); **geri alma**: DELETE XP'yi geri almıyor, tetikleyici tanımı repoda yok |
 | R01.04 | DONE (S2 canlı) | `lib/habitChecklist.ts` · `__tests__/lib/habitChecklist.test.ts`, `store/habitStoreChecklist.test.ts` · `c665ce9` · migration 029 |
 | R01.05 | DONE (S2 canlı) | `lib/habitPauses.ts` · `lib/habitScheduleTimeOff.test.ts` ("bugünkü hedef değişimi geçmişi bozmaz") · `9e220f0` · migration 028 |

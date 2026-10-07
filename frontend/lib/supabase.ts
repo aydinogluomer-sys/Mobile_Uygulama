@@ -20,7 +20,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // habit_logs tablosu: completed_at (date), value, is_completed, state, xp
 
 export type FrequencyConfig = {
-  kind: 'daily' | 'weekly' | 'monthly';
+  kind: 'daily' | 'weekly' | 'monthly' | 'yearly';
   days?: number[];
   part_of_day?: ('morning' | 'afternoon' | 'evening')[];
   count?: number;
@@ -40,6 +40,22 @@ export type FrequencyConfig = {
   range_start?: string;
   /** Özel tarih aralığı — dahil (inclusive) üst sınır, 'YYYY-MM-DD'. */
   range_end?: string;
+  /**
+   * R01.02 — `kind: 'monthly'` ile: ayın SABİT günleri (1..31). Varsa şekil
+   * "ayda N kez" değil, "ayın 1'i ve 15'i" olur.
+   */
+  month_days?: number[];
+  /**
+   * R01.02 — 28'den büyük bir ay günü kısa ayda ne olur: `skip` o ay yok,
+   * `last_day` ayın son gününe taşınır. 28'i aşan gün varsa ZORUNLU; sessiz
+   * bir varsayılan yoktur.
+   */
+  short_month?: 'skip' | 'last_day';
+  /** R01.02 — `kind: 'yearly'` ile: ay (1..12) ve gün (1..31). */
+  month?: number;
+  day?: number;
+  /** R01.02 — 29 Şubat yıllık tarihi artık yıl olmayan yıllarda: 28 Şubat, 1 Mart ya da atla. 29 Şubat için ZORUNLU. */
+  leap_day?: 'feb28' | 'mar1' | 'skip';
 };
 
 export type EndCondition = {

@@ -346,7 +346,7 @@ const EXPECTED_AT_1CD0BC9 = [
     "errors": [
       {
         "path": "f.kind",
-        "message": "f.kind: expected one of daily/weekly/monthly, got string"
+        "message": "f.kind: expected one of daily/weekly/monthly/yearly, got string"
       }
     ]
   },
@@ -355,7 +355,7 @@ const EXPECTED_AT_1CD0BC9 = [
     "errors": [
       {
         "path": "f.kind",
-        "message": "f.kind: expected one of daily/weekly/monthly, got undefined"
+        "message": "f.kind: expected one of daily/weekly/monthly/yearly, got undefined"
       }
     ]
   },
@@ -444,9 +444,11 @@ describe('A7 — configs without the new keys: validator result unchanged from 1
     });
   });
 
-  it('the one deliberate wording change: the allowed list now names the three keys', () => {
+  // Wording now lists 'yearly' among the kinds (#25/#26 above) and the R01.02
+  // keys in the allowed list: the results are otherwise unchanged.
+  it('the one deliberate wording change: the allowed list names the new keys', () => {
     const r = validateFrequencyConfig({ kind: 'daily', foo: 1 }, 'f');
-    expect(r.errors[0].message).toBe('f: unexpected field(s): foo (allowed: kind, days, part_of_day, count, interval_days, range_start, range_end)');
+    expect(r.errors[0].message).toBe('f: unexpected field(s): foo (allowed: kind, days, part_of_day, count, interval_days, range_start, range_end, month_days, short_month, month, day, leap_day)');
   });
 });
 

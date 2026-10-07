@@ -108,8 +108,12 @@ export function occurrencesPerWeek(freq: FrequencyConfig): number {
       return freq.count ?? 1;
     case 'monthly': {
       const DAYS_PER_MONTH = 30.44; // calendar-average month length
-      return ((freq.count ?? 1) * 7) / DAYS_PER_MONTH;
+      // R01.02 — fixed days of the month count as that many a month.
+      const perMonth = freq.month_days && freq.month_days.length > 0 ? freq.month_days.length : (freq.count ?? 1);
+      return (perMonth * 7) / DAYS_PER_MONTH;
     }
+    case 'yearly':
+      return 7 / 365.25; // R01.02 — once a year
     default:
       return 7;
   }

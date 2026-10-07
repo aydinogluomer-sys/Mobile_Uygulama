@@ -153,9 +153,9 @@ const ALLOWED_HABIT_KEYS = new Set([
  * (R01.02-d1). Each new key is validated below in the same refuse-don't-coerce
  * style as the others. An unknown key is still refused.
  */
-const ALLOWED_FREQUENCY_KEYS = new Set(['kind', 'days', 'part_of_day', 'count', 'interval_days', 'range_start', 'range_end']);
+const ALLOWED_FREQUENCY_KEYS = new Set(['kind', 'days', 'part_of_day', 'count', 'interval_days', 'range_start', 'range_end', 'month_days', 'short_month', 'month', 'day', 'leap_day']);
 
-const FREQUENCY_KINDS = new Set(['daily', 'weekly', 'monthly']);
+const FREQUENCY_KINDS = new Set(['daily', 'weekly', 'monthly', 'yearly']);
 const PARTS_OF_DAY = new Set(['morning', 'afternoon', 'evening']);
 export const TARGET_DIRECTIONS: readonly string[] = ['at_least', 'at_most'];
 
@@ -165,6 +165,8 @@ export const MAX_UNIT_LENGTH = 24;
 /** Weekly count ceiling is 7; monthly is 31. Enforced per `kind`. */
 export const MAX_WEEKLY_COUNT = 7;
 export const MAX_MONTHLY_COUNT = 31;
+/** R01.02 — the longest each month gets (February counted at 29), 1-indexed by month - 1. */
+export const MONTH_MAX_DAYS: readonly number[] = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 /** "Every N days": 2 is the smallest that is not plain daily; a year is the
  *  longest cycle a habit plausibly has. 1 (and 0) are refused, not coerced. */
 export const MIN_INTERVAL_DAYS = 2;
@@ -444,6 +446,63 @@ export function validateFrequencyConfig(
   } else {
     if (rangeStart !== null) out.range_start = rangeStart;
     if (rangeFinish !== null) out.range_end = rangeFinish;
+  }
+
+  // R01.02 — the month's fixed days. Integers 1-31, no duplicates, never
+  // beside a count (the shape reads month_days first and would ignore it).
+  // A day past 28 needs an EXPLICIT short-month policy.
+  if (raw.month_days !== undefined) {
+    const md = raw.month_days;
+    if (kind !== 'monthly') {
+      errors.push({ path: `${path}.month_days`, message: `${path}.month_days: only meaningful with kind 'monthly', got '${kind}'` });
+    } else if (!Array.isArray(md) || md.length === 0 || md.length > 31) {
+      errors.push({ path: `${path}.month_days`, message: `${path}.month_days: expected 1-31 days of the month` });
+    } else if (md.some((d) => typeof d !== 'number' || !Number.isInteger(d) || d < 1 || d > 31)) {
+      errors.push({ path: `${path}.month_days`, message: `${path}.month_days: days must be integers 1-31` });
+    } else if (new Set(md as number[]).size !== md.length) {
+      errors.push({ path: `${path}.month_days`, message: `${path}.month_days: contains a duplicate day` });
+    } else if (raw.count !== undefined) {
+      errors.push({ path: `${path}.month_days`, message: `${path}: month_days and count are separate shapes -- send one` });
+    } else {
+      out.month_days = [...(md as number[])].sort((a, b) => a - b);
+      if ((md as number[]).some((d) => d > 28)) {
+        if (raw.short_month !== 'skip' && raw.short_month !== 'last_day') {
+          errors.push({ path: `${path}.short_month`, message: `${path}.short_month: a day past 28 needs 'skip' or 'last_day' for shorter months` });
+        } else out.short_month = raw.short_month;
+      } else if (raw.short_month !== undefined) {
+        errors.push({ path: `${path}.short_month`, message: `${path}.short_month: every month has these days -- no short-month rule applies` });
+      }
+    }
+  }
+  if (raw.short_month !== undefined && (kind !== 'monthly' || raw.month_days === undefined)) {
+    errors.push({ path: `${path}.short_month`, message: `${path}.short_month: only meaningful with month_days` });
+  }
+
+  // R01.02 — a yearly date: a real month/day (29 Feb allowed, with a policy
+  // for non-leap years), nothing else of a shape beside it.
+  if (kind === 'yearly') {
+    const m = raw.month, d = raw.day;
+    const maxDay = MONTH_MAX_DAYS;
+    if (typeof m !== 'number' || !Number.isInteger(m) || m < 1 || m > 12) {
+      errors.push({ path: `${path}.month`, message: `${path}.month: expected an integer 1-12` });
+    } else if (typeof d !== 'number' || !Number.isInteger(d) || d < 1 || d > maxDay[m - 1]) {
+      errors.push({ path: `${path}.day`, message: `${path}.day: expected a real day of month ${m} (1-${maxDay[m - 1]})` });
+    } else {
+      out.month = m;
+      out.day = d;
+      if (m === 2 && d === 29) {
+        if (raw.leap_day !== 'feb28' && raw.leap_day !== 'mar1' && raw.leap_day !== 'skip') {
+          errors.push({ path: `${path}.leap_day`, message: `${path}.leap_day: 29 February needs 'feb28', 'mar1' or 'skip' for non-leap years` });
+        } else out.leap_day = raw.leap_day;
+      } else if (raw.leap_day !== undefined) {
+        errors.push({ path: `${path}.leap_day`, message: `${path}.leap_day: only 29 February takes a leap-year rule` });
+      }
+    }
+    if (raw.count !== undefined || raw.days !== undefined || raw.month_days !== undefined || raw.interval_days !== undefined) {
+      errors.push({ path, message: `${path}: kind 'yearly' takes only month/day (and leap_day)` });
+    }
+  } else if (raw.month !== undefined || raw.day !== undefined || raw.leap_day !== undefined) {
+    errors.push({ path, message: `${path}: month/day/leap_day are only meaningful with kind 'yearly'` });
   }
 
   // "Weekly" with neither days nor count pins to nothing: `isDueOn` returns

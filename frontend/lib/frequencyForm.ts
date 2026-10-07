@@ -16,7 +16,7 @@
  */
 import type { FrequencyConfig, Habit } from './supabase';
 import {
-  MAX_WEEKLY_COUNT, MAX_MONTHLY_COUNT, MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS, validateFrequencyConfig,
+  MAX_WEEKLY_COUNT, MAX_MONTHLY_COUNT, MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS, validateFrequencyConfig, MONTH_MAX_DAYS,
 } from './routineProposal';
 import { scheduleKind } from './habitSchedule';
 import { parseLocalDate } from './date';
@@ -58,7 +58,52 @@ export function setFrequencyKind(fc: FrequencyConfig, kind: FrequencyConfig['kin
   const base = { ...keepEnvelope(fc) };
   if (kind === 'weekly') return { kind, count: DEFAULT_WEEKLY_COUNT, ...base };
   if (kind === 'monthly') return { kind, count: DEFAULT_MONTHLY_COUNT, ...base };
+  if (kind === 'yearly') {
+    const today = new Date();
+    return { kind, month: today.getMonth() + 1, day: Math.min(today.getDate(), 28), ...base };
+  }
   return { kind: 'daily', ...base };
+}
+
+/** R01.02 — monthly sub-mode: N a month XOR fixed days of the month. */
+export type MonthlyMode = 'count' | 'days';
+export function monthlyModeOf(fc: FrequencyConfig): MonthlyMode {
+  return fc.month_days !== undefined ? 'days' : 'count';
+}
+export function setMonthlyMode(fc: FrequencyConfig, mode: MonthlyMode): FrequencyConfig {
+  if (fc.kind !== 'monthly' || monthlyModeOf(fc) === mode) return fc;
+  const { month_days: _d, short_month: _s, count: _c, ...rest } = fc;
+  return mode === 'days' ? { ...rest, month_days: [] } : { ...rest, count: DEFAULT_MONTHLY_COUNT };
+}
+/**
+ * Toggle a day of the month. The short-month policy appears only when a day
+ * past 28 is picked, and starts unset: the user chooses it (the validator
+ * refuses a late day without one).
+ */
+export function toggleMonthDay(fc: FrequencyConfig, day: number): FrequencyConfig {
+  if (fc.kind !== 'monthly' || monthlyModeOf(fc) !== 'days') return fc;
+  const cur = fc.month_days ?? [];
+  const next = cur.includes(day) ? cur.filter((d) => d !== day) : [...cur, day].sort((a, b) => a - b);
+  const out: FrequencyConfig = { ...fc, month_days: next };
+  if (!next.some((d) => d > 28)) delete out.short_month;
+  return out;
+}
+export function setShortMonth(fc: FrequencyConfig, policy: 'skip' | 'last_day'): FrequencyConfig {
+  if (fc.kind !== 'monthly' || !(fc.month_days ?? []).some((d) => d > 28)) return fc;
+  return { ...fc, short_month: policy };
+}
+/** R01.02 — yearly date; 29 Feb keeps its policy only while it is 29 Feb. */
+export function setYearlyDate(fc: FrequencyConfig, month: number, day: number): FrequencyConfig {
+  if (fc.kind !== 'yearly') return fc;
+  const max = MONTH_MAX_DAYS[month - 1] ?? MONTH_MAX_DAYS[0];
+  const d = Math.min(Math.max(day, 1), max);
+  const out: FrequencyConfig = { ...fc, month, day: d };
+  if (!(month === 2 && d === 29)) delete out.leap_day;
+  return out;
+}
+export function setLeapDay(fc: FrequencyConfig, policy: 'feb28' | 'mar1' | 'skip'): FrequencyConfig {
+  if (fc.kind !== 'yearly' || !(fc.month === 2 && fc.day === 29)) return fc;
+  return { ...fc, leap_day: policy };
 }
 
 /** Which weekly sub-mode a config is in. `days` present (even empty) = days. */
@@ -173,6 +218,7 @@ export function isFrequencyComplete(fc: FrequencyConfig): boolean {
   const sk = scheduleKind({ frequency_config: fc } as Parameters<typeof scheduleKind>[0]);
   if (sk.kind === 'weekly_count' || sk.kind === 'monthly_count') return sk.count > 0;
   if (sk.kind === 'weekly_days') return sk.days.length > 0;
+  if (sk.kind === 'monthly_days') return sk.days.length > 0;
   return true;
 }
 
@@ -218,6 +264,19 @@ export function frequencySummary(fc: FrequencyConfig): string {
     }
     case 'weekly_count': shape = sk.count > 0 ? `Haftada ${sk.count} kez` : 'Hedef yok'; break;
     case 'monthly_count': shape = sk.count > 0 ? `Ayda ${sk.count} kez` : 'Hedef yok'; break;
+    case 'monthly_days': {
+      const late = sk.days.some((d) => d > 28);
+      const policy = late ? (sk.shortMonth === 'last_day' ? ' (kısa ayda son gün)' : ' (kısa ayda atlanır)') : '';
+      shape = `Her ayın ${sk.days.join(', ')}. günü${policy}`;
+      break;
+    }
+    case 'yearly_date': {
+      const leap = sk.month === 2 && sk.day === 29
+        ? (sk.leap === 'feb28' ? ' (artık yıl değilse 28 Şubat)' : sk.leap === 'mar1' ? ' (artık yıl değilse 1 Mart)' : ' (artık yıl değilse atlanır)')
+        : '';
+      shape = `Her yıl ${sk.day} ${MONTHS_TR[sk.month - 1] ?? '?'}${leap}`;
+      break;
+    }
   }
   const r = rangeSummary(fc);
   return r ? `${shape} · ${r}` : shape;

@@ -64,7 +64,8 @@ describe('R01.02-e — the form builds frequency_config only through lib/frequen
 
   it('has a count input (stepper) for weekly-count and monthly', () => {
     expect(ed.filter((l) => /updateFreq\(setFrequencyCount\(freq, \(freq\.count \?\? 1\) [-+] 1\)\)/.test(l))).toHaveLength(2);
-    expect(ed.some((l) => /freq\.kind === 'monthly' \|\| \(freq\.kind === 'weekly' && weeklyMode === 'count'\)/.test(l))).toBe(true);
+    // R01.02: monthly now has two sub-modes; the stepper belongs to 'Ayda N kez' only.
+    expect(ed.some((l) => /\(freq\.kind === 'monthly' && monthlyModeOf\(freq\) === 'count'\) \|\| \(freq\.kind === 'weekly' && weeklyMode === 'count'\)/.test(l))).toBe(true);
   });
 
   it('has the weekly sub-modes, the interval and the date envelope', () => {
@@ -210,9 +211,10 @@ describe('A9 — every touchable in the new frequency controls is labelled, role
   it('mutually exclusive choices are radios inside a labelled radiogroup; days are checkboxes; steppers are buttons', () => {
     const groups = raw.match(/accessibilityRole="radiogroup" accessibilityLabel="[^"]+"/g) ?? [];
     expect(groups.map((g) => g.replace(/.*accessibilityLabel="/, '').replace('"', ''))).toEqual(
-      ['Sıklık türü', 'Tekrar aralığı', 'Haftalık tür', 'Başlangıç tarihi', 'Bitiş tarihi']);
-    expect((raw.match(/accessibilityRole="checkbox"/g) ?? []).length).toBe(1);   // the weekday map
-    expect((raw.match(/accessibilityRole="button"/g) ?? []).length).toBe(2);     // − / +
+      // R01.02 added the monthly sub-mode, the short-month rule and the 29 February rule.
+      ['Sıklık türü', 'Tekrar aralığı', 'Haftalık tür', 'Aylık tür', 'Kısa ay kuralı', '29 Şubat kuralı', 'Başlangıç tarihi', 'Bitiş tarihi']);
+    expect((raw.match(/accessibilityRole="checkbox"/g) ?? []).length).toBe(2);   // the weekday map + the month-day grid (R01.02)
+    expect((raw.match(/accessibilityRole="button"/g) ?? []).length).toBe(4);     // count − / + and yearly day − / + (R01.02)
   });
 
   it('the typed interval box is labelled with its range', () => {

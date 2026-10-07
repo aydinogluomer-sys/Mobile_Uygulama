@@ -133,7 +133,7 @@ export type CostInput = {
   behavior_type: 'positive' | 'negative';
   tracking_type: Habit['tracking_type'];
   /** `interval_days` (with kind 'daily'): "every N days" -- R01.02-d2. */
-  frequency_config: { kind: 'daily' | 'weekly' | 'monthly'; interval_days?: number };
+  frequency_config: { kind: 'daily' | 'weekly' | 'monthly' | 'yearly'; interval_days?: number; month_days?: number[] };
   estimated_minutes?: number;
 };
 
@@ -178,7 +178,10 @@ export function costBreakdown(input: CostInput) {
   // "Her N günde bir" yalnız daily + interval_days > 1 ise; aksi hâlde tablo aynen.
   const intervalDays = freqKind === 'daily' && typeof fc?.interval_days === 'number' && fc.interval_days > 1
     ? fc.interval_days : null;
-  const perWeek = intervalDays !== null ? occurrencesPerWeek(fc) : null;
+  // R01.02 — fixed month days and yearly dates are read off the same anchors
+  // by how often they happen, like an interval (a yearly date clamps to monthly).
+  const byOccurrence = intervalDays !== null || freqKind === 'yearly' || (freqKind === 'monthly' && !!fc?.month_days?.length);
+  const perWeek = byOccurrence ? occurrencesPerWeek(fc) : null;
   const freqFactor = perWeek !== null ? intervalFreqFactor(perWeek) : (FREQ_FACTOR[freqKind] ?? 1.0);
   const base = diff * freqFactor;
   const behaviorBonus = input.behavior_type === 'negative' ? 1.5 : 0;

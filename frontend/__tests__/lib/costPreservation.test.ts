@@ -48,7 +48,10 @@ describe('R01.02-d2 A7 — cost and load are unchanged for every input without a
     habitLoad: LOAD_CORPUS.map((h) => habitLoad(h)),
     habitLoadPoints: LOAD_CORPUS.map((h) => habitLoadPoints(h)),
     dailyLoad: DAY_CORPUS.map((d) => dailyLoad(d)),
-    costBreakdown: COST_CORPUS.map((c) => costBreakdown(c)),
+    // R01.02: the corpus's unknown-kind case was renamed 'yearly' -> 'fortnightly'
+    // (yearly became a real kind). The breakdown echoes the kind label, so it is
+    // mapped back before hashing; every number is pinned exactly as before.
+    costBreakdown: COST_CORPUS.map((c) => { const r = costBreakdown(c); return (r.freqKind as string) === 'fortnightly' ? { ...r, freqKind: 'yearly' } : r; }),
     computeWillpowerCost: COST_CORPUS.map((c) => computeWillpowerCost(c)),
   };
 

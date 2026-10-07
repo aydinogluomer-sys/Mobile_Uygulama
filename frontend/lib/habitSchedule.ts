@@ -216,7 +216,11 @@ export type ScheduleKind =
   | { readonly kind: 'weekly_days'; readonly days: number[] }
   | { readonly kind: 'weekly_count'; readonly count: number }
   | { readonly kind: 'monthly_count'; readonly count: number }
-  | { readonly kind: 'every_n_days'; readonly intervalDays: number };
+  | { readonly kind: 'every_n_days'; readonly intervalDays: number }
+  /** R01.02 — ayın sabit günleri; kısa ay politikası açık. */
+  | { readonly kind: 'monthly_days'; readonly days: number[]; readonly shortMonth: 'skip' | 'last_day' }
+  /** R01.02 — yılda bir sabit tarih; 29 Şubat politikası açık. */
+  | { readonly kind: 'yearly_date'; readonly month: number; readonly day: number; readonly leap: 'feb28' | 'mar1' | 'skip' };
 
 /**
  * `habit.frequency_config`'i beş zamanlama ŞEKLİNE sınıflandırır.
@@ -263,7 +267,14 @@ export function scheduleKind(habit: Habit): ScheduleKind {
     return { kind: 'weekly_count', count: typeof count === 'number' && count > 0 ? Math.floor(count) : 0 };
   }
 
+  if (kind === 'yearly') {
+    return { kind: 'yearly_date', month: fc?.month ?? 1, day: fc?.day ?? 1, leap: fc?.leap_day ?? 'skip' };
+  }
+
   // kind === 'monthly'
+  if (fc?.month_days && fc.month_days.length > 0) {
+    return { kind: 'monthly_days', days: fc.month_days, shortMonth: fc.short_month ?? 'skip' };
+  }
   const count = fc?.count;
   return { kind: 'monthly_count', count: typeof count === 'number' && count > 0 ? Math.floor(count) : 0 };
 }
@@ -280,6 +291,11 @@ export function scheduleKind(habit: Habit): ScheduleKind {
 function dueOnExtended(habit: Habit, date: Date): boolean {
   habit = habitOn(habit, date); // R01.05
   const sk = scheduleKind(habit);
+
+  // R01.02 — fixed calendar days. The envelope (creation, end condition,
+  // range, dated break) first, then the day rule.
+  if (sk.kind === 'monthly_days') return withinLifetime(habit, date) && monthDayMatches(date, sk.days, sk.shortMonth);
+  if (sk.kind === 'yearly_date') return withinLifetime(habit, date) && yearlyDateMatches(date, sk.month, sk.day, sk.leap);
 
   if (sk.kind === 'every_n_days') {
     if (!isDueOn(habit, date)) return false; // temel korumalar (behavior_type/created_at/end_condition/aralık) önce
@@ -303,6 +319,42 @@ function dueOnExtended(habit: Habit, date: Date): boolean {
   }
 
   return isDueOn(habit, date); // daily / weekly_days — davranış değişmedi (aralık zarfı isDueOn içinde)
+}
+
+/** Days in the local month of `date`. */
+function daysInMonth(y: number, m0: number): number {
+  return new Date(y, m0 + 1, 0).getDate();
+}
+
+/**
+ * R01.02 — is `date` one of the month's fixed days?
+ *
+ * A day the month does not have (31 in April, 29-31 in February) follows the
+ * habit's EXPLICIT policy: `skip` -- that month has no such day; `last_day`
+ * -- it moves to the month's last day. Two days that both move to the last
+ * day (30 and 31 in February) are still ONE occurrence that day.
+ */
+export function monthDayMatches(date: Date, days: readonly number[], policy: 'skip' | 'last_day'): boolean {
+  const d = date.getDate();
+  const last = daysInMonth(date.getFullYear(), date.getMonth());
+  if (days.includes(d)) return true;
+  return policy === 'last_day' && d === last && days.some((x) => x > last);
+}
+
+const isLeapYear = (y: number) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+
+/**
+ * R01.02 — is `date` the habit's yearly date? 29 February in a non-leap year
+ * follows its explicit policy: 28 Feb, 1 Mar, or skip that year.
+ */
+export function yearlyDateMatches(date: Date, month: number, day: number, leap: 'feb28' | 'mar1' | 'skip'): boolean {
+  const y = date.getFullYear(), m = date.getMonth() + 1, d = date.getDate();
+  if (month === 2 && day === 29 && !isLeapYear(y)) {
+    if (leap === 'feb28') return m === 2 && d === 28;
+    if (leap === 'mar1') return m === 3 && d === 1;
+    return false;
+  }
+  return m === month && d === day;
 }
 
 /** Sayaç-tabanlı (weekly_count/monthly_count) bir alışkanlığın değerlendirildiği pencere. */
@@ -655,9 +707,8 @@ function periodCompletionRate(
  *                                  no day is an obligation, so no day is a miss.
  *   fixed weekdays                 only the configured days (unchanged)
  *   daily / every N days / date range   as today (`dueOnExtended`)
- *
- * There is no yearly-date mode in the schema or in `scheduleKind`; none is
- * fabricated here.
+ *   fixed month days / yearly date      R01.02, via `dueOnExtended` with their
+ *                                  explicit short-month / leap-year policy
  */
 export function isEligibleOn(habit: Habit, date: Date): boolean {
   habit = habitOn(habit, date); // R01.05

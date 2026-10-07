@@ -45,7 +45,10 @@ export const FREQ_CORPUS: (FrequencyConfig | null | undefined)[] = [
   { kind: 'monthly', count: 10 },
   { kind: 'monthly', count: 31 },
   { kind: 'monthly', count: 10, ...R },
-  { kind: 'yearly' } as unknown as FrequencyConfig,
+  // An UNKNOWN kind (falls to the default branch). Was `'yearly'` until R01.02
+  // made yearly a real kind; the case is still the unknown-kind fallback, so the
+  // pinned outputs (and their sha256) are unchanged.
+  { kind: 'fortnightly' } as unknown as FrequencyConfig,
 ];
 
 const DIFFICULTIES = [1, 3, 5];
