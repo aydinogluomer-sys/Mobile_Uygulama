@@ -42,7 +42,15 @@ describe('R05.06 — a break is not focus and earns nothing', () => {
   it('only a work phase writes a focus session', () => {
     const body = store.slice(store.indexOf('async function advancePhase('));
     expect(body).toMatch(/if \(phase === 'work'\) \{\s*const selectedTask[\s\S]*?await completeWorkPhase\(/);
-    expect(body.match(/completeWorkPhase\(/g)).toHaveLength(1);
+    // Every session write sits under a work-phase condition (the pomodoro, and
+    // since R03.03 the small step) -- the nearest `if (` before each call.
+    const calls = [...body.matchAll(/completeWorkPhase\(/g)].map((m) => m.index!);
+    expect(calls.length).toBeGreaterThanOrEqual(1);
+    for (const at of calls) {
+      const before = body.slice(0, at);
+      const cond = before.slice(before.lastIndexOf('if ('));
+      expect(cond.split('\n')[0]).toMatch(/phase === 'work'/);
+    }
   });
   it('neither focus surface awards XP', () => {
     for (const p of ['services/focusService.ts', 'store/focusStore.ts', 'store/deepWorkStore.ts', 'repositories/deepWorkRepository.ts']) {

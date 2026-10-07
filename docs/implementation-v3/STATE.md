@@ -131,6 +131,16 @@ r05_06_duration_contract: DONE (P4, 2026-10-07) -- lib/focusDuration.ts tek sür
   pomodoro hem elle giren kullanıcı birleşik toplamda iki kez sayılırdı. Hiçbir odak yüzeyi XP vermez
   (guard). Testler lib/focusDuration (8), repo/focusDurationContract (7; eski kodda 5 kırmızı).
   Mutasyonlar 4/4.
+r03_03_small_start: DONE (P2, 2026-10-07) -- Bugün'deki her açık görevde 'küçük başla' (play) ->
+  SmallStartSheet: ASIL İŞ salt-okunur, İLK ADIM kullanıcı yazar (boş adım reddedilir: kısa
+  zamanlayıcılı aynı görev olurdu), süre 2/5/10/15/25 dk -> focusStore.startSmallStep -> odak
+  sekmesi. Adım kendi uzunluğuyla (ayar değil) KENDİ odak oturumu; bitince tek focus_sessions satırı
+  adımın başlığıyla, hiçbir focus task kredilenmez/otomatik kapanmaz, mola başlamaz, ana görev HİÇ
+  yazılmaz (focusStore görev katmanına erişmez -- guard). Açık oturum varken reddedilir. Duraklatma
+  aktif süreye girmez (KD-03 saati); app kill sonrası adım anlık görüntüden geri gelir. Başlamadan
+  hiçbir kayıt/XP/FP yok. Odak ekranı 'KÜÇÜK ADIM · N dk' + 'Asıl iş: X — bu adım onu tamamlamaz'.
+  Yan düzeltme: halka ilerlemesi açık oturumun kendi planını (clock.plannedSeconds) kullanır.
+  Testler lib/smallStart (10), store/focusSmallStep (10), repo/smallStartWired (6). Mutasyonlar 7/7.
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

@@ -57,11 +57,13 @@ export async function completeWorkPhase(params: {
   plannedSeconds: number;
   completedSeconds: number;
   autoCheckTasks: boolean;
+  /** R03.03 — a small step's own title, for a session with no focus task. */
+  title?: string | null;
 }): Promise<WorkPhaseResult> {
   const now = new Date().toISOString();
   const session = await insertFocusSession({
     taskId: params.task?.id ?? null,
-    taskTitle: params.task?.title ?? null,
+    taskTitle: params.task?.title ?? params.title ?? null,
     mode: 'work',
     startedAt: now,
     endedAt: now,

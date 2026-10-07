@@ -34,7 +34,7 @@ function pad(n: number) { return String(n).padStart(2, '0'); }
 export default function FocusScreen() {
   const {
     phase, status, secondsLeft, sessionsCompleted, selectedTaskId,
-    focusTasks, settings, justCompleted,
+    focusTasks, settings, justCompleted, clock, smallStep,
     start, pause, reset, setPhase,
     fetchFocusTasks, addFocusTask, removeFocusTask, completeFocusTask, selectTask,
     updateSettings, loadSettings, restoreSession, clearJustCompleted,
@@ -58,7 +58,9 @@ export default function FocusScreen() {
     shortBreak: settings.shortBreakMinutes * 60,
     longBreak: settings.longBreakMinutes * 60,
   };
-  const totalSeconds = customDurations[phase as keyof typeof customDurations];
+  // The open session's own plan (a small step, or settings edited mid-session),
+  // else the configured length.
+  const totalSeconds = clock?.plannedSeconds ?? customDurations[phase as keyof typeof customDurations];
   const progressPct = ((totalSeconds - secondsLeft) / totalSeconds) * 100;
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
@@ -102,8 +104,9 @@ export default function FocusScreen() {
 
   function handleStartPause() {
     if (status === 'running') { haptic.light(); pause(); return; }
-    // Çalışma fazında: önce ne üzerine odaklanılacağı eklenip seçilmeli
-    if (phase === 'work' && !selectedTaskId) {
+    // Çalışma fazında: önce ne üzerine odaklanılacağı eklenip seçilmeli.
+    // R03.03 — a small step already names what it is about.
+    if (phase === 'work' && !selectedTaskId && !smallStep) {
       haptic.light();
       if (focusTasks.length === 0) {
         setStartHint('Önce ne üzerine odaklanacağını ekle, sonra başlat.');
@@ -167,8 +170,14 @@ export default function FocusScreen() {
             </ProgressRing>
           </View>
 
-          {/* Seçili görev */}
-          {selectedTask ? (
+          {/* R03.03 — a small step shows itself and its task, kept apart */}
+          {smallStep ? (
+            <View style={[s.selectedTask, { borderColor: phaseColor + '40', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }]}>
+              <Text style={s.stepEyebrow}>KÜÇÜK ADIM · {smallStep.minutes} dk</Text>
+              <Text style={s.selectedTaskTitle} numberOfLines={2}>{smallStep.title}</Text>
+              <Text style={s.stepParent} numberOfLines={1}>Asıl iş: {smallStep.parent.title} — bu adım onu tamamlamaz</Text>
+            </View>
+          ) : selectedTask ? (
             <View style={[s.selectedTask, { borderColor: phaseColor + '40' }]}>
               <View style={[s.selectedTaskDot, { backgroundColor: phaseColor }]} />
               <Text style={s.selectedTaskTitle} numberOfLines={1}>{selectedTask.title}</Text>
@@ -375,6 +384,9 @@ const s = StyleSheet.create({
     backgroundColor: colors.bgElevated, borderRadius: 12, padding: 10, borderWidth: 1, marginBottom: 8,
   },
   selectedTaskDot: { width: 8, height: 8, borderRadius: 4 },
+  // R03.03
+  stepEyebrow: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint },
+  stepParent: { fontSize: 12, color: colors.textFaint },
   selectedTaskTitle: { flex: 1, fontSize: 14, color: colors.neutral200, fontWeight: '500' },
   pomodoroCount: { fontSize: 12, color: colors.textFaint },
   noTaskHint: { fontSize: 13, color: colors.textGhost, marginBottom: 8 },

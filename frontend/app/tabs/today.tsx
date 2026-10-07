@@ -15,6 +15,9 @@ import MetricGrid, { type Metric } from '../../components/today/MetricGrid';
 import NextUpStrip, { type NextUpItem } from '../../components/today/NextUpStrip';
 import InlineComposer from '../../components/InlineComposer';
 import RecoveryRailCard from '../../components/today/RecoveryRailCard';
+// R03.03 — start small: first step of a task as its own focus session.
+import SmallStartSheet from '../../components/SmallStartSheet';
+import type { SmallStepParent } from '../../lib/smallStart';
 import { buildTodayNarrative } from '../../lib/todayNarrative';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
@@ -241,6 +244,7 @@ export default function TodayScreen() {
   const [periodLogs, setPeriodLogs] = useState<ReviewLogRow[] | null>(null);
   // R03.02 — the light-day sheet: which of today's open habits the user is setting aside.
   const [lightDayPick, setLightDayPick] = useState<Set<string> | null>(null);
+  const [smallStartFor, setSmallStartFor] = useState<SmallStepParent | null>(null);
   const [lightDaySaving, setLightDaySaving] = useState(false);
 
   // Toplam aktif — YALNIZ "hiç ritüel yok" boş-durumunu ayırt etmek için
@@ -484,6 +488,14 @@ export default function TodayScreen() {
                             {t.due_date === today ? 'Bugün' : t.due_date}
                           </Text>
                         )}
+                        <TouchableOpacity
+                          onPress={() => setSmallStartFor({ kind: 'task', id: t.id, title: t.title })}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${t.title} için küçük başla`}
+                        >
+                          <Ionicons name="play-circle-outline" size={20} color={colors.textFaint} />
+                        </TouchableOpacity>
                       </View>
                     </Card>
                   ))}
@@ -641,6 +653,17 @@ export default function TodayScreen() {
       </ScrollView>
 
       {/* R03.02 — "Bugün daha az yapabilirim" */}
+      <SmallStartSheet
+        parent={smallStartFor}
+        onClose={() => setSmallStartFor(null)}
+        onStart={(parent, draft) => {
+          // Starts a focus session only; the task itself is not written.
+          const started = useFocusStore.getState().startSmallStep(parent, draft);
+          if (started) { setSmallStartFor(null); router.push('/tabs/focus' as any); }
+          return started;
+        }}
+      />
+
       <Modal visible={lightDayPick !== null} transparent animationType="slide" onRequestClose={() => setLightDayPick(null)}>
         <View style={s.sheetOverlay}>
           <View style={s.sheet}>

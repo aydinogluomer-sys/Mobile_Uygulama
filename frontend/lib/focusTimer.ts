@@ -20,6 +20,7 @@
  *
  * Pure: every function takes `now` (epoch ms) and returns a new value.
  */
+import { isSmallStep, type SmallStep } from './smallStart';
 
 export type TimerClock = {
   /** The phase's planned length, fixed when the session starts. */
@@ -92,6 +93,8 @@ export type SessionSnapshot = {
    * the time between the app dying and coming back is not focus.
    */
   lastSeenAt: number;
+  /** R03.03 — the small step this session is, if it is one. */
+  step?: SmallStep;
 };
 
 export function snapshotOf(params: {
@@ -100,8 +103,10 @@ export function snapshotOf(params: {
   sessionStartedAt: string;
   sessionsCompleted: number;
   now: number;
+  step?: SmallStep | null;
 }): SessionSnapshot {
   return {
+    ...(params.step ? { step: params.step } : {}),
     v: SESSION_SNAPSHOT_VERSION,
     phase: params.phase,
     clock: params.clock,
@@ -131,7 +136,9 @@ export function parseSnapshot(raw: string | null): SessionSnapshot | null {
   if (!c || !isNum(c.plannedSeconds) || c.plannedSeconds <= 0) return null;
   if (!isNum(c.accumulatedMs) || c.accumulatedMs < 0) return null;
   if (c.runningSince !== null && !isNum(c.runningSince)) return null;
+  if (o.step !== undefined && !isSmallStep(o.step)) return null;
   return {
+    ...(o.step !== undefined ? { step: o.step as SmallStep } : {}),
     v: SESSION_SNAPSHOT_VERSION,
     phase: o.phase,
     clock: { plannedSeconds: c.plannedSeconds, accumulatedMs: c.accumulatedMs, runningSince: c.runningSince },

@@ -14,6 +14,8 @@ import {
   startClock, pauseClock, resumeClock, clockFromRemaining, completedSeconds as clockCompletedSeconds,
   remainingSeconds, snapshotOf, parseSnapshot, restoredClock, type TimerClock,
 } from '../lib/focusTimer';
+// R03.03 — a small step is a focus session of its own, separate from its task.
+import { validateSmallStep, type SmallStep, type SmallStepParent, type SmallStepDraft } from '../lib/smallStart';
 
 type Phase = 'work' | 'shortBreak' | 'longBreak';
 type Status = 'idle' | 'running' | 'paused';
@@ -140,6 +142,8 @@ type FocusStore = {
   sessionStartedAt: string | null;
   /** R05.03 — the session's running segments; null when no session is open. */
   clock: TimerClock | null;
+  /** R03.03 — set while the open session is a small step. */
+  smallStep: SmallStep | null;
   settings: FocusSettings;
 
   // Tamamlanan seans sinyali (UI 'Seans Tamamlandı' raporunu açar)
@@ -159,6 +163,11 @@ type FocusStore = {
 
   // Timer actions
   start: () => void;
+  /**
+   * R03.03 — start a small step as a focus session of its own length. Refused
+   * (false) while another session is open or when the draft is not a step.
+   */
+  startSmallStep: (parent: SmallStepParent, draft: SmallStepDraft) => boolean;
   pause: () => void;
   reset: () => void;
   tick: () => void;
@@ -177,11 +186,11 @@ let lastHeartbeat = 0;
 /** One `nextPhase` at a time: ticks keep firing while it awaits the write. */
 let advancing = false;
 
-function persistSession(st: Pick<FocusStore, 'phase' | 'clock' | 'sessionStartedAt' | 'sessionsCompleted'>): void {
+function persistSession(st: Pick<FocusStore, 'phase' | 'clock' | 'sessionStartedAt' | 'sessionsCompleted' | 'smallStep'>): void {
   if (!st.clock || !st.sessionStartedAt) return;
   const now = Date.now();
   lastHeartbeat = now;
-  const snap = snapshotOf({ phase: st.phase, clock: st.clock, sessionStartedAt: st.sessionStartedAt, sessionsCompleted: st.sessionsCompleted, now });
+  const snap = snapshotOf({ phase: st.phase, clock: st.clock, sessionStartedAt: st.sessionStartedAt, sessionsCompleted: st.sessionsCompleted, now, step: st.smallStep });
   AsyncStorage.setItem(SESSION_KEY, JSON.stringify(snap)).catch(() => {});
 }
 
@@ -196,6 +205,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   sessionsCompleted: 0,
   sessionStartedAt: null,
   clock: null,
+  smallStep: null,
   settings: { ...DEFAULT_SETTINGS },
   justCompleted: null,
   focusTasks: [],
@@ -243,6 +253,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
         secondsLeft: remainingSeconds(clock, Date.now()),
         sessionStartedAt: snap.sessionStartedAt,
         sessionsCompleted: Math.max(get().sessionsCompleted, snap.sessionsCompleted),
+        smallStep: snap.step ?? null,
       });
       persistSession(get());
     } catch { /* yoksay */ }
@@ -280,6 +291,32 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
       });
     }
   },
+  startSmallStep: (parent, draft) => {
+    if (get().status !== 'idle') return false;
+    const check = validateSmallStep(parent, draft);
+    if (!check.ok) return false;
+    const now = Date.now();
+    const plannedSeconds = check.step.minutes * 60;
+    // The step's own length -- not the configured pomodoro -- and no focus
+    // task: the step is not the task and does not credit one.
+    set({
+      phase: 'work',
+      status: 'running',
+      smallStep: check.step,
+      clock: startClock(plannedSeconds, now),
+      secondsLeft: plannedSeconds,
+      sessionStartedAt: new Date(now).toISOString(),
+    });
+    persistSession(get());
+    emitAnalytics('focus_started', {
+      phase: PHASE_TOKEN.work,
+      planned_seconds: plannedSeconds,
+      task_id: null,
+      has_task: false,
+    });
+    return true;
+  },
+
   pause: () => {
     const { status, clock } = get();
     if (status !== 'running') return;
@@ -294,7 +331,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   reset: () => {
     const { phase, settings } = get();
     // KD-03: the configured length, not the 25/5/15 constants.
-    set({ status: 'idle', secondsLeft: phaseSeconds(settings, phase), sessionStartedAt: null, clock: null });
+    set({ status: 'idle', secondsLeft: phaseSeconds(settings, phase), sessionStartedAt: null, clock: null, smallStep: null });
     clearSession();
   },
 
@@ -324,7 +361,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   },
 
   setPhase: (phase) => {
-    set({ phase, secondsLeft: phaseSeconds(get().settings, phase), status: 'idle', sessionStartedAt: null, clock: null });
+    set({ phase, secondsLeft: phaseSeconds(get().settings, phase), status: 'idle', sessionStartedAt: null, clock: null, smallStep: null });
     clearSession();
   },
 
@@ -370,7 +407,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
 async function advancePhase(): Promise<void> {
   const set = useFocusStore.setState;
   const get = useFocusStore.getState;
-  const { phase, status, clock, sessionsCompleted, selectedTaskId, focusTasks, settings } = get();
+  const { phase, status, clock, sessionsCompleted, selectedTaskId, focusTasks, settings, smallStep } = get();
   const customDurations: Record<Phase, number> = {
     work: phaseSeconds(settings, 'work'),
     shortBreak: phaseSeconds(settings, 'shortBreak'),
@@ -383,6 +420,37 @@ async function advancePhase(): Promise<void> {
   // KD-03: running segments only -- pauses are not focus time.
   const completedSeconds = openClock ? clockCompletedSeconds(openClock, Date.now()) : plannedSeconds;
   clearSession();
+
+  // R03.03 — a small step records its own session and nothing else: no focus
+  // task is credited or auto-completed, the parent task is not touched, and
+  // no break follows. The user goes back to their plan.
+  if (smallStep && phase === 'work') {
+    const outcome = await completeWorkPhase({
+      task: undefined,
+      plannedSeconds,
+      completedSeconds,
+      autoCheckTasks: false,
+      title: smallStep.title,
+    });
+    if (outcome.sessionRecorded) {
+      emitAnalytics('focus_completed', {
+        phase: PHASE_TOKEN.work,
+        planned_seconds: plannedSeconds,
+        completed_seconds: completedSeconds,
+        session_number: sessionsCompleted + 1,
+        task_id: null,
+        has_task: false,
+      });
+    }
+    if (settings.soundOnFinish) { try { haptic.success(); } catch { /* yoksay */ } }
+    set({
+      phase: 'work', status: 'idle', secondsLeft: customDurations.work,
+      sessionsCompleted: sessionsCompleted + 1,
+      sessionStartedAt: null, clock: null, smallStep: null,
+      justCompleted: { taskTitle: smallStep.title, seconds: completedSeconds, sessionNumber: sessionsCompleted + 1 },
+    });
+    return;
+  }
 
   // Recording the session, crediting the task and auto-completing it are
   // one domain operation with an ordering rule (a task is never credited
