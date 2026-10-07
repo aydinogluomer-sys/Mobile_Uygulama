@@ -1,5 +1,5 @@
 import { colors } from '../../lib/tokens';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform,
@@ -9,7 +9,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { useJournalStore } from '../../store/journalStore';
 import { MOODS } from '../../lib/journalMoods';
-import { todayLocal, ymd, addDaysLocal } from '../../lib/date';
+import { todayLocal, ymd, addDaysLocal, parseLocalDate } from '../../lib/date';
+// R07.01 — offline draft, light formatting, tags.
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { currentUser } from '../../lib/session';
+import { draftDiffers, draftKey, extractTags, toggleListLine, wrapSelection, type JournalDraft } from '../../lib/journalText';
+// R07.02 — several check-ins a day, with the user's own moods.
+import MoodCheckins from '../../components/MoodCheckins';
 
 const PROMPTS = [
   'Bugün ne için minnettarsın?',
@@ -30,23 +36,71 @@ export default function JournalScreen() {
   const [content, setContent] = useState('');
   const [mood, setMood] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const selection = useRef({ start: 0, end: 0 });
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const todayEntry = getByDate(selectedDate);
   const randomPrompt = PROMPTS[new Date().getDay() % PROMPTS.length];
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
+  useEffect(() => { void currentUser().then((u) => setUserId(u?.id ?? null)); }, []);
 
+  // The day's entry -- or, if what was typed was never confirmed saved (an
+  // offline save, an app kill), the draft that holds it.
   useEffect(() => {
+    let alive = true;
     const e = getByDate(selectedDate);
     setContent(e?.content ?? '');
     setMood(e?.mood ?? null);
     setSaved(false);
-  }, [selectedDate, entries, getByDate]);
+    setSaveError(null);
+    setDraftRestored(false);
+    if (userId) {
+      void AsyncStorage.getItem(draftKey(userId, selectedDate)).then((raw) => {
+        if (!alive || !raw) return;
+        try {
+          const d = JSON.parse(raw) as JournalDraft;
+          if (draftDiffers(d, e)) { setContent(d.content); setMood(d.mood); setDraftRestored(true); }
+        } catch { /* unreadable draft: leave it */ }
+      }).catch(() => undefined);
+    }
+    return () => { alive = false; };
+  }, [selectedDate, entries, getByDate, userId]);
+
+  /** Every edit is kept on the device until a save is confirmed. */
+  function edit(nextContent: string, nextMood: number | null) {
+    setContent(nextContent);
+    setMood(nextMood);
+    setSaved(false);
+    if (!userId) return;
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    const key = draftKey(userId, selectedDate);
+    const draft: JournalDraft = { date: selectedDate, content: nextContent, mood: nextMood, savedAt: Date.now() };
+    draftTimer.current = setTimeout(() => { AsyncStorage.setItem(key, JSON.stringify(draft)).catch(() => undefined); }, 600);
+  }
 
   async function handleSave() {
-    await saveEntry(selectedDate, content, mood);
+    const res = await saveEntry(selectedDate, content, mood);
+    if (!res.ok) {
+      // Not saved: the text stays here and in the draft; nothing says otherwise.
+      setSaveError('Kaydedilemedi; yazdıkların bu cihazda taslak olarak duruyor. Bağlantı gelince tekrar dene.');
+      return;
+    }
+    setSaveError(null);
+    setDraftRestored(false);
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    if (userId) AsyncStorage.removeItem(draftKey(userId, selectedDate)).catch(() => undefined);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  }
+
+  function format(kind: 'bold' | 'italic' | 'list') {
+    const { start, end } = selection.current;
+    const r = kind === 'list' ? toggleListLine(content, start) : wrapSelection(content, start, end, kind === 'bold' ? '**' : '_');
+    edit(r.text, mood);
   }
 
   // Son 7 gün
@@ -76,7 +130,7 @@ export default function JournalScreen() {
           {/* Tarih seçici */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.dateRow}>
             {last7.map((d) => {
-              const dt = new Date(d);
+              const dt = parseLocalDate(d) ?? new Date();
               const hasEntry = !!getByDate(d);
               const isSelected = d === selectedDate;
               return (
@@ -101,6 +155,8 @@ export default function JournalScreen() {
             })}
           </ScrollView>
 
+          <MoodCheckins />
+
           {/* Ruh hali */}
           <View style={s.moodSection}>
             <Text style={s.moodTitle}>Bugün nasıl hissediyorsun?</Text>
@@ -109,7 +165,7 @@ export default function JournalScreen() {
                 <TouchableOpacity
                   key={m.value}
                   style={[s.moodBtn, mood === m.value && { backgroundColor: m.color + '25', borderColor: m.color }]}
-                  onPress={() => setMood(mood === m.value ? null : m.value)}
+                  onPress={() => edit(content, mood === m.value ? null : m.value)}
                   accessibilityRole="radio"
                   accessibilityLabel={`Ruh hali: ${m.label}`}
                   accessibilityState={{ selected: mood === m.value, checked: mood === m.value }}
@@ -130,16 +186,31 @@ export default function JournalScreen() {
               </View>
             )}
             <Text style={s.promptText}>{randomPrompt}</Text>
+            {draftRestored && (
+              <Text style={s.draftNote} accessibilityRole="alert">Kaydedilmemiş taslağın geri yüklendi.</Text>
+            )}
+            <View style={s.toolbar}>
+              <TouchableOpacity onPress={() => format('bold')} style={s.toolBtn} accessibilityRole="button" accessibilityLabel="Kalın"><Text style={[s.toolText, { fontWeight: '700' }]}>K</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => format('italic')} style={s.toolBtn} accessibilityRole="button" accessibilityLabel="İtalik"><Text style={[s.toolText, { fontStyle: 'italic' }]}>İ</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => format('list')} style={s.toolBtn} accessibilityRole="button" accessibilityLabel="Liste satırı"><Text style={s.toolText}>• Liste</Text></TouchableOpacity>
+              <Text style={s.toolHint}>#etiket yaz; bir alışkanlığın adı (#su-iç) onu bağlar</Text>
+            </View>
             <TextInput
               style={s.textArea}
               placeholder="Bugünü anlat..."
               placeholderTextColor="#56544B"
               multiline
               value={content}
-              onChangeText={setContent}
+              onChangeText={(t) => edit(t, mood)}
+              onSelectionChange={(e) => { selection.current = e.nativeEvent.selection; }}
               textAlignVertical="top"
             />
           </View>
+
+          {extractTags(content).length > 0 && (
+            <Text style={s.tagLine}>{extractTags(content).map((t) => `#${t}`).join('  ')}</Text>
+          )}
+          {saveError && <Text style={s.saveError} accessibilityRole="alert">{saveError}</Text>}
 
           {/* Kaydet */}
           <TouchableOpacity
@@ -252,6 +323,14 @@ const s = StyleSheet.create({
   entryDotActive: { backgroundColor: '#ec4899' },
 
   moodSection: { marginBottom: 20 },
+  // R07.01
+  draftNote: { fontSize: 12, color: colors.warning, marginBottom: 8 },
+  toolbar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' },
+  toolBtn: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
+  toolText: { fontSize: 13, color: colors.textDim },
+  toolHint: { fontSize: 11, color: colors.textFaint, flexShrink: 1 },
+  tagLine: { fontSize: 12, color: colors.textDim, marginTop: 8 },
+  saveError: { fontSize: 12, color: colors.error, marginTop: 8 },
   moodTitle: { fontSize: 14, color: colors.textDim, marginBottom: 12 },
   moodRow: { flexDirection: 'row', justifyContent: 'space-between' },
   moodBtn: {

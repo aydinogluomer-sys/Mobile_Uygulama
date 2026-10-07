@@ -85,6 +85,8 @@ const UI_ONLY = new Set([
   // R05.02 — device-local only (AsyncStorage, per account) until migration 030
   // is applied; its one server effect is a habit log through logStore.
   'routineRunnerStore.ts',
+  // R07.02 — device-local only (AsyncStorage, per account) until migration 031.
+  'moodStore.ts',
 ]);
 
 describe('services exist and hold real work', () => {

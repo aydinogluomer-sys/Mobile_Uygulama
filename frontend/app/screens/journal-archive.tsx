@@ -1,9 +1,13 @@
 import { colors, alphaHex } from '../../lib/tokens';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+// R07.01 — filter by #tag.
+import { tagCounts, withTag } from '../../lib/journalText';
+// R07.05 — mood next to habits, described, not explained.
+import MoodHabitCard from '../../components/MoodHabitCard';
 import { useJournalStore, JournalEntry } from '../../store/journalStore';
 import { moodMeta } from '../../lib/journalMoods';
 import { computeJournalStats } from '../../lib/journalStats';
@@ -26,11 +30,15 @@ function getSourceLabel(content: string): string | null {
 
 export default function JournalArchiveScreen() {
   const router = useRouter();
-  const { entries, fetchEntries } = useJournalStore();
+  const { entries: all, fetchEntries } = useJournalStore();
+  const params = useLocalSearchParams<{ tag?: string }>();
+  const [tag, setTag] = useState<string | null>(typeof params.tag === 'string' ? params.tag : null);
+  const tags = useMemo(() => tagCounts(all).slice(0, 12), [all]);
+  const entries = useMemo(() => (tag ? withTag(all, tag) : all), [all, tag]);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
-  const stats = useMemo(() => computeJournalStats(entries), [entries]);
+  const stats = useMemo(() => computeJournalStats(all), [all]);
 
   // Aya göre grupla (entries zaten tarih azalan sırada)
   const sections = useMemo<Section[]>(() => {
@@ -62,6 +70,23 @@ export default function JournalArchiveScreen() {
             <Stat value={avgMood?.emoji ?? '—'} label="ort. mod" />
           </View>
         </View>
+
+        <MoodHabitCard entries={all} />
+
+        {tags.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tagRow}>
+            {tag && (
+              <TouchableOpacity style={[s.tagChip, s.tagChipOn]} onPress={() => setTag(null)} accessibilityRole="button" accessibilityLabel="Etiket süzgecini kaldır">
+                <Text style={s.tagChipText}>#{tag} ✕</Text>
+              </TouchableOpacity>
+            )}
+            {tags.filter((t) => t.tag !== tag).map((t) => (
+              <TouchableOpacity key={t.tag} style={s.tagChip} onPress={() => setTag(t.tag)} accessibilityRole="button" accessibilityLabel={`#${t.tag} etiketli ${t.count} kayıt`}>
+                <Text style={s.tagChipText}>#{t.tag} · {t.count}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
         {entries.length === 0 ? (
           // Defterin sakin tonuna uyan editöryel boş durum (ikon kabı yok, serif italik)
@@ -137,6 +162,11 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 const s = StyleSheet.create({
+  // R07.01
+  tagRow: { gap: 8, paddingBottom: 12 },
+  tagChip: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: colors.border },
+  tagChipOn: { borderColor: colors.accent },
+  tagChipText: { fontSize: 12, color: colors.textDim },
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
 

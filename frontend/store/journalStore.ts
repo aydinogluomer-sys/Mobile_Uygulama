@@ -17,7 +17,8 @@ type JournalStore = {
   entries: JournalEntry[];
   loading: boolean;
   fetchEntries: () => Promise<void>;
-  saveEntry: (date: string, content: string, mood: number | null) => Promise<void>;
+  /** R07.01 — the outcome, so a failed save is never shown as saved. */
+  saveEntry: (date: string, content: string, mood: number | null) => Promise<{ ok: true } | { ok: false; error: string }>;
   appendEntry: (date: string, text: string) => Promise<void>;
   getByDate: (date: string) => JournalEntry | undefined;
 };
@@ -35,8 +36,9 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
 
   saveEntry: async (date, content, mood) => {
     const res = await upsertJournalEntry({ date, content, mood });
-    if (!res.ok) return;
+    if (!res.ok) return { ok: false, error: res.error };
     set((s) => mergeEntry(s.entries, res.data));
+    return { ok: true };
   },
 
   // Var olan günlük kaydının altına metin ekler (üzerine yazmaz).

@@ -8,6 +8,8 @@ import { format, startOfWeek, endOfWeek, subWeeks, eachDayOfInterval } from 'dat
 import type { Habit } from '../../lib/supabase';
 import { useTaskStore, type Task } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
+// R07.06 — next week's change as a real action, kept with the week.
+import NextActionPicker from '../../components/NextActionPicker';
 import { useJournalStore } from '../../store/journalStore';
 import {
   buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions,
@@ -413,6 +415,9 @@ export default function WeeklyReviewScreen() {
                 onChangeText={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
                 editable={isCurrentWeek}
               />
+              {question.key === 'next_week' && (
+                <NextActionPicker weekKey={weekKey} nextWeekText={answers.next_week ?? ''} editable={isCurrentWeek} />
+              )}
             </View>
           ))}
         </View>

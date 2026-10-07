@@ -262,6 +262,29 @@ p5_r04_notifications: DONE (P5, 2026-10-07; widget/Live Activity HARİÇ -- kaps
   Testler lib/reminderPlan (19), services/reminderService (10), repo/remindersWired (8).
   Mutasyonlar 16/16 (ilk turda S3 sağ -> 'izin geri alınınca temizlik' testi eklendi).
   Bulunan ve düzeltilen: buildReminderConfig tekrar eden saati kabul ediyordu.
+p6_r07_journal_moods: DONE (P6, 2026-10-07; R07.02/R07.06 cihaz-yerel + migration 031 yazıldı, UYGULANMADI).
+  R07.01: etiket (#kelime, Türkçe büyük/küçük harf birleşik), alışkanlık bağı (#alışkanlık-adı ->
+    okuyucuda alışkanlığa bağlantı), hafif biçimlendirme (# başlık, - liste, **kalın**, _italik_) --
+    hepsi METNİN İÇİNDE, şema değişmedi; editörde araç çubuğu, arşivde etiket süzgeci, okuyucuda
+    JournalBody. ÇEVRİMDIŞI TASLAK: her düzenleme hesap+gün anahtarına yazılır, onaylı kayıtta silinir,
+    farklıysa geri yüklenir. KUSUR DÜZELTİLDİ: kaydetme başarısızken ekran 'Kaydedildi' gösteriyordu
+    (store sessiz dönüyordu) -> artık sonuç döner, hata söylenir, metin taslakta kalır. Tarih düğmeleri
+    YYYY-MM-DD'yi UTC ayrıştırıyordu -> parseLocalDate.
+  R07.02: lib/moods + store/moodStore + MoodCheckins: kullanıcının duyguları (ad/emoji/değer 1-5),
+    günde çok kayıt (yoğunluk 1-3, not); KALICI KİMLİK -- yeniden adlandırma id'yi korur, her kayıt o
+    anki ad/değer ANLIK GÖRÜNTÜSÜNÜ taşır ('Huzurlu (şimdi: Dingin)'); eski 1-5 sayısı builtin-1..5'e
+    kalıcı eşli; yerleşikler düzenlenemez; tanımlar arşivlenir.
+  R07.05: lib/moodHabitRelation + MoodHabitCard (arşivde, son 60 gün, yerel veri, FP yok): yaptığın /
+    yapmadığın günlerde ortalama ruh hali; toplam <14 eşleşmiş gün ya da taraf başına <5 -> 'Yetersiz
+    veri' + sayılar; skip ve kaydı olmayan negatif alışkanlık günü dışarıda; cümle 'yalnız birlikte
+    görülme; yol açtığını göstermez' der (nedensellik sözcükleri test edilir). Check-in varsa günün
+    ruh hali onların ortalaması.
+  R07.06: NextActionPicker (haftalık review 'Gelecek hafta' altında): 'görev olarak ekle' GERÇEK görev
+    (taskStore/outbox, gelecek pazartesiye) ya da 'alışkanlığı düzenle' (alışkanlık ekranı; değişiklik
+    R01.05 ile sürümlü); seçim haftayla saklanır, sonraki review 'geçen hafta seçtiğin: ... — yapıldı /
+    henüz yapılmadı' der.
+  Testler lib/journalAndMoods (21), repo/journalP6Wired (9). Mutasyonlar 13/13. layerBoundary UI_ONLY'e
+  moodStore eklendi.
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

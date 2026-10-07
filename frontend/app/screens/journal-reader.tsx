@@ -5,7 +5,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+// R07.01 — formatting, tags and habit links in the reader.
+import JournalBody from '../../components/JournalBody';
+import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore, JournalEntry } from '../../store/journalStore';
 import { moodMeta } from '../../lib/journalMoods';
 import { EmptyState } from '../../components/ui';
@@ -120,6 +123,8 @@ export default function JournalReaderScreen() {
 }
 
 function Page({ entry }: { entry: JournalEntry }) {
+  const router = useRouter();
+  const habits = useHabitStore((st) => st.habits);
   const dt = parseDate(entry.date);
   const m = moodMeta(entry.mood);
   return (
@@ -142,7 +147,17 @@ function Page({ entry }: { entry: JournalEntry }) {
             </View>
           )}
 
-          <Text style={s.body}>{entry.content || '(boş sayfa)'}</Text>
+          {entry.content ? (
+            <JournalBody
+              content={entry.content}
+              habits={habits}
+              bodyStyle={s.body}
+              onOpenHabit={(id) => router.push(`/screens/habit-detail?id=${id}` as never)}
+              onTag={(t) => router.push(`/screens/journal-archive?tag=${encodeURIComponent(t)}` as never)}
+            />
+          ) : (
+            <Text style={s.body}>(boş sayfa)</Text>
+          )}
         </ScrollView>
       </View>
     </View>
