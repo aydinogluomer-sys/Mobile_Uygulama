@@ -10,6 +10,8 @@ import { useRouter } from 'expo-router';
 import { useProfileStore } from '../../store/profileStore';
 import { rankMeta, RANK_TIERS } from '../../lib/ranks';
 import XPDisplay from '../../components/XPDisplay';
+// R04.02 — device-wide reminder settings and the real permission state.
+import NotificationSettingsCard from '../../components/NotificationSettingsCard';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -38,6 +40,7 @@ export default function ProfileScreen() {
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={s.content}>
         <XPDisplay />
+        <NotificationSettingsCard />
 
         {/* Rütbe kartı */}
         {tier && profile && (

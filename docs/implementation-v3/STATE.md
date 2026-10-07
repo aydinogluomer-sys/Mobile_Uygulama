@@ -59,6 +59,7 @@ known_defects_bound_to_cards:
     what: resume `sessionStartedAt`'i yeniler; pause ayrılmaz; oturum kalıcı değil
     card: R05.03
   - id: KD-04
+    status: RESOLVED (P5/R04.01, 2026-10-07) -- DAILY tetik kaldırıldı; lib/reminderPlan planı (R01 motoru: takvim, aralık, ara/tatil, hedef sürümü; dolmuş dönem, kaydı olan gün, waiting/eski-paused, gün grubu, sessiz saat, geçmiş saat elenir) önümüzdeki 7 günün TEK SEFERLİK tetiklerini verir; services/reminderService uzlaştırır. Ayrıntı: p5_r04_notifications
     where: frontend/lib/notifications.ts:82
     what: tek DAILY tetik; takvim tüketilmiyor
     card: R04.01
@@ -240,6 +241,27 @@ r05_runner: DONE-PENDING-MIGRATION (P4, 2026-10-07) -- R05.01/02/04/07 + R05.05 
   gerekçesiyle eklendi.
 new_stop_point_S13: expo-speech (sesli adım duyurusu, R05.05) -- yeni native bağımlılık, sahip onayı +
   development build gerekir. Onaylanmadıkça ekran okuyucu duyurusu + titreşim ile sınırlı.
+p5_r04_notifications: DONE (P5, 2026-10-07; widget/Live Activity HARİÇ -- kapsam eki).
+  R04.01: planlayıcı + uzlaştırma (istenen anahtar kümesi vs planlanmış; eski DAILY tetikler ve
+    kopyalar iptal; telafi hatırlatıcıları/ertelemeler/tanınmayanlar dokunulmaz). Açılışta, ön planda
+    (saat dilimi/DST de böylece), log ve alışkanlık listesi değişiminde çalışır; tek uçuş + bir
+    yeniden koşu, her geçişte GÜNCEL alışkanlıklarla. Eski schedule/cancel/syncAll adları korunup
+    'yeniden planla' isteğine çevrildi (store'lar ve testleri değişmedi).
+  R04.02: reminders jsonb geriye uyumlu genişledi (times[] en çok 4, days[]; time ilk saat olarak
+    kalır); ReminderEditor (habit-detail), NotificationSettingsCard (profil): sessiz saatler (gece
+    yarısını aşabilir; düşen hatırlatıcı gönderilmez, ertelenmez), kilit ekranında ad gizleme, GERÇEK
+    izin durumu -- izin kapalıyken 'çalışıyor' gösterilmez, bizim bekleyen tetiklerimiz temizlenir.
+  R04.03: bildirim düğmeleri Tamamla / Miktar gir / 10 dk ertele / Bugünü atla; yanıt anahtarı
+    (bildirim+eylem) işlenmeden ÖNCE saklanır -> iki teslim tek kayıt; ölçülebilir alışkanlık
+    bildirimden ASLA 'done' yazılmaz (miktar için uygulama açılır, KD-12); eylem sonrası yeniden plan.
+  R04.04: Android kanalı izin yolundan bağımsız oluşturulur (eskiden izin zaten verilmişse hiç
+    oluşmuyordu); OS bekleyen limiti için en yakın 56 tutulur, kalanı 'dropped' -> sonraki çalışmada.
+  R04.05: cihaz matrisi N/R (S8); hassas başlık gizleme var. Düğmeler opensAppToForeground:true
+    (arka planda JS'in çalışacağı varsayılmadı).
+  R04.06: konum/zincir/NFC tetikleri UI'da sunulmuyor (guard).
+  Testler lib/reminderPlan (19), services/reminderService (10), repo/remindersWired (8).
+  Mutasyonlar 16/16 (ilk turda S3 sağ -> 'izin geri alınınca temizlik' testi eklendi).
+  Bulunan ve düzeltilen: buildReminderConfig tekrar eden saati kabul ediyordu.
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

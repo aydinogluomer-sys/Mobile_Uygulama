@@ -46,6 +46,10 @@ import FrequencyEditor from '../../components/FrequencyEditor';
 import TimeOffSheet from '../../components/TimeOffSheet';
 // R01.04 — the steps one occurrence of this habit is made of.
 import ChecklistEditor from '../../components/ChecklistEditor';
+// R04.02 — several times a day and a day group, per habit.
+import ReminderEditor from '../../components/ReminderEditor';
+import { hasPermission } from '../../lib/notifications';
+import { reminderTimes } from '../../lib/reminderPlan';
 import { activePauseOn } from '../../lib/habitPauses';
 import { completionPercent, isMeasurableTracking } from '../../lib/habitEngine';
 import { habitStrength, type StrengthLog } from '../../lib/habitStrength';
@@ -279,6 +283,9 @@ export default function HabitDetailScreen() {
   const habit = habits.find((h) => h.id === id) ?? null;
   // R01.05 — this habit's current or upcoming break, and any holiday today.
   const [timeOffOpen, setTimeOffOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<boolean | null>(null);
+  useEffect(() => { void hasPermission().then(setNotifPermission); }, []);
 
   const [logs, setLogs] = useState<HabitDetailLogRow[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
@@ -510,6 +517,15 @@ export default function HabitDetailScreen() {
                 editLabel={ownBreak ? 'Arayı bitir' : 'Ara ver'}
                 editIcon={ownBreak ? 'play-outline' : 'cafe-outline'}
               />
+              <InfoRow
+                icon="notifications-outline"
+                label="Hatırlatıcı"
+                value={reminderTimes(habit).length > 0
+                  ? `${reminderTimes(habit).join(', ')}${notifPermission === false ? ' · izin kapalı' : ''}`
+                  : 'Kapalı'}
+                onEdit={() => setReminderOpen(true)}
+                editLabel="Hatırlatıcıyı düzenle"
+              />
               <InfoRow icon="compass-outline" label="Yaşam Alanı" value={area ? area.label : '—'} />
               <InfoRow icon="flash-outline" label="İrade Maliyeti" value={String(habit.willpower_cost)} />
               {habit.end_condition && (
@@ -703,6 +719,15 @@ export default function HabitDetailScreen() {
           </View>
         </View>
       </Modal>
+      {reminderOpen && (
+        <ReminderEditor
+          habit={habit}
+          permission={notifPermission}
+          onClose={() => setReminderOpen(false)}
+          onSave={async (config) => { await updateHabit(habit.id, { reminders: config }); setReminderOpen(false); }}
+        />
+      )}
+
       <TimeOffSheet
         visible={timeOffOpen}
         kind="pause"

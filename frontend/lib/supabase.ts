@@ -97,7 +97,12 @@ export type Habit = {
   goal_versions?: GoalVersion[];
 };
 
-export type ReminderConfig = { time: string; enabled: boolean } | null;
+/**
+ * `time` is the first (or only) reminder time. R04.02 adds, backward
+ * compatibly in the same jsonb: `times` (several times a day) and `days`
+ * (weekday indexes, 0 = Monday; empty/absent = every scheduled day).
+ */
+export type ReminderConfig = { time: string; enabled: boolean; times?: string[]; days?: number[] } | null;
 
 // NOT: "bu alışkanlık ölçülebilir mi" sorusunun tek cevabı
 // `lib/habitEngine.ts`'teki `isMeasurableTracking`. Buraya konmadı çünkü bu

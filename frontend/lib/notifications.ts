@@ -1,8 +1,22 @@
-// Yerel hatırlatıcı bildirimleri — expo-notifications
-// Günlük tekrarlı tetik; her alışkanlık için tek bildirim.
+// Yerel bildirimler — expo-notifications. (R04)
+//
+// KD-04: her alışkanlık için takvimden bağımsız TEK bir DAILY tetik vardı.
+// Artık alışkanlık hatırlatıcıları `lib/reminderPlan.ts`'in planından gelen
+// TEK SEFERLİK tetiklerdir ve `services/reminderService.reconcileReminders`
+// ile uzlaştırılır. Bu dosya yalnız işletim sistemi tarafıdır: izin, kanal,
+// kategori (eylem düğmeleri), listeleme, planlama ve iptal.
+//
+// `scheduleHabitReminder` / `cancelHabitReminder` / `syncAllReminders`
+// adları korunur (store'lar bunları çağırıyor) ama artık doğrudan tetik
+// kurmazlar: kayıtlı uzlaştırıcıdan bir uzlaştırma isterler. Uzlaştırıcı
+// `app/_layout.tsx`'te kaydedilir; kaydedilmemişse (testler) hiçbir şey olmaz.
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { Habit } from './supabase';
+import { parseTime, type PlannedReminder, type ReminderSettings } from './reminderPlan';
+import { CATEGORY_BINARY, CATEGORY_MEASURE, SNOOZE_MINUTES } from './notificationActions';
+
+export const HABIT_CHANNEL = 'habit-reminders';
 
 // Ön planda da bildirim gösterilsin
 Notifications.setNotificationHandler({
@@ -15,79 +29,136 @@ Notifications.setNotificationHandler({
 });
 
 let permissionAsked = false;
+let channelReady = false;
+
+/**
+ * R04.04 — the Android channel is created whatever the permission state.
+ * It used to be created only on the path that REQUESTED permission, so on a
+ * device where permission was already granted the channel never existed.
+ */
+export async function ensureChannel(): Promise<void> {
+  if (channelReady || Platform.OS !== 'android') return;
+  try {
+    await Notifications.setNotificationChannelAsync(HABIT_CHANNEL, {
+      name: 'Alışkanlık Hatırlatıcıları',
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+    channelReady = true;
+  } catch { /* yeniden denenir */ }
+}
 
 export async function ensurePermission(): Promise<boolean> {
+  await ensureChannel();
   try {
     const settings = await Notifications.getPermissionsAsync();
     if (settings.granted) return true;
     if (permissionAsked && settings.status === 'denied') return false;
     permissionAsked = true;
     const req = await Notifications.requestPermissionsAsync();
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('habit-reminders', {
-        name: 'Alışkanlık Hatırlatıcıları',
-        importance: Notifications.AndroidImportance.DEFAULT,
-      });
-    }
     return req.granted;
   } catch {
     return false;
   }
 }
 
-// Bildirim id'sini habit id'siyle eşleştirip saklamak yerine,
-// içeriğe habitId koyup iptalde filtreliyoruz.
-function parseTime(time: string): { hour: number; minute: number } | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
-  if (!m) return null;
-  const hour = parseInt(m[1], 10);
-  const minute = parseInt(m[2], 10);
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-  return { hour, minute };
+/** Has the user granted notifications? Read only -- never prompts. */
+export async function hasPermission(): Promise<boolean> {
+  try { return (await Notifications.getPermissionsAsync()).granted; } catch { return false; }
 }
 
-export async function cancelHabitReminder(habitId: string): Promise<void> {
+/** R04.03 — the action buttons on a reminder. */
+export async function ensureCategories(): Promise<void> {
   try {
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    await Promise.all(
-      scheduled
-        .filter((n) => n.content?.data?.habitId === habitId)
-        .map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier))
-    );
+    await Notifications.setNotificationCategoryAsync(CATEGORY_BINARY, [
+      { identifier: 'done', buttonTitle: 'Tamamla', options: { opensAppToForeground: true } },
+      { identifier: 'snooze', buttonTitle: `${SNOOZE_MINUTES} dk ertele`, options: { opensAppToForeground: true } },
+      { identifier: 'skip', buttonTitle: 'Bugünü atla', options: { opensAppToForeground: true } },
+    ]);
+    await Notifications.setNotificationCategoryAsync(CATEGORY_MEASURE, [
+      { identifier: 'measure', buttonTitle: 'Miktar gir', options: { opensAppToForeground: true } },
+      { identifier: 'snooze', buttonTitle: `${SNOOZE_MINUTES} dk ertele`, options: { opensAppToForeground: true } },
+      { identifier: 'skip', buttonTitle: 'Bugünü atla', options: { opensAppToForeground: true } },
+    ]);
+  } catch { /* kategori yoksa bildirim yine gelir, yalnız düğmesiz */ }
+}
+
+export async function listScheduled(): Promise<{ identifier: string; data: Record<string, unknown> | null }[]> {
+  try {
+    const all = await Notifications.getAllScheduledNotificationsAsync();
+    return all.map((n) => ({ identifier: n.identifier, data: (n.content?.data ?? null) as Record<string, unknown> | null }));
   } catch {
-    /* sessiz geç */
+    return [];
   }
 }
 
-export async function scheduleHabitReminder(habit: Habit): Promise<void> {
-  // Önce eskiyi temizle
-  await cancelHabitReminder(habit.id);
+export async function cancelScheduled(ids: readonly string[]): Promise<void> {
+  await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+}
 
-  const r = habit.reminders;
-  if (!r || !r.enabled || !r.time) return;
-  const parsed = parseTime(r.time);
-  if (!parsed) return;
+/** The lock-screen title: the habit's name, unless the user hid titles. */
+export function reminderTitle(habitName: string, settings: Pick<ReminderSettings, 'hideTitles'>): string {
+  return settings.hideTitles ? 'Hatırlatıcı' : habitName;
+}
 
-  const granted = await ensurePermission();
-  if (!granted) return;
-
+export async function scheduleReminder(p: PlannedReminder, habit: Pick<Habit, 'name'>, measurable: boolean, settings: ReminderSettings): Promise<boolean> {
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: habit.name,
-        body: 'Alışkanlık zamanı ⚡',
-        data: { habitId: habit.id },
+        title: reminderTitle(habit.name, settings),
+        body: settings.hideTitles ? 'Bir alışkanlığın zamanı.' : 'Alışkanlık zamanı.',
+        data: { kind: 'habit', key: p.key, habitId: p.habitId, day: p.day },
+        categoryIdentifier: measurable ? CATEGORY_MEASURE : CATEGORY_BINARY,
       },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour: parsed.hour,
-        minute: parsed.minute,
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: p.at,
+        ...(Platform.OS === 'android' ? { channelId: HABIT_CHANNEL } : {}),
       },
     });
+    return true;
   } catch {
-    /* sessiz geç */
+    return false;
   }
 }
+
+/** R04.03 — snooze: the same reminder once more, SNOOZE_MINUTES from now. */
+export async function scheduleSnooze(habitId: string, day: string, title: string, measurable: boolean, now: Date = new Date()): Promise<void> {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body: 'Ertelenen hatırlatıcı.',
+        data: { kind: 'snooze', habitId, day },
+        categoryIdentifier: measurable ? CATEGORY_MEASURE : CATEGORY_BINARY,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(now.getTime() + SNOOZE_MINUTES * 60_000),
+        ...(Platform.OS === 'android' ? { channelId: HABIT_CHANNEL } : {}),
+      },
+    });
+  } catch { /* sessiz geç */ }
+}
+
+// ── Uzlaştırma isteği (eski adlar) ─────────────────────────────────────────
+
+let reconciler: (() => Promise<unknown>) | null = null;
+
+/** Registered once by the root layout: runs a full reconcile. */
+export function registerReminderReconciler(fn: (() => Promise<unknown>) | null): void {
+  reconciler = fn;
+}
+
+function requestReconcile(): Promise<void> {
+  return reconciler ? reconciler().then(() => undefined, () => undefined) : Promise.resolve();
+}
+
+/** A habit's reminder changed: re-plan everything (one-off triggers, not a DAILY). */
+export async function scheduleHabitReminder(_habit: Habit): Promise<void> { await requestReconcile(); }
+/** A habit stopped being remindable: re-plan everything. */
+export async function cancelHabitReminder(_habitId: string): Promise<void> { await requestReconcile(); }
+/** Re-plan everything. */
+export async function syncAllReminders(_habits: Habit[]): Promise<void> { await requestReconcile(); }
 
 // ── Telafi hatırlatıcısı (tek seferlik, belirli gün+saat) ──────────────
 export async function cancelRecoveryReminder(planId: string): Promise<void> {
@@ -132,22 +203,10 @@ export async function scheduleRecoveryReminder(
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
         date: when,
+        ...(Platform.OS === 'android' ? { channelId: HABIT_CHANNEL } : {}),
       },
     });
   } catch {
     /* sessiz geç */
-  }
-}
-
-// Tüm aktif alışkanlıkların hatırlatıcılarını yeniden senkronla
-export async function syncAllReminders(habits: Habit[]): Promise<void> {
-  const granted = await ensurePermission();
-  if (!granted) return;
-  for (const h of habits) {
-    if (h.reminders?.enabled && (h.status === 'active' || h.status === 'waiting')) {
-      await scheduleHabitReminder(h);
-    } else {
-      await cancelHabitReminder(h.id);
-    }
   }
 }

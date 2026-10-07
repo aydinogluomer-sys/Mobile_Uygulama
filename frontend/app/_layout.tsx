@@ -11,6 +11,11 @@ import { useNotionSessionStore } from '../store/notionSessionStore';
 import { useLogStore } from '../store/logStore';
 // R02 — the task outbox is flushed on boot, on foreground and after a session refresh.
 import { useTaskStore } from '../store/taskStore';
+// R04 — reminders follow the schedule; their buttons act once.
+import * as Notifications from 'expo-notifications';
+import { useHabitStore } from '../store/habitStore';
+import { registerReminderReconciler } from '../lib/notifications';
+import { reconcileReminders, handleReminderResponse } from '../services/reminderService';
 import { resolveOnboardingRouting, useOnboardingStore } from '../store/onboardingStore';
 import OnboardingGate from '../components/onboarding/OnboardingGate';
 import { installGlobalErrorHandlers } from '../lib/crashReporting';
@@ -162,10 +167,40 @@ export default function RootLayout() {
       if (next === 'active') {
         void flushPendingSync();
         void useTaskStore.getState().flush();
+        // R04.04 — the plan is built from local dates at run time, so this
+        // also re-plans after a timezone or DST change.
+        void reconcileReminders(() => useHabitStore.getState().habits);
       }
     });
     return () => sub.remove();
   }, [loading, flushPendingSync]);
+
+  /**
+   * R04 — reminders. Signed in: the reconciler is registered (every store
+   * call that used to set a DAILY trigger now asks for a re-plan), a re-plan
+   * runs whenever the day's logs change (a done day stops being reminded),
+   * and reminder buttons are handled -- including the one that launched the
+   * app. Signed out: no reconciler, nothing planned.
+   */
+  useEffect(() => {
+    if (loading || !session) { registerReminderReconciler(null); return; }
+    const run = () => reconcileReminders(() => useHabitStore.getState().habits);
+    registerReminderReconciler(run);
+    void run();
+    const unsubLogs = useLogStore.subscribe((s, prev) => { if (s.logs !== prev.logs) void run(); });
+    // Status changes (activate / queue), breaks, holidays and goal versions
+    // all change the habit list: re-plan.
+    const unsubHabits = useHabitStore.subscribe((s, prev) => { if (s.habits !== prev.habits) void run(); });
+    const deps = {
+      get habits() { return useHabitStore.getState().habits; },
+      logHabit: (p: { habitId: string; date: Date; state: 'done' | 'partial' | 'skip' | 'miss' }) => useLogStore.getState().logHabit(p),
+      openMeasure: () => router.push('/tabs/timeline' as never),
+      reconcile: run,
+    };
+    const respSub = Notifications.addNotificationResponseReceivedListener((r) => { void handleReminderResponse(r, deps); });
+    void Notifications.getLastNotificationResponseAsync().then((r) => { if (r) void handleReminderResponse(r, deps); }).catch(() => undefined);
+    return () => { unsubLogs(); unsubHabits(); respSub.remove(); registerReminderReconciler(null); };
+  }, [loading, session, router]);
 
   useEffect(() => {
     if (loading) return;
