@@ -92,10 +92,15 @@ query is unbounded; this does not.
 | `reviewRepository.ts` | `upsertWeeklyReview` | `weekly_reviews` | no | SINGLE_ROW | yes |
 | `reviewRepository.ts` | `upsertWeeklyReview` | `weekly_reviews` | no | WRITE | — |
 | `routineRepository.ts` | `fetchRoutines` | `routines` | yes | BOUNDED_DOMAIN_WINDOW | yes |
+| `taskRepository.ts` | `deleteTaskIfPresent` | `tasks` | no | WRITE | yes |
+| `taskRepository.ts` | `fetchTaskRow` | `tasks` | no | SINGLE_ROW | yes |
 | `taskRepository.ts` | `fetchTasksPage` | `tasks` | yes | KEYSET_PAGE | yes |
 | `taskRepository.ts` | `insertSplitTasks` | `tasks` | no | WRITE | — |
 | `taskRepository.ts` | `insertTask` | `tasks` | no | WRITE | — |
+| `taskRepository.ts` | `insertTaskRow` | `tasks` | no | WRITE | — |
 | `taskRepository.ts` | `searchTasks` | `tasks` | yes | BOUNDED_SEARCH | yes |
+| `taskRepository.ts` | `updateTaskVersioned` | `tasks` | no | WRITE | yes |
+| `taskRepository.ts` | `updateTaskVersioned` | `tasks` | no | SINGLE_ROW | yes |
 | `webhookRepository.ts` | `fetchWebhooks` | `webhooks` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `webhookRepository.ts` | `insertWebhook` | `webhooks` | no | WRITE | — |
 | `willpowerRepository.ts` | `fetchOrCreateWillpowerState` | `willpower_state` | no | SINGLE_ROW | yes |
@@ -104,12 +109,12 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **93**
+- queries: **98**
 - collection SELECTs: **42**
 - KEYSET_PAGE: **7**
 - DATE_WINDOW: **10**
 - BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **2**
 - BOUNDED_DOMAIN_WINDOW: **19**
-- SINGLE_ROW: **12**
+- SINGLE_ROW: **14**
 - **UNCLASSIFIED: 0**

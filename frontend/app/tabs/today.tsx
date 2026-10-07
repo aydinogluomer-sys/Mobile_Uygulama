@@ -17,6 +17,8 @@ import InlineComposer from '../../components/InlineComposer';
 import RecoveryRailCard from '../../components/today/RecoveryRailCard';
 // R03.03 — start small: first step of a task as its own focus session.
 import SmallStartSheet from '../../components/SmallStartSheet';
+// R02 — task changes that need the user: retry or give up.
+import OutboxIssues from '../../components/OutboxIssues';
 import type { SmallStepParent } from '../../lib/smallStart';
 // R01.05 — habits on a dated break, and the holiday mode for all of them.
 import TimeOffSheet from '../../components/TimeOffSheet';
@@ -248,7 +250,7 @@ export default function TodayScreen() {
   // yapıldığı yerde durumu göstermek, kullanıcının "kaydedildi mi?" sorusunu
   // sorduğu tek yer.
   const { fetchLogsForDate, getLogForHabit, logHabit, pendingSyncCount, deadSyncCount } = useLogStore();
-  const { tasks, fetchTasks, toggleDone, dueToday, overdue, addTask } = useTaskStore();
+  const { tasks, fetchTasks, toggleDone, dueToday, overdue, addTask, sync: taskSync } = useTaskStore();
   const { state: wp, fetchToday } = useWillpowerStore();
   const { sessionsCompleted } = useFocusStore();
   const { plans: recoveryPlans, fetchPlans } = useRecoveryStore();
@@ -437,7 +439,8 @@ export default function TodayScreen() {
           <View style={s.mastheadActions}>
             {/* §18 senkron durumu — hiçbir şey beklemiyorsa kendini render
                 etmez, dolayısıyla burada koşul gerekmiyor. */}
-            <SyncStatusBadge pending={pendingSyncCount} dead={deadSyncCount} />
+            {/* R02 — habit-log queue + task outbox: one badge for everything unsent. */}
+            <SyncStatusBadge pending={pendingSyncCount + taskSync.pending} dead={deadSyncCount + taskSync.dead + taskSync.conflict} />
             <TouchableOpacity
               onPress={() => router.push('/screens/journal' as any)}
               activeOpacity={0.7}
@@ -479,6 +482,7 @@ export default function TodayScreen() {
                   <Text style={s.sectionAction}>Tümü →</Text>
                 </TouchableOpacity>
               </View>
+              <OutboxIssues />
               <View style={{ marginBottom: space.sm }}>
                 <InlineComposer
                   placeholder="Bugün için hızlı bir adım ekle…"

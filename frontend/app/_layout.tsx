@@ -9,6 +9,8 @@ import { colors } from '../lib/tokens';
 import { useThemeStore } from '../store/themeStore';
 import { useNotionSessionStore } from '../store/notionSessionStore';
 import { useLogStore } from '../store/logStore';
+// R02 — the task outbox is flushed on boot, on foreground and after a session refresh.
+import { useTaskStore } from '../store/taskStore';
 import { resolveOnboardingRouting, useOnboardingStore } from '../store/onboardingStore';
 import OnboardingGate from '../components/onboarding/OnboardingGate';
 import { installGlobalErrorHandlers } from '../lib/crashReporting';
@@ -84,10 +86,17 @@ export default function RootLayout() {
       // olursa op kuyrukta `pending` kalır ve bir sonraki tetikleyicide
       // yeniden denenir.
       void flushPendingSync();
+      // R02 — the task outbox: what the previous session could not deliver.
+      void useTaskStore.getState().flush();
     })();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      // R02.06 — the task outbox is per account. A sign-out drops this
+      // account's tasks from memory (its unsent work stays saved under its
+      // own key); a refreshed or new session may resume a paused outbox.
+      if (event === 'SIGNED_OUT') useTaskStore.getState().resetForAccount();
+      else if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') void useTaskStore.getState().authRefreshed();
       // Webhook kayıtları oturum boyunca bellekte tutuluyor (tamamlama yolu
       // her tik'te PostgREST'e gitmesin diye). Hesap değişince o liste artık
       // yanlış sahibe ait; bırakılırsa A'nın uç noktasına B'nin tamamlaması
@@ -150,7 +159,10 @@ export default function RootLayout() {
   useEffect(() => {
     if (loading) return;
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (next === 'active') void flushPendingSync();
+      if (next === 'active') {
+        void flushPendingSync();
+        void useTaskStore.getState().flush();
+      }
     });
     return () => sub.remove();
   }, [loading, flushPendingSync]);

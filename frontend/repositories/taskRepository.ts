@@ -8,7 +8,7 @@
 import { supabase } from '../lib/supabase';
 import type { Task } from '../store/taskStore';
 import {
-  currentUserId, deleteOwned, fetchPage, updateOwned,
+  currentUserId, deleteOwned, fetchPage, isTransportFailure, updateOwned,
   type Cursor, type Page, type RepoResult,
 } from './shared';
 
@@ -125,4 +125,72 @@ export async function searchTasks(query: string, limit = 8): Promise<RepoResult<
     .limit(Math.min(limit, 25));
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as unknown as Task[] };
+}
+
+// ---------------------------------------------------------------------------
+// R02.03 — outbox delivery. Each is safe to repeat: a create carries its
+// client-made id (a re-delivery hits the primary key, 23505), an update is
+// a set of absolute values checked against the version it was made on, and
+// a delete of a row that is already gone reports that rather than failing.
+// ---------------------------------------------------------------------------
+
+/**
+ * `expectedUserId` is the account the command was made by. If the session now
+ * belongs to someone else the write is refused here, before it can land in
+ * the wrong account (R02.06) -- the runner checks too; this is the backstop.
+ */
+function wrongAccount(expected: string | undefined, actual: string): RepoResult<never> | null {
+  return expected !== undefined && expected !== actual ? { ok: false, error: 'Oturum başka bir hesaba ait.', status: 401 } : null;
+}
+
+export async function insertTaskRow(row: Partial<Task> & { id: string }, expectedUserId?: string): Promise<RepoResult<Task>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const wrong = wrongAccount(expectedUserId, u.userId);
+  if (wrong) return wrong;
+  const { data, error, status } = await supabase
+    .from('tasks')
+    .insert({ ...row, user_id: u.userId })
+    .select(TASK_COLS)
+    .single();
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  return { ok: true, data: data as unknown as Task };
+}
+
+/** `row` null + `exists` true = the version moved on (conflict); `exists` false = deleted. */
+export async function updateTaskVersioned(
+  id: string, patch: Partial<Task>, baseVersion: string | null, expectedUserId?: string,
+): Promise<RepoResult<{ row: Task | null; exists: boolean }>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const wrong = wrongAccount(expectedUserId, u.userId);
+  if (wrong) return wrong;
+  let q = supabase.from('tasks').update(patch as Record<string, unknown>).eq('id', id).eq('user_id', u.userId);
+  if (baseVersion !== null) q = q.eq('updated_at', baseVersion);
+  const { data, error, status } = await q.select(TASK_COLS).maybeSingle();
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (data) return { ok: true, data: { row: data as unknown as Task, exists: true } };
+  const probe = await supabase.from('tasks').select('id').eq('id', id).eq('user_id', u.userId).maybeSingle();
+  if (probe.error) return { ok: false, error: probe.error.message, offline: isTransportFailure(probe.status), status: probe.status, code: probe.error.code };
+  return { ok: true, data: { row: null, exists: !!probe.data } };
+}
+
+/** One task as the server has it now, or null if it is gone. */
+export async function fetchTaskRow(id: string): Promise<RepoResult<Task | null>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error, status } = await supabase.from('tasks').select(TASK_COLS).eq('id', id).eq('user_id', u.userId).maybeSingle();
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  return { ok: true, data: (data ?? null) as unknown as Task | null };
+}
+
+export async function deleteTaskIfPresent(id: string, expectedUserId?: string): Promise<RepoResult<{ deleted: boolean }>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const wrong = wrongAccount(expectedUserId, u.userId);
+  if (wrong) return wrong;
+  const { data, error, status } = await supabase
+    .from('tasks').delete().eq('id', id).eq('user_id', u.userId).select('id');
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  return { ok: true, data: { deleted: !!data && data.length > 0 } };
 }

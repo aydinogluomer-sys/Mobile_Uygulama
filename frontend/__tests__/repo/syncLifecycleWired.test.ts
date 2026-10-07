@@ -293,8 +293,10 @@ describe('AC-W08 — the sync badge exists, is exported, and is mounted', () => 
     const jsxAt = today.indexOf('<SafeAreaView');
     const tag = today.slice(jsxAt).match(/<SyncStatusBadge[^>]*\/>/);
     expect(tag).not.toBeNull();
-    expect(tag![0]).toMatch(/pending=\{pendingSyncCount\}/);
-    expect(tag![0]).toMatch(/dead=\{deadSyncCount\}/);
+    // R02: the task outbox's counts are ADDED to the habit-log queue's; the
+    // queue's own counts must still be there, first, from the store.
+    expect(tag![0]).toMatch(/pending=\{pendingSyncCount(?: \+ taskSync\.pending)?\}/);
+    expect(tag![0]).toMatch(/dead=\{deadSyncCount(?: \+ taskSync\.dead \+ taskSync\.conflict)?\}/);
     // …and those names come from the store, not from local state.
     expect(today).toMatch(
       /const \{[^}]*\bpendingSyncCount\b[^}]*\bdeadSyncCount\b[^}]*\} = useLogStore\(\);/,

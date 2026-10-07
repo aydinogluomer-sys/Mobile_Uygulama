@@ -177,6 +177,39 @@ r01_04_habit_checklist: DONE-PENDING-MIGRATION (P2, 2026-10-07) -- alışkanlık
   MIGRATION: 029_habit_checklists.sql YAZILDI, UYGULANMADI (S1/S2); eksik tabloda fail-open,
   editör 'sunucu güncellemesini bekliyor' der. Testler lib/habitChecklist (14),
   store/habitStoreChecklist (6), repo/habitChecklistWired (8). Mutasyonlar 10/10.
+p3_r02_outbox: PARTIAL (P3, 2026-10-07) -- S7'ye bağlı olmayan kısım yapıldı.
+  R02.01 DONE: docs/implementation-v3/R02_OFFLINE_MATRIX.md (çekirdek yazma yolları, bugün/hedef).
+  R02.02 MEASURED, DECISION OPEN (S7): AsyncStorage tek-anahtar atomik, anahtarlar arası işlem yok;
+    aday expo-sqlite, EKLENMEDİ. lib/outboxStorage.OutboxStorage takas arayüzü.
+  R02.03 DONE (görevler): lib/outbox.ts genel motor (operationId idempotent; aynı id farklı payload
+    reddedilir; birleştirme; gönderilmemiş create+delete iptal; tombstone (son 200) geç düzenlemeyi
+    düşürür; dependsOn + varlık-sırası; 'sending' işareti uçuştaki komutu birleştirme/iptalden korur).
+    Yerel değişiklik + komut tek AsyncStorage anahtarına tek setItem (yerel kopya = outbox overlay).
+    taskStore yerel-önce: ekle/tamamla/düzenle/sil/taşı/arşiv outbox'tan; yeniden çekme overlay ile
+    gönderilmemişi kaybetmez. Görev create'i istemci uuid'si taşır (tekrar teslim 23505 = uygulandı).
+  R02.04 DONE: koşucu canlı durumla çalışır (anlık görüntü değil -- gönderim sürerken eklenen
+    düzenleme kaybolmuyordu -> düzeltildi), her teslimattan sonra kaydeder; offline deneme tüketmez,
+    auth tüm outbox'ı duraklatır (TOKEN_REFRESHED/SIGNED_IN ile sürer), rejected üstel geri çekilme ->
+    6 denemede dead, throw = rejected. flush uçuştakini bekler ve yeniden koşar (eskiden sessizce
+    dönüyordu). Bugün rozeti log kuyruğu + outbox sayar; OutboxIssues dead/çakışma için 'tekrar dene /
+    benimkini uygula / vazgeç' sunar.
+  R02.05 DONE (görevler): güncelleme updated_at sürümüne karşı koşullu; sürüm kaymışsa ÇAKIŞMA, sessiz
+    uygulanmaz -- ancak sunucu satırı zaten bizim değerlerimizi taşıyorsa (kayıp yanıt/çökme) 'uygulandı'.
+    Silinmiş satıra güncelleme 'gone' (diriltme yok).
+  R02.06 DONE: outbox hesap başına anahtar; koşucu HER komuttan önce oturumdaki kullanıcıyı sorar;
+    repository de beklenen hesabı doğrular (fixture A->B geçişinde A'nın görevinin B'ye yazıldığını
+    YAKALADI -> iki katmanda düzeltildi). Çıkışta bellek temizlenir, A'nın işi A'nın anahtarında kalır.
+  R02.07 BLOCKED (S7): SQLite'a taşıma.
+  R02.08 DONE (fixture): __tests__/fixtures/taskOutboxScenarios (8): uçak modu 100 karışık eylem + kill
+    + ağ dönüşü, 5x yeniden teslim tek satır, kayıp yanıt sonrası öz-çakışma yok, iki cihaz çakışması +
+    'benimkini uygula', silinmiş öğe geri doğmaz, hesap ayrımı, süresi dolmuş oturum. 5 ardışık koşu
+    kararlı. Cihaz kanıtı N/R (S8).
+  KALAN (S7 sonrası ya da sonraki fazlar): alışkanlık kaydı kuyruğunun genel outbox'a taşınması;
+    kontrol listesi/ara (migration 028/029 uygulanınca), günlük taslağı (R07.01), telafi, odak oturum
+    satırı outbox'a.
+  Testler lib/outbox (22), services/outboxRunner (13), fixtures/taskOutboxScenarios (8),
+  repo/taskOutboxWired (9); syncLifecycleWired rozet guard'ı niyetiyle yeniden hedeflendi.
+  Mutasyonlar 20/20.
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

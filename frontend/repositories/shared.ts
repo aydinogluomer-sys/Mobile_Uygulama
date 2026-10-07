@@ -21,7 +21,9 @@ export type RepoResult<T> =
    * (the offline queue) need that difference: a refusal should consume the
    * retry budget, a lost connection must not.
    */
-  | { ok: false; error: string; offline?: boolean };
+  | { ok: false; error: string; offline?: boolean; status?: number; code?: string };
+// `status` / `code` (R02.04) are optional and set only where a caller needs
+// to tell an expired session (401 / PGRST301) or a duplicate (23505) apart.
 
 export type ScopedUser =
   | { ok: true; userId: string }

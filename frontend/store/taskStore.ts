@@ -1,13 +1,20 @@
 import { create } from 'zustand';
 import {
-  createTask as insertTask,
   listTasks as fetchTasksPage,
-  patchTask as repoUpdateTask,
-  removeTask as repoDeleteTask,
-  setCompleted,
+  completionPatch,
+  newTaskRow,
+  deliverTaskCommand,
 } from '../services/taskService';
 import type { Cursor } from '../repositories/shared';
 import { todayLocal } from '../lib/date';
+// R02 — local-first writes through the durable, per-account outbox.
+import {
+  emptyOutbox, enqueue, overlay, summary, newOperationId, retry as retryCommand, discard as discardCommand, clearAuthBlock,
+  type EnqueueInput, type OutboxState, type OutboxSummary,
+} from '../lib/outbox';
+import { asyncStorageOutbox, type OutboxStorage } from '../lib/outboxStorage';
+import { flushOutbox } from '../services/outboxRunner';
+import { currentUser } from '../lib/session';
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 export type TaskPriority = 'high' | 'medium' | 'low' | 'none';
@@ -35,6 +42,18 @@ export type Task = {
 
 type TaskStore = {
   tasks: Task[];
+  /** R02 — this account's unsent task changes; null until loaded. */
+  outbox: OutboxState | null;
+  sync: OutboxSummary;
+  /** Send what is waiting (also called after every local change). */
+  flush: () => Promise<void>;
+  /** A conflicted/dead change: try again over the server's current version, or give it up. */
+  retryChange: (operationId: string) => Promise<void>;
+  discardChange: (operationId: string) => Promise<void>;
+  /** Credentials were refreshed: an outbox paused on `auth` may run again. */
+  authRefreshed: () => Promise<void>;
+  /** Signed out / switched account: drop this account's tasks from memory (its outbox stays saved under its key). */
+  resetForAccount: () => void;
   loading: boolean;
   loadingMore: boolean;
   hasMore: boolean;
@@ -55,8 +74,82 @@ type TaskStore = {
   dueToday: () => Task[];
 };
 
-export const useTaskStore = create<TaskStore>((set, get) => ({
+let storage: OutboxStorage = asyncStorageOutbox;
+/** The flush in progress, if any. A second call waits for it, then runs again. */
+let inFlight: Promise<void> | null = null;
+/** Tests and fixtures swap the persistence underneath; the app never does. */
+export function setTaskOutboxStorage(next: OutboxStorage): void { storage = next; }
+
+export const useTaskStore = create<TaskStore>((set, get) => {
+  /**
+   * The one way a task changes locally: the command is written to the outbox
+   * (one atomic save -- the outbox IS the local copy, see lib/outboxStorage),
+   * the screen shows it at once, then delivery is attempted. A change that
+   * cannot be saved locally is reported and not shown.
+   */
+  async function apply(input: Omit<EnqueueInput, 'operationId'>, local: (tasks: Task[]) => Task[]): Promise<boolean> {
+    if (!(await ensureOutbox())) { set({ error: 'Oturum bulunamadı.' }); return false; }
+    // Enqueue on the LIVE outbox and publish it before anything is awaited: a
+    // delivery in flight reads and writes the same state, and a result
+    // computed before an await would overwrite its progress.
+    const live = get().outbox!;
+    const res = enqueue(live, { ...input, operationId: newOperationId() }, live.userId, Date.now());
+    if (!res.ok) { set({ error: 'Değişiklik kaydedilemedi.' }); return false; }
+    set((st) => ({ outbox: res.state, sync: summary(res.state), tasks: local(st.tasks), error: null }));
+    try {
+      // Saves the whole current outbox -- including this change.
+      await storage.save(get().outbox ?? res.state);
+    } catch {
+      // Kept in memory and written by the next successful save; said out loud
+      // because until then an app kill would lose it.
+      set({ error: 'Değişiklik cihaza kaydedilemedi; uygulama kapanırsa kaybolabilir.' });
+    }
+    void get().flush();
+    return true;
+  }
+
+  async function runFlush(): Promise<void> {
+    const box = await ensureOutbox();
+    if (!box || box.commands.length === 0) return;
+    await flushOutbox({
+      // Always the live outbox: edits made while a request is out are kept.
+      get: () => get().outbox ?? box,
+      set: async (next) => {
+        set({ outbox: next, sync: summary(next) });
+        try { await storage.save(get().outbox ?? next); } catch { /* kept in memory; saved on the next change */ }
+      },
+    }, {
+      task: async (cmd) => {
+        const o = await deliverTaskCommand(cmd);
+        // The version our own delivery produced becomes the row's, so the
+        // next local edit is not reported as a conflict with ourselves.
+        if (o.kind === 'applied' && o.version) {
+          const v = o.version;
+          set((st) => ({ tasks: st.tasks.map((t) => (t.id === cmd.entityId ? { ...t, updated_at: v } : t)) }));
+        }
+        return o;
+      },
+    }, { currentUserId: async () => (await currentUser())?.id ?? null, now: () => Date.now() });
+  }
+
+  async function ensureOutbox(): Promise<OutboxState | null> {
+    const user = await currentUser();
+    if (!user) return null;
+    const cur = get().outbox;
+    // Another account's outbox is never used -- it stays saved under its own key.
+    if (cur && cur.userId === user.id) return cur;
+    const loaded = await storage.load(user.id);
+    // Someone else may have loaded (and changed) it while this was reading.
+    const now = get().outbox;
+    if (now && now.userId === user.id) return now;
+    set({ outbox: loaded, sync: summary(loaded) });
+    return loaded;
+  }
+
+  return {
   tasks: [],
+  outbox: null,
+  sync: summary(emptyOutbox('')),
   loading: false,
   loadingMore: false,
   hasMore: false,
@@ -65,14 +158,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   fetchTasks: async () => {
     set({ loading: true, error: null });
+    const box = await ensureOutbox();
     const res = await fetchTasksPage(null);
     if (!res.ok) return set({ loading: false, error: res.error });
     set({
-      tasks: res.data.rows,
+      // Unsent changes stay visible over a refetch until they are delivered.
+      tasks: box ? overlay(box, 'task', res.data.rows) : res.data.rows,
       cursor: res.data.nextCursor,
       hasMore: res.data.hasMore,
       loading: false,
     });
+    void get().flush();
   },
 
   loadMore: async () => {
@@ -93,37 +189,83 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  flush: async () => {
+    // A caller that asks to send now must not return before what is waiting
+    // was attempted: wait for the flush in progress, then run once more for
+    // anything enqueued meanwhile.
+    while (inFlight) await inFlight;
+    inFlight = runFlush();
+    try { await inFlight; } finally { inFlight = null; }
+  },
+
+  retryChange: async (operationId) => {
+    const box = get().outbox;
+    if (!box) return;
+    const cmd = box.commands.find((c) => c.operationId === operationId);
+    // Over the version the screen last saw from the server.
+    const base = cmd ? (get().tasks.find((t) => t.id === cmd.entityId)?.updated_at ?? null) : null;
+    const next = retryCommand(box, operationId, base);
+    await storage.save(next);
+    set({ outbox: next, sync: summary(next) });
+    void get().flush();
+  },
+
+  discardChange: async (operationId) => {
+    const box = get().outbox;
+    if (!box) return;
+    const next = discardCommand(box, operationId);
+    await storage.save(next);
+    set({ outbox: next, sync: summary(next) });
+    await get().fetchTasks();
+  },
+
+  authRefreshed: async () => {
+    const box = get().outbox;
+    if (box?.authBlocked) {
+      const next = clearAuthBlock(box);
+      try { await storage.save(next); } catch { /* in memory is enough to run now */ }
+      set({ outbox: next, sync: summary(next) });
+    }
+    void get().flush();
+  },
+
+  resetForAccount: () => {
+    set({ tasks: [], outbox: null, sync: summary(emptyOutbox('')), cursor: null, hasMore: false, error: null });
+  },
+
   addTask: async (t) => {
-    const res = await insertTask(t);
-    if (!res.ok) { set({ error: res.error }); return null; }
-    set((s) => ({ tasks: [res.data, ...s.tasks], error: null }));
-    return res.data;
+    const id = newOperationId();
+    const row = newTaskRow(id, t);
+    const box = await ensureOutbox();
+    if (!box) { set({ error: 'Oturum bulunamadı.' }); return null; }
+    const local = { ...(row as Task), user_id: box.userId };
+    const ok = await apply({ entity: 'task', entityId: id, kind: 'create', payload: row as Record<string, unknown> }, (ts) => [local, ...ts]);
+    return ok ? local : null;
   },
 
   updateTask: async (id, patch) => {
-    const res = await repoUpdateTask(id, patch);
-    if (!res.ok) { set({ error: res.error }); return; }
-    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? res.data : t)), error: null }));
+    const task = get().tasks.find((t) => t.id === id);
+    if (!task) return;
+    await apply(
+      { entity: 'task', entityId: id, kind: 'update', payload: patch as Record<string, unknown>, baseVersion: task.updated_at ?? null },
+      (ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+    );
   },
 
   removeTask: async (id) => {
-    const res = await repoDeleteTask(id);
-    // A failed delete leaves the row on screen; removing it regardless is how
-    // the previous version reported something that had not happened.
-    if (!res.ok) { set({ error: res.error }); return; }
-    set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id), error: null }));
+    await apply({ entity: 'task', entityId: id, kind: 'delete' }, (ts) => ts.filter((t) => t.id !== id));
   },
 
   toggleDone: async (id) => {
     const task = get().tasks.find((t) => t.id === id);
     if (!task) return;
     // `completed`, `status` and `completed_at` describe one fact across three
-    // columns, and different reports read different ones. Keeping them
-    // consistent is a domain invariant, so it lives in the service rather
-    // than being re-derived by whichever screen toggles a task.
-    const res = await setCompleted(id, !task.completed);
-    if (!res.ok) { set({ error: res.error }); return; }
-    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? res.data : t)), error: null }));
+    // columns; the service owns keeping them consistent (`completionPatch`).
+    const patch = completionPatch(!task.completed);
+    await apply(
+      { entity: 'task', entityId: id, kind: 'update', payload: patch as Record<string, unknown>, baseVersion: task.updated_at ?? null },
+      (ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+    );
   },
 
   moveToList: async (id, list) => {
@@ -158,4 +300,5 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       (t) => t.due_date === today && !t.completed && t.status !== 'cancelled'
     );
   },
-}));
+};
+});
