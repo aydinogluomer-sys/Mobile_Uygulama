@@ -298,6 +298,60 @@ export const LOAD_BANDS: readonly LoadBand[] = [
   { key: 'asiri', label: 'aşırı', min: 86, max: 100 },
 ];
 
+// ---------------------------------------------------------------------------
+// R03.05 -- what a make-up does to the day it lands on
+// ---------------------------------------------------------------------------
+
+/**
+ * The points of ONE occurrence of a habit -- its full per-occurrence load,
+ * whatever its schedule. `habitLoadPoints` spreads a habit over the week
+ * (`frequencyWeight`), which is right for "how heavy is my week"; a make-up
+ * is one extra occurrence on one specific day, and a weekly habit's make-up is
+ * a whole session of work on that day, not a seventh of one.
+ */
+export function oneOccurrencePoints(habit: HabitLoadInput): number {
+  return habitLoadPoints({ ...habit, frequency_config: { kind: 'daily' } });
+}
+
+export type MakeupLoadPreview = {
+  /** The day's load before this make-up, 0-100. */
+  before: number;
+  /** ... and after it, 0-100. */
+  after: number;
+  bandBefore: LoadBandKey;
+  bandAfter: LoadBandKey;
+  /** Unrounded points this make-up adds. */
+  addedPoints: number;
+};
+
+/**
+ * R03.05 -- the load a make-up adds to the day it is moved to, for the
+ * planning preview ("taşınan iş yeni güne ek yük yaratıyorsa önizlemede
+ * göster").
+ *
+ * The baseline is the same model as the activation gates -- every active
+ * habit at its weekly-average weight, filtered by the date envelope for THAT
+ * day -- plus the tasks due that day and the make-ups already planned onto it.
+ * The make-up adds one occurrence (`oneOccurrencePoints`), scaled by `share`:
+ * 1 for a full make-up, 0.5 for each day of `split_two_days`. A preview, not a
+ * gate: it informs the choice and refuses nothing.
+ */
+export function makeupLoadPreview(params: {
+  day: Date;
+  activeHabits: readonly HabitLoadInput[];
+  incoming: HabitLoadInput;
+  share: number;
+  tasksDue?: TaskLoadItem[];
+  plannedMakeups?: readonly { habit: HabitLoadInput; share: number }[];
+}): MakeupLoadPreview {
+  const planned = (params.plannedMakeups ?? []).reduce((sum, m) => sum + oneOccurrencePoints(m.habit) * m.share, 0);
+  const baseRaw = dailyLoad({ habits: habitsInRangeOn(params.activeHabits, params.day), tasks: params.tasksDue }).raw + planned;
+  const addedPoints = oneOccurrencePoints(params.incoming) * Math.max(0, params.share);
+  const before = clamp(Math.round(baseRaw), 0, 100);
+  const after = clamp(Math.round(baseRaw + addedPoints), 0, 100);
+  return { before, after, bandBefore: bandFor(before), bandAfter: bandFor(after), addedPoints };
+}
+
 /** Which band a 0-100 load value falls in. Clamps out-of-range input. */
 export function bandFor(n: number): LoadBandKey {
   const v = clamp(n, 0, 100);

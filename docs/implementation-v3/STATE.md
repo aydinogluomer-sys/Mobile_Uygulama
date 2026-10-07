@@ -114,6 +114,12 @@ r03_02_light_day: DONE (P2, 2026-10-07) -- Bugün ekranında 'Bugün daha az yap
   kapasitenin tahmin olduğu, sağlık ölçümü olmadığı yazılı. Bulgu: üretim kodunda skip YAZAN tek
   yol bu kartla açıldı (öncesinde yalnız AI Coach). Testler lib/todayLightDay (9, sayfanın
   vaatleri motorla pinli), repo/todayLightDayWired (5). Mutasyonlar 1/3/1.
+r03_05_recovery_preview: DONE (P2, 2026-10-07) -- telafi planlama sayfasında 'O GÜNÜN YÜKÜ: X -> Y / 100 · bant'.
+  Taban = aktivasyon kapısı modeli (aktif alışkanlıklar haftalık ortalama, o günün aralık zarfı) +
+  o güne düşen görevler + o güne zaten planlanmış telafiler. Telafi = alışkanlığın TEK uygulaması
+  (capacity.oneOccurrencePoints; haftalık alışkanlığın telafisi bir seansın yedide biri değil),
+  strateji payı ile (split_two_days 0.5, skip 0). yüksek/aşırı'da öneri metni. Önizleme; planı
+  ENGELLEMEZ. Testler lib/makeupLoadPreview (9), repo/recoveryLoadPreviewWired (4). Mutasyonlar 1/1/1.
 open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
   hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
   sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip

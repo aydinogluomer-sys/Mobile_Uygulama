@@ -13,6 +13,8 @@ import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import { useRecoveryStore } from '../../store/recoveryStore';
 import { deficitFor, type TrackingTypeV2 } from '../../lib/recovery';
+// R03.05 — what moving the make-up does to that day's load.
+import { makeupLoadPreview, LOAD_BANDS, type LoadBandKey } from '../../lib/capacity';
 import { isCountBasedSchedule, isEligibleOn, isMissedOn } from '../../lib/habitSchedule';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
@@ -318,6 +320,26 @@ export default function RecoveryScreen() {
         fromDate: planSource || today,
       })
     : [];
+
+  // R03.05 — the target day's load before and after this make-up. A preview
+  // that informs the choice; it never blocks a plan.
+  const makeupShare = strategy === 'skip' ? 0 : strategy === 'split_two_days' ? 0.5 : 1;
+  const loadPreview = planTarget && makeupShare > 0
+    ? makeupLoadPreview({
+        day: addDays(new Date(), whenOffset),
+        activeHabits,
+        incoming: planTarget,
+        share: makeupShare,
+        tasksDue: tasks.filter((t) => t.due_date === targetDate && t.status !== 'cancelled').map(() => ({})),
+        plannedMakeups: plans
+          .filter((pl) => pl.status === 'planned' && pl.target_date === targetDate)
+          .flatMap((pl) => {
+            const h = habitById(pl.habit_id);
+            return h ? [{ habit: h, share: pl.strategy === 'split_two_days' ? 0.5 : 1 }] : [];
+          }),
+      })
+    : null;
+  const bandLabel = (k: LoadBandKey) => LOAD_BANDS.find((b) => b.key === k)?.label ?? k;
 
   async function submitPlan() {
     if (!planTarget) return;
@@ -689,6 +711,29 @@ export default function RecoveryScreen() {
                 </TouchableOpacity>
               </View>
 
+              {/* R03.05 — O GÜNÜN YÜKÜ */}
+              {loadPreview && (
+                <View
+                  style={[s.loadPreview, (loadPreview.bandAfter === 'yuksek' || loadPreview.bandAfter === 'asiri') && s.loadPreviewWarn]}
+                  accessible
+                  accessibilityRole="summary"
+                  accessibilityLabel={`O günün yükü ${loadPreview.before}'dan ${loadPreview.after}'a çıkar, ${bandLabel(loadPreview.bandAfter)}.`}
+                >
+                  <Text style={s.loadPreviewLabel}>O GÜNÜN YÜKÜ</Text>
+                  <Text style={s.loadPreviewValue}>
+                    {loadPreview.before} → {loadPreview.after} / 100 · {bandLabel(loadPreview.bandAfter)}
+                  </Text>
+                  {loadPreview.bandAfter === 'asiri' && (
+                    <Text style={s.loadPreviewHint}>
+                      Bu gün zaten çok dolu. Telafiyi ikiye bölmeyi ya da başka bir güne almayı düşünebilirsin.
+                    </Text>
+                  )}
+                  {loadPreview.bandAfter === 'yuksek' && (
+                    <Text style={s.loadPreviewHint}>Bu gün yoğunlaşıyor.</Text>
+                  )}
+                </View>
+              )}
+
               {/* NASIL */}
               <Text style={[s.fieldLabel, { marginTop: space.lg }]}>NASIL</Text>
               <View style={s.stratGrid}>
@@ -844,6 +889,12 @@ const s = StyleSheet.create({
   stepSub: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
 
   stratGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  // R03.05
+  loadPreview: { marginTop: space.md, padding: space.md, borderRadius: radius.md, backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.border, gap: 2 },
+  loadPreviewWarn: { borderColor: hexA(colors.warning, 0.5) },
+  loadPreviewLabel: { fontSize: 10, letterSpacing: 1, color: colors.textFaint, fontWeight: '700' },
+  loadPreviewValue: { fontSize: 14, color: colors.text, fontWeight: '700' },
+  loadPreviewHint: { fontSize: 12, color: colors.warning, marginTop: 4, lineHeight: 17 },
   stratCard: {
     width: '48%', backgroundColor: colors.bgElevated, borderRadius: radius.md, padding: space.md,
     borderWidth: 1, borderColor: colors.border, gap: 4,
