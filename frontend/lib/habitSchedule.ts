@@ -45,13 +45,28 @@ export function weekdayIndex(date: Date): number {
  * shape: "3 a week, 5-20 Aug" lost its count and got invented weekdays
  * (KD-06); "every 3 days, 3-20 Aug" lost its interval and became every day.
  */
-function withinRange(habit: Habit, date: Date): boolean {
+function withinRange(habit: Pick<Habit, 'frequency_config'>, date: Date): boolean {
   const fc = habit.frequency_config;
   if (!fc?.range_start && !fc?.range_end) return true;
   const ds = ymd(date);
   if (fc.range_start && ds < fc.range_start) return false;
   if (fc.range_end && ds > fc.range_end) return false;
   return true;
+}
+
+/**
+ * KD-08 — the date envelope on its own, for callers that hold only a load
+ * input (`capacity.HabitLoadInput` carries `frequency_config` but not
+ * `created_at` / `end_condition`). Same rule, same function: the capacity
+ * side must not grow a second reading of the range.
+ *
+ * Deliberately NOT `isEligibleOn`: that also applies the schedule, and the
+ * capacity math already folds the schedule in as a weekly average
+ * (`capacity.frequencyWeight`). Filtering a Mon/Wed/Fri habit out on a
+ * Tuesday on top of that would count its schedule twice.
+ */
+export function isWithinRange(habit: Pick<Habit, 'frequency_config'>, date: Date): boolean {
+  return withinRange(habit, date);
 }
 
 /**

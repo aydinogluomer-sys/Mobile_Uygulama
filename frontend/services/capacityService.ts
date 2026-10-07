@@ -14,7 +14,7 @@
  *
  * The store keeps today's row for rendering. The DECISION lives here.
  */
-import { canActivate as capacityCanActivate, dailyLoad, type HabitLoadInput } from '../lib/capacity';
+import { canActivate as capacityCanActivate, dailyLoad, habitsInRangeOn, type HabitLoadInput } from '../lib/capacity';
 import {
   fetchOrCreateWillpowerState,
   updateWillpowerState,
@@ -30,6 +30,8 @@ export type CapacityInput = {
   habit: HabitLoadInput;
   activeHabits?: HabitLoadInput[];
   ceiling?: number;
+  /** KD-08 — activation is about today; defaults to now. See `habitsInRangeOn`. */
+  asOf?: Date;
 };
 
 export type ActivationVerdict =
@@ -68,7 +70,9 @@ export function evaluateActivation(params: {
       : { allowed: false, reason: 'over_capacity' };
   }
 
-  const currentLoad = dailyLoad({ habits: params.capacityInput.activeHabits ?? [] }).normalised;
+  const currentLoad = dailyLoad({
+    habits: habitsInRangeOn(params.capacityInput.activeHabits ?? [], params.capacityInput.asOf ?? new Date()),
+  }).normalised;
   const ok = capacityCanActivate({
     currentLoad,
     habit: params.capacityInput.habit,

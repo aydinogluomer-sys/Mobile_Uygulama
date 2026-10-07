@@ -64,6 +64,7 @@ import type { FrequencyConfig } from './supabase';
 import {
   dailyLoad,
   habitLoadPoints,
+  habitsInRangeOn,
   bandFor,
   CAPACITY_CEILING_DEFAULT,
   type HabitLoadInput,
@@ -740,6 +741,12 @@ export type EvaluateProposalContext = {
   overdueCount?: number;
   /** Overrides `CAPACITY_CEILING_DEFAULT` -- exposed for tests. */
   ceiling?: number;
+  /**
+   * KD-08 — the day the baseline is computed for. This is an activation gate
+   * ("what fits TODAY"), so it defaults to now; an active habit whose date
+   * range does not cover it carries no load. Tests pin a fixed date.
+   */
+  asOf?: Date;
 };
 
 /**
@@ -764,7 +771,7 @@ export function evaluateProposal(
 ): ProposalEvaluation {
   const ceiling = ctx.ceiling ?? CAPACITY_CEILING_DEFAULT;
   const baseline = dailyLoad({
-    habits: ctx.activeHabits,
+    habits: habitsInRangeOn(ctx.activeHabits, ctx.asOf ?? new Date()),
     tasks: ctx.tasks,
     focusMinutes: ctx.focusMinutes,
     overdueCount: ctx.overdueCount,

@@ -18,7 +18,7 @@
 
 import type { Habit, HabitLog, FrequencyConfig } from './supabase';
 import { ymd, ymdFromIso, parseLocalDate, addDaysLocal, daysBetweenLocal } from './date';
-import { scheduledCompletionRate } from './habitSchedule';
+import { scheduledCompletionRate, isWithinRange } from './habitSchedule';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -159,6 +159,20 @@ export function habitLoad(habit: HabitLoadInput): number {
  */
 export const HABIT_POINTS_SCALE = 18;
 
+/**
+ * KD-08 — the habits whose date range covers `asOf`.
+ *
+ * An active habit whose range has ENDED (or not yet started) does nothing on
+ * `asOf`, yet every activation gate used to count its full weekly-average load
+ * against today's capacity: "3 a week, 1-14 August" kept refusing new habits
+ * in September. The schedule is not consulted here on purpose -- see
+ * `habitSchedule.isWithinRange`. A habit with no range always passes, so for
+ * every range-less user this returns the same habits in the same order.
+ */
+export function habitsInRangeOn<T extends HabitLoadInput>(habits: readonly T[], asOf: Date): T[] {
+  return habits.filter((h) => isWithinRange(h, asOf));
+}
+
 /** `habitLoad` expressed in day-scale points (see `HABIT_POINTS_SCALE`). */
 export function habitLoadPoints(habit: HabitLoadInput): number {
   return habitLoad(habit) * HABIT_POINTS_SCALE;
@@ -212,11 +226,21 @@ const FOCUS_POINTS_PER_MINUTE = 0.05;
 const OVERDUE_POINTS_PER_ITEM = 3;
 
 export type DailyLoadInput = {
-  /** Habits considered due/active TODAY. Filtering by schedule is the
-   *  caller's responsibility: use `habitSchedule.isDueOn`. This is a
-   *  contract, not an omission -- `dailyLoad` is a pure sum over whatever it
-   *  is handed, and `repo/capacityCallSitesActiveHabits.test.ts` pins that
-   *  every call site does the filtering. */
+  /** The habits whose load counts. `dailyLoad` is a pure sum over whatever it
+   *  is handed -- deciding WHICH habits count is the caller's job, and there
+   *  are two kinds of caller:
+   *
+   *  - activation gates ("can I take this on today?" -- `evaluateActivation`,
+   *    `evaluateProposal`, the capacity previews) pass every ACTIVE habit and
+   *    let `frequencyWeight` fold its schedule in as a weekly average. They do
+   *    NOT filter by schedule (that would count it twice); they DO filter by
+   *    the date envelope via `habitsInRangeOn` (KD-08).
+   *  - day walks (weekly/monthly review, insights overload days) pass the
+   *    habits that carried work on that specific day (`carriesDayLoad`),
+   *    which already excludes days outside the range.
+   *
+   *  (This used to say "filter by schedule with isDueOn", which no activation
+   *  caller ever did -- a stale contract, corrected with KD-08.) */
   habits: HabitLoadInput[];
   tasks?: TaskLoadItem[];
   focusMinutes?: number;

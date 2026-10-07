@@ -33,7 +33,7 @@
  * holds. When they disagree the plan comes back smaller and `explainPlan`
  * says so out loud rather than quietly delivering four when it said five.
  */
-import { CAPACITY_CEILING_DEFAULT, dailyLoad, habitLoadPoints, type HabitLoadInput } from './capacity';
+import { CAPACITY_CEILING_DEFAULT, dailyLoad, habitLoadPoints, habitsInRangeOn, type HabitLoadInput } from './capacity';
 import { ROUTINE_PACKS, type RoutinePack, type RoutinePackHabit, type RoutinePackKey } from './routinePacks';
 import {
   DAYPART_TO_PART_OF_DAY,
@@ -262,7 +262,9 @@ export function buildStarterPlan(
     .sort((a, b) => (b.score - a.score) || (a.c.index - b.c.index))
     .map((r) => r.c);
 
-  const currentLoad = dailyLoad({ habits: ctx.activeHabits }).normalised;
+  // KD-08 — same activation-gate rule as evaluateProposal: a habit outside its
+  // date range today carries no load.
+  const currentLoad = dailyLoad({ habits: habitsInRangeOn(ctx.activeHabits, new Date()) }).normalised;
 
   const chosen: StarterHabit[] = [];
   let running = currentLoad;

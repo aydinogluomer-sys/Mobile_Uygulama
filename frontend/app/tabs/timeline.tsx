@@ -25,7 +25,7 @@ import HabitOnboarding from '../../components/HabitOnboarding';
 import { useCommandStore } from '../../store/commandStore';
 import type { Habit } from '../../lib/supabase';
 import { computeTriage, triageToStatus, impactMeta, TRIAGE_META, cueLabel } from '../../lib/triage';
-import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS } from '../../lib/capacity';
+import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from '../../lib/capacity';
 import { syncAllReminders } from '../../lib/notifications';
 import { colors, radius, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
@@ -605,7 +605,7 @@ export default function TimelineScreen() {
             {/* W2 (Plan §10) — "74 + 18 → 92" şeklindeki kapasite tahmini.
                 v1 sezgisel gösterge; hassas bir ölçüm iddiası değildir. */}
             {capacityTarget && !habitsLoading && (() => {
-              const currentLoad = dailyLoad({ habits: activeHabits }).normalised;
+              const currentLoad = dailyLoad({ habits: habitsInRangeOn(activeHabits, new Date()) }).normalised; // KD-08
               const advice = capacityAdvice({ currentLoad, incomingHabit: capacityTarget });
               const bandLabel = LOAD_BANDS.find((b) => b.key === bandFor(advice.projected))?.label ?? '';
               return (
