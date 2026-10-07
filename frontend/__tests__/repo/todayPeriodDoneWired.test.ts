@@ -19,7 +19,9 @@ describe('R01.06-b — Today is wired to the period logs', () => {
     expect(src).toMatch(/setPeriodLogs\(res\.ok \? res\.data : null\);/);
   });
   it('both groups are selected from the same logs', () => {
-    expect(src).toMatch(/const todayHabits = selectTodayHabits\(habits, todayDate, periodLogs\);/);
+    // R03.02 added a fourth argument (the light-day set) to the list selector;
+    // the period logs are still what both groups are computed from.
+    expect(src).toMatch(/const todayHabits = selectTodayHabits\(habits, todayDate, periodLogs, lightDayIds\);/);
     expect(src).toMatch(/const periodDoneHabits = selectPeriodDoneHabits\(habits, todayDate, periodLogs\);/);
   });
   it('the period-done group is rendered, dimmed, and still tappable', () => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -95,12 +95,51 @@ export function isPeriodDoneBefore(habit: Habit, date: Date, periodLogs: readonl
  * a fetch has not answered yet would be the fail-closed mistake fail-open
  * exists to prevent.
  */
-export function selectTodayHabits(habits: Habit[], date: Date, periodLogs: readonly ReviewLogRow[] | null = null): Habit[] {
+export function selectTodayHabits(
+  habits: Habit[],
+  date: Date,
+  periodLogs: readonly ReviewLogRow[] | null = null,
+  // R03.02 — habits the user set aside for today ("Bugün daha az"). Optional so
+  // every caller that predates the light day keeps its exact behaviour.
+  setAside: ReadonlySet<string> = NO_IDS,
+): Habit[] {
   return habits.filter(
     (h) => h.status === 'active'
       && (isEligibleOn(h, date) || isScheduleAmbiguous(h))
-      && !(periodLogs && isPeriodDoneBefore(h, date, periodLogs)),
+      && !(periodLogs && isPeriodDoneBefore(h, date, periodLogs))
+      && !setAside.has(h.id),
   );
+}
+
+const NO_IDS: ReadonlySet<string> = new Set<string>();
+
+/**
+ * R03.02 — "Bugün daha az yapabilirim": the ids whose TODAY log is `skip`.
+ *
+ * The light day is built on the existing `skip` state rather than a new
+ * concept, because `skip` already means exactly what the light day promises
+ * everywhere it is read (habitSchedule "skip cezasız (§8.5)"): excluded from
+ * both sides of every rate, transparent to the streak (neither counts nor
+ * breaks it), and worth 0 XP (`xpFor`). It is per DAY, so no goal changes --
+ * the guide's rule that a light day must not permanently alter targets holds
+ * by construction.
+ */
+export function setAsideIds(habits: Habit[], todayStateOf: (habitId: string) => string | undefined): Set<string> {
+  return new Set(habits.filter((h) => todayStateOf(h.id) === 'skip').map((h) => h.id));
+}
+
+/**
+ * R03.02 — the habits set aside today, among those that would otherwise be
+ * today's work. A habit whose period is already met stays in the period-done
+ * group instead: setting it aside would mean nothing.
+ */
+export function selectSetAsideHabits(
+  habits: Habit[],
+  date: Date,
+  periodLogs: readonly ReviewLogRow[] | null,
+  setAside: ReadonlySet<string>,
+): Habit[] {
+  return selectTodayHabits(habits, date, periodLogs).filter((h) => setAside.has(h.id));
 }
 
 /** "bu hafta tamam" / "bu ay tamam" — the period the habit is counted in. */
@@ -200,13 +239,19 @@ export default function TodayScreen() {
   const [refreshing, setRefreshing] = useState(false);
   // R01.06-b — null until loaded, and on failure: see `selectTodayHabits`.
   const [periodLogs, setPeriodLogs] = useState<ReviewLogRow[] | null>(null);
+  // R03.02 — the light-day sheet: which of today's open habits the user is setting aside.
+  const [lightDayPick, setLightDayPick] = useState<Set<string> | null>(null);
+  const [lightDaySaving, setLightDaySaving] = useState(false);
 
   // Toplam aktif — YALNIZ "hiç ritüel yok" boş-durumunu ayırt etmek için
   // (`todayHabitCopy`). Hiçbir gün-yüzeyinde payda değildir.
   const activeHabits = habits.filter((h) => h.status === 'active');
   // Günün yüzeyleri (liste, sayaç, yüzde, kalan, anlatı) bunu kullanır.
   const todayDate = parseLocalDate(today) ?? now;
-  const todayHabits = selectTodayHabits(habits, todayDate, periodLogs);
+  // R03.02 — today's `skip` logs are the light day; read from the same store as the list.
+  const lightDayIds = setAsideIds(habits, (id) => getLogForHabit(id)?.state);
+  const todayHabits = selectTodayHabits(habits, todayDate, periodLogs, lightDayIds);
+  const setAsideHabits = selectSetAsideHabits(habits, todayDate, periodLogs, lightDayIds);
   const periodDoneHabits = selectPeriodDoneHabits(habits, todayDate, periodLogs);
   const completedHabits = todayHabits.filter((h) => {
     const log = getLogForHabit(h.id);
@@ -312,6 +357,42 @@ export default function TodayScreen() {
     haptic.success();
     const res = await logHabit({ habitId: h.id, date: new Date(), state: done ? 'miss' : 'done' });
     if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
+  }
+
+  // R03.02 — what can be set aside: today's work that is not done yet.
+  const lightDayCandidates = todayHabits.filter((h) => !completedHabits.some((c) => c.id === h.id));
+
+  function toggleLightDay(id: string) {
+    setLightDayPick((cur) => {
+      const next = new Set(cur ?? []);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  /**
+   * R03.02 — writes a `skip` for TODAY for each chosen habit, and nothing else.
+   * Explicit choice only: nothing is set aside on the user's behalf, and no
+   * target, schedule or future day is touched. A failed write is reported by
+   * name and the sheet stays open with what failed still selected.
+   */
+  async function confirmLightDay() {
+    if (!lightDayPick || lightDayPick.size === 0) return;
+    setLightDaySaving(true);
+    const failed: string[] = [];
+    for (const id of lightDayPick) {
+      const res = await logHabit({ habitId: id, date: new Date(), state: 'skip' });
+      if (!res.ok) failed.push(id);
+    }
+    setLightDaySaving(false);
+    if (failed.length > 0) {
+      const names = habits.filter((h) => failed.includes(h.id)).map((h) => h.name).join(', ');
+      Alert.alert('Bir kısmı kaydedilemedi', names);
+      setLightDayPick(new Set(failed));
+      return;
+    }
+    haptic.success();
+    setLightDayPick(null);
   }
 
   return (
@@ -484,6 +565,43 @@ export default function TodayScreen() {
                     );
                   })}
                 </View>
+                {lightDayCandidates.length > 0 && (
+                  <TouchableOpacity
+                    style={s.lightDayBtn}
+                    onPress={() => { haptic.select(); setLightDayPick(new Set()); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Bugün daha az yapabilirim. Bugünkü ritüellerden bazılarını kenara koy."
+                  >
+                    <Ionicons name="leaf-outline" size={14} color={colors.textDim} />
+                    <Text style={s.lightDayBtnText}>Bugün daha az yapabilirim</Text>
+                  </TouchableOpacity>
+                )}
+              </Card>
+            )}
+
+            {/* R03.02 — bugün için kenara konanlar: kalan iş değil, ama görünür ve
+                dokunulunca yine de yapıldı olarak kaydedilir. */}
+            {setAsideHabits.length > 0 && (
+              <Card padding="lg">
+                <SectionHeader title="BUGÜN HAFİFLETİLDİ" variant="overline" />
+                <View style={{ gap: space.sm }}>
+                  {setAsideHabits.map((h) => (
+                    <TouchableOpacity
+                      key={h.id}
+                      activeOpacity={0.75}
+                      style={[s.habitRow, s.habitRowPeriodDone]}
+                      onPress={() => onHabitTap(h)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${h.name}, bugün için kenara konuldu. Yine de yaptıysan dokun.`}
+                    >
+                      <View style={[s.habitCheck, { borderColor: colors.borderStrong }]}>
+                        <Ionicons name="pause-outline" size={14} color={colors.textDim} />
+                      </View>
+                      <Text style={s.habitName} numberOfLines={1}>{h.name}</Text>
+                      <Text style={s.setAsideTag}>bugün kenarda</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </Card>
             )}
 
@@ -521,6 +639,63 @@ export default function TodayScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* R03.02 — "Bugün daha az yapabilirim" */}
+      <Modal visible={lightDayPick !== null} transparent animationType="slide" onRequestClose={() => setLightDayPick(null)}>
+        <View style={s.sheetOverlay}>
+          <View style={s.sheet}>
+            <Text style={s.sheetTitle}>Bugün daha az yapabilirim</Text>
+            <Text style={s.sheetBody}>
+              Bugün kenara koyacaklarını seç. Bu yalnız bugünü etkiler: hedeflerin ve takvimin değişmez,
+              tamamlama oranın düşmez, serin bozulmaz — ama bugün uzamaz da.
+            </Text>
+            <Text style={s.sheetNote}>
+              Kapasite; alışkanlıklarının zorluğu, süresi ve sıklığından tahmin edilen bir sayıdır.
+              Bir sağlık ölçümü ya da kesin bir irade bütçesi değildir.
+            </Text>
+            <ScrollView style={{ maxHeight: 320 }} accessibilityRole="list">
+              {lightDayCandidates.map((h) => {
+                const picked = lightDayPick?.has(h.id) ?? false;
+                return (
+                  <TouchableOpacity
+                    key={h.id}
+                    style={[s.habitRow, { marginBottom: space.sm }]}
+                    onPress={() => toggleLightDay(h.id)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: picked }}
+                    accessibilityLabel={`${h.name} bugün için kenara konsun`}
+                  >
+                    <View style={[s.habitCheck, { borderColor: picked ? colors.accent : colors.borderStrong }, picked && { backgroundColor: colors.accent }]}>
+                      {picked && <Ionicons name="checkmark" size={14} color={colors.white} />}
+                    </View>
+                    <Text style={s.habitName} numberOfLines={1}>{h.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={s.sheetActions}>
+              <TouchableOpacity
+                style={s.sheetCancel}
+                onPress={() => setLightDayPick(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Vazgeç"
+              >
+                <Text style={s.sheetCancelText}>Vazgeç</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.sheetSave, (!lightDayPick || lightDayPick.size === 0 || lightDaySaving) && s.sheetSaveDisabled]}
+                onPress={confirmLightDay}
+                disabled={!lightDayPick || lightDayPick.size === 0 || lightDaySaving}
+                accessibilityRole="button"
+                accessibilityLabel="Seçilenleri bugün için kenara koy"
+                accessibilityState={{ disabled: !lightDayPick || lightDayPick.size === 0 || lightDaySaving }}
+              >
+                <Text style={s.sheetSaveText}>{lightDaySaving ? 'Kaydediliyor…' : 'Kenara koy'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -529,6 +704,21 @@ const s = StyleSheet.create({
   // R01.06-b — dimmed, not hidden: the work is done, the habit is still there.
   habitRowPeriodDone: { opacity: 0.55 },
   periodDoneTag: { fontSize: 11, color: colors.success, fontWeight: '600', marginLeft: 'auto' },
+  // R03.02
+  setAsideTag: { fontSize: 11, color: colors.textDim, fontWeight: '600', marginLeft: 'auto' },
+  lightDayBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: space.md, paddingVertical: 6 },
+  lightDayBtnText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
+  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg },
+  sheetTitle: { ...font.title, fontSize: 18, color: colors.text, marginBottom: space.sm },
+  sheetBody: { fontSize: 13, color: colors.textDim, lineHeight: 19, marginBottom: space.sm },
+  sheetNote: { fontSize: 11, color: colors.textFaint, lineHeight: 16, marginBottom: space.md },
+  sheetActions: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
+  sheetCancel: { flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  sheetCancelText: { color: colors.textDim, fontWeight: '600' },
+  sheetSave: { flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', backgroundColor: colors.accent },
+  sheetSaveDisabled: { opacity: 0.4 },
+  sheetSaveText: { color: colors.white, fontWeight: '700' },
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   content: { width: '100%', maxWidth: 1240, alignSelf: 'center', paddingVertical: space.xl, paddingBottom: 96 },

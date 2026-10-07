@@ -106,6 +106,18 @@ known_defects_bound_to_cards:
     where: frontend/repositories/habitLogRepository.ts (insertHabitLog / updateHabitLog var, delete YOK)
     what: "Bir günü 'kayıtsız'a döndürmek (geri alma) imkânsız: yanlış girilen ölçülebilir değer ancak üzerine yazılarak (ya da miss ile) düzeltilebilir; toplam sözleşmesiyle 'son girişi geri al' da yok. Yeni yetenek + UI"
     card: R01.03-b
+r03_02_light_day: DONE (P2, 2026-10-07) -- Bugün ekranında 'Bugün daha az yapabilirim': kullanıcı
+  bugünkü açık ritüellerden seçtiklerini AÇIK SEÇİMLE kenara koyar -> o gün için `skip` logu.
+  Yeni kavram yok: skip zaten her okuyucuda 'cezasız' (§8.5) -- oranın iki tarafından dışlanır,
+  seride şeffaf (ne sayar ne bozar), 0 XP. Hedef/takvim değişmez (gün bazlı). Kenara konanlar
+  'BUGÜN HAFİFLETİLDİ' grubunda görünür ve dokunulunca yine de yapıldı kaydedilir. Sayfada
+  kapasitenin tahmin olduğu, sağlık ölçümü olmadığı yazılı. Bulgu: üretim kodunda skip YAZAN tek
+  yol bu kartla açıldı (öncesinde yalnız AI Coach). Testler lib/todayLightDay (9, sayfanın
+  vaatleri motorla pinli), repo/todayLightDayWired (5). Mutasyonlar 1/3/1.
+open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gün kenara koyan biri seriyi
+  hiçbir şey yapmadan canlı tutabilir. Spec (§8.5) bunu bilinçli 'cezasız' tanımlıyor ve bu kart
+  sınır KOYMADI; UI 'serin bozulmaz ama uzamaz' diye dürüst. Haftalık skip sınırı gerekip
+  gerekmediği sahip kararı. Engelleyici değil.
 deferred_ids: [D01, D02, D03, D04, D05, D06, D07, D08, D09]
 cancelled_ids: [X01, X02, X03]
 core_implementation: IN_PROGRESS
