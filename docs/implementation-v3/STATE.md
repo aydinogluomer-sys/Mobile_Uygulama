@@ -54,6 +54,7 @@ known_defects_bound_to_cards:
     what: Bugün takvimi sormuyordu; tüm aktif alışkanlıklar "kalan" sayılıyordu. Artık gün-yüzeyleri `isEligibleOn` + fail-open ile süzülüyor
     card: R01.06-a (DONE) / R01.06-b / R03.01
   - id: KD-03
+    status: RESOLVED (R05.03, 2026-10-07) -- zamanlayıcı artık koşan SEGMENTLERİN toplamı (saf lib/focusTimer.ts: startClock/pauseClock/resumeClock/completedSeconds/remainingSeconds). sessionStartedAt yalnız idle->running'de yazılır; pause açık segmenti kapatır, mola aktif süreye katılmaz (20 dk iş + 5 dk mola = 20 dk). tick saatten okur (uyuyan JS thread süre kaybetmez). reset ayarlardaki süreyi kullanır (DURATIONS sabiti değil). Oturum 'focus.session.v1' anahtarında kalıcı (geçişlerde + 15 sn heartbeat); app kill sonrası restoreSession DURAKLATILMIŞ geri getirir, açık segment lastSeenAt'te kapatılır (ölü süre sayılmaz); bozuk/başka sürüm anlık görüntü düşürülür. nextPhase tek-seferlik korumalı: kayıt beklenirken gelen tick'ler ikinci focus_sessions satırı yazamaz (eski kodda yazabiliyordu). Seans içinde ayar değişse de planned_seconds seansın başladığı plan. Kapsam dışı: notifyOnFinish (R04/R05.05), deep-work ortak sözleşmesi (R05.06). Testler lib/focusTimer (11), store/focusTimerKd03 (9); focusStoreAnalytics 14/14 değişmeden yeşil. Mutasyonlar 6/6 öldü
     where: frontend/store/focusStore.ts:220,257
     what: resume `sessionStartedAt`'i yeniler; pause ayrılmaz; oturum kalıcı değil
     card: R05.03

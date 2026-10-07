@@ -37,7 +37,7 @@ export default function FocusScreen() {
     focusTasks, settings, justCompleted,
     start, pause, reset, setPhase,
     fetchFocusTasks, addFocusTask, removeFocusTask, completeFocusTask, selectTask,
-    updateSettings, loadSettings, clearJustCompleted,
+    updateSettings, loadSettings, restoreSession, clearJustCompleted,
   } = useFocusStore();
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -63,7 +63,8 @@ export default function FocusScreen() {
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
 
-  useEffect(() => { fetchFocusTasks(); loadSettings(); }, [fetchFocusTasks, loadSettings]);
+  // R05.03 — a session the app was killed in comes back paused.
+  useEffect(() => { fetchFocusTasks(); loadSettings(); restoreSession(); }, [fetchFocusTasks, loadSettings, restoreSession]);
 
   const stopInterval = useCallback(() => {
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }

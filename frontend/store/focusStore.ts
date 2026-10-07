@@ -9,6 +9,11 @@ import {
 } from '../services/focusService';
 import { haptic } from '../lib/haptics';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
+// R05.03 / KD-03 — the timer is running segments, not a decrementing counter.
+import {
+  startClock, pauseClock, resumeClock, clockFromRemaining, completedSeconds as clockCompletedSeconds,
+  remainingSeconds, snapshotOf, parseSnapshot, restoredClock, type TimerClock,
+} from '../lib/focusTimer';
 
 type Phase = 'work' | 'shortBreak' | 'longBreak';
 type Status = 'idle' | 'running' | 'paused';
@@ -41,6 +46,10 @@ const PHASE_TOKEN: Record<Phase, string> = {
 };
 
 const SETTINGS_KEY = 'focus.settings.v1';
+/** R05.03 — the session in progress, so an app kill does not lose it. */
+export const SESSION_KEY = 'focus.session.v1';
+/** How often a running session refreshes its `lastSeenAt` (ms). */
+const HEARTBEAT_MS = 15_000;
 
 export const DURATIONS: Record<Phase, number> = {
   work: 25 * 60,
@@ -94,7 +103,7 @@ export const DEFAULT_SETTINGS: FocusSettings = {
 };
 
 /** The configured length of one phase, in seconds. */
-function phaseSeconds(s: FocusSettings, phase: Phase): number {
+export function phaseSeconds(s: FocusSettings, phase: Phase): number {
   const minutes: Record<Phase, number> = {
     work: s.workMinutes,
     shortBreak: s.shortBreakMinutes,
@@ -129,6 +138,8 @@ type FocusStore = {
   secondsLeft: number;
   sessionsCompleted: number;
   sessionStartedAt: string | null;
+  /** R05.03 — the session's running segments; null when no session is open. */
+  clock: TimerClock | null;
   settings: FocusSettings;
 
   // Tamamlanan seans sinyali (UI 'Seans Tamamlandı' raporunu açar)
@@ -143,6 +154,8 @@ type FocusStore = {
   // Settings
   updateSettings: (s: Partial<FocusSettings>) => void;
   loadSettings: () => Promise<void>;
+  /** R05.03 — bring back a session the app was killed in, paused. */
+  restoreSession: () => Promise<void>;
 
   // Timer actions
   start: () => void;
@@ -160,12 +173,29 @@ type FocusStore = {
   selectTask: (id: string | null) => void;
 };
 
+let lastHeartbeat = 0;
+/** One `nextPhase` at a time: ticks keep firing while it awaits the write. */
+let advancing = false;
+
+function persistSession(st: Pick<FocusStore, 'phase' | 'clock' | 'sessionStartedAt' | 'sessionsCompleted'>): void {
+  if (!st.clock || !st.sessionStartedAt) return;
+  const now = Date.now();
+  lastHeartbeat = now;
+  const snap = snapshotOf({ phase: st.phase, clock: st.clock, sessionStartedAt: st.sessionStartedAt, sessionsCompleted: st.sessionsCompleted, now });
+  AsyncStorage.setItem(SESSION_KEY, JSON.stringify(snap)).catch(() => {});
+}
+
+function clearSession(): void {
+  AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
+}
+
 export const useFocusStore = create<FocusStore>((set, get) => ({
   phase: 'work',
   status: 'idle',
   secondsLeft: DURATIONS.work,
   sessionsCompleted: 0,
   sessionStartedAt: null,
+  clock: null,
   settings: { ...DEFAULT_SETTINGS },
   justCompleted: null,
   focusTasks: [],
@@ -179,14 +209,10 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     set({ settings: next });
     // Kalıcı kaydet (yangın-ve-unut)
     AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next)).catch(() => {});
-    // Süreyi güncelle (mevcut seans yoksa)
+    // Süreyi güncelle (mevcut seans yoksa). An open session keeps the plan
+    // it started with -- its clock carries `plannedSeconds`.
     if (get().status === 'idle') {
-      const d: Record<Phase, number> = {
-        work: next.workMinutes * 60,
-        shortBreak: next.shortBreakMinutes * 60,
-        longBreak: next.longBreakMinutes * 60,
-      };
-      set({ secondsLeft: d[get().phase] });
+      set({ secondsLeft: phaseSeconds(next, get().phase) });
     }
   },
 
@@ -198,13 +224,27 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
       const next = { ...DEFAULT_SETTINGS, ...saved } as FocusSettings;
       set({ settings: next });
       if (get().status === 'idle') {
-        const d: Record<Phase, number> = {
-          work: next.workMinutes * 60,
-          shortBreak: next.shortBreakMinutes * 60,
-          longBreak: next.longBreakMinutes * 60,
-        };
-        set({ secondsLeft: d[get().phase] });
+        set({ secondsLeft: phaseSeconds(next, get().phase) });
       }
+    } catch { /* yoksay */ }
+  },
+
+  restoreSession: async () => {
+    try {
+      const snap = parseSnapshot(await AsyncStorage.getItem(SESSION_KEY));
+      if (!snap) return;
+      // A session already open in memory wins over the stored one.
+      if (get().status !== 'idle') return;
+      const clock = restoredClock(snap);
+      set({
+        phase: snap.phase,
+        status: 'paused',
+        clock,
+        secondsLeft: remainingSeconds(clock, Date.now()),
+        sessionStartedAt: snap.sessionStartedAt,
+        sessionsCompleted: Math.max(get().sessionsCompleted, snap.sessionsCompleted),
+      });
+      persistSession(get());
     } catch { /* yoksay */ }
   },
 
@@ -217,7 +257,18 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     // counts as a start; without this guard every pause/resume pair would
     // report an extra session.
     const isNewSession = status === 'idle';
-    set({ status: 'running', sessionStartedAt: new Date().toISOString() });
+    if (status === 'running') return;
+    const now = Date.now();
+    if (isNewSession) {
+      // KD-03: `sessionStartedAt` is written ONLY here. A resume keeps it --
+      // rewriting it on "Devam Et" made a session report its last segment.
+      set({ status: 'running', sessionStartedAt: new Date(now).toISOString(), clock: startClock(phaseSeconds(settings, phase), now) });
+    } else {
+      const { clock, secondsLeft } = get();
+      const base = clock ?? clockFromRemaining(phaseSeconds(settings, phase), secondsLeft);
+      set({ status: 'running', clock: resumeClock(base, now) });
+    }
+    persistSession(get());
     if (isNewSession) {
       // §22 `focus_started`. No task title -- that is user prose; the task's
       // id and a boolean are enough to analyse "started with a target".
@@ -229,116 +280,52 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
       });
     }
   },
-  pause: () => set({ status: 'paused' }),
+  pause: () => {
+    const { status, clock } = get();
+    if (status !== 'running') return;
+    const now = Date.now();
+    // KD-03: the pause closes the running segment; the time until "Devam Et"
+    // is not focus.
+    const paused = clock ? pauseClock(clock, now) : null;
+    set({ status: 'paused', clock: paused, ...(paused ? { secondsLeft: remainingSeconds(paused, now) } : {}) });
+    persistSession(get());
+  },
 
   reset: () => {
-    const phase = get().phase;
-    set({ status: 'idle', secondsLeft: DURATIONS[phase], sessionStartedAt: null });
+    const { phase, settings } = get();
+    // KD-03: the configured length, not the 25/5/15 constants.
+    set({ status: 'idle', secondsLeft: phaseSeconds(settings, phase), sessionStartedAt: null, clock: null });
+    clearSession();
   },
 
   tick: () => {
-    const { secondsLeft } = get();
-    if (secondsLeft > 0) {
-      set({ secondsLeft: secondsLeft - 1 });
+    const { status, clock } = get();
+    if (status !== 'running') return;
+    const now = Date.now();
+    // The interval only asks the clock; a slept JS thread loses no time.
+    const left = clock ? remainingSeconds(clock, now) : Math.max(0, get().secondsLeft - 1);
+    if (left > 0) {
+      set({ secondsLeft: left });
+      if (now - lastHeartbeat >= HEARTBEAT_MS) persistSession(get());
     } else {
+      set({ secondsLeft: 0 });
       get().nextPhase();
     }
   },
 
   nextPhase: async () => {
-    const { phase, sessionsCompleted, sessionStartedAt, selectedTaskId, focusTasks, settings } = get();
-    const customDurations: Record<Phase, number> = {
-      work: settings.workMinutes * 60,
-      shortBreak: settings.shortBreakMinutes * 60,
-      longBreak: settings.longBreakMinutes * 60,
-    };
-    const plannedSeconds = customDurations[phase];
-    const completedSeconds = sessionStartedAt
-      ? Math.min(plannedSeconds, Math.floor((Date.now() - new Date(sessionStartedAt).getTime()) / 1000))
-      : plannedSeconds;
-
-    // Recording the session, crediting the task and auto-completing it are
-    // one domain operation with an ordering rule (a task is never credited
-    // for a session the database rejected) -- see
-    // `services/focusService.completeWorkPhase`.
-    if (phase === 'work') {
-      const selectedTask = focusTasks.find((t) => t.id === selectedTaskId);
-      const outcome = await completeWorkPhase({
-        task: selectedTask as never,
-        plannedSeconds,
-        completedSeconds,
-        autoCheckTasks: settings.autoCheckTasks,
-      });
-
-      // §22 `focus_completed`. Gated on the session row existing: a rejected
-      // insert leaves no row and must leave no event either. `task_title` IS
-      // written to the row (the user's own data, their own table) and is
-      // deliberately NOT put on the event -- exactly the boundary §22 draws.
-      if (outcome.sessionRecorded) {
-        emitAnalytics('focus_completed', {
-          phase: PHASE_TOKEN[phase],
-          planned_seconds: plannedSeconds,
-          completed_seconds: completedSeconds,
-          session_number: sessionsCompleted + 1,
-          task_id: selectedTaskId,
-          has_task: !!selectedTaskId,
-        });
-      }
-
-      if (selectedTaskId) {
-        if (outcome.taskCompleted) {
-          set((s) => ({
-            focusTasks: s.focusTasks.filter((t) => t.id !== selectedTaskId),
-            selectedTaskId: null,
-          }));
-        } else {
-          await get().fetchFocusTasks();
-        }
-      }
-    }
-
-    // Bitiş geri bildirimi
-    if (settings.soundOnFinish) { try { haptic.success(); } catch { /* yoksay */ } }
-
-    if (phase === 'work') {
-      const completed = sessionsCompleted + 1;
-      const interval = Math.max(2, settings.longBreakInterval || 4);
-      const next: Phase = completed % interval === 0 ? 'longBreak' : 'shortBreak';
-      const auto = settings.autoStartBreaks;
-      const doneTitle = focusTasks.find((t) => t.id === selectedTaskId)?.title ?? null;
-      set({
-        phase: next, secondsLeft: customDurations[next],
-        status: 'idle',
-        sessionsCompleted: completed,
-        sessionStartedAt: null,
-        justCompleted: { taskTitle: doneTitle, seconds: completedSeconds, sessionNumber: completed },
-      });
-      // Auto-start now goes through `start()` instead of inlining
-      // `status: 'running'` + a fresh `sessionStartedAt` here. Identical
-      // resulting state, but it keeps `start()` the ONE place a session
-      // begins -- otherwise an auto-started chain would produce
-      // `focus_completed` events with no matching `focus_started`.
-      if (auto) get().start();
-    } else {
-      const hasTask = !!get().selectedTaskId;
-      const auto = settings.autoStartPomodoros && (!settings.requireTaskBeforeStart || hasTask);
-      set({
-        phase: 'work', secondsLeft: customDurations.work,
-        status: 'idle',
-        sessionStartedAt: null,
-      });
-      if (auto) get().start();
+    if (advancing) return;
+    advancing = true;
+    try {
+      await advancePhase();
+    } finally {
+      advancing = false;
     }
   },
 
   setPhase: (phase) => {
-    const s = get().settings;
-    const d: Record<Phase, number> = {
-      work: s.workMinutes * 60,
-      shortBreak: s.shortBreakMinutes * 60,
-      longBreak: s.longBreakMinutes * 60,
-    };
-    set({ phase, secondsLeft: d[phase], status: 'idle', sessionStartedAt: null });
+    set({ phase, secondsLeft: phaseSeconds(get().settings, phase), status: 'idle', sessionStartedAt: null, clock: null });
+    clearSession();
   },
 
   fetchFocusTasks: async () => {
@@ -378,3 +365,97 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
 
   selectTask: (id) => set({ selectedTaskId: id }),
 }));
+
+/** The body of `nextPhase`, run under its one-at-a-time guard. */
+async function advancePhase(): Promise<void> {
+  const set = useFocusStore.setState;
+  const get = useFocusStore.getState;
+  const { phase, status, clock, sessionsCompleted, selectedTaskId, focusTasks, settings } = get();
+  const customDurations: Record<Phase, number> = {
+    work: phaseSeconds(settings, 'work'),
+    shortBreak: phaseSeconds(settings, 'shortBreak'),
+    longBreak: phaseSeconds(settings, 'longBreak'),
+  };
+  const openClock = status !== 'idle' ? clock : null;
+  // The plan the session started with; settings edited mid-session do not
+  // move the goalposts of a session already running.
+  const plannedSeconds = openClock ? openClock.plannedSeconds : customDurations[phase];
+  // KD-03: running segments only -- pauses are not focus time.
+  const completedSeconds = openClock ? clockCompletedSeconds(openClock, Date.now()) : plannedSeconds;
+  clearSession();
+
+  // Recording the session, crediting the task and auto-completing it are
+  // one domain operation with an ordering rule (a task is never credited
+  // for a session the database rejected) -- see
+  // `services/focusService.completeWorkPhase`.
+  if (phase === 'work') {
+    const selectedTask = focusTasks.find((t) => t.id === selectedTaskId);
+    const outcome = await completeWorkPhase({
+      task: selectedTask as never,
+      plannedSeconds,
+      completedSeconds,
+      autoCheckTasks: settings.autoCheckTasks,
+    });
+
+    // §22 `focus_completed`. Gated on the session row existing: a rejected
+    // insert leaves no row and must leave no event either. `task_title` IS
+    // written to the row (the user's own data, their own table) and is
+    // deliberately NOT put on the event -- exactly the boundary §22 draws.
+    if (outcome.sessionRecorded) {
+      emitAnalytics('focus_completed', {
+        phase: PHASE_TOKEN[phase],
+        planned_seconds: plannedSeconds,
+        completed_seconds: completedSeconds,
+        session_number: sessionsCompleted + 1,
+        task_id: selectedTaskId,
+        has_task: !!selectedTaskId,
+      });
+    }
+
+    if (selectedTaskId) {
+      if (outcome.taskCompleted) {
+        set((s) => ({
+          focusTasks: s.focusTasks.filter((t) => t.id !== selectedTaskId),
+          selectedTaskId: null,
+        }));
+      } else {
+        await get().fetchFocusTasks();
+      }
+    }
+  }
+
+  // Bitiş geri bildirimi
+  if (settings.soundOnFinish) { try { haptic.success(); } catch { /* yoksay */ } }
+
+  if (phase === 'work') {
+    const completed = sessionsCompleted + 1;
+    const interval = Math.max(2, settings.longBreakInterval || 4);
+    const next: Phase = completed % interval === 0 ? 'longBreak' : 'shortBreak';
+    const auto = settings.autoStartBreaks;
+    const doneTitle = focusTasks.find((t) => t.id === selectedTaskId)?.title ?? null;
+    set({
+      phase: next, secondsLeft: customDurations[next],
+      status: 'idle',
+      sessionsCompleted: completed,
+      sessionStartedAt: null,
+      clock: null,
+      justCompleted: { taskTitle: doneTitle, seconds: completedSeconds, sessionNumber: completed },
+    });
+    // Auto-start now goes through `start()` instead of inlining
+    // `status: 'running'` + a fresh `sessionStartedAt` here. Identical
+    // resulting state, but it keeps `start()` the ONE place a session
+    // begins -- otherwise an auto-started chain would produce
+    // `focus_completed` events with no matching `focus_started`.
+    if (auto) get().start();
+  } else {
+    const hasTask = !!get().selectedTaskId;
+    const auto = settings.autoStartPomodoros && (!settings.requireTaskBeforeStart || hasTask);
+    set({
+      phase: 'work', secondsLeft: customDurations.work,
+      status: 'idle',
+      sessionStartedAt: null,
+      clock: null,
+    });
+    if (auto) get().start();
+  }
+}
