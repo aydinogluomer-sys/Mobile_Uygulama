@@ -29,8 +29,11 @@ describe('R03.02 — light day', () => {
   });
 
   it('the sheet says what changes and what does not, and that capacity is an estimate', () => {
-    expect(raw).toMatch(/hedeflerin ve takvimin değişmez/);
-    expect(raw).toMatch(/serin bozulmaz — ama bugün uzamaz da/);
+    // R03.07: the sentence moved to the shared flow copy; the sheet renders it.
+    const copy = readFileSync(join(__dirname, '..', '..', 'lib/flowCopy.ts'), 'utf8');
+    expect(raw).toMatch(/\{FLOW_COPY\.lighten\}/);
+    expect(copy).toMatch(/hedeflerin ve takvimin değişmez/);
+    expect(copy).toMatch(/serin bozulmaz — ama bugün uzamaz da/);
     expect(raw).toMatch(/Bir sağlık ölçümü ya da kesin bir irade bütçesi değildir\./);
   });
 

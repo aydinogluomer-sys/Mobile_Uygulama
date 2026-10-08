@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, space, radius } from '../lib/tokens';
+import { FLOW_COPY } from '../lib/flowCopy';
 import {
   SMALL_STEP_MINUTES, MAX_STEP_TITLE, draftFor, stepPlaceholder, validateSmallStep,
   type SmallStepParent, type SmallStepDraft,
@@ -67,7 +68,7 @@ export default function SmallStartSheet({ parent, onClose, onStart }: Props) {
             autoFocus
             accessibilityLabel="İlk adım"
           />
-          <Text style={s.hint}>İlk adımı seç: şimdi yapabileceğin, bitişi belli tek bir şey.</Text>
+          <Text style={s.hint}>{FLOW_COPY.firstStep}</Text>
 
           <Text style={s.label}>SÜRE</Text>
           <View style={s.chips}>

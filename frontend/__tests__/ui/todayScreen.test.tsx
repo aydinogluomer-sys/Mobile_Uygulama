@@ -135,3 +135,12 @@ it('R03.01: the ŞİMDİ card names the one next step; an open focus session tak
   expect(mockPush).toHaveBeenCalledWith('/tabs/focus');
   useFocusStore.setState({ status: 'idle', smallStep: null });
 });
+
+it('R03.07: the day after a holiday, Today says how to come back', async () => {
+  (globalThis as any).__pauses = [{ id: 'hol', habit_id: null, kind: 'holiday', start_date: ymd(addDaysLocal(new Date(), -5)), end_date: ymd(addDaysLocal(new Date(), -1)) }];
+  const r = await render();
+  expect(textOf(r)).toMatch(/Aradan döndün\. Hepsini birden değil/);
+  (globalThis as any).__pauses = [];
+  const r2 = await render();
+  expect(textOf(r2)).not.toMatch(/Aradan döndün/);
+});

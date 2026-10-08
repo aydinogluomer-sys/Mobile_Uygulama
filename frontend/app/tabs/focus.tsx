@@ -16,6 +16,7 @@ import FocusSettingsModal from '../../components/focus/FocusSettingsModal';
 import FocusSpotifyCard from '../../components/focus/FocusSpotifyCard';
 import FocusSessionCompleteModal from '../../components/focus/FocusSessionCompleteModal';
 import { FOCUS_PRESETS } from '../../lib/focusThemes';
+import { FLOW_COPY, isBackFromFocusBreak } from '../../lib/flowCopy';
 
 const PHASE_LABELS: Record<string, string> = {
   work: 'Çalışma Seansı',
@@ -191,6 +192,10 @@ export default function FocusScreen() {
 
           {sessionsCompleted > 0 && (
             <Text style={s.sessionCount}>{sessionsCompleted} seans tamamlandı</Text>
+          )}
+          {/* R03.07 — "mola sonrası dön" */}
+          {isBackFromFocusBreak({ phase, status, sessionsCompleted }) && (
+            <Text style={s.sessionCount} accessibilityLiveRegion="polite">{FLOW_COPY.afterFocusBreak}</Text>
           )}
         </View>
 

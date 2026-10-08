@@ -8,6 +8,7 @@ import { useLogStore } from '../../store/logStore';
 import { useTaskStore } from '../../store/taskStore';
 import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
 import { nextActionable, type NextAction } from '../../lib/todayNext';
+import { FLOW_COPY, recentlyEndedBreak } from '../../lib/flowCopy';
 import { useWillpowerStore } from '../../store/willpowerStore';
 import { useFocusStore } from '../../store/focusStore';
 import { useRecoveryStore } from '../../store/recoveryStore';
@@ -314,6 +315,10 @@ export default function TodayScreen() {
   const habitPct = habitSummary.pct;
   const remainingHabits = habitSummary.remaining;
   const plannedRecovery = recoveryPlans.filter((p) => p.status === 'planned').length;
+  // R03.07 — a holiday, or a break of a habit still on today's list, that just ended.
+  const afterBreak = recentlyEndedBreak(
+    pauses.filter((p) => p.habit_id === null || todayHabits.some((h) => h.id === p.habit_id)), today,
+  );
 
   // R03.01 — the ONE next step (lib/todayNext): an open focus session or
   // routine first, then today's make-up, overdue work, today's habits and tasks.
@@ -489,6 +494,14 @@ export default function TodayScreen() {
             { label: 'Denge planı', icon: 'moon-outline', variant: 'ghost', onPress: () => router.push('/screens/recovery' as any) },
           ]}
         />
+
+        {/* R03.07 — "mola sonrası dön": the first days after a dated break or holiday */}
+        {afterBreak && (
+          <Card padding="lg" accessibilityLabel={`${FLOW_COPY.afterBreakTitle}. ${FLOW_COPY.afterBreak}`}>
+            <SectionHeader title={FLOW_COPY.afterBreakTitle.toLocaleUpperCase('tr-TR')} variant="overline" />
+            <Text style={s.breakNote}>{FLOW_COPY.afterBreak}</Text>
+          </Card>
+        )}
 
         {nowAction && (
           <Card padding="lg" onPress={() => openNowAction(nowAction)}
@@ -809,10 +822,7 @@ export default function TodayScreen() {
         <View style={s.sheetOverlay}>
           <View style={s.sheet}>
             <Text style={s.sheetTitle}>Bugün daha az yapabilirim</Text>
-            <Text style={s.sheetBody}>
-              Bugün kenara koyacaklarını seç. Bu yalnız bugünü etkiler: hedeflerin ve takvimin değişmez,
-              tamamlama oranın düşmez, serin bozulmaz — ama bugün uzamaz da.
-            </Text>
+            <Text style={s.sheetBody}>{FLOW_COPY.lighten}</Text>
             <Text style={s.sheetNote}>
               Kapasite; alışkanlıklarının zorluğu, süresi ve sıklığından tahmin edilen bir sayıdır.
               Bir sağlık ölçümü ya da kesin bir irade bütçesi değildir.

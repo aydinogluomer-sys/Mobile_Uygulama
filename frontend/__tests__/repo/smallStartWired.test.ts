@@ -40,6 +40,8 @@ describe('R03.03 — wiring', () => {
 
   it('the sheet says what the step does not do', () => {
     expect(sheetRaw).toMatch(/Bu adım asıl işi tamamlamaz ya da küçültmez/);
-    expect(sheetRaw).toMatch(/İlk adımı seç:/);
+    // R03.07: the sentence moved to the shared flow copy; the sheet renders it.
+    expect(sheetRaw).toMatch(/\{FLOW_COPY\.firstStep\}/);
+    expect(read('lib/flowCopy.ts')).toMatch(/İlk adımı seç:/);
   });
 });
