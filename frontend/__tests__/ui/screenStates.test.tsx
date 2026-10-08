@@ -16,28 +16,31 @@ jest.mock('../../lib/session', () => ({ currentUser: jest.fn(async () => ({ id: 
 const mockLists: any = { notes: [], goals: [], projects: [], error: null as string | null, loading: false, search: [] as any[] };
 const mockRetry = jest.fn(async () => undefined);
 jest.mock('../../store/noteStore', () => {
-  const useNoteStore: any = () => ({
+  const make = (): any => ({
     notes: mockLists.notes, loading: mockLists.loading, loadingMore: false, hasMore: false, error: mockLists.error,
     loadMore: jest.fn(), fetchNotes: mockRetry, addNote: jest.fn(), updateNote: jest.fn(), removeNote: jest.fn(),
     search: jest.fn(async () => mockLists.search), conflicts: () => [], resolveConflict: jest.fn(),
   });
-  useNoteStore.getState = () => useNoteStore();
+  const useNoteStore: any = () => make();
+  useNoteStore.getState = make;
   return { useNoteStore };
 });
 jest.mock('../../store/goalStore', () => {
-  const useGoalStore: any = () => ({
+  const make = (): any => ({
     goals: mockLists.goals, loading: mockLists.loading, loadingMore: false, hasMore: false, error: mockLists.error,
     loadGoals: mockRetry, loadMore: jest.fn(), addGoal: jest.fn(), updateProgress: jest.fn(), archiveGoal: jest.fn(), removeGoal: jest.fn(),
   });
-  useGoalStore.getState = () => useGoalStore();
+  const useGoalStore: any = () => make();
+  useGoalStore.getState = make;
   return { useGoalStore };
 });
 jest.mock('../../store/projectStore', () => {
-  const useProjectStore: any = () => ({
+  const make = (): any => ({
     projects: mockLists.projects, hasMore: false, loadingMore: false, error: mockLists.error,
     loadMore: jest.fn(), fetchProjects: mockRetry, addProject: jest.fn(), removeProject: jest.fn(),
   });
-  useProjectStore.getState = () => useProjectStore();
+  const useProjectStore: any = () => make();
+  useProjectStore.getState = make;
   return { useProjectStore };
 });
 jest.mock('../../store/taskStore', () => {
