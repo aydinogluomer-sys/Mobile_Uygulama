@@ -13,6 +13,8 @@ import NextActionPicker from '../../components/NextActionPicker';
 import { useJournalStore } from '../../store/journalStore';
 import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
 import { routineReport } from '../../lib/routineReport';
+import { measuredRows, type MeasuredRow } from '../../lib/periodReport';
+import MeasuredReportSection from '../../components/MeasuredReportSection';
 import {
   buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions,
   reportBadge, isCompletedState, type ReportBadge,
@@ -150,6 +152,8 @@ export default function WeeklyReviewScreen() {
   const [focusMinutes, setFocusMinutes] = useState(0);
   const [badge, setBadge] = useState<ReportBadge | null>(null);
   const [autoMetrics, setAutoMetrics] = useState<AutoMetrics>(EMPTY_AUTO_METRICS);
+  // R07.04 — amount/duration per measured habit, from the R01 engine.
+  const [measured, setMeasured] = useState<MeasuredRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -245,6 +249,7 @@ export default function WeeklyReviewScreen() {
     setHabitCompletionRate(rate);
     setFocusMinutes(minutes);
     setBadge(nextBadge);
+    setMeasured(logsRes.ok ? measuredRows(habits, logsRes.data, { start, end, asOf: new Date() }) : []);
 
     const completedLogCount = logsRes.ok
       ? logsRes.data.filter((l) => isCompletedState(l.state)).length
@@ -393,6 +398,8 @@ export default function WeeklyReviewScreen() {
             <AutoMetricTile label="Aşırı Yüklenme Günü" value={`${autoMetrics.overloadDays} gün`} />
           </View>
         </View>
+
+        <MeasuredReportSection rows={measured} />
 
         {completedTasks.length > 0 && (
           <View style={s.section}>

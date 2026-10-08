@@ -9,6 +9,9 @@ import TestRenderer, { act } from 'react-test-renderer';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// Several full screens per test, each waiting out the search debounce: under
+// the full parallel suite this exceeds jest's 5 s default.
+jest.setTimeout(30_000);
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 jest.mock('react-native-safe-area-context', () => ({ SafeAreaView: ({ children }: any) => children }));
 jest.mock('../../lib/supabase', () => ({ supabase: {} }));
