@@ -47,7 +47,8 @@ export async function fetchOwnedTable(table: ExportTable, max = MAX_EXISTING, pa
     if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
     const got = (data ?? []) as Record<string, unknown>[];
     rows.push(...got);
-    if (rows.length >= max) return { ok: true, data: { rows: rows.slice(0, max), truncated: true } };
+    // Truncated only when a row BEYOND the ceiling exists (exactly `max` rows is complete).
+    if (rows.length > max) return { ok: true, data: { rows: rows.slice(0, max), truncated: true } };
     if (got.length < page) return { ok: true, data: { rows, truncated: false } };
     after = String(got[got.length - 1].id);
   }
@@ -55,18 +56,19 @@ export async function fetchOwnedTable(table: ExportTable, max = MAX_EXISTING, pa
 }
 
 /** Upper bound on rows read per collection for the dry run; matches the export's MAX_ROWS. */
-export const MAX_EXISTING = 5000;
+export const MAX_EXISTING = 20_000;
 
+/**
+ * The account's current rows of one table, for the dry run's comparison --
+ * keyset-paged in full (R08.07: a single capped read left rows past the cap
+ * unseen, so a restore could plan them again as missing). Past the ceiling
+ * the comparison cannot be trusted and the dry run refuses.
+ */
 export async function fetchExistingRows(table: RestoreTable): Promise<RepoResult<Record<string, unknown>[]>> {
-  const u = await currentUserId();
-  if (!u.ok) return u;
-  const { data, error, status } = await supabase
-    .from(table)
-    .select('*')
-    .eq('user_id', u.userId)
-    .limit(MAX_EXISTING);
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
-  return { ok: true, data: (data ?? []) as Record<string, unknown>[] };
+  const r = await fetchOwnedTable(table, MAX_EXISTING);
+  if (!r.ok) return r;
+  if (r.data.truncated) return { ok: false, error: `hesapta ${MAX_EXISTING} kayıttan fazla var; karşılaştırma eksik kalırdı`, code: 'TOO_LARGE' };
+  return { ok: true, data: r.data.rows };
 }
 
 /** Insert rows with their own ids, owned by the signed-in account. */

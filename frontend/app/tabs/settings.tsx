@@ -22,7 +22,7 @@ import {
   listWebhooks, registerWebhook, removeWebhook,
   type WebhookRow,
 } from '../../services/webhookService';
-import { buildBackup, renderBackup, type ExportFormat } from '../../services/exportService';
+import { buildBackup, renderBackup, MAX_ROWS, type ExportFormat } from '../../services/exportService';
 import { deleteAccount, unsentChangeCount } from '../../services/accountService';
 import { PUBLIC_SITE_URLS_LIVE, PUBLIC_SITE_URLS } from '../../lib/featureGates';
 import { useRouter } from 'expo-router';
@@ -116,12 +116,12 @@ export default function SettingsScreen() {
       const me = await currentUser();
       const backup = await buildBackup(new Date(), { userId: me?.id ?? null });
 
-      // R08.02 — a collection cut at the 5.000-row ceiling is said out loud too:
+      // R08.02 — a collection cut at the row ceiling (MAX_ROWS) is said out loud too:
       // such a file is refused by the restore check, so it must not look complete.
       if (backup.truncated.length > 0) {
         Alert.alert(
           'Dışa aktarım tam değil',
-          `Şu bölümler 5.000 kayıt sınırında kesildi: ${backup.truncated.join(', ')}. Bu dosya geri yükleme için kullanılamaz; paylaşılan metin hangi bölümlerin eksik olduğunu yazıyor.`,
+          `Şu bölümler ${MAX_ROWS.toLocaleString('tr-TR')} kayıt sınırında kesildi: ${backup.truncated.join(', ')}. Bu dosya geri yükleme için kullanılamaz; paylaşılan metin hangi bölümlerin eksik olduğunu yazıyor.`,
         );
       }
       if (backup.failed.length > 0) {

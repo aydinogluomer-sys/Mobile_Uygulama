@@ -109,7 +109,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export const EXPORT_FORMAT_VERSION = 3;
 
 /** Hard ceiling per collection, so one huge account cannot exhaust memory. */
-const MAX_ROWS = 5_000;
+// R08.07: was 5_000 -- an account over that could not be backed up whole.
+// Keyset reads make a larger ceiling safe; past it the file says so and is refused.
+export const MAX_ROWS = 20_000;
 
 export type Backup = {
   format_version: number;
@@ -173,7 +175,8 @@ export async function drain<T extends { id: string }>(
     const res = await page(cursor);
     if (!res.ok) return { rows, truncated: false, error: res.error };
     rows.push(...res.data.rows);
-    if (rows.length >= max) return { rows: rows.slice(0, max), truncated: true };
+    // Truncated only when there is more past the ceiling (exactly `max` rows is complete).
+    if (rows.length > max || (rows.length === max && res.data.hasMore)) return { rows: rows.slice(0, max), truncated: true };
     if (!res.data.hasMore || !res.data.nextCursor) return { rows, truncated: false };
     cursor = res.data.nextCursor;
   }
