@@ -27,19 +27,28 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
   const tasks = useTaskStore((s) => s.tasks);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
 
-  // Resolution + the fingerprint taken NOW (R09.03).
-  const target = useMemo(() => {
+  // Resolution + the fingerprint taken NOW (R09.03). An ambiguous match keeps
+  // its candidates (as they were now) so the user can choose; nothing is guessed.
+  const staged = useMemo(() => {
     if (action.type === 'move_task' || action.type === 'suggest_small_step') {
       const r = resolveTaskQuery(action.task_query, tasks);
-      return r.kind === 'one' ? { kind: 'task' as const, task: r.task, fp: taskFingerprint(r.task) } : { kind: r.kind, query: action.task_query };
+      if (r.kind === 'one') return { kind: 'task' as const, task: r.task, fp: taskFingerprint(r.task) };
+      if (r.kind === 'ambiguous') return { kind: 'ambiguous' as const, query: action.task_query, options: r.candidates.map((t) => ({ id: t.id, label: t.title, pick: { kind: 'task' as const, task: t, fp: taskFingerprint(t) } })) };
+      return { kind: 'none' as const, query: action.task_query };
     }
     if (action.type === 'lighten_today') return { kind: 'many' as const };
     const r = resolveHabitQuery(action.habit_query, habits);
-    return r.kind === 'exact' ? { kind: 'habit' as const, habit: r.habit, fp: habitFingerprint(r.habit) } : { kind: r.kind, query: action.habit_query };
+    if (r.kind === 'exact') return { kind: 'habit' as const, habit: r.habit, fp: habitFingerprint(r.habit) };
+    if (r.kind === 'ambiguous') return { kind: 'ambiguous' as const, query: action.habit_query, options: r.candidates.map((h) => ({ id: h.id, label: h.name, pick: { kind: 'habit' as const, habit: h, fp: habitFingerprint(h) } })) };
+    return { kind: 'none' as const, query: action.habit_query };
     // Staged once: later store changes are compared, not silently absorbed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [action]);
+  // The chosen candidate becomes the target, with the fingerprint of the
+  // moment the card appeared -- a change since then is still caught.
+  const target = staged.kind === 'ambiguous' ? staged.options.find((o) => o.id === picked)?.pick ?? staged : staged;
 
   const lightCandidates = useMemo(() => {
     if (action.type !== 'lighten_today') return [];
@@ -51,8 +60,8 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
   const [kept, setKept] = useState<Set<string>>(() => new Set(lightCandidates.map((h) => h.id)));
 
   function describe(): string {
-    if (target.kind === 'none') return `"${'query' in target ? target.query : ''}" ile eşleşen bir kayıt bulunamadı.`;
-    if (target.kind === 'ambiguous') return `"${'query' in target ? target.query : ''}" birden fazla kayıtla eşleşti; hangisi olduğunu yazarak belirt.`;
+    if (target.kind === 'none') return `"${target.query}" ile eşleşen bir kayıt bulunamadı.`;
+    if (target.kind === 'ambiguous') return `"${target.query}" birden fazla kayıtla eşleşti. Hangisi?`;
     switch (action.type) {
       case 'edit_habit_schedule': return target.kind === 'habit' ? `${target.habit.name}: ${frequencySummary(target.habit.frequency_config)} → ${frequencySummary(action.frequency_config)} (bugünden itibaren; geçmiş eski hedefle kalır)` : '';
       case 'pause_habit': return target.kind === 'habit' ? `${target.habit.name}: ${action.from} → ${action.until ?? 'sen açana kadar'} ara` : '';
@@ -118,6 +127,19 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
     <View style={s.box}>
       <Text style={s.head}>KOÇ ÖNERİSİ</Text>
       <Text style={s.body}>{describe()}</Text>
+      {staged.kind === 'ambiguous' && (
+        <View style={s.row}>
+          {staged.options.map((o) => {
+            const on = picked === o.id;
+            return (
+              <TouchableOpacity key={o.id} style={[s.chip, on && s.chipOn]} onPress={() => setPicked(on ? null : o.id)}
+                accessibilityRole="radio" accessibilityState={{ selected: on }} accessibilityLabel={o.label}>
+                <Text style={s.chipText}>{o.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
       {action.type === 'lighten_today' && (
         <View style={s.row}>
           {lightCandidates.map((h) => {
