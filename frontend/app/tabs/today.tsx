@@ -7,7 +7,7 @@ import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import { useTaskStore } from '../../store/taskStore';
 import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
-import { nextActionable, type NextAction } from '../../lib/todayNext';
+import { nextActionable, primaryAction, todaySummaryLine, type NextAction } from '../../lib/todayNext';
 import { FLOW_COPY, recentlyEndedBreak } from '../../lib/flowCopy';
 import { useWillpowerStore } from '../../store/willpowerStore';
 import { useFocusStore } from '../../store/focusStore';
@@ -332,6 +332,22 @@ export default function TodayScreen() {
     habitsToDo: todayHabits.filter((h) => !completedHabits.some((c) => c.id === h.id)).map((h) => ({ id: h.id, name: h.name })),
     tasksToday: todayTasks.filter((t) => !t.completed).map((t) => ({ id: t.id, title: t.title })),
   });
+  const primary = primaryAction(nowAction);
+  const summaryLine = todaySummaryLine({
+    used: wp?.used ?? null, budget: wp?.daily_budget ?? null,
+    habitsLeft: remainingHabits, tasksLeft: overdueList.length + todayTasks.filter((t) => !t.completed).length,
+  });
+  // R06.02 — the secondary jobs, one tap away instead of on the hero.
+  function openMoreMenu() {
+    Alert.alert('Diğer', undefined, [
+      ...(nowAction?.kind !== 'focus' ? [{ text: 'Odağa geç', onPress: () => router.push('/tabs/focus' as any) }] : []),
+      { text: 'Haftayı değerlendir', onPress: () => router.push('/screens/weekly-review' as any) },
+      { text: 'Denge planı', onPress: () => router.push('/screens/recovery' as any) },
+      { text: 'Projeler', onPress: () => router.push('/screens/projects' as any) },
+      { text: 'Notlar', onPress: () => router.push('/screens/notes' as any) },
+      { text: 'Vazgeç', style: 'cancel' },
+    ]);
+  }
   function openNowAction(a: NextAction) {
     if (a.kind === 'focus') router.push('/tabs/focus' as any);
     else if (a.kind === 'routine') router.push('/screens/routine-runner' as any);
@@ -485,30 +501,26 @@ export default function TodayScreen() {
         </View>
 
         {/* Editöryel Bugün hero */}
+        {/* R06.02 — ONE dominant action (start / continue the next step); the
+            management jobs live in the "Diğer" menu, nothing is removed. */}
         <TodayHero
           eyebrow={eyebrow}
           narrative={narrative}
           ctas={[
-            { label: 'Odağa geç', icon: 'timer-outline', variant: 'primary', onPress: () => router.push('/tabs/focus' as any) },
-            { label: 'Haftayı değerlendir', icon: 'book-outline', variant: 'secondary', onPress: () => router.push('/screens/weekly-review' as any) },
-            { label: 'Denge planı', icon: 'moon-outline', variant: 'ghost', onPress: () => router.push('/screens/recovery' as any) },
+            {
+              label: primary.label, icon: primary.verb === 'Devam et' ? 'play-forward' : 'play', variant: 'primary',
+              onPress: () => (nowAction ? openNowAction(nowAction) : router.push('/tabs/focus' as any)),
+            },
+            { label: 'Diğer', icon: 'ellipsis-horizontal', variant: 'ghost', onPress: openMoreMenu },
           ]}
         />
+        <Text style={s.breakNote} accessibilityLabel={`${primary.hint}. ${summaryLine}`}>{primary.hint} · {summaryLine}</Text>
 
         {/* R03.07 — "mola sonrası dön": the first days after a dated break or holiday */}
         {afterBreak && (
           <Card padding="lg" accessibilityLabel={`${FLOW_COPY.afterBreakTitle}. ${FLOW_COPY.afterBreak}`}>
             <SectionHeader title={FLOW_COPY.afterBreakTitle.toLocaleUpperCase('tr-TR')} variant="overline" />
             <Text style={s.breakNote}>{FLOW_COPY.afterBreak}</Text>
-          </Card>
-        )}
-
-        {nowAction && (
-          <Card padding="lg" onPress={() => openNowAction(nowAction)}
-            accessibilityLabel={`Şimdi: ${nowAction.label}. ${nowAction.detail}`}>
-            <SectionHeader title="ŞİMDİ" variant="overline" />
-            <Text style={s.taskTitle} numberOfLines={2}>{nowAction.label}</Text>
-            <Text style={s.breakNote}>{nowAction.detail}</Text>
           </Card>
         )}
 

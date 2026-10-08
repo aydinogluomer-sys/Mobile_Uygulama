@@ -3,7 +3,7 @@
  * devam eden oturum etrafında düzenle." The one next step, in a fixed,
  * explainable order; an open (even paused) session always comes first.
  */
-import { nextActionable, type NextActionInput } from '../../lib/todayNext';
+import { nextActionable, primaryAction, todaySummaryLine, type NextActionInput } from '../../lib/todayNext';
 
 const empty: NextActionInput = {
   focus: { status: 'idle' }, routine: null, recoveryToday: [], overdueTasks: [], habitsToDo: [], tasksToday: [],
@@ -47,4 +47,17 @@ it('a finished routine is not "in progress"', () => {
 
 it('the routine line says how far along it is', () => {
   expect(nextActionable({ ...empty, routine: { status: 'paused', templateName: 'Akşam', done: 2, total: 5 } })!.detail).toBe('2/5 adım — duraklatıldı, devam et');
+});
+
+describe('R06.02 — the dominant action and the summary line', () => {
+  it('continue for work in progress, start for the rest, focus when there is nothing', () => {
+    expect(primaryAction(nextActionable({ ...empty, focus: { status: 'running' } }))).toMatchObject({ verb: 'Devam et', label: 'Devam et: Odak oturumu' });
+    expect(primaryAction(nextActionable({ ...empty, routine: { status: 'paused', templateName: 'Akşam', done: 1, total: 3 } })).verb).toBe('Devam et');
+    expect(primaryAction(nextActionable({ ...empty, habitsToDo: [{ id: 'h', name: 'Kitap' }] }))).toMatchObject({ verb: 'Başla', label: 'Başla: Kitap', hint: 'Bugünün alışkanlığı' });
+    expect(primaryAction(null)).toMatchObject({ verb: 'Başla', label: 'Başla: odak' });
+  });
+  it('the summary is one short line', () => {
+    expect(todaySummaryLine({ used: 6, budget: 15, habitsLeft: 2, tasksLeft: 3 })).toBe('İrade 6/15 · 2 alışkanlık, 3 görev kaldı');
+    expect(todaySummaryLine({ used: null, budget: null, habitsLeft: 0, tasksLeft: 0 })).toBe('bugün için açık iş yok');
+  });
 });

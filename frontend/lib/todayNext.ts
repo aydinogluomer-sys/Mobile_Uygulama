@@ -56,3 +56,22 @@ export function nextActionable(i: NextActionInput): NextAction | null {
   if (t) return { kind: 'task', id: t.id, label: t.title, detail: 'Bugünün görevi' };
   return null;
 }
+
+/**
+ * R06.02 — the ONE dominant action on Today. "Devam et" for work already in
+ * progress (an open focus session or a routine), "Başla" for everything else;
+ * with nothing to do, the way into focus.
+ */
+export function primaryAction(a: NextAction | null): { verb: 'Devam et' | 'Başla'; label: string; hint: string } {
+  if (!a) return { verb: 'Başla', label: 'Başla: odak', hint: 'Bugün için açık iş yok; istersen bir odak oturumu başlat.' };
+  const verb = a.kind === 'focus' || a.kind === 'routine' ? 'Devam et' : 'Başla';
+  return { verb, label: `${verb}: ${a.label}`, hint: a.detail };
+}
+
+/** R06.02 — capacity and what is left, in one short line. */
+export function todaySummaryLine(p: { used: number | null; budget: number | null; habitsLeft: number; tasksLeft: number }): string {
+  const parts: string[] = [];
+  if (p.used !== null && p.budget !== null) parts.push(`İrade ${p.used}/${p.budget}`);
+  parts.push(p.habitsLeft === 0 && p.tasksLeft === 0 ? 'bugün için açık iş yok' : `${p.habitsLeft} alışkanlık, ${p.tasksLeft} görev kaldı`);
+  return parts.join(' · ');
+}

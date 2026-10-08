@@ -121,16 +121,20 @@ it('R02.04: an unsent journal/note/plan/session change shows on the sync badge',
   await act(async () => { await coreOutbox.flush(); });
   coreOutbox.reset();
 });
-it('R03.01: the ŞİMDİ card names the one next step; an open focus session takes it over', async () => {
+// R06.02 retarget: the separate ŞİMDİ card became the hero's single dominant
+// action; the R03.01 claim (one next step, an open session takes it over) is
+// asserted on that action now.
+it('R03.01: the dominant action names the one next step; an open focus session takes it over', async () => {
   const { useFocusStore } = jest.requireActual('../../store/focusStore');
   useFocusStore.setState({ status: 'idle', smallStep: null });
   let r = await render();
   // no make-up, no overdue task: the first open habit
-  expect(r.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityLabel === 'Şimdi: Yürüyüş. Bugünün alışkanlığı')).toHaveLength(1);
+  expect(r.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityLabel === 'Başla: Yürüyüş')).toHaveLength(1);
   useFocusStore.setState({ status: 'paused', smallStep: { title: 'İlk paragraf', minutes: 5, parent: { kind: 'task', id: 't1', title: 'Rapor yaz' } } });
   r = await render();
-  expect(r.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityLabel === 'Şimdi: Odak: İlk paragraf. Duraklatıldı — kaldığın yerden devam et')).toHaveLength(1);
-  const card = r.root.findAll((n) => n.props?.accessibilityLabel?.startsWith?.('Şimdi:') && typeof n.props.onPress === 'function')[0];
+  expect(r.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityLabel === 'Devam et: Odak: İlk paragraf')).toHaveLength(1);
+  expect(textOf(r)).toMatch(/Duraklatıldı — kaldığın yerden devam et/);
+  const card = r.root.findAll((n) => n.props?.accessibilityLabel === 'Devam et: Odak: İlk paragraf' && typeof n.props.onPress === 'function')[0];
   await act(async () => { card.props.onPress(); });
   expect(mockPush).toHaveBeenCalledWith('/tabs/focus');
   useFocusStore.setState({ status: 'idle', smallStep: null });
@@ -143,4 +147,24 @@ it('R03.07: the day after a holiday, Today says how to come back', async () => {
   (globalThis as any).__pauses = [];
   const r2 = await render();
   expect(textOf(r2)).not.toMatch(/Aradan döndün/);
+});
+
+it('R06.02: ONE dominant action on the hero; the rest one tap away; a short capacity line', async () => {
+  const { Alert } = jest.requireActual('react-native');
+  const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  const r = await render();
+  const heroButtons = r.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityRole === 'button'
+    && /^(Başla|Devam et)/.test(n.props?.accessibilityLabel ?? ''));
+  expect(heroButtons).toHaveLength(1);
+  // the old three hero CTAs are gone from the hero...
+  for (const old of ['Odağa geç', 'Haftayı değerlendir', 'Denge planı']) {
+    expect(r.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityLabel === old)).toHaveLength(0);
+  }
+  // ...and reachable from "Diğer", with projects and notes kept
+  const more = r.root.findAll((n) => n.props?.accessibilityLabel === 'Diğer' && typeof n.props.onPress === 'function')[0];
+  await act(async () => { more.props.onPress(); });
+  const options = (alertSpy.mock.calls[0][2] as { text: string }[]).map((o) => o.text);
+  expect(options).toEqual(expect.arrayContaining(['Odağa geç', 'Haftayı değerlendir', 'Denge planı', 'Projeler', 'Notlar']));
+  expect(textOf(r)).toMatch(/1 alışkanlık, 1 görev kaldı/);
+  alertSpy.mockRestore();
 });
