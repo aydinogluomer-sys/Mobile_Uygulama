@@ -1,5 +1,6 @@
 import { resetWebhookCache } from '../services/webhookService';
 import { coreOutbox } from '../services/coreOutbox';
+import PrivacyCover from '../components/PrivacyCover';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, View, type AppStateStatus } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -292,6 +293,8 @@ export default function RootLayout() {
   // Sekme/grup değişimi ("başka bir yere gittim") doğru granülerlik.
   return (
     <ErrorBoundary context="root-navigator" resetKeys={[segments[0]]}>
+      {/* R06.05 — covers the app-switcher preview when "hide titles" is on */}
+      <PrivacyCover />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="tabs" />

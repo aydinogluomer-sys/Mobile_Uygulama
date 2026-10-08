@@ -151,7 +151,10 @@ export function scrubStack(raw?: string): string | undefined {
     .split('\n')
     .slice(0, MAX_STACK_FRAMES)
     .map((line) =>
-      line
+      // R06.05 — a stack's first line repeats the error MESSAGE ("Error: …"),
+      // so it gets the same scrubbing; otherwise a quoted value redacted from
+      // `message` would ride along in `stack`.
+      scrubMessage(line).text
         // Windows paths may contain spaces (`C:\Users\Trade Bilisim\...`), so
         // the character class must NOT exclude them — an earlier version did,
         // and stopped at the space, leaving the OS user name in the report.

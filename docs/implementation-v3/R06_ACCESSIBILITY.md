@@ -60,3 +60,15 @@ animasyonu yok).
   `habitFormFrequency` A9 tarayıcısı, R06.03 `FormError` role=alert).
 - Odak sırası: RN'de görsel sırayı izler; formlarda hata girdinin hemen altında ve canlı bölge
   olarak duyurulur. **Ekran okuyucuyla gerçek cihazda odak gezintisi: N/R (S8 — cihaz yok).**
+
+## 6. Hassas içerik (R06.05)
+
+- **Uygulama önizlemesi:** mevcut "Kilit ekranında … içeriği gizle" tercihi açıkken uygulama öne
+  değilken (`inactive`/`background`) tam ekran bir örtü çizilir (`components/PrivacyCover.tsx`,
+  kökte bir kez). iOS anlık görüntüyü `inactive`'den sonra aldığı için örtü görüntüdedir.
+  Android'in son-uygulamalar görüntüsü JS çizmeden alınabilir — yeni native bağımlılık
+  (`FLAG_SECURE`) eklenmeden **en iyi çaba**; cihaz doğrulaması N/R (S8).
+- **Bildirim:** zaten DONE (başlık "Hatırlatıcı", gövde genel).
+- **Hata logları:** günlük/koç kodunda `console.*` yok, metinden hata mesajı kurulmuyor (guard);
+  çökme hunisi tırnaklı değeri `[redacted]` yapar ve **artık yığının ilk satırını da** (mesajı
+  tekrarlar) temizler — önceden tırnaklı metin `stack` üzerinden sızıyordu.

@@ -60,8 +60,8 @@ export default function NotificationSettingsCard() {
       <Text style={s.sub}>Sessiz saatlere düşen hatırlatıcılar gönderilmez (ertelenmez).</Text>
 
       <TouchableOpacity style={s.toggleRow} onPress={() => update({ ...settings, hideTitles: !settings.hideTitles })}
-        accessibilityRole="switch" accessibilityState={{ checked: settings.hideTitles }} accessibilityLabel="Kilit ekranında alışkanlık adını gizle">
-        <Text style={s.toggleText}>Kilit ekranında alışkanlık adını gizle</Text>
+        accessibilityRole="switch" accessibilityState={{ checked: settings.hideTitles }} accessibilityLabel="Kilit ekranında ve uygulama önizlemesinde içeriği gizle">
+        <Text style={s.toggleText}>Kilit ekranında ve uygulama önizlemesinde içeriği gizle</Text>
         <Text style={[s.chipText, settings.hideTitles && { color: colors.accent }]}>{settings.hideTitles ? 'Açık' : 'Kapalı'}</Text>
       </TouchableOpacity>
     </View>
