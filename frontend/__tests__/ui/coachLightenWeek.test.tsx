@@ -29,6 +29,7 @@ jest.mock('../../store/focusStore', () => ({ useFocusStore: { getState: () => ({
 import CoachActionCardV2 from '../../components/coach/CoachActionCardV2';
 import { readActionV2 } from '../../lib/coachActionsV2';
 import { weekLightenPlan, loadAfter } from '../../lib/weekLighten';
+import { decimalTR as tr } from '../../lib/chartText';
 
 const H = (id: string, name: string, difficulty: number, minutes: number) => ({
   id, name, status: 'active', difficulty, estimated_minutes: minutes, frequency_config: { kind: 'daily' }, impact_level: null,
@@ -70,7 +71,7 @@ describe('the card', () => {
     const plan = weekLightenPlan(mockHabits, THU);
     const { r } = await mount();
     const t = text(r);
-    expect(t).toContain(`Bu haftanın kalanı (2026-10-08 → 2026-10-11) yükü: ${plan.total} → ${loadAfter(plan, new Set(['h1']))}.`);
+    expect(t).toContain(`Bu haftanın kalanı (2026-10-08 → 2026-10-11) yükü: ${tr(plan.total)} → ${tr(loadAfter(plan, new Set(['h1'])))}.`);
     expect(t).toMatch(/Hedefler ve takvim değişmez/);
     const boxes = r.root.findAll((n) => n.props?.accessibilityRole === 'checkbox' && typeof n.props.onPress === 'function', { deep: false });
     expect(boxes.map((b) => [b.props.accessibilityLabel.split(' · ')[0], b.props.accessibilityState.checked])).toEqual([['Koşu', true], ['Kitap', false], ['Su iç', false]]);
@@ -80,15 +81,15 @@ describe('the card', () => {
     const plan = weekLightenPlan(mockHabits, THU);
     const { r } = await mount();
     const kitap = plan.rows.find((x) => x.id === 'h2')!;
-    await act(async () => { byLabel(r, `Kitap · ${kitap.points}`)[0].props.onPress(); });
-    expect(text(r)).toContain(`yükü: ${plan.total} → ${loadAfter(plan, new Set(['h1', 'h2']))}.`);
+    await act(async () => { byLabel(r, `Kitap · ${tr(kitap.points)}`)[0].props.onPress(); });
+    expect(text(r)).toContain(`yükü: ${tr(plan.total)} → ${tr(loadAfter(plan, new Set(['h1', 'h2'])))}.`);
   });
 
   it('applies ONLY dated pauses to Sunday for the kept habits -- no goal, schedule or log write', async () => {
     const plan = weekLightenPlan(mockHabits, THU);
     const { r, done } = await mount();
-    await act(async () => { byLabel(r, `Koşu · ${plan.rows[0].points}`)[0].props.onPress(); }); // un-pick the suggestion
-    await act(async () => { byLabel(r, `Su iç · ${plan.rows[2].points}`)[0].props.onPress(); }); // pick another
+    await act(async () => { byLabel(r, `Koşu · ${tr(plan.rows[0].points)}`)[0].props.onPress(); }); // un-pick the suggestion
+    await act(async () => { byLabel(r, `Su iç · ${tr(plan.rows[2].points)}`)[0].props.onPress(); }); // pick another
     await act(async () => { await byLabel(r, 'Uygula')[0].props.onPress(); });
     expect(mockAddTimeOff.mock.calls).toEqual([['h3', { kind: 'pause', start_date: '2026-10-08', end_date: '2026-10-11' }]]);
     expect(mockUpdateHabit).not.toHaveBeenCalled();
@@ -99,8 +100,8 @@ describe('the card', () => {
   it('a habit archived or paused since the card appeared is not paused again; a refused pause is reported', async () => {
     const { r, done } = await mount();
     const plan = weekLightenPlan(mockHabits, THU);
-    await act(async () => { byLabel(r, `Kitap · ${plan.rows[1].points}`)[0].props.onPress(); });
-    await act(async () => { byLabel(r, `Su iç · ${plan.rows[2].points}`)[0].props.onPress(); });
+    await act(async () => { byLabel(r, `Kitap · ${tr(plan.rows[1].points)}`)[0].props.onPress(); });
+    await act(async () => { byLabel(r, `Su iç · ${tr(plan.rows[2].points)}`)[0].props.onPress(); });
     mockHabits[0] = { ...mockHabits[0], status: 'archived' };
     mockHabits[1] = { ...mockHabits[1], pause_intervals: [{ id: 'p', habit_id: 'h2', kind: 'pause', start_date: '2026-10-08', end_date: null }] };
     mockAddTimeOff.mockResolvedValueOnce({ ok: false, error: 'çakışma' });

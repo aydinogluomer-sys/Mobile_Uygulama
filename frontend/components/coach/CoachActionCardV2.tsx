@@ -21,6 +21,7 @@ import { frequencyEditPatch, frequencySummary } from '../../lib/frequencyForm';
 import { todayLocal } from '../../lib/date';
 import { reminderTimes } from '../../lib/reminderPlan';
 import { loadAfter, weekLightenPlan } from '../../lib/weekLighten';
+import { decimalTR } from '../../lib/chartText';
 import { isPausedOn } from '../../lib/habitPauses';
 
 export default function CoachActionCardV2({ action, onDone }: { action: CoachActionV2; onDone: (ok: boolean, message: string) => void }) {
@@ -69,7 +70,7 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
     weekPlan ? weekPlan.rows.filter((r) => r.suggested).map((r) => r.id) : lightCandidates.map((h) => h.id),
   ));
   const chips = weekPlan
-    ? weekPlan.rows.map((r) => ({ id: r.id, label: `${r.name} · ${r.points}` }))
+    ? weekPlan.rows.map((r) => ({ id: r.id, label: `${r.name} · ${decimalTR(r.points)}` }))
     : lightCandidates.map((h) => ({ id: h.id, label: h.name }));
 
   function describe(): string {
@@ -85,7 +86,7 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
         ? `${target.habit.name} hatırlatması: ${reminderTimes(target.habit).join(', ') || 'yok'} → ${(action.reminders.times ?? [action.reminders.time]).join(', ')}${action.reminders.days ? ' (seçili günlerde)' : ''}`
         : '';
       case 'lighten_week': return weekPlan && weekPlan.rows.length
-        ? `Bu haftanın kalanı (${weekPlan.from} → ${weekPlan.until}) yükü: ${weekPlan.total} → ${loadAfter(weekPlan, kept)}. Seçtiklerin Pazar'a kadar ara verir (dokunarak değiştir). Hedefler ve takvim değişmez; ara kendiliğinden biter.`
+        ? `Bu haftanın kalanı (${weekPlan.from} → ${weekPlan.until}) yükü: ${decimalTR(weekPlan.total)} → ${decimalTR(loadAfter(weekPlan, kept))}. Seçtiklerin Pazar'a kadar ara verir (dokunarak değiştir). Hedefler ve takvim değişmez; ara kendiliğinden biter.`
         : 'Bu haftanın kalanında hafifletilecek aktif alışkanlık yok.';
     }
   }

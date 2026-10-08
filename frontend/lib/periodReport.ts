@@ -14,6 +14,7 @@
 import { periodStatus, type PeriodUnit } from './habitSchedule';
 import { addDaysLocal, parseLocalDate, ymd } from './date';
 import type { Habit, HabitLog } from './supabase';
+import { decimalTR } from './chartText';
 
 export type PeriodReport = {
   unit: PeriodUnit | null;
@@ -67,7 +68,8 @@ export function periodReportLine(r: PeriodReport, unitLabel: string | null): str
   return bits.join(' · ');
 }
 
-const trim = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+// R10.05 — a report line is UI text: Turkish decimal comma.
+const trim = (n: number) => decimalTR(n);
 
 export type MeasuredRow = { id: string; name: string; line: string; report: PeriodReport };
 

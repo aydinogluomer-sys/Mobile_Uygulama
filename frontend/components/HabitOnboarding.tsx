@@ -25,6 +25,7 @@ import FrequencyEditor from './FrequencyEditor';
 import { useHabitStore } from '../store/habitStore';
 import { LIFE_AREAS } from '../store/lifeAreasStore';
 import { useWillpowerStore } from '../store/willpowerStore';
+import { decimalTR } from '../lib/chartText';
 
 // DB sütun adlarına uygun form tipi
 type HabitFormData = Omit<Habit, 'id' | 'created_at' | 'user_id'>;
@@ -688,8 +689,8 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
       { label: `Zorluk (${dmeta.label})`, val: `${bd.diff}`, color: dmeta.color },
       // R01.02-e/A10: an interval habit names its interval, and its factor is the
       // interpolated one from triage (R01.02-d2), shown rounded.
-      { label: `Frekans (${'intervalDays' in bd ? `${bd.intervalDays} günde bir` : bd.freqKind === 'daily' ? 'günlük' : bd.freqKind === 'weekly' ? 'haftalık' : 'aylık'})`, val: `×${Math.round(bd.freqFactor * 100) / 100}` },
-      { label: 'Temel', val: bd.base.toFixed(1) },
+      { label: `Frekans (${'intervalDays' in bd ? `${bd.intervalDays} günde bir` : bd.freqKind === 'daily' ? 'günlük' : bd.freqKind === 'weekly' ? 'haftalık' : 'aylık'})`, val: `×${decimalTR(Math.round(bd.freqFactor * 100) / 100, 2)}` },
+      { label: 'Temel', val: decimalTR(bd.base) },
       { label: 'Davranış', val: bd.behaviorBonus ? `+${bd.behaviorBonus}` : '+0' },
       { label: 'Etki', val: bd.impactBonus ? `+${bd.impactBonus}` : '+0' },
       { label: 'Ölçüm', val: bd.trackingBonus ? `+${bd.trackingBonus}` : '+0' },
@@ -770,7 +771,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           <View style={styles.costDivider} />
           <View style={styles.costRowItem}>
             <Text style={styles.costFormulaLabel}>Toplam (yuvarlanır)</Text>
-            <Text style={styles.costFormulaVal}>{bd.raw.toFixed(1)} → {bd.cost}</Text>
+            <Text style={styles.costFormulaVal}>{decimalTR(bd.raw)} → {bd.cost}</Text>
           </View>
           <Text style={styles.costHint}>
             Daha zor, daha sık ve daha etkili alışkanlıklar günlük irade bütçenden daha fazla yer.

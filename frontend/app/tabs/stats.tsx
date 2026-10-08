@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { format, subDays, getDaysInMonth } from 'date-fns';
-import { seriesText, heatmapText } from '../../lib/chartText';
+import { decimalTR, seriesText, heatmapText } from '../../lib/chartText';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 import { currentUser } from '../../lib/session';
 import { useHabitStore } from '../../store/habitStore';
@@ -227,7 +227,7 @@ export default function StatsScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  const avgPerDay = dayOfMonth > 0 ? (monthCompletions / dayOfMonth).toFixed(1) : '0';
+  const avgPerDay = dayOfMonth > 0 ? decimalTR(Math.round((monthCompletions / dayOfMonth) * 10) / 10) : '0';
 
   // Günlük tamamlama oranına (0-1) göre yeşil tonu; 0 → gri
   function ratioColor(ratio: number) {

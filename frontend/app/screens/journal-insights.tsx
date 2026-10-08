@@ -16,6 +16,7 @@ import { ACTION_COST } from '../../lib/subscription';
 import { periodWindow, InsightPeriod } from '../../lib/journalStats';
 import { insightBasis, insightFacts, insightPrompt } from '../../lib/journalInsightContext';
 import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../../lib/aiAttempt';
+import { decimalTR } from '../../lib/chartText';
 import { extractInvokeError } from '../../lib/aiInvoke';
 import { EmptyState } from '../../components/ui';
 
@@ -189,7 +190,7 @@ export default function JournalInsightsScreen() {
             <View style={s.card}>
               <Text style={s.cardTitle} accessibilityRole="header">{'AI’ya gidecek kayıtlar'}</Text>
               <Text style={s.cardMeta}>
-                {`Uygulamanın hesabı: ${facts.count} kayıt${facts.moodAvg !== null ? ` · ruh hali ort. ${facts.moodAvg}` : ''}${facts.first ? ` · ${facts.first === facts.last ? facts.first : `${facts.first} – ${facts.last}`}` : ''}`}
+                {`Uygulamanın hesabı: ${facts.count} kayıt${facts.moodAvg !== null ? ` · ruh hali ort. ${decimalTR(facts.moodAvg)}` : ''}${facts.first ? ` · ${facts.first === facts.last ? facts.first : `${facts.first} – ${facts.last}`}` : ''}`}
                 {prompt.excluded ? ` · ${prompt.excluded} kayıt sen çıkardın` : ''}
                 {prompt.dropped ? ` · en eski ${prompt.dropped} kayıt sığmadı` : ''}
               </Text>

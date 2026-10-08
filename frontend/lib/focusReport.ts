@@ -4,6 +4,7 @@
 import { ymd, ymdFromIso, startOfWeekLocal } from './date';
 // R05.06 — the one seconds->minutes rule for focus time.
 import { secondsToMinutes } from './focusDuration';
+import { decimalTR } from './chartText';
 
 export type FocusSessionRow = {
   id: string;
@@ -153,7 +154,8 @@ export function fmtDuration(sec: number): string {
 }
 
 export function fmtHours(sec: number): string {
-  return (sec / 3600).toFixed(1);
+  // R10.05 — shown in the UI ("1,5s"): the Turkish decimal comma.
+  return decimalTR(Math.round((sec / 3600) * 10) / 10);
 }
 
 // Seansları CSV metnine çevir (dışa aktarma için)
