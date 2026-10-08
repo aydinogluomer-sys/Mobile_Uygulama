@@ -11,6 +11,7 @@ import InlineComposer from '../../components/InlineComposer';
 import { EmptyState } from '../../components/ui';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import { colors } from '../../lib/tokens';
+import { projectProgress } from '../../lib/progressModel';
 
 const PRESET_COLORS = [
   colors.accent,'#8b5cf6','#ec4899',colors.error,'#f97316',
@@ -48,6 +49,8 @@ export default function ProjectsScreen() {
   }
 
   const taskCount = (pid: string) => tasks.filter((t) => t.project_id === pid && !t.completed).length;
+  // R03.06 — a project's progress is COMPUTED from its own tasks (lib/progressModel).
+  const progressOf = (pid: string) => projectProgress(tasks, pid);
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -74,13 +77,14 @@ export default function ProjectsScreen() {
             onPress={() => setDetailId(item.id)}
             onLongPress={() => confirmDelete(item)}
             accessibilityRole="button"
-            accessibilityLabel={`${item.name}, ${taskCount(item.id)} açık görev`}
+            accessibilityLabel={`${item.name}, ${taskCount(item.id)} açık görev, ${progressOf(item.id).label}`}
             accessibilityHint="Açmak için dokun, silmek için uzun bas"
           >
             <View style={[s.colorDot, { backgroundColor: item.color ?? colors.primary }]} />
             <View style={s.rowBody}>
               <Text style={s.rowName}>{item.name}</Text>
               {item.description ? <Text style={s.rowDesc} numberOfLines={1}>{item.description}</Text> : null}
+              <Text style={s.rowDesc}>{progressOf(item.id).label}</Text>
             </View>
             <View style={s.badge}>
               <Text style={s.badgeText}>{taskCount(item.id)}</Text>

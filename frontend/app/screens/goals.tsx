@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useGoalStore, Goal, GoalKind } from '../../store/goalStore';
 import { EmptyState, Skeleton } from '../../components/ui';
+import { goalProgress } from '../../lib/progressModel';
 
 const TABS: { key: GoalKind; label: string; color: string }[] = [
   { key: 'yearly', label: 'Yıllık', color: colors.accent },
@@ -38,8 +39,8 @@ function GoalCard({ goal, color, onEdit, onDelete }: {
       style={[s.goalCard, goal.progress >= 100 && s.goalDone]}
       onPress={() => onEdit(goal)}
       accessibilityRole="button"
-      accessibilityLabel={`${goal.title}, yüzde ${goal.progress} tamamlandı`}
-      accessibilityHint="İlerlemeyi güncellemek için aç"
+      accessibilityLabel={`${goal.title}, ${goalProgress(goal).label}`}
+      accessibilityHint="Bu yüzde elle girilir; görev ve alışkanlık kayıtlarından hesaplanmaz. Güncellemek için aç"
     >
       <View style={s.goalRow}>
         <Text style={[s.goalTitle, goal.progress >= 100 && s.goalTitleDone]} numberOfLines={2}>{goal.title}</Text>
@@ -55,6 +56,8 @@ function GoalCard({ goal, color, onEdit, onDelete }: {
         </View>
       </View>
       <ProgressBar pct={goal.progress} color={color} />
+      {/* R03.06 — manual, and labelled as manual: never mixed with record-computed progress. */}
+      <Text style={s.manualNote}>{goalProgress(goal).label}</Text>
     </TouchableOpacity>
   );
 }
@@ -293,6 +296,7 @@ const s = StyleSheet.create({
   goalTitle: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '500', lineHeight: 20 },
   goalTitleDone: { textDecorationLine: 'line-through', color: colors.textFaint },
   goalPct: { fontSize: 15, fontWeight: '700' },
+  manualNote: { fontSize: 11, color: colors.textFaint, marginTop: 6 },
 
   barBg: { height: 6, backgroundColor: colors.border, borderRadius: 3 },
   barFill: { height: 6, borderRadius: 3 },
