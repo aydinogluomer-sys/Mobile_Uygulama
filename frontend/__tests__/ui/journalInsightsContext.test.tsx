@@ -12,10 +12,12 @@ jest.mock('react-native-safe-area-context', () => ({ SafeAreaView: ({ children }
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }), useLocalSearchParams: () => ({}) }));
 const mockInvoke = jest.fn();
 jest.mock('../../lib/supabase', () => ({ supabase: { functions: { invoke: (...a: unknown[]) => mockInvoke(...a) } } }));
-jest.mock('../../services/focusPointService', () => ({ newRequestId: () => 'req-1' }));
+let mockReq = 0;
+jest.mock('../../services/focusPointService', () => ({ newRequestId: () => `req-${++mockReq}` }));
 const mockEntries: any[] = [];
 jest.mock('../../store/journalStore', () => {
-  const state = () => ({ entries: mockEntries, fetchEntries: jest.fn(async () => undefined) });
+  const fetchEntries = jest.fn(async () => undefined);
+  const state = () => ({ entries: mockEntries, fetchEntries });
   const useJournalStore: any = (sel?: any) => (sel ? sel(state()) : state());
   useJournalStore.getState = state;
   return { useJournalStore };
@@ -23,7 +25,9 @@ jest.mock('../../store/journalStore', () => {
 const mockSave = jest.fn(async () => undefined);
 let mockCached: any = null;
 jest.mock('../../store/insightsStore', () => {
-  const state = () => ({ get: () => mockCached, fetchInsight: jest.fn(async () => undefined), saveInsight: mockSave });
+  // stable functions, like the real store (a fresh one per render would re-run the screen's effects)
+  const fetchInsight = jest.fn(async () => undefined);
+  const state = () => ({ get: () => mockCached, fetchInsight, saveInsight: mockSave });
   const useInsightsStore: any = (sel?: any) => (sel ? sel(state()) : state());
   return { useInsightsStore };
 });
@@ -111,4 +115,21 @@ it('a saved insight says what it was built from, labels the model\'s numbers, an
   mockEntries.push(E('2026-10-08', 'Yeni kayıt', 3, '2026-10-08T07:00:00Z'));
   r = await mount();
   expect(textOf(r)).toMatch(/Kayıtlar ya da seçimin bu içgörüden sonra değişti/);
+});
+
+it('R09.06 — a lost answer says so, and the resend of the same records carries the same request id', async () => {
+  mockInvoke.mockReset();
+  mockInvoke
+    .mockResolvedValueOnce({ data: null, error: Object.assign(new Error('fetch'), { name: 'FunctionsFetchError' }) })
+    .mockResolvedValueOnce({ data: { insight: 'Tamam.', balance: 40 }, error: null })
+    .mockResolvedValueOnce({ data: { insight: 'Yine.', balance: 35 }, error: null });
+  const r = await mount();
+  const gen = () => press(r, (n) => n.props?.accessibilityRole === 'button' && /odak puanı/.test(n.props.accessibilityHint ?? ''));
+  await act(async () => { await gen().props.onPress(); });
+  expect(textOf(r)).toMatch(/Yanıt alınamadı\. Aynı isteği tekrar gönderirsen ikinci kez ücret alınmaz\./);
+  await act(async () => { await gen().props.onPress(); });
+  await act(async () => { await gen().props.onPress(); });
+  const ids = mockInvoke.mock.calls.map((c) => c[1].body.request_id);
+  expect(ids[0]).toBe(ids[1]);
+  expect(ids[2]).not.toBe(ids[1]);
 });

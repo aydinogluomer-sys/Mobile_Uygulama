@@ -1,5 +1,6 @@
 import { withEdgeDeadline } from '../lib/edgeCall';
 import { newRequestId } from '../services/focusPointService';
+import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../lib/aiAttempt';
 import { create } from 'zustand';
 import { supabase, Routine } from '../lib/supabase';
 import { useSubscriptionStore } from './subscriptionStore';
@@ -150,6 +151,9 @@ function activeHabitLoadInputs(): HabitLoadInput[] {
     }));
 }
 
+// R09.06 -- one open (unanswered) generation attempt at a time.
+const routineAttempt = createAttemptKeeper(newRequestId);
+
 export const useRoutineStore = create<RoutineStore>((set, get) => ({
   routines: [],
   fetchRoutines: async () => {
@@ -173,6 +177,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
   installed: false,
 
   generateRoutine: async (prompt) => {
+    // R09.06 -- a resend of the same prompt after a lost answer reuses the id (one charge).
     // Oturum kontrolü
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -192,7 +197,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       installed: false,
       installError: null,
     });
-    const requestId = newRequestId();
+    const requestId = routineAttempt.begin(prompt);
     try {
       const { data, error } = await withEdgeDeadline('AI rutin', (signal) =>
         supabase.functions.invoke('generate-routine', {
@@ -200,6 +205,11 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
         body: { prompt, request_id: requestId },
       }));
 
+      if (error && isNoAnswer(error)) {
+        set({ generateError: NO_ANSWER_NOTE, generating: false });
+        return;
+      }
+      routineAttempt.answered();
       if (error) {
         // FunctionsHttpError içinden sunucunun döndürdüğü mesajı çek
         let msg = 'Bir hata oluştu, tekrar deneyin.';
@@ -278,7 +288,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
         pendingProposal: null,
       });
     } catch (err) {
-      set({ generateError: err instanceof Error ? err.message : 'Sunucu hatası.', generating: false });
+      set({ generateError: isNoAnswer(err) ? NO_ANSWER_NOTE : err instanceof Error ? err.message : 'Sunucu hatası.', generating: false });
     }
   },
 

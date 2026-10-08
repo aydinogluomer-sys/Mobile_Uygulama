@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useRoutineStore } from '../store/routineStore';
+import { useRoutineStore, type ProposalSource } from '../store/routineStore';
 import { useSubscriptionStore } from '../store/subscriptionStore';
 import { ACTION_COST } from '../lib/subscription';
 import { ROUTINE_PACKS, type RoutinePack } from '../lib/routinePacks';
@@ -21,6 +21,13 @@ interface Props {
 }
 
 const MAX_CHARS = 200;
+
+/** R09.06 — where the previewed routine came from, in plain words. */
+export function sourceLine(source: ProposalSource | null): string {
+  if (source === 'pack') return 'Hazır paket — uygulamanın kendi şablonu; AI üretmedi, FP harcanmadı.';
+  if (source === 'coach') return 'Koçun önerisi — doğrulandı ve kapasitene göre değerlendirildi.';
+  return 'AI önerisi — doğrulandı ve kapasitene göre değerlendirildi.';
+}
 
 export default function AIRoutineModal({ visible, onClose }: Props) {
   const router = useRouter();
@@ -42,6 +49,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
     installError,
     installed,
     confirmInstall,
+    proposalSource,
   } = useRoutineStore();
 
   // Tamamlama formu -- yalnızca `pendingProposal` (AI'nın difficulty/
@@ -305,6 +313,8 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                 <View style={styles.resultHeader}>
                   <Text style={styles.resultName}>{proposal!.title}</Text>
                   <Text style={styles.resultDesc}>{proposal!.goal}</Text>
+                  {/* R09.06 — a ready-made pack is the app's own template, never shown as an AI answer. */}
+                  <Text style={styles.resultDesc} accessibilityLabel="Önerinin kaynağı">{sourceLine(proposalSource)}</Text>
                 </View>
 
                 <View style={styles.capacityBox}>

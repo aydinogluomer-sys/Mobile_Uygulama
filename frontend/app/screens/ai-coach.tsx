@@ -17,6 +17,7 @@ import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useJournalStore } from '../../store/journalStore';
 import { ACTION_COST } from '../../lib/subscription';
 import { extractInvokeError } from '../../lib/aiInvoke';
+import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../../lib/aiAttempt';
 import { todayLocal, ymd, addDaysLocal, parseLocalDate } from '../../lib/date';
 import { habitCompletionRate, weekdayBreakdown, bestWeekday, worstWeekday, recoverySuccessRate } from '../../lib/behaviorIntelligence';
 import { planFromRow } from '../../lib/recovery';
@@ -68,6 +69,10 @@ function derivedStateFor(
   if (completion.kind === 'value') return stateForValue(habit, completion.value);
   return completion.state === 'skip' ? 'miss' : completion.state;
 }
+
+// R09.06 — an unanswered coach message / summary keeps its request id for the resend.
+const coachAttempt = createAttemptKeeper(newRequestId);
+const summaryAttempt = createAttemptKeeper(newRequestId);
 
 const QUICK_PROMPTS = [
   'Alışkanlıklarımı analiz et',
@@ -549,8 +554,9 @@ export default function AICoachScreen() {
     setLoading(true);
     setInsufficientCredits(false);
     // One key per attempt: a retry of THIS message replays the first charge
-    // rather than paying for a second answer. See newRequestId().
-    const requestId = newRequestId();
+    // rather than paying for a second answer. See newRequestId(). R09.06 --
+    // "a retry" includes sending the same text again after a lost answer.
+    const requestId = coachAttempt.begin(`${activeId ?? ''}|${msg}`);
 
     try {
       // Deterministic analytics summary when available (see loadAnalyticsSummary
@@ -584,6 +590,8 @@ export default function AICoachScreen() {
               },
             }));
 
+          if (error && isNoAnswer(error)) throw new Error(NO_ANSWER_NOTE);
+          coachAttempt.answered();
           if (error) {
             // Sunucunun döndürdüğü gerçek hata mesajını çek (kredi, rate limit, vb.)
             const { msg: emsg, code, balance } = await extractInvokeError(error);
@@ -622,8 +630,9 @@ export default function AICoachScreen() {
     setSummarizing(true);
     setInsufficientCredits(false);
     // One key per attempt: a retry of THIS summarise replays the first
-    // charge instead of paying twice. See newRequestId().
-    const requestId = newRequestId();
+    // charge instead of paying twice. See newRequestId(). R09.06 -- the same
+    // transcript sent again after a lost answer is that retry.
+    const requestId = summaryAttempt.begin(transcript);
     try {
       const { data, error } = await withEdgeDeadline('AI Koç', (signal) =>
         supabase.functions.invoke('generate-routine', {
@@ -631,6 +640,8 @@ export default function AICoachScreen() {
         body: { mode: 'summarize', transcript, request_id: requestId },
       }));
 
+      if (error && isNoAnswer(error)) throw new Error(NO_ANSWER_NOTE);
+      summaryAttempt.answered();
       if (error) {
         const { msg, code, balance } = await extractInvokeError(error);
         if (typeof balance === 'number') setBalance(balance);

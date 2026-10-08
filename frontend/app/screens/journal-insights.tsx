@@ -15,6 +15,7 @@ import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { ACTION_COST } from '../../lib/subscription';
 import { periodWindow, InsightPeriod } from '../../lib/journalStats';
 import { insightBasis, insightFacts, insightPrompt } from '../../lib/journalInsightContext';
+import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../../lib/aiAttempt';
 import { extractInvokeError } from '../../lib/aiInvoke';
 import { EmptyState } from '../../components/ui';
 
@@ -25,6 +26,8 @@ const PERIODS: { key: InsightPeriod; label: string }[] = [
 ];
 
 const COST = ACTION_COST.insights;
+// R09.06 — the same records sent again after a lost answer reuse the id: one charge.
+const insightAttempt = createAttemptKeeper(newRequestId);
 
 export default function JournalInsightsScreen() {
   const router = useRouter();
@@ -68,11 +71,9 @@ export default function JournalInsightsScreen() {
     setLoading(true);
     setError(null);
     setLowCredits(false);
-    // One key per attempt -- see newRequestId().
-    const requestId = newRequestId();
-
     // Kronolojik metin (eski→yeni): yalnız kullanıcının bıraktığı, bütün kayıtlar.
     const { text, used } = prompt;
+    const requestId = insightAttempt.begin(`${period}|${win.key}|${text}`);
 
     try {
       const { data, error: invErr } = await withEdgeDeadline('Günlük içgörüsü', (signal) =>
@@ -81,6 +82,8 @@ export default function JournalInsightsScreen() {
         body: { mode: 'insights', period, entries: text, request_id: requestId },
       }));
 
+      if (invErr && isNoAnswer(invErr)) throw invErr;
+      insightAttempt.answered();
       if (invErr) {
         const { msg, code, balance } = await extractInvokeError(invErr);
         if (typeof balance === 'number') setBalance(balance);
@@ -94,7 +97,7 @@ export default function JournalInsightsScreen() {
       if (typeof data?.balance === 'number') setBalance(data.balance);
       await saveInsight(period, win.key, insight, used.length);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Bir hata oluştu');
+      setError(isNoAnswer(e) ? NO_ANSWER_NOTE : e instanceof Error ? e.message : 'Bir hata oluştu');
     } finally {
       setLoading(false);
     }
