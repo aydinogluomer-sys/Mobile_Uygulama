@@ -1,6 +1,7 @@
 import { resetWebhookCache } from '../services/webhookService';
 import { coreOutbox } from '../services/coreOutbox';
 import PrivacyCover from '../components/PrivacyCover';
+import { maybeRunDailyLocalBackup } from '../services/localBackupService';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, View, type AppStateStatus } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -97,6 +98,8 @@ export default function RootLayout() {
       void useTaskStore.getState().flush();
       // R02.03 — the core outbox (journal, notes, recovery plans, focus sessions).
       void coreOutbox.flush();
+      // R08.02 — the automatic local backup copy: at most once a day, only when the app is opened.
+      void maybeRunDailyLocalBackup().catch(() => undefined);
     })();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {

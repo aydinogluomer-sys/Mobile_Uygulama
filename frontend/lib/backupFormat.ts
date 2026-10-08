@@ -152,12 +152,35 @@ export type Manifest = {
   user_id: string;
   created_at: string;
   collections: Record<string, { count: number; checksum: string }>;
+  /**
+   * R08.02 — the relation map: for each collection, which field points at
+   * which collection (from the registry). A restore checks these ids.
+   */
+  relations?: Record<string, Record<string, string>>;
+  /**
+   * R08.02 — the consistency window. Collections are read one after another
+   * between `started_at` and `finished_at`; a change made during that window
+   * may or may not be in the file. The counts and checksums describe EXACTLY
+   * what is in the file, so the file is internally consistent; the window
+   * says how fresh it is.
+   */
+  snapshot?: { started_at: string; finished_at: string; rule: string };
 };
 
-export function buildManifest(userId: string, createdAt: string, data: Record<string, readonly unknown[]>): Manifest {
+export const SNAPSHOT_RULE = 'Koleksiyonlar sırayla okundu; bu pencerede yapılan değişiklik dosyada olabilir ya da olmayabilir. Sayım ve sağlamalar dosyadakini birebir tanımlar.';
+
+export function buildManifest(
+  userId: string, createdAt: string, data: Record<string, readonly unknown[]>,
+  window?: { startedAt: string; finishedAt: string },
+): Manifest {
   const collections: Manifest['collections'] = {};
   for (const [name, rows] of Object.entries(data)) collections[name] = { count: rows.length, checksum: checksum(canonical(rows)) };
-  return { format: BACKUP_FORMAT_VERSION, user_id: userId, created_at: createdAt, collections };
+  const relations: Record<string, Record<string, string>> = {};
+  for (const c of REGISTRY) if (c.relations && collections[c.name]) relations[c.name] = { ...c.relations };
+  return {
+    format: BACKUP_FORMAT_VERSION, user_id: userId, created_at: createdAt, collections, relations,
+    ...(window ? { snapshot: { started_at: window.startedAt, finished_at: window.finishedAt, rule: SNAPSHOT_RULE } } : {}),
+  };
 }
 
 export type BackupFile = { manifest: Manifest; truncated?: string[] } & Record<string, unknown>;

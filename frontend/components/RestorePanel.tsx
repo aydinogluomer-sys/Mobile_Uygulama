@@ -6,10 +6,13 @@
  * The file arrives by paste: picking a file from storage needs a new native
  * dependency (expo-document-picker -- stop point S14).
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { colors, space, radius } from '../lib/tokens';
 import { dryRunRestore, executeRestore, type RestoreReport } from '../services/restoreService';
+import { loadLocalBackupStatus, runLocalBackup, latestCompleteLocalBackup } from '../services/localBackupService';
+import { statusText, EMPTY_STATUS, type LocalBackupStatus } from '../lib/backupRotation';
+import { currentUser } from '../lib/session';
 import type { RestorePlan } from '../lib/restorePlan';
 
 export default function RestorePanel() {
@@ -20,6 +23,29 @@ export default function RestorePanel() {
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<RestoreReport | null>(null);
   const cancel = useRef(false);
+  // R08.02 — the automatic local copy: honest status, a manual run, and a check of the newest complete copy.
+  const [local, setLocal] = useState<LocalBackupStatus>(EMPTY_STATUS);
+  const [localBusy, setLocalBusy] = useState(false);
+  useEffect(() => {
+    void currentUser().then((u) => (u ? loadLocalBackupStatus(u.id) : EMPTY_STATUS)).then(setLocal).catch(() => undefined);
+  }, []);
+  async function backupNow() {
+    setLocalBusy(true);
+    const r = await runLocalBackup();
+    setLocal(r.status);
+    setLocalBusy(false);
+    if (!r.ok) setError(r.error);
+  }
+  async function checkLocal() {
+    const b = await latestCompleteLocalBackup();
+    if (!b) { setError('Cihazda tam bir yerel yedek yok.'); return; }
+    setText(b.text);
+    setBusy(true); setError(null); setPlan(null); setSummary([]); setReport(null);
+    const r = await dryRunRestore(b.text);
+    setBusy(false);
+    if (!r.ok) { setError(r.reason); return; }
+    setPlan(r.plan); setSummary(r.summary);
+  }
 
   async function check() {
     setBusy(true); setError(null); setPlan(null); setSummary([]); setReport(null);
@@ -54,6 +80,17 @@ export default function RestorePanel() {
 
   return (
     <View style={s.box}>
+      <Text style={s.title}>Yerel yedek</Text>
+      <Text style={s.sub} accessibilityLiveRegion="polite">{statusText(local, new Date())}</Text>
+      <Text style={s.sub}>Uygulamayı açtığında günde en fazla bir kez, bu cihazda alınır (son 3 kopya). Uygulama açılmazsa yedek alınmaz.</Text>
+      <View style={s.row}>
+        <TouchableOpacity style={s.btn} onPress={backupNow} disabled={localBusy} accessibilityRole="button" accessibilityLabel="Şimdi yerel yedek al">
+          <Text style={s.btnText}>{localBusy ? 'Yedekleniyor…' : 'Şimdi yerel yedek al'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.btn} onPress={checkLocal} disabled={busy || localBusy} accessibilityRole="button" accessibilityLabel="Son yerel yedeği doğrula">
+          <Text style={s.btnText}>Son yerel yedeği doğrula</Text>
+        </TouchableOpacity>
+      </View>
       <Text style={s.title}>Dışa aktarımı doğrula ve eksikleri ekle</Text>
       <Text style={s.sub}>
         JSON dışa aktarımının metnini buraya yapıştır. Önce yalnız kontrol edilir; hiçbir şey yazılmaz.

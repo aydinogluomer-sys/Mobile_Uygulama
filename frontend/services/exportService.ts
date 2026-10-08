@@ -181,7 +181,9 @@ export async function drain<T extends { id: string }>(
 }
 
 /** Everything the signed-in user owns, as one object. */
-export async function buildBackup(now: Date = new Date(), opts: { userId?: string | null } = {}): Promise<Backup> {
+export async function buildBackup(now: Date = new Date(), opts: { userId?: string | null; clock?: () => Date } = {}): Promise<Backup> {
+  const clock = opts.clock ?? (() => new Date());
+  const startedAt = clock().toISOString();
   const truncated: string[] = [];
   const failed: { collection: string; error: string }[] = [];
 
@@ -255,7 +257,7 @@ export async function buildBackup(now: Date = new Date(), opts: { userId?: strin
         habits, habit_logs: habitLogs, tasks, projects, goals, notes,
         journal_entries: journal, focus_sessions: focus, bad_habits: badHabits, webhooks: safeWebhooks,
         ...(Object.fromEntries(EXPORT_EXTRA_TABLES.map((t) => [t, extra[t]])) as Record<string, unknown[]>), device,
-      })
+      }, { startedAt, finishedAt: clock().toISOString() })
     : undefined;
 
   return {
