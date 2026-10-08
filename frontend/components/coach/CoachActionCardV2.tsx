@@ -20,6 +20,8 @@ import {
 import { frequencyEditPatch, frequencySummary } from '../../lib/frequencyForm';
 import { todayLocal } from '../../lib/date';
 import { reminderTimes } from '../../lib/reminderPlan';
+import { loadAfter, weekLightenPlan } from '../../lib/weekLighten';
+import { isPausedOn } from '../../lib/habitPauses';
 
 export default function CoachActionCardV2({ action, onDone }: { action: CoachActionV2; onDone: (ok: boolean, message: string) => void }) {
   const router = useRouter();
@@ -38,7 +40,7 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
       if (r.kind === 'ambiguous') return { kind: 'ambiguous' as const, query: action.task_query, options: r.candidates.map((t) => ({ id: t.id, label: t.title, pick: { kind: 'task' as const, task: t, fp: taskFingerprint(t) } })) };
       return { kind: 'none' as const, query: action.task_query };
     }
-    if (action.type === 'lighten_today') return { kind: 'many' as const };
+    if (action.type === 'lighten_today' || action.type === 'lighten_week') return { kind: 'many' as const };
     const r = resolveHabitQuery(action.habit_query, habits);
     if (r.kind === 'exact') return { kind: 'habit' as const, habit: r.habit, fp: habitFingerprint(r.habit) };
     if (r.kind === 'ambiguous') return { kind: 'ambiguous' as const, query: action.habit_query, options: r.candidates.map((h) => ({ id: h.id, label: h.name, pick: { kind: 'habit' as const, habit: h, fp: habitFingerprint(h) } })) };
@@ -57,7 +59,16 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
       .flatMap((r) => (r.kind === 'exact' ? [r.habit] : []))
       .filter((h, i, a) => h.status === 'active' && a.findIndex((x) => x.id === h.id) === i);
   }, [action, habits]);
-  const [kept, setKept] = useState<Set<string>>(() => new Set(lightCandidates.map((h) => h.id)));
+  // R09.04 — the week plan, computed once from the habits as the card appeared.
+  const weekPlan = useMemo(() => (action.type === 'lighten_week' ? weekLightenPlan(habits, new Date()) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [action]);
+  const [kept, setKept] = useState<Set<string>>(() => new Set(
+    weekPlan ? weekPlan.rows.filter((r) => r.suggested).map((r) => r.id) : lightCandidates.map((h) => h.id),
+  ));
+  const chips = weekPlan
+    ? weekPlan.rows.map((r) => ({ id: r.id, label: `${r.name} · ${r.points}` }))
+    : lightCandidates.map((h) => ({ id: h.id, label: h.name }));
 
   function describe(): string {
     if (target.kind === 'none') return `"${target.query}" ile eşleşen bir kayıt bulunamadı.`;
@@ -71,6 +82,9 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
       case 'edit_reminder_time': return target.kind === 'habit'
         ? `${target.habit.name} hatırlatması: ${reminderTimes(target.habit).join(', ') || 'yok'} → ${(action.reminders.times ?? [action.reminders.time]).join(', ')}${action.reminders.days ? ' (seçili günlerde)' : ''}`
         : '';
+      case 'lighten_week': return weekPlan && weekPlan.rows.length
+        ? `Bu haftanın kalanı (${weekPlan.from} → ${weekPlan.until}) yükü: ${weekPlan.total} → ${loadAfter(weekPlan, kept)}. Seçtiklerin Pazar'a kadar ara verir (dokunarak değiştir). Hedefler ve takvim değişmez; ara kendiliğinden biter.`
+        : 'Bu haftanın kalanında hafifletilecek aktif alışkanlık yok.';
     }
   }
 
@@ -110,6 +124,24 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
         }
         return;
       }
+      if (action.type === 'lighten_week' && weekPlan) {
+        // Each habit re-checked as it is NOW: still active and not resting.
+        const live = useHabitStore.getState().habits;
+        const chosen = weekPlan.rows.filter((r) => kept.has(r.id)).filter((r) => {
+          const h = live.find((x) => x.id === r.id);
+          return !!h && h.status === 'active' && !isPausedOn(h, new Date());
+        });
+        const failed: string[] = [];
+        for (const r of chosen) {
+          const res = await useHabitStore.getState().addTimeOff(r.id, { kind: 'pause', start_date: weekPlan.from, end_date: weekPlan.until });
+          if (!res.ok) failed.push(r.name);
+        }
+        const done = chosen.length - failed.length;
+        onDone(done > 0, done
+          ? `✓ ${done} alışkanlık ${weekPlan.until} tarihine kadar ara verdi.${failed.length ? ` Uygulanamayan: ${failed.join(', ')}.` : ''}`
+          : failed.length ? `Uygulanamadı: ${failed.join(', ')}.` : 'Hiçbir alışkanlık seçilmedi.');
+        return;
+      }
       if (action.type === 'lighten_today') {
         const live = useHabitStore.getState().habits;
         const chosen = [...kept].filter((id) => live.some((h) => h.id === id && h.status === 'active'));
@@ -140,14 +172,14 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
           })}
         </View>
       )}
-      {action.type === 'lighten_today' && (
+      {(action.type === 'lighten_today' || action.type === 'lighten_week') && (
         <View style={s.row}>
-          {lightCandidates.map((h) => {
-            const on = kept.has(h.id);
+          {chips.map((c) => {
+            const on = kept.has(c.id);
             return (
-              <TouchableOpacity key={h.id} style={[s.chip, on && s.chipOn]} onPress={() => setKept((k) => { const n = new Set(k); if (n.has(h.id)) n.delete(h.id); else n.add(h.id); return n; })}
-                accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={h.name}>
-                <Text style={s.chipText}>{h.name}</Text>
+              <TouchableOpacity key={c.id} style={[s.chip, on && s.chipOn]} onPress={() => setKept((k) => { const n = new Set(k); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
+                accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={c.label}>
+                <Text style={s.chipText}>{c.label}</Text>
               </TouchableOpacity>
             );
           })}

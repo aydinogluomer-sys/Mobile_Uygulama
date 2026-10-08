@@ -9,6 +9,9 @@
  *   move_task            -> taskStore.updateTask(id, { due_date })           (outbox, R02)
  *   suggest_small_step   -> focusStore.startSmallStep(parent, draft)         (R03.03)
  *   lighten_today        -> a `skip` log today for the habits the USER keeps  (R03.02)
+ *   edit_reminder_time   -> habitStore.updateHabit({ reminders })            (R09.02)
+ *   lighten_week         -> habitStore.addTimeOff, today..Sunday, for the habits the USER keeps
+ *                           from `weekLightenPlan` (R09.04; the plan is the app's, not the model's)
  *
  * The four places an action type must agree on stay in step: this
  * validator, the edge function's tool schema
@@ -30,7 +33,7 @@ import { canonical } from './backupFormat';
 import type { FrequencyConfig, Habit } from './supabase';
 import { buildReminderConfig } from './reminderPlan';
 
-export const V2_ACTION_TYPES = ['edit_habit_schedule', 'pause_habit', 'move_task', 'suggest_small_step', 'lighten_today', 'edit_reminder_time'] as const;
+export const V2_ACTION_TYPES = ['edit_habit_schedule', 'pause_habit', 'move_task', 'suggest_small_step', 'lighten_today', 'edit_reminder_time', 'lighten_week'] as const;
 export type V2ActionType = (typeof V2_ACTION_TYPES)[number];
 
 export type CoachActionV2 =
@@ -40,7 +43,10 @@ export type CoachActionV2 =
   | { type: 'suggest_small_step'; task_query: string; step: string; minutes: number }
   | { type: 'lighten_today'; habit_queries: string[] }
   // R09.02 — "hedef/saat düzenleme": the reminder times (and optionally weekdays) of one habit.
-  | { type: 'edit_reminder_time'; habit_query: string; reminders: NonNullable<Habit['reminders']> };
+  | { type: 'edit_reminder_time'; habit_query: string; reminders: NonNullable<Habit['reminders']> }
+  // R09.04 — "bu hafta yorgunum": no arguments. WHICH habits is computed from
+  // the user's own load (lib/weekLighten), never taken from the model.
+  | { type: 'lighten_week' };
 
 const ALLOWED: Record<V2ActionType, Set<string>> = {
   edit_habit_schedule: new Set(['type', 'habit_query', 'frequency_config']),
@@ -49,6 +55,7 @@ const ALLOWED: Record<V2ActionType, Set<string>> = {
   suggest_small_step: new Set(['type', 'task_query', 'step', 'minutes']),
   lighten_today: new Set(['type', 'habit_queries']),
   edit_reminder_time: new Set(['type', 'habit_query', 'times', 'days']),
+  lighten_week: new Set(['type']),
 };
 
 const str = (v: unknown, max: number): string | null => {
@@ -120,6 +127,8 @@ export function readActionV2(raw: Record<string, unknown>, today: string, now: D
       if (!built.ok) return `invalid reminder: ${built.reason}`;
       return { type: t, habit_query: q, reminders: built.config };
     }
+    case 'lighten_week':
+      return { type: t };
   }
 }
 

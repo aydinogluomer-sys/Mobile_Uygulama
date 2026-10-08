@@ -2,7 +2,7 @@
  * R09.02 / R09.03 — the four places an action type lives agree, and every
  * coach write checks its target first.
  */
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { stripComments } from '../helpers/sourceText';
 import { V2_ACTION_TYPES } from '../../lib/coachActionsV2';
@@ -20,18 +20,26 @@ describe('four places, one list', () => {
     const enums = [...edge.matchAll(/type: \{ type: 'string', enum: \['([a-z_]+)'\] \}/g)].map((m) => m[1]);
     expect(enums).toEqual(['propose_habit', 'propose_habit_plan', 'log_habit', ...V2_ACTION_TYPES]);
   });
-  // R09.02 (reminder action): migration 034 restates the constraint with the
-  // full list; 032 stays as written (historic, its own five). The CURRENT
-  // definition -- the latest migration that adds the constraint -- must equal
-  // the client's list.
+  // R09.02 (reminder action) / R09.04 (week action): each new type restates
+  // the constraint in a new migration (034, 035); earlier ones stay as
+  // written (historic). The CURRENT definition -- the latest migration that
+  // adds the constraint -- must equal the client's list.
   const checkList = (text: string) => /CHECK \(action_type IN \(([\s\S]*?)\)\)/.exec(text)![1].match(/'([a-z_]+)'/g)!.map((x) => x.slice(1, -1));
-  it('the database CHECK allows exactly them (latest definition: migration 034, not applied)', () => {
-    const latest = raw('../supabase/migrations/034_coach_reminder_action.sql');
+  it('the database CHECK allows exactly them (latest definition: migration 035, not applied)', () => {
+    const latest = raw('../supabase/migrations/035_coach_lighten_week.sql');
     expect(checkList(latest)).toEqual(['propose_habit', 'propose_habit_plan', 'log_habit', ...V2_ACTION_TYPES]);
     expect(latest).toMatch(/STATUS: WRITTEN, NOT APPLIED/);
+    expect(raw('../supabase/migrations/README.md')).toMatch(/\| 035 \| `035_coach_lighten_week\.sql` \| \*\*NOT APPLIED\*\*/);
+    // no later migration redefines it
+    const dir = join(ROOT, '..', 'supabase', 'migrations');
+    const redefining = readdirSync(dir).filter((f) => /ADD CONSTRAINT ai_actions_type_check/.test(readFileSync(join(dir, f), 'utf8'))).sort();
+    expect(redefining[redefining.length - 1]).toBe('035_coach_lighten_week.sql');
+    // 034 is not edited: the list up to the reminder action
+    const v034 = raw('../supabase/migrations/034_coach_reminder_action.sql');
+    expect(checkList(v034)).toEqual(['propose_habit', 'propose_habit_plan', 'log_habit', ...V2_ACTION_TYPES.filter((t) => t !== 'lighten_week')]);
     expect(raw('../supabase/migrations/README.md')).toMatch(/\| 034 \| `034_coach_reminder_action\.sql` \| \*\*NOT APPLIED\*\*/);
     // 032 is not edited: it still holds the first five of the second set
-    expect(checkList(sql)).toEqual(['propose_habit', 'propose_habit_plan', 'log_habit', ...V2_ACTION_TYPES.filter((t) => t !== 'edit_reminder_time')]);
+    expect(checkList(sql)).toEqual(['propose_habit', 'propose_habit_plan', 'log_habit', ...V2_ACTION_TYPES.filter((t) => t !== 'edit_reminder_time' && t !== 'lighten_week')]);
     expect(sql).toMatch(/STATUS: WRITTEN, NOT APPLIED/);
     expect(raw('../supabase/migrations/README.md')).toMatch(/\| 032 \| `032_coach_actions_v2\.sql` \| \*\*NOT APPLIED\*\*/);
   });

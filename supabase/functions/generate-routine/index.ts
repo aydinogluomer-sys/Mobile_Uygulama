@@ -76,7 +76,10 @@ NE ZAMAN EYLEM ÜRETİLİR:
 10) Kullanıcı bir alışkanlığın HATIRLATMA SAATİNİ değiştirmek istiyorsa → TAM OLARAK BİR \`edit_reminder_time\`.
    Örnek: "Kitap hatırlatmasını akşam 9'a al." → times: ["21:00"]. Saatler "SS:DD"; günler isteğe bağlı (0=Pzt … 6=Paz).
 
-Açık ve eyleme dönük bir istek SESSİZCE sadece metne dönüşmemeli: 2-9 durumlarından birindeysen eylemi ÜRET.
+11) Kullanıcı BU HAFTA yorgun olduğunu / haftayı hafifletmek istediğini söylüyorsa → TAM OLARAK BİR \`lighten_week\`
+   (argümansız; hangi alışkanlıkların ara vereceğini uygulama kullanıcının kendi yükünden hesaplar ve kullanıcı düzenler).
+
+Açık ve eyleme dönük bir istek SESSİZCE sadece metne dönüşmemeli: 2-11 durumlarından birindeysen eylemi ÜRET.
 Aynı anda birden fazla eylem üretme.
 
 ALIŞKANLIK ALANLARININ ANLAMI — KARIŞTIRMA:
@@ -278,6 +281,15 @@ const COACH_TOOL = {
                 days: { type: 'array', maxItems: 7, items: { type: 'integer', minimum: 0, maximum: 6 } },
               },
               required: ['type', 'habit_query', 'times'],
+              additionalProperties: false,
+            },
+            // R09.04 — lighten the rest of the week (migration 035 adds it to the CHECK).
+            {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['lighten_week'] },
+              },
+              required: ['type'],
               additionalProperties: false,
             },
           ],

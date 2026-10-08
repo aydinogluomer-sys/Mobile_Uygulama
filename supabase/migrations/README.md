@@ -53,6 +53,7 @@ old filenames.
 | 032 | `032_coach_actions_v2.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 | 033 | `033_habit_log_timezone.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 | 034 | `034_coach_reminder_action.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
+| 035 | `035_coach_lighten_week.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 
 Keep this table when adding a migration: the old names are cited throughout
 `docs/audit/`, `docs/plan/`, `PROGRESS.md` and the audit reports, which are
