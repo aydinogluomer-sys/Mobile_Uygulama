@@ -366,7 +366,7 @@ export default function WeeklyReviewScreen() {
             <Text style={[s.badgeEmoji, { color: badge.color }]}>{badge.emoji}</Text>
             <View style={{ flex: 1 }}>
               <Text style={s.badgeTitle}>{badge.label}</Text>
-              <Text style={s.badgeDesc}>{badge.level.toUpperCase()} · Haftalık rapor özeti</Text>
+              <Text style={s.badgeDesc}>{badge.level.toLocaleUpperCase('tr-TR')} · Haftalık rapor özeti</Text>
             </View>
           </View>
         )}

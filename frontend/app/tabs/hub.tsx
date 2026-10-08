@@ -83,7 +83,7 @@ export default function HubScreen() {
 
         {GROUPS.map((group) => (
           <View key={group.title} style={s.group}>
-            <Text style={s.groupTitle}>{group.title.toUpperCase()}</Text>
+            <Text style={s.groupTitle}>{group.title.toLocaleUpperCase('tr-TR')}</Text>
             <View style={s.grid}>
               {group.items.map((item) => {
                 const badge = getBadge(item.route);

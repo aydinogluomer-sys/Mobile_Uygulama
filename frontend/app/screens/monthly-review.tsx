@@ -433,7 +433,7 @@ export default function MonthlyReviewScreen() {
               <Text style={[s.badgeEmoji, { color: badge.color }]}>{badge.emoji}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={s.badgeTitle}>{badge.label}</Text>
-                <Text style={s.badgeDesc}>{badge.level.toUpperCase()} · Aylık rapor özeti</Text>
+                <Text style={s.badgeDesc}>{badge.level.toLocaleUpperCase('tr-TR')} · Aylık rapor özeti</Text>
               </View>
             </View>
           )}

@@ -1,6 +1,6 @@
 import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -12,6 +12,9 @@ import { useJournalStore, JournalEntry } from '../../store/journalStore';
 import { moodMeta } from '../../lib/journalMoods';
 import { computeJournalStats } from '../../lib/journalStats';
 import { EmptyState } from '../../components/ui';
+// R07.03 — search and a month calendar over the same entries.
+import { searchEntries, monthGrid, shiftMonth } from '../../lib/journalBrowse';
+import { todayLocal } from '../../lib/date';
 
 const DAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -34,7 +37,11 @@ export default function JournalArchiveScreen() {
   const params = useLocalSearchParams<{ tag?: string }>();
   const [tag, setTag] = useState<string | null>(typeof params.tag === 'string' ? params.tag : null);
   const tags = useMemo(() => tagCounts(all).slice(0, 12), [all]);
-  const entries = useMemo(() => (tag ? withTag(all, tag) : all), [all, tag]);
+  const [query, setQuery] = useState('');
+  const [view, setView] = useState<'list' | 'calendar'>('list');
+  const [month, setMonth] = useState(todayLocal().slice(0, 7));
+  const entries = useMemo(() => searchEntries(tag ? withTag(all, tag) : all, query), [all, tag, query]);
+  const weeks = useMemo(() => monthGrid(all, Number(month.slice(0, 4)), Number(month.slice(5, 7))), [all, month]);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
@@ -73,6 +80,54 @@ export default function JournalArchiveScreen() {
 
         <MoodHabitCard entries={all} />
 
+        {/* R07.03 — search + list/calendar */}
+        <TextInput
+          style={s.search}
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Günlükte ara…"
+          placeholderTextColor={colors.textFaint}
+          accessibilityLabel="Günlükte ara"
+          returnKeyType="search"
+        />
+        <View style={s.viewRow} accessibilityRole="radiogroup" accessibilityLabel="Görünüm">
+          {(['list', 'calendar'] as const).map((v) => (
+            <TouchableOpacity key={v} style={[s.tagChip, view === v && s.tagChipOn]} onPress={() => setView(v)}
+              accessibilityRole="radio" accessibilityLabel={v === 'list' ? 'Liste' : 'Takvim'} accessibilityState={{ selected: view === v, checked: view === v }}>
+              <Text style={s.tagChipText}>{v === 'list' ? 'Liste' : 'Takvim'}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {view === 'calendar' && (
+          <View style={s.calendar}>
+            <View style={s.calHead}>
+              <TouchableOpacity onPress={() => setMonth(shiftMonth(month, -1))} accessibilityRole="button" accessibilityLabel="Önceki ay"><Ionicons name="chevron-back" size={18} color={colors.textDim} /></TouchableOpacity>
+              <Text style={s.sectionLabel}>{`${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`.toLocaleUpperCase('tr-TR')}</Text>
+              <TouchableOpacity onPress={() => setMonth(shiftMonth(month, 1))} accessibilityRole="button" accessibilityLabel="Sonraki ay"><Ionicons name="chevron-forward" size={18} color={colors.textDim} /></TouchableOpacity>
+            </View>
+            {weeks.map((w) => (
+              <View key={w[0].date} style={s.calWeek}>
+                {w.map((d) => {
+                  const day = Number(d.date.slice(8, 10));
+                  const label = `${day} ${MONTHS[Number(d.date.slice(5, 7)) - 1]}${d.entryId ? ', kayıt var' : ', kayıt yok'}`;
+                  return d.entryId ? (
+                    <TouchableOpacity key={d.date} style={[s.calDay, s.calDayOn, !d.inMonth && s.calDayOut]}
+                      onPress={() => router.push(`/screens/journal-reader?date=${d.date}` as any)}
+                      accessibilityRole="button" accessibilityLabel={label}>
+                      <Text style={s.calDayText}>{day}</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View key={d.date} style={[s.calDay, !d.inMonth && s.calDayOut]} accessibilityLabel={label}>
+                      <Text style={[s.calDayText, { color: colors.textFaint }]}>{day}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ))}
+          </View>
+        )}
+
         {tags.length > 0 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tagRow}>
             {tag && (
@@ -88,7 +143,9 @@ export default function JournalArchiveScreen() {
           </ScrollView>
         )}
 
-        {entries.length === 0 ? (
+        {view === 'calendar' ? null : entries.length === 0 && query.trim() ? (
+          <EmptyState variant="editorial" icon="search-outline" title="Bu aramayla kayıt yok" hint="Başka bir kelime dene ya da etiketi kaldır." />
+        ) : entries.length === 0 ? (
           // Defterin sakin tonuna uyan editöryel boş durum (ikon kabı yok, serif italik)
           <EmptyState
             variant="editorial"
@@ -99,7 +156,7 @@ export default function JournalArchiveScreen() {
         ) : (
           sections.map((sec) => (
             <View key={sec.key} style={s.section}>
-              <Text style={s.sectionLabel}>{sec.label.toUpperCase()}</Text>
+              <Text style={s.sectionLabel}>{sec.label.toLocaleUpperCase('tr-TR')}</Text>
               {sec.items.map((e) => {
                 const dt = parseDate(e.date);
                 const m = moodMeta(e.mood);
@@ -168,6 +225,15 @@ const s = StyleSheet.create({
   tagChipOn: { borderColor: colors.accent },
   tagChipText: { fontSize: 12, color: colors.textDim },
   safe: { flex: 1, backgroundColor: colors.bg },
+  search: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: colors.text, marginBottom: 10 },
+  viewRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  calendar: { marginBottom: 16, gap: 4 },
+  calHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  calWeek: { flexDirection: 'row', gap: 4 },
+  calDay: { flex: 1, aspectRatio: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center', minHeight: 36 },
+  calDayOn: { backgroundColor: alphaHex(colors.accent, '33') },
+  calDayOut: { opacity: 0.4 },
+  calDayText: { fontSize: 13, color: colors.text },
   content: { padding: 16, paddingBottom: 40 },
 
   report: {
