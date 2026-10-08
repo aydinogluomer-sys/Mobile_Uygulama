@@ -18,6 +18,8 @@ import { useTaskStore, type Task } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore } from '../../store/journalStore';
 import { useGoalStore } from '../../store/goalStore';
+import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
+import { routineReport } from '../../lib/routineReport';
 import MonthBackground from '../../components/MonthBackground';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
@@ -179,6 +181,8 @@ export default function MonthlyReviewScreen() {
   const start = format(startOfMonth(targetDate), 'yyyy-MM-dd');
   const end = format(endOfMonth(targetDate), 'yyyy-MM-dd');
   const isCurrentMonth = monthOffset === 0;
+  const routineHistory = useRoutineRunnerStore((st) => st.history);
+  const routines = routineReport(routineHistory, start, end);
 
   const monthTasks = tasks.filter((task) => {
     const day = ymdFromIso(task.completed_at ?? task.created_at);
@@ -421,6 +425,8 @@ export default function MonthlyReviewScreen() {
               <Text style={s.metricLabel}>Aktif{'\n'}Alışkanlık</Text>
             </View>
           </View>
+          {/* R05.07 — routine sessions, from the summary each session stored when it finished. */}
+          <Text style={s.metricLabel} accessibilityLabel={`Bu ay rutinler: ${routines.label}`}>Rutinler: {routines.label}</Text>
 
           {badge && (
             <View style={s.badgeCard}>

@@ -11,6 +11,8 @@ import { useHabitStore } from '../../store/habitStore';
 // R07.06 — next week's change as a real action, kept with the week.
 import NextActionPicker from '../../components/NextActionPicker';
 import { useJournalStore } from '../../store/journalStore';
+import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
+import { routineReport } from '../../lib/routineReport';
 import {
   buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions,
   reportBadge, isCompletedState, type ReportBadge,
@@ -155,6 +157,9 @@ export default function WeeklyReviewScreen() {
   const weekKey = getWeekKey(targetDate);
   const { start, end } = getWeekRange(targetDate);
   const isCurrentWeek = weekOffset === 0;
+  // R05.07 — routine sessions, from the summary each session stored when it finished.
+  const routineHistory = useRoutineRunnerStore((st) => st.history);
+  const routines = routineReport(routineHistory, start, end);
 
   const weekTasks = tasks.filter((task) => {
     const day = ymdFromIso(task.completed_at ?? task.created_at);
@@ -380,6 +385,7 @@ export default function WeeklyReviewScreen() {
               value={autoMetrics.taskCompletionRate != null ? `%${autoMetrics.taskCompletionRate}` : 'Veri yok'}
             />
             <AutoMetricTile label="Odak Süresi" value={`${focusMinutes} dk`} />
+            <AutoMetricTile label="Rutinler" value={routines.label} />
             <AutoMetricTile
               label="Telafi Tamamlama"
               value={autoMetrics.recoveryCompletion.ok ? `%${Math.round(autoMetrics.recoveryCompletion.value * 100)}` : autoMetrics.recoveryCompletion.reason}
