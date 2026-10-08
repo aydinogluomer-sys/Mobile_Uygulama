@@ -7,7 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useGoalStore, Goal, GoalKind } from '../../store/goalStore';
-import { EmptyState, Skeleton } from '../../components/ui';
+import { EmptyState, Skeleton, FormError, FormPreview } from '../../components/ui';
 import { goalProgress } from '../../lib/progressModel';
 
 const TABS: { key: GoalKind; label: string; color: string }[] = [
@@ -69,6 +69,11 @@ export default function GoalsScreen() {
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
   const [title, setTitle] = useState('');
   const [progress, setProgress] = useState('0');
+  // R06.03 — a failed save keeps the form and says why; a cancelled NEW goal
+  // keeps its draft for the next "add" (no "are you sure" screen needed).
+  const [formError, setFormError] = useState<string | null>(null);
+  const [newDraft, setNewDraft] = useState<{ title: string; progress: string } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => { loadGoals(); }, [loadGoals]);
 
@@ -77,25 +82,34 @@ export default function GoalsScreen() {
 
   function openAdd() {
     setEditGoal(null);
-    setTitle('');
-    setProgress('0');
+    setTitle(newDraft?.title ?? '');
+    setProgress(newDraft?.progress ?? '0');
+    setFormError(null);
     setModal(true);
+  }
+
+  function closeForm() {
+    if (!editGoal && (title.trim() || progress !== '0')) setNewDraft({ title, progress });
+    setModal(false);
   }
 
   function openEdit(g: Goal) {
     setEditGoal(g);
     setTitle(g.title);
     setProgress(String(g.progress));
+    setFormError(null);
     setModal(true);
   }
 
   async function handleSave() {
     const pct = Math.max(0, Math.min(100, parseInt(progress, 10) || 0));
     if (!title.trim()) return;
+    setSaving(true);
+    let ok: boolean;
     if (editGoal) {
-      await updateProgress(editGoal.id, pct);
+      ok = await updateProgress(editGoal.id, pct);
     } else {
-      await addGoal({
+      ok = await addGoal({
         kind: activeTab,
         title: title.trim(),
         progress: pct,
@@ -104,6 +118,13 @@ export default function GoalsScreen() {
         month: activeTab === 'monthly' ? CUR_MONTH : null,
       });
     }
+    setSaving(false);
+    if (!ok) {
+      setFormError(useGoalStore.getState().error ?? 'Kaydedilemedi. Girdiğin bilgiler duruyor; tekrar deneyebilirsin.');
+      return;
+    }
+    if (!editGoal) setNewDraft(null);
+    setFormError(null);
     setModal(false);
   }
 
@@ -198,13 +219,13 @@ export default function GoalsScreen() {
       </TouchableOpacity>
 
       {/* Modal */}
-      <Modal visible={modal} transparent animationType="slide" onRequestClose={() => setModal(false)}>
+      <Modal visible={modal} transparent animationType="slide" onRequestClose={closeForm}>
         <View style={s.modalBg}>
           <View style={s.modalCard}>
             <View style={s.modalHead}>
               <Text style={s.modalTitle}>{editGoal ? 'Hedefi Güncelle' : 'Yeni Hedef'}</Text>
               <TouchableOpacity
-                onPress={() => setModal(false)}
+                onPress={closeForm}
                 accessibilityRole="button"
                 accessibilityLabel="Kapat"
               >
@@ -257,10 +278,13 @@ export default function GoalsScreen() {
               keyboardType="numeric"
             />
 
+            <FormPreview>{`Kaydedilecek: ${goalProgress({ progress: parseInt(progress, 10) || 0 }).label}`}</FormPreview>
+            <FormError message={formError} />
+
             <TouchableOpacity
               style={[s.saveBtn, { backgroundColor: tabInfo.color }, !title.trim() && !editGoal && s.saveBtnDisabled]}
               onPress={handleSave}
-              disabled={!title.trim() && !editGoal}
+              disabled={saving || (!title.trim() && !editGoal)}
               accessibilityRole="button"
               accessibilityLabel={editGoal ? 'Hedefi kaydet' : 'Hedefi ekle'}
               accessibilityState={{ disabled: !title.trim() && !editGoal }}

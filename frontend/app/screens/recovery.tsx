@@ -18,7 +18,7 @@ import { makeupLoadPreview, LOAD_BANDS, type LoadBandKey } from '../../lib/capac
 import { recoveryBacklog, consecutiveMissedDue as consecutiveMissedDueOf } from '../../lib/recoveryBacklog';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton } from '../../components/ui';
+import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton, FormError } from '../../components/ui';
 import { todayLocal } from '../../lib/date';
 import { logsForHabitsSince as fetchHabitLogsForHabitsSince } from '../../services/habitService';
 import { completePlanWithMakeup, makeupNeedsValue, makeupSuggestedValue } from '../../services/recoveryService';
@@ -86,6 +86,8 @@ export default function RecoveryScreen() {
   const [reminderOn, setReminderOn] = useState(false);
   const [reminderTime, setReminderTime] = useState('20:00');
   const [saving, setSaving] = useState(false);
+  // R06.03 — a plan that could not be saved keeps the sheet and what was chosen.
+  const [planError, setPlanError] = useState<string | null>(null);
 
   const today = todayLocal();
 
@@ -232,6 +234,7 @@ export default function RecoveryScreen() {
   function openPlan(h: Habit, sourceDate: string) {
     haptic.select();
     setPlanTarget(h);
+    setPlanError(null);
     setPlanSource(sourceDate);
     setWhenOffset(0);
     setStrategy('complete_today');
@@ -301,7 +304,8 @@ export default function RecoveryScreen() {
   async function submitPlan() {
     if (!planTarget) return;
     setSaving(true);
-    await addPlan({
+    setPlanError(null);
+    const created = await addPlan({
       habitId: planTarget.id,
       habitName: planTarget.name,
       sourceDate: planSource,
@@ -311,6 +315,7 @@ export default function RecoveryScreen() {
       reminderTime: reminderOn ? reminderTime.trim() : null,
     });
     setSaving(false);
+    if (!created) { setPlanError('Plan kaydedilemedi. Seçimlerin duruyor; tekrar deneyebilirsin.'); return; }
     haptic.success();
     setPlanTarget(null);
   }
@@ -758,6 +763,7 @@ export default function RecoveryScreen() {
               )}
             </ScrollView>
 
+            <FormError message={planError} />
             <Button
               label={`${format(addDays(new Date(), whenOffset), 'd MMM', { locale: tr })} için planla`}
               icon="checkmark"

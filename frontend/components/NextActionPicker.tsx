@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import { FormError } from './ui/FormFeedback';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, space, radius } from '../lib/tokens';
 import { currentUser } from '../lib/session';
@@ -95,7 +96,7 @@ export default function NextActionPicker({ weekKey, nextWeekText, editable }: { 
               ))}
             </ScrollView>
           )}
-          {error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}
+          <FormError message={error} />
         </>
       ) : (
         <Text style={s.last}>Bu hafta için eylem seçilmemiş.</Text>
@@ -115,5 +116,4 @@ const s = StyleSheet.create({
   btnPrimary: { backgroundColor: colors.accent, borderColor: colors.accent },
   btnPrimaryText: { fontSize: 13, color: colors.bg, fontWeight: '700' },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: space.sm, color: colors.text },
-  error: { fontSize: 12, color: colors.error },
 });

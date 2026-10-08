@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, space, radius } from '../lib/tokens';
+import { FormError } from './ui/FormFeedback';
 import { useHabitStore } from '../store/habitStore';
 import { currentItems, MAX_ITEM_TITLE } from '../lib/habitChecklist';
 
@@ -75,7 +76,7 @@ export default function ChecklistEditor({ habitId }: { habitId: string }) {
           <Ionicons name="add-circle" size={24} color={title.trim() ? colors.accent : colors.textGhost} />
         </TouchableOpacity>
       </View>
-      {error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}
+      <FormError message={error} />
     </View>
   );
 }
@@ -89,5 +90,4 @@ const s = StyleSheet.create({
   tagOn: { color: colors.text, borderColor: colors.accent },
   addRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
   input: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: space.sm, color: colors.text, fontSize: 14 },
-  error: { fontSize: 12, color: colors.error },
 });

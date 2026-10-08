@@ -98,3 +98,16 @@ it('"Yaptım" on a measurable habit opens the amount modal instead of writing', 
   expect(useLogStore.getState().logHabit).not.toHaveBeenCalled();
   expect(textOf(r)).toMatch(/gününe ne kadar ekleyelim|ne kadar/i);
 });
+
+it('R06.03: a plan that could not be saved keeps the sheet and says why', async () => {
+  const { useRecoveryStore } = jest.requireActual('../../store/recoveryStore');
+  const realAdd = useRecoveryStore.getState().addPlan;
+  useRecoveryStore.setState({ addPlan: jest.fn(async () => null) });
+  const r = await render();
+  await firstPress(r, 'Telafi Planla');
+  const plan = r.root.findAll((x) => /için planla$/.test(x.props?.label ?? '') && typeof x.props.onPress === 'function')[0];
+  await act(async () => { await plan.props.onPress(); });
+  expect(textOf(r)).toMatch(/Plan kaydedilemedi\. Seçimlerin duruyor/);
+  expect(textOf(r)).toMatch(/O GÜNÜN YÜKÜ/); // the sheet is still open
+  useRecoveryStore.setState({ addPlan: realAdd });
+});
