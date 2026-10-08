@@ -247,3 +247,42 @@ describe('edge sizes', () => {
     expect(res.data.rows).toEqual([]);
   });
 });
+
+// R10.06 — "Büyük liste pagination ... testlerini kontrollü ortamda doğrula."
+// A long-lived account: 10.000 rows where most share a timestamp with many
+// others (bulk imports, restores), walked at the app's page size.
+describe('R10.06 — a large list: 10.000 rows, heavy timestamp ties', () => {
+  const N = 10_000;
+  const big = (): Row[] => Array.from({ length: N }, (_, i) => ({
+    id: `id-${String(i).padStart(5, '0')}`,
+    user_id: 'u1',
+    // 40 distinct instants for 10.000 rows: 250 rows tie on each one.
+    updated_at: `2026-09-${String(1 + (i % 20)).padStart(2, '0')}T${i % 2 ? '08' : '20'}:00:00Z`,
+    title: `row ${i}`,
+  }));
+
+  it('every row exactly once, in key order, every page full until the last', async () => {
+    rows = big();
+    mock = pagingMock(rows);
+    const seen: Row[] = [];
+    const sizes: number[] = [];
+    let cursor: Cursor | null = null;
+    for (let guard = 0; guard < 1000; guard++) {
+      const res = await page(cursor, 30);
+      if (!res.ok) throw new Error(res.error);
+      seen.push(...res.data.rows);
+      sizes.push(res.data.rows.length);
+      if (!res.data.hasMore) break;
+      cursor = res.data.nextCursor;
+    }
+    expect(seen).toHaveLength(N);
+    expect(new Set(seen.map((r) => r.id)).size).toBe(N);
+    expect(sizes).toHaveLength(Math.ceil(N / 30));
+    expect(sizes.slice(0, -1).every((s) => s === 30)).toBe(true);
+    for (let i = 1; i < seen.length; i++) {
+      const a = seen[i - 1], b = seen[i];
+      const ordered = a.updated_at > b.updated_at || (a.updated_at === b.updated_at && a.id > b.id);
+      if (!ordered) throw new Error(`order broken at ${i}: ${a.id} -> ${b.id}`);
+    }
+  });
+});
