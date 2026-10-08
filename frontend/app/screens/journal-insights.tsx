@@ -14,7 +14,7 @@ import { useInsightsStore } from '../../store/insightsStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { ACTION_COST } from '../../lib/subscription';
 import { periodWindow, InsightPeriod } from '../../lib/journalStats';
-import { moodMeta } from '../../lib/journalMoods';
+import { insightBasis, insightFacts, insightPrompt } from '../../lib/journalInsightContext';
 import { extractInvokeError } from '../../lib/aiInvoke';
 import { EmptyState } from '../../components/ui';
 
@@ -46,28 +46,33 @@ export default function JournalInsightsScreen() {
     [entries, win],
   );
   const cached = getCached(period, win.key);
+  // R09.05 — the user decides which records go to the model (reset per period);
+  // the prompt is built from what is in the journal NOW, so a deleted entry
+  // cannot reach it.
+  const [excluded, setExcluded] = useState<Set<string>>(() => new Set());
+  useEffect(() => { setExcluded(new Set()); }, [period, win.key]);
+  const prompt = useMemo(() => insightPrompt(periodEntries, excluded), [periodEntries, excluded]);
+  const facts = useMemo(() => insightFacts(periodEntries, prompt.used), [periodEntries, prompt.used]);
+  const basis = cached
+    ? insightBasis(cached, win.label, {
+      count: prompt.used.length,
+      lastWrite: periodEntries.reduce<string | null>((m, e) => (m === null || e.created_at > m ? e.created_at : m), null),
+    })
+    : null;
 
   useEffect(() => { fetchEntries(); fetchSub(); }, [fetchEntries, fetchSub]);
   useEffect(() => { fetchInsight(period, win.key); setError(null); setLowCredits(false); }, [period, win.key, fetchInsight]);
 
   async function generate() {
-    if (loading || periodEntries.length === 0) return;
+    if (loading || prompt.used.length === 0) return;
     setLoading(true);
     setError(null);
     setLowCredits(false);
     // One key per attempt -- see newRequestId().
     const requestId = newRequestId();
 
-    // Kronolojik metin (eski→yeni)
-    const text = [...periodEntries]
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map((e) => {
-        const m = moodMeta(e.mood);
-        const moodLabel = m ? ` [${m.label}]` : '';
-        return `${e.date}${moodLabel}: ${e.content}`;
-      })
-      .join('\n\n')
-      .slice(0, 7000);
+    // Kronolojik metin (eski→yeni): yalnız kullanıcının bıraktığı, bütün kayıtlar.
+    const { text, used } = prompt;
 
     try {
       const { data, error: invErr } = await withEdgeDeadline('Günlük içgörüsü', (signal) =>
@@ -87,7 +92,7 @@ export default function JournalInsightsScreen() {
       if (!insight) throw new Error('İçgörü alınamadı, tekrar deneyin.');
 
       if (typeof data?.balance === 'number') setBalance(data.balance);
-      await saveInsight(period, win.key, insight, periodEntries.length);
+      await saveInsight(period, win.key, insight, used.length);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Bir hata oluştu');
     } finally {
@@ -152,10 +157,16 @@ export default function JournalInsightsScreen() {
                   <Ionicons name="sparkles" size={15} color="#8b5cf6" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                   <Text style={s.cardTitle} accessibilityRole="header">AI İçgörüsü</Text>
                 </View>
-                {cached && (
-                  <Text style={s.cardMeta}>{cached.entry_count} kayıttan</Text>
+                {basis && (
+                  <Text style={s.cardMeta}>{basis.line}</Text>
                 )}
               </View>
+              {cached && !loading && (
+                <Text style={s.cardMeta}>AI yorumu — içindeki sayılar uygulamanın hesabı değildir.</Text>
+              )}
+              {basis?.stale && !loading && (
+                <Text style={s.staleText} accessibilityRole="alert">Kayıtlar ya da seçimin bu içgörüden sonra değişti; yenileyebilirsin.</Text>
+              )}
 
               {loading ? (
                 <View style={s.loadingBox}>
@@ -171,6 +182,28 @@ export default function JournalInsightsScreen() {
               )}
             </View>
 
+            {/* R09.05 — kaynak: hangi kayıtlar gidecek (kullanıcı seçer) ve uygulamanın kendi hesabı */}
+            <View style={s.card}>
+              <Text style={s.cardTitle} accessibilityRole="header">{'AI’ya gidecek kayıtlar'}</Text>
+              <Text style={s.cardMeta}>
+                {`Uygulamanın hesabı: ${facts.count} kayıt${facts.moodAvg !== null ? ` · ruh hali ort. ${facts.moodAvg}` : ''}${facts.first ? ` · ${facts.first === facts.last ? facts.first : `${facts.first} – ${facts.last}`}` : ''}`}
+                {prompt.excluded ? ` · ${prompt.excluded} kayıt sen çıkardın` : ''}
+                {prompt.dropped ? ` · en eski ${prompt.dropped} kayıt sığmadı` : ''}
+              </Text>
+              <View style={s.srcRow}>
+                {[...periodEntries].filter((e) => e.content.trim()).sort((a, b) => a.date.localeCompare(b.date)).map((e) => {
+                  const on = !excluded.has(e.date);
+                  return (
+                    <TouchableOpacity key={e.date} style={[s.srcChip, on && s.srcChipOn]}
+                      onPress={() => setExcluded((x) => { const n = new Set(x); if (n.has(e.date)) n.delete(e.date); else n.add(e.date); return n; })}
+                      accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={`${e.date} kaydı AI'ya gitsin`}>
+                      <Text style={s.srcChipText}>{e.date.slice(5)}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
             {error && (
               // Hata sonradan belirdiği için ekran okuyucuya tek parça uyarı olarak duyurulur
               <View style={s.errorBox} accessible accessibilityRole="alert" accessibilityLabel={`Hata: ${error}`}>
@@ -182,9 +215,9 @@ export default function JournalInsightsScreen() {
             <TouchableOpacity
               style={[s.genBtn, loading && s.genBtnOff]}
               onPress={generate}
-              disabled={loading}
+              disabled={loading || prompt.used.length === 0}
               accessibilityRole="button"
-              accessibilityState={{ disabled: loading }}
+              accessibilityState={{ disabled: loading || prompt.used.length === 0 }}
               accessibilityHint={`${COST} odak puanı harcar`}
             >
               <Ionicons name={cached ? 'refresh' : 'sparkles'} size={16} color={colors.white} />
@@ -240,6 +273,11 @@ const s = StyleSheet.create({
   cardTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
   cardMeta: { fontSize: 11, color: colors.textFaint },
   insightText: { fontSize: 14, color: colors.paperText, lineHeight: 22 },
+  staleText: { fontSize: 12, color: colors.warning, marginBottom: 8 },
+  srcRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  srcChip: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
+  srcChipOn: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
+  srcChipText: { fontSize: 11, color: colors.textDim },
   placeholder: { fontSize: 13, color: colors.textFaint, lineHeight: 20, fontStyle: 'italic' },
   loadingBox: { alignItems: 'center', gap: 10, paddingVertical: 20 },
   loadingText: { fontSize: 13, color: colors.textFaint },
