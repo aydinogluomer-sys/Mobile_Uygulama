@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { format, subDays, getDaysInMonth } from 'date-fns';
+import { seriesText, heatmapText } from '../../lib/chartText';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 import { currentUser } from '../../lib/session';
 import { useHabitStore } from '../../store/habitStore';
@@ -35,9 +36,12 @@ const BAR_GAP = 3;
 const BAR_W = Math.floor((CHART_WIDTH - BAR_GAP * (BAR_COUNT - 1)) / BAR_COUNT);
 const CHART_H = 80;
 
-function TrendChart({ data }: { data: number[] }) {
+export function TrendChart({ data }: { data: number[] }) {
   const max = Math.max(...data, 1);
+  // R07.07 — the chart as text, for screen readers.
+  const text = seriesText('Son 14 gün tamamlanan', data.map((v, i) => ({ label: format(subDays(new Date(), BAR_COUNT - 1 - i), 'dd/MM'), value: v })));
   return (
+    <View accessible accessibilityRole="image" accessibilityLabel={text}>
     <Svg width={CHART_WIDTH} height={CHART_H + 20}>
       {data.map((val, i) => {
         const barH = Math.max(4, Math.round((val / max) * CHART_H));
@@ -66,6 +70,7 @@ function TrendChart({ data }: { data: number[] }) {
         );
       })}
     </Svg>
+    </View>
   );
 }
 
@@ -261,7 +266,9 @@ export default function StatsScreen() {
       <View style={s.heatmapCard}>
         <Text style={s.cardTitle}>Yıllık Aktivite</Text>
         <Text style={s.cardSub}>Son 365 gün · günlük tamamlama oranı (yapılan / aktif alışkanlık)</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          accessible accessibilityRole="image"
+          accessibilityLabel={heatmapText('Yıllık aktivite', weeks.flat().map((d) => heatmap[format(d, 'yyyy-MM-dd')] ?? 0), longestStreak)}>
           <View>
             {/* Ay etiketleri */}
             <View style={{ height: 14, width: weeks.length * PITCH, marginBottom: 2 }}>

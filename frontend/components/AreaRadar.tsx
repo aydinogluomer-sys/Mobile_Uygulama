@@ -1,6 +1,8 @@
 import { colors } from '../lib/tokens';
 import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { LIFE_AREAS, AreaKey } from '../store/lifeAreasStore';
+import { radarText } from '../lib/chartText';
+import { View } from 'react-native';
 
 const RINGS = [2, 4, 6, 8, 10];
 
@@ -30,7 +32,10 @@ export default function AreaRadar({
   });
   const polyPoints = dataPoints.map((p) => `${p.x},${p.y}`).join(' ');
 
+  // R07.07 — the radar as text, for screen readers.
+  const text = radarText(LIFE_AREAS.map((a) => ({ label: a.label, value: Math.max(0, Math.min(10, values[a.key] ?? 0)) })));
   return (
+    <View accessible accessibilityRole="image" accessibilityLabel={text}>
     <Svg width={size} height={size}>
       {RINGS.map((ring) => {
         const r = (ring / 10) * MAX_R;
@@ -64,5 +69,6 @@ export default function AreaRadar({
 
       <Circle cx={CENTER} cy={CENTER} r={3} fill={colors.textGhost} />
     </Svg>
+    </View>
   );
 }

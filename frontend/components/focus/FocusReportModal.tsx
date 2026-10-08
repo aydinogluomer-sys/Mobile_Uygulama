@@ -8,6 +8,7 @@ import { currentUser } from '../../lib/session';
 import { colors, fontFamily } from '../../lib/tokens';
 import { useFocusStore } from '../../store/focusStore';
 import { todayLocal } from '../../lib/date';
+import { seriesText, redactSessionsForShare } from '../../lib/chartText';
 import {
   FocusSessionRow, ReportRange, inRange, summary, byTask, buckets, ranking,
   fmtDuration, fmtHours, toCSV, toExcelXML, sessionsSheet, EXPORT_META, webDownload,
@@ -72,12 +73,15 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
   const maxBar = Math.max(1, ...chart.map((b) => b.seconds));
   const chartH = 120;
 
+  // R07.07 — before a report leaves the device: task titles only if chosen.
+  const [shareTitles, setShareTitles] = useState(false);
   async function exportData(fmt: 'csv' | 'json' | 'excel') {
     if (sessions.length === 0) return;
+    const out = redactSessionsForShare(sessions, shareTitles);
     const content =
-      fmt === 'csv' ? toCSV(sessions)
-      : fmt === 'excel' ? toExcelXML([sessionsSheet(sessions)])
-      : JSON.stringify(sessions, null, 2);
+      fmt === 'csv' ? toCSV(out)
+      : fmt === 'excel' ? toExcelXML([sessionsSheet(out)])
+      : JSON.stringify(out, null, 2);
     const { ext, mime } = EXPORT_META[fmt];
     const filename = `odak-raporu-${todayLocal()}.${ext}`;
 
@@ -146,7 +150,8 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
                 {settings.showFocusChart && (
                   <>
                     <Text style={s.sectionTitle}>ODAK SAATLERİ</Text>
-                    <View style={[s.chart, { height: chartH }]}>
+                    <View style={[s.chart, { height: chartH }]} accessible accessibilityRole="image"
+                      accessibilityLabel={seriesText('Odak süresi', chart.map((b) => ({ label: b.label, value: Math.round(b.seconds / 60) })), 'dk')}>
                       {chart.map((b, i) => (
                         <View key={i} style={s.chartCol}>
                           <View style={[s.chartBar, { height: Math.max(2, Math.round((b.seconds / maxBar) * (chartH - 22))), backgroundColor: accent }]} />
@@ -207,6 +212,10 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
 
         {/* Dışa aktarma footer */}
         <View style={s.footer}>
+          <TouchableOpacity onPress={() => setShareTitles((v) => !v)} accessibilityRole="switch"
+            accessibilityState={{ checked: shareTitles }} accessibilityLabel="Paylaşılan rapora görev adlarını ekle">
+            <Text style={s.footerText}>{shareTitles ? '☑' : '☐'} Görev adlarını dahil et</Text>
+          </TouchableOpacity>
           <Text style={s.footerText}>{settings.enableLocalReports ? 'Yerel rapor · cihazında' : 'Yerel rapor kapalı'}</Text>
           <View style={s.footerBtns}>
             <TouchableOpacity style={s.exportBtn} onPress={() => exportData('csv')}>
