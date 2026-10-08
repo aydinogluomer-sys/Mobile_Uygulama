@@ -28,8 +28,9 @@ import { validateFrequencyConfig } from './routineProposal';
 import { resolveCoachDate } from './coachActions';
 import { canonical } from './backupFormat';
 import type { FrequencyConfig, Habit } from './supabase';
+import { buildReminderConfig } from './reminderPlan';
 
-export const V2_ACTION_TYPES = ['edit_habit_schedule', 'pause_habit', 'move_task', 'suggest_small_step', 'lighten_today'] as const;
+export const V2_ACTION_TYPES = ['edit_habit_schedule', 'pause_habit', 'move_task', 'suggest_small_step', 'lighten_today', 'edit_reminder_time'] as const;
 export type V2ActionType = (typeof V2_ACTION_TYPES)[number];
 
 export type CoachActionV2 =
@@ -37,7 +38,9 @@ export type CoachActionV2 =
   | { type: 'pause_habit'; habit_query: string; from: string; until: string | null }
   | { type: 'move_task'; task_query: string; date: string }
   | { type: 'suggest_small_step'; task_query: string; step: string; minutes: number }
-  | { type: 'lighten_today'; habit_queries: string[] };
+  | { type: 'lighten_today'; habit_queries: string[] }
+  // R09.02 — "hedef/saat düzenleme": the reminder times (and optionally weekdays) of one habit.
+  | { type: 'edit_reminder_time'; habit_query: string; reminders: NonNullable<Habit['reminders']> };
 
 const ALLOWED: Record<V2ActionType, Set<string>> = {
   edit_habit_schedule: new Set(['type', 'habit_query', 'frequency_config']),
@@ -45,6 +48,7 @@ const ALLOWED: Record<V2ActionType, Set<string>> = {
   move_task: new Set(['type', 'task_query', 'date']),
   suggest_small_step: new Set(['type', 'task_query', 'step', 'minutes']),
   lighten_today: new Set(['type', 'habit_queries']),
+  edit_reminder_time: new Set(['type', 'habit_query', 'times', 'days']),
 };
 
 const str = (v: unknown, max: number): string | null => {
@@ -105,6 +109,17 @@ export function readActionV2(raw: Record<string, unknown>, today: string, now: D
       for (const x of raw.habit_queries) { const q = str(x, 80); if (!q) return 'invalid habit_query'; if (!qs.includes(q)) qs.push(q); }
       return { type: t, habit_queries: qs };
     }
+    case 'edit_reminder_time': {
+      const q = str(raw.habit_query, 80);
+      if (!q) return 'invalid habit_query';
+      if (!Array.isArray(raw.times) || raw.times.some((x) => typeof x !== 'string')) return 'invalid times';
+      const days = raw.days === undefined ? [] : raw.days;
+      if (!Array.isArray(days) || days.some((d) => typeof d !== 'number')) return 'invalid days';
+      // The same rule the reminder editor uses -- one validator for both doors.
+      const built = buildReminderConfig(true, raw.times as string[], days as number[]);
+      if (!built.ok) return `invalid reminder: ${built.reason}`;
+      return { type: t, habit_query: q, reminders: built.config };
+    }
   }
 }
 
@@ -134,10 +149,12 @@ export function resolveTaskQuery<T extends TaskLike>(query: string, tasks: reado
 // ---------------------------------------------------------------------------
 
 /** What a habit write depends on. A change in any of these makes a staged action stale. */
-export function habitFingerprint(h: Pick<Habit, 'tracking_type' | 'daily_goal' | 'target_direction' | 'unit' | 'status' | 'frequency_config' | 'behavior_type'>): string {
+export function habitFingerprint(h: Pick<Habit, 'tracking_type' | 'daily_goal' | 'target_direction' | 'unit' | 'status' | 'frequency_config' | 'behavior_type'> & { reminders?: Habit['reminders'] }): string {
   return canonical({
     t: h.tracking_type, g: h.daily_goal ?? null, d: h.target_direction ?? null, u: h.unit ?? null,
     s: h.status, f: h.frequency_config ?? null, b: h.behavior_type,
+    // R09.02 — a reminder edit depends on the reminders the preview showed.
+    r: h.reminders ?? null,
   });
 }
 

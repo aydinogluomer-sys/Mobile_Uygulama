@@ -81,7 +81,8 @@ describe('R09.03 — fingerprints', () => {
     expect(staleness(fp, { ...t, completed: true }, taskFingerprint)).toBe('changed');
     expect(staleness(fp, t, taskFingerprint)).toBe('same');
   });
-  it('the list is the five types', () => {
-    expect([...V2_ACTION_TYPES]).toEqual(['edit_habit_schedule', 'pause_habit', 'move_task', 'suggest_small_step', 'lighten_today']);
+  // R09.02 added the sixth: the reminder time edit ("hedef/saat düzenleme").
+  it('the list is the six types', () => {
+    expect([...V2_ACTION_TYPES]).toEqual(['edit_habit_schedule', 'pause_habit', 'move_task', 'suggest_small_step', 'lighten_today', 'edit_reminder_time']);
   });
 });

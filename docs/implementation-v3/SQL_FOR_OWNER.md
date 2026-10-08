@@ -33,6 +33,7 @@ where table_schema='public' and table_name='habit_logs' and column_name='tz';
 | 031 | `031_moods_and_review_actions.sql` | adlı duygular, çoklu check-in, review sonraki eylemi — R07.02/06 | yok (cihaz-yerel → sunucu) | §2.4 |
 | 032 | `032_coach_actions_v2.sql` | koçun ikinci eylem seti için CHECK — R09.02 | `COACH_ACTIONS_V2_ENABLED` **ancak** `generate-routine` edge function deploy edildikten sonra (S3) | §2.5 |
 | 033 | `033_habit_log_timezone.sql` | `habit_logs.tz` (log'un yazıldığı IANA bölgesi) — R01.06 | `LOG_TIMEZONE_ENABLED` | §2.6 |
+| 034 | `034_coach_reminder_action.sql` | koçun hatırlatma saati eylemi `edit_reminder_time` — R09.02 (CHECK'i 9 türle baştan yazar; 032'den bağımsız doğru) | `COACH_ACTIONS_V2_ENABLED` — 032 + 034 uygulanıp `generate-routine` deploy edildikten SONRA (S3) | §2.7 |
 
 ## 2. Doğrulama sorguları (her migration'dan sonra, salt-okunur)
 
@@ -62,6 +63,9 @@ select pg_get_constraintdef(oid) from pg_constraint where conname = 'ai_actions_
 select column_name, data_type, is_nullable from information_schema.columns
 where table_schema='public' and table_name='habit_logs' and column_name='tz';
 select pg_get_constraintdef(oid) from pg_constraint where conname = 'habit_logs_tz_check';
+
+-- 2.7 (034) CHECK 9 türü içerir (edit_reminder_time dahil)
+select pg_get_constraintdef(oid) from pg_constraint where conname = 'ai_actions_type_check';
 ```
 
 ## 3. BLOCKED — tanımı repoda olmayan nesneler (yalnız okuma sorguları)

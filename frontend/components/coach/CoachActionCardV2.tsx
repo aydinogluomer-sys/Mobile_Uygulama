@@ -19,6 +19,7 @@ import {
 } from '../../lib/coachActionsV2';
 import { frequencyEditPatch, frequencySummary } from '../../lib/frequencyForm';
 import { todayLocal } from '../../lib/date';
+import { reminderTimes } from '../../lib/reminderPlan';
 
 export default function CoachActionCardV2({ action, onDone }: { action: CoachActionV2; onDone: (ok: boolean, message: string) => void }) {
   const router = useRouter();
@@ -58,6 +59,9 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
       case 'move_task': return target.kind === 'task' ? `"${target.task.title}" → ${action.date}` : '';
       case 'suggest_small_step': return target.kind === 'task' ? `"${target.task.title}" için ilk adım: ${action.step} (${action.minutes} dk). Görevi tamamlamaz.` : '';
       case 'lighten_today': return lightCandidates.length ? 'Bugün kenara konacaklar (dokunarak çıkarabilirsin). Hedefler ve takvim değişmez.' : 'Eşleşen aktif alışkanlık yok.';
+      case 'edit_reminder_time': return target.kind === 'habit'
+        ? `${target.habit.name} hatırlatması: ${reminderTimes(target.habit).join(', ') || 'yok'} → ${(action.reminders.times ?? [action.reminders.time]).join(', ')}${action.reminders.days ? ' (seçili günlerde)' : ''}`
+        : '';
     }
   }
 
@@ -76,6 +80,9 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
         } else if (action.type === 'pause_habit') {
           const r = await useHabitStore.getState().addTimeOff(cur!.id, { kind: 'pause', start_date: action.from, end_date: action.until });
           onDone(r.ok, r.ok ? `✓ ${cur!.name} için ara verildi.` : r.error);
+        } else if (action.type === 'edit_reminder_time') {
+          await useHabitStore.getState().updateHabit(cur!.id, { reminders: action.reminders });
+          onDone(true, `✓ ${cur!.name} hatırlatması güncellendi.`);
         }
         return;
       }

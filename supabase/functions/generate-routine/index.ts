@@ -73,6 +73,9 @@ NE ZAMAN EYLEM ÜRETİLİR:
 9) Kullanıcı BUGÜN yorgun/bitkin olduğunu ve daha az yapmak istediğini söylüyorsa → TAM OLARAK BİR \`lighten_today\`
    (bugün kenara konabilecek alışkanlıkların adları; kullanıcı listeyi düzenler; hedefler değişmez).
 
+10) Kullanıcı bir alışkanlığın HATIRLATMA SAATİNİ değiştirmek istiyorsa → TAM OLARAK BİR \`edit_reminder_time\`.
+   Örnek: "Kitap hatırlatmasını akşam 9'a al." → times: ["21:00"]. Saatler "SS:DD"; günler isteğe bağlı (0=Pzt … 6=Paz).
+
 Açık ve eyleme dönük bir istek SESSİZCE sadece metne dönüşmemeli: 2-9 durumlarından birindeysen eylemi ÜRET.
 Aynı anda birden fazla eylem üretme.
 
@@ -263,6 +266,18 @@ const COACH_TOOL = {
                 habit_queries: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string', maxLength: 80 } },
               },
               required: ['type', 'habit_queries'],
+              additionalProperties: false,
+            },
+            // R09.02 — reminder time edit (migration 034 adds it to the CHECK).
+            {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['edit_reminder_time'] },
+                habit_query: { type: 'string', maxLength: 80 },
+                times: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'string', description: '"SS:DD"' } },
+                days: { type: 'array', maxItems: 7, items: { type: 'integer', minimum: 0, maximum: 6 } },
+              },
+              required: ['type', 'habit_query', 'times'],
               additionalProperties: false,
             },
           ],

@@ -20,9 +20,18 @@ describe('four places, one list', () => {
     const enums = [...edge.matchAll(/type: \{ type: 'string', enum: \['([a-z_]+)'\] \}/g)].map((m) => m[1]);
     expect(enums).toEqual(['propose_habit', 'propose_habit_plan', 'log_habit', ...V2_ACTION_TYPES]);
   });
-  it('the database CHECK allows exactly them (migration 032, not applied)', () => {
-    const list = /CHECK \(action_type IN \(([\s\S]*?)\)\)/.exec(sql)![1].match(/'([a-z_]+)'/g)!.map((x) => x.slice(1, -1));
-    expect(list).toEqual(['propose_habit', 'propose_habit_plan', 'log_habit', ...V2_ACTION_TYPES]);
+  // R09.02 (reminder action): migration 034 restates the constraint with the
+  // full list; 032 stays as written (historic, its own five). The CURRENT
+  // definition -- the latest migration that adds the constraint -- must equal
+  // the client's list.
+  const checkList = (text: string) => /CHECK \(action_type IN \(([\s\S]*?)\)\)/.exec(text)![1].match(/'([a-z_]+)'/g)!.map((x) => x.slice(1, -1));
+  it('the database CHECK allows exactly them (latest definition: migration 034, not applied)', () => {
+    const latest = raw('../supabase/migrations/034_coach_reminder_action.sql');
+    expect(checkList(latest)).toEqual(['propose_habit', 'propose_habit_plan', 'log_habit', ...V2_ACTION_TYPES]);
+    expect(latest).toMatch(/STATUS: WRITTEN, NOT APPLIED/);
+    expect(raw('../supabase/migrations/README.md')).toMatch(/\| 034 \| `034_coach_reminder_action\.sql` \| \*\*NOT APPLIED\*\*/);
+    // 032 is not edited: it still holds the first five of the second set
+    expect(checkList(sql)).toEqual(['propose_habit', 'propose_habit_plan', 'log_habit', ...V2_ACTION_TYPES.filter((t) => t !== 'edit_reminder_time')]);
     expect(sql).toMatch(/STATUS: WRITTEN, NOT APPLIED/);
     expect(raw('../supabase/migrations/README.md')).toMatch(/\| 032 \| `032_coach_actions_v2\.sql` \| \*\*NOT APPLIED\*\*/);
   });
