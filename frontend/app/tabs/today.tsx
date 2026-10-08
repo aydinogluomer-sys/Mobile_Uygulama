@@ -7,6 +7,7 @@ import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import { useTaskStore } from '../../store/taskStore';
 import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
+import { nextActionable, type NextAction } from '../../lib/todayNext';
 import { useWillpowerStore } from '../../store/willpowerStore';
 import { useFocusStore } from '../../store/focusStore';
 import { useRecoveryStore } from '../../store/recoveryStore';
@@ -257,7 +258,7 @@ export default function TodayScreen() {
   const { tasks, fetchTasks, toggleDone, dueToday, overdue, addTask, sync: taskSync } = useTaskStore();
   const coreSync = useCoreOutboxSync();
   const { state: wp, fetchToday } = useWillpowerStore();
-  const { sessionsCompleted } = useFocusStore();
+  const { sessionsCompleted, status: focusStatus, smallStep: focusSmallStep, focusTasks, selectedTaskId } = useFocusStore();
   const { plans: recoveryPlans, fetchPlans } = useRecoveryStore();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -313,6 +314,26 @@ export default function TodayScreen() {
   const habitPct = habitSummary.pct;
   const remainingHabits = habitSummary.remaining;
   const plannedRecovery = recoveryPlans.filter((p) => p.status === 'planned').length;
+
+  // R03.01 — the ONE next step (lib/todayNext): an open focus session or
+  // routine first, then today's make-up, overdue work, today's habits and tasks.
+  const nowAction: NextAction | null = nextActionable({
+    focus: { status: focusStatus, title: focusSmallStep?.title ?? focusTasks.find((t) => t.id === selectedTaskId)?.title ?? null },
+    routine: runnerSession ? { status: runnerSession.status, templateName: runnerSession.templateName, done: Object.keys(runnerSession.results).length, total: runnerSession.steps.length } : null,
+    recoveryToday: recoveryPlans
+      .filter((p) => p.status === 'planned' && p.target_date === today)
+      .map((p) => ({ id: p.id, habitName: habits.find((h) => h.id === p.habit_id)?.name ?? 'Telafi' })),
+    overdueTasks: overdueList.map((t) => ({ id: t.id, title: t.title })),
+    habitsToDo: todayHabits.filter((h) => !completedHabits.some((c) => c.id === h.id)).map((h) => ({ id: h.id, name: h.name })),
+    tasksToday: todayTasks.filter((t) => !t.completed).map((t) => ({ id: t.id, title: t.title })),
+  });
+  function openNowAction(a: NextAction) {
+    if (a.kind === 'focus') router.push('/tabs/focus' as any);
+    else if (a.kind === 'routine') router.push('/screens/routine-runner' as any);
+    else if (a.kind === 'recovery') router.push('/screens/recovery' as any);
+    else if (a.kind === 'task') router.push('/tabs/tasks' as any);
+    else { const h = habits.find((x) => x.id === a.id); if (h) void onHabitTap(h); }
+  }
 
   const eyebrow = `${DAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]} · ${isoWeek(now)}. hafta`;
 
@@ -468,6 +489,15 @@ export default function TodayScreen() {
             { label: 'Denge planı', icon: 'moon-outline', variant: 'ghost', onPress: () => router.push('/screens/recovery' as any) },
           ]}
         />
+
+        {nowAction && (
+          <Card padding="lg" onPress={() => openNowAction(nowAction)}
+            accessibilityLabel={`Şimdi: ${nowAction.label}. ${nowAction.detail}`}>
+            <SectionHeader title="ŞİMDİ" variant="overline" />
+            <Text style={s.taskTitle} numberOfLines={2}>{nowAction.label}</Text>
+            <Text style={s.breakNote}>{nowAction.detail}</Text>
+          </Card>
+        )}
 
         {/* Sakin metrik ızgarası */}
         <MetricGrid metrics={metrics} />

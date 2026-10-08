@@ -121,3 +121,17 @@ it('R02.04: an unsent journal/note/plan/session change shows on the sync badge',
   await act(async () => { await coreOutbox.flush(); });
   coreOutbox.reset();
 });
+it('R03.01: the ŞİMDİ card names the one next step; an open focus session takes it over', async () => {
+  const { useFocusStore } = jest.requireActual('../../store/focusStore');
+  useFocusStore.setState({ status: 'idle', smallStep: null });
+  let r = await render();
+  // no make-up, no overdue task: the first open habit
+  expect(r.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityLabel === 'Şimdi: Yürüyüş. Bugünün alışkanlığı')).toHaveLength(1);
+  useFocusStore.setState({ status: 'paused', smallStep: { title: 'İlk paragraf', minutes: 5, parent: { kind: 'task', id: 't1', title: 'Rapor yaz' } } });
+  r = await render();
+  expect(r.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityLabel === 'Şimdi: Odak: İlk paragraf. Duraklatıldı — kaldığın yerden devam et')).toHaveLength(1);
+  const card = r.root.findAll((n) => n.props?.accessibilityLabel?.startsWith?.('Şimdi:') && typeof n.props.onPress === 'function')[0];
+  await act(async () => { card.props.onPress(); });
+  expect(mockPush).toHaveBeenCalledWith('/tabs/focus');
+  useFocusStore.setState({ status: 'idle', smallStep: null });
+});
