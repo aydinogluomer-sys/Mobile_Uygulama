@@ -25,10 +25,16 @@ import type { Habit } from '../../lib/supabase';
 import { computeTriage, triageToStatus, impactMeta, TRIAGE_META, cueLabel } from '../../lib/triage';
 import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from '../../lib/capacity';
 import { isMeasurableTracking } from '../../lib/habitEngine';
+import { explainActivation } from '../../services/capacityService';
 
 export default function HabitsScreen() {
   const { habits, loading, fetchHabits, addHabit, activateHabit, pauseHabit, updateHabit, removeHabit, restoreHabit, purgeHabit } = useHabitStore();
-  const { state: wp, fetchToday, canActivate, spend, refund } = useWillpowerStore();
+  const { state: wp, fetchToday, canActivate, spend, refund, isStale } = useWillpowerStore();
+  // R03.04 — the same rule activation uses, in words: why it waits, how to start it.
+  const explain = (h: Habit) => explainActivation({
+    state: (wp ?? null) as never, stale: isStale(), cost: h.willpower_cost,
+    capacityInput: loading ? undefined : { habit: h, activeHabits: habits.filter((x) => x.status === 'active') },
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAIRoutine, setShowAIRoutine] = useState(false);
@@ -191,10 +197,16 @@ export default function HabitsScreen() {
 
   const handleActivate = async (habit: Habit) => {
     if (!canActivate(habit.willpower_cost, loading ? undefined : { habit, activeHabits })) {
+      // R03.04 — say why, say how, and let the user overrule a load SUGGESTION.
+      const e = explain(habit);
       Alert.alert(
-        'Kapasite Dolu',
-        `Bu alışkanlığı aktifleştirmek ${habit.willpower_cost} irade puanı gerektirir. Mevcut bütçeniz yetmiyor veya kapasite doldu.`,
-        [{ text: 'Tamam' }]
+        'Şimdilik bekliyor',
+        `${e.why}
+
+${e.how}`,
+        e.canOverride
+          ? [{ text: 'Vazgeç', style: 'cancel' }, { text: 'Yine de etkinleştir', onPress: () => { void activateHabit(habit.id, habit.willpower_cost, { override: true }); } }]
+          : [{ text: 'Tamam' }],
       );
       return;
     }
@@ -393,7 +405,18 @@ export default function HabitsScreen() {
               <Text style={styles.sectionHint}>
                 Kapasite açılınca buradan aktifleştirebilirsin
               </Text>
-              {waitingHabits.map((h) => renderHabitCard(h, true))}
+              {waitingHabits.map((h) => {
+                const e = explain(h);
+                return (
+                  <View key={h.id}>
+                    {renderHabitCard(h, true)}
+                    {/* R03.04 — neden bekliyor / nasıl aktive edilir */}
+                    <Text style={styles.waitingWhy} accessibilityLabel={`${h.name} neden bekliyor: ${e.why} ${e.how}`}>
+                      {e.why} {e.how}
+                    </Text>
+                  </View>
+                );
+              })}
             </>
           )}
         </View>
@@ -649,6 +672,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
   },
   sectionHint: { fontSize: 12, color: colors.textFaint, marginBottom: 12, fontStyle: 'italic' },
+  waitingWhy: { fontSize: 12, color: colors.textDim, marginTop: -6, marginBottom: 12, paddingHorizontal: 4 },
   empty: { alignItems: 'center', paddingVertical: 32 },
   emptyText: { fontSize: 15, color: colors.textFaint, marginBottom: 4 },
   emptyHint: { fontSize: 12, color: colors.textGhost },

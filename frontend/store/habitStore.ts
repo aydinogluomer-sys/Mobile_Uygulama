@@ -86,7 +86,8 @@ type HabitStore = {
   removeHabit: (id: string) => Promise<void>;
   restoreHabit: (habit: Habit) => Promise<void>;
   purgeHabit: (habit: Habit, reason: string) => Promise<void>;
-  activateHabit: (id: string, willpowerCost: number) => Promise<void>;
+  /** R03.04 — `override`: the user chose "Yine de etkinleştir" over the load suggestion. */
+  activateHabit: (id: string, willpowerCost: number, opts?: { override?: boolean }) => Promise<void>;
   pauseHabit: (id: string, willpowerCost: number) => Promise<void>;
 };
 
@@ -283,7 +284,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
   // than the inverse), and it used to be split between this store and
   // willpowerStore with each screen deciding whether to supply the capacity
   // input at all.
-  activateHabit: async (id, willpowerCost) => {
+  activateHabit: async (id, willpowerCost, opts) => {
     const wp = useWillpowerStore.getState();
     const { habits, loading } = get();
     const target = habits.find((h) => h.id === id);
@@ -296,6 +297,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
       // A half-loaded habit list under-reports load, so the strict rule is
       // only used once the set is known to be complete.
       useCapacityRule: !loading,
+      override: opts?.override === true,
     });
     if (!res.ok) return;
     set((state) => ({ habits: state.habits.map((h) => (h.id === id ? res.habit : h)) }));

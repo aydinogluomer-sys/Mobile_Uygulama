@@ -75,6 +75,8 @@ export async function activateHabit(params: {
   activeHabits: Habit[];
   /** Omit when the active set is not yet loaded — see above. */
   useCapacityRule: boolean;
+  /** R03.04 — the user explicitly overrode the load suggestion. */
+  override?: boolean;
 }): Promise<{ ok: true; habit: Habit } | { ok: false; verdict: ActivationVerdict }> {
   const verdict = evaluateActivation({
     state: params.willpower.state,
@@ -83,6 +85,7 @@ export async function activateHabit(params: {
     capacityInput: params.useCapacityRule
       ? { habit: params.habit, activeHabits: params.activeHabits }
       : undefined,
+    override: params.override,
   });
   if (!verdict.allowed) return { ok: false, verdict };
 
