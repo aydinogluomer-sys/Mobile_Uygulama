@@ -153,11 +153,11 @@ export default function ADHDTaskSplitter({
         <View style={styles.content}>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <Ionicons name="flash" size={24} color="#D4A84A" />
+              <Ionicons name="flash" size={24} color={colors.warning} />
               <Text style={styles.title}>ADHD Modu</Text>
             </View>
             <TouchableOpacity onPress={handleClose}>
-              <Ionicons name="close" size={28} color="#BFBBAE" />
+              <Ionicons name="close" size={28} color={colors.textDim} />
             </TouchableOpacity>
           </View>
 
@@ -178,7 +178,7 @@ export default function ADHDTaskSplitter({
 
               {proposalError && (
                 <View style={styles.errorBox}>
-                  <Ionicons name="warning-outline" size={16} color="#C76A6A" />
+                  <Ionicons name="warning-outline" size={16} color={colors.error} />
                   <Text style={styles.errorText}>{proposalError}</Text>
                 </View>
               )}
@@ -187,7 +187,7 @@ export default function ADHDTaskSplitter({
                 style={styles.optionButton}
                 onPress={() => handlePick(15)}
               >
-                <Ionicons name="timer-outline" size={24} color="#87A678" />
+                <Ionicons name="timer-outline" size={24} color={colors.success} />
                 <View style={styles.optionText}>
                   <Text style={styles.optionTitle}>Kısa Sprint</Text>
                   <Text style={styles.optionSubtitle}>15 dakikalık bloklara böl</Text>
@@ -198,7 +198,7 @@ export default function ADHDTaskSplitter({
                 style={styles.optionButton}
                 onPress={() => handlePick(25)}
               >
-                <Ionicons name="time-outline" size={24} color="#D97757" />
+                <Ionicons name="time-outline" size={24} color={colors.accent} />
                 <View style={styles.optionText}>
                   <Text style={styles.optionTitle}>Pomodoro</Text>
                   <Text style={styles.optionSubtitle}>25 dakikalık bloklara böl</Text>
@@ -239,7 +239,7 @@ export default function ADHDTaskSplitter({
 
               {saveError && (
                 <View style={styles.errorBox}>
-                  <Ionicons name="warning-outline" size={16} color="#C76A6A" />
+                  <Ionicons name="warning-outline" size={16} color={colors.error} />
                   <Text style={styles.errorText}>{saveError}</Text>
                 </View>
               )}
@@ -258,7 +258,7 @@ export default function ADHDTaskSplitter({
                   disabled={saving}
                 >
                   {saving ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                    <ActivityIndicator size="small" color={colors.white} />
                   ) : (
                     <Text style={styles.confirmButtonText}>Onayla ve Ekle</Text>
                   )}

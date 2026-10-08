@@ -38,12 +38,12 @@ export default function AreaRadar({
           const p = polarToXY(i * angleStep, r);
           return `${p.x},${p.y}`;
         }).join(' ');
-        return <Polygon key={ring} points={pts} fill="none" stroke="#383528" strokeWidth="1" />;
+        return <Polygon key={ring} points={pts} fill="none" stroke={colors.border} strokeWidth="1" />;
       })}
 
       {LIFE_AREAS.map((_, i) => {
         const outer = polarToXY(i * angleStep, MAX_R);
-        return <Line key={i} x1={CENTER} y1={CENTER} x2={outer.x} y2={outer.y} stroke="#383528" strokeWidth="1" />;
+        return <Line key={i} x1={CENTER} y1={CENTER} x2={outer.x} y2={outer.y} stroke={colors.border} strokeWidth="1" />;
       })}
 
       <Polygon points={polyPoints} fill={color + '20'} stroke={color} strokeWidth="2" />
@@ -56,13 +56,13 @@ export default function AreaRadar({
         const { x, y } = polarToXY(i * angleStep, MAX_R + 18);
         const anchor = x < CENTER - 5 ? 'end' : x > CENTER + 5 ? 'start' : 'middle';
         return (
-          <SvgText key={area.key} x={x} y={y + 4} textAnchor={anchor as any} fill="#BFBBAE" fontSize="10" fontWeight="600">
+          <SvgText key={area.key} x={x} y={y + 4} textAnchor={anchor as any} fill={colors.textDim} fontSize="10" fontWeight="600">
             {area.label}
           </SvgText>
         );
       })}
 
-      <Circle cx={CENTER} cy={CENTER} r={3} fill="#56544B" />
+      <Circle cx={CENTER} cy={CENTER} r={3} fill={colors.textGhost} />
     </Svg>
   );
 }

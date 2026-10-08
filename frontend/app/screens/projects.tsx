@@ -89,7 +89,7 @@ export default function ProjectsScreen() {
             <View style={s.badge}>
               <Text style={s.badgeText}>{taskCount(item.id)}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color="#56544B" />
+            <Ionicons name="chevron-forward" size={16} color={colors.textGhost} />
           </TouchableOpacity>
         )}
       />
@@ -100,7 +100,7 @@ export default function ProjectsScreen() {
         accessibilityRole="button"
         accessibilityLabel="Yeni proje ekle"
       >
-        <Ionicons name="add" size={26} color="#fff" />
+        <Ionicons name="add" size={26} color={colors.white} />
       </TouchableOpacity>
 
       <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
@@ -111,7 +111,7 @@ export default function ProjectsScreen() {
             <TextInput
               style={s.input}
               placeholder="Proje adı..."
-              placeholderTextColor="#827E72"
+              placeholderTextColor={colors.textFaint}
               value={name}
               onChangeText={setName}
               autoFocus
@@ -119,7 +119,7 @@ export default function ProjectsScreen() {
             <TextInput
               style={s.input}
               placeholder="Açıklama (isteğe bağlı)..."
-              placeholderTextColor="#827E72"
+              placeholderTextColor={colors.textFaint}
               value={desc}
               onChangeText={setDesc}
             />
@@ -135,7 +135,7 @@ export default function ProjectsScreen() {
                   accessibilityLabel={`Proje rengi ${PRESET_COLORS.indexOf(c) + 1}`}
                   accessibilityState={{ selected: color === c, checked: color === c }}
                 >
-                  {color === c && <Ionicons name="checkmark" size={16} color="#fff" />}
+                  {color === c && <Ionicons name="checkmark" size={16} color={colors.white} />}
                 </TouchableOpacity>
               ))}
             </View>
@@ -178,7 +178,7 @@ export default function ProjectsScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="Proje detayını kapat"
                   >
-                    <Ionicons name="close" size={22} color="#827E72" />
+                    <Ionicons name="close" size={22} color={colors.textFaint} />
                   </TouchableOpacity>
                 </View>
                 {detailProject.description ? <Text style={s.detailDesc}>{detailProject.description}</Text> : null}
@@ -222,7 +222,7 @@ export default function ProjectsScreen() {
                       accessibilityState={{ checked: item.completed }}
                     >
                       <View style={[s.taskCheck, item.completed && { backgroundColor: detailProject.color ?? colors.primary, borderColor: detailProject.color ?? colors.primary }]}>
-                        {item.completed && <Ionicons name="checkmark" size={12} color="#fff" />}
+                        {item.completed && <Ionicons name="checkmark" size={12} color={colors.white} />}
                       </View>
                       <Text style={[s.taskTitle, item.completed && s.taskTitleDone]} numberOfLines={1}>{item.title}</Text>
                     </TouchableOpacity>

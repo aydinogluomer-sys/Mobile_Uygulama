@@ -241,11 +241,11 @@ export default function CommandPalette() {
         <View style={styles.container}>
           {/* Input */}
           <View style={styles.inputRow}>
-            <Ionicons name="search-outline" size={18} color="#827E72" />
+            <Ionicons name="search-outline" size={18} color={colors.textFaint} />
             <TextInput
               style={styles.input}
               placeholder="Ara: görev, not, proje, alışkanlık veya eylem…"
-              placeholderTextColor="#827E72"
+              placeholderTextColor={colors.textFaint}
               value={query}
               onChangeText={setQuery}
               autoFocus
@@ -253,7 +253,7 @@ export default function CommandPalette() {
             />
             {query.length > 0 && (
               <TouchableOpacity onPress={() => setQuery('')}>
-                <Ionicons name="close-circle" size={18} color="#827E72" />
+                <Ionicons name="close-circle" size={18} color={colors.textFaint} />
               </TouchableOpacity>
             )}
           </View>
@@ -301,7 +301,7 @@ export default function CommandPalette() {
                     <Ionicons name={item.icon as any} size={18} color={item.color} />
                   </View>
                   <Text style={styles.rowLabel} numberOfLines={1}>{item.label}</Text>
-                  <Ionicons name={item.type === 'recent' ? 'time-outline' : 'arrow-forward-outline'} size={14} color="#56544B" />
+                  <Ionicons name={item.type === 'recent' ? 'time-outline' : 'arrow-forward-outline'} size={14} color={colors.textGhost} />
                 </TouchableOpacity>
               );
             }}

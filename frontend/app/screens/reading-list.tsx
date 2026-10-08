@@ -38,7 +38,7 @@ function StarRating({ value, onChange }: { value: number | null; onChange: (n: n
           accessibilityLabel={`${n} yıldız ver`}
           accessibilityState={{ selected: n === value, checked: n === value }}
         >
-          <Ionicons name={n <= (value ?? 0) ? 'star' : 'star-outline'} size={18} color="#D4A84A" />
+          <Ionicons name={n <= (value ?? 0) ? 'star' : 'star-outline'} size={18} color={colors.warning} />
         </TouchableOpacity>
       ))}
     </View>
@@ -180,7 +180,7 @@ export default function ReadingListScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`Listeden kaldır: ${item.title}`}
                   >
-                    <Ionicons name="trash-outline" size={14} color="#56544B" />
+                    <Ionicons name="trash-outline" size={14} color={colors.textGhost} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -198,7 +198,7 @@ export default function ReadingListScreen() {
         accessibilityRole="button"
         accessibilityLabel="Okuma listesine yeni kayıt ekle"
       >
-        <Ionicons name="add" size={26} color="#fff" />
+        <Ionicons name="add" size={26} color={colors.white} />
       </TouchableOpacity>
 
       {/* Ekle Modal */}
@@ -210,7 +210,7 @@ export default function ReadingListScreen() {
             <TextInput
               style={s.input}
               placeholder="Başlık *"
-              placeholderTextColor="#827E72"
+              placeholderTextColor={colors.textFaint}
               value={title}
               onChangeText={setTitle}
               autoFocus
@@ -218,14 +218,14 @@ export default function ReadingListScreen() {
             <TextInput
               style={s.input}
               placeholder="Yazar / Kaynak"
-              placeholderTextColor="#827E72"
+              placeholderTextColor={colors.textFaint}
               value={author}
               onChangeText={setAuthor}
             />
             <TextInput
               style={s.input}
               placeholder="URL (opsiyonel)"
-              placeholderTextColor="#827E72"
+              placeholderTextColor={colors.textFaint}
               value={url}
               onChangeText={setUrl}
               autoCapitalize="none"

@@ -327,7 +327,7 @@ export default function WeeklyReviewScreen() {
               accessibilityRole="button"
               accessibilityLabel="Önceki hafta"
             >
-              <Ionicons name="chevron-back" size={18} color="#BFBBAE" />
+              <Ionicons name="chevron-back" size={18} color={colors.textDim} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setWeekOffset((offset) => Math.max(0, offset - 1))}
@@ -399,7 +399,7 @@ export default function WeeklyReviewScreen() {
             <Text style={s.sectionTitle}>BU HAFTA TAMAMLANANLAR</Text>
             {completedTasks.slice(0, 5).map((task) => (
               <View key={task.id} style={s.taskItem}>
-                <Ionicons name="checkmark-circle" size={16} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                <Ionicons name="checkmark-circle" size={16} color={colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 <Text style={s.taskTitle} numberOfLines={1}>{task.title}</Text>
               </View>
             ))}
@@ -415,7 +415,7 @@ export default function WeeklyReviewScreen() {
               <TextInput
                 style={s.questionInput}
                 placeholder={question.placeholder}
-                placeholderTextColor="#56544B"
+                placeholderTextColor={colors.textGhost}
                 multiline
                 value={answers[question.key] ?? ''}
                 onChangeText={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
@@ -438,10 +438,10 @@ export default function WeeklyReviewScreen() {
             accessibilityState={{ disabled: saving, busy: saving }}
           >
             {saving ? (
-              <ActivityIndicator color="#fff" size="small" />
+              <ActivityIndicator color={colors.white} size="small" />
             ) : savedAt ? (
               <>
-                <Ionicons name="checkmark" size={18} color="#fff" />
+                <Ionicons name="checkmark" size={18} color={colors.white} />
                 <Text style={s.saveBtnText}>Kaydedildi ({savedAt})</Text>
               </>
             ) : (
@@ -452,7 +452,7 @@ export default function WeeklyReviewScreen() {
 
         {!isCurrentWeek && savedAt && (
           <View style={s.savedBadge}>
-            <Ionicons name="checkmark-circle" size={16} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+            <Ionicons name="checkmark-circle" size={16} color={colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.savedBadgeText}>Bu hafta kaydedildi - {savedAt}</Text>
           </View>
         )}

@@ -94,27 +94,27 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose}>
-            <Ionicons name="close" size={28} color="#fff" />
+            <Ionicons name="close" size={28} color={colors.white} />
           </TouchableOpacity>
           <Text style={styles.title}>Bıraktığım Alışkanlıklar</Text>
           <TouchableOpacity onPress={() => setShowAddModal(true)}>
-            <Ionicons name="add-circle" size={28} color="#D97757" />
+            <Ionicons name="add-circle" size={28} color={colors.accent} />
           </TouchableOpacity>
         </View>
 
         {error ? (
           <View style={styles.emptyState}>
-            <Ionicons name="cloud-offline-outline" size={64} color="#C76A6A" />
+            <Ionicons name="cloud-offline-outline" size={64} color={colors.error} />
             <Text style={styles.emptyText}>Liste yüklenemedi</Text>
             <Text style={styles.emptySubtext}>{error}</Text>
           </View>
         ) : loading ? (
-          <ActivityIndicator size="large" color="#D97757" style={styles.loader} />
+          <ActivityIndicator size="large" color={colors.accent} style={styles.loader} />
         ) : (
           <ScrollView style={styles.content}>
             {badHabits.length === 0 ? (
               <View style={styles.emptyState}>
-                <Ionicons name="ribbon-outline" size={64} color="#56544B" />
+                <Ionicons name="ribbon-outline" size={64} color={colors.textGhost} />
                 <Text style={styles.emptyText}>Henüz bıraktığınız alışkanlık yok</Text>
                 <Text style={styles.emptySubtext}>Bıraktığınız kötü alışkanlıkları ekleyin!</Text>
               </View>
@@ -126,7 +126,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                   onPress={() => viewSavings(habit)}
                 >
                   <View style={styles.habitIcon}>
-                    <Ionicons name="ban" size={24} color="#C76A6A" />
+                    <Ionicons name="ban" size={24} color={colors.error} />
                   </View>
                   <View style={styles.habitInfo}>
                     <Text style={styles.habitName}>{habit.name}</Text>
@@ -134,7 +134,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                       Bırakma tarihi: {format(new Date(habit.quit_date), 'dd MMM yyyy', { locale: tr })}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color="#827E72" />
+                  <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
                 </TouchableOpacity>
               ))
             )}
@@ -155,7 +155,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
               <TextInput
                 style={styles.input}
                 placeholder="Alışkanlık adı (örn: Sigara)"
-                placeholderTextColor="#827E72"
+                placeholderTextColor={colors.textFaint}
                 value={newHabit.name}
                 onChangeText={(text) => setNewHabit({ ...newHabit, name: text })}
               />
@@ -163,7 +163,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
               <TextInput
                 style={[styles.input, styles.textArea]}
                 placeholder="Açıklama"
-                placeholderTextColor="#827E72"
+                placeholderTextColor={colors.textFaint}
                 value={newHabit.description}
                 onChangeText={(text) => setNewHabit({ ...newHabit, description: text })}
                 multiline
@@ -172,7 +172,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
               <TextInput
                 style={styles.input}
                 placeholder="Günlük maliyet (₺)"
-                placeholderTextColor="#827E72"
+                placeholderTextColor={colors.textFaint}
                 value={newHabit.cost_per_day}
                 onChangeText={(text) => setNewHabit({ ...newHabit, cost_per_day: text })}
                 keyboardType="numeric"
@@ -181,7 +181,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
               <TextInput
                 style={styles.input}
                 placeholder="Günlük kaybedilen zaman (dakika)"
-                placeholderTextColor="#827E72"
+                placeholderTextColor={colors.textFaint}
                 value={newHabit.time_wasted_per_day}
                 onChangeText={(text) => setNewHabit({ ...newHabit, time_wasted_per_day: text })}
                 keyboardType="numeric"
@@ -219,26 +219,26 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
             <View style={styles.modalOverlay}>
               <View style={styles.savingsContent}>
                 <View style={styles.savingsHeader}>
-                  <Ionicons name="trophy" size={48} color="#87A678" />
+                  <Ionicons name="trophy" size={48} color={colors.success} />
                   <Text style={styles.savingsTitle}>{selectedHabit.name}</Text>
                   <Text style={styles.savingsSubtitle}>Tasarruf Raporu</Text>
                 </View>
 
                 <View style={styles.savingsStats}>
                   <View style={styles.savingsStatCard}>
-                    <Ionicons name="calendar" size={32} color="#D97757" />
+                    <Ionicons name="calendar" size={32} color={colors.accent} />
                     <Text style={styles.savingsStatValue}>{savings.daysSinceQuit}</Text>
                     <Text style={styles.savingsStatLabel}>Gün</Text>
                   </View>
 
                   <View style={styles.savingsStatCard}>
-                    <Ionicons name="cash" size={32} color="#87A678" />
+                    <Ionicons name="cash" size={32} color={colors.success} />
                     <Text style={styles.savingsStatValue}>₺{savings.moneySaved}</Text>
                     <Text style={styles.savingsStatLabel}>Tasarruf</Text>
                   </View>
 
                   <View style={styles.savingsStatCard}>
-                    <Ionicons name="time" size={32} color="#D4A84A" />
+                    <Ionicons name="time" size={32} color={colors.warning} />
                     <Text style={styles.savingsStatValue}>{savings.timeSavedHours}sa</Text>
                     <Text style={styles.savingsStatLabel}>Zaman</Text>
                   </View>

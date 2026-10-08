@@ -97,7 +97,7 @@ export default function IntegrationsScreen() {
       {/* Özet bant */}
       <View style={s.banner}>
         <View style={s.bannerLeft}>
-          <Ionicons name="git-network-outline" size={20} color="#D97757" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+          <Ionicons name="git-network-outline" size={20} color={colors.accent} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <View>
             <Text style={s.bannerTitle}>Entegrasyonlar</Text>
             <Text style={s.bannerSub}>
@@ -149,7 +149,7 @@ export default function IntegrationsScreen() {
               </Text>
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={16} color="#56544B" />
+          <Ionicons name="chevron-forward" size={16} color={colors.textGhost} />
         </TouchableOpacity>
 
 {/* Google Calendar öne çıkan kart */}
@@ -186,13 +186,13 @@ export default function IntegrationsScreen() {
               </Text>
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={16} color="#56544B" />
+          <Ionicons name="chevron-forward" size={16} color={colors.textGhost} />
         </TouchableOpacity>
 
 
 
         <View style={s.hint}>
-          <Ionicons name="information-circle-outline" size={16} color="#56544B" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+          <Ionicons name="information-circle-outline" size={16} color={colors.textGhost} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <Text style={s.hintText}>Entegrasyonlar yakında geliyor.</Text>
         </View>
       </ScrollView>
@@ -217,7 +217,7 @@ export default function IntegrationsScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="Kapat"
                   >
-                    <Ionicons name="close" size={22} color="#827E72" />
+                    <Ionicons name="close" size={22} color={colors.textFaint} />
                   </TouchableOpacity>
                 </View>
                 <View style={s.divider} />
@@ -255,7 +255,7 @@ export default function IntegrationsScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Kapat"
               >
-                <Ionicons name="close" size={22} color="#827E72" />
+                <Ionicons name="close" size={22} color={colors.textFaint} />
               </TouchableOpacity>
             </View>
             <View style={s.divider} />
@@ -266,7 +266,7 @@ export default function IntegrationsScreen() {
                 <>
                   <View style={s.connectedBanner}>
                     <View style={s.connectedIconWrap}>
-                      <Ionicons name="checkmark-circle" size={28} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                      <Ionicons name="checkmark-circle" size={28} color={colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.connectedTitle}>{connection!.workspaceName}</Text>
@@ -281,9 +281,9 @@ export default function IntegrationsScreen() {
                       accessibilityRole="link"
                       accessibilityLabel="Alışkanlık Takibi veritabanını Notion'da aç"
                     >
-                      <Ionicons name="checkmark-circle-outline" size={16} color="#87A678" />
+                      <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
                       <Text style={s.dbLinkText}>Alışkanlık Takibi</Text>
-                      <Ionicons name="open-outline" size={14} color="#56544B" />
+                      <Ionicons name="open-outline" size={14} color={colors.textGhost} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={s.dbLink}
@@ -291,15 +291,15 @@ export default function IntegrationsScreen() {
                       accessibilityRole="link"
                       accessibilityLabel="Görevler veritabanını Notion'da aç"
                     >
-                      <Ionicons name="list-outline" size={16} color="#D97757" />
+                      <Ionicons name="list-outline" size={16} color={colors.accent} />
                       <Text style={s.dbLinkText}>Görevler</Text>
-                      <Ionicons name="open-outline" size={14} color="#56544B" />
+                      <Ionicons name="open-outline" size={14} color={colors.textGhost} />
                     </TouchableOpacity>
                   </View>
 
                   {notionStatus === 'error' && notionError && (
                     <View style={s.errorBox} accessibilityRole="alert">
-                      <Ionicons name="warning-outline" size={15} color="#C76A6A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                      <Ionicons name="warning-outline" size={15} color={colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       <Text style={s.errorText}>{notionError}</Text>
                     </View>
                   )}
@@ -313,8 +313,8 @@ export default function IntegrationsScreen() {
                     accessibilityState={{ disabled: notionStatus === 'syncing', busy: notionStatus === 'syncing' }}
                   >
                     {notionStatus === 'syncing'
-                      ? <ActivityIndicator size="small" color="#fff" />
-                      : <Ionicons name="sync-outline" size={18} color="#fff" />}
+                      ? <ActivityIndicator size="small" color={colors.white} />
+                      : <Ionicons name="sync-outline" size={18} color={colors.white} />}
                     <Text style={s.primaryBtnText}>
                       {notionStatus === 'syncing' ? 'Senkronlanıyor…' : 'Bugünü Senkronla'}
                     </Text>
@@ -342,7 +342,7 @@ export default function IntegrationsScreen() {
                       <View key={f.label} style={s.previewRow}>
                         <Ionicons name={f.icon as any} size={18} color={f.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                         <Text style={s.previewLabel}>{f.label}</Text>
-                        <Ionicons name="checkmark" size={14} color="#56544B" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                        <Ionicons name="checkmark" size={14} color={colors.textGhost} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       </View>
                     ))}
                   </View>
@@ -353,7 +353,7 @@ export default function IntegrationsScreen() {
 
                   {notionStatus === 'error' && notionError && (
                     <View style={s.errorBox} accessibilityRole="alert">
-                      <Ionicons name="warning-outline" size={15} color="#C76A6A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                      <Ionicons name="warning-outline" size={15} color={colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       <Text style={s.errorText}>{notionError}</Text>
                     </View>
                   )}
@@ -367,8 +367,8 @@ export default function IntegrationsScreen() {
                     accessibilityState={{ disabled: notionStatus === 'connecting', busy: notionStatus === 'connecting' }}
                   >
                     {notionStatus === 'connecting'
-                      ? <ActivityIndicator size="small" color="#fff" />
-                      : <Ionicons name="logo-google" size={18} color="#fff" />}
+                      ? <ActivityIndicator size="small" color={colors.white} />
+                      : <Ionicons name="logo-google" size={18} color={colors.white} />}
                     <Text style={s.primaryBtnText}>
                       {notionStatus === 'connecting' ? 'Bağlanıyor…' : 'Notion ile Bağlan'}
                     </Text>
@@ -398,7 +398,7 @@ export default function IntegrationsScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Kapat"
               >
-                <Ionicons name="close" size={22} color="#827E72" />
+                <Ionicons name="close" size={22} color={colors.textFaint} />
               </TouchableOpacity>
             </View>
             <View style={s.divider} />
@@ -408,7 +408,7 @@ export default function IntegrationsScreen() {
                 <>
                   <View style={s.connectedBanner}>
                     <View style={s.connectedIconWrap}>
-                      <Ionicons name="checkmark-circle" size={28} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                      <Ionicons name="checkmark-circle" size={28} color={colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.connectedTitle}>{googleConnection?.calendarName}</Text>
@@ -418,7 +418,7 @@ export default function IntegrationsScreen() {
 
                   {googleStatus === 'error' && googleError && (
                     <View style={s.errorBox} accessibilityRole="alert">
-                      <Ionicons name="warning-outline" size={15} color="#C76A6A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                      <Ionicons name="warning-outline" size={15} color={colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       <Text style={s.errorText}>{googleError}</Text>
                     </View>
                   )}
@@ -443,7 +443,7 @@ export default function IntegrationsScreen() {
                       <View key={f.label} style={s.previewRow}>
                         <Ionicons name={f.icon as any} size={18} color={f.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                         <Text style={s.previewLabel}>{f.label}</Text>
-                        <Ionicons name="checkmark" size={14} color="#56544B" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                        <Ionicons name="checkmark" size={14} color={colors.textGhost} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       </View>
                     ))}
                   </View>
@@ -454,7 +454,7 @@ export default function IntegrationsScreen() {
 
                   {googleStatus === 'error' && googleError && (
                     <View style={s.errorBox} accessibilityRole="alert">
-                      <Ionicons name="warning-outline" size={15} color="#C76A6A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                      <Ionicons name="warning-outline" size={15} color={colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       <Text style={s.errorText}>{googleError}</Text>
                     </View>
                   )}
@@ -468,8 +468,8 @@ export default function IntegrationsScreen() {
                     accessibilityState={{ disabled: googleStatus === 'connecting', busy: googleStatus === 'connecting' }}
                   >
                     {googleStatus === 'connecting'
-                      ? <ActivityIndicator size="small" color="#fff" />
-                      : <Ionicons name="logo-google" size={18} color="#fff" />}
+                      ? <ActivityIndicator size="small" color={colors.white} />
+                      : <Ionicons name="logo-google" size={18} color={colors.white} />}
                     <Text style={s.primaryBtnText}>
                       {googleStatus === 'connecting' ? 'Bağlanıyor…' : 'Google Calendar ile Bağlan'}
                     </Text>

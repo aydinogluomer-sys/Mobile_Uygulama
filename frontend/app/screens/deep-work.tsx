@@ -57,17 +57,17 @@ export default function DeepWorkScreen() {
         {/* Özet kartları */}
         <View style={s.metrics}>
           <View style={[s.metricCard, { borderColor: alphaHex(colors.info, '40') }]}>
-            <Ionicons name="today-outline" size={18} color="#7C97C5" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+            <Ionicons name="today-outline" size={18} color={colors.info} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.metricValue}>{formatMins(todayM)}</Text>
             <Text style={s.metricLabel}>Bugün</Text>
           </View>
           <View style={[s.metricCard, { borderColor: alphaHex(colors.accent, '40') }]}>
-            <Ionicons name="calendar-outline" size={18} color="#D97757" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+            <Ionicons name="calendar-outline" size={18} color={colors.accent} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.metricValue}>{formatMins(weekM)}</Text>
             <Text style={s.metricLabel}>Bu Hafta</Text>
           </View>
           <View style={[s.metricCard, { borderColor: alphaHex(colors.success, '40') }]}>
-            <Ionicons name="layers-outline" size={18} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+            <Ionicons name="layers-outline" size={18} color={colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.metricValue}>{todaySessions.length}</Text>
             <Text style={s.metricLabel}>Seans</Text>
           </View>
@@ -83,7 +83,7 @@ export default function DeepWorkScreen() {
               accessibilityRole="button"
               accessibilityLabel="Seans ekle"
             >
-              <Ionicons name="add" size={16} color="#7C97C5" />
+              <Ionicons name="add" size={16} color={colors.info} />
               <Text style={s.addBtnText}>Seans Ekle</Text>
             </TouchableOpacity>
           </View>
@@ -101,7 +101,7 @@ export default function DeepWorkScreen() {
             ))
           ) : todaySessions.length === 0 ? (
             <View style={s.emptyCard}>
-              <Ionicons name="flash-outline" size={28} color="#383528" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+              <Ionicons name="flash-outline" size={28} color={colors.border} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
               <Text style={s.emptyText}>Henüz seans yok</Text>
               <Text style={s.emptyHint}>Derin çalışma seanslarını buraya kaydet</Text>
             </View>
@@ -122,7 +122,7 @@ export default function DeepWorkScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`${sess.subject} seansını sil`}
                 >
-                  <Ionicons name="trash-outline" size={14} color="#56544B" />
+                  <Ionicons name="trash-outline" size={14} color={colors.textGhost} />
                 </TouchableOpacity>
               </View>
             ))
@@ -158,7 +158,7 @@ export default function DeepWorkScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Kapat"
               >
-                <Ionicons name="close" size={20} color="#827E72" />
+                <Ionicons name="close" size={20} color={colors.textFaint} />
               </TouchableOpacity>
             </View>
 
@@ -166,7 +166,7 @@ export default function DeepWorkScreen() {
             <TextInput
               style={s.input}
               placeholder="Ne üzerine çalıştın?"
-              placeholderTextColor="#56544B"
+              placeholderTextColor={colors.textGhost}
               value={subject}
               onChangeText={setSubject}
               autoFocus
@@ -192,7 +192,7 @@ export default function DeepWorkScreen() {
             <TextInput
               style={s.input}
               placeholder="Dakika (özel)"
-              placeholderTextColor="#56544B"
+              placeholderTextColor={colors.textGhost}
               value={minutes}
               onChangeText={(t) => { setMinutes(t); setEntryError(null); }}
               keyboardType="numeric"

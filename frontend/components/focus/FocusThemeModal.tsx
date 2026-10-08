@@ -40,7 +40,7 @@ export default function FocusThemeModal({ visible, onClose, presetId, overlay, o
                       <View style={[s.swatchDot, { backgroundColor: p.accent }]} />
                       {active && (
                         <View style={[s.swatchCheck, { backgroundColor: p.accent }]}>
-                          <Ionicons name="checkmark" size={11} color="#fff" />
+                          <Ionicons name="checkmark" size={11} color={colors.white} />
                         </View>
                       )}
                     </View>

@@ -240,7 +240,7 @@ export default function SettingsScreen() {
     onPress: () => void,
     // `string`, not the inferred literal type of the default. `colors` is
     // declared `as const`, so `color = colors.accent` typed this parameter as
-    // the single value "#D97757" and every other accent was a type error --
+    // the single value colors.accent and every other accent was a type error --
     // invisible while every call site happened to pass the default.
     color: string = colors.accent,
   ) => (
@@ -254,7 +254,7 @@ export default function SettingsScreen() {
           <Text style={styles.settingSubtitle}>{subtitle}</Text>
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={20} color="#827E72" />
+      <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
     </TouchableOpacity>
   );
 
@@ -293,7 +293,7 @@ export default function SettingsScreen() {
             {/* Mevsimsel arka plan animasyonları (contract §13) */}
             <View style={styles.motionBlock}>
               <View style={styles.motionHead}>
-                <Ionicons name="sparkles-outline" size={18} color="#D97757" />
+                <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.themeLabel}>Arka plan animasyonları</Text>
                   <Text style={styles.themeSubLabel}>
@@ -340,7 +340,7 @@ export default function SettingsScreen() {
                       activeOpacity={0.8}
                     >
                       <View style={[styles.accentDot, { backgroundColor: a.primary }, on && styles.accentDotOn]}>
-                        {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                        {on && <Ionicons name="checkmark" size={16} color={colors.white} />}
                       </View>
                       <Text style={[styles.accentLabel, on && { color: a.primary, fontWeight: '700' }]}>{a.label}</Text>
                     </TouchableOpacity>
@@ -379,10 +379,10 @@ export default function SettingsScreen() {
                   disabled={exportingFormat !== null}
                 >
                   {exportingFormat === 'json' ? (
-                    <ActivityIndicator size="small" color="#D97757" />
+                    <ActivityIndicator size="small" color={colors.accent} />
                   ) : (
                     <>
-                      <Ionicons name="code-outline" size={20} color="#D97757" />
+                      <Ionicons name="code-outline" size={20} color={colors.accent} />
                       <Text style={styles.exportButtonText}>JSON</Text>
                     </>
                   )}
@@ -394,10 +394,10 @@ export default function SettingsScreen() {
                   disabled={exportingFormat !== null}
                 >
                   {exportingFormat === 'excel' ? (
-                    <ActivityIndicator size="small" color="#87A678" />
+                    <ActivityIndicator size="small" color={colors.success} />
                   ) : (
                     <>
-                      <Ionicons name="document-outline" size={20} color="#87A678" />
+                      <Ionicons name="document-outline" size={20} color={colors.success} />
                       <Text style={styles.exportButtonText}>Excel</Text>
                     </>
                   )}
@@ -409,10 +409,10 @@ export default function SettingsScreen() {
                   disabled={exportingFormat !== null}
                 >
                   {exportingFormat === 'csv' ? (
-                    <ActivityIndicator size="small" color="#D4A84A" />
+                    <ActivityIndicator size="small" color={colors.warning} />
                   ) : (
                     <>
-                      <Ionicons name="list-outline" size={20} color="#D4A84A" />
+                      <Ionicons name="list-outline" size={20} color={colors.warning} />
                       <Text style={styles.exportButtonText}>CSV</Text>
                     </>
                   )}
@@ -433,14 +433,14 @@ export default function SettingsScreen() {
               >
                 <View style={styles.settingLeft}>
                   <View style={[styles.settingIcon, { backgroundColor: alphaHex(colors.success, '20') }]}>
-                    <Ionicons name="flask-outline" size={24} color="#87A678" />
+                    <Ionicons name="flask-outline" size={24} color={colors.success} />
                   </View>
                   <View style={styles.settingInfo}>
                     <Text style={styles.settingTitle}>Demo verileri doldur</Text>
                     <Text style={styles.settingSubtitle}>Test icin gorev, aliskanlik, gunluk ve odak verisi ekler</Text>
                   </View>
                 </View>
-                {seedingDemo ? <ActivityIndicator size="small" color="#87A678" /> : <Ionicons name="chevron-forward" size={20} color="#827E72" />}
+                {seedingDemo ? <ActivityIndicator size="small" color={colors.success} /> : <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />}
               </TouchableOpacity>
             )}
           </View>
@@ -496,7 +496,7 @@ export default function SettingsScreen() {
               </View>
               {deletingAccount
                 ? <ActivityIndicator size="small" color={colors.error} />
-                : <Ionicons name="chevron-forward" size={20} color="#827E72" />}
+                : <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />}
             </TouchableOpacity>
           </View>
 
@@ -586,7 +586,7 @@ export default function SettingsScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Webhook Ekle</Text>
               <TouchableOpacity onPress={() => setShowWebhookModal(false)}>
-                <Ionicons name="close" size={28} color="#BFBBAE" />
+                <Ionicons name="close" size={28} color={colors.textDim} />
               </TouchableOpacity>
             </View>
 
@@ -597,7 +597,7 @@ export default function SettingsScreen() {
             <TextInput
               style={styles.input}
               placeholder="https://hooks.n8n.cloud/webhook/..."
-              placeholderTextColor="#827E72"
+              placeholderTextColor={colors.textFaint}
               value={webhookUrl}
               onChangeText={setWebhookUrl}
               autoCapitalize="none"
@@ -624,7 +624,7 @@ export default function SettingsScreen() {
                         await loadWebhooks();
                       }}
                     >
-                      <Ionicons name="trash-outline" size={20} color="#C76A6A" />
+                      <Ionicons name="trash-outline" size={20} color={colors.error} />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -671,7 +671,7 @@ export default function SettingsScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Geri"
               >
-                <Ionicons name="chevron-back" size={28} color="#BFBBAE" />
+                <Ionicons name="chevron-back" size={28} color={colors.textDim} />
               </TouchableOpacity>
               {selectedCategory ? (
                 <View style={styles.categoryModalHeaderText}>

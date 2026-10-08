@@ -46,7 +46,7 @@ function RadarWeb({ values }: { values: Record<AreaKey, number> }) {
             key={ring}
             points={pts}
             fill="none"
-            stroke="#383528"
+            stroke={colors.border}
             strokeWidth="1"
           />
         );
@@ -60,7 +60,7 @@ function RadarWeb({ values }: { values: Record<AreaKey, number> }) {
             key={i}
             x1={CENTER} y1={CENTER}
             x2={outer.x} y2={outer.y}
-            stroke="#383528" strokeWidth="1"
+            stroke={colors.border} strokeWidth="1"
           />
         );
       })}
@@ -69,7 +69,7 @@ function RadarWeb({ values }: { values: Record<AreaKey, number> }) {
       <Polygon
         points={polyPoints}
         fill="#D9775720"
-        stroke="#D97757"
+        stroke={colors.accent}
         strokeWidth="2"
       />
 
@@ -89,7 +89,7 @@ function RadarWeb({ values }: { values: Record<AreaKey, number> }) {
             key={area.key}
             x={x} y={y + 4}
             textAnchor={anchor as any}
-            fill="#BFBBAE"
+            fill={colors.textDim}
             fontSize="10"
             fontWeight="600"
           >
@@ -99,7 +99,7 @@ function RadarWeb({ values }: { values: Record<AreaKey, number> }) {
       })}
 
       {/* Center dot */}
-      <Circle cx={CENTER} cy={CENTER} r={3} fill="#56544B" />
+      <Circle cx={CENTER} cy={CENTER} r={3} fill={colors.textGhost} />
     </Svg>
   );
 }
@@ -184,7 +184,7 @@ export default function LifeAreasScreen() {
             <Ionicons
               name="checkmark-circle"
               size={14}
-              color="#87A678"
+              color={colors.success}
               accessibilityElementsHidden
               importantForAccessibility="no-hide-descendants"
             />
@@ -214,10 +214,10 @@ export default function LifeAreasScreen() {
           accessibilityState={{ disabled: saving, busy: saving }}
         >
           {saving ? (
-            <ActivityIndicator color="#fff" size="small" />
+            <ActivityIndicator color={colors.white} size="small" />
           ) : (
             <>
-              <Ionicons name="save-outline" size={18} color="#fff" />
+              <Ionicons name="save-outline" size={18} color={colors.white} />
               <Text style={s.saveBtnText}>Kaydet</Text>
             </>
           )}

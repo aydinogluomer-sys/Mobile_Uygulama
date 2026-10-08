@@ -152,7 +152,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
       <TextInput
         style={styles.input}
         placeholder="Örn: Sabah Sporu"
-        placeholderTextColor="#827E72"
+        placeholderTextColor={colors.textFaint}
         value={form.name}
         onChangeText={(t) => setForm({ ...form, name: t })}
         autoFocus
@@ -269,7 +269,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           <TextInput
             style={styles.input}
             placeholder="Örn: adım, sayfa, ml"
-            placeholderTextColor="#827E72"
+            placeholderTextColor={colors.textFaint}
             value={form.unit ?? ''}
             onChangeText={(t) => setForm({ ...form, unit: t })}
           />
@@ -278,7 +278,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           <TextInput
             style={styles.input}
             placeholder="Örn: 10000"
-            placeholderTextColor="#827E72"
+            placeholderTextColor={colors.textFaint}
             keyboardType="numeric"
             value={form.daily_goal?.toString() ?? ''}
             onChangeText={(t) => setForm({ ...form, daily_goal: parseFloat(t) || null })}
@@ -308,7 +308,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           <TextInput
             style={styles.input}
             placeholder="Örn: 20"
-            placeholderTextColor="#827E72"
+            placeholderTextColor={colors.textFaint}
             keyboardType="numeric"
             value={form.daily_goal?.toString() ?? ''}
             onChangeText={(t) => setForm({ ...form, daily_goal: parseInt(t, 10) || null })}
@@ -441,7 +441,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
             <TextInput
               style={[styles.input, { flex: 1, marginBottom: 0 }]}
               placeholder="Örn: 30"
-              placeholderTextColor="#827E72"
+              placeholderTextColor={colors.textFaint}
               keyboardType="numeric"
               value={ec?.kind === 'amount' ? String(ec.value) : ''}
               onChangeText={(t) => {
@@ -486,7 +486,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
             <TextInput
               style={[styles.input, { marginTop: 10 }]}
               placeholder="Özel saat (SS:DD)"
-              placeholderTextColor="#827E72"
+              placeholderTextColor={colors.textFaint}
               value={rem.time}
               onChangeText={(t) => setForm({ ...form, reminders: { time: t, enabled: true } })}
             />
@@ -548,7 +548,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           <TextInput
             style={[styles.input, { marginTop: 12 }]}
             placeholder="Örn: Kahvaltıdan sonra"
-            placeholderTextColor="#827E72"
+            placeholderTextColor={colors.textFaint}
             value={form.cue_note ?? ''}
             onChangeText={(t) => setForm({ ...form, cue_note: t })}
           />
@@ -743,7 +743,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
         <TextInput
           style={[styles.input, { marginTop: 10 }]}
           placeholder="Özel süre (dk)"
-          placeholderTextColor="#827E72"
+          placeholderTextColor={colors.textFaint}
           keyboardType="numeric"
           value={form.estimated_minutes ? String(form.estimated_minutes) : ''}
           onChangeText={(t) => setMinutes(parseInt(t, 10) || 0)}
@@ -753,7 +753,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
         <View style={styles.costBreakdownCard}>
           <View style={styles.costHeadRow}>
             <View style={styles.costHeadLeft}>
-              <Ionicons name="flash" size={20} color="#D4A84A" />
+              <Ionicons name="flash" size={20} color={colors.warning} />
               <Text style={styles.costHeadLabel}>Hesaplanan İrade Maliyeti</Text>
             </View>
             <View style={styles.costBigBadge}>
@@ -807,14 +807,14 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
             style={[styles.colorDot, { backgroundColor: c }, form.color === c && styles.colorDotSelected]}
             onPress={() => setForm({ ...form, color: c })}
           >
-            {form.color === c && <Ionicons name="checkmark" size={16} color="#fff" />}
+            {form.color === c && <Ionicons name="checkmark" size={16} color={colors.white} />}
           </TouchableOpacity>
         ))}
       </View>
 
       <Text style={styles.label}>İrade Maliyeti (1–10)</Text>
       <View style={styles.infoBox}>
-        <Ionicons name="flash" size={18} color="#D4A84A" />
+        <Ionicons name="flash" size={18} color={colors.warning} />
         <Text style={styles.infoText}>
           İrade motoru zorluk × frekans + etki + davranış faktörlerinden {computeWillpowerCost(form)} hesapladı — dilersen elle ayarla.
         </Text>
@@ -881,7 +881,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           {rows.map((r, i) => (
             <View key={i} style={[styles.summaryRow, i === rows.length - 1 && { borderBottomWidth: 0 }]}>
               <View style={styles.summaryRowLeft}>
-                <Ionicons name={r.icon as any} size={15} color="#827E72" />
+                <Ionicons name={r.icon as any} size={15} color={colors.textFaint} />
                 <Text style={styles.summaryRowLabel}>{r.label}</Text>
               </View>
               <Text style={[styles.summaryRowVal, r.color && { color: r.color }]}>{r.val}</Text>
@@ -909,7 +909,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
         )}
 
         <View style={styles.mirrorNoteRow}>
-          <Ionicons name="grid-outline" size={13} color="#827E72" />
+          <Ionicons name="grid-outline" size={13} color={colors.textFaint} />
           <Text style={styles.mirrorNoteText}>Bu özet, İstatistikler → Liste sekmesinde bir satır olarak görünür.</Text>
         </View>
       </View>
@@ -924,7 +924,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
         <View style={styles.container}>
           <View style={styles.header}>
             <TouchableOpacity onPress={handleClose}>
-              <Ionicons name="close" size={28} color="#fff" />
+              <Ionicons name="close" size={28} color={colors.white} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Yeni Alışkanlık</Text>
             <View style={{ width: 28 }} />
@@ -967,7 +967,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           <View style={styles.footer}>
             {step > 1 && (
               <TouchableOpacity style={styles.backButton} onPress={() => setStep(step - 1)}>
-                <Ionicons name="arrow-back" size={20} color="#fff" />
+                <Ionicons name="arrow-back" size={20} color={colors.white} />
                 <Text style={styles.backButtonText}>Geri</Text>
               </TouchableOpacity>
             )}
@@ -978,14 +978,14 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
                 disabled={!canProceed()}
               >
                 <Text style={styles.nextButtonText}>Devam</Text>
-                <Ionicons name="arrow-forward" size={20} color="#fff" />
+                <Ionicons name="arrow-forward" size={20} color={colors.white} />
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 style={[styles.submitButton, { backgroundColor: DEST.color }]}
                 onPress={handleSubmit}
               >
-                <Ionicons name={DEST.icon as any} size={18} color="#fff" />
+                <Ionicons name={DEST.icon as any} size={18} color={colors.white} />
                 <Text style={styles.submitButtonText}>{DEST.label}</Text>
               </TouchableOpacity>
             )}

@@ -36,16 +36,16 @@ export default function SeasonalMotionPreview({ visible, onClose }: { visible: b
         <View style={s.panel}>
           <View style={s.rowBetween}>
             <Text style={s.title}>Mevsimsel Hareket — Önizleme (DEV)</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={10}><Ionicons name="close" size={22} color="#fff" /></TouchableOpacity>
+            <TouchableOpacity onPress={onClose} hitSlop={10}><Ionicons name="close" size={22} color={colors.white} /></TouchableOpacity>
           </View>
 
           <View style={s.monthRow}>
             <TouchableOpacity style={s.navBtn} onPress={() => setMonthIdx((m) => (m + 11) % 12)}>
-              <Ionicons name="chevron-back" size={18} color="#fff" />
+              <Ionicons name="chevron-back" size={18} color={colors.white} />
             </TouchableOpacity>
             <Text style={s.monthName}>{MONTH_NAMES_TR[monthIdx]}</Text>
             <TouchableOpacity style={s.navBtn} onPress={() => setMonthIdx((m) => (m + 1) % 12)}>
-              <Ionicons name="chevron-forward" size={18} color="#fff" />
+              <Ionicons name="chevron-forward" size={18} color={colors.white} />
             </TouchableOpacity>
           </View>
 
@@ -58,7 +58,7 @@ export default function SeasonalMotionPreview({ visible, onClose }: { visible: b
           </View>
 
           <TouchableOpacity style={s.toggleRow} onPress={() => setSimReduce((v) => !v)}>
-            <Ionicons name={simReduce ? 'checkbox' : 'square-outline'} size={18} color="#D97757" />
+            <Ionicons name={simReduce ? 'checkbox' : 'square-outline'} size={18} color={colors.accent} />
             <Text style={s.toggleTxt}>Reduce motion simülasyonu (animasyon kapanmalı)</Text>
           </TouchableOpacity>
         </View>

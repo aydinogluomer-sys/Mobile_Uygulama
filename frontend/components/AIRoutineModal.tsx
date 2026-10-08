@@ -124,7 +124,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
               </View>
             </View>
             <TouchableOpacity onPress={handleClose}>
-              <Ionicons name="close" size={24} color="#BFBBAE" />
+              <Ionicons name="close" size={24} color={colors.textDim} />
             </TouchableOpacity>
           </View>
 
@@ -133,13 +133,13 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
             {/* Hata kutusu (istek/sunucu hatası) */}
             {generateError ? (
               <View style={styles.errorBox}>
-                <Ionicons name="alert-circle-outline" size={18} color="#C76A6A" />
+                <Ionicons name="alert-circle-outline" size={18} color={colors.error} />
                 <Text style={styles.errorText}>{generateError}</Text>
               </View>
             ) : null}
             {generateError && /Focus Point/i.test(generateError) ? (
               <TouchableOpacity style={styles.creditsRow} onPress={() => { onClose(); router.push('/screens/focus-points'); }}>
-                <Ionicons name="flash-outline" size={14} color="#fff" />
+                <Ionicons name="flash-outline" size={14} color={colors.white} />
                 <Text style={styles.creditsRowText}>Focus Point bakiyem</Text>
               </TouchableOpacity>
             ) : null}
@@ -150,7 +150,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
             {showErrors ? (
               <View style={styles.rejectBox}>
                 <View style={styles.rejectHeader}>
-                  <Ionicons name="shield-outline" size={18} color="#C76A6A" />
+                  <Ionicons name="shield-outline" size={18} color={colors.error} />
                   <Text style={styles.rejectTitle}>Bu öneri doğrulanamadı</Text>
                 </View>
                 <Text style={styles.rejectSub}>Hiçbir şey eklenmedi. Bulunan sorunlar:</Text>
@@ -158,7 +158,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                   <Text key={i} style={styles.rejectItem}>• {msg}</Text>
                 ))}
                 <TouchableOpacity style={styles.retryBtnWide} onPress={() => clearGenerated()}>
-                  <Ionicons name="refresh-outline" size={16} color="#BFBBAE" />
+                  <Ionicons name="refresh-outline" size={16} color={colors.textDim} />
                   <Text style={styles.retryText}>Yeniden dene</Text>
                 </TouchableOpacity>
               </View>
@@ -172,7 +172,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
             {showCompletion ? (
               <View style={styles.completionBox}>
                 <View style={styles.completionHeader}>
-                  <Ionicons name="create-outline" size={18} color="#D4A84A" />
+                  <Ionicons name="create-outline" size={18} color={colors.warning} />
                   <Text style={styles.completionTitle}>Birkaç bilgi eksik</Text>
                 </View>
                 <Text style={styles.completionSub}>
@@ -204,7 +204,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                       <TextInput
                         style={styles.completionInput}
                         placeholder={`ör. 10 (maks ${MAX_ESTIMATED_MINUTES})`}
-                        placeholderTextColor="#827E72"
+                        placeholderTextColor={colors.textFaint}
                         keyboardType="numeric"
                         value={minutesText[i] ?? ''}
                         onChangeText={(t) => setHabitMinutesText(i, t)}
@@ -215,7 +215,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
 
                 <View style={styles.resultActions}>
                   <TouchableOpacity style={styles.retryBtn} onPress={() => clearGenerated()}>
-                    <Ionicons name="refresh-outline" size={16} color="#BFBBAE" />
+                    <Ionicons name="refresh-outline" size={16} color={colors.textDim} />
                     <Text style={styles.retryText}>Yeniden dene</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -223,7 +223,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                     onPress={handleCompleteProposal}
                     disabled={!allHabitsComplete}
                   >
-                    <Ionicons name="arrow-forward-circle" size={18} color="#fff" />
+                    <Ionicons name="arrow-forward-circle" size={18} color={colors.white} />
                     <Text style={styles.addAllText}>Devam Et</Text>
                   </TouchableOpacity>
                 </View>
@@ -241,7 +241,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                   <TextInput
                     style={styles.textarea}
                     placeholder="Hedefini veya durumunu anlat..."
-                    placeholderTextColor="#827E72"
+                    placeholderTextColor={colors.textFaint}
                     multiline
                     maxLength={MAX_CHARS}
                     value={prompt}
@@ -253,7 +253,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                 </View>
 
                 <View style={styles.fpHintRow}>
-                  <Ionicons name="flash" size={12} color="#D4A84A" />
+                  <Ionicons name="flash" size={12} color={colors.warning} />
                   <Text style={styles.fpHintText}>AI Rutin {ACTION_COST.routine} FP · Bakiyen {focusPoints} FP</Text>
                 </View>
 
@@ -265,25 +265,25 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                   onPress={handleGenerate}
                   disabled={prompt.trim().length < 3}
                 >
-                  <Ionicons name="sparkles" size={18} color="#fff" />
+                  <Ionicons name="sparkles" size={18} color={colors.white} />
                   <Text style={styles.generateBtnText}>Rutin Oluştur</Text>
                 </TouchableOpacity>
 
                 <View style={styles.packsHeader}>
-                  <Ionicons name="albums-outline" size={14} color="#BFBBAE" />
+                  <Ionicons name="albums-outline" size={14} color={colors.textDim} />
                   <Text style={styles.packsHeaderText}>ya da hazır bir paket seç</Text>
                 </View>
                 {ROUTINE_PACKS.map((pack: RoutinePack) => (
                   <TouchableOpacity key={pack.key} style={styles.packCard} onPress={() => loadPack(pack.key)}>
                     <View style={styles.packIcon}>
-                      <Ionicons name="layers-outline" size={18} color="#D97757" />
+                      <Ionicons name="layers-outline" size={18} color={colors.accent} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.packTitle}>{pack.title}</Text>
                       <Text style={styles.packGoal}>{pack.goal}</Text>
                       <Text style={styles.packMeta}>{pack.habits.length} alışkanlık</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={16} color="#56544B" />
+                    <Ionicons name="chevron-forward" size={16} color={colors.textGhost} />
                   </TouchableOpacity>
                 ))}
               </>
@@ -339,14 +339,14 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
 
                 {installError ? (
                   <View style={styles.errorBox}>
-                    <Ionicons name="alert-circle-outline" size={18} color="#C76A6A" />
+                    <Ionicons name="alert-circle-outline" size={18} color={colors.error} />
                     <Text style={styles.errorText}>{installError}</Text>
                   </View>
                 ) : null}
 
                 <View style={styles.resultActions}>
                   <TouchableOpacity style={styles.retryBtn} onPress={() => clearGenerated()} disabled={installing}>
-                    <Ionicons name="refresh-outline" size={16} color="#BFBBAE" />
+                    <Ionicons name="refresh-outline" size={16} color={colors.textDim} />
                     <Text style={styles.retryText}>Yeniden dene</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -355,10 +355,10 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                     disabled={installing}
                   >
                     {installing ? (
-                      <ActivityIndicator color="#fff" />
+                      <ActivityIndicator color={colors.white} />
                     ) : (
                       <>
-                        <Ionicons name="add-circle" size={18} color="#fff" />
+                        <Ionicons name="add-circle" size={18} color={colors.white} />
                         <Text style={styles.addAllText}>Onayla ve Ekle</Text>
                       </>
                     )}
@@ -369,7 +369,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
 
             {installed ? (
               <View style={styles.successMsg}>
-                <Ionicons name="checkmark-circle" size={24} color="#87A678" />
+                <Ionicons name="checkmark-circle" size={24} color={colors.success} />
                 <Text style={styles.successText}>
                   Alışkanlıklar eklendi. Kapasiteye sığanlar aktif, kalanı Bekleme Odasında.
                 </Text>

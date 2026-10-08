@@ -78,22 +78,22 @@ export default function CreditHistoryScreen() {
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <ScrollView
         contentContainerStyle={s.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D97757" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
         {/* Özet */}
         <View style={s.summary}>
           <View style={s.sumCard}>
-            <Ionicons name="flash" size={16} color="#D4A84A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+            <Ionicons name="flash" size={16} color={colors.warning} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.sumVal}>{focusPoints}</Text>
             <Text style={s.sumLabel}>Mevcut</Text>
           </View>
           <View style={s.sumCard}>
-            <Ionicons name="add-circle-outline" size={16} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+            <Ionicons name="add-circle-outline" size={16} color={colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={[s.sumVal, { color: colors.success }]}>{earned}</Text>
             <Text style={s.sumLabel}>Kazanılan</Text>
           </View>
           <View style={s.sumCard}>
-            <Ionicons name="remove-circle-outline" size={16} color="#C76A6A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+            <Ionicons name="remove-circle-outline" size={16} color={colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={[s.sumVal, { color: colors.error }]}>{spent}</Text>
             <Text style={s.sumLabel}>Harcanan</Text>
           </View>

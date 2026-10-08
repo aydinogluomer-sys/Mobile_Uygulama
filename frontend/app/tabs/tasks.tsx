@@ -140,7 +140,7 @@ export default function TasksScreen() {
         }
         ListEmptyComponent={
           <View style={s.empty}>
-            <Ionicons name="checkmark-done-outline" size={40} color="#383528" />
+            <Ionicons name="checkmark-done-outline" size={40} color={colors.border} />
             <Text style={s.emptyText}>Görev yok</Text>
             {activeTab !== 'done' && (
               <TouchableOpacity onPress={() => openAdd(activeTab as ListType)} style={s.emptyAdd}>
@@ -157,7 +157,7 @@ export default function TasksScreen() {
                 { borderColor: PRIORITY_META[item.priority].color },
                 item.completed && { backgroundColor: PRIORITY_META[item.priority].color, borderColor: PRIORITY_META[item.priority].color },
               ]}>
-                {item.completed && <Ionicons name="checkmark" size={12} color="#fff" />}
+                {item.completed && <Ionicons name="checkmark" size={12} color={colors.white} />}
               </View>
             </TouchableOpacity>
 
@@ -198,7 +198,7 @@ export default function TasksScreen() {
             )}
 
             <TouchableOpacity style={s.deleteBtn} onPress={() => confirmDelete(item)}>
-              <Ionicons name="trash-outline" size={16} color="#56544B" />
+              <Ionicons name="trash-outline" size={16} color={colors.textGhost} />
             </TouchableOpacity>
           </View>
         )}
@@ -210,7 +210,7 @@ export default function TasksScreen() {
           style={s.fab}
           onPress={() => openAdd(activeTab as ListType)}
         >
-          <Ionicons name="add" size={26} color="#fff" />
+          <Ionicons name="add" size={26} color={colors.white} />
         </TouchableOpacity>
       )}
 
@@ -236,7 +236,7 @@ export default function TasksScreen() {
             <TextInput
               style={s.input}
               placeholder="Görev başlığı..."
-              placeholderTextColor="#827E72"
+              placeholderTextColor={colors.textFaint}
               value={title}
               onChangeText={setTitle}
               autoFocus

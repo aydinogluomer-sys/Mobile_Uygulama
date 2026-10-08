@@ -71,13 +71,13 @@ Durumlar: **DONE** (dosya + test + commit; test kabul cümlesini karşılıyor) 
 | R05.04 | DONE | `lib/routineRunner.ts` add/remove/move/setDuration/applySessionToTemplate · `lib/routineRunner.test.ts` · `29b32af` |
 | R05.05 | BLOCKED (S13) | sesli duyuru `expo-speech` gerektirir; ekran okuyucu + titreşim DONE (`routine-runner.tsx`) |
 | R05.06 | DONE | `lib/focusDuration.ts` · `repo/focusDurationContract.test.ts` · `d9d1775` |
-| R05.07 | DONE | rutin → alışkanlık bir kez (`habitLogsToWrite`, mevcut) + **rapor aynı etkiden**: `lib/routineReport.ts` oturumun bitince sakladığı `summarize()` özetinden (oturum bir kez, alışkanlık bir kez — alışkanlık oranına yeniden eklenmez; gün = bittiği yerel gün) → haftalık review "Rutinler" kutucuğu, aylık review özet satırı; süre dolması tamamlanma değil (`timeUp` yalnız uyarı) · `__tests__/lib/routineReport.test.ts` (6) · mutasyon 6/6 (3'ü ek ayırt edici testlerle) · commit R05.07 |
+| R05.07 | DONE | rutin → alışkanlık bir kez (`habitLogsToWrite`, mevcut) + **rapor aynı etkiden**: `lib/routineReport.ts` oturumun bitince sakladığı `summarize()` özetinden (oturum bir kez, alışkanlık bir kez — alışkanlık oranına yeniden eklenmez; gün = bittiği yerel gün) → haftalık review "Rutinler" kutucuğu, aylık review özet satırı; süre dolması tamamlanma değil (`timeUp` yalnız uyarı) · `__tests__/lib/routineReport.test.ts` (6) · mutasyon 6/6 (3'ü ek ayırt edici testlerle) · `d4f9824` |
 | R05.08 | PARTIAL | şablonlar + yaşam döngüsü testi DONE; kullanıcı testi N/R |
 
 ## R06 — Sadelik, erişilebilirlik, mahremiyet
 | Kart | Durum | Kanıt / eksik |
 |---|---|---|
-| R06.01 | NOT_STARTED | tasarım sistemi/referans ekran tespiti belgesi yok |
+| R06.01 | DONE | `docs/implementation-v3/R06_DESIGN_SYSTEM.md`: mevcut sistem (`lib/tokens.ts`, `components/ui/*`), referans ekranlar (Today, Recovery, Routine runner — 0 ham hex); token değerine birebir eşit ham hex'ler token'a çevrildi (38 dosya, 266 değişim, 407 → 141; görünüm aynı); yeni UI kit/yeniden tasarım yok · `__tests__/repo/designTokensRatchet.test.ts` (token-eşit ham hex 0, toplam ≤ 141, referans ekranlar 0) · mutasyon 2/2 · commit R06.01 |
 | R06.02 | NOT_STARTED | Bugün'de üç CTA var (`today.tsx` TodayHero ctas); tek baskın "başla/devam et" yok |
 | R06.03 | NOT_STARTED | checklist/hedef/recovery/review için ortak form-önizleme-hata bileşeni yok |
 | R06.04 | PARTIAL | etiketler yaygın; **büyük yazı / dokunma alanı / kontrast / azaltılmış hareket doğrulaması yok** |

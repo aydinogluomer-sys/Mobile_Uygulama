@@ -377,7 +377,7 @@ export default function MonthlyReviewScreen() {
 
           <View style={s.hero}>
             <View style={s.heroIcon}>
-              <Ionicons name="calendar-number-outline" size={28} color="#D97757" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+              <Ionicons name="calendar-number-outline" size={28} color={colors.accent} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.heroTitle} accessibilityRole="header">Aylık Rapor</Text>
@@ -390,7 +390,7 @@ export default function MonthlyReviewScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Önceki ay"
               >
-                <Ionicons name="chevron-back" size={18} color="#BFBBAE" />
+                <Ionicons name="chevron-back" size={18} color={colors.textDim} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => { setMonthOffset((offset) => Math.max(0, offset - 1)); animatePage(1); }}
@@ -442,12 +442,12 @@ export default function MonthlyReviewScreen() {
           <View style={s.section}>
             <Text style={s.sectionTitle}>BU AY TAMAMLANANLAR</Text>
             {completedTasks.length === 0 ? (
-              <EmptyState icon="checkmark-done-outline" title="Bu ay tamamlanan görev yok" compact color="#87A678" />
+              <EmptyState icon="checkmark-done-outline" title="Bu ay tamamlanan görev yok" compact color={colors.success} />
             ) : (
               <>
                 {completedTasks.slice(0, 6).map((task) => (
                   <View key={task.id} style={s.taskItem}>
-                    <Ionicons name="checkmark-circle" size={16} color="#87A678" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                     <Text style={s.taskTitle} numberOfLines={1}>{task.title}</Text>
                   </View>
                 ))}
@@ -550,7 +550,7 @@ export default function MonthlyReviewScreen() {
                 <TextInput
                   style={s.questionInput}
                   placeholder={question.placeholder}
-                  placeholderTextColor="#56544B"
+                  placeholderTextColor={colors.textGhost}
                   multiline
                   value={answers[question.key] ?? ''}
                   onChangeText={(value) => {
@@ -584,10 +584,10 @@ export default function MonthlyReviewScreen() {
             accessibilityState={{ disabled: saving, busy: saving }}
           >
             {saving ? (
-              <ActivityIndicator color="#fff" size="small" />
+              <ActivityIndicator color={colors.white} size="small" />
             ) : savedAt && !unsavedDraft ? (
               <>
-                <Ionicons name="checkmark" size={18} color="#fff" />
+                <Ionicons name="checkmark" size={18} color={colors.white} />
                 <Text style={s.saveBtnText}>Kaydedildi ({savedAt})</Text>
               </>
             ) : (

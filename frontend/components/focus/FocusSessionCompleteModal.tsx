@@ -107,7 +107,7 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
           {/* Aksiyonlar */}
           <View style={s.foot}>
             <TouchableOpacity style={[s.primaryBtn, { backgroundColor: accent }]} onPress={onOpenReport}>
-              <Ionicons name="stats-chart-outline" size={18} color="#fff" />
+              <Ionicons name="stats-chart-outline" size={18} color={colors.white} />
               <Text style={s.primaryText}>Tam Raporu Gör</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.secondaryBtn} onPress={onClose}>

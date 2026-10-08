@@ -207,7 +207,7 @@ export default function JournalScreen() {
             <TextInput
               style={s.textArea}
               placeholder="Bugünü anlat..."
-              placeholderTextColor="#56544B"
+              placeholderTextColor={colors.textGhost}
               multiline
               value={content}
               onChangeText={(t) => edit(t, mood)}
@@ -232,7 +232,7 @@ export default function JournalScreen() {
           >
             {saved ? (
               <>
-                <Ionicons name="checkmark" size={18} color="#fff" />
+                <Ionicons name="checkmark" size={18} color={colors.white} />
                 <Text style={s.saveBtnText}>Kaydedildi</Text>
               </>
             ) : (

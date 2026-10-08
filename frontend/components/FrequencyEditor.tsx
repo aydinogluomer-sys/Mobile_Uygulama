@@ -96,7 +96,7 @@ export default function FrequencyEditor({
             <TextInput
               style={[styles.input, { flex: 1, marginBottom: 0 }]}
               placeholder="Başka: kaç günde bir? (2–365)"
-              placeholderTextColor="#827E72"
+              placeholderTextColor={colors.textFaint}
               keyboardType="numeric"
               accessibilityLabel="Kaç günde bir, 2 ile 365 arası"
               value={freq.interval_days && !(INTERVAL_PRESETS as readonly number[]).includes(freq.interval_days) ? String(freq.interval_days) : ''}

@@ -78,7 +78,7 @@ export default function MeasurableInputModal({ visible, habit, currentValue, day
             <Ionicons name={(habit.icon ?? 'star-outline') as any} size={22} color={habit.color ?? colors.accent} />
             <Text style={styles.title} numberOfLines={1}>{habit.name}</Text>
             <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={22} color="#BFBBAE" />
+              <Ionicons name="close" size={22} color={colors.textDim} />
             </TouchableOpacity>
           </View>
 
@@ -97,7 +97,7 @@ export default function MeasurableInputModal({ visible, habit, currentValue, day
           <TextInput
             style={styles.input}
             placeholder={ceiling ? 'Örn: 1 (hiç yoksa 0)' : `Örn: ${Math.ceil(remaining / 2)}`}
-            placeholderTextColor="#827E72"
+            placeholderTextColor={colors.textFaint}
             keyboardType="numeric"
             value={input}
             onChangeText={setInput}

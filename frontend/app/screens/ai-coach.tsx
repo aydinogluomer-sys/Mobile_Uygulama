@@ -729,7 +729,7 @@ export default function AICoachScreen() {
         {/* Focus Point barı */}
         <View style={[s.fpBar, insufficientCredits && s.fpBarWarn]}>
           <View style={s.fpLeft}>
-            <Ionicons name="flash" size={15} color="#D4A84A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+            <Ionicons name="flash" size={15} color={colors.warning} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.fpText}>{focusPoints} FP</Text>
             <Text style={s.fpSub}>· mesaj {ACTION_COST.coach} FP</Text>
           </View>
@@ -739,7 +739,7 @@ export default function AICoachScreen() {
             accessibilityRole="button"
             accessibilityLabel="Focus Point bakiyeni aç"
           >
-            <Ionicons name="flash-outline" size={13} color="#fff" />
+            <Ionicons name="flash-outline" size={13} color={colors.white} />
             <Text style={s.creditsText}>Krediler</Text>
           </TouchableOpacity>
         </View>
@@ -935,7 +935,7 @@ export default function AICoachScreen() {
           <TextInput
             style={s.input}
             placeholder="Bir şey sor..."
-            placeholderTextColor="#56544B"
+            placeholderTextColor={colors.textGhost}
             value={input}
             onChangeText={setInput}
             multiline
@@ -952,7 +952,7 @@ export default function AICoachScreen() {
             accessibilityLabel="Gönder"
             accessibilityState={{ disabled: !input.trim() || loading }}
           >
-            <Ionicons name="send" size={18} color="#fff" />
+            <Ionicons name="send" size={18} color={colors.white} />
           </TouchableOpacity>
         </View>
 
@@ -981,14 +981,14 @@ export default function AICoachScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Kapat"
               >
-                <Ionicons name="close" size={20} color="#827E72" />
+                <Ionicons name="close" size={20} color={colors.textFaint} />
               </TouchableOpacity>
             </View>
 
             {summarySaved ? (
               <View style={s.savedBox}>
                 <View style={s.savedIcon}>
-                  <Ionicons name="checkmark" size={22} color="#fff" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                  <Ionicons name="checkmark" size={22} color={colors.white} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 </View>
                 <Text style={s.savedText}>Bugünün günlüğüne eklendi</Text>
                 <View style={s.modalFooter}>
@@ -1006,7 +1006,7 @@ export default function AICoachScreen() {
                     accessibilityRole="link"
                     accessibilityLabel="Günlüğü aç"
                   >
-                    <Ionicons name="arrow-forward" size={15} color="#fff" />
+                    <Ionicons name="arrow-forward" size={15} color={colors.white} />
                     <Text style={s.modalBtnPrimaryText}>Günlüğü Aç</Text>
                   </TouchableOpacity>
                 </View>
@@ -1021,7 +1021,7 @@ export default function AICoachScreen() {
                   multiline
                   textAlignVertical="top"
                   placeholder="Özet..."
-                  placeholderTextColor="#56544B"
+                  placeholderTextColor={colors.textGhost}
                   accessibilityLabel="Günlüğe eklenecek özet"
                 />
                 <View style={s.modalFooter}>
@@ -1042,10 +1042,10 @@ export default function AICoachScreen() {
                     accessibilityState={{ disabled: !summaryText.trim() || summarySaving, busy: summarySaving }}
                   >
                     {summarySaving ? (
-                      <ActivityIndicator size="small" color="#fff" />
+                      <ActivityIndicator size="small" color={colors.white} />
                     ) : (
                       <>
-                        <Ionicons name="add" size={16} color="#fff" />
+                        <Ionicons name="add" size={16} color={colors.white} />
                         <Text style={s.modalBtnPrimaryText}>Günlüğe Ekle</Text>
                       </>
                     )}

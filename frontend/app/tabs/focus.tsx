@@ -213,7 +213,7 @@ export default function FocusScreen() {
                   style={[s.startBtn, { backgroundColor: phaseColor }, gated && s.startBtnGated]}
                   onPress={handleStartPause}
                 >
-                  <Ionicons name={status === 'running' ? 'pause' : gated ? 'lock-closed' : 'play'} size={gated ? 22 : 28} color="#fff" />
+                  <Ionicons name={status === 'running' ? 'pause' : gated ? 'lock-closed' : 'play'} size={gated ? 22 : 28} color={colors.white} />
                   <Text style={s.startBtnText}>
                     {status === 'running' ? 'Duraklat' : status === 'paused' ? 'Devam Et' : gated ? 'Konu Seç' : 'Başla'}
                   </Text>

@@ -39,7 +39,7 @@ export default function IntegrationCategoryCard({
         <View style={styles.countBadge}>
           <Text style={styles.countBadgeText}>{count}</Text>
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#827E72" />
+        <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
       </View>
     </TouchableOpacity>
   );

@@ -51,7 +51,7 @@ function GoalCard({ goal, color, onEdit, onDelete }: {
             accessibilityRole="button"
             accessibilityLabel={`Hedefi sil: ${goal.title}`}
           >
-            <Ionicons name="trash-outline" size={14} color="#56544B" />
+            <Ionicons name="trash-outline" size={14} color={colors.textGhost} />
           </TouchableOpacity>
         </View>
       </View>
@@ -194,7 +194,7 @@ export default function GoalsScreen() {
         accessibilityRole="button"
         accessibilityLabel={`Yeni ${tabInfo.label.toLowerCase()} hedef ekle`}
       >
-        <Ionicons name="add" size={24} color="#fff" />
+        <Ionicons name="add" size={24} color={colors.white} />
       </TouchableOpacity>
 
       {/* Modal */}
@@ -208,7 +208,7 @@ export default function GoalsScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Kapat"
               >
-                <Ionicons name="close" size={20} color="#827E72" />
+                <Ionicons name="close" size={20} color={colors.textFaint} />
               </TouchableOpacity>
             </View>
 
@@ -218,7 +218,7 @@ export default function GoalsScreen() {
                 <TextInput
                   style={s.input}
                   placeholder={`${tabInfo.label} hedefini yaz...`}
-                  placeholderTextColor="#56544B"
+                  placeholderTextColor={colors.textGhost}
                   value={title}
                   onChangeText={setTitle}
                   autoFocus
@@ -251,7 +251,7 @@ export default function GoalsScreen() {
             <TextInput
               style={s.input}
               placeholder="Özel % gir (0-100)"
-              placeholderTextColor="#56544B"
+              placeholderTextColor={colors.textGhost}
               value={progress}
               onChangeText={setProgress}
               keyboardType="numeric"

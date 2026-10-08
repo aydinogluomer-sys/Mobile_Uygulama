@@ -292,7 +292,7 @@ export default function TimelineScreen() {
             isDone && { backgroundColor: habit.color ?? colors.primary, borderColor: habit.color ?? colors.primary },
             isPartial && { borderColor: habit.color ?? colors.primary },
           ]}>
-            {isDone && <Ionicons name="checkmark" size={16} color="#fff" />}
+            {isDone && <Ionicons name="checkmark" size={16} color={colors.white} />}
             {isPartial && <Ionicons name="remove" size={16} color={habit.color ?? colors.primary} />}
           </View>
 
@@ -324,7 +324,7 @@ export default function TimelineScreen() {
             </View>
             {cue && (
               <View style={styles.cueRow}>
-                <Ionicons name="link-outline" size={11} color="#6b7280" />
+                <Ionicons name="link-outline" size={11} color={colors.neutral500} />
                 <Text style={styles.cueText} numberOfLines={1}>{cue}</Text>
               </View>
             )}
@@ -347,7 +347,7 @@ export default function TimelineScreen() {
             <Ionicons name="checkmark-done-circle-outline" size={22} color="#10b981" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.rowIconBtn} onPress={() => handlePause(habit)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <Ionicons name="pause-circle-outline" size={22} color="#9ca3af" />
+            <Ionicons name="pause-circle-outline" size={22} color={colors.neutral400} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.rowTrashBtn} onPress={() => { setDeleteReason(''); setDeleteTarget(habit); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
             <Ionicons name="trash-outline" size={16} color="#ef4444" />
@@ -387,7 +387,7 @@ export default function TimelineScreen() {
           </View>
           {cue && (
             <View style={styles.cueRow}>
-              <Ionicons name="link-outline" size={11} color="#6b7280" />
+              <Ionicons name="link-outline" size={11} color={colors.neutral500} />
               <Text style={styles.cueText} numberOfLines={1}>{cue}</Text>
             </View>
           )}
@@ -507,7 +507,7 @@ export default function TimelineScreen() {
       </ScrollView>
 
       <TouchableOpacity style={styles.fab} onPress={() => setShowOnboarding(true)} accessibilityLabel="Alışkanlık ekle">
-        <Ionicons name="add" size={28} color="#fff" />
+        <Ionicons name="add" size={28} color={colors.white} />
       </TouchableOpacity>
 
       {/* XP animasyonu */}
@@ -566,7 +566,7 @@ export default function TimelineScreen() {
             <TextInput
               style={styles.reasonInput}
               placeholder="Veya kendi nedenini yaz (opsiyonel)"
-              placeholderTextColor="#4b5563"
+              placeholderTextColor={colors.neutral600}
               value={DELETE_REASONS.includes(deleteReason) ? '' : deleteReason}
               onChangeText={setDeleteReason}
             />
@@ -575,7 +575,7 @@ export default function TimelineScreen() {
                 <Text style={styles.delCancelText}>Vazgeç</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.delConfirmBtn} onPress={confirmDelete}>
-                <Ionicons name="trash" size={16} color="#fff" />
+                <Ionicons name="trash" size={16} color={colors.white} />
                 <Text style={styles.delConfirmText}>Sil</Text>
               </TouchableOpacity>
             </View>
@@ -632,7 +632,7 @@ export default function TimelineScreen() {
                     <Text style={styles.capItemName} numberOfLines={1}>{h.name}</Text>
                     <View style={styles.capItemCost}><Ionicons name="flash" size={11} color="#f59e0b" /><Text style={styles.capItemCostText}>{h.willpower_cost}</Text></View>
                     <TouchableOpacity style={styles.capMoveBtn} onPress={() => handlePause(h)}>
-                      <Ionicons name="arrow-down" size={13} color="#9ca3af" /><Text style={styles.capMoveText}>Beklet</Text>
+                      <Ionicons name="arrow-down" size={13} color={colors.neutral400} /><Text style={styles.capMoveText}>Beklet</Text>
                     </TouchableOpacity>
                   </View>
                 ))
@@ -651,7 +651,7 @@ export default function TimelineScreen() {
               onPress={handleActivatePending}
               disabled={!(capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits }))}
             >
-              <Ionicons name="flash" size={16} color="#fff" />
+              <Ionicons name="flash" size={16} color={colors.white} />
               <Text style={styles.capActivateText}>
                 {capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits }) ? 'Aktif Olarak Ekle' : 'Yer açınca aktifleşir'}
               </Text>

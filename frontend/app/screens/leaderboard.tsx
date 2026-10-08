@@ -57,7 +57,7 @@ export default function LeaderboardScreen() {
 
       <ScrollView
         contentContainerStyle={s.content}
-        refreshControl={<RefreshControl refreshing={lbLoading} onRefresh={refresh} tintColor="#D4A84A" />}
+        refreshControl={<RefreshControl refreshing={lbLoading} onRefresh={refresh} tintColor={colors.warning} />}
       >
         {/* Senin sıran kartı */}
         {profile && (
@@ -99,7 +99,7 @@ export default function LeaderboardScreen() {
             icon="trophy-outline"
             title="Sıralama henüz boş"
             hint="Alışkanlıklarını tamamlayıp XP kazandığında burada görünürsün."
-            color="#D4A84A"
+            color={colors.warning}
           />
         ) : (
           leaderboard.map((row) => {

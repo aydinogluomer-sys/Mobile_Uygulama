@@ -178,7 +178,7 @@ export default function EisenhowerScreen() {
             accessibilityRole="button"
             accessibilityLabel={`${unassigned.length} görev sınıflandırılmadı, yerleştir`}
           >
-            <Ionicons name="alert-circle-outline" size={16} color="#D4A84A" />
+            <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
             <Text style={s.unassignedText}>{unassigned.length} görev sınıflandırılmadı</Text>
             <Text style={s.unassignedLink}>Yerleştir →</Text>
           </TouchableOpacity>
@@ -279,7 +279,7 @@ export default function EisenhowerScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Kapat"
               >
-                <Ionicons name="close" size={20} color="#827E72" />
+                <Ionicons name="close" size={20} color={colors.textFaint} />
               </TouchableOpacity>
             </View>
             <FlatList
@@ -294,7 +294,7 @@ export default function EisenhowerScreen() {
                 >
                   <View style={[s.dot, { backgroundColor: PRIORITY_COLOR[item.priority] }]} />
                   <Text style={s.pickTitle} numberOfLines={1}>{item.title}</Text>
-                  <Ionicons name="chevron-forward" size={14} color="#56544B" />
+                  <Ionicons name="chevron-forward" size={14} color={colors.textGhost} />
                 </TouchableOpacity>
               )}
             />

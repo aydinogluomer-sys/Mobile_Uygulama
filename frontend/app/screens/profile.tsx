@@ -64,9 +64,9 @@ export default function ProfileScreen() {
           accessibilityRole="link"
           accessibilityLabel="Sıralamayı gör"
         >
-          <Ionicons name="podium-outline" size={18} color="#D4A84A" />
+          <Ionicons name="podium-outline" size={18} color={colors.warning} />
           <Text style={s.lbText}>Sıralamayı Gör</Text>
-          <Ionicons name="chevron-forward" size={16} color="#827E72" />
+          <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
         </TouchableOpacity>
 
         {/* Kullanıcı adı */}
@@ -79,7 +79,7 @@ export default function ProfileScreen() {
               value={name}
               onChangeText={setName}
               placeholder="Gizli Savaşçı"
-              placeholderTextColor="#56544B"
+              placeholderTextColor={colors.textGhost}
               maxLength={24}
               autoCapitalize="none"
               accessibilityLabel="Kullanıcı adı"
@@ -93,9 +93,9 @@ export default function ProfileScreen() {
               accessibilityState={{ disabled: saving, busy: saving }}
             >
               {saving ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator size="small" color={colors.white} />
               ) : saved ? (
-                <Ionicons name="checkmark" size={18} color="#fff" />
+                <Ionicons name="checkmark" size={18} color={colors.white} />
               ) : (
                 <Text style={s.saveBtnText}>Kaydet</Text>
               )}

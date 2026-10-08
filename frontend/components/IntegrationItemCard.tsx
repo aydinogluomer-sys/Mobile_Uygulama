@@ -36,7 +36,7 @@ export default function IntegrationItemCard({
       <View style={styles.settingRight}>
         <IntegrationStatusBadge status={status} />
         {showChevron ? (
-          <Ionicons name="chevron-forward" size={20} color="#827E72" />
+          <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
         ) : (
           <View style={styles.chevronPlaceholder} />
         )}

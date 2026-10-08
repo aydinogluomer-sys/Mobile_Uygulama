@@ -100,7 +100,7 @@ export default function JournalInsightsScreen() {
       {/* FP barı */}
       <View style={[s.fpBar, lowCredits && s.fpBarWarn]}>
         <View style={s.fpLeft}>
-          <Ionicons name="flash" size={15} color="#D4A84A" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+          <Ionicons name="flash" size={15} color={colors.warning} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <Text style={s.fpText}>{focusPoints} FP</Text>
           <Text style={s.fpSub}>· içgörü {COST} FP</Text>
         </View>
@@ -110,7 +110,7 @@ export default function JournalInsightsScreen() {
           accessibilityRole="button"
           accessibilityLabel="Focus Point bakiyeni aç"
         >
-          <Ionicons name="flash-outline" size={13} color="#fff" />
+          <Ionicons name="flash-outline" size={13} color={colors.white} />
           <Text style={s.creditsText}>Krediler</Text>
         </TouchableOpacity>
       </View>
@@ -174,7 +174,7 @@ export default function JournalInsightsScreen() {
             {error && (
               // Hata sonradan belirdiği için ekran okuyucuya tek parça uyarı olarak duyurulur
               <View style={s.errorBox} accessible accessibilityRole="alert" accessibilityLabel={`Hata: ${error}`}>
-                <Ionicons name="alert-circle-outline" size={15} color="#C76A6A" />
+                <Ionicons name="alert-circle-outline" size={15} color={colors.error} />
                 <Text style={s.errorText}>{error}</Text>
               </View>
             )}
@@ -187,7 +187,7 @@ export default function JournalInsightsScreen() {
               accessibilityState={{ disabled: loading }}
               accessibilityHint={`${COST} odak puanı harcar`}
             >
-              <Ionicons name={cached ? 'refresh' : 'sparkles'} size={16} color="#fff" />
+              <Ionicons name={cached ? 'refresh' : 'sparkles'} size={16} color={colors.white} />
               <Text style={s.genBtnText}>
                 {cached ? `Yenile · ${COST} FP` : `İçgörü Oluştur · ${COST} FP`}
               </Text>

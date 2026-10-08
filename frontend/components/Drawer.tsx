@@ -113,7 +113,7 @@ export default function Drawer() {
           <View style={s.header}>
             <View style={s.headerLeft}>
               <View style={s.avatar}>
-                <Ionicons name="person" size={20} color="#D97757" />
+                <Ionicons name="person" size={20} color={colors.accent} />
               </View>
               <View>
                 <Text style={s.appName}>Aderyth</Text>
@@ -121,7 +121,7 @@ export default function Drawer() {
               </View>
             </View>
             <TouchableOpacity onPress={close} style={s.closeBtn}>
-              <Ionicons name="close" size={20} color="#827E72" />
+              <Ionicons name="close" size={20} color={colors.textFaint} />
             </TouchableOpacity>
           </View>
 
@@ -142,7 +142,7 @@ export default function Drawer() {
                       <Ionicons name={item.icon as any} size={18} color={item.color} />
                     </View>
                     <Text style={s.itemLabel}>{item.label}</Text>
-                    <Ionicons name="chevron-forward" size={14} color="#56544B" />
+                    <Ionicons name="chevron-forward" size={14} color={colors.textGhost} />
                   </TouchableOpacity>
                 ))}
               </View>

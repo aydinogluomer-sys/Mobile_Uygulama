@@ -88,8 +88,8 @@ export default function FocusSpotifyCard() {
             disabled={status === 'connecting'}
           >
             {status === 'connecting'
-              ? <ActivityIndicator size="small" color="#000" />
-              : <Ionicons name="logo-google" size={15} color="#000" />}
+              ? <ActivityIndicator size="small" color={colors.black} />
+              : <Ionicons name="logo-google" size={15} color={colors.black} />}
             <Text style={s.connectBtnText}>{status === 'connecting' ? 'Bağlanıyor…' : 'Bağlan'}</Text>
           </TouchableOpacity>
         </View>
@@ -125,8 +125,8 @@ export default function FocusSpotifyCard() {
           </TouchableOpacity>
           <TouchableOpacity style={[s.playBtn, { backgroundColor: SPOTIFY }]} onPress={togglePlay} disabled={busy}>
             {busy
-              ? <ActivityIndicator size="small" color="#000" />
-              : <Ionicons name={nowPlaying?.isPlaying ? 'pause' : 'play'} size={18} color="#000" />}
+              ? <ActivityIndicator size="small" color={colors.black} />
+              : <Ionicons name={nowPlaying?.isPlaying ? 'pause' : 'play'} size={18} color={colors.black} />}
           </TouchableOpacity>
           <TouchableOpacity hitSlop={6} onPress={() => { haptic.light(); next(); }} disabled={busy}>
             <Ionicons name="play-skip-forward" size={20} color={colors.textDim} />

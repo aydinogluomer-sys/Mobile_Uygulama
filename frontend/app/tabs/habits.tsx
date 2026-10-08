@@ -257,7 +257,7 @@ ${e.how}`,
                 </View>
               )}
               <View style={styles.wpCostBadge}>
-                <Ionicons name="flash" size={11} color="#D4A84A" />
+                <Ionicons name="flash" size={11} color={colors.warning} />
                 <Text style={styles.wpCostText}>{habit.willpower_cost}</Text>
               </View>
               {habit.estimated_minutes > 0 && (
@@ -288,7 +288,7 @@ ${e.how}`,
             </View>
             {cue && (
               <View style={styles.cueRow}>
-                <Ionicons name="link-outline" size={11} color="#827E72" />
+                <Ionicons name="link-outline" size={11} color={colors.textFaint} />
                 <Text style={styles.cueText} numberOfLines={1}>{cue}</Text>
               </View>
             )}
@@ -298,26 +298,26 @@ ${e.how}`,
         <View style={styles.cardActions}>
           {isCompleted ? (
             <TouchableOpacity style={styles.moveBtn} onPress={() => handleReopen(habit)}>
-              <Ionicons name="refresh-outline" size={15} color="#D97757" />
+              <Ionicons name="refresh-outline" size={15} color={colors.accent} />
               <Text style={styles.moveBtnText}>Geri Aç</Text>
             </TouchableOpacity>
           ) : isIdea ? (
             <TouchableOpacity style={styles.moveBtn} onPress={() => handleMoveToWaiting(habit)}>
-              <Ionicons name="arrow-up-circle-outline" size={15} color="#D97757" />
+              <Ionicons name="arrow-up-circle-outline" size={15} color={colors.accent} />
               <Text style={styles.moveBtnText}>Beklemeye Al</Text>
             </TouchableOpacity>
           ) : (
             <>
               <TouchableOpacity style={styles.iconBtn} onPress={() => handleComplete(habit)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="checkmark-done-circle-outline" size={24} color="#87A678" />
+                <Ionicons name="checkmark-done-circle-outline" size={24} color={colors.success} />
               </TouchableOpacity>
               {isWaiting ? (
                 <TouchableOpacity style={styles.activateBtn} onPress={() => handleActivate(habit)}>
-                  <Ionicons name="play-circle" size={28} color="#87A678" />
+                  <Ionicons name="play-circle" size={28} color={colors.success} />
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity style={styles.pauseIconBtn} onPress={() => handlePause(habit)}>
-                  <Ionicons name="pause-circle-outline" size={26} color="#BFBBAE" />
+                  <Ionicons name="pause-circle-outline" size={26} color={colors.textDim} />
                 </TouchableOpacity>
               )}
             </>
@@ -327,7 +327,7 @@ ${e.how}`,
             onPress={() => { setDeleteReason(''); setDeleteTarget(habit); }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="trash-outline" size={18} color="#C76A6A" />
+            <Ionicons name="trash-outline" size={18} color={colors.error} />
           </TouchableOpacity>
         </View>
       </View>
@@ -338,7 +338,7 @@ ${e.how}`,
   if (loading && habits.length === 0) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#D97757" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -362,19 +362,19 @@ ${e.how}`,
             <View style={[styles.wpProgressFill, { width: `${(wp.used / wp.daily_budget) * 100}%`, backgroundColor: getWpColor() }]} />
           </View>
           <Text style={styles.wpCapacity}>
-            <Ionicons name="layers-outline" size={13} color="#BFBBAE" /> {wp.active_count}/{wp.focus_capacity}
+            <Ionicons name="layers-outline" size={13} color={colors.textDim} /> {wp.active_count}/{wp.focus_capacity}
           </Text>
         </View>
       )}
 
       <ScrollView
         style={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D97757" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
         {/* Aktif */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="rocket" size={18} color="#87A678" />
+            <Ionicons name="rocket" size={18} color={colors.success} />
             <Text style={styles.sectionTitle}>Aktif Odak</Text>
             <Text style={styles.sectionCount}>{activeHabits.length}</Text>
           </View>
@@ -391,7 +391,7 @@ ${e.how}`,
         {/* Bekleme Odası — her zaman görünür */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="hourglass-outline" size={18} color="#BFBBAE" />
+            <Ionicons name="hourglass-outline" size={18} color={colors.textDim} />
             <Text style={styles.sectionTitle}>Bekleme Odası</Text>
             <Text style={styles.sectionCount}>{waitingHabits.length}</Text>
           </View>
@@ -425,7 +425,7 @@ ${e.how}`,
         {ideaHabits.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="bulb-outline" size={18} color="#827E72" />
+              <Ionicons name="bulb-outline" size={18} color={colors.textFaint} />
               <Text style={[styles.sectionTitle, { color: colors.textDim }]}>Fikirler</Text>
               <Text style={styles.sectionCount}>{ideaHabits.length}</Text>
             </View>
@@ -440,7 +440,7 @@ ${e.how}`,
         {completedHabits.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="checkmark-done-circle-outline" size={18} color="#87A678" />
+              <Ionicons name="checkmark-done-circle-outline" size={18} color={colors.success} />
               <Text style={[styles.sectionTitle, { color: colors.textDim }]}>Tamamlanan</Text>
               <Text style={styles.sectionCount}>{completedHabits.length}</Text>
             </View>
@@ -452,12 +452,12 @@ ${e.how}`,
 
       {/* FAB — Alışkanlık Ekle */}
       <TouchableOpacity style={styles.fab} onPress={() => setShowOnboarding(true)}>
-        <Ionicons name="add" size={28} color="#fff" />
+        <Ionicons name="add" size={28} color={colors.white} />
       </TouchableOpacity>
 
       {/* AI Rutin butonu */}
       <TouchableOpacity style={styles.aiFab} onPress={() => setShowAIRoutine(true)}>
-        <Ionicons name="sparkles" size={20} color="#fff" />
+        <Ionicons name="sparkles" size={20} color={colors.white} />
       </TouchableOpacity>
 
       {/* XP animasyonu */}
@@ -470,12 +470,12 @@ ${e.how}`,
       {/* Geri Al toast */}
       {pendingDelete && (
         <Animatable.View animation="fadeInUp" duration={250} style={styles.undoToast}>
-          <Ionicons name="trash" size={16} color="#C76A6A" />
+          <Ionicons name="trash" size={16} color={colors.error} />
           <Text style={styles.undoText} numberOfLines={1}>
             &quot;{pendingDelete.habit.name}&quot; silindi
           </Text>
           <TouchableOpacity style={styles.undoBtn} onPress={handleUndoDelete}>
-            <Ionicons name="arrow-undo" size={14} color="#D97757" />
+            <Ionicons name="arrow-undo" size={14} color={colors.accent} />
             <Text style={styles.undoBtnText}>Geri Al</Text>
           </TouchableOpacity>
         </Animatable.View>
@@ -498,7 +498,7 @@ ${e.how}`,
         <View style={styles.delOverlay}>
           <View style={styles.delSheet}>
             <View style={styles.delIconWrap}>
-              <Ionicons name="trash-outline" size={26} color="#C76A6A" />
+              <Ionicons name="trash-outline" size={26} color={colors.error} />
             </View>
             <Text style={styles.delTitle}>Alışkanlığı Sil</Text>
             <Text style={styles.delSub} numberOfLines={2}>
@@ -523,7 +523,7 @@ ${e.how}`,
             <TextInput
               style={styles.reasonInput}
               placeholder="Veya kendi nedenini yaz (opsiyonel)"
-              placeholderTextColor="#56544B"
+              placeholderTextColor={colors.textGhost}
               value={DELETE_REASONS.includes(deleteReason) ? '' : deleteReason}
               onChangeText={setDeleteReason}
             />
@@ -533,7 +533,7 @@ ${e.how}`,
                 <Text style={styles.delCancelText}>Vazgeç</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.delConfirmBtn} onPress={confirmDelete}>
-                <Ionicons name="trash" size={16} color="#fff" />
+                <Ionicons name="trash" size={16} color={colors.white} />
                 <Text style={styles.delConfirmText}>Sil</Text>
               </TouchableOpacity>
             </View>
@@ -547,7 +547,7 @@ ${e.how}`,
           <View style={styles.capSheet}>
             <View style={styles.capHeader}>
               <View style={styles.capWarnIcon}>
-                <Ionicons name="flash" size={22} color="#C76A6A" />
+                <Ionicons name="flash" size={22} color={colors.error} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.capTitle}>İrade Limitin Dolu</Text>
@@ -603,11 +603,11 @@ ${e.how}`,
                     </View>
                     <Text style={styles.capItemName} numberOfLines={1}>{h.name}</Text>
                     <View style={styles.capItemCost}>
-                      <Ionicons name="flash" size={11} color="#D4A84A" />
+                      <Ionicons name="flash" size={11} color={colors.warning} />
                       <Text style={styles.capItemCostText}>{h.willpower_cost}</Text>
                     </View>
                     <TouchableOpacity style={styles.capMoveBtn} onPress={() => handlePause(h)}>
-                      <Ionicons name="arrow-down" size={13} color="#BFBBAE" />
+                      <Ionicons name="arrow-down" size={13} color={colors.textDim} />
                       <Text style={styles.capMoveText}>Beklet</Text>
                     </TouchableOpacity>
                   </View>
@@ -620,7 +620,7 @@ ${e.how}`,
                 <Text style={styles.capCancelText}>Vazgeç</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.capWaitBtn} onPress={handleWaitPending}>
-                <Ionicons name="time-outline" size={15} color="#D4A84A" />
+                <Ionicons name="time-outline" size={15} color={colors.warning} />
                 <Text style={styles.capWaitText}>Beklemeye Ekle</Text>
               </TouchableOpacity>
             </View>
@@ -629,7 +629,7 @@ ${e.how}`,
               onPress={handleActivatePending}
               disabled={!(capacityTarget && canActivate(capacityTarget.willpower_cost, loading ? undefined : { habit: capacityTarget, activeHabits }))}
             >
-              <Ionicons name="flash" size={16} color="#fff" />
+              <Ionicons name="flash" size={16} color={colors.white} />
               <Text style={styles.capActivateText}>
                 {capacityTarget && canActivate(capacityTarget.willpower_cost, loading ? undefined : { habit: capacityTarget, activeHabits })
                   ? 'Aktif Olarak Ekle'

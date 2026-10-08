@@ -95,7 +95,7 @@ export default function OKRScreen() {
             hint="Bir Objective ekle, altına ölçülebilir Key Results bağla."
             ctaLabel="Objective ekle"
             onCta={() => { setObjYear(CUR_Y); setObjQuarter(CUR_Q); setObjModal(true); }}
-            color="#D97757"
+            color={colors.accent}
           />
         ) : (
           okrs.map((o) => {
@@ -111,7 +111,7 @@ export default function OKRScreen() {
                     accessibilityLabel={`Objective sil: ${o.objective}`}
                     accessibilityHint="Bu hedefi ve tüm anahtar sonuçlarını siler"
                   >
-                    <Ionicons name="trash-outline" size={16} color="#C76A6A" />
+                    <Ionicons name="trash-outline" size={16} color={colors.error} />
                   </TouchableOpacity>
                 </View>
                 <Text style={s.objText}>{o.objective}</Text>
@@ -156,7 +156,7 @@ export default function OKRScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Key Result ekle: ${o.objective}`}
                 >
-                  <Ionicons name="add" size={15} color="#D97757" />
+                  <Ionicons name="add" size={15} color={colors.accent} />
                   <Text style={s.addKrText}>Key Result ekle</Text>
                 </TouchableOpacity>
               </View>
@@ -172,7 +172,7 @@ export default function OKRScreen() {
         accessibilityRole="button"
         accessibilityLabel="Yeni Objective ekle"
       >
-        <Ionicons name="add" size={28} color="#fff" />
+        <Ionicons name="add" size={28} color={colors.white} />
       </TouchableOpacity>
 
       {/* Objective modal */}
@@ -180,7 +180,7 @@ export default function OKRScreen() {
         <View style={s.overlay}>
           <View style={s.sheet}>
             <Text style={s.sheetTitle}>Yeni Objective</Text>
-            <TextInput style={s.input} placeholder="Hedefin ne? (örn. Sağlığımı iyileştir)" placeholderTextColor="#56544B" value={objText} onChangeText={setObjText} multiline />
+            <TextInput style={s.input} placeholder="Hedefin ne? (örn. Sağlığımı iyileştir)" placeholderTextColor={colors.textGhost} value={objText} onChangeText={setObjText} multiline />
             <Text style={s.label}>Yıl</Text>
             <View style={s.row}>
               {[CUR_Y - 1, CUR_Y, CUR_Y + 1].map((y) => (
@@ -240,10 +240,10 @@ export default function OKRScreen() {
         <View style={s.overlay}>
           <View style={s.sheet}>
             <Text style={s.sheetTitle}>Yeni Key Result</Text>
-            <TextInput style={s.input} placeholder="Ölçülebilir sonuç (örn. Haftada 3 antrenman)" placeholderTextColor="#56544B" value={krTitle} onChangeText={setKrTitle} />
+            <TextInput style={s.input} placeholder="Ölçülebilir sonuç (örn. Haftada 3 antrenman)" placeholderTextColor={colors.textGhost} value={krTitle} onChangeText={setKrTitle} />
             <View style={s.row}>
-              <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="Hedef (örn. 12)" placeholderTextColor="#56544B" keyboardType="numeric" value={krTarget} onChangeText={setKrTarget} />
-              <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="Birim (ops.)" placeholderTextColor="#56544B" value={krUnit} onChangeText={setKrUnit} />
+              <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="Hedef (örn. 12)" placeholderTextColor={colors.textGhost} keyboardType="numeric" value={krTarget} onChangeText={setKrTarget} />
+              <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="Birim (ops.)" placeholderTextColor={colors.textGhost} value={krUnit} onChangeText={setKrUnit} />
             </View>
             <View style={s.actions}>
               <TouchableOpacity
@@ -276,7 +276,7 @@ export default function OKRScreen() {
             <Text style={s.sheetTitle}>İlerlemeyi Güncelle</Text>
             <Text style={s.editSub} numberOfLines={2}>{editKr?.title}</Text>
             <TextInput style={[s.input, { textAlign: 'center', fontSize: 22 }]} keyboardType="numeric" value={editVal} onChangeText={setEditVal} autoFocus
-              placeholder="0" placeholderTextColor="#56544B" />
+              placeholder="0" placeholderTextColor={colors.textGhost} />
             <Text style={s.editTarget}>Hedef: {editKr?.target_value}{editKr?.unit ? ` ${editKr.unit}` : ''}</Text>
             <View style={s.actions}>
               <TouchableOpacity

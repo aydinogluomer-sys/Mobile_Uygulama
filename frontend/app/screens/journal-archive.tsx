@@ -127,7 +127,7 @@ export default function JournalArchiveScreen() {
                       <View style={s.chipRow}>
                         {sourceLabel && (
                           <View style={s.sourceChip}>
-                            <Ionicons name="document-text" size={10} color="#D4A84A" />
+                            <Ionicons name="document-text" size={10} color={colors.warning} />
                             <Text style={s.sourceChipText}>{sourceLabel}</Text>
                           </View>
                         )}

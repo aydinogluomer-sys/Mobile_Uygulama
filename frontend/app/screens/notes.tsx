@@ -86,11 +86,11 @@ export default function NotesScreen() {
     <SafeAreaView style={s.safe} edges={['bottom']}>
       {/* Arama */}
       <View style={s.searchRow}>
-        <Ionicons name="search-outline" size={16} color="#827E72" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+        <Ionicons name="search-outline" size={16} color={colors.textFaint} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         <TextInput
           style={s.searchInput}
           placeholder="Notlarda ara..."
-          placeholderTextColor="#827E72"
+          placeholderTextColor={colors.textFaint}
           value={query}
           onChangeText={setQuery}
         />
@@ -100,7 +100,7 @@ export default function NotesScreen() {
             accessibilityRole="button"
             accessibilityLabel="Aramayı temizle"
           >
-            <Ionicons name="close-circle" size={16} color="#827E72" />
+            <Ionicons name="close-circle" size={16} color={colors.textFaint} />
           </TouchableOpacity>
         )}
       </View>
@@ -176,7 +176,7 @@ export default function NotesScreen() {
         accessibilityRole="button"
         accessibilityLabel="Yeni not"
       >
-        <Ionicons name="add" size={26} color="#fff" />
+        <Ionicons name="add" size={26} color={colors.white} />
       </TouchableOpacity>
 
       <Modal visible={showEdit} transparent animationType="slide" onRequestClose={() => setShowEdit(false)}>
@@ -192,7 +192,7 @@ export default function NotesScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="Notu sil"
                   >
-                    <Ionicons name="trash-outline" size={18} color="#C76A6A" />
+                    <Ionicons name="trash-outline" size={18} color={colors.error} />
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -201,7 +201,7 @@ export default function NotesScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Kapat"
                 >
-                  <Ionicons name="close" size={20} color="#BFBBAE" />
+                  <Ionicons name="close" size={20} color={colors.textDim} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -209,14 +209,14 @@ export default function NotesScreen() {
             <TextInput
               style={s.titleInput}
               placeholder="Başlık..."
-              placeholderTextColor="#56544B"
+              placeholderTextColor={colors.textGhost}
               value={title}
               onChangeText={setTitle}
             />
             <TextInput
               style={s.contentInput}
               placeholder="Notunu yaz..."
-              placeholderTextColor="#56544B"
+              placeholderTextColor={colors.textGhost}
               multiline
               value={content}
               onChangeText={setContent}
