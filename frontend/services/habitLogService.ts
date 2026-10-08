@@ -22,6 +22,7 @@
  * two code paths happen to follow.
  */
 import { notify } from './webhookService';
+import { LOG_TIMEZONE_ENABLED } from '../lib/featureGates';
 import type { Habit, HabitLog } from '../lib/supabase';
 import {
   adaptTrackingType,
@@ -44,6 +45,8 @@ export type LogPatch = {
   value: number | null;
   xp: number;
   is_completed: boolean;
+  /** R01.06 — tap-time zone; sent only while LOG_TIMEZONE_ENABLED. */
+  tz?: string;
 };
 
 export type CompletionIntent = {
@@ -52,6 +55,7 @@ export type CompletionIntent = {
   targetValue?: number;
   baseXp?: number;
   targetDirection?: TargetDirection;
+  tz?: string;
 };
 
 export const DEFAULT_BASE_XP = 30;
@@ -88,6 +92,8 @@ export function toPatch(intent: CompletionIntent): LogPatch {
     value: intent.value ?? null,
     xp: xpFor(intent),
     is_completed: intent.state === 'done',
+    // R01.06 — only a sane zone (a hydrated queue is untrusted input).
+    ...(typeof intent.tz === 'string' && intent.tz.length >= 1 && intent.tz.length <= 64 ? { tz: intent.tz } : {}),
   };
 }
 
@@ -209,12 +215,24 @@ function announce(habitId: string, dateStr: string, log: HabitLog): void {
   });
 }
 
+/**
+ * R01.06 — what actually goes over the wire. The zone is dropped until
+ * migration 033 adds the column (LOG_TIMEZONE_ENABLED); everything else is
+ * the patch unchanged.
+ */
+function wirePatch(patch: LogPatch): Record<string, unknown> {
+  if (LOG_TIMEZONE_ENABLED) return patch as Record<string, unknown>;
+  const { tz: _held, ...rest } = patch;
+  return rest as Record<string, unknown>;
+}
+
 export async function persistCompletion(params: {
   habitId: string;
   dateStr: string;
   patch: LogPatch;
   confirmedId?: string;
 }): Promise<PersistResult> {
+  params = { ...params, patch: wirePatch(params.patch) as LogPatch };
   if (params.confirmedId) {
     const updated = await repoUpdateHabitLog(params.confirmedId, params.patch as Record<string, unknown>);
     if (!updated.ok) return { ok: false, error: updated.error, offline: updated.offline };

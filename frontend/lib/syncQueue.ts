@@ -57,6 +57,12 @@ export type HabitLogIntent = {
    * direction has been edited, and it must be scored as the day it describes.
    */
   targetDirection?: 'at_least' | 'at_most';
+  /**
+   * R01.06 — the device zone at TAP time (`lib/date.ts` `localDayStamp`).
+   * Travels with the intent so a replay after a flight records where the
+   * user was, not where the phone is now. Absent on ops from older builds.
+   */
+  tz?: string;
 };
 
 export type SyncOpStatus = 'pending' | 'dead';

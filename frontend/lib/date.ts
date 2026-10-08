@@ -47,6 +47,30 @@ export function todayLocal(now: Date = new Date()): Ymd {
 }
 
 /**
+ * R01.06 — the device's IANA zone (e.g. `Europe/Istanbul`), or `null` when the
+ * runtime cannot say. Never guessed: a wrong zone is worse than none. Bounded
+ * to 1..64 characters, the same as the `habit_logs.tz` CHECK (migration 033).
+ */
+export function deviceTimeZone(): string | null {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof tz === 'string' && tz.length >= 1 && tz.length <= 64 ? tz : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * R01.06 — THE contract for "which day is this, and where was it written".
+ * The day is the local calendar day (never UTC); the zone is recorded beside
+ * it, captured at the same instant, so a log made while travelling can be
+ * told apart from a clock or DST error later.
+ */
+export function localDayStamp(now: Date = new Date()): { date: Ymd; tz: string | null } {
+  return { date: todayLocal(now), tz: deviceTimeZone() };
+}
+
+/**
  * Parse `YYYY-MM-DD` into a Date at LOCAL midnight.
  *
  * `new Date('2026-08-04')` would parse as UTC midnight; west of Greenwich that

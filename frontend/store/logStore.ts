@@ -1,7 +1,7 @@
 import { currentUser } from '../lib/session';
 import { create } from 'zustand';
 import type { HabitLog } from '../lib/supabase';
-import { ymd } from '../lib/date';
+import { ymd, deviceTimeZone } from '../lib/date';
 import {
   emptyQueueState,
   enqueue as enqueueOp,
@@ -526,7 +526,9 @@ export const useLogStore = create<LogStore>((set, get) => {
     logHabit: ({ habitId, date, state, value, targetValue, baseXp = 30, targetDirection }) => {
       const dateStr = ymd(date);
       const key = `${habitId}|${dateStr}`;
-      const intent: HabitLogIntent = { state, value, targetValue, baseXp, targetDirection };
+      // R01.06 — the zone is captured now, at the tap, and queued with the intent.
+      const tz = deviceTimeZone();
+      const intent: HabitLogIntent = { state, value, targetValue, baseXp, targetDirection, ...(tz ? { tz } : {}) };
       const patch = toPatch(intent);
 
       // 1) Optimistic local update -- synchronous, no I/O. Plan §18: "local

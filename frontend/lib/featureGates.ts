@@ -240,3 +240,12 @@ export const PUBLIC_SITE_URLS = {
  * unknown one, so a staged row can never hit the old CHECK.
  */
 export const COACH_ACTIONS_V2_ENABLED = false;
+
+/**
+ * R01.06 — write the zone a habit log was made in (`habit_logs.tz`). FALSE
+ * until migration 033 (the nullable `tz` column) is applied (S2); before
+ * that, a write naming the column would be refused and the log lost. The zone
+ * is captured at tap time and kept in the offline queue regardless, so turning
+ * this on also covers ops queued before the flip.
+ */
+export const LOG_TIMEZONE_ENABLED = false;

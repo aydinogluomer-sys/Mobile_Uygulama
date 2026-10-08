@@ -141,6 +141,8 @@ export type HabitLog = {
   state: 'done' | 'partial' | 'skip' | 'miss';
   xp: number | null;
   created_at: string;
+  /** R01.06 — IANA zone the log was written in; null on older rows (migration 033). */
+  tz?: string | null;
 };
 
 // profiles tablosu — XP/level/rütbe (oyunlaştırma)
