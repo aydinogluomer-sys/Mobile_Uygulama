@@ -12,7 +12,7 @@
  * loosened `journal_entries` would have leaked through this query silently.
  */
 import { supabase } from '../lib/supabase';
-import { currentUserId, type RepoResult } from './shared';
+import { currentUserId, isTransportFailure, wrongAccountFor, type RepoResult } from './shared';
 
 export type JournalEntryRow = {
   id: string;
@@ -75,13 +75,14 @@ export async function searchJournalEntries(
 export async function fetchJournalEntry(date: string): Promise<RepoResult<JournalEntryRow | null>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('journal_entries')
     .select(COLS)
     .eq('user_id', u.userId)
     .eq('date', date)
     .maybeSingle();
-  if (error) return { ok: false, error: error.message };
+  // R02.03 — status/code travel so the outbox can tell offline from refused.
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   return { ok: true, data: (data ?? null) as JournalEntryRow | null };
 }
 
@@ -96,9 +97,12 @@ export async function upsertJournalEntry(input: {
   content: string;
   mood?: number | null;
   aiSummary?: boolean;
-}): Promise<RepoResult<JournalEntryRow>> {
+}, expectedUserId?: string): Promise<RepoResult<JournalEntryRow>> {
   const u = await currentUserId();
   if (!u.ok) return u;
+  // R02.06 — a queued entry is only ever written as the account that queued it.
+  const wrong = wrongAccountFor(expectedUserId, u.userId);
+  if (wrong) return wrong;
   const row: Record<string, unknown> = {
     user_id: u.userId,
     date: input.date,
@@ -106,11 +110,11 @@ export async function upsertJournalEntry(input: {
     mood: input.mood ?? null,
   };
   if (input.aiSummary !== undefined) row.ai_summary = input.aiSummary;
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('journal_entries')
     .upsert(row, { onConflict: 'user_id,date' })
     .select(COLS)
     .single();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   return { ok: true, data: data as unknown as JournalEntryRow };
 }

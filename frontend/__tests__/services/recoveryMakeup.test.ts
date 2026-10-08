@@ -24,6 +24,15 @@ jest.mock('../../repositories/habitLogRepository', () => ({
   fetchLogsForDate: jest.fn(), findHabitLog: jest.fn(), insertHabitLog: jest.fn(), updateHabitLog: jest.fn(),
 }));
 jest.mock('../../services/webhookService', () => ({ notify: jest.fn() }));
+// R02.03 — the plan's status change is queued in the core outbox now (it used
+// to be a direct `setRecoveryPlanStatus`); "the plan was not closed" is
+// asserted on that queue instead -- the same claim, one layer up.
+jest.mock('../../services/coreOutbox', () => ({
+  coreOutbox: {
+    write: jest.fn(async () => ({ ok: true, operationId: 'op', savedOnDevice: true })),
+    flush: jest.fn(async () => undefined), ensure: jest.fn(async () => null), state: () => null,
+  },
+}));
 
 import type { Habit } from '../../lib/supabase';
 import {
@@ -31,7 +40,8 @@ import {
 } from '../../services/recoveryService';
 import { stateForValue } from '../../services/habitLogService';
 import { completionRatio, adaptTrackingType } from '../../lib/habitEngine';
-import { setRecoveryPlanStatus } from '../../repositories/recoveryRepository';
+import { coreOutbox } from '../../services/coreOutbox';
+const setRecoveryPlanStatus = coreOutbox.write;
 
 type H = Pick<Habit, 'tracking_type' | 'behavior_type' | 'daily_goal' | 'target_direction'>;
 const READ10: H = { tracking_type: 'numeric', behavior_type: 'positive', daily_goal: 10, target_direction: 'at_least' };

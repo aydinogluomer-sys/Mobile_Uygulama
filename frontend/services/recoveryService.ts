@@ -16,14 +16,29 @@ import { isMeasurableTracking } from '../lib/habitEngine';
 // paths go through it too, so a recovery row can never say `done` while its
 // value says 0%.
 import { measuredEntryFor } from './habitLogService';
-import {
-  deleteRecoveryPlan,
-  fetchPlannedRecoveryPlans,
-  insertRecoveryPlan,
-  setRecoveryPlanStatus,
-} from '../repositories/recoveryRepository';
+import { fetchPlannedRecoveryPlans } from '../repositories/recoveryRepository';
+import type { RepoResult } from '../repositories/shared';
+import { coreOutbox } from './coreOutbox';
+import { newOperationId, overlay } from '../lib/outbox';
 
-export const listPlannedPlans = () => fetchPlannedRecoveryPlans();
+export const RECOVERY_PLAN_ENTITY = 'recovery_plan';
+
+/**
+ * Planned plans from the server with this device's unsent changes laid over
+ * them (R02.03): a plan made offline is listed, one completed offline is not.
+ */
+export async function listPlannedPlans(): Promise<RepoResult<RecoveryPlan[]>> {
+  const box = await coreOutbox.ensure();
+  const res = await fetchPlannedRecoveryPlans();
+  if (!res.ok) {
+    // Offline: what this device itself queued is still known.
+    if (!box) return res;
+    const local = overlay(box, RECOVERY_PLAN_ENTITY, [] as RecoveryPlan[]).filter((p) => p.status === 'planned');
+    return local.length > 0 ? { ok: true, data: local } : res;
+  }
+  const rows = box ? overlay(box, RECOVERY_PLAN_ENTITY, res.data) : res.data;
+  return { ok: true, data: rows.filter((p) => p.status === 'planned').sort((a, b) => a.target_date.localeCompare(b.target_date)) };
+}
 
 export type CreatePlanInput = {
   habitId: string;
@@ -41,7 +56,39 @@ export type CreatePlanInput = {
   distributedDays?: { date: string; value: number }[] | null;
 };
 
-export const createPlan = (input: CreatePlanInput) => insertRecoveryPlan(input);
+/**
+ * R02.03 — the plan gets its id on the device and is kept there first (the
+ * core outbox), then delivered; a re-delivery is the same plan (23505).
+ * The returned row is what the device now holds.
+ */
+export async function createPlan(input: CreatePlanInput): Promise<RepoResult<RecoveryPlan>> {
+  const id = newOperationId();
+  const row = {
+    habit_id: input.habitId,
+    source_date: input.sourceDate,
+    target_date: input.targetDate,
+    strategy: input.strategy,
+    note: input.note ?? null,
+    reminder_time: input.reminderTime ?? null,
+    status: 'planned' as const,
+    source_log_id: input.sourceLogId ?? null,
+    deficit_type: input.deficitType ?? null,
+    deficit_value: input.deficitValue ?? null,
+    distributed_days: input.distributedDays ?? null,
+    // `completed_at` is absent: the table's CHECK requires null unless completed.
+  };
+  const w = await coreOutbox.write({ entity: RECOVERY_PLAN_ENTITY, entityId: id, kind: 'create', payload: row });
+  if (!w.ok) return { ok: false, error: w.error };
+  await coreOutbox.flush();
+  return { ok: true, data: { ...row, id, user_id: coreOutbox.state()?.userId ?? '', completed_at: null, created_at: new Date().toISOString() } };
+}
+
+async function queuePlanChange(id: string, kind: 'update' | 'delete', payload?: Record<string, unknown>): Promise<RepoResult<{ id: string; status: string }>> {
+  const w = await coreOutbox.write({ entity: RECOVERY_PLAN_ENTITY, entityId: id, kind, payload });
+  if (!w.ok) return { ok: false, error: w.error };
+  await coreOutbox.flush();
+  return { ok: true, data: { id, status: String(payload?.status ?? 'deleted') } };
+}
 
 /**
  * Marks a plan done.
@@ -54,9 +101,11 @@ export const createPlan = (input: CreatePlanInput) => insertRecoveryPlan(input);
 // 'done' and 'skipped' were the LEGACY spellings. The table now accepts only
 // the v2 vocabulary, so these two calls would have been rejected at runtime —
 // TypeScript could not see it while the parameter was a loose union of both.
-export const completePlan = (id: string) => setRecoveryPlanStatus(id, 'completed');
-export const skipPlan = (id: string) => setRecoveryPlanStatus(id, 'cancelled');
-export const removePlan = (id: string) => deleteRecoveryPlan(id);
+// R02.03 — queued on the device first; `completed_at` travels with the status
+// (the table refuses one without the other).
+export const completePlan = (id: string) => queuePlanChange(id, 'update', { status: 'completed', completed_at: new Date().toISOString() });
+export const skipPlan = (id: string) => queuePlanChange(id, 'update', { status: 'cancelled', completed_at: null });
+export const removePlan = (id: string) => queuePlanChange(id, 'delete');
 
 /** True when a plan's target day has passed without completion. */
 export function isOverdue(plan: Pick<RecoveryPlan, 'target_date' | 'status'>, today: string): boolean {

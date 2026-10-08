@@ -52,6 +52,13 @@ const ORCHESTRATED: { store: string; service: string; why: string }[] = [
     why: 'completed / status / completed_at are one fact across three columns' },
   { store: 'focusStore.ts', service: 'focusService.ts',
     why: 'a task is only credited for a session the database accepted' },
+  // R02.03 — journal and notes write through the core outbox now (device first,
+  // versioned delivery, conflict kept): that is orchestration, so they moved
+  // here from CRUD_ONLY and reach the data layer through their service.
+  { store: 'journalStore.ts', service: 'journalService.ts',
+    why: 'a save is an outbox command delivered later, versioned by its text; a conflict keeps both texts' },
+  { store: 'noteStore.ts', service: 'noteService.ts',
+    why: 'a save is an outbox command delivered later, versioned by updated_at; a conflict keeps both notes' },
   { store: 'aiConversationStore.ts', service: 'aiCoachService.ts',
     why: 'a coach turn writes the thread, both messages and the staged proposal in an order that must survive the app dying mid-answer' },
 ];
@@ -61,8 +68,8 @@ const ORCHESTRATED: { store: string; service: string; why: string }[] = [
  * repository directly, deliberately.
  */
 const CRUD_ONLY = new Set([
-  'noteStore.ts', 'projectStore.ts', 'goalStore.ts', 'okrStore.ts',
-  'deepWorkStore.ts', 'readingListStore.ts', 'journalStore.ts',
+  'projectStore.ts', 'goalStore.ts', 'okrStore.ts',
+  'deepWorkStore.ts', 'readingListStore.ts',
   'insightsStore.ts', 'lifeAreasStore.ts', 'profileStore.ts',
   // Was listed UI_ONLY -- "no persistence at all" -- while reading and
   // writing the user's tier and Focus-Point balance through three RPCs.
@@ -123,7 +130,10 @@ describe('services exist and hold real work', () => {
     { service: 'taskService.ts', rule: 'completed / status / completed_at stay consistent',
       anchors: ['status: completed ?', 'completed_at: completed ?'] },
     { service: 'focusService.ts', rule: 'a task is credited only for a session the database accepted',
-      anchors: ['if (!session.ok)', 'sessionRecorded: false', 'setFocusTaskProgress('] },
+      // R02.03: the session now goes through the core outbox; "accepted" is
+      // `delivered` (the command left the outbox in this call), not `session.ok`
+      // (which only means it was kept on the device).
+      anchors: ['if (!delivered)', 'sessionRecorded: false', 'setFocusTaskProgress('] },
     // The three below have no store: settings.tsx and BadHabitsTracker.tsx
     // use them directly. That is still inside the contract -- the rule the
     // UI must not break is reaching PAST a service to a repository.

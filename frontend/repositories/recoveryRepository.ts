@@ -22,7 +22,7 @@
  */
 import { supabase } from '../lib/supabase';
 import type { RecoveryPlan, RecoveryStatus, RecoveryStrategy } from '../lib/supabase';
-import { currentUserId, deleteOwned, updateOwned, type RepoResult } from './shared';
+import { currentUserId, deleteOwned, updateOwned, insertOwnedWithId, updateOwnedVersioned, deleteOwnedIfPresent, type RepoResult } from './shared';
 
 // All fifteen columns. The previous list stopped at `created_at` and
 // omitted the five the adapter used to drop, so a plan read back had no
@@ -106,6 +106,14 @@ export async function fetchPlannedRecoveryPlans(limit = 200): Promise<RepoResult
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as unknown as RecoveryPlan[] };
 }
+
+// R02.03 — outbox delivery: a plan with a client-made id (re-delivery = 23505 = one plan).
+export const insertRecoveryPlanRow = (row: Record<string, unknown> & { id: string }, expectedUserId?: string) =>
+  insertOwnedWithId<RecoveryPlan>({ table: 'recovery_plans', row, columns: PLAN_COLS, expectedUserId });
+export const updateRecoveryPlanRow = (id: string, patch: Record<string, unknown>, expectedUserId?: string) =>
+  updateOwnedVersioned<RecoveryPlan>({ table: 'recovery_plans', id, patch, baseVersion: null, columns: PLAN_COLS, expectedUserId });
+export const deleteRecoveryPlanIfPresent = (id: string, expectedUserId?: string) =>
+  deleteOwnedIfPresent({ table: 'recovery_plans', id, expectedUserId });
 
 export async function insertRecoveryPlan(input: {
   habitId: string;

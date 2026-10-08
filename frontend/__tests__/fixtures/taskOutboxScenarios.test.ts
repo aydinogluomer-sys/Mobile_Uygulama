@@ -191,6 +191,26 @@ describe('two devices', () => {
 });
 
 describe('accounts', () => {
+  it('R02.06: a delivery still running at sign-out / account deletion never saves the old outbox back', async () => {
+    mockServer.online = false;
+    await st().addTask({ title: 'yarıda' });
+    await st().addTask({ title: 'ikinci' });
+    mockServer.online = true;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const real = (repo.insertTaskRow as jest.Mock).getMockImplementation()!;
+    (repo.insertTaskRow as jest.Mock).mockImplementationOnce(async (...args: unknown[]) => { await gate; return real(...args); });
+    const flushing = st().flush();
+    await new Promise((r) => setTimeout(r, 0));
+    st().resetForAccount();       // signed out / account deleted mid-delivery
+    storage.raw.clear();          // the device copy is removed
+    release();
+    await flushing;
+    expect(storage.raw.size).toBe(0);
+    expect(st().outbox?.commands ?? []).toEqual([]);
+  });
+
+
   it('A\'s unsent work is never sent as B, and is still there when A returns', async () => {
     mockServer.online = false;
     await st().addTask({ title: 'A işi' });

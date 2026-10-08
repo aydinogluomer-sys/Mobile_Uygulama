@@ -1,13 +1,13 @@
 import { create } from 'zustand';
-import {
-  deleteNote as repoDelete,
-  fetchNotesPage,
-  insertNote,
-  searchNotes as repoSearch,
-  updateNote as repoUpdate,
-  type NoteRow,
-} from '../repositories/noteRepository';
+import type { NoteRow } from '../repositories/noteRepository';
 import type { Cursor } from '../repositories/shared';
+import { overlay, type OutboxCommand } from '../lib/outbox';
+import { coreOutbox } from '../services/coreOutbox';
+import {
+  listNotesPage as fetchNotesPage, findNotes as repoSearch,
+  createNote, editNote, removeNote as svcRemove, resolveNoteConflict, pendingNoteCommands,
+  NOTE_ENTITY, type ConflictChoice,
+} from '../services/noteService';
 
 export type Note = NoteRow;
 
@@ -45,7 +45,22 @@ type NoteStore = {
   removeNote: (id: string) => Promise<boolean>;
   /** Server-side search across ALL notes, not just the loaded page. */
   search: (q: string) => Promise<Note[]>;
+  /** R02.05 — notes whose edit met a newer version elsewhere; both are kept until resolved. */
+  conflicts: () => OutboxCommand[];
+  resolveConflict: (id: string, choice: ConflictChoice) => Promise<boolean>;
 };
+
+/**
+ * R02.03 — every write goes through the core outbox: kept on the device
+ * first, shown at once, delivered after. `serverVersion` is each note's
+ * `updated_at` as the server last reported it -- the base of the next edit.
+ */
+const serverVersion = new Map<string, string>();
+const remember = (rows: readonly Note[]) => { for (const r of rows) if (r.updated_at) serverVersion.set(r.id, r.updated_at); };
+const withPending = (rows: Note[]): Note[] => { const box = coreOutbox.state(); return box ? overlay(box, NOTE_ENTITY, rows) : rows; };
+coreOutbox.onApplied((cmd, version) => {
+  if (cmd.entity === NOTE_ENTITY && version) serverVersion.set(cmd.entityId, version);
+});
 
 export const useNoteStore = create<NoteStore>((set, get) => ({
   notes: [],
@@ -57,15 +72,18 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
 
   fetchNotes: async () => {
     set({ loading: true, error: null });
+    await coreOutbox.ensure();
     const res = await fetchNotesPage(null);
     if (!res.ok) {
       set({ loading: false, error: res.error });
       return;
     }
+    remember(res.data.rows);
     // A refresh resets the cursor: continuing from a stale one would skip
     // whatever was inserted since.
     set({
-      notes: res.data.rows,
+      // Unsent changes stay visible over a refetch until they are delivered.
+      notes: withPending(res.data.rows),
       cursor: res.data.nextCursor,
       hasMore: res.data.hasMore,
       loading: false,
@@ -84,6 +102,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
     set((s) => {
       // Defensive de-dupe. Keyset paging should not repeat a row, but an
       // append that silently doubled an entry would be hard to notice.
+      remember(res.data.rows);
       const seen = new Set(s.notes.map((n) => n.id));
       const fresh = res.data.rows.filter((n) => !seen.has(n.id));
       return {
@@ -96,35 +115,47 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
   },
 
   addNote: async (title, content) => {
-    const res = await insertNote({ title, content });
-    if (!res.ok) {
-      set({ error: res.error });
+    const res = await createNote({ title, content });
+    if (!res.ok || !res.id) {
+      set({ error: res.ok ? 'Not kaydedilemedi.' : res.error });
       return null;
     }
-    set((s) => ({ notes: [res.data, ...s.notes], error: null }));
-    return res.data;
+    const now = new Date().toISOString();
+    const row: Note = { id: res.id, user_id: '', title, content, tags: [], created_at: now, updated_at: serverVersion.get(res.id) ?? now };
+    set((s) => ({ notes: [row, ...s.notes.filter((n) => n.id !== row.id)], error: res.savedOnDevice ? null : 'Not cihaza kaydedilemedi; uygulama kapanırsa kaybolabilir.' }));
+    return row;
   },
 
   updateNote: async (id, patch) => {
-    const res = await repoUpdate(id, patch);
+    const res = await editNote(id, patch, serverVersion.get(id) ?? get().notes.find((n) => n.id === id)?.updated_at ?? null);
     if (!res.ok) {
       set({ error: res.error });
       return false;
     }
-    set((s) => ({ notes: s.notes.map((n) => (n.id === id ? res.data : n)), error: null }));
+    // Shown at once; `updated_at` stays the server's until delivery reports a new one.
+    set((s) => ({ notes: s.notes.map((n) => (n.id === id ? { ...n, ...patch, updated_at: serverVersion.get(id) ?? n.updated_at } : n)), error: null }));
     return true;
   },
 
   removeNote: async (id) => {
-    const res = await repoDelete(id);
+    const res = await svcRemove(id);
     if (!res.ok) {
-      // The row stays on screen. Removing it locally after a failed delete is
-      // how the previous version told the user something had happened that
-      // had not.
+      // Not even queued: the row stays on screen.
       set({ error: res.error });
       return false;
     }
+    // Queued (and tombstoned): hidden now, and a late edit cannot bring it back.
     set((s) => ({ notes: s.notes.filter((n) => n.id !== id), error: null }));
+    return true;
+  },
+
+  conflicts: () => pendingNoteCommands().filter((c) => c.status === 'conflict'),
+
+  resolveConflict: async (id, choice) => {
+    const title = get().notes.find((n) => n.id === id)?.title ?? '';
+    const r = await resolveNoteConflict(id, choice, title);
+    if (!r.ok) { set({ error: r.error ?? 'Çakışma çözülemedi.' }); return false; }
+    await get().fetchNotes();
     return true;
   },
 

@@ -42,15 +42,18 @@ describe('R02 — lifecycle', () => {
     expect((layout.match(/useTaskStore\.getState\(\)\.flush\(\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
   it('drops the account from memory on sign-out, resumes after a session refresh', () => {
-    expect(layout).toMatch(/if \(event === 'SIGNED_OUT'\) useTaskStore\.getState\(\)\.resetForAccount\(\);/);
-    expect(layout).toMatch(/event === 'TOKEN_REFRESHED' \|\| event === 'SIGNED_IN'\) void useTaskStore\.getState\(\)\.authRefreshed\(\);/);
+    // R02.03: the same two lines now also reset / resume the core outbox (a block, not a bare call).
+    expect(layout).toMatch(/if \(event === 'SIGNED_OUT'\) \{ useTaskStore\.getState\(\)\.resetForAccount\(\); coreOutbox\.reset\(\); \}/);
+    expect(layout).toMatch(/event === 'TOKEN_REFRESHED' \|\| event === 'SIGNED_IN'\) \{ void useTaskStore\.getState\(\)\.authRefreshed\(\); void coreOutbox\.authRefreshed\(\); \}/);
+    expect(layout).toMatch(/void coreOutbox\.flush\(\);/);
   });
 });
 
 describe('R02 — visibility', () => {
   it('Today counts the outbox in the badge and lists what needs the user', () => {
     const today = code('app/tabs/today.tsx');
-    expect(today).toMatch(/pending=\{pendingSyncCount \+ taskSync\.pending\}/);
+    // R02.03: the core outbox's count is added after the task outbox's.
+    expect(today).toMatch(/pending=\{pendingSyncCount \+ taskSync\.pending(?: \+ coreSync\.pending)?\}/);
     expect(today).toMatch(/<OutboxIssues \/>/);
     const issues = code('components/OutboxIssues.tsx');
     expect(issues).toMatch(/retryChange\(c\.operationId\)/);

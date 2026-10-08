@@ -242,3 +242,70 @@ export async function deleteOwned(params: {
   if (!data || data.length === 0) return { ok: false, error: 'Kayıt bulunamadı ya da erişim yok.' };
   return { ok: true, data: true };
 }
+
+// ---------------------------------------------------------------------------
+// R02.03 — outbox delivery helpers. Every one is owner-scoped, carries the
+// transport status/code (offline / auth / 23505 decide the outcome), and
+// refuses to run as an account other than the one that queued the command.
+// ---------------------------------------------------------------------------
+
+/** The command was queued by another account than the one signed in now. */
+export function wrongAccountFor(expected: string | undefined, actual: string): RepoResult<never> | null {
+  return expected !== undefined && expected !== actual ? { ok: false, error: 'Oturum başka bir hesaba ait.', status: 401 } : null;
+}
+
+/** Insert a row with a CLIENT-made id, so a re-delivery hits 23505 instead of a duplicate. */
+export async function insertOwnedWithId<T>(params: {
+  table: string; row: Record<string, unknown> & { id: string }; columns: string; expectedUserId?: string;
+}): Promise<RepoResult<T>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const wrong = wrongAccountFor(params.expectedUserId, u.userId);
+  if (wrong) return wrong;
+  const { data, error, status } = await supabase.from(params.table)
+    .insert({ ...params.row, user_id: u.userId }).select(params.columns).single();
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  return { ok: true, data: data as T };
+}
+
+/** Update only if the row is still at `baseVersion` (`row` null + `exists` = the version moved). */
+export async function updateOwnedVersioned<T>(params: {
+  table: string; id: string; patch: Record<string, unknown>; baseVersion: string | null;
+  columns: string; versionColumn?: string; expectedUserId?: string;
+}): Promise<RepoResult<{ row: T | null; exists: boolean }>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const wrong = wrongAccountFor(params.expectedUserId, u.userId);
+  if (wrong) return wrong;
+  const col = params.versionColumn ?? 'updated_at';
+  let q = supabase.from(params.table).update(params.patch).eq('id', params.id).eq('user_id', u.userId);
+  if (params.baseVersion !== null) q = q.eq(col, params.baseVersion);
+  const { data, error, status } = await q.select(params.columns).maybeSingle();
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (data) return { ok: true, data: { row: data as T, exists: true } };
+  const probe = await supabase.from(params.table).select('id').eq('id', params.id).eq('user_id', u.userId).maybeSingle();
+  if (probe.error) return { ok: false, error: probe.error.message, offline: isTransportFailure(probe.status), status: probe.status, code: probe.error.code };
+  return { ok: true, data: { row: null, exists: !!probe.data } };
+}
+
+/** The row as the server has it now, or null if it is gone. */
+export async function fetchOwnedRow<T>(params: { table: string; id: string; columns: string }): Promise<RepoResult<T | null>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error, status } = await supabase.from(params.table).select(params.columns)
+    .eq('id', params.id).eq('user_id', u.userId).maybeSingle();
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  return { ok: true, data: (data ?? null) as T | null };
+}
+
+/** Delete if present; a row already gone is not an error (a re-delivered delete is one effect). */
+export async function deleteOwnedIfPresent(params: { table: string; id: string; expectedUserId?: string }): Promise<RepoResult<{ deleted: boolean }>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const wrong = wrongAccountFor(params.expectedUserId, u.userId);
+  if (wrong) return wrong;
+  const { data, error, status } = await supabase.from(params.table).delete()
+    .eq('id', params.id).eq('user_id', u.userId).select('id');
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  return { ok: true, data: { deleted: !!data && data.length > 0 } };
+}

@@ -16,6 +16,8 @@ import { currentUser } from '../../lib/session';
 import { draftDiffers, draftKey, extractTags, toggleListLine, wrapSelection, type JournalDraft } from '../../lib/journalText';
 // R07.02 — several check-ins a day, with the user's own moods.
 import MoodCheckins from '../../components/MoodCheckins';
+import ConflictChoice from '../../components/ConflictChoice';
+import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
 
 const PROMPTS = [
   'Bugün ne için minnettarsın?',
@@ -31,7 +33,10 @@ const DAY_NAMES_TR = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 
 export default function JournalScreen() {
   const router = useRouter();
   const today = todayLocal();
-  const { entries, fetchEntries, saveEntry, getByDate } = useJournalStore();
+  const { entries, fetchEntries, saveEntry, getByDate, conflicts, resolveConflict } = useJournalStore();
+  // R02.05 — re-read on every outbox change, so a conflict appears the moment delivery reports it.
+  useCoreOutboxSync();
+  const [resolving, setResolving] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today);
   const [content, setContent] = useState('');
   const [mood, setMood] = useState<number | null>(null);
@@ -126,6 +131,10 @@ export default function JournalScreen() {
       />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+          {conflicts().some((c) => c.entityId === selectedDate) && (
+            <ConflictChoice what="Bu günün kaydı" busy={resolving}
+              onChoose={async (choice) => { setResolving(true); await resolveConflict(selectedDate, choice); setResolving(false); }} />
+          )}
 
           {/* Tarih seçici */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.dateRow}>

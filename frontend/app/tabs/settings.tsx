@@ -23,7 +23,7 @@ import {
   type WebhookRow,
 } from '../../services/webhookService';
 import { buildBackup, renderBackup, type ExportFormat } from '../../services/exportService';
-import { deleteAccount } from '../../services/accountService';
+import { deleteAccount, unsentChangeCount } from '../../services/accountService';
 import { PUBLIC_SITE_URLS_LIVE, PUBLIC_SITE_URLS } from '../../lib/featureGates';
 import { useRouter } from 'expo-router';
 import BadHabitsTracker from '../../components/BadHabitsTracker';
@@ -162,9 +162,12 @@ export default function SettingsScreen() {
    */
   const handleDeleteAccount = () => {
     if (deletingAccount) return;
+    // R02.06 — unsent work is never deleted without the user being told.
+    const unsent = unsentChangeCount();
+    const unsentLine = unsent > 0 ? `\n\nBu cihazda henüz sunucuya gönderilmemiş ${unsent} değişiklik var; hesapla birlikte bunlar da silinecek.` : '';
     Alert.alert(
       'Hesabını Sil',
-      'Hesabın ve Aderyth\'te saklanan kişisel verilerin silinecek: alışkanlıkların, kayıtların, görevlerin, notların, günlüğün, hedeflerin, odak seansların ve AI Koç sohbetlerin.\n\nBu işlem geri alınamaz.',
+      'Hesabın ve Aderyth\'te saklanan kişisel verilerin silinecek: alışkanlıkların, kayıtların, görevlerin, notların, günlüğün, hedeflerin, odak seansların ve AI Koç sohbetlerin.' + unsentLine + '\n\nBu işlem geri alınamaz.',
       [
         { text: 'Vazgeç', style: 'cancel' },
         {

@@ -295,8 +295,9 @@ describe('AC-W08 — the sync badge exists, is exported, and is mounted', () => 
     expect(tag).not.toBeNull();
     // R02: the task outbox's counts are ADDED to the habit-log queue's; the
     // queue's own counts must still be there, first, from the store.
-    expect(tag![0]).toMatch(/pending=\{pendingSyncCount(?: \+ taskSync\.pending)?\}/);
-    expect(tag![0]).toMatch(/dead=\{deadSyncCount(?: \+ taskSync\.dead \+ taskSync\.conflict)?\}/);
+    // R02.03: the core outbox (journal, notes, recovery plans, focus sessions) joins the same badge.
+    expect(tag![0]).toMatch(/pending=\{pendingSyncCount(?: \+ taskSync\.pending)?(?: \+ coreSync\.pending)?\}/);
+    expect(tag![0]).toMatch(/dead=\{deadSyncCount(?: \+ taskSync\.dead \+ taskSync\.conflict)?(?: \+ coreSync\.dead \+ coreSync\.conflict)?\}/);
     // …and those names come from the store, not from local state.
     expect(today).toMatch(
       /const \{[^}]*\bpendingSyncCount\b[^}]*\bdeadSyncCount\b[^}]*\} = useLogStore\(\);/,

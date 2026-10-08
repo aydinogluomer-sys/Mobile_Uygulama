@@ -3,7 +3,7 @@
  */
 import { supabase } from '../lib/supabase';
 import type { FocusSessionRow } from '../lib/focusReport';
-import { currentUserId, RepoResult } from './shared';
+import { currentUserId, RepoResult, insertOwnedWithId } from './shared';
 
 export type ReviewFocusSecondsRow = { completed_seconds: number };
 export type FocusSessionFullRow = FocusSessionRow & { user_id: string };
@@ -87,6 +87,10 @@ export async function deleteAllFocusSessions(): Promise<RepoResult<void>> {
  * `user_id` is attached here rather than trusted from the caller, matching
  * every other write in this layer.
  */
+// R02.03 — outbox delivery: a session with a client-made id (re-delivery = 23505 = one session).
+export const insertFocusSessionRow = (row: Record<string, unknown> & { id: string }, expectedUserId?: string) =>
+  insertOwnedWithId<{ id: string }>({ table: 'focus_sessions', row, columns: 'id', expectedUserId });
+
 export async function insertFocusSession(input: {
   taskId: string | null;
   taskTitle: string | null;

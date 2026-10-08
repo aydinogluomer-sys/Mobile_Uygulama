@@ -27,8 +27,9 @@ import {
   deleteAllFocusSessions,
   fetchAllFocusSessions,
   fetchFocusSessionsSince,
-  insertFocusSession,
 } from '../repositories/focusSessionRepository';
+import { coreOutbox } from './coreOutbox';
+import { newOperationId } from '../lib/outbox';
 import { fetchAllFocusTasks } from '../repositories/focusTaskRepository';
 
 export const listOpenTasks = () => fetchOpenFocusTasks();
@@ -40,6 +41,12 @@ export const completeTask = (id: string) => completeFocusTask(id);
 export type WorkPhaseResult = {
   /** The session row was written. Analytics and crediting depend on this. */
   sessionRecorded: boolean;
+  /**
+   * R02.03 — the session is kept on the device (core outbox) and will be
+   * delivered later, even when `sessionRecorded` is false because the
+   * network was down. It is not lost; it is not yet credited or reported.
+   */
+  sessionQueued?: boolean;
   error?: string;
   /** The task reached its estimate and was auto-completed. */
   taskCompleted: boolean;
@@ -61,21 +68,33 @@ export async function completeWorkPhase(params: {
   title?: string | null;
 }): Promise<WorkPhaseResult> {
   const now = new Date().toISOString();
-  const session = await insertFocusSession({
-    taskId: params.task?.id ?? null,
-    taskTitle: params.task?.title ?? params.title ?? null,
-    mode: 'work',
-    startedAt: now,
-    endedAt: now,
-    plannedSeconds: params.plannedSeconds,
-    completedSeconds: params.completedSeconds,
+  // R02.03 — the session is kept on the device first (core outbox, client id:
+  // a re-delivery is the same session), then delivered. "Recorded" means it
+  // can no longer be lost, not that the network happened to be up.
+  const session = await coreOutbox.write({
+    entity: 'focus_session', entityId: newOperationId(), kind: 'create',
+    payload: {
+      task_id: params.task?.id ?? null,
+      task_title: params.task?.title ?? params.title ?? null,
+      mode: 'work',
+      started_at: now,
+      ended_at: now,
+      planned_seconds: params.plannedSeconds,
+      completed_seconds: params.completedSeconds,
+      completed: true,
+    },
   });
+  if (session.ok) await coreOutbox.flush();
+  // Recorded = the server accepted it in this call (the command left the outbox).
+  const delivered = session.ok && !(coreOutbox.state()?.commands ?? []).some((c) => c.operationId === session.operationId);
 
-  if (!session.ok) {
+  if (!delivered) {
     // No row, so nothing is credited and nothing is reported. Crediting a
     // task for a session that was rejected is how a pomodoro counter drifts
     // away from the sessions that produced it.
-    return { sessionRecorded: false, error: session.error, taskCompleted: false };
+    return session.ok
+      ? { sessionRecorded: false, sessionQueued: true, error: 'Oturum cihaza kaydedildi; bağlantı gelince gönderilecek.', taskCompleted: false }
+      : { sessionRecorded: false, error: session.error, taskCompleted: false };
   }
 
   if (!params.task) return { sessionRecorded: true, taskCompleted: false };

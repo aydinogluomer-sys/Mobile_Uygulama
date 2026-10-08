@@ -25,6 +25,12 @@ import { clearSending, emptyOutbox, type OutboxState } from './outbox';
 
 export const OUTBOX_VERSION = 1;
 export const outboxKey = (userId: string) => `outbox.v1.${userId}`;
+/**
+ * R02.03 — a second outbox per account for the other core records (journal,
+ * notes, recovery plans, focus sessions). Its own key, so the task outbox
+ * and this one never overwrite each other's blob.
+ */
+export const namespacedOutboxKey = (ns: string, userId: string) => `outbox.v1.${ns}.${userId}`;
 
 export interface OutboxStorage {
   load(userId: string): Promise<OutboxState>;
@@ -60,6 +66,20 @@ export const asyncStorageOutbox: OutboxStorage = {
     await AsyncStorage.setItem(outboxKey(state.userId), JSON.stringify(blob));
   },
 };
+
+/** R02.03 — the same contract under `namespacedOutboxKey(ns, …)`. */
+export function asyncStorageOutboxNs(ns: string): OutboxStorage {
+  return {
+    async load(userId) {
+      const raw = await AsyncStorage.getItem(namespacedOutboxKey(ns, userId));
+      return parseStored(raw, userId).state;
+    },
+    async save(state) {
+      const blob: Stored = { v: OUTBOX_VERSION, state };
+      await AsyncStorage.setItem(namespacedOutboxKey(ns, state.userId), JSON.stringify(blob));
+    },
+  };
+}
 
 /** For tests and fixtures: the same contract, in memory. */
 export function memoryOutboxStorage(): OutboxStorage & { raw: Map<string, string> } {

@@ -109,3 +109,15 @@ it('during a holiday the TATİL MODU card replaces the link', async () => {
   expect(textOf(r)).toMatch(/Sen bitirene kadar/);
   expect(r.root.findAll((n) => n.props?.accessibilityLabel === 'Tatil modu. Birkaç gün bütün alışkanlıklara ara ver.').length).toBe(0);
 });
+
+it('R02.04: an unsent journal/note/plan/session change shows on the sync badge', async () => {
+  const { coreOutbox } = jest.requireActual('../../services/coreOutbox') as typeof import('../../services/coreOutbox');
+  coreOutbox.reset();
+  // `supabase` is a stub here, so delivery fails and the change stays queued
+  await coreOutbox.write({ entity: 'journal_entry', entityId: today, kind: 'update', payload: { content: 'x', mood: null }, baseVersion: null });
+  await coreOutbox.flush();
+  const r = await render();
+  expect(textOf(r)).toMatch(/1 bekliyor/);
+  await act(async () => { await coreOutbox.flush(); });
+  coreOutbox.reset();
+});

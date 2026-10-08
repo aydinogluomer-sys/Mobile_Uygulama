@@ -15,6 +15,7 @@ import {
   type RecoveryOption,
 } from '../lib/recovery';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
+import { coreOutbox } from '../services/coreOutbox';
 
 /**
  * §22 analytics emission seam (task Phase-4 CODER-O) -- see the identical
@@ -30,6 +31,37 @@ function emitAnalytics(name: AnalyticsEventName, props: Record<string, unknown>)
     /* §22: an analytics failure is never a product failure. */
   }
 }
+
+/**
+ * R02.03 — §22 events follow the SERVER, not the tap: a plan is created and
+ * completed on the device first (core outbox) and reported when delivery
+ * applies it -- now if online, later if not. A refused write is never
+ * reported. User prose (habit name, note) is never part of an event.
+ */
+const completionMeta = new Map<string, { habit_id: string | null; strategy: string | null; target_date: string | null }>();
+coreOutbox.onApplied((cmd) => {
+  if (cmd.entity !== 'recovery_plan') return;
+  const p = cmd.payload as Record<string, unknown>;
+  if (cmd.kind === 'create') {
+    emitAnalytics('recovery_created', {
+      plan_id: cmd.entityId,
+      habit_id: p.habit_id ?? null,
+      strategy: p.strategy ?? null,
+      source_date: p.source_date ?? null,
+      target_date: p.target_date ?? null,
+      has_reminder: !!p.reminder_time,
+    });
+  } else if (cmd.kind === 'update' && p.status === 'completed') {
+    const meta = completionMeta.get(cmd.entityId);
+    completionMeta.delete(cmd.entityId);
+    emitAnalytics('recovery_completed', {
+      plan_id: cmd.entityId,
+      habit_id: meta?.habit_id ?? null,
+      strategy: meta?.strategy ?? null,
+      target_date: meta?.target_date ?? null,
+    });
+  }
+});
 
 type AddPlanInput = {
   habitId: string;
@@ -123,17 +155,8 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
     if (plan.reminder_time) {
       scheduleRecoveryReminder(plan.id, input.habitName, plan.target_date, plan.reminder_time);
     }
-    // §22 `recovery_created`. Placed after the `error || !data` bail-out, so
-    // only a row that really exists is reported. `input.habitName` and
-    // `input.note` are deliberately NOT passed -- both are user prose.
-    emitAnalytics('recovery_created', {
-      plan_id: plan.id,
-      habit_id: plan.habit_id,
-      strategy: plan.strategy,
-      source_date: plan.source_date,
-      target_date: plan.target_date,
-      has_reminder: !!plan.reminder_time,
-    });
+    // §22 `recovery_created` is emitted when the server applies the plan
+    // (`coreOutbox.onApplied` above), so only a row that really exists is reported.
     return plan;
   },
 
@@ -141,21 +164,13 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
     // Read the plan BEFORE the local state drops it -- the event's habit_id
     // and strategy come from here, never from a caller-supplied argument.
     const plan = get().plans.find((p) => p.id === id);
+    completionMeta.set(id, { habit_id: plan?.habit_id ?? null, strategy: plan?.strategy ?? null, target_date: plan?.target_date ?? null });
     const res = await svcCompletePlan(id);
-    const error = res.ok ? null : { message: res.error };
+    if (!res.ok) completionMeta.delete(id);
     cancelRecoveryReminder(id);
     set((s) => ({ plans: s.plans.filter((p) => p.id !== id) }));
-    // §22 `recovery_completed`, gated on the update actually succeeding.
-    // (The local-state/reminder behaviour above is unchanged and still runs
-    // regardless -- only the event is new, and only the event is gated.)
-    if (!error) {
-      emitAnalytics('recovery_completed', {
-        plan_id: id,
-        habit_id: plan?.habit_id ?? null,
-        strategy: plan?.strategy ?? null,
-        target_date: plan?.target_date ?? null,
-      });
-    }
+    // §22 `recovery_completed` is emitted when the server applies the
+    // completion (`coreOutbox.onApplied`), never for a refused one.
   },
 
   skipPlan: async (id) => {

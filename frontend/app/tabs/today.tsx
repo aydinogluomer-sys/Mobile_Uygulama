@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import { useTaskStore } from '../../store/taskStore';
+import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
 import { useWillpowerStore } from '../../store/willpowerStore';
 import { useFocusStore } from '../../store/focusStore';
 import { useRecoveryStore } from '../../store/recoveryStore';
@@ -254,6 +255,7 @@ export default function TodayScreen() {
   // sorduğu tek yer.
   const { fetchLogsForDate, getLogForHabit, logHabit, pendingSyncCount, deadSyncCount } = useLogStore();
   const { tasks, fetchTasks, toggleDone, dueToday, overdue, addTask, sync: taskSync } = useTaskStore();
+  const coreSync = useCoreOutboxSync();
   const { state: wp, fetchToday } = useWillpowerStore();
   const { sessionsCompleted } = useFocusStore();
   const { plans: recoveryPlans, fetchPlans } = useRecoveryStore();
@@ -442,8 +444,9 @@ export default function TodayScreen() {
           <View style={s.mastheadActions}>
             {/* §18 senkron durumu — hiçbir şey beklemiyorsa kendini render
                 etmez, dolayısıyla burada koşul gerekmiyor. */}
-            {/* R02 — habit-log queue + task outbox: one badge for everything unsent. */}
-            <SyncStatusBadge pending={pendingSyncCount + taskSync.pending} dead={deadSyncCount + taskSync.dead + taskSync.conflict} />
+            {/* R02 — habit-log queue + task outbox + core outbox (journal, notes,
+                recovery plans, focus sessions): one badge for everything unsent. */}
+            <SyncStatusBadge pending={pendingSyncCount + taskSync.pending + coreSync.pending} dead={deadSyncCount + taskSync.dead + taskSync.conflict + coreSync.dead + coreSync.conflict} />
             <TouchableOpacity
               onPress={() => router.push('/screens/journal' as any)}
               activeOpacity={0.7}

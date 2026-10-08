@@ -18,6 +18,7 @@
 import { supabase } from '../lib/supabase';
 import {
   currentUserId, deleteOwned, fetchPage, updateOwned,
+  insertOwnedWithId, updateOwnedVersioned, fetchOwnedRow, deleteOwnedIfPresent,
   type Cursor, type Page, type RepoResult,
 } from './shared';
 
@@ -79,6 +80,14 @@ export async function deleteNote(id: string): Promise<RepoResult<true>> {
   if (!u.ok) return u;
   return deleteOwned({ table: 'notes', id, userId: u.userId });
 }
+
+// R02.03 / R02.05 — outbox delivery: client id, versioned update, idempotent delete.
+export const insertNoteWithId = (row: { id: string; title: string; content: string; tags?: string[]; updated_at?: string }, expectedUserId?: string) =>
+  insertOwnedWithId<NoteRow>({ table: 'notes', row: { tags: [], ...row }, columns: COLS, expectedUserId });
+export const updateNoteVersioned = (id: string, patch: Record<string, unknown>, baseVersion: string | null, expectedUserId?: string) =>
+  updateOwnedVersioned<NoteRow>({ table: 'notes', id, patch, baseVersion, columns: COLS, expectedUserId });
+export const fetchNoteRow = (id: string) => fetchOwnedRow<NoteRow>({ table: 'notes', id, columns: COLS });
+export const deleteNoteIfPresent = (id: string, expectedUserId?: string) => deleteOwnedIfPresent({ table: 'notes', id, expectedUserId });
 
 /**
  * Server-side search.

@@ -115,6 +115,10 @@ export const useTaskStore = create<TaskStore>((set, get) => {
       // Always the live outbox: edits made while a request is out are kept.
       get: () => get().outbox ?? box,
       set: async (next) => {
+        // R02.06 — reset (sign-out / account deleted) while this delivery was
+        // out: never publish or save the old account's outbox back.
+        const cur = get().outbox;
+        if (!cur || cur.userId !== next.userId) return;
         set({ outbox: next, sync: summary(next) });
         try { await storage.save(get().outbox ?? next); } catch { /* kept in memory; saved on the next change */ }
       },

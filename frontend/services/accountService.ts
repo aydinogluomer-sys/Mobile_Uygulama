@@ -28,6 +28,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { withEdgeDeadline } from '../lib/edgeCall';
 import { useAiConversationStore } from '../store/aiConversationStore';
+import { useTaskStore } from '../store/taskStore';
+import { useLogStore } from '../store/logStore';
+import { useJournalStore } from '../store/journalStore';
+import { useNoteStore } from '../store/noteStore';
+import { useRecoveryStore } from '../store/recoveryStore';
+import { coreOutbox } from './coreOutbox';
+import { useRoutineRunnerStore } from '../store/routineRunnerStore';
+import { useMoodStore } from '../store/moodStore';
+import { listScheduled, cancelScheduled } from '../lib/notifications';
 import type { RepoResult } from '../repositories/shared';
 
 /**
@@ -50,6 +59,19 @@ const DEVICE_PREFERENCE_KEYS = new Set(['app_theme_dark', 'app_seasonal_motion',
  * user content or user-scoped identifiers.
  */
 async function clearLocalState(): Promise<void> {
+  // R02.06 / R10.04 — memory first: a delivery still running must not write
+  // the deleted account's outbox back after the device copy is removed.
+  try { coreOutbox.reset(); } catch { /* not loaded */ }
+  try { useTaskStore.getState().resetForAccount(); } catch { /* not mounted */ }
+  try { useJournalStore.setState({ entries: [] }); useNoteStore.setState({ notes: [], cursor: null, hasMore: false, error: null }); } catch { /* not mounted */ }
+  try { useRecoveryStore.setState({ plans: [] }); useLogStore.setState({ logs: [], pendingSyncCount: 0, deadSyncCount: 0 }); } catch { /* not mounted */ }
+  // `userId: null` first: both stores only persist while they know their owner,
+  // so nothing they hold can be written back after the wipe below.
+  try { useRoutineRunnerStore.setState({ userId: null, templates: [], session: null, logged: [], history: [], error: null }); } catch { /* not mounted */ }
+  try { useMoodStore.setState({ userId: null, definitions: [], checkins: [] }); } catch { /* not mounted */ }
+  // The person is gone: no reminder of theirs may fire on this phone again
+  // (habit reminders, snoozes, recovery-plan reminders).
+  try { await cancelScheduled((await listScheduled()).map((n) => n.identifier)); } catch { /* nothing scheduled / no permission */ }
   try {
     const keys = await AsyncStorage.getAllKeys();
     const toRemove = keys.filter((k) => !DEVICE_PREFERENCE_KEYS.has(k));
@@ -61,6 +83,20 @@ async function clearLocalState(): Promise<void> {
   }
   // In-memory, and the one store that holds message text rather than ids.
   try { useAiConversationStore.getState().reset(); } catch { /* store not mounted */ }
+}
+
+/**
+ * R02.06 — changes made on this device that the server has not received yet
+ * (habit logs, tasks, journal, notes, recovery plans, focus sessions). The
+ * delete confirmation states this number: deleting the account also deletes
+ * them, and the user is told so instead of finding out afterwards.
+ */
+export function unsentChangeCount(): number {
+  let n = 0;
+  try { n += coreOutbox.sync().pending + coreOutbox.sync().dead + coreOutbox.sync().conflict; } catch { /* none */ }
+  try { const t = useTaskStore.getState().sync; n += t.pending + t.dead + t.conflict; } catch { /* none */ }
+  try { const l = useLogStore.getState(); n += l.pendingSyncCount + l.deadSyncCount; } catch { /* none */ }
+  return n;
 }
 
 /**

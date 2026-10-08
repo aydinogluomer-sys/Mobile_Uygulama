@@ -17,6 +17,13 @@
  *        pre-existing local-state and reminder behaviour is unchanged.
  *  AC-5  neither event carries the plan's note or the habit's name.
  *  AC-6  a throwing sink does not break either action.
+ *
+ * R02.03 retargets (the plan is now kept on the device first, in the core
+ * outbox, and delivered after): the event fires when the SERVER applies the
+ * command, so "only a row that really exists is reported" still holds. Two
+ * assertions change by design: the plan id is made on the device (the event
+ * carries the id the row is written with), and a rejected insert no longer
+ * loses the plan -- it stays queued and visible, and still emits nothing.
  */
 type PgError = { message: string } | null;
 type Row = {
@@ -107,6 +114,8 @@ import * as analytics from '../../lib/analytics';
 import type { AnalyticsEvent } from '../../lib/analytics';
 import { useRecoveryStore } from '../../store/recoveryStore';
 import { cancelRecoveryReminder } from '../../lib/notifications';
+import { coreOutbox } from '../../services/coreOutbox';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RecoveryPlan } from '../../lib/supabase';
 
 const emit = (analytics as unknown as { emitEvent: jest.Mock }).emitEvent;
@@ -142,7 +151,10 @@ function stagedPlan(): RecoveryPlan {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // The core outbox is a module singleton: start each case from an empty one.
+  coreOutbox.reset();
+  await AsyncStorage.clear();
   mockState.inserts = [];
   mockState.updates = [];
   mockState.insertError = null;
@@ -162,7 +174,7 @@ describe('AC-1 -- addPlan success emits exactly one recovery_created', () => {
     const evs = emitted('recovery_created');
     expect(evs).toHaveLength(1);
     expect(evs[0].props).toEqual({
-      plan_id: PLAN_ID,
+      plan_id: plan!.id, // made on the device; the row is written with it
       habit_id: HABIT_ID,
       strategy: 'split_two_days',
       source_date: '2026-08-29',
@@ -179,7 +191,10 @@ describe('AC-2 -- addPlan failure emits nothing', () => {
 
     const plan = await useRecoveryStore.getState().addPlan(planInput());
 
-    expect(plan).toBeNull();
+    // R02.03: not lost -- kept on the device, the refusal visible in the outbox.
+    expect(plan).not.toBeNull();
+    expect(mockState.inserts).toHaveLength(1);
+    expect(coreOutbox.state()!.commands.find((c) => c.entityId === plan!.id)?.lastError).toMatch(/foreign key/);
     expect(emitted()).toHaveLength(0);
   });
 
@@ -255,7 +270,7 @@ describe('AC-6 -- analytics never breaks the feature', () => {
     expect(plan).not.toBeNull();
     expect(useRecoveryStore.getState().plans).toHaveLength(1);
 
-    await useRecoveryStore.getState().completePlan(PLAN_ID);
+    await useRecoveryStore.getState().completePlan(plan!.id); // the device-made id (R02.03)
     expect(useRecoveryStore.getState().plans).toHaveLength(0);
     expect(emit).toHaveBeenCalledTimes(2);
   });

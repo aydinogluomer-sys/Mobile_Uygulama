@@ -9,9 +9,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNoteStore, type Note } from '../../store/noteStore';
 import { EmptyState, Skeleton } from '../../components/ui';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
+import ConflictChoice from '../../components/ConflictChoice';
+import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
 
 export default function NotesScreen() {
-  const { notes, loading, loadingMore, hasMore, loadMore, fetchNotes, addNote, updateNote, removeNote, search } = useNoteStore();
+  const { notes, loading, loadingMore, hasMore, loadMore, fetchNotes, addNote, updateNote, removeNote, search, conflicts, resolveConflict } = useNoteStore();
+  // R02.05 — re-read on every outbox change, so a conflict appears the moment delivery reports it.
+  useCoreOutboxSync();
+  const noteConflicts = conflicts();
+  const [resolving, setResolving] = useState(false);
   const [query, setQuery] = useState('');
   const [showEdit, setShowEdit] = useState(false);
   const [editing, setEditing] = useState<Note | null>(null);
@@ -109,6 +115,17 @@ export default function NotesScreen() {
           results ? null : <LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />
         }
         data={visible}
+        ListHeaderComponent={noteConflicts.length > 0 ? (
+          <View>
+            {noteConflicts.map((c) => {
+              const t = notes.find((n) => n.id === c.entityId)?.title || String((c.payload as { title?: string }).title ?? '');
+              return (
+                <ConflictChoice key={c.operationId} what={t ? `"${t}" notu` : 'Bir not'} busy={resolving}
+                  onChoose={async (choice) => { setResolving(true); await resolveConflict(c.entityId, choice); setResolving(false); }} />
+              );
+            })}
+          </View>
+        ) : null}
         keyExtractor={(n) => n.id}
         numColumns={2}
         columnWrapperStyle={s.row}
