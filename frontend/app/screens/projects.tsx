@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useProjectStore, type Project } from '../../store/projectStore';
 import { useTaskStore } from '../../store/taskStore';
 import InlineComposer from '../../components/InlineComposer';
-import { EmptyState } from '../../components/ui';
+import { EmptyState, LoadErrorState } from '../../components/ui';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import { colors } from '../../lib/tokens';
 import { projectProgress } from '../../lib/progressModel';
@@ -19,7 +19,7 @@ const PRESET_COLORS = [
 ];
 
 export default function ProjectsScreen() {
-  const { projects, hasMore, loadingMore, loadMore, fetchProjects, addProject, removeProject } = useProjectStore();
+  const { projects, hasMore, loadingMore, loadMore, fetchProjects, addProject, removeProject, error: loadError } = useProjectStore();
   const { tasks, fetchTasks, toggleDone, addTask } = useTaskStore();
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
@@ -62,7 +62,10 @@ export default function ProjectsScreen() {
         ListFooterComponent={<LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />}
         style={s.list}
         contentContainerStyle={s.listContent}
-        ListEmptyComponent={
+        ListEmptyComponent={loadError ? (
+          // R06.06 — not reached is not the same as empty
+          <LoadErrorState what="Projeler" onRetry={() => { void fetchProjects(); }} />
+        ) : (
           <EmptyState
             icon="folder-open-outline"
             title="Henüz proje yok"
@@ -70,7 +73,7 @@ export default function ProjectsScreen() {
             ctaLabel="Yeni Proje"
             onCta={() => setShowAdd(true)}
           />
-        }
+        )}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={s.row}

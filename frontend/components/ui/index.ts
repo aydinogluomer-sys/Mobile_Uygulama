@@ -13,3 +13,4 @@ export { default as Skeleton, SkeletonLines } from './Skeleton';
 export { default as SyncStatusBadge, syncBadgeParts, syncBadgeA11yLabel } from './SyncStatusBadge';
 export { default as ErrorBoundary } from './ErrorBoundary';
 export { FormError, FormPreview } from './FormFeedback';
+export { default as LoadErrorState, listState, type ListState } from './LoadErrorState';

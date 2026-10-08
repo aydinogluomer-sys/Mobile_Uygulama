@@ -7,7 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useGoalStore, Goal, GoalKind } from '../../store/goalStore';
-import { EmptyState, Skeleton, FormError, FormPreview } from '../../components/ui';
+import { EmptyState, Skeleton, FormError, FormPreview, LoadErrorState } from '../../components/ui';
 import { goalProgress } from '../../lib/progressModel';
 
 const TABS: { key: GoalKind; label: string; color: string }[] = [
@@ -63,7 +63,7 @@ function GoalCard({ goal, color, onEdit, onDelete }: {
 }
 
 export default function GoalsScreen() {
-  const { goals, loading, loadGoals, addGoal, updateProgress, removeGoal } = useGoalStore();
+  const { goals, loading, loadGoals, addGoal, updateProgress, removeGoal, error: loadError } = useGoalStore();
   const [activeTab, setActiveTab] = useState<GoalKind>('yearly');
   const [modal, setModal] = useState(false);
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
@@ -182,6 +182,9 @@ export default function GoalsScreen() {
               <Skeleton height={6} />
             </View>
           ))
+        ) : goals.length === 0 && loadError ? (
+          // R06.06 — not reached is not the same as empty
+          <LoadErrorState what="Hedefler" onRetry={() => { void loadGoals(); }} />
         ) : filtered.length === 0 ? (
           <EmptyState
             icon="trophy-outline"

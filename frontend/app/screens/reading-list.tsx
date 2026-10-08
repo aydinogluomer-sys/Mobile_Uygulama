@@ -8,7 +8,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useReadingListStore, ReadingType, ReadingStatus, ReadingItem } from '../../store/readingListStore';
-import { EmptyState, Skeleton } from '../../components/ui';
+import { EmptyState, Skeleton, LoadErrorState } from '../../components/ui';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 
 const STATUS_TABS: { key: ReadingStatus; label: string; color: string }[] = [
@@ -48,7 +48,7 @@ function StarRating({ value, onChange }: { value: number | null; onChange: (n: n
 export default function ReadingListScreen() {
   // Each tab owns its own page and cursor now: the store no longer holds one
   // unbounded array that the screen slices. See store/readingListStore.ts.
-  const { tabs, counts, fetchItems, loadMore, addItem, updateStatus, updateRating, removeItem } =
+  const { tabs, counts, fetchItems, loadMore, addItem, updateStatus, updateRating, removeItem, error: loadError } =
     useReadingListStore();
   const [activeTab, setActiveTab] = useState<ReadingStatus>('want_to_read');
   const [showAdd, setShowAdd] = useState(false);
@@ -128,6 +128,9 @@ export default function ReadingListScreen() {
               </View>
             </View>
           ))
+        ) : filtered.length === 0 && loadError ? (
+          // R06.06 — not reached is not the same as empty
+          <LoadErrorState what="Okuma listesi" onRetry={() => { void fetchItems(activeTab); }} />
         ) : filtered.length === 0 ? (
           <EmptyState
             icon="book-outline"

@@ -7,13 +7,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNoteStore, type Note } from '../../store/noteStore';
-import { EmptyState, Skeleton } from '../../components/ui';
+import { EmptyState, Skeleton, LoadErrorState } from '../../components/ui';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import ConflictChoice from '../../components/ConflictChoice';
 import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
 
 export default function NotesScreen() {
-  const { notes, loading, loadingMore, hasMore, loadMore, fetchNotes, addNote, updateNote, removeNote, search, conflicts, resolveConflict } = useNoteStore();
+  const { notes, loading, loadingMore, hasMore, loadMore, fetchNotes, addNote, updateNote, removeNote, search, conflicts, resolveConflict, error: loadError } = useNoteStore();
   // R02.05 — re-read on every outbox change, so a conflict appears the moment delivery reports it.
   useCoreOutboxSync();
   const noteConflicts = conflicts();
@@ -140,6 +140,9 @@ export default function NotesScreen() {
                 <Skeleton key={i} width="47%" height={100} />
               ))}
             </View>
+          ) : !query && loadError ? (
+            // R06.06 — not reached is not the same as empty
+            <LoadErrorState what="Notlar" onRetry={() => { void fetchNotes(); }} />
           ) : query ? (
             <EmptyState
               icon="search-outline"
