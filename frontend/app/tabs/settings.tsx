@@ -379,6 +379,11 @@ export default function SettingsScreen() {
                 aşağıda doğrulanıp eksik kayıtlar hesabına eklenebilir; alışkanlık
                 kayıtları, odak oturumları ve webhook&apos;lar geri yüklenemez.
               </Text>
+              {/* R08.03 — the chosen protection boundary, said before sharing (docs/implementation-v3/R08_BACKUP_PROTECTION.md). */}
+              <Text style={styles.exportSubtitle} accessibilityRole="text">
+                Dosya şifrelenmez; içinde günlüğün ve notların var — yalnız güvendiğin bir yere kaydet.
+                Oturum ve erişim anahtarları dosyaya hiç girmez.
+              </Text>
               
               <View style={styles.exportButtons}>
                 <TouchableOpacity
