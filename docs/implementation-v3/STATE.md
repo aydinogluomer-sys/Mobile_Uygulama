@@ -39,7 +39,8 @@ newer_owner_decision: 2026-10-07  # PDF 'Çekirdek Kapsam ve Budama' + dört kar
 active_plan: CORE_AUDIT.md   # 2026-10-07: tam R00..R11 denetimi; önceki 'tamamlandı' iddiası alt kümeye dayalıydı ve geri çekildi
 completed_cards: [R00.01, R00.02, R00.03, R00.04, R00.05, R00.06, R00.07, R01.01-a, R01.02-a, R01.02-b, R01.06-a, R01.02-c, R01.02-d1, R01.02-d, R01.02-d2, R01.02-e, R01.03-a]
 active_card: null
-next_ready_card: R01.03-b   # undo: a day back to "no record" (habitLogRepository has insert/update, NO delete) -- new capability + UI. R01.03-a (value = day total, state from the service) DONE. Open, not blocking: KD-08..KD-12, R01.06-b
+core_closed_at: 2026-10-08  # CORE_AUDIT: 78 DONE / 3 BLOCKED (S11, S7, S13) / 5 N/R / 0 PARTIAL / 0 NOT_STARTED -- R10_ACCEPTANCE_REPORT.md, R11_CORE_CLOSURE.md
+next_ready_card: none (owner decisions: SQL_FOR_OWNER.md order, S3 deploy, S11/S7/S13)  # was R01.03-b   # undo: a day back to "no record" (habitLogRepository has insert/update, NO delete) -- new capability + UI. R01.03-a (value = day total, state from the service) DONE. Open, not blocking: KD-08..KD-12, R01.06-b
 critical_open_defects: []         # bilinen kusurlar kartlara bağlı; veri kaybı / hesap erişimi / FP kusuru yok
 known_defects_bound_to_cards:
   - id: KD-01
@@ -331,8 +332,8 @@ open_owner_decision_skip_cap: AÇIK -- skip seride şeffaf olduğu için her gü
   gerekmediği sahip kararı. Engelleyici değil.
 deferred_ids: [D01, D02, D03, D04, D05, D06, D07, D08, D09]
 cancelled_ids: [X01, X02, X03]
-core_implementation: IN_PROGRESS   # 2026-10-07: CORE_AUDIT.md'de PARTIAL/NOT_STARTED kartlar var; önceki DONE iddiası geri çekildi
-core_quality: GATES_GREEN_DEVICE_NR   # typecheck/lint/run-tests/jest(2x)/diff-check green; device + user measurements N/R (S8)
+core_implementation: COMPLETE_3_OWNER_BLOCKED   # 2026-10-08: CORE_AUDIT.md'de PARTIAL/NOT_STARTED yok (repo/acceptanceReport.test.ts); BLOCKED: R01.03-b S11, R02.07 S7, R05.05 S13
+core_quality: NOT_MEASURED   # otomatik kanıt yeşil (typecheck/lint/run-tests/jest 2x/diff-check); kullanıcı/cihaz/model ölçümü N/R -- 9-9,5 hedef, henüz kanıtlanmadı
 release_readiness: DEFERRED
 evidence_locations:
   - docs/implementation-v3/R10_ACCEPTANCE_REPORT.md
