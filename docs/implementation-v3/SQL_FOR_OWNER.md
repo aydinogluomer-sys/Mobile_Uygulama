@@ -113,3 +113,38 @@ where h.tracking_type in ('numeric','duration')
   and l.state = 'done' and l.value is not null and h.daily_goal is not null
   and l.value < h.daily_goal;
 ```
+
+## 5. Uygulama sonrası: hangi kapı, hangi sırayla
+
+| Adım | Ön koşul | Çevrilecek kapı (`frontend/lib/featureGates.ts`) |
+|---|---|---|
+| 1 | 028, 029, 030, 031 uygulandı + §2.1–2.4 doğrulandı | yok — istemci tabloları fail-open okur (PGRST205/42P01), tablo gelince kendiliğinden açılır |
+| 2 | 033 uygulandı + §2.6 | `LOG_TIMEZONE_ENABLED = true` |
+| 3 | 032 → 034 → 035 uygulandı + §2.8 `has_lighten_week = true` **ve** `generate-routine` edge function deploy edildi (S3) | `COACH_ACTIONS_V2_ENABLED = true` |
+
+Mevcut beş kapı (`SPOTIFY_OAUTH_ENABLED`, `NOTION_INTEGRATION_ENABLED`, `GOOGLE_CALENDAR_INTEGRATION_ENABLED`,
+`PAID_SUBSCRIPTIONS_ENABLED`, `PUBLIC_SITE_URLS_LIVE`) bu migration'larla **ilgisizdir** ve kapalı kalır.
+
+## 6. RLS — uygulamadan sonra salt-okunur negatif kontrol (R10.07)
+
+```sql
+-- 6.1 yeni tabloların hepsinde RLS açık (beklenen: rowsecurity = true, 10 satır)
+select tablename, rowsecurity from pg_tables
+where schemaname = 'public' and tablename in (
+  'habit_pauses','habit_goal_versions','habit_checklist_items','habit_checklist_checks',
+  'routine_templates','routine_template_versions','routine_sessions',
+  'mood_definitions','mood_checkins','review_next_actions');
+
+-- 6.2 hiçbir politika anon/public'e açık değil (beklenen: 0 satır)
+select tablename, policyname, roles from pg_policies
+where schemaname = 'public' and tablename in (
+  'habit_pauses','habit_goal_versions','habit_checklist_items','habit_checklist_checks',
+  'routine_templates','routine_template_versions','routine_sessions',
+  'mood_definitions','mood_checkins','review_next_actions')
+  and not (roles = '{authenticated}');
+```
+
+**Kabul edilen risk (S12):** `review_next_actions.task_id` yabancı anahtarsızdır, çünkü `tasks`
+tablosunun tanımı bu repoda yok; tanımı görülmeden ona dokunan SQL yazılmadı. Başka bir
+kullanıcının görev kimliği yazılabilir, ama `tasks` RLS'i nedeniyle hiçbir şeye çözülmez. Yedekten
+gerçek `tasks` tanımı gelince bir FK + sahiplik kontrolü ayrı migration'la eklenebilir.
