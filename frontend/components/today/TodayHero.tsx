@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, space, radius, font, fontFamily, hexA } from '../../lib/tokens';
+import { colors, space, radius, font, fontFamily, hexA, onColor } from '../../lib/tokens';
 import { useAccent } from '../../lib/useAccent';
 import type { TodayNarrative } from '../../lib/todayNarrative';
 
@@ -37,7 +37,8 @@ export default function TodayHero({ eyebrow, narrative, ctas }: Props) {
           const variant = c.variant ?? 'ghost';
           const isPrimary = variant === 'primary';
           const isSecondary = variant === 'secondary';
-          const fg = isPrimary ? colors.white : colors.text;
+          // R06.04 — readable on the accent fill whatever the accent theme.
+          const fg = isPrimary ? onColor(accent.primary) : colors.text;
           return (
             <TouchableOpacity
               key={c.label}
@@ -52,7 +53,7 @@ export default function TodayHero({ eyebrow, narrative, ctas }: Props) {
                 variant === 'ghost' && s.ctaGhost,
               ]}
             >
-              <Ionicons name={c.icon} size={15} color={isPrimary ? colors.white : colors.textDim} />
+              <Ionicons name={c.icon} size={15} color={isPrimary ? fg : colors.textDim} />
               <Text style={[s.ctaText, { color: fg }]}>{c.label}</Text>
             </TouchableOpacity>
           );

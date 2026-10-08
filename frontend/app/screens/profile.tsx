@@ -79,7 +79,7 @@ export default function ProfileScreen() {
               value={name}
               onChangeText={setName}
               placeholder="Gizli Savaşçı"
-              placeholderTextColor={colors.textGhost}
+              placeholderTextColor={colors.textFaint}
               maxLength={24}
               autoCapitalize="none"
               accessibilityLabel="Kullanıcı adı"

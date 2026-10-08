@@ -33,6 +33,7 @@ import { WillpowerBand, SectionHeader, EmptyState, ProgressBar } from '../../com
 import { isMeasurableTracking } from '../../lib/habitEngine';
 // R01.03-a: a measurable entry's total and state come from the service, not this screen.
 import { measuredEntryFor } from '../../services/habitLogService';
+import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 
 const DELETE_REASONS = [
   'Artık ihtiyacım yok',
@@ -43,6 +44,7 @@ const DELETE_REASONS = [
 ];
 
 export default function TimelineScreen() {
+  const reduceMotion = useReducedMotion(); // R06.04 — toasts appear without the slide
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -512,14 +514,14 @@ export default function TimelineScreen() {
 
       {/* XP animasyonu */}
       {xpAnim !== null && (
-        <Animatable.View animation="fadeInUp" style={styles.xpToast}>
+        <Animatable.View animation={reduceMotion ? undefined : 'fadeInUp'} style={styles.xpToast}>
           <Text style={styles.xpToastText}>+{xpAnim} XP</Text>
         </Animatable.View>
       )}
 
       {/* Geri Al toast */}
       {pendingDelete && (
-        <Animatable.View animation="fadeInUp" duration={250} style={styles.undoToast}>
+        <Animatable.View animation={reduceMotion ? undefined : 'fadeInUp'} duration={250} style={styles.undoToast}>
           <Ionicons name="trash" size={16} color="#ef4444" />
           <Text style={styles.undoText} numberOfLines={1}>&quot;{pendingDelete.habit.name}&quot; silindi</Text>
           <TouchableOpacity style={styles.undoBtn} onPress={handleUndoDelete}>

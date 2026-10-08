@@ -200,7 +200,7 @@ function ClarifyBody({ habit, missing, onClarify }: {
               onChangeText={setCustomValue}
               keyboardType="numeric"
               placeholder="20"
-              placeholderTextColor={colors.textGhost}
+              placeholderTextColor={colors.textFaint}
               accessibilityLabel="Özel hedef değeri"
             />
             <TextInput
@@ -208,7 +208,7 @@ function ClarifyBody({ habit, missing, onClarify }: {
               value={customUnit}
               onChangeText={setCustomUnit}
               placeholder="dakika"
-              placeholderTextColor={colors.textGhost}
+              placeholderTextColor={colors.textFaint}
               maxLength={24}
               accessibilityLabel="Özel hedef birimi"
             />

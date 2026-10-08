@@ -31,7 +31,7 @@ const literals = files.flatMap((f) => [...fs.readFileSync(path.join(ROOT, f), 'u
 
 it('finds the UI (scanner sanity)', () => {
   expect(files.length).toBeGreaterThan(60);
-  expect(tokenValues.has('827E72')).toBe(true);
+  expect(tokenValues.has(norm(colors.textFaint))).toBe(true); // reads the token (its value changed in R06.04)
 });
 
 it('no raw hex equal to a design token: use colors.*', () => {

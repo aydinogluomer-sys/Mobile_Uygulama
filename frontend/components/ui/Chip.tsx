@@ -77,6 +77,8 @@ export default function Chip({
         accessibilityLabel={label}
         {...a11y}
         accessibilityState={accessibilityState}
+        // R06.04 — a chip is small to look at, not to touch.
+        hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
         style={[base, style]}
       >
         {content}

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, font, space } from '../../lib/tokens';
+import { useReducedMotion } from '../seasonalMotion/useReducedMotion';
 
 type Props = TextInputProps & {
   label: string;
@@ -70,22 +71,23 @@ export default function FloatingLabelInput({
   const [focused, setFocused] = useState(false);
   const fill = useRef(new Animated.Value(value ? 1 : 0)).current;
   const focusLine = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     Animated.timing(fill, {
       toValue: focused || !!value ? 1 : 0,
-      duration: 160,
+      duration: reduceMotion ? 0 : 160, // R06.04
       useNativeDriver: false,
     }).start();
-  }, [fill, focused, value]);
+  }, [fill, focused, value, reduceMotion]);
 
   useEffect(() => {
     Animated.timing(focusLine, {
       toValue: focused ? 1 : 0,
-      duration: 140,
+      duration: reduceMotion ? 0 : 140, // R06.04
       useNativeDriver: false,
     }).start();
-  }, [focusLine, focused]);
+  }, [focusLine, focused, reduceMotion]);
 
   const top = fill.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
   const fontSize = fill.interpolate({ inputRange: [0, 1], outputRange: [15, 11] });

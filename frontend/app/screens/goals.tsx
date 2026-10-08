@@ -239,7 +239,7 @@ export default function GoalsScreen() {
                 <TextInput
                   style={s.input}
                   placeholder={`${tabInfo.label} hedefini yaz...`}
-                  placeholderTextColor={colors.textGhost}
+                  placeholderTextColor={colors.textFaint}
                   value={title}
                   onChangeText={setTitle}
                   autoFocus
@@ -272,7 +272,7 @@ export default function GoalsScreen() {
             <TextInput
               style={s.input}
               placeholder="Özel % gir (0-100)"
-              placeholderTextColor={colors.textGhost}
+              placeholderTextColor={colors.textFaint}
               value={progress}
               onChangeText={setProgress}
               keyboardType="numeric"

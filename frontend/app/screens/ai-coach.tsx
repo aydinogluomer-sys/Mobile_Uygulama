@@ -935,7 +935,7 @@ export default function AICoachScreen() {
           <TextInput
             style={s.input}
             placeholder="Bir şey sor..."
-            placeholderTextColor={colors.textGhost}
+            placeholderTextColor={colors.textFaint}
             value={input}
             onChangeText={setInput}
             multiline
@@ -1021,7 +1021,7 @@ export default function AICoachScreen() {
                   multiline
                   textAlignVertical="top"
                   placeholder="Özet..."
-                  placeholderTextColor={colors.textGhost}
+                  placeholderTextColor={colors.textFaint}
                   accessibilityLabel="Günlüğe eklenecek özet"
                 />
                 <View style={s.modalFooter}>

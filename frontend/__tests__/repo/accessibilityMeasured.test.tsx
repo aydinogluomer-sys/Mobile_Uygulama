@@ -1,0 +1,99 @@
+/**
+ * R06.04 — "Büyük yazı, semantik roller, anlamlı etiketler, odak sırası,
+ * kontrast ve azaltılmış hareketi destekle. Dokunma alanları platforma uygun
+ * olsun; yalnız accessibilityLabel sayarak tamamlandı deme."
+ *
+ * Measured, not counted: WCAG contrast of the real token values, the real
+ * touch size of the kit's pressables, font scaling left on, and every
+ * animation site gated on the system "reduce motion" setting.
+ * docs/implementation-v3/R06_ACCESSIBILITY.md
+ */
+import React from 'react';
+import TestRenderer, { act } from 'react-test-renderer';
+import * as fs from 'fs';
+import * as path from 'path';
+
+jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
+
+import { colors, contrastRatio, onColor, ACCENTS } from '../../lib/tokens';
+import Button, { MIN_TOUCH } from '../../components/ui/Button';
+import Chip from '../../components/ui/Chip';
+
+const BGS = { bg: colors.bg, surface: colors.surface, surfaceAlt: colors.surfaceAlt };
+
+describe('contrast (WCAG 2.1)', () => {
+  it('body and secondary text reach AA 4.5:1 on every background', () => {
+    for (const fg of ['text', 'textDim', 'textFaint'] as const) {
+      for (const [name, bg] of Object.entries(BGS)) {
+        expect([fg, name, contrastRatio(colors[fg], bg) >= 4.5]).toEqual([fg, name, true]);
+      }
+    }
+  });
+  it('status and accent colours reach 4.5:1 on the page and 3:1 (icons, large text) on cards', () => {
+    for (const c of ['accent', 'success', 'warning', 'error', 'info'] as const) {
+      expect([c, contrastRatio(colors[c], colors.bg) >= 4.5]).toEqual([c, true]);
+      for (const bg of Object.values(BGS)) expect(contrastRatio(colors[c], bg)).toBeGreaterThanOrEqual(3);
+    }
+  });
+  it('a filled button picks a readable label for every accent theme and for danger', () => {
+    const fills = [...Object.values(ACCENTS).map((t) => t.primary), colors.error];
+    for (const f of fills) expect([f, contrastRatio(onColor(f), f) >= 4.5]).toEqual([f, true]);
+    expect(onColor(colors.accent)).toBe('#15140F'); // white on clay is 3.1:1 -- dark ink instead
+  });
+  it('the ghost grey is never used for text a user must read (placeholders)', () => {
+    const offenders = files().filter((f) => /placeholderTextColor=\{colors\.textGhost\}/.test(read(f)));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('touch targets', () => {
+  it('every Button size is at least 44pt to touch; it grows with large text instead of clipping', async () => {
+    for (const size of ['sm', 'md', 'lg'] as const) {
+      let r!: TestRenderer.ReactTestRenderer;
+      await act(async () => { r = TestRenderer.create(<Button label="x" size={size} onPress={() => {}} />); });
+      const t = r.root.findAll((n) => typeof n.props?.onPress === 'function' && n.props?.style)[0];
+      const style = Object.assign({}, ...[t.props.style].flat(3).filter(Boolean));
+      expect(style.height).toBeUndefined();
+      const slop = t.props.hitSlop ?? { top: 0, bottom: 0 };
+      expect(style.minHeight + slop.top + slop.bottom).toBeGreaterThanOrEqual(MIN_TOUCH);
+    }
+  });
+  it('a pressable Chip extends its touch area', async () => {
+    let r!: TestRenderer.ReactTestRenderer;
+    await act(async () => { r = TestRenderer.create(<Chip label="x" onPress={() => {}} />); });
+    const t = r.root.findAll((n) => typeof n.props?.onPress === 'function' && n.props?.hitSlop)[0];
+    expect(t.props.hitSlop.top + t.props.hitSlop.bottom).toBeGreaterThanOrEqual(20);
+  });
+});
+
+const ROOT = path.join(__dirname, '../..');
+const read = (f: string) => fs.readFileSync(path.join(ROOT, f), 'utf8');
+function files(): string[] {
+  const out: string[] = [];
+  const walk = (d: string) => {
+    for (const e of fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })) {
+      const rel = `${d}/${e.name}`;
+      if (e.isDirectory()) walk(rel); else if (e.name.endsWith('.tsx')) out.push(rel);
+    }
+  };
+  walk('app'); walk('components');
+  return out;
+}
+
+describe('large text', () => {
+  it('font scaling is never switched off', () => {
+    const offenders = files().filter((f) => /allowFontScaling=\{false\}|maxFontSizeMultiplier=\{1(\.0)?\}/.test(read(f)));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('reduced motion', () => {
+  it('every file that animates also honours the system setting', () => {
+    const ANIMATES = /Animated\.(timing|spring|loop|decay)\(|LayoutAnimation\.configureNext|<Animatable\.\w+[^>]*animation=/;
+    const animating = files().filter((f) => ANIMATES.test(read(f)));
+    expect(animating.length).toBeGreaterThanOrEqual(8); // scanner sanity
+    // the hook is CALLED in the file, or the file takes the setting as a declared prop
+    const ungated = animating.filter((f) => !/useReducedMotion\(\)|reduceMotion: boolean/.test(read(f)));
+    expect(ungated).toEqual([]);
+  });
+});

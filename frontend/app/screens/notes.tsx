@@ -209,14 +209,14 @@ export default function NotesScreen() {
             <TextInput
               style={s.titleInput}
               placeholder="Başlık..."
-              placeholderTextColor={colors.textGhost}
+              placeholderTextColor={colors.textFaint}
               value={title}
               onChangeText={setTitle}
             />
             <TextInput
               style={s.contentInput}
               placeholder="Notunu yaz..."
-              placeholderTextColor={colors.textGhost}
+              placeholderTextColor={colors.textFaint}
               multiline
               value={content}
               onChangeText={setContent}

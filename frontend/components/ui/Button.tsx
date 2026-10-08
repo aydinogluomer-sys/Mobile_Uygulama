@@ -1,6 +1,6 @@
 import { Text, TouchableOpacity, ActivityIndicator, ViewStyle, StyleProp, type AccessibilityProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, hexA, shadow } from '../../lib/tokens';
+import { colors, radius, hexA, shadow, onColor } from '../../lib/tokens';
 import { useAccent } from '../../lib/useAccent';
 
 type Variant = 'primary' | 'tonal' | 'ghost' | 'danger';
@@ -26,6 +26,9 @@ type Props = AccessibilityProps & {
   style?: StyleProp<ViewStyle>;
 };
 
+/** R06.04 — the platform minimum touch size (iOS 44pt; Android 48dp is met by md/lg). */
+export const MIN_TOUCH = 44;
+
 const SIZES: Record<Size, { h: number; px: number; fs: number; icon: number; gap: number }> = {
   sm: { h: 36, px: 14, fs: 13, icon: 15, gap: 6 },
   md: { h: 46, px: 18, fs: 15, icon: 18, gap: 8 },
@@ -46,8 +49,9 @@ export default function Button({
   let border: string = 'transparent';
   let glow: ViewStyle | null = null;
 
-  if (variant === 'primary') { bg = accentTheme.primary; fg = colors.white; glow = shadow.glow(accentTheme.primary); }
-  else if (variant === 'danger') { bg = colors.error; fg = colors.white; }
+  // R06.04 — the label colour is chosen for contrast on the fill (onColor).
+  if (variant === 'primary') { bg = accentTheme.primary; fg = onColor(accentTheme.primary); glow = shadow.glow(accentTheme.primary); }
+  else if (variant === 'danger') { bg = colors.error; fg = onColor(colors.error); }
   else if (variant === 'tonal') { bg = hexA(accent, 0.14); fg = accent; border = hexA(accent, 0.28); }
   else if (variant === 'ghost') { bg = 'transparent'; fg = accent; border = colors.border; }
 
@@ -68,9 +72,12 @@ export default function Button({
       // Sahip olunan durum her koşulda duyurulur; çağıran ek anahtar
       // (örn. `selected`) ekleyebilir ve çakışan anahtarda üstün gelir.
       accessibilityState={{ disabled: !!isDisabled, busy: !!loading, ...a11y.accessibilityState }}
+      // R06.04 — at least 44pt to touch, whatever the visual size.
+      hitSlop={sz.h < MIN_TOUCH ? { top: (MIN_TOUCH - sz.h) / 2, bottom: (MIN_TOUCH - sz.h) / 2, left: 0, right: 0 } : undefined}
       style={[
         {
-          height: sz.h,
+          // R06.04 — minHeight, not height: large system text grows the button instead of clipping it.
+          minHeight: sz.h,
           paddingHorizontal: sz.px,
           borderRadius: radius.md,
           backgroundColor: bg,

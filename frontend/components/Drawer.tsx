@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDrawerStore } from '../store/drawerStore';
 import { fontFamily, colors, alphaHex } from '../lib/tokens';
+import { useReducedMotion } from './seasonalMotion/useReducedMotion';
 
 const DRAWER_WIDTH = 280;
 
@@ -74,8 +75,15 @@ export default function Drawer() {
   const { isOpen, close } = useDrawerStore();
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
+    // R06.04 — "reduce motion": the drawer is simply there (or gone), no slide.
+    if (reduceMotion) {
+      translateX.setValue(isOpen ? 0 : -DRAWER_WIDTH);
+      backdropOpacity.setValue(isOpen ? 1 : 0);
+      return;
+    }
     Animated.parallel([
       Animated.spring(translateX, {
         toValue: isOpen ? 0 : -DRAWER_WIDTH,
@@ -89,7 +97,7 @@ export default function Drawer() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [isOpen, translateX, backdropOpacity]);
+  }, [isOpen, translateX, backdropOpacity, reduceMotion]);
 
   function navigate(route: string) {
     const base = route.split('?')[0];

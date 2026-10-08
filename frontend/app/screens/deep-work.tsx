@@ -166,7 +166,7 @@ export default function DeepWorkScreen() {
             <TextInput
               style={s.input}
               placeholder="Ne üzerine çalıştın?"
-              placeholderTextColor={colors.textGhost}
+              placeholderTextColor={colors.textFaint}
               value={subject}
               onChangeText={setSubject}
               autoFocus
@@ -192,7 +192,7 @@ export default function DeepWorkScreen() {
             <TextInput
               style={s.input}
               placeholder="Dakika (özel)"
-              placeholderTextColor={colors.textGhost}
+              placeholderTextColor={colors.textFaint}
               value={minutes}
               onChangeText={(t) => { setMinutes(t); setEntryError(null); }}
               keyboardType="numeric"

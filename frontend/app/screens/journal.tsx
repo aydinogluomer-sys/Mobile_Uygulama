@@ -207,7 +207,7 @@ export default function JournalScreen() {
             <TextInput
               style={s.textArea}
               placeholder="Bugünü anlat..."
-              placeholderTextColor={colors.textGhost}
+              placeholderTextColor={colors.textFaint}
               multiline
               value={content}
               onChangeText={(t) => edit(t, mood)}

@@ -26,8 +26,10 @@ import { computeTriage, triageToStatus, impactMeta, TRIAGE_META, cueLabel } from
 import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from '../../lib/capacity';
 import { isMeasurableTracking } from '../../lib/habitEngine';
 import { explainActivation } from '../../services/capacityService';
+import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 
 export default function HabitsScreen() {
+  const reduceMotion = useReducedMotion(); // R06.04 — toasts appear without the slide
   const { habits, loading, fetchHabits, addHabit, activateHabit, pauseHabit, updateHabit, removeHabit, restoreHabit, purgeHabit } = useHabitStore();
   const { state: wp, fetchToday, canActivate, spend, refund, isStale } = useWillpowerStore();
   // R03.04 — the same rule activation uses, in words: why it waits, how to start it.
@@ -462,14 +464,14 @@ ${e.how}`,
 
       {/* XP animasyonu */}
       {xpAnim !== null && (
-        <Animatable.View animation="fadeInUp" style={styles.xpToast}>
+        <Animatable.View animation={reduceMotion ? undefined : 'fadeInUp'} style={styles.xpToast}>
           <Text style={styles.xpToastText}>+{xpAnim} XP</Text>
         </Animatable.View>
       )}
 
       {/* Geri Al toast */}
       {pendingDelete && (
-        <Animatable.View animation="fadeInUp" duration={250} style={styles.undoToast}>
+        <Animatable.View animation={reduceMotion ? undefined : 'fadeInUp'} duration={250} style={styles.undoToast}>
           <Ionicons name="trash" size={16} color={colors.error} />
           <Text style={styles.undoText} numberOfLines={1}>
             &quot;{pendingDelete.habit.name}&quot; silindi
@@ -523,7 +525,7 @@ ${e.how}`,
             <TextInput
               style={styles.reasonInput}
               placeholder="Veya kendi nedenini yaz (opsiyonel)"
-              placeholderTextColor={colors.textGhost}
+              placeholderTextColor={colors.textFaint}
               value={DELETE_REASONS.includes(deleteReason) ? '' : deleteReason}
               onChangeText={setDeleteReason}
             />

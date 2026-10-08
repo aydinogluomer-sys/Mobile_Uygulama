@@ -15,6 +15,29 @@ export function hexA(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** R06.04 — WCAG relative luminance of a #RRGGBB colour. */
+function luminance(hex: string): number {
+  const h = hex.replace('#', '');
+  const ch = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+}
+
+/** R06.04 — WCAG contrast ratio between two #RRGGBB colours (1..21). */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * R06.04 — the text colour for a FILLED background: white when it reaches
+ * 4.5:1 there, otherwise the app's dark ink. (White on the clay accent is
+ * only 3.1:1; the dark ink is 5.9:1.) Works for every accent theme.
+ */
+export function onColor(bgHex: string): string {
+  return contrastRatio('#ffffff', bgHex) >= 4.5 ? '#ffffff' : '#15140F';
+}
+
 export const colors = {
   // Katmanlı sıcak yüzeyler (warm near-black, asla mavi)
   bg: '#15140F',
@@ -32,7 +55,9 @@ export const colors = {
   // Sıcak ink metin
   text: '#EDEAE0',
   textDim: '#BFBBAE',
-  textFaint: '#827E72',
+  // R06.04: was #827E72 (4.21:1 on surface -- below WCAG AA for small text);
+  // now >= 4.6:1 on bg, surface and surfaceAlt.
+  textFaint: '#928E82',
   textGhost: '#56544B',
 
   // Marka — tek clay accent (cerrahi kullanım)

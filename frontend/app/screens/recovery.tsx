@@ -724,7 +724,7 @@ export default function RecoveryScreen() {
               <TextInput
                 style={s.noteInput}
                 placeholder="Örn. kahvaltıdan hemen sonra, salonda 15 dk"
-                placeholderTextColor={colors.textGhost}
+                placeholderTextColor={colors.textFaint}
                 value={note}
                 onChangeText={setNote}
                 multiline
@@ -754,7 +754,7 @@ export default function RecoveryScreen() {
                     value={reminderTime}
                     onChangeText={setReminderTime}
                     placeholder="20:00"
-                    placeholderTextColor={colors.textGhost}
+                    placeholderTextColor={colors.textFaint}
                     maxLength={5}
                     accessibilityLabel="Hatırlatıcı saati"
                   />

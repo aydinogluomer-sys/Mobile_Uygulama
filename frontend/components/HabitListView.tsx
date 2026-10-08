@@ -13,6 +13,7 @@ import {
 import { LIFE_AREAS } from '../store/lifeAreasStore';
 import type { Habit } from '../lib/supabase';
 import { colors, space, radius, font, hexA, shadow, fontFamily } from '../lib/tokens';
+import { useReducedMotion } from './seasonalMotion/useReducedMotion';
 import { haptic } from '../lib/haptics';
 import { Chip, Badge, IconCircle, EmptyState } from './ui';
 import { isMeasurableTracking } from '../lib/habitEngine';
@@ -60,7 +61,9 @@ export default function HabitListView() {
 
   useEffect(() => { fetchHabits(); }, [fetchHabits]);
 
+  const reduceMotion = useReducedMotion();
   function animate() {
+    if (reduceMotion) return; // R06.04
     LayoutAnimation.configureNext(
       LayoutAnimation.create(180, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity),
     );
@@ -170,7 +173,7 @@ export default function HabitListView() {
           <TextInput
             style={s.searchInput}
             placeholder="Alışkanlık ara..."
-            placeholderTextColor={colors.textGhost}
+            placeholderTextColor={colors.textFaint}
             value={search}
             onChangeText={setSearch}
           />

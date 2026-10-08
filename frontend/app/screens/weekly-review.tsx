@@ -415,7 +415,7 @@ export default function WeeklyReviewScreen() {
               <TextInput
                 style={s.questionInput}
                 placeholder={question.placeholder}
-                placeholderTextColor={colors.textGhost}
+                placeholderTextColor={colors.textFaint}
                 multiline
                 value={answers[question.key] ?? ''}
                 onChangeText={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
