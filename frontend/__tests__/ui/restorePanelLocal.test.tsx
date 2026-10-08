@@ -14,7 +14,7 @@ jest.mock('../../services/localBackupService', () => ({
   runLocalBackup: (...a: unknown[]) => (mockRun as any)(...a),
   latestCompleteLocalBackup: jest.fn(async () => ({ text: '{"manifest":{}}', created_at: '2026-10-08T09:00:00Z' })),
 }));
-jest.mock('../../services/restoreService', () => ({ dryRunRestore: (...a: unknown[]) => (mockDry as any)(...a), executeRestore: jest.fn() }));
+jest.mock('../../services/restoreService', () => ({ dryRunRestore: (...a: unknown[]) => (mockDry as any)(...a), executeRestore: jest.fn(), loadRestoreJob: jest.fn(async () => null) }));
 
 import RestorePanel from '../../components/RestorePanel';
 

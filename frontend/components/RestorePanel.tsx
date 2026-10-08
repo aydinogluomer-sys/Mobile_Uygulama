@@ -9,7 +9,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { colors, space, radius } from '../lib/tokens';
-import { dryRunRestore, executeRestore, type RestoreReport } from '../services/restoreService';
+import { dryRunRestore, executeRestore, loadRestoreJob, type RestoreReport } from '../services/restoreService';
+import { isInterrupted, interruptedText, type RestoreJob } from '../lib/restoreJob';
 import { loadLocalBackupStatus, runLocalBackup, latestCompleteLocalBackup } from '../services/localBackupService';
 import { statusText, EMPTY_STATUS, type LocalBackupStatus } from '../lib/backupRotation';
 import { currentUser } from '../lib/session';
@@ -23,6 +24,10 @@ export default function RestorePanel() {
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<RestoreReport | null>(null);
   const cancel = useRef(false);
+  // R08.04 — the job this file is (same file = same job), and an interrupted one from before.
+  const [job, setJob] = useState<{ id: string; fileCreatedAt: string; resumes: boolean } | null>(null);
+  const [lastJob, setLastJob] = useState<RestoreJob | null>(null);
+  useEffect(() => { void loadRestoreJob().then(setLastJob).catch(() => undefined); }, []);
   // R08.02 — the automatic local copy: honest status, a manual run, and a check of the newest complete copy.
   const [local, setLocal] = useState<LocalBackupStatus>(EMPTY_STATUS);
   const [localBusy, setLocalBusy] = useState(false);
@@ -44,7 +49,7 @@ export default function RestorePanel() {
     const r = await dryRunRestore(b.text);
     setBusy(false);
     if (!r.ok) { setError(r.reason); return; }
-    setPlan(r.plan); setSummary(r.summary);
+    setPlan(r.plan); setSummary(r.summary); setJob(r.job);
   }
 
   async function check() {
@@ -52,7 +57,7 @@ export default function RestorePanel() {
     const r = await dryRunRestore(text);
     setBusy(false);
     if (!r.ok) { setError(r.reason); return; }
-    setPlan(r.plan); setSummary(r.summary);
+    setPlan(r.plan); setSummary(r.summary); setJob(r.job);
   }
 
   function confirmMerge() {
@@ -72,10 +77,11 @@ export default function RestorePanel() {
     if (!plan) return;
     cancel.current = false;
     setBusy(true);
-    const rep = await executeRestore(plan, { shouldCancel: () => cancel.current });
+    const rep = await executeRestore(plan, { shouldCancel: () => cancel.current, job: job ?? undefined });
     setBusy(false);
     setReport(rep);
     setPlan(null);
+    setLastJob(await loadRestoreJob());
   }
 
   return (
@@ -92,6 +98,9 @@ export default function RestorePanel() {
         </TouchableOpacity>
       </View>
       <Text style={s.title}>Dışa aktarımı doğrula ve eksikleri ekle</Text>
+      {isInterrupted(lastJob) && !plan && (
+        <Text style={s.line} accessibilityRole="alert">{interruptedText(lastJob!)}</Text>
+      )}
       <Text style={s.sub}>
         JSON dışa aktarımının metnini buraya yapıştır. Önce yalnız kontrol edilir; hiçbir şey yazılmaz.
         Alışkanlık kayıtları (XP üretir), odak oturumları ve webhook&apos;lar geri yüklenmez.
@@ -110,8 +119,9 @@ export default function RestorePanel() {
           <Text style={s.btnText}>Doğrula (kuru çalıştırma)</Text>
         </TouchableOpacity>
         {plan && (
-          <TouchableOpacity style={[s.btn, s.primary]} onPress={confirmMerge} disabled={busy} accessibilityRole="button" accessibilityLabel="Eksik kayıtları ekle">
-            <Text style={s.primaryText}>Eksikleri ekle</Text>
+          <TouchableOpacity style={[s.btn, s.primary]} onPress={confirmMerge} disabled={busy} accessibilityRole="button"
+            accessibilityLabel={job?.resumes ? 'Yarım kalan geri yüklemeyi sürdür' : 'Eksik kayıtları ekle'}>
+            <Text style={s.primaryText}>{job?.resumes ? 'Sürdür' : 'Eksikleri ekle'}</Text>
           </TouchableOpacity>
         )}
         {busy && plan === null && report === null && <ActivityIndicator color={colors.accent} />}
