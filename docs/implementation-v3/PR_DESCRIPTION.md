@@ -1,84 +1,95 @@
-# Core completion: F01–F08 (habit engine, capacity & recovery, local-first sync, routines & focus, reminders, journal & moods, export check & merge, AI coach)
+# Core completion: R00–R11 (habit engine, capacity & recovery, local-first sync, reminders, routines & focus, design & accessibility, journal & moods, backup & restore, AI coach, quality acceptance)
 
-Base `main` ← `feature/r01-period-status`. 21 commits on top of `f6721bf`, one per card/phase; each commit passed the full gate on its own.
+Base `main` ← `feature/r01-period-status`. Every card is one commit that passed the full gate on its
+own; the card-by-card evidence (file + test + commit) is `docs/implementation-v3/CORE_AUDIT.md`, and the
+acceptance summary built only from it is `docs/implementation-v3/R10_ACCEPTANCE_REPORT.md`.
+
+## Result
+
+86 cards: **78 DONE**, 0 partial, 0 not started. **3 blocked on owner decisions** (S11 log undo, S7
+SQLite, S13 voice step announcements). **5 N/R** (device / user measurements; none invented).
+`CORE_IMPLEMENTATION: COMPLETE (3 owner-blocked)` · `CORE_QUALITY: NOT_MEASURED (automated evidence only)`
+· `RELEASE_READINESS: DEFERRED` — `R11_CORE_CLOSURE.md`. The 9–9.5 target is a target, not yet shown.
+No independent reviewer took part, so nothing here says "independent PASS".
 
 ## Gate (run twice, back to back, on the final commit)
 
 - `npm run typecheck:ci` — 0 errors
 - `npm run lint:ci` — 0 warnings
 - `node run-tests.js` — 145/145
-- `npx jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB` — 195 suites / 2894 tests (was 146 / 2444)
+- `npx jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB` — **253 suites / 3404 tests**
 - `git diff --check` — clean
 
-Every behaviour change carries mutation evidence (byte-identical restore, sha256 checked): ≈175 mutants across the plan, 0 surviving. No existing test was weakened; the five that were retargeted say why in `docs/implementation-v3/STATE.md`.
+Every behaviour change carries mutation evidence (byte-identical restore, sha256 checked). Each survivor
+was killed by a new discriminating test or argued equivalent in its audit row. No test was weakened;
+every retarget is justified in `STATE.md` ("CORE_AUDIT aşaması").
 
 ## Before merging — read this
 
-**The database is frozen.** Nothing in this PR touched Supabase. Five migrations are **written and NOT applied** (`supabase/migrations/README.md` marks them):
+**The database is frozen.** Nothing in this PR read or wrote Supabase. Eight migrations are **written
+and NOT applied** (`supabase/migrations/README.md`), statically checked by `repo/migrationRlsGuard.test.ts`
+(owner-only RLS, `authenticated` only, no GRANT / SECURITY DEFINER / `USING (true)`):
 
-| Migration | For | Until it is applied |
-|---|---|---|
-| `028_habit_pauses_and_goal_versions` | dated breaks, holiday mode, effective-dated goals | sheets say "sunucu güncellemesi bekleniyor"; behaviour unchanged |
-| `029_habit_checklists` | habit checklists | editor says pending; no habit has a checklist |
-| `030_routine_runner` | runner templates / sessions | runner works on the device, per account |
-| `031_moods_and_review_actions` | named moods, check-ins, review actions | on the device, per account |
-| `032_coach_actions_v2` | second coach action set | behind `COACH_ACTIONS_V2_ENABLED = false` |
+| Migration | For | Until applied | Gate after |
+|---|---|---|---|
+| `028_habit_pauses_and_goal_versions` | dated breaks, holiday mode, effective-dated goals | fail-open: behaviour as before | — |
+| `029_habit_checklists` | habit checklists | editor says pending | — |
+| `030_routine_runner` | runner templates / versions / sessions | on the device, per account | — |
+| `031_moods_and_review_actions` | named moods, check-ins, review next action | on the device, per account | — |
+| `032_coach_actions_v2` | second coach action set (CHECK) | behind the gate | ↓ |
+| `033_habit_log_timezone` | `habit_logs.tz` | the zone is captured, not sent | `LOG_TIMEZONE_ENABLED` |
+| `034_coach_reminder_action` | coach reminder-time action (CHECK, 9 types) | behind the gate | ↓ |
+| `035_coach_lighten_week` | coach "lighten this week" (CHECK, 10 types) | behind the gate | `COACH_ACTIONS_V2_ENABLED` after 032+034+035 **and** the `generate-routine` deploy (S3) |
 
-The client is fail-open **only on a missing table** (PGRST205 / 42P01); any other read error is an error.
+Order, verification queries, the S11 read-only queries and the KD-10/KD-11 counts:
+`docs/implementation-v3/SQL_FOR_OWNER.md`. The client is fail-open **only on a missing table**
+(PGRST205 / 42P01). The `generate-routine` edge function source changed and is **not deployed**.
 
-The `generate-routine` edge function source changed (new tool schema + prompt rules) and is **not deployed**. Turn-on order for the coach set: apply 032 → deploy the function → flip the gate.
+All five existing gates stay `false`; the two new ones (`COACH_ACTIONS_V2_ENABLED`,
+`LOG_TIMEZONE_ENABLED`) are `false`. Nothing deferred was turned on.
 
-## What changed, by phase
+## What changed, by package
 
-### F01 — schedule engine
-- A measurable make-up asks for the amount instead of writing "done" with no value (KD-12).
-- An active habit outside its date range carries no load in any activation gate (KD-08).
-- An installed habit's schedule can be edited with the creation form's own controls (KD-09).
-- A count habit already met this period steps aside on Today (R01.06-b).
-- Log undo is **blocked** (S11): deleting a log does not reverse its XP, and the trigger is not in the repository.
-
-### F02 — capacity, recovery, checklists
-- "Bugün daha az yapabilirim": the user sets chosen habits aside for today (skip — no goal changes).
-- Recovery planning previews the target day's load.
-- Start small: a task's first concrete step as its own focus session; it never completes the task.
-- Skip / break / holiday are separate models; schedule and goal edits take effect from a date and never re-score the past.
-- Habit checklists: required/optional steps and a per-day instance driving the day's log.
-
-### F03 — local-first sync
-- A durable per-account outbox (idempotent operation ids, collapsing, tombstones, dependencies, in-flight marking, auth pause, backoff, conflicts surfaced). Today's tasks work offline and survive an app kill.
-- Fixtures: 100 offline actions + kill + network return, five re-deliveries = one row, lost responses, two devices, delete vs late edit, account switch, expired session. One fixture caught a flush that outlived a sign-out writing account A's task into account B; fixed in the runner and the repository.
-- SQLite is **not** added (S7).
-
-### F04 — reminders (widgets / Live Activities stay deferred)
-- The per-habit DAILY trigger is gone. Reminders are planned from the schedule (breaks, holidays, met periods, logged days, waiting habits, quiet hours, day groups) as one-off triggers and reconciled on launch/foreground/changes.
-- Up to four times a day, day groups, quiet hours, hidden lock-screen titles, the real permission state.
-- Notification buttons: complete, enter amount (measurable habits are never logged done from a notification), snooze 10 min, skip today — each response acted on once.
-- The Android channel is created regardless of the permission path.
-
-### F05 — routines & focus
-- Focus timer counts running segments only, keeps the session's start across resumes, uses configured lengths, survives an app kill, and cannot record a session twice (KD-03).
-- One duration contract for pomodoro and deep work; typed durations are validated, not clamped.
-- A step-by-step routine runner: templates with immutable versions, session snapshots, in-session edits that never touch the template unless applied, user-only completion, linked habits logged once.
-- Routine packs install with their unit, goal, schedule and icon.
-
-### F06 — journal & moods
-- Tags, light formatting, habit links, an offline draft per day; a failed save is no longer shown as saved.
-- Named moods with a stable identity, several check-ins a day, snapshots so a rename never rewrites history.
-- A mood–habit card with stated minimums and no causal claim.
-- The weekly review's "next week" can become a real task or a habit edit, shown again next week.
-
-### F07 — export check & merge
-- Export format 3 with a manifest; a pasted export is verified and dry-run before anything is written; the merge only adds missing rows. Habit logs (server XP), focus sessions and webhooks are never restored; authority fields are never taken from a file. This is a **partial merge, not a restore**, and the screen says so.
-- Mapped CSV import for tasks and journal entries.
-
-### F08 — AI coach
-- Second action set (schedule edit, dated break, move task, small step, lighter today), behind its gate.
-- Every coach write re-checks its target against the version it was staged with.
+- **R01 — goals, schedules, logs.** Month days and yearly dates (short-month / leap-year policy);
+  period status (an open period is not a failure); dated breaks and holidays separate from skips;
+  effective-dated goal edits that never re-score the past; one local-day contract with the writing
+  zone; 134 cross-consumer fixtures (Today, reminders, recovery, reports, capacity agree on 16 edge dates).
+- **R02 — local-first sync.** Task outbox plus a core outbox for journal, notes, recovery plans and
+  focus sessions: written on the device before the request, idempotent re-delivery (23505 = applied),
+  versioned conflicts kept for the user to choose, per-account queues with a generation guard, local
+  state and scheduled reminders cleared on sign-out.
+- **R03 — capacity, small start, recovery.** One next actionable step; a lighter day the user chooses;
+  a task's first step as its own focus session; why an activation was refused and what to do; make-up
+  load preview; a one-directional progress model.
+- **R04 — reminders.** Planned from the schedule (not a daily trigger), multiple times and day groups,
+  quiet hours, notification actions acted on once, Android channel always created.
+- **R05 — routines & focus.** Template / version / session runner; kill-proof timer; one duration
+  contract; linked habits logged once and the report fed from the same summary; the runner reaches no
+  provider or music module (test).
+- **R06 — simplicity & accessibility.** Design system with token parity; one dominant action; shared
+  form feedback; measured contrast (`textFaint` raised to AA); privacy cover; nine screen states.
+- **R07 — journal, moods, analysis.** Search (Turkish folding) and calendar; amount/duration reports
+  from period status; mood–habit relation with stated minimums and no causal claim; accessible chart text.
+- **R08 — backup & restore.** 31 collections, manifest with relations and snapshot window, keyset
+  reads to 20.000 rows, dry run, resumable restore job (same file = same job, nothing twice), authority
+  never restored, 10 restore drills (5.200-row full loss reconciles counts and hashes).
+- **R09 — in-app AI.** Seven gated actions (schedule, break, move task, small step, lighter today,
+  reminder time, lighter week from the user's own load); an ambiguous name asks which one; every write
+  re-checks its target; journal context is the user's choice and the model's numbers are labelled as
+  commentary; a lost answer never costs twice; a pack is never shown as an AI answer; 100 tool-call
+  scenarios scored on tool / arguments / side effect separately (model half N/R).
+- **R10 — quality acceptance.** Single-effect table (three double effects found and fixed); no raw
+  console writes anywhere outside the scrubbing funnel; Turkish decimals, `tr-TR` dates, Monday weeks;
+  10.000-row paging; static RLS guard; this report.
+- **R11 — evaluation.** CP/CE weights frozen before results (tested against the plan); two user rounds
+  planned (execution N/R); closure in three separate results.
 
 ## Not in this PR (owner decisions)
 
-S1 database restore · S2 applying migrations 028–032 · S3 edge deploy · S4 KD-10/11 backfill · S5 `bypassPermissions` · S6 Habitify/Daylio sample · S7 `expo-sqlite` · S8 device evidence (R02.08, R04.05, R05.08, R11 are N/R) · S11 log undo · S12 schema not reproducible from the repo · S13 `expo-speech` · S14 `expo-document-picker` · the skip-cap question.
-
-Full acceptance table: `docs/implementation-v3/R10_ACCEPTANCE_REPORT.md`.
+S1 database restore · S2 applying 028–035 · S3 edge deploy · S4 KD-10/11 backfill · S5
+`bypassPermissions` · S6 Habitify/Daylio sample · S7 `expo-sqlite` · S8 device evidence · S9 push/PR/merge
+· S11 log undo · S12 schema not reproducible from the repo (incl. the FK-less `review_next_actions.task_id`)
+· S13 voice announcements — note: `expo-speech` is already a dependency (`c14627d`), so this needs only
+the owner's yes, not a new build · S14 `expo-document-picker` (paste works).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
