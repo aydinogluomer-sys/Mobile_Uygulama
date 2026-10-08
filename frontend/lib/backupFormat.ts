@@ -57,7 +57,58 @@ export const REGISTRY: readonly CollectionSpec[] = [
     reason: 'Odak oturumları puan üretir; dosyadan geri yüklenmez.' },
   { name: 'webhooks', restorable: false, order: 3,
     reason: 'Başlıkları (gizli anahtarları) dışa aktarılmadı; geri yüklense çalışmaz.' },
+  // R08.01 — the rest of what the account owns.
+  { name: 'okrs', restorable: true, order: 1 },
+  { name: 'key_results', restorable: true, order: 2, relations: { okr_id: 'okrs' } },
+  { name: 'reading_list', restorable: true, order: 1 },
+  { name: 'focus_tasks', restorable: true, order: 1 },
+  { name: 'recovery_plans', restorable: true, order: 3, relations: { habit_id: 'habits' } },
+  { name: 'weekly_reviews', restorable: true, order: 2, uniqueBy: 'week_key' },
+  { name: 'monthly_reviews', restorable: true, order: 2, uniqueBy: 'month_key' },
+  { name: 'life_area_logs', restorable: false, order: 3,
+    reason: 'Yaşam alanı puanını besliyor; sunucu tarafı etkisi bu depoda tanımlı değil (S12) — yalnız dışa aktarılır.' },
+  { name: 'deep_work_sessions', restorable: false, order: 3,
+    reason: 'Derin çalışma oturumları puan üretebilir; odak oturumları gibi dosyadan geri yüklenmez.' },
+  { name: 'ai_conversations', restorable: false, order: 3,
+    reason: 'Koç sohbetleri ve onay bekleyen eylemleri yalnız okunmak için dışa aktarılır; geri yükleme eski bir eylemi yeniden çalıştırabilirdi.' },
+  { name: 'ai_messages', restorable: false, order: 3, relations: { conversation_id: 'ai_conversations' },
+    reason: 'Sohbetle birlikte yalnız dışa aktarılır.' },
+  { name: 'ai_conversation_actions', restorable: false, order: 3, relations: { conversation_id: 'ai_conversations' },
+    reason: 'Koçun önerdiği eylemler ve onay durumları: yalnız dışa aktarılır, geri yükleme bir eylemi yeniden çalıştırabilirdi.' },
+  { name: 'journal_insights', restorable: false, order: 3,
+    reason: 'FP ile üretilen AI özetleri: dosyadan geri yüklemek ödenmemiş bir özet yaratırdı (R08.05).' },
+  { name: 'routines', restorable: false, order: 3,
+    reason: 'AI rutin önerilerinin geçmişi: yalnız dışa aktarılır; geri yükleme yeniden kurulum gibi davranabilirdi.' },
+  { name: 'habit_deletions', restorable: false, order: 3,
+    reason: 'Silinen alışkanlıkların kaydı: bilgi için dışa aktarılır.' },
+  // Migrations 028/029 (NOT APPLIED): until they run these tables do not exist and are skipped, not failed.
+  { name: 'habit_pauses', restorable: true, order: 2, relations: { habit_id: 'habits' } },
+  { name: 'habit_goal_versions', restorable: true, order: 2, relations: { habit_id: 'habits' } },
+  { name: 'habit_checklist_items', restorable: true, order: 2, relations: { habit_id: 'habits' } },
+  { name: 'habit_checklist_checks', restorable: true, order: 3, relations: { item_id: 'habit_checklist_items' } },
+  { name: 'device', restorable: false, order: 4,
+    reason: 'Bu cihazdaki ayarlar ve yerel veriler (duygular, rutinler, hatırlatma ayarları): bilgi için dışa aktarılır, başka cihaza otomatik yazılmaz.' },
 ];
+
+/**
+ * R08.01 — every server collection the export reads, by table. `device` is
+ * not a table: it is this device's own settings and local data.
+ */
+export const SERVER_COLLECTIONS = REGISTRY.map((c) => c.name).filter((n) => n !== 'device');
+
+/**
+ * R08.01 — tables the app touches that are deliberately NOT in a backup:
+ * the server owns them (scores, budgets, credits, badges, profile counters,
+ * install state). Pinned by __tests__/repo/backupRegistryComplete.test.ts:
+ * a new table must land in the registry or here, with a reason.
+ */
+export const NOT_BACKED_UP: Readonly<Record<string, string>> = {
+  profiles: 'XP, seviye ve sayaçlar sunucu otoritesidir (R08.05).',
+  profile_badges: 'Rozetleri sunucu verir.',
+  willpower_state: 'Günlük irade bütçesi sunucu tarafında yeniden kurulur.',
+  credit_transactions: 'FP hareketleri sunucu otoritesidir (R08.05).',
+  user_onboarding: 'Kurulum kimliği ve durumu cihaz/oturuma bağlıdır.',
+};
 
 export const specFor = (name: string) => REGISTRY.find((c) => c.name === name);
 

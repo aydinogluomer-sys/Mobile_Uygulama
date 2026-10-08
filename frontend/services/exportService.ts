@@ -100,6 +100,10 @@ import { toExcelXML, type ExcelSheet, type ExcelCell } from '../lib/focusReport'
 // R08.01/02 — the manifest (account, per-collection count + checksum) that a
 // later check-and-merge (services/restoreService) verifies before reading.
 import { buildManifest, type Manifest } from '../lib/backupFormat';
+// R08.01 — the rest of the account (full tables) and this device's own data.
+import { fetchOwnedTable, EXPORT_EXTRA_TABLES, isMissingTable, type ExportTable } from '../repositories/restoreRepository';
+import { deviceEntries, type DeviceEntry } from '../lib/deviceExport';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /** 3: adds `manifest`. The collections themselves are unchanged from 2. */
 export const EXPORT_FORMAT_VERSION = 3;
@@ -124,6 +128,28 @@ export type Backup = {
   focus_sessions: unknown[];
   bad_habits: unknown[];
   webhooks: unknown[];
+  // R08.01
+  okrs: unknown[];
+  key_results: unknown[];
+  reading_list: unknown[];
+  focus_tasks: unknown[];
+  recovery_plans: unknown[];
+  weekly_reviews: unknown[];
+  monthly_reviews: unknown[];
+  life_area_logs: unknown[];
+  deep_work_sessions: unknown[];
+  ai_conversations: unknown[];
+  ai_messages: unknown[];
+  ai_conversation_actions: unknown[];
+  journal_insights: unknown[];
+  routines: unknown[];
+  habit_deletions: unknown[];
+  habit_pauses: unknown[];
+  habit_goal_versions: unknown[];
+  habit_checklist_items: unknown[];
+  habit_checklist_checks: unknown[];
+  /** This device's settings and local-only data (allowlisted keys, see lib/deviceExport). */
+  device: DeviceEntry[];
   notes_on_contents: string[];
   /** Absent only when no account could be resolved; such a file can never be read back. */
   manifest?: Manifest;
@@ -203,10 +229,32 @@ export async function buildBackup(now: Date = new Date(), opts: { userId?: strin
 
   const safeWebhooks = (webhooks as { headers?: unknown }[]).map(({ headers: _omitted, ...rest }) => rest);
   const userId = opts.userId ?? null;
+
+  // R08.01 — every other owned table, in full (keyset-paged, same ceiling).
+  const extra = {} as Record<ExportTable, Record<string, unknown>[]>;
+  for (const t of EXPORT_EXTRA_TABLES) {
+    const r = await fetchOwnedTable(t, MAX_ROWS);
+    // A table whose migration has not run yet is not there to back up (not a failure).
+    if (!r.ok) { if (!isMissingTable(r.code)) failed.push({ collection: t, error: r.error }); extra[t] = []; continue; }
+    if (r.data.truncated) truncated.push(t);
+    extra[t] = r.data.rows;
+  }
+  // R08.01 — this device's own settings and local-only data (allowlist; never sessions or tokens).
+  let device: DeviceEntry[] = [];
+  if (userId) {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      device = deviceEntries(await AsyncStorage.multiGet(keys), userId);
+    } catch (e) {
+      failed.push({ collection: 'device', error: e instanceof Error ? e.message : 'cihaz verisi okunamadı' });
+    }
+  }
+
   const manifest = userId
     ? buildManifest(userId, now.toISOString(), {
         habits, habit_logs: habitLogs, tasks, projects, goals, notes,
         journal_entries: journal, focus_sessions: focus, bad_habits: badHabits, webhooks: safeWebhooks,
+        ...(Object.fromEntries(EXPORT_EXTRA_TABLES.map((t) => [t, extra[t]])) as Record<string, unknown[]>), device,
       })
     : undefined;
 
@@ -227,8 +275,19 @@ export async function buildBackup(now: Date = new Date(), opts: { userId?: strin
     bad_habits: badHabits,
     // Registrations without their headers -- see the module note.
     webhooks: safeWebhooks,
+    okrs: extra.okrs, key_results: extra.key_results, reading_list: extra.reading_list,
+    focus_tasks: extra.focus_tasks, recovery_plans: extra.recovery_plans,
+    weekly_reviews: extra.weekly_reviews, monthly_reviews: extra.monthly_reviews,
+    life_area_logs: extra.life_area_logs, deep_work_sessions: extra.deep_work_sessions,
+    ai_conversations: extra.ai_conversations, ai_messages: extra.ai_messages,
+    ai_conversation_actions: extra.ai_conversation_actions, journal_insights: extra.journal_insights,
+    routines: extra.routines, habit_deletions: extra.habit_deletions,
+    habit_pauses: extra.habit_pauses, habit_goal_versions: extra.habit_goal_versions,
+    habit_checklist_items: extra.habit_checklist_items, habit_checklist_checks: extra.habit_checklist_checks,
+    device,
     notes_on_contents: [
       'Yalnızca bu hesaba ait kayıtlar. Webhook başlıkları (headers) güvenlik gerekçesiyle dışarıda bırakıldı.',
+      'Cihaz bölümü: bu cihazdaki ayarlar ve yerel veriler; oturum ve erişim anahtarları asla dahil edilmez.',
       truncated.length ? `Sınıra takılan ve eksik kalan bölümler: ${truncated.join(', ')}.` : 'Tüm bölümler eksiksiz.',
       failed.length ? `Okunamayan bölümler: ${failed.map((f) => f.collection).join(', ')}.` : 'Okuma hatası yok.',
     ],
@@ -242,6 +301,10 @@ export async function buildBackup(now: Date = new Date(), opts: { userId?: strin
 const COLLECTIONS: (keyof Backup)[] = [
   'habits', 'habit_logs', 'tasks', 'projects', 'goals',
   'notes', 'journal_entries', 'focus_sessions', 'bad_habits', 'webhooks',
+  'okrs', 'key_results', 'reading_list', 'focus_tasks', 'recovery_plans', 'weekly_reviews', 'monthly_reviews',
+  'life_area_logs', 'deep_work_sessions', 'ai_conversations', 'ai_messages',
+  'ai_conversation_actions', 'journal_insights', 'routines', 'habit_deletions',
+  'habit_pauses', 'habit_goal_versions', 'habit_checklist_items', 'habit_checklist_checks', 'device',
 ];
 
 /** Union of the keys present across rows, so a sparse column is not dropped. */

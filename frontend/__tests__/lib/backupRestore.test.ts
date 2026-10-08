@@ -49,7 +49,14 @@ describe('R08.05 — authority is never taken from a file', () => {
     expect(stripped.sort()).toEqual(['access_token', 'headers', 'tier', 'total_xp', 'xp']);
   });
   it('server-scored and secret-less collections are not restorable', () => {
-    expect(REGISTRY.filter((c) => !c.restorable).map((c) => c.name).sort()).toEqual(['focus_sessions', 'habit_logs', 'webhooks']);
+    // R08.01 added EXPORT-ONLY collections (no earlier collection changed side):
+    // life_area_logs / deep_work_sessions (scoring effects not defined here), the
+    // coach's conversations, messages and actions (staged actions must not re-run),
+    // FP-paid journal insights, routine proposals, habit deletions, device data.
+    expect(REGISTRY.filter((c) => !c.restorable).map((c) => c.name).sort()).toEqual([
+      'ai_conversation_actions', 'ai_conversations', 'ai_messages', 'deep_work_sessions', 'device', 'focus_sessions',
+      'habit_deletions', 'habit_logs', 'journal_insights', 'life_area_logs', 'routines', 'webhooks',
+    ]);
   });
 });
 

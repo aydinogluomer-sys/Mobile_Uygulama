@@ -113,6 +113,12 @@ jest.mock('../../repositories/badHabitRepository', () => ({ fetchBadHabitsPage: 
 jest.mock('../../repositories/journalRepository', () => ({ fetchJournalEntries: jest.fn(async () => ({ ok: true, data: [] })) }));
 jest.mock('../../repositories/focusSessionRepository', () => ({ fetchAllFocusSessions: jest.fn(async () => ({ ok: true, data: [] })) }));
 jest.mock('../../repositories/webhookRepository', () => ({ fetchWebhooks: jest.fn(async () => ({ ok: true, data: mockRepoState.webhooks })) }));
+// R08.01: the rest of the owned tables are read through one generic reader.
+jest.mock('../../repositories/restoreRepository', () => ({
+  ...jest.requireActual('../../repositories/restoreRepository'),
+  fetchOwnedTable: jest.fn(async () => ({ ok: true, data: { rows: [], truncated: false } })),
+}));
+jest.mock('../../lib/supabase', () => ({ supabase: {} }));
 jest.mock('../../repositories/habitLogRepository', () => ({
   fetchHabitLogsForHabitsSince: jest.fn(async () =>
     mockRepoState.habitLogsFail

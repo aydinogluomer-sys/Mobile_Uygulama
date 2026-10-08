@@ -10,6 +10,8 @@ let mockReadFail = false;
 
 jest.mock('../../repositories/restoreRepository', () => ({
   RESTORE_TABLES: ['projects', 'habits', 'goals', 'tasks', 'notes', 'journal_entries', 'bad_habits'],
+  // R08.01: the real "table not created yet" rule (migration 028/029).
+  isMissingTable: jest.requireActual('../../lib/pgErrors').isMissingTable,
   fetchExistingRows: jest.fn(async (t: string) => (mockReadFail ? { ok: false, error: 'offline' } : { ok: true, data: [...(mockDb[t]?.values() ?? [])] })),
   insertRestoredRows: jest.fn(async (t: string, rows: any[]) => {
     if (t === mockFailTable) return { ok: false, error: 'refused' };

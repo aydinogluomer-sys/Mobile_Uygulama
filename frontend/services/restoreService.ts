@@ -15,9 +15,9 @@
  *   - parents first (projects before tasks), in chunks, and the user can
  *     cancel between chunks; what was written stays written and is reported.
  */
-import { verifyBackupText } from '../lib/backupFormat';
+import { verifyBackupText, specFor } from '../lib/backupFormat';
 import { planRestore, planSummary, type RestorePlan } from '../lib/restorePlan';
-import { fetchExistingRows, insertRestoredRows, RESTORE_TABLES, type RestoreTable } from '../repositories/restoreRepository';
+import { fetchExistingRows, insertRestoredRows, isMissingTable, RESTORE_TABLES, type RestoreTable } from '../repositories/restoreRepository';
 import { currentUser } from '../lib/session';
 
 export type DryRun =
@@ -30,14 +30,25 @@ export async function dryRunRestore(text: string): Promise<DryRun> {
   const check = verifyBackupText(text, user.id);
   if (!check.ok) return check;
   const existing: Record<string, Map<string, Record<string, unknown>>> = {};
+  const notOnServer: string[] = [];
   for (const t of RESTORE_TABLES) {
-    if (!check.collections[t]) continue;
+    if (!check.collections[t] || check.collections[t].length === 0) continue;
     const r = await fetchExistingRows(t);
+    // R08.01 — a table whose migration has not run (028/029) is not there to
+    // restore into: that collection is held back, the rest goes ahead.
+    if (!r.ok && isMissingTable(r.code)) { notOnServer.push(t); continue; }
     // An unreadable account is not "empty": refuse rather than plan duplicates.
     if (!r.ok) return { ok: false, reason: `Mevcut ${t} okunamadı: ${r.error}` };
     existing[t] = new Map(r.data.map((row) => [String(row.id), row]));
   }
   const plan = planRestore({ userId: user.id, file: check.collections, existing });
+  for (const c of plan.collections) {
+    if (notOnServer.includes(c.name)) {
+      c.blocked = 'Bu bölüm için sunucu tablosu henüz yok (migration uygulanmadı); dosyada saklı kalır.';
+      c.insert = [];
+    }
+  }
+  plan.inserts = plan.collections.reduce((n, c) => n + c.insert.length, 0);
   return { ok: true, plan, summary: planSummary(plan) };
 }
 
@@ -62,8 +73,11 @@ export async function executeRestore(plan: RestorePlan, opts: { shouldCancel?: (
     const table = c.name as RestoreTable;
     if (!RESTORE_TABLES.includes(table)) continue;
     // A parent that failed holds its children back: they would be orphans.
-    if (table === 'tasks' && report.failed.some((f) => f.collection === 'projects')) {
-      report.failed.push({ collection: 'tasks', error: 'Projeler eklenemediği için görevler eklenmedi.' });
+    // (R08.01: every registered relation, not only tasks -> projects.)
+    const parents = Object.values(specFor(table)?.relations ?? {});
+    const failedParent = parents.find((p) => report.failed.some((f) => f.collection === p));
+    if (failedParent) {
+      report.failed.push({ collection: table, error: `${failedParent} eklenemediği için ${table} eklenmedi.` });
       continue;
     }
     for (let i = 0; i < c.insert.length; i += CHUNK) {
