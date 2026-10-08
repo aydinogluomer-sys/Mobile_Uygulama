@@ -155,6 +155,8 @@ export default function AICoachScreen() {
   const [staged, setStaged] = useState<StagedCoachAction | null>(null);
   const [stagedV2, setStagedV2] = useState<CoachActionV2 | null>(null);
   const [stagedBusy, setStagedBusy] = useState(false);
+  // R10.02 — state lags a render: two taps in one frame both read stagedBusy=false.
+  const confirming = useRef(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
 
@@ -433,7 +435,8 @@ export default function AICoachScreen() {
    * rather than adding a second.
    */
   async function handleConfirmStaged() {
-    if (!staged || stagedBusy) return;
+    if (!staged || stagedBusy || confirming.current) return;
+    confirming.current = true;
     setStagedBusy(true);
     try {
       if (staged.kind === 'proposal') {
@@ -520,6 +523,7 @@ export default function AICoachScreen() {
 
       setStaged(null);
     } finally {
+      confirming.current = false;
       setStagedBusy(false);
     }
   }

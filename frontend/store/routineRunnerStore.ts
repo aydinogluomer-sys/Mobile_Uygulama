@@ -143,7 +143,8 @@ export const useRoutineRunnerStore = create<RunnerStore>((set, get) => {
 
     finish: () => {
       const s = get().session;
-      if (!s) return;
+      // R10.02 — an already finished session is not recorded again.
+      if (!s || s.status === 'finished') return;
       const done = finishSession(s, now());
       const entry: HistoryEntry = { id: done.id, templateName: done.templateName, startedAt: done.startedAt, endedAt: done.endedAt!, summary: summarize(done) };
       update({ session: done, history: [entry, ...get().history].slice(0, MAX_HISTORY) });

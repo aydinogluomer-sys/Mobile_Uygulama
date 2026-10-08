@@ -477,6 +477,16 @@ describe('conversational logging', () => {
     expect(args.state).toBe('done');
   });
 
+  it('R10.02 — two taps in the same frame still log once', async () => {
+    mockInvoke.mockResolvedValue({ data: { reply: 'ok', actions: [logAction()] }, error: null });
+    const tree = await render();
+    await ask(tree);
+    const press = buttonByLabel(tree, 'Kaydı işle')!.props.onPress;
+    await act(async () => { press(); press(); });
+
+    expect(mockLogHabit).toHaveBeenCalledTimes(1);
+  });
+
   it('a numeric statement passes the value and the habit target to the domain engine', async () => {
     // The engine decides done/partial/miss. This screen must not.
     mockInvoke.mockResolvedValue({

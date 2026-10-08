@@ -5,7 +5,7 @@
  * checked against the fingerprint taken when the card appeared; a changed
  * target is re-previewed, a gone one is dropped -- never written blind.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, space, radius } from '../../lib/tokens';
@@ -30,6 +30,8 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
+  // R10.02 — one card, one effect: a second press (in flight or after) writes nothing.
+  const applied = useRef(false);
 
   // Resolution + the fingerprint taken NOW (R09.03). An ambiguous match keeps
   // its candidates (as they were now) so the user can choose; nothing is guessed.
@@ -89,6 +91,8 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
   }
 
   async function confirm() {
+    if (applied.current) return;
+    applied.current = true;
     setBusy(true);
     try {
       // R09.03 — the entity as it is now, against the one the card showed.

@@ -95,6 +95,14 @@ describe('finishing and templates', () => {
     expect(st().history[0]).toMatchObject({ templateName: 'Akşam', summary: { skipped: 1, done: 0, total: 3 } });
   });
 
+  it('R10.02 — finishing twice (double tap, resumed screen) records the session once', () => {
+    st().start('builtin-evening');
+    const before = st().history.length;
+    st().finish();
+    st().finish();
+    expect(st().history.length).toBe(before + 1);
+  });
+
   it('an edited built-in becomes the user\'s copy; the built-in is untouched', () => {
     st().start('builtin-morning');
     st().addStep({ title: 'Yeni', kind: 'check' });
