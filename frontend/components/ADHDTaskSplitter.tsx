@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Task } from '../store/taskStore';
 import { createSubtasks as insertSplitTasks } from '../services/taskService';
+import { reportError } from '../lib/crashReporting';
 import {
   buildLocalSplitProposal,
   validateSubtaskProposal,
@@ -120,7 +121,8 @@ export default function ADHDTaskSplitter({
       onSplit(res.data);
       setPhase('done');
     } catch (error) {
-      console.error('Görev bölünürken hata:', error);
+      // R10.03 — through the scrubbing funnel, never raw to the device log.
+      reportError(error, 'manual', 'task-split');
       setSaveError(error instanceof Error ? error.message : 'Görev bölünürken bir hata oluştu.');
     } finally {
       setSaving(false);

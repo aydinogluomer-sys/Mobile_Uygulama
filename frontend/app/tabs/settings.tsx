@@ -40,6 +40,7 @@ import {
   type IntegrationCategoryId,
 } from '../../constants/integrations';
 import { CURRENT_FEATURES, UPCOMING_FEATURES, type FeatureHighlight } from '../../constants/features';
+import { reportError } from '../../lib/crashReporting';
 
 const SEASONAL_OPTIONS: { v: SeasonalMotionIntensity; l: string }[] = [
   { v: 'off', l: 'Kapalı' },
@@ -140,7 +141,8 @@ export default function SettingsScreen() {
       });
     } catch (error) {
       Alert.alert('Hata', 'Veriler dışa aktarılırken bir hata oluştu');
-      console.error('Export hatası:', error);
+      // R10.03 — through the scrubbing funnel, never raw to the device log.
+      reportError(error, 'manual', 'export');
     } finally {
       setExportingFormat(null);
     }
@@ -219,7 +221,7 @@ export default function SettingsScreen() {
       );
     } catch (error) {
       Alert.alert('Hata', 'Demo verileri eklenirken bir hata olustu.');
-      console.error('Demo seed error:', error);
+      reportError(error, 'manual', 'demo-seed');
     } finally {
       setSeedingDemo(false);
     }
