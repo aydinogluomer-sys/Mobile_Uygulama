@@ -53,8 +53,10 @@ describe('R01.02-b — per-day load goes through the period-aware oracle', () =>
 });
 
 describe('R01.02-b — day-level miss detection excludes count schedules', () => {
-  it('recovery.tsx cannot put a count-based habit in a day-keyed backlog', () => {
-    const src = read('app/screens/recovery.tsx');
+  // R01.07: the backlog walk moved verbatim from app/screens/recovery.tsx to lib/recoveryBacklog.ts;
+  // every pin below follows it (and the screen is pinned to call it, see recoveryBacklog.test.ts).
+  it('recoveryBacklog cannot put a count-based habit in a day-keyed backlog', () => {
+    const src = read('lib/recoveryBacklog.ts');
     // Two guards: the backlog loop and `consecutiveMissedDue`. A count schedule
     // has no per-day obligation, so it has no missed DAY either -- its unit is a
     // closed unmet period.
@@ -118,7 +120,7 @@ describe('R01.02-b — countDueDays is retained on purpose, not forgotten', () =
     const guarded: [string, RegExp][] = [
       ['lib/reportMetrics.ts', /isCountBased\(/],
       ['lib/behaviorIntelligence.ts', /isCountBased\(/],
-      ['app/screens/recovery.tsx', /isCountBasedSchedule\(/],
+      ['lib/recoveryBacklog.ts', /isCountBasedSchedule\(/],
       ['app/screens/habit-detail.tsx', /isCountBasedSchedule\(/],
     ];
     for (const [f, guard] of guarded) {
@@ -147,7 +149,7 @@ describe('R01.02-c — the day lane asks isEligibleOn, so interval_days / date r
       /^\s*if \(!isEligibleOn\(habit as Habit, cursor\)\) \{/,                      // currentStreak
       /^\s*if \(!isEligibleOn\(habit as Habit, date\)\) continue; \/\/ transparent/, // longestStreak
     ]],
-    ['app/screens/recovery.tsx', [
+    ['lib/recoveryBacklog.ts', [
       /^\s*if \(!isEligibleOn\(h, dObj\)\) continue;$/,
     ]],
     ['app/screens/habit-detail.tsx', [
@@ -166,8 +168,8 @@ describe('R01.02-c — the day lane asks isEligibleOn, so interval_days / date r
     });
   }
 
-  it('recovery.tsx makes BOTH day walks (backlog + consecutiveMissedDue) through isEligibleOn', () => {
-    const lines = read('app/screens/recovery.tsx').split(/\r?\n/);
+  it('recoveryBacklog makes BOTH day walks (backlog + consecutiveMissedDue) through isEligibleOn', () => {
+    const lines = read('lib/recoveryBacklog.ts').split(/\r?\n/);
     expect(lines.filter((l) => /^\s*if \(!isEligibleOn\(h, dObj\)\) continue;$/.test(l))).toHaveLength(2);
   });
 

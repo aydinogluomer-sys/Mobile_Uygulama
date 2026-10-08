@@ -15,7 +15,7 @@ import { useRecoveryStore } from '../../store/recoveryStore';
 import { deficitFor, type TrackingTypeV2 } from '../../lib/recovery';
 // R03.05 — what moving the make-up does to that day's load.
 import { makeupLoadPreview, LOAD_BANDS, type LoadBandKey } from '../../lib/capacity';
-import { isCountBasedSchedule, isEligibleOn, isMissedOn } from '../../lib/habitSchedule';
+import { recoveryBacklog, consecutiveMissedDue as consecutiveMissedDueOf } from '../../lib/recoveryBacklog';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton } from '../../components/ui';
@@ -95,58 +95,15 @@ export default function RecoveryScreen() {
   const activeHabits = habits.filter((h) => h.status === 'active');
   const habitById = (id: string) => habits.find((h) => h.id === id);
 
-  const LOOKBACK = 14;
   const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd');
 
   // Geçmiş günlerde (BUGÜN HARİÇ) frekansa göre "due" olup tamamlanmamış günler = backlog.
-  // hiç log yok → "kaçırıldı"; partial → "kısmi". Zaten planlı (source_date) günler hariç tutulur.
-  // Bugün "kaçırıldı" sayılmaz — bugün henüz "bekliyor" (Bugün/Alışkanlıklar ekranında).
-  const backlogEntries: { habit: Habit; date: string; kind: 'missed' | 'partial' }[] = [];
-  for (const h of activeHabits) {
-    // R01.02-b -- a count schedule ("3 a week") has NO per-day obligation, so it
-    // has no missed day either. `isDueOn` used to answer with invented weekdays,
-    // which filled this backlog with make-up offers for days the user never chose
-    // while ignoring the ones they actually worked (R00 journey map row 6). The
-    // real unit for these is a closed unmet PERIOD and its remaining count
-    // (`periodStatus`); surfacing that needs a period row this day-keyed list
-    // cannot express, so it is the follow-up card. Skipping is the correct
-    // interim: a wrong-day make-up offer is worse than none.
-    if (isCountBasedSchedule(h)) continue;
-    for (let k = 1; k <= LOOKBACK; k++) {
-      const dObj = subDays(new Date(), k);
-      // R01.02-c — day lane: `isCountBasedSchedule(h)` above. `isEligibleOn` = `isDueOn` for daily/weekly_days; it adds the every_n_days interval. The date range is not a mode: it is the lifetime envelope (`withinLifetime`) both read.
-      if (!isEligibleOn(h, dObj)) continue;
-      const d = format(dObj, 'yyyy-MM-dd');
-      const key = `${h.id}|${d}`;
-      if (doneSet.has(key)) continue;
-      if (plans.some((p) => p.habit_id === h.id && p.source_date === d)) continue;
-      const isPartial = partialSet.has(key);
-      // Negative habits are due like any other now, but an UNLOGGED day is
-      // not a missed one for them: nothing recorded says nothing about the
-      // day, and treating it as failure would fill this backlog with every
-      // day the user did not open the app. A logged failure still counts.
-      if (!isPartial && !isMissedOn(h, missedSet.has(key) ? { state: 'miss' } : undefined)) continue;
-      backlogEntries.push({ habit: h, date: d, kind: isPartial ? 'partial' : 'missed' });
-    }
-  }
-  backlogEntries.sort((a, b) => b.date.localeCompare(a.date));
-
-  // Üst üste kaçırılan due-gün sayısı (dünden geri; yapılan/kısmı gün seriyi kırar)
-  function consecutiveMissedDue(h: Habit): number {
-    // Consecutive MISSED DUE DAYS is undefined for a count schedule -- see the
-    // backlog loop above. 0 means "no day-level run", not "doing fine".
-    if (isCountBasedSchedule(h)) return 0;
-    let run = 0;
-    for (let k = 1; k <= LOOKBACK; k++) {
-      const dObj = subDays(new Date(), k);
-      // R01.02-c — day lane: `isCountBasedSchedule(h)` above. `isEligibleOn` = `isDueOn` for daily/weekly_days; it adds the every_n_days interval. The date range is not a mode: it is the lifetime envelope (`withinLifetime`) both read.
-      if (!isEligibleOn(h, dObj)) continue;
-      const key = `${h.id}|${format(dObj, 'yyyy-MM-dd')}`;
-      if (doneSet.has(key) || partialSet.has(key)) break;
-      run++;
-    }
-    return run;
-  }
+  // R01.07 — the walk lives in lib/recoveryBacklog (pure, clock injected) so the
+  // same date fixtures pin it as pin Today, reports, capacity and reminders.
+  const plannedKeys = new Set(plans.map((p) => `${p.habit_id}|${p.source_date}`));
+  const backlogNow = new Date();
+  const backlogEntries = recoveryBacklog({ habits: activeHabits, today: backlogNow, doneSet, partialSet, missedSet, plannedKeys });
+  const consecutiveMissedDue = (h: Habit) => consecutiveMissedDueOf(h, { today: backlogNow, doneSet, partialSet });
 
   // Telafi günü (gelecek/bugün) insan etiketi
   function targetLabel(date: string): string {

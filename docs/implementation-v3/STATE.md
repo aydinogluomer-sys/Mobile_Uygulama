@@ -1297,3 +1297,11 @@ zaten var ve test edilmiş, eksik olan **§7.1 çıktı sözleşmesi** (R01.01) 
 R01.01-a'dır; R01.02-a onun ardından, envanterdeki daraltılmış kapsamla gelir.
 Helper reuse: `windowFor`, `completedCountInWindow`, `startOfWeekLocal`,
 `addDaysLocal`, `daysBetweenLocal`, `ymd` — yeniden yazılmaz.
+
+## CORE_AUDIT aşaması (2026-10-08) — kart kanıtı ve gerekçeli yeniden hedeflemeler
+
+Her kartın satırı `CORE_AUDIT.md`'dedir; burada yalnız mevcut testlere dokunan değişikliklerin gerekçesi durur. Hiçbir test silinmedi ya da gevşetilmedi.
+
+- **R01.02 (`2f26c78`)** — `costCorpus` bilinmeyen-tür vakası `'yearly'` → `'fortnightly'` (yearly gerçek tür oldu); `costPreservation` dökümdeki etiketi hash'ten önce geri eşler, eski SHA birebir üretildi. `intervalRangeValidator` tür listesi metni `daily/weekly/monthly/yearly`. `habitFormFrequency` A9: radiogroup listesine `Aylık tür`, `Kısa ay kuralı`, `29 Şubat kuralı`; checkbox 1→2 (ay günü ızgarası), button 2→4 (yıllık gün −/+); sayaç koşulu yeni aylık alt-moda göre.
+- **R01.06 (`09e3e53`)** — mevcut teste dokunulmadı. Yeni kapı `LOG_TIMEZONE_ENABLED = false` (033 uygulanınca çevrilir).
+- **R01.07** — `app/screens/recovery.tsx`'deki backlog yürüyüşü kelimesi kelimesine `lib/recoveryBacklog.ts`'e taşındı (saat parametre). `periodConsumerMigration` guard'ının dört `recovery.tsx` hedefi aynı kalıplarla yeni dosyaya taşındı (count-guard ×2, `isEligibleOn(h, dObj)` ×2, `isDueOn` yok); ekran artık `recoveryBacklog`/`consecutiveMissedDue` çağırıyor.
