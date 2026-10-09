@@ -54,6 +54,7 @@ old filenames.
 | 033 | `033_habit_log_timezone.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 | 034 | `034_coach_reminder_action.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 | 035 | `035_coach_lighten_week.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
+| 036 | `036_live_audit_hardening.sql` | **NOT APPLIED** (proposal from the read-only live audit 2026-10-09) | — |
 
 Keep this table when adding a migration: the old names are cited throughout
 `docs/audit/`, `docs/plan/`, `PROGRESS.md` and the audit reports, which are

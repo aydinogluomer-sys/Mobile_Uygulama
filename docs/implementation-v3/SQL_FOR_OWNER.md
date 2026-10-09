@@ -35,6 +35,7 @@ where table_schema='public' and table_name='habit_logs' and column_name='tz';
 | 033 | `033_habit_log_timezone.sql` | `habit_logs.tz` (log'un yazıldığı IANA bölgesi) — R01.06 | `LOG_TIMEZONE_ENABLED` | §2.6 |
 | 034 | `034_coach_reminder_action.sql` | koçun hatırlatma saati eylemi `edit_reminder_time` — R09.02 (CHECK'i 9 türle baştan yazar; 032'den bağımsız doğru) | `COACH_ACTIONS_V2_ENABLED` — 032 + 034 uygulanıp `generate-routine` deploy edildikten SONRA (S3) | §2.7 |
 | 035 | `035_coach_lighten_week.sql` | koçun "bu hafta hafiflet" eylemi `lighten_week` — R09.04 (CHECK'i 10 türle baştan yazar; 032/034'ten bağımsız doğru) | `COACH_ACTIONS_V2_ENABLED` — 032 + 034 + 035 uygulanıp `generate-routine` deploy edildikten SONRA (S3) | §2.8 |
+| 036 | `036_live_audit_hardening.sql` | **canlı denetimden öneri** (`LIVE_SCHEMA_AUDIT.md`): XP/seri (alışkanlık, gün) defteri — S11 çiftliğini kapatır; `weekly_xp` istemci yazımı kapanır; kullanılmayan/tetikleyici SECURITY DEFINER fonksiyonlarda EXECUTE alınır; grant hijyeni. 028–035'ten bağımsız. **Önce bir branch'te dene.** | yok (R01.03-b geri alma bundan sonra açılabilir) | §2.9 |
 
 ## 2. Doğrulama sorguları (her migration'dan sonra, salt-okunur)
 
@@ -71,6 +72,14 @@ select pg_get_constraintdef(oid) from pg_constraint where conname = 'ai_actions_
 -- 2.8 (035) CHECK 10 türü içerir (lighten_week dahil) -- aynı sorgu; 035 sonrası sonuç bunu göstermeli
 select pg_get_constraintdef(oid) like '%lighten_week%' as has_lighten_week
 from pg_constraint where conname = 'ai_actions_type_check';
+
+-- 2.9 (036) defter dolu, istemciler yazamıyor, fonksiyonlar kapalı
+select count(*) as ledger_rows, (select count(*) from public.habit_logs) as logs from public.habit_xp_awards; -- eşit olmalı
+select has_table_privilege('authenticated', 'public.weekly_xp', 'INSERT') as weekly_xp_insert;              -- false
+select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.prosecdef and has_function_privilege('anon', p.oid, 'execute');            -- 0 satır
+select proname, has_function_privilege('authenticated', oid, 'execute') as auth
+from pg_proc where proname in ('get_user_rank','get_weekly_leaderboard','get_global_leaderboard','get_or_init_subscription'); -- hepsi true
 ```
 
 ## 3. BLOCKED — tanımı repoda olmayan nesneler (yalnız okuma sorguları)
@@ -148,3 +157,10 @@ where schemaname = 'public' and tablename in (
 tablosunun tanımı bu repoda yok; tanımı görülmeden ona dokunan SQL yazılmadı. Başka bir
 kullanıcının görev kimliği yazılabilir, ama `tasks` RLS'i nedeniyle hiçbir şeye çözülmez. Yedekten
 gerçek `tasks` tanımı gelince bir FK + sahiplik kontrolü ayrı migration'la eklenebilir.
+
+## 7. Canlı denetim sonuçları (2026-10-09, salt-okunur — `LIVE_SCHEMA_AUDIT.md`)
+
+- **§3 S11 cevaplandı:** `habit_logs`'ta yalnız INSERT/UPDATE tetikleyicileri var; silmede XP geri alınmıyor ve
+  yeniden yazımda tekrar veriliyor. Düzeltme 036-A.
+- **§4 KD-10/KD-11:** `kd10_targetless = 0`, `kd10_empty_part_of_day = 0`, `kd11_suspect = 0` → backfill gerekmiyor.
+- Canlıda son migration `account_deletion_cascade` (027 karşılığı); §0.1 beklentisi doğru.

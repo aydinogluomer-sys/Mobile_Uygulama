@@ -12,6 +12,7 @@ scope_authority: docs/plan/21_KAPSAM_EKI_2026-09-13.md
 # (F13/F14/F15/F12 iptalleri, 5 sütun, faz sırası) uygulanır.
 core_plan: P0..P9 (F01 kalanı -> F02 -> F03 sync -> F05 runner -> F04 bildirim -> F06 günlük -> F07 yedek -> F08 AI -> kapanış)
 db_state: FROZEN  # üretim DB'si 2026-10-03'te boş bulundu; sahip yedek kontrolü bitene kadar
+live_schema_audit: 2026-10-09  # salt-okunur, sahip izniyle (LIVE_SCHEMA_AUDIT.md): canlı BOŞ DEĞİL (6 kullanıcı, 7 alışkanlık, 13 log); 028-035 yok; S11 cevaplandı (sil+yeniden yaz XP/seri çiftliği) -> 036 önerisi; KD-10/11 = 0; şema dökümü supabase/live_schema.sql (izlenmiyor, sahip)
 schema_reproducible_from_repo: NO  # 2026-10-07 tespiti -- KRİTİK:
   # supabase/migrations/001..027 TAM ŞEMA DEĞİL, uzakta elle kurulmuş bir temelin
   # üstüne deltalar. Repoda CREATE TABLE edilen yalnız ~17 tablo var (habits,
@@ -1313,4 +1314,5 @@ Her kartın satırı `CORE_AUDIT.md`'dedir; burada yalnız mevcut testlere dokun
 - **R09.02** — `coachV2Wired` CHECK testi: istemcinin listesi artık **güncel** tanımla (son migration, 034) karşılaştırılır; 032 düzenlenmedi ve testte tarihsel olarak ilk beş tür + NOT APPLIED olarak hâlâ doğrulanır. `coachActionsV2` "beş tür" testi → "altı tür" (liste bilerek büyüdü, iddia aynı: tam liste ve sırası).
 - **R09.04** — `coachV2Wired` CHECK testi güncel tanım olarak 035'i okur ve 035'ten sonra kısıtı yeniden tanımlayan migration olmadığını da doğrular; 034 ve 032 tarihsel listeleriyle hâlâ doğrulanır. `coachActionsV2` "altı tür" → "yedi tür" (liste bilerek büyüdü).
 - **R10.05** — `ui/coachLightenWeek` beklentileri sayıları ham (`12.5`) yerine `decimalTR` ile kurar: kart artık Türkçe ondalık yazıyor; iddia (önce→sonra yük, seçim) aynı.
+- **Canlı denetim (036)** — `migrationRlsGuard`: "GRANT yok / SECURITY DEFINER yok" kuralı 036'nın daraltıcı biçimlerine izin verecek şekilde yeniden hedeflendi: yalnız `GRANT EXECUTE … TO authenticated` ve `GRANT INSERT (sütunlar) … TO authenticated`, ikisi de aynı nesnenin REVOKE'undan sonra; SECURITY DEFINER yalnız `search_path` sabit ve EXECUTE'u aynı dosyada PUBLIC/anon/authenticated'dan alınmış fonksiyonda. anon/public'e açma, `USING (true)`, RLS kapatma hâlâ yasak; 6 mutant öldürüldü.
 - **R08.01** — `backupRestore` R08.05 testi: geri yüklenmeyen koleksiyon listesi yeni YALNIZ-DIŞA-AKTARIM koleksiyonlarıyla genişletildi (önceden geri yüklenebilen hiçbiri taraf değiştirmedi). `exportBackup` testi yeni genel okuyucu `fetchOwnedTable` ve `lib/supabase` için mock aldı (bağımlılık eklendi, iddia değişmedi).

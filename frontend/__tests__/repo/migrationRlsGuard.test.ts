@@ -67,10 +67,29 @@ it.each(NEW)('%s is marked and listed NOT APPLIED', (f) => {
   expect(README).toContain(`\`${f}\` | **NOT APPLIED**`);
 });
 
-it.each(NEW)('%s grants nothing, defines no SECURITY DEFINER, opens nothing to anon/public', (f) => {
+// 036 (live-audit hardening) narrows access, which needs two forms the
+// blanket rule refused. Allowed, and nothing else:
+//  - GRANT EXECUTE ON FUNCTION ... TO authenticated, or GRANT INSERT (cols) ON
+//    ... TO authenticated, each right after a REVOKE of the same object;
+//  - a SECURITY DEFINER function that pins its search_path and whose EXECUTE
+//    the same file revokes from PUBLIC, anon and authenticated.
+it.each(NEW)('%s grants only narrowing forms, defines no client-callable SECURITY DEFINER, opens nothing to anon/public', (f) => {
   const sql = sqlOf(f);
-  expect(sql).not.toMatch(/\bGRANT\b/i);
-  expect(sql).not.toMatch(/SECURITY DEFINER/i);
+  const grants = sql.split('\n').filter((l) => /\bGRANT\b/i.test(l) && !/^\s*REVOKE\b/i.test(l));
+  for (const g of grants) {
+    const m = /^GRANT (EXECUTE ON FUNCTION (public\.\w+\([^)]*\))|INSERT \([a-z_, ]+\) ON (public\.\w+)) TO authenticated;$/.exec(g.trim());
+    expect([g, !!m]).toEqual([g, true]);
+    const obj = (m![2] ?? m![3])!;
+    expect([g, sql.slice(0, sql.indexOf(g)).includes(`ON ${m![2] ? 'FUNCTION ' : ''}${obj} FROM`)]).toEqual([g, true]);
+  }
+  for (const d of sql.matchAll(/CREATE OR REPLACE FUNCTION (public\.\w+)\(\)[\s\S]*?\$function\$;/g)) {
+    if (!/SECURITY DEFINER/.test(d[0])) continue;
+    expect([d[1], /SET search_path TO 'public'/.test(d[0])]).toEqual([d[1], true]);
+    expect([d[1], sql.includes(`REVOKE EXECUTE ON FUNCTION ${d[1]}() FROM PUBLIC, anon, authenticated;`)]).toEqual([d[1], true]);
+  }
+  const definers = (sql.match(/SECURITY DEFINER/g) ?? []).length;
+  const pinned = [...sql.matchAll(/CREATE OR REPLACE FUNCTION public\.\w+\(\)[\s\S]*?\$function\$;/g)].filter((d) => /SECURITY DEFINER/.test(d[0])).length;
+  expect(definers).toBe(pinned);
   expect(sql).not.toMatch(/\bTO (anon|public)\b/i);
   expect(sql).not.toMatch(/USING \(\s*true\s*\)|WITH CHECK \(\s*true\s*\)/i);
   expect(sql).not.toMatch(/DISABLE ROW LEVEL SECURITY/i);
