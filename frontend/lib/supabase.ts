@@ -104,6 +104,10 @@ export type Habit = {
   life_area: string | null;     // yaşam alanı kategorisi (LIFE_AREAS anahtarı)
   end_condition: EndCondition | null;
   created_at: string;
+  current_streak?: number | null;
+  best_streak?: number | null;
+  streak_current?: number | null;
+  streak_best?: number | null;
   /**
    * R01.05 — attached IN MEMORY by the store (habit_pauses: own pauses + holidays);
    * NOT a habits column. Stripped from every habit write (habitRepository).

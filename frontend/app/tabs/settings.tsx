@@ -33,6 +33,8 @@ import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 // R08 — check an export and merge what is missing; never a full restore.
 import RestorePanel from '../../components/RestorePanel';
 import CsvImportPanel from '../../components/CsvImportPanel';
+import OutboxStatusModal from '../../components/OutboxStatusModal';
+import ObsidianExportModal from '../../components/ObsidianExportModal';
 import { currentUser } from '../../lib/session';
 import IntegrationItemCard from '../../components/IntegrationItemCard';
 import {
@@ -62,6 +64,8 @@ export default function SettingsScreen() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhooks, setWebhooks] = useState<WebhookRow[]>([]);
   const [showBadHabitsTracker, setShowBadHabitsTracker] = useState(false);
+  const [showOutboxModal, setShowOutboxModal] = useState(false);
+  const [showObsidianModal, setShowObsidianModal] = useState(false);
   const router = useRouter();
   const beginPersonalization = useOnboardingStore((s) => s.beginPersonalization);
 
@@ -530,7 +534,7 @@ export default function SettingsScreen() {
 
           {/* Tracking */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Takip</Text>
+            <Text style={styles.sectionTitle}>Takip & Veri Araçları</Text>
             
             {renderSettingItem(
               'ban',
@@ -538,6 +542,22 @@ export default function SettingsScreen() {
               'Tasarruf ve ilerlemenizi görün',
               () => setShowBadHabitsTracker(true),
               colors.error
+            )}
+
+            {renderSettingItem(
+              'document-text-outline',
+              'Obsidian Markdown Aktarımı',
+              'Alışkanlık ve notları Obsidian kasasına kopyala',
+              () => setShowObsidianModal(true),
+              '#8b5cf6'
+            )}
+
+            {renderSettingItem(
+              'cloud-offline-outline',
+              'Çevrimdışı Senkronizasyon',
+              'Bekleyen yerel işlemleri ve sunucu bağlantısını incele',
+              () => setShowOutboxModal(true),
+              colors.teal
             )}
           </View>
 
@@ -726,6 +746,18 @@ export default function SettingsScreen() {
       <BadHabitsTracker
         visible={showBadHabitsTracker}
         onClose={() => setShowBadHabitsTracker(false)}
+      />
+
+      {/* Obsidian Export Modal */}
+      <ObsidianExportModal
+        visible={showObsidianModal}
+        onClose={() => setShowObsidianModal(false)}
+      />
+
+      {/* Outbox Status Modal */}
+      <OutboxStatusModal
+        visible={showOutboxModal}
+        onClose={() => setShowOutboxModal(false)}
       />
     </SafeAreaView>
   );

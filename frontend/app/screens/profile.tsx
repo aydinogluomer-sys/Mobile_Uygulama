@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex, radius } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -8,19 +8,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useProfileStore } from '../../store/profileStore';
+import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { rankMeta, RANK_TIERS } from '../../lib/ranks';
 import XPDisplay from '../../components/XPDisplay';
 // R04.02 — device-wide reminder settings and the real permission state.
 import NotificationSettingsCard from '../../components/NotificationSettingsCard';
+import YearlyHeatmap from '../../components/YearlyHeatmap';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { profile, badges, fetchProfile, fetchBadges, setUsername } = useProfileStore();
+  const focusPoints = useSubscriptionStore((st) => st.focusPoints);
+  const fetchSub = useSubscriptionStore((st) => st.fetch);
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { fetchProfile(); fetchBadges(); }, [fetchProfile, fetchBadges]);
+  useEffect(() => { fetchProfile(); fetchBadges(); void fetchSub(); }, [fetchProfile, fetchBadges, fetchSub]);
   useEffect(() => { setName(profile?.username ?? ''); }, [profile?.username]);
 
   async function save() {
@@ -40,6 +44,7 @@ export default function ProfileScreen() {
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={s.content}>
         <XPDisplay />
+        <YearlyHeatmap />
         <NotificationSettingsCard />
 
         {/* Rütbe kartı */}
@@ -57,17 +62,47 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Sıralama linki */}
-        <TouchableOpacity
-          style={s.lbBtn}
-          onPress={() => router.push('/screens/leaderboard' as any)}
-          accessibilityRole="link"
-          accessibilityLabel="Sıralamayı gör"
-        >
-          <Ionicons name="podium-outline" size={18} color={colors.warning} />
-          <Text style={s.lbText}>Sıralamayı Gör</Text>
-          <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
-        </TouchableOpacity>
+        {/* 3'lü Bento Özet Izgarası: Sıralama · Focus Points · Başarımlar */}
+        <View style={s.bentoGrid}>
+          <TouchableOpacity
+            style={s.bentoCard}
+            onPress={() => router.push('/screens/leaderboard' as any)}
+            accessibilityRole="button"
+            accessibilityLabel="Sıralamayı gör"
+          >
+            <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.warning, '20') }]}>
+              <Ionicons name="podium-outline" size={18} color={colors.warning} />
+            </View>
+            <Text style={s.bentoTitle}>Sıralama</Text>
+            <Text style={s.bentoSub}>Haftalık Lig →</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={s.bentoCard}
+            onPress={() => router.push('/screens/focus-points' as any)}
+            accessibilityRole="button"
+            accessibilityLabel="Focus Points ve kredi geçmişini gör"
+          >
+            <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.primary, '20') }]}>
+              <Ionicons name="diamond-outline" size={18} color={colors.primary} />
+            </View>
+            <Text style={s.bentoTitle}>{focusPoints} FP</Text>
+            <Text style={s.bentoSub}>Focus Points →</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={s.bentoCard}
+            onPress={() => router.push('/screens/achievements' as any)}
+            accessibilityRole="button"
+            accessibilityLabel="Başarımlar ve rozetleri gör"
+          >
+            <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.success, '20') }]}>
+              <Ionicons name="ribbon-outline" size={18} color={colors.success} />
+            </View>
+            <Text style={s.bentoTitle}>Rozetler</Text>
+            <Text style={s.bentoSub}>{badges.length} Kazanım →</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Kullanıcı adı */}
         <View style={s.section}>
@@ -105,11 +140,27 @@ export default function ProfileScreen() {
 
         {/* Rozetler */}
         <View style={s.section}>
-          <Text style={s.sectionTitle}>ROZETLER {badges.length > 0 ? `(${badges.length})` : ''}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={s.sectionTitle}>ROZETLER {badges.length > 0 ? `(${badges.length})` : ''}</Text>
+            <TouchableOpacity
+              onPress={() => router.push('/screens/achievements' as any)}
+              accessibilityRole="link"
+              accessibilityLabel="Tüm başarımları ve rozetleri gör"
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.warning }}>Tümünü Gör →</Text>
+            </TouchableOpacity>
+          </View>
           {badges.length === 0 ? (
-            <Text style={s.sectionHint}>
-              Henüz rozet yok. Alışkanlıklarını tamamladıkça rozet kazanırsın.
-            </Text>
+            <TouchableOpacity
+              onPress={() => router.push('/screens/achievements' as any)}
+              style={{ paddingVertical: 4 }}
+              accessibilityRole="link"
+              accessibilityLabel="Başarımlar galerisini aç"
+            >
+              <Text style={s.sectionHint}>
+                Henüz rozet yok. Alışkanlıklarını tamamladıkça rozet kazanırsın. Dokun ve hedefleri incele.
+              </Text>
+            </TouchableOpacity>
           ) : (
             <View style={s.badgeGrid}>
               {badges.map((b) => (
@@ -146,6 +197,19 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 14,
   },
   lbText: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text },
+  bentoGrid: {
+    flexDirection: 'row', gap: 10,
+  },
+  bentoCard: {
+    flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.border, padding: 12, gap: 4,
+  },
+  bentoIconWrap: {
+    width: 34, height: 34, borderRadius: radius.md,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
+  },
+  bentoTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
+  bentoSub: { fontSize: 11, fontWeight: '600', color: colors.textDim },
 
   section: {
     backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 8,

@@ -54,7 +54,10 @@ export default function ScreensLayout() {
       <Stack.Screen name="credit-history" options={{ title: 'Kredi Geçmişi' }} />
       <Stack.Screen name="okr" options={{ title: 'OKR' }} />
       <Stack.Screen name="leaderboard" options={{ title: 'Sıralama' }} />
+      <Stack.Screen name="achievements" options={{ title: 'Başarımlar & Rozetler' }} />
       <Stack.Screen name="profile" options={{ title: 'Profilim' }} />
+      <Stack.Screen name="routine-runner" options={{ title: 'Rutin Yürütücü' }} />
+      <Stack.Screen name="privacy" options={{ title: 'Gizlilik Politikası' }} />
     </Stack>
   );
 }

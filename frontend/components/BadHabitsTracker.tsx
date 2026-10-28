@@ -1,5 +1,5 @@
-import { colors, alphaHex } from '../lib/tokens';
-import React, { useEffect, useState } from 'react';
+import { colors, alphaHex, radius } from '../lib/tokens';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,17 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
+import { haptic } from '../lib/haptics';
 import {
   listBadHabits, createBadHabit, savingsFor, type Savings,
 } from '../services/badHabitService';
 import type { BadHabitRow } from '../repositories/badHabitRepository';
+
+const URGE_STORAGE_KEY = 'aderyth.deflected_urges_count';
 
 interface BadHabitsTrackerProps {
   visible: boolean;
@@ -30,6 +34,9 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedHabit, setSelectedHabit] = useState<BadHabitRow | null>(null);
   const [savings, setSavings] = useState<Savings | null>(null);
+  const [urgeShieldActive, setUrgeShieldActive] = useState(false);
+  const [urgeSecondsLeft, setUrgeSecondsLeft] = useState(60);
+  const [deflectedUrges, setDeflectedUrges] = useState(0);
   const [newHabit, setNewHabit] = useState({
     name: '',
     description: '',
@@ -52,8 +59,38 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
   useEffect(() => {
     if (visible) {
       loadBadHabits();
+      AsyncStorage.getItem(URGE_STORAGE_KEY).then((v) => {
+        if (v) setDeflectedUrges(parseInt(v, 10) || 0);
+      }).catch(() => undefined);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!urgeShieldActive) return;
+    if (urgeSecondsLeft <= 0) {
+      haptic.success();
+      const nextCount = deflectedUrges + 1;
+      setDeflectedUrges(nextCount);
+      AsyncStorage.setItem(URGE_STORAGE_KEY, String(nextCount)).catch(() => undefined);
+      return;
+    }
+    const timer = setTimeout(() => setUrgeSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [urgeShieldActive, urgeSecondsLeft, deflectedUrges]);
+
+  const startUrgeShield = () => {
+    haptic.medium();
+    setUrgeSecondsLeft(60);
+    setUrgeShieldActive(true);
+  };
+
+  const breathCycleSec = (60 - urgeSecondsLeft) % 14;
+  const breathInstruction =
+    breathCycleSec < 4
+      ? 'Burnundan Derin Nefes Al (4 sn)…'
+      : breathCycleSec < 8
+        ? 'Nefesini Sakince Tut (4 sn)…'
+        : 'Ağzından Yavaşça Ver (6 sn)…';
 
   const handleAddBadHabit = async () => {
     const name = newHabit.name.trim();
@@ -112,6 +149,28 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
           <ActivityIndicator size="large" color={colors.accent} style={styles.loader} />
         ) : (
           <ScrollView style={styles.content}>
+            {/* One Sec / Opal İlhamlı: 60 Saniye Dürtü Kalkanı (Urge Surfing) */}
+            <View style={styles.urgeBanner}>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="shield-checkmark" size={18} color={colors.teal} />
+                  <Text style={styles.urgeBannerTitle}>60 Saniye Dürtü Kalkanı</Text>
+                </View>
+                <Text style={styles.urgeBannerSub}>
+                  Bir dürtü geldiğinde otomatik davranışı 60 saniyelik nefes dalgasıyla kır.
+                  {deflectedUrges > 0 ? ` · ${deflectedUrges} dürtü savuşturuldu ✨` : ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.urgeStartBtn}
+                onPress={startUrgeShield}
+                accessibilityRole="button"
+                accessibilityLabel="Şu an zorlanıyorum, 60 saniye dürtü kalkanını başlat"
+              >
+                <Text style={styles.urgeStartBtnText}>Kalkanı Aç</Text>
+              </TouchableOpacity>
+            </View>
+
             {badHabits.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="ribbon-outline" size={64} color={colors.textGhost} />
@@ -257,6 +316,48 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
             </View>
           </Modal>
         )}
+
+        {/* 60 Saniye Dürtü Kalkanı (Urge Surfing) Modalı */}
+        <Modal
+          visible={urgeShieldActive}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => setUrgeShieldActive(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.urgeModalCard}>
+              <Ionicons
+                name={urgeSecondsLeft === 0 ? 'checkmark-circle' : 'shield-half-outline'}
+                size={52}
+                color={urgeSecondsLeft === 0 ? colors.success : colors.teal}
+              />
+              <Text style={styles.urgeModalTitle}>
+                {urgeSecondsLeft === 0 ? 'Dürtü Dalgası Geçti' : 'Dürtü Dalgasını Gözlemle'}
+              </Text>
+              <Text style={styles.urgeTimerText}>
+                {urgeSecondsLeft === 0 ? 'Başardın!' : `${urgeSecondsLeft} sn`}
+              </Text>
+              <Text style={styles.urgeBreathText}>
+                {urgeSecondsLeft === 0
+                  ? `İradeni korudun. Toplam ${deflectedUrges} kez dürtü dalgasını savuşturdun.`
+                  : breathInstruction}
+              </Text>
+              <Text style={styles.urgeScienceNote}>
+                Nörobilim notu: Otomatik bir dürtü tepkisi 60–90 saniye ertelenirse prefrontal korteks kontrolü geri alır.
+              </Text>
+              <TouchableOpacity
+                style={[styles.closeButton, { width: '100%', marginTop: 18 }]}
+                onPress={() => setUrgeShieldActive(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Kalkanı kapat"
+              >
+                <Text style={styles.closeButtonText}>
+                  {urgeSecondsLeft === 0 ? 'Harika, Devam Et' : 'Sakinleştim, Kapat'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     </Modal>
   );
@@ -453,5 +554,73 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: colors.white,
+  },
+  urgeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: alphaHex(colors.teal, '45'),
+  },
+  urgeBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  urgeBannerSub: {
+    fontSize: 12,
+    color: colors.textDim,
+    marginTop: 4,
+    lineHeight: 17,
+  },
+  urgeStartBtn: {
+    backgroundColor: colors.teal,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+  },
+  urgeStartBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  urgeModalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  urgeModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.white,
+    marginTop: 12,
+  },
+  urgeTimerText: {
+    fontSize: 44,
+    fontWeight: '800',
+    color: colors.teal,
+    marginVertical: 14,
+    fontVariant: ['tabular-nums'],
+  },
+  urgeBreathText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.white,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  urgeScienceNote: {
+    fontSize: 12,
+    color: colors.textFaint,
+    textAlign: 'center',
+    lineHeight: 17,
   },
 });

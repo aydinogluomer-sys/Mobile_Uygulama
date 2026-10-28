@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aderyth — iPhone 16 Pro Simulator</title>
+  <style>
+    :root {
+      --bg-canvas: #0b0c0e;
+      --bg-panel: #14161b;
+      --border-color: #23262f;
+      --text-main: #f3f4f6;
+      --text-muted: #8b92a2;
+      --accent: #d97757;
+      --titanium-dark: #1b1c1e;
+      --titanium-bezel: #2d3036;
+      --phone-width: 393px;
+      --phone-height: 852px;
+      --phone-radius: 54px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background: var(--bg-canvas);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", -system-ui, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* TOP TOOLBAR */
+    .toolbar {
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-color);
+      padding: 8px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      z-index: 100;
+    }
+
+    .toolbar-left, .toolbar-center, .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .app-branding {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: -0.3px;
+      margin-right: 6px;
+    }
+
+    .app-badge {
+      background: linear-gradient(135deg, #d97757 0%, #b2583a 100%);
+      color: #fff;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .tool-btn {
+      background: #1c1f26;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+
+    .tool-btn:hover {
+      background: #272b35;
+      border-color: #3b4050;
+      color: #fff;
+    }
+
+    .tool-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    select, input[type="text"] {
+      background: #1c1f26;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      outline: none;
+      font-weight: 500;
+    }
+
+    select:focus, input[type="text"]:focus {
+      border-color: var(--accent);
+    }
+
+    .url-input {
+      width: 200px;
+      font-family: monospace;
+      font-size: 11px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(34, 197, 94, 0.12);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.25);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #4ade80;
+      box-shadow: 0 0 6px #4ade80;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* VIEWPORT STAGE */
+    .viewport-stage {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 24px;
+      background: radial-gradient(circle at center, #171920 0%, #0a0b0d 100%);
+    }
+
+    .device-scaler {
+      transform-origin: center center;
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* IPHONE 16 PRO CHASSIS */
+    .iphone-device {
+      position: relative;
+      width: var(--phone-width);
+      height: var(--phone-height);
+      background: var(--titanium-dark);
+      border-radius: var(--phone-radius);
+      box-shadow: 
+        0 0 0 2px #444852,
+        0 0 0 6px var(--titanium-bezel),
+        0 30px 80px -20px rgba(0, 0, 0, 0.9),
+        0 0 100px -10px rgba(217, 119, 87, 0.12);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.3s ease;
+    }
+
+    /* PHYSICAL BUTTONS */
+    .btn-action {
+      position: absolute;
+      left: -9px;
+      top: 115px;
+      width: 4px;
+      height: 28px;
+      background: #3e424c;
+      border-radius: 3px 0 0 3px;
+    }
+
+    .btn-volume-up {
+      position: absolute;
+      left: -9px;
+      top: 160px;
+      width: 4px;
+      height: 52px;
+      background: #3e424c;
+      border-radius: 3px 0 0 3px;
+    }
+
+    .btn-volume-down {
+      position: absolute;
+      left: -9px;
+      top: 225px;
+      width: 4px;
+      height: 52px;
+      background: #3e424c;
+      border-radius: 3px 0 0 3px;
+    }
+
+    .btn-power {
+      position: absolute;
+      right: -9px;
+      top: 180px;
+      width: 4px;
+      height: 75px;
+      background: #3e424c;
+      border-radius: 0 3px 3px 0;
+    }
+
+    /* IPHONE SCREEN AREA */
+    .iphone-screen {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      border-radius: calc(var(--phone-radius) - 10px);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: inset 0 0 4px rgba(255, 255, 255, 0.12);
+    }
+
+    /* IOS STATUS BAR */
+    .status-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 48px;
+      padding: 12px 24px 0 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 50;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      pointer-events: none;
+    }
+
+    .status-time {
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.2px;
+    }
+
+    .status-icons {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    /* DYNAMIC ISLAND */
+    .dynamic-island {
+      position: absolute;
+      top: 11px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 124px;
+      height: 35px;
+      background: #000;
+      border-radius: 20px;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 11px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 0 2px rgba(255, 255, 255, 0.1);
+    }
+
+    .dynamic-island:hover {
+      width: 140px;
+      box-shadow: 0 0 12px rgba(217, 119, 87, 0.5);
+    }
+
+    .island-camera {
+      width: 12px;
+      height: 12px;
+      background: #11141c;
+      border-radius: 50%;
+      border: 1px solid #1a1e28;
+      box-shadow: inset 0 0 3px #00e1ff;
+    }
+
+    .island-sensor {
+      width: 9px;
+      height: 9px;
+      background: #0d0f14;
+      border-radius: 50%;
+    }
+
+    /* IFRAME APP CONTENT */
+    .app-frame {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #15140f;
+      display: block;
+    }
+
+    /* HOME INDICATOR */
+    .home-indicator {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 135px;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.65);
+      border-radius: 10px;
+      z-index: 50;
+      pointer-events: none;
+    }
+
+    /* LANDSCAPE MODE */
+    .iphone-device.landscape {
+      width: var(--phone-height);
+      height: var(--phone-width);
+    }
+
+    .iphone-device.landscape .dynamic-island {
+      top: 50%;
+      left: 14px;
+      transform: translateY(-50%) rotate(90deg);
+    }
+
+    .iphone-device.landscape .status-bar {
+      display: none;
+    }
+
+    .iphone-device.landscape .home-indicator {
+      bottom: 8px;
+    }
+
+    /* FINISH THEMES */
+    .finish-natural {
+      --titanium-dark: #272624;
+      --titanium-bezel: #8a8782;
+    }
+
+    .finish-black {
+      --titanium-dark: #141416;
+      --titanium-bezel: #25262a;
+    }
+
+    .finish-desert {
+      --titanium-dark: #2d2621;
+      --titanium-bezel: #a68974;
+    }
+
+    .finish-white {
+      --titanium-dark: #323438;
+      --titanium-bezel: #c8cad0;
+    }
+  </style>
+</head>
+<body class="finish-black">
+
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <div class="app-branding">
+        <span>📱 Aderyth</span>
+        <span class="app-badge">Simulator</span>
+      </div>
+
+      <select id="model-select" onchange="changeModel(this.value)">
+        <option value="iphone16pro">iPhone 16 Pro (393 × 852)</option>
+        <option value="iphone16promax">iPhone 16 Pro Max (430 × 932)</option>
+        <option value="iphone15">iPhone 15 / 16 (390 × 844)</option>
+        <option value="iphonese">iPhone SE (375 × 667)</option>
+      </select>
+
+      <select id="finish-select" onchange="changeFinish(this.value)">
+        <option value="finish-black">Siyah Titanyum</option>
+        <option value="finish-natural">Doğal Titanyum</option>
+        <option value="finish-desert">Çöl Titanyum</option>
+        <option value="finish-white">Beyaz Titanyum</option>
+      </select>
+    </div>
+
+    <div class="toolbar-center">
+      <select id="scale-select" onchange="changeScale(this.value)">
+        <option value="auto">Sığdır (Auto)</option>
+        <option value="1">100%</option>
+        <option value="0.9">90%</option>
+        <option value="0.8">80%</option>
+        <option value="0.7">70%</option>
+        <option value="0.6">60%</option>
+      </select>
+
+      <button class="tool-btn" id="rotate-btn" onclick="toggleOrientation()" title="Yatay / Dikey">
+        🔄 Döndür
+      </button>
+
+      <button class="tool-btn" onclick="reloadFrame()" title="Yenile">
+        ⚡ Yenile
+      </button>
+    </div>
+
+    <div class="toolbar-right">
+      <input type="text" id="url-input" class="url-input" value="http://localhost:8081" onkeydown="if(event.key==='Enter') navigateUrl()">
+      <button class="tool-btn" onclick="navigateUrl()">Git</button>
+
+      <div class="status-badge" id="status-pill">
+        <span class="status-dot"></span>
+        <span id="status-text">Metro Canlı</span>
+      </div>
+
+      <button class="tool-btn" onclick="window.open('http://localhost:8081', '_blank')" title="Tarayıcıda Aç">
+        🌐
+      </button>
+    </div>
+  </div>
+
+  <div class="viewport-stage" id="stage">
+    <div class="device-scaler" id="scaler">
+      <div class="iphone-device" id="device">
+        <div class="btn-action"></div>
+        <div class="btn-volume-up"></div>
+        <div class="btn-volume-down"></div>
+        <div class="btn-power"></div>
+
+        <div class="iphone-screen">
+          <!-- iOS Status Bar -->
+          <div class="status-bar">
+            <span class="status-time" id="clock">09:41</span>
+            <div class="status-icons">
+              <span>5G</span>
+              <span>📶</span>
+              <span>100% 🔋</span>
+            </div>
+          </div>
+
+          <!-- Dynamic Island -->
+          <div class="dynamic-island" onclick="pulseIsland()" title="Dynamic Island">
+            <div class="island-camera"></div>
+            <div class="island-sensor"></div>
+          </div>
+
+          <!-- App Iframe -->
+          <iframe 
+            id="phone-frame" 
+            class="app-frame" 
+            src="http://localhost:8081"
+            allow="geolocation; microphone; camera; midi; vr; accelerometer; gyroscope; payment; ambient-light-sensor"
+          ></iframe>
+
+          <!-- Home Indicator -->
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentScale = 'auto';
+    let isLandscape = false;
+
+    function updateClock() {
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const mins = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('clock').innerText = hours + ':' + mins;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    function applyScaling() {
+      const stage = document.getElementById('stage');
+      const scaler = document.getElementById('scaler');
+      const device = document.getElementById('device');
+
+      if (currentScale !== 'auto') {
+        scaler.style.transform = 'scale(' + currentScale + ')';
+        return;
+      }
+
+      const stageW = stage.clientWidth - 40;
+      const stageH = stage.clientHeight - 40;
+
+      const deviceW = isLandscape ? 852 : parseInt(getComputedStyle(document.documentElement).getPropertyValue('--phone-width'));
+      const deviceH = isLandscape ? 393 : parseInt(getComputedStyle(document.documentElement).getPropertyValue('--phone-height'));
+
+      const scaleX = stageW / deviceW;
+      const scaleY = stageH / deviceH;
+      const fitScale = Math.min(scaleX, scaleY, 1.0);
+
+      scaler.style.transform = 'scale(' + Math.max(0.3, fitScale.toFixed(3)) + ')';
+    }
+
+    window.addEventListener('resize', applyScaling);
+    setTimeout(applyScaling, 150);
+
+    function changeScale(val) {
+      currentScale = val;
+      applyScaling();
+    }
+
+    function changeModel(model) {
+      const root = document.documentElement;
+      if (model === 'iphone16pro') {
+        root.style.setProperty('--phone-width', '393px');
+        root.style.setProperty('--phone-height', '852px');
+        root.style.setProperty('--phone-radius', '54px');
+      } else if (model === 'iphone16promax') {
+        root.style.setProperty('--phone-width', '430px');
+        root.style.setProperty('--phone-height', '932px');
+        root.style.setProperty('--phone-radius', '56px');
+      } else if (model === 'iphone15') {
+        root.style.setProperty('--phone-width', '390px');
+        root.style.setProperty('--phone-height', '844px');
+        root.style.setProperty('--phone-radius', '50px');
+      } else if (model === 'iphonese') {
+        root.style.setProperty('--phone-width', '375px');
+        root.style.setProperty('--phone-height', '667px');
+        root.style.setProperty('--phone-radius', '36px');
+      }
+      applyScaling();
+    }
+
+    function changeFinish(finish) {
+      document.body.className = finish;
+    }
+
+    function toggleOrientation() {
+      isLandscape = !isLandscape;
+      const device = document.getElementById('device');
+      const btn = document.getElementById('rotate-btn');
+      if (isLandscape) {
+        device.classList.add('landscape');
+        btn.classList.add('active');
+      } else {
+        device.classList.remove('landscape');
+        btn.classList.remove('active');
+      }
+      applyScaling();
+    }
+
+    function reloadFrame() {
+      const frame = document.getElementById('phone-frame');
+      const cur = frame.src;
+      frame.src = 'about:blank';
+      setTimeout(() => {
+        frame.src = cur;
+      }, 50);
+    }
+
+    function navigateUrl() {
+      const input = document.getElementById('url-input');
+      let val = input.value.trim();
+      if (!/^https?:\\/\\//i.test(val)) {
+        val = 'http://' + val;
+      }
+      document.getElementById('phone-frame').src = val;
+    }
+
+    function pulseIsland() {
+      const island = document.querySelector('.dynamic-island');
+      island.style.transform = isLandscape ? 'translateY(-50%) rotate(90deg) scale(1.15)' : 'translateX(-50%) scale(1.15)';
+      setTimeout(() => {
+        island.style.transform = isLandscape ? 'translateY(-50%) rotate(90deg)' : 'translateX(-50%)';
+      }, 300);
+    }
+
+    async function checkHealth() {
+      const url = document.getElementById('url-input').value;
+      const pill = document.getElementById('status-pill');
+      const txt = document.getElementById('status-text');
+
+      try {
+        await fetch(url, { method: 'HEAD', mode: 'no-cors' });
+        pill.style.background = 'rgba(34, 197, 94, 0.12)';
+        pill.style.color = '#4ade80';
+        pill.style.borderColor = 'rgba(34, 197, 94, 0.25)';
+        txt.innerText = 'Metro Canlı';
+      } catch (e) {
+        pill.style.background = 'rgba(239, 68, 68, 0.12)';
+        pill.style.color = '#f87171';
+        pill.style.borderColor = 'rgba(239, 68, 68, 0.25)';
+        txt.innerText = 'Metro Bekleniyor';
+      }
+    }
+    setInterval(checkHealth, 5000);
+    checkHealth();
+  </script>
+</body>
+</html>

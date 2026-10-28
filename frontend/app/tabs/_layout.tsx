@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform, TouchableOpacity, View, Text, StyleSheet, useWindowDimensions } from 'react-native';
@@ -7,6 +8,7 @@ import { useDrawerStore } from '../../store/drawerStore';
 import { useThemeStore } from '../../store/themeStore';
 import Drawer from '../../components/Drawer';
 import CommandPalette from '../../components/CommandPalette';
+import OutboxStatusModal from '../../components/OutboxStatusModal';
 import { colors } from '../../lib/tokens';
 import { useAccent } from '../../lib/useAccent';
 
@@ -20,7 +22,7 @@ function HamburgerButton() {
 }
 
 /** Topbar sağ küme (HTML topbar paritesi): Odak modu · "Komut veya ara" · Tema toggle */
-function HeaderActions() {
+function HeaderActions({ onOpenSync }: { onOpenSync: () => void }) {
   const openCmd = useCommandStore((s) => s.open);
   const router = useRouter();
   const isDark = useThemeStore((s) => s.isDark);
@@ -30,7 +32,11 @@ function HeaderActions() {
   const showSearch = width >= 720;
   return (
     <View style={h.row}>
-      {/* Tema toggle (son) */}
+      {/* Çevrimdışı Senkronizasyon & Outbox */}
+      <TouchableOpacity style={h.iconBtn} onPress={onOpenSync} accessibilityRole="button" accessibilityLabel="Senkronizasyon durumunu aç">
+        <Ionicons name="cloud-done-outline" size={17} color={colors.textDim} />
+      </TouchableOpacity>
+      {/* Tema toggle */}
       <TouchableOpacity style={h.iconBtn} onPress={toggleTheme} accessibilityRole="button" accessibilityLabel="Tema değiştir">
         <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={18} color={accent.bright} />
       </TouchableOpacity>
@@ -38,12 +44,16 @@ function HeaderActions() {
       <TouchableOpacity style={h.iconBtn} onPress={() => router.push('/tabs/focus' as any)} accessibilityRole="button" accessibilityLabel="Odak modunu aç">
         <Ionicons name="timer-outline" size={18} color={colors.textDim} />
       </TouchableOpacity>
-      {/* Komut veya ara */}
-      {showSearch && (
+      {/* Komut veya ara (Hem mobil hem masaüstünde erişilebilir) */}
+      {showSearch ? (
         <TouchableOpacity style={h.searchPill} onPress={openCmd} accessibilityRole="button" accessibilityLabel="Komut paletini aç veya ara">
           <Ionicons name="search-outline" size={15} color={colors.textFaint} />
           <Text style={h.searchText} numberOfLines={1}>Komut veya ara</Text>
           <Text style={h.shortcut}>⌘ K</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity style={h.iconBtn} onPress={openCmd} accessibilityRole="button" accessibilityLabel="Komut paletini aç veya ara">
+          <Ionicons name="search-outline" size={18} color={colors.textDim} />
         </TouchableOpacity>
       )}
     </View>
@@ -69,10 +79,12 @@ const h = StyleSheet.create({
 export default function TabLayout() {
   const inboxCount = useTaskStore((s) => s.tasks.filter((t) => t.list_type === 'inbox' && !t.completed).length);
   const accent = useAccent();
+  const [showOutboxModal, setShowOutboxModal] = useState(false);
 
   return (
     <>
       <Drawer />
+      <OutboxStatusModal visible={showOutboxModal} onClose={() => setShowOutboxModal(false)} />
       {/*
         Mounted here, once, and nowhere else.
 
@@ -110,7 +122,7 @@ export default function TabLayout() {
           headerTintColor: colors.text,
           headerTitleAlign: 'center',
           headerLeft: () => <HamburgerButton />,
-          headerRight: () => <HeaderActions />,
+          headerRight: () => <HeaderActions onOpenSync={() => setShowOutboxModal(true)} />,
         }}
       >
         <Tabs.Screen

@@ -9,7 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusStore } from '../../store/focusStore';
 import { ProgressRing } from '../../components/ui';
 import { haptic } from '../../lib/haptics';
-import { colors, fontFamily } from '../../lib/tokens';
+import { colors, fontFamily, alphaHex } from '../../lib/tokens';
+import DeepWorkScreen from '../screens/deep-work';
 import FocusReportModal from '../../components/focus/FocusReportModal';
 import FocusThemeModal from '../../components/focus/FocusThemeModal';
 import FocusSettingsModal from '../../components/focus/FocusSettingsModal';
@@ -50,6 +51,7 @@ export default function FocusScreen() {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskPomodoros, setNewTaskPomodoros] = useState(1);
   const [startHint, setStartHint] = useState('');
+  const [focusMode, setFocusMode] = useState<'timer' | 'deep_work'>('timer');
 
   const activePreset = FOCUS_PRESETS.find((p) => p.id === settings.presetId) ?? FOCUS_PRESETS[0];
   const phaseColor = activePreset.id === 'default' ? PHASE_COLORS[phase] : activePreset.accent;
@@ -127,7 +129,37 @@ export default function FocusScreen() {
       {settings.overlayOpacity > 0 && (
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: colors.black, opacity: settings.overlayOpacity }]} />
       )}
-      <ScrollView contentContainerStyle={s.content}>
+
+      {/* Görünüm Geçişi: Pomodoro Zamanlayıcı vs Derin Çalışma */}
+      <View style={s.topBar}>
+        <View style={s.viewSwitch}>
+          <TouchableOpacity
+            style={[s.viewBtn, focusMode === 'timer' && s.viewBtnActive]}
+            onPress={() => { haptic.select(); setFocusMode('timer'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Pomodoro zamanlayıcı görünümü"
+          >
+            <Ionicons name="timer-outline" size={14} color={focusMode === 'timer' ? colors.primary : colors.textDim} />
+            <Text style={[s.viewText, focusMode === 'timer' && s.viewTextActive]}>Zamanlayıcı</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.viewBtn, focusMode === 'deep_work' && s.viewBtnActive]}
+            onPress={() => { haptic.select(); setFocusMode('deep_work'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Derin çalışma günlüğü görünümü"
+          >
+            <Ionicons name="flash-outline" size={14} color={focusMode === 'deep_work' ? colors.primary : colors.textDim} />
+            <Text style={[s.viewText, focusMode === 'deep_work' && s.viewTextActive]}>Derin Çalışma</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {focusMode === 'deep_work' ? (
+        <View style={{ flex: 1 }}>
+          <DeepWorkScreen />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={s.content}>
 
         {/* Üst araç çubuğu */}
         <View style={s.topRow}>
@@ -270,6 +302,7 @@ export default function FocusScreen() {
           )}
         </View>
       </ScrollView>
+      )}
 
       {/* Görev ekle modal */}
       <Modal visible={showAddTask} transparent animationType="slide" onRequestClose={() => setShowAddTask(false)}>
@@ -349,6 +382,43 @@ export default function FocusScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1 },
+
+  topBar: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 6,
+  },
+  viewSwitch: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  viewBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    borderRadius: 9,
+    gap: 6,
+  },
+  viewBtnActive: {
+    backgroundColor: alphaHex(colors.primary, '20'),
+    borderColor: colors.primary,
+    borderWidth: 1,
+  },
+  viewText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textDim,
+  },
+  viewTextActive: {
+    color: colors.primary,
+  },
+
   content: { padding: 20, paddingBottom: 40 },
 
   topRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },

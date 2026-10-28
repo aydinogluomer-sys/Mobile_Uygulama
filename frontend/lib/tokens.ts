@@ -193,7 +193,6 @@ export const space = {
   hh: 40,
 } as const;
 
-// Köşe yarıçapı ölçeği — Atlas keskin/küçük
 export const radius = {
   xs: 6,
   sm: 8,
@@ -201,6 +200,7 @@ export const radius = {
   lg: 12,
   xl: 16,
   pill: 999,
+  full: 999,
 } as const;
 
 // Font aileleri — offline: platform serif/mono ile Instrument Serif/Geist Mono'yu yaklaşıkla

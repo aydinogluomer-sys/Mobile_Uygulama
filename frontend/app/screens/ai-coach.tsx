@@ -398,7 +398,7 @@ export default function AICoachScreen() {
   // has to exist before it, which is the same ordering rule that caught
   // `loadBadHabits` during the SDK migration.
   useEffect(() => {
-    if (!pendingAction) { setStaged(null); return; }
+    if (!pendingAction) { setStaged(null); setStagedV2(null); return; }
     stageFromActions([pendingAction.action]);
   }, [pendingAction, stageFromActions]);
 

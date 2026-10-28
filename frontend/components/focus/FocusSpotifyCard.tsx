@@ -67,10 +67,7 @@ export default function FocusSpotifyCard() {
   // `spotify_accounts` holds zero rows.
   //
   // Nothing dormant is deleted. `spotifyStore.connect()` remains the real
-  // refusal for any other caller; this only stops the entry point being shown.
-  if (!connection && !SPOTIFY_OAUTH_ENABLED) return null;
-
-  // ── Bağlı değil ──────────────────────────────────────────────────────────
+  // ── Bağlı değil: Doğrudan çalma listelerini göster ve harici oynatmaya izin ver ──
   if (!connection) {
     return (
       <View style={s.card}>
@@ -79,21 +76,28 @@ export default function FocusSpotifyCard() {
             <Ionicons name="musical-notes" size={20} color={SPOTIFY} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.connectTitle}>Spotify</Text>
-            <Text style={s.connectSub}>Çalışırken müzik dinle</Text>
+            <Text style={s.connectTitle}>Spotify Odak Listeleri</Text>
+            <Text style={s.connectSub}>Seans boyunca dinlemek için bir liste seç</Text>
           </View>
           <TouchableOpacity
-            style={[s.connectBtn, { backgroundColor: SPOTIFY }, status === 'connecting' && { opacity: 0.6 }]}
-            onPress={() => { haptic.medium(); connect(); }}
-            disabled={status === 'connecting'}
+            style={[s.connectBtn, { backgroundColor: SPOTIFY }]}
+            onPress={() => onPlaylist(FOCUS_PLAYLISTS[0])}
           >
-            {status === 'connecting'
-              ? <ActivityIndicator size="small" color={colors.black} />
-              : <Ionicons name="logo-google" size={15} color={colors.black} />}
-            <Text style={s.connectBtnText}>{status === 'connecting' ? 'Bağlanıyor…' : 'Bağlan'}</Text>
+            <Ionicons name="play" size={14} color={colors.black} />
+            <Text style={s.connectBtnText}>Hızlı Çal</Text>
           </TouchableOpacity>
         </View>
-        {status === 'error' && error ? <Text style={s.err}>{error}</Text> : null}
+
+        {/* Odak çalma listeleri chipleri */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[s.chips, { marginTop: 8 }]}>
+          {FOCUS_PLAYLISTS.map((p) => (
+            <TouchableOpacity key={p.id} style={s.chip} onPress={() => onPlaylist(p)}>
+              <Text style={s.chipText}>{p.emoji} {p.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {hint ? <Text style={[s.hint, { marginTop: 6 }]}>{hint}</Text> : null}
       </View>
     );
   }

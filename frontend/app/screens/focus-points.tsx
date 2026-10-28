@@ -139,6 +139,48 @@ export default function FocusPointsScreen() {
           </Text>
         </View>
 
+        {/* Üyelik Katmanları & Karşılaştırma */}
+        <Text style={s.sectionTitle}>Üyelik Katmanları</Text>
+        <View style={{ gap: 12 }}>
+          {([TIERS.free, TIERS.plus, TIERS.pro]).map((t) => (
+            <View
+              key={t.key}
+              style={[
+                s.tierCard,
+                t.key === tier && s.tierCardActive,
+                { borderColor: t.key === tier ? t.color : colors.border },
+              ]}
+            >
+              <View style={s.tierHeader}>
+                <View>
+                  <Text style={[s.tierName, { color: t.color }]}>{t.name}</Text>
+                  <Text style={s.tierTagline}>{t.tagline}</Text>
+                </View>
+                <View style={[s.tierGrantBadge, { backgroundColor: alphaHex(t.color, '18') }]}>
+                  <Text style={[s.tierGrantText, { color: t.color }]}>{t.grant} FP / ay</Text>
+                </View>
+              </View>
+
+              <View style={s.tierDivider} />
+
+              <View style={{ gap: 6 }}>
+                {t.features.map((feat) => (
+                  <View key={feat} style={s.tierFeatRow}>
+                    <Ionicons name="checkmark-circle" size={14} color={t.color} />
+                    <Text style={s.tierFeatText}>{feat}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {t.key === tier && (
+                <View style={s.activeBadge}>
+                  <Text style={s.activeBadgeText}>Şu Anki Planın (Aktif)</Text>
+                </View>
+              )}
+            </View>
+          ))}
+        </View>
+
         {/* The one thing a user might otherwise wonder about */}
         {!PAID_SUBSCRIPTIONS_ENABLED && (
           <View style={s.freeCard}>
@@ -225,4 +267,64 @@ const s = StyleSheet.create({
     paddingVertical: 14, paddingHorizontal: 14,
   },
   historyText: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.accent },
+
+  tierCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    gap: 12,
+  },
+  tierCardActive: {
+    backgroundColor: alphaHex(colors.surface, '95'),
+  },
+  tierHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  tierName: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  tierTagline: {
+    fontSize: 11,
+    color: colors.textFaint,
+    marginTop: 2,
+  },
+  tierGrantBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  tierGrantText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  tierDivider: {
+    height: 1,
+    backgroundColor: colors.borderSubtle,
+  },
+  tierFeatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tierFeatText: {
+    fontSize: 12,
+    color: colors.textDim,
+  },
+  activeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: alphaHex(colors.success, '20'),
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  activeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.success,
+  },
 });

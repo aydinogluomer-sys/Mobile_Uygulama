@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,9 @@ import { useLogStore } from '../../store/logStore';
 import { useWillpowerStore } from '../../store/willpowerStore';
 import MeasurableInputModal from '../../components/MeasurableInputModal';
 import HabitOnboarding from '../../components/HabitOnboarding';
+import AIRoutineModal from '../../components/AIRoutineModal';
+import HabitListView from '../../components/HabitListView';
+import BadHabitsTracker from '../../components/BadHabitsTracker';
 import { useCommandStore } from '../../store/commandStore';
 import type { Habit } from '../../lib/supabase';
 import { computeTriage, triageToStatus, impactMeta, TRIAGE_META, cueLabel } from '../../lib/triage';
@@ -34,6 +37,7 @@ import { isMeasurableTracking } from '../../lib/habitEngine';
 // R01.03-a: a measurable entry's total and state come from the service, not this screen.
 import { measuredEntryFor } from '../../services/habitLogService';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
+import { useRouter } from 'expo-router';
 
 const DELETE_REASONS = [
   'Artık ihtiyacım yok',
@@ -44,12 +48,16 @@ const DELETE_REASONS = [
 ];
 
 export default function TimelineScreen() {
+  const router = useRouter();
   const reduceMotion = useReducedMotion(); // R06.04 — toasts appear without the slide
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [measureHabit, setMeasureHabit] = useState<Habit | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showAIRoutine, setShowAIRoutine] = useState(false);
+  const [showBadHabits, setShowBadHabits] = useState(false);
+  const [viewMode, setViewMode] = useState<'flow' | 'matrix'>('flow');
 
   /**
    * The command palette cannot open this modal itself — it is mounted in the
@@ -325,9 +333,11 @@ export default function TimelineScreen() {
               )}
             </View>
             {cue && (
-              <View style={styles.cueRow}>
-                <Ionicons name="link-outline" size={11} color={colors.neutral500} />
-                <Text style={styles.cueText} numberOfLines={1}>{cue}</Text>
+              <View style={styles.stackingChainRow}>
+                <Ionicons name="git-commit-outline" size={12} color={colors.primary} />
+                <Text style={styles.stackingChainText} numberOfLines={1}>
+                  Zincir: {cue} ──► {habit.name}
+                </Text>
               </View>
             )}
             {isMeasurableTracking(habit.tracking_type) && (
@@ -445,18 +455,92 @@ export default function TimelineScreen() {
         </View>
       )}
 
-      {renderWeekCalendar()}
+      {/* Calm Tech 3-Modlu Görünüm Seçici: Akış | Triage Matrisi | Sınırlarım (Bırakılanlar) */}
+      <View style={styles.modeSwitchBar}>
+        <TouchableOpacity
+          style={[styles.modeChip, viewMode === 'flow' && styles.modeChipActive]}
+          onPress={() => { haptic.select(); setViewMode('flow'); }}
+          accessibilityRole="button"
+          accessibilityLabel="Günlük Ritim Akışı"
+        >
+          <Ionicons name="pulse-outline" size={14} color={viewMode === 'flow' ? colors.primary : colors.neutral400} />
+          <Text style={[styles.modeChipText, viewMode === 'flow' && styles.modeChipTextActive]}>Ritim Akışı</Text>
+        </TouchableOpacity>
 
-      <View style={styles.summaryBar}>
-        <Text style={styles.summaryDate}>{format(selectedDate, 'dd MMMM', { locale: tr })}</Text>
-        <Text style={styles.summaryProgress}>{todayDone}/{activeHabits.length} tamamlandı</Text>
+        <TouchableOpacity
+          style={[styles.modeChip, viewMode === 'matrix' && styles.modeChipActive]}
+          onPress={() => { haptic.select(); setViewMode('matrix'); }}
+          accessibilityRole="button"
+          accessibilityLabel="Triage ve Alışkanlık Matrisi"
+        >
+          <Ionicons name="options-outline" size={14} color={viewMode === 'matrix' ? colors.primary : colors.neutral400} />
+          <Text style={[styles.modeChipText, viewMode === 'matrix' && styles.modeChipTextActive]}>Triage Matrisi</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.modeChip}
+          onPress={() => { haptic.select(); setShowBadHabits(true); }}
+          accessibilityRole="button"
+          accessibilityLabel="Bırakılan Alışkanlıklar ve Dürtü Kalkanı"
+        >
+          <Ionicons name="shield-half-outline" size={14} color="#ef4444" />
+          <Text style={styles.modeChipText}>Sınırlarım</Text>
+        </TouchableOpacity>
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-      >
+      {viewMode === 'matrix' ? (
+        <View style={{ flex: 1 }}>
+          <HabitListView />
+        </View>
+      ) : (
+        <>
+          {renderWeekCalendar()}
+
+          <View style={styles.summaryBar}>
+            <Text style={styles.summaryDate}>{format(selectedDate, 'dd MMMM', { locale: tr })}</Text>
+            <Text style={styles.summaryProgress}>{todayDone}/{activeHabits.length} tamamlandı</Text>
+          </View>
+
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={{ paddingBottom: 100 }}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          >
+            {/* İkili Eylem Satırı: Rutin Yürütücü + AI Rutin & Hazır Paketler */}
+            <View style={styles.topActionGrid}>
+              <TouchableOpacity
+                style={styles.routineBannerHalf}
+                onPress={() => router.push('/screens/routine-runner' as any)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Rutin Yürütücüyü Başlat"
+              >
+                <View style={styles.routineIconWrap}>
+                  <Ionicons name="play" size={15} color={colors.white} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.routineBannerTitle}>Rutin Yürütücü</Text>
+                  <Text style={styles.routineBannerSub} numberOfLines={1}>Adım adım zamanlayıcılı icra</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.routineBannerHalf}
+                onPress={() => setShowAIRoutine(true)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="AI Rutin ve Hazır Paketler"
+              >
+                <View style={[styles.routineIconWrap, { backgroundColor: '#8b5cf6' }]}>
+                  <Ionicons name="sparkles" size={15} color={colors.white} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.routineBannerTitle}>AI Rutin & Paket</Text>
+                  <Text style={styles.routineBannerSub} numberOfLines={1}>Hedefe göre hazır şablon kur</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
         {/* Aktif Odak — takip edilebilir */}
         <View style={styles.section}>
           <SectionHeader title="Aktif Odak" icon="rocket" iconColor={colors.success} count={activeHabits.length} variant="serif" />
@@ -507,6 +591,18 @@ export default function TimelineScreen() {
           </View>
         )}
       </ScrollView>
+      </>
+      )}
+
+      <AIRoutineModal
+        visible={showAIRoutine}
+        onClose={() => { setShowAIRoutine(false); void loadData(); }}
+      />
+
+      <BadHabitsTracker
+        visible={showBadHabits}
+        onClose={() => setShowBadHabits(false)}
+      />
 
       <TouchableOpacity style={styles.fab} onPress={() => setShowOnboarding(true)} accessibilityLabel="Alışkanlık ekle">
         <Ionicons name="add" size={28} color={colors.white} />
@@ -750,6 +846,34 @@ const styles = StyleSheet.create({
   remBadgeText: { fontSize: 11, color: '#a78bfa', fontWeight: '600' },
   cueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   cueText: { fontSize: 12, color: colors.neutral500, flex: 1 },
+  stackingChainRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6,
+    backgroundColor: hexA(colors.primary, 0.10), borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3,
+    alignSelf: 'flex-start', borderWidth: 1, borderColor: hexA(colors.primary, 0.25),
+  },
+  stackingChainText: { fontSize: 11, color: colors.primary, fontWeight: '600' },
+  modeSwitchBar: {
+    flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: colors.bgElevated, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
+  },
+  modeChip: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 7, borderRadius: 9, backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  modeChipActive: {
+    backgroundColor: hexA(colors.primary, 0.14), borderColor: colors.primary,
+  },
+  modeChipText: { fontSize: 12, fontWeight: '600', color: colors.neutral400 },
+  modeChipTextActive: { color: colors.primary, fontWeight: '700' },
+  topActionGrid: {
+    flexDirection: 'row', gap: 10, paddingHorizontal: 12, paddingTop: 12,
+  },
+  routineBannerHalf: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, padding: 11,
+  },
   measurableBadge: { backgroundColor: hexA(colors.primary, 0.12), borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   measurableBadgeText: { fontSize: 11, color: colors.primary },
 
@@ -840,4 +964,41 @@ const styles = StyleSheet.create({
   capActivateBtn: { flexDirection: 'row', gap: 8, paddingVertical: 15, borderRadius: 12, marginTop: 10, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center' },
   capActivateDisabled: { backgroundColor: colors.selectedTintSuccess, opacity: 0.7 },
   capActivateText: { fontSize: 15, fontWeight: '700', color: colors.white },
+
+  routineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  routineBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  routineIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routineBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  routineBannerSub: {
+    fontSize: 12,
+    color: colors.textDim,
+    marginTop: 2,
+  },
 });

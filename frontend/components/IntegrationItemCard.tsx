@@ -17,7 +17,7 @@ export default function IntegrationItemCard({
   accentColor = colors.accent,
 }: IntegrationItemCardProps) {
   const { title, description, status, iconName = 'ellipse-outline' } = item;
-  const isPressable = Boolean(onPress) && status === 'available';
+  const isPressable = Boolean(onPress);
   const showChevron = isPressable;
 
   const content = (
@@ -51,7 +51,7 @@ export default function IntegrationItemCard({
         onPress={onPress}
         activeOpacity={0.7}
         accessibilityRole="button"
-        accessibilityLabel={`${title}, Kur`}
+        accessibilityLabel={`${title}, ${status === 'available' ? 'Kur' : status === 'connected' ? 'Bağlı' : 'Yapılandır'}`}
       >
         {content}
       </TouchableOpacity>
@@ -63,7 +63,7 @@ export default function IntegrationItemCard({
 
   return (
     <View
-      style={[styles.settingItem, status === 'comingSoon' && styles.settingItemDisabled]}
+      style={[styles.settingItem, styles.settingItemDisabled]}
       accessibilityRole="text"
       accessibilityLabel={`${title}, ${statusLabel}`}
     >

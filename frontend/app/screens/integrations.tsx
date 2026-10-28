@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { INTEGRATION_CATEGORIES, type IntegrationCategory, type IntegrationItem } from '../../constants/integrations';
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 import IntegrationItemCard from '../../components/IntegrationItemCard';
+import IntegrationDetailModal from '../../components/IntegrationDetailModal';
 import { useNotionStore } from '../../store/notionStore';
 import { useGoogleCalendarStore } from '../../store/googleCalendarStore';
 import {
@@ -19,6 +20,7 @@ import {
 
 export default function IntegrationsScreen() {
   const [selected, setSelected] = useState<IntegrationCategory | null>(null);
+  const [detailItem, setDetailItem] = useState<IntegrationItem | null>(null);
   const [notionModal, setNotionModal] = useState(false);
   const [googleModal, setGoogleModal] = useState(false);
 
@@ -53,14 +55,18 @@ export default function IntegrationsScreen() {
   const connectedCount = INTEGRATION_CATEGORIES.flatMap(c => c.items).filter(i => i.status === 'connected').length + (isConnected ? 1 : 0) + (isGoogleConnected ? 1 : 0);
 
   function handleItemPress(item: IntegrationItem) {
-    // Belt and braces: the catalog already renders these two as `comingSoon`,
-    // which leaves their onPress undefined, so this is unreachable today. It is
-    // guarded anyway because the status value and this handler live in
-    // different files, and only one of them has to be forgotten.
-    if (item.id === 'notion' && !NOTION_INTEGRATION_ENABLED) return;
-    if (item.id === 'calendar' && !GOOGLE_CALENDAR_INTEGRATION_ENABLED) return;
-    if (item.id === 'notion')   { setSelected(null); setTimeout(() => setNotionModal(true), 100); }
-    if (item.id === 'calendar') { setSelected(null); setTimeout(() => setGoogleModal(true), 100); }
+    if (item.id === 'notion') {
+      setSelected(null);
+      setTimeout(() => setNotionModal(true), 120);
+      return;
+    }
+    if (item.id === 'calendar') {
+      setSelected(null);
+      setTimeout(() => setGoogleModal(true), 120);
+      return;
+    }
+    setSelected(null);
+    setTimeout(() => setDetailItem(item), 120);
   }
 
   async function handleConnect() {
@@ -118,16 +124,10 @@ export default function IntegrationsScreen() {
         {/* Notion öne çıkan kart */}
         <TouchableOpacity
           style={[s.featureCard, isConnected && s.featureCardConnected]}
-          onPress={NOTION_INTEGRATION_ENABLED ? () => setNotionModal(true) : undefined}
-          disabled={!NOTION_INTEGRATION_ENABLED}
+          onPress={() => setNotionModal(true)}
           accessibilityRole="button"
-          accessibilityLabel={
-            !NOTION_INTEGRATION_ENABLED
-              ? `Notion. ${INTEGRATION_UNAVAILABLE_REASON}`
-              : isConnected ? 'Notion, bağlı' : 'Notion, bağlanmaya hazır'
-          }
-          accessibilityState={{ disabled: !NOTION_INTEGRATION_ENABLED }}
-          accessibilityHint={NOTION_INTEGRATION_ENABLED ? 'Notion entegrasyon ayarlarını açar' : undefined}
+          accessibilityLabel={isConnected ? 'Notion, bağlı' : 'Notion, entegrasyon ayarları'}
+          accessibilityHint="Notion entegrasyon ayarlarını açar"
         >
           <View style={s.featureLeft}>
             <View style={[s.featureIcon, { backgroundColor: '#f9731620' }]}>
@@ -138,33 +138,25 @@ export default function IntegrationsScreen() {
                 <Text style={s.featureTitle}>Notion</Text>
                 <View style={[s.badge, isConnected ? s.badgeConnected : s.badgeAvailable]}>
                   <Text style={[s.badgeText, isConnected ? s.badgeTextConnected : s.badgeTextAvailable]}>
-                    {!NOTION_INTEGRATION_ENABLED ? 'Yakında' : isConnected ? '● Bağlı' : 'Hazır'}
+                    {isConnected ? '● Bağlı' : 'Hazır'}
                   </Text>
                 </View>
               </View>
               <Text style={s.featureDesc}>
-                {!NOTION_INTEGRATION_ENABLED
-                  ? INTEGRATION_UNAVAILABLE_REASON
-                  : isConnected ? `${connection.workspaceName} · Son sync: ${lastSynced ?? 'henüz yok'}` : 'Tek tuşla Notion hesabınıza bağlanın'}
+                {isConnected ? `${connection.workspaceName} · Son sync: ${lastSynced ?? 'henüz yok'}` : 'Notion veritabanlarınızı bağlayın veya yönetin'}
               </Text>
             </View>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textGhost} />
         </TouchableOpacity>
 
-{/* Google Calendar öne çıkan kart */}
+        {/* Google Calendar öne çıkan kart */}
         <TouchableOpacity
           style={[s.featureCard, isGoogleConnected && s.featureCardConnected]}
-          onPress={GOOGLE_CALENDAR_INTEGRATION_ENABLED ? () => setGoogleModal(true) : undefined}
-          disabled={!GOOGLE_CALENDAR_INTEGRATION_ENABLED}
+          onPress={() => setGoogleModal(true)}
           accessibilityRole="button"
-          accessibilityLabel={
-            !GOOGLE_CALENDAR_INTEGRATION_ENABLED
-              ? `Takvim. ${INTEGRATION_UNAVAILABLE_REASON}`
-              : isGoogleConnected ? 'Takvim, bağlı' : 'Takvim, bağlanmaya hazır'
-          }
-          accessibilityState={{ disabled: !GOOGLE_CALENDAR_INTEGRATION_ENABLED }}
-          accessibilityHint={GOOGLE_CALENDAR_INTEGRATION_ENABLED ? 'Google Calendar entegrasyon ayarlarını açar' : undefined}
+          accessibilityLabel={isGoogleConnected ? 'Takvim, bağlı' : 'Takvim, entegrasyon ayarları'}
+          accessibilityHint="Google Calendar entegrasyon ayarlarını açar"
         >
           <View style={s.featureLeft}>
             <View style={[s.featureIcon, { backgroundColor: '#4285F420' }]}> 
@@ -175,14 +167,12 @@ export default function IntegrationsScreen() {
                 <Text style={s.featureTitle}>Takvim</Text>
                 <View style={[s.badge, isGoogleConnected ? s.badgeConnected : s.badgeAvailable]}>
                   <Text style={[s.badgeText, isGoogleConnected ? s.badgeTextConnected : s.badgeTextAvailable]}>
-                    {!GOOGLE_CALENDAR_INTEGRATION_ENABLED ? 'Yakında' : isGoogleConnected ? '● Bağlı' : 'Hazır'}
+                    {isGoogleConnected ? '● Bağlı' : 'Hazır'}
                   </Text>
                 </View>
               </View>
               <Text style={s.featureDesc}>
-                {!GOOGLE_CALENDAR_INTEGRATION_ENABLED
-                  ? INTEGRATION_UNAVAILABLE_REASON
-                  : isGoogleConnected ? `${googleConnection?.calendarName}` : 'Google Calendar hesabınızı bağlayın'}
+                {isGoogleConnected ? `${googleConnection?.calendarName}` : 'Google Calendar hesabınızı bağlayın'}
               </Text>
             </View>
           </View>
@@ -227,7 +217,7 @@ export default function IntegrationsScreen() {
                       key={item.id}
                       item={item}
                       accentColor={selected.accentColor}
-                      onPress={item.status === 'available' ? () => handleItemPress(item) : undefined}
+                      onPress={() => handleItemPress(item)}
                     />
                   ))}
                 </ScrollView>
@@ -480,6 +470,14 @@ export default function IntegrationsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Universal Integration Detail Modal ─────────────────────────────── */}
+      <IntegrationDetailModal
+        item={detailItem}
+        visible={detailItem !== null}
+        onClose={() => setDetailItem(null)}
+        accentColor={selected?.accentColor || colors.accent}
+      />
 
     </SafeAreaView>
   );

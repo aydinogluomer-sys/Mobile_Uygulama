@@ -1,5 +1,8 @@
 import { colors, alphaHex } from '../../lib/tokens';
+import { haptic } from '../../lib/haptics';
 import { useEffect, useState } from 'react';
+import OKRScreen from './okr';
+import LifeAreasScreen from './life-areas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Modal, TextInput, Alert,
@@ -69,6 +72,7 @@ export default function GoalsScreen() {
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
   const [title, setTitle] = useState('');
   const [progress, setProgress] = useState('0');
+  const [visionMode, setVisionMode] = useState<'goals' | 'okr' | 'life_areas'>('goals');
   // R06.03 — a failed save keeps the form and says why; a cancelled NEW goal
   // keeps its draft for the next "add" (no "are you sure" screen needed).
   const [formError, setFormError] = useState<string | null>(null);
@@ -139,9 +143,51 @@ export default function GoalsScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      {/* Üst Switcher: Hedefler vs OKR vs Yaşam Alanları */}
+      <View style={s.topBar}>
+        <View style={s.viewSwitch}>
+          <TouchableOpacity
+            style={[s.viewBtn, visionMode === 'goals' && s.viewBtnActive]}
+            onPress={() => { haptic.select(); setVisionMode('goals'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Hedefler görünümü"
+          >
+            <Ionicons name="trophy-outline" size={13} color={visionMode === 'goals' ? colors.warning : colors.textDim} />
+            <Text style={[s.viewText, visionMode === 'goals' && { color: colors.warning }]}>Hedefler</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.viewBtn, visionMode === 'okr' && s.viewBtnActive]}
+            onPress={() => { haptic.select(); setVisionMode('okr'); }}
+            accessibilityRole="button"
+            accessibilityLabel="OKR görünümü"
+          >
+            <Ionicons name="flag-outline" size={13} color={visionMode === 'okr' ? colors.error : colors.textDim} />
+            <Text style={[s.viewText, visionMode === 'okr' && { color: colors.error }]}>OKR</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.viewBtn, visionMode === 'life_areas' && s.viewBtnActive]}
+            onPress={() => { haptic.select(); setVisionMode('life_areas'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Yaşam alanları görünümü"
+          >
+            <Ionicons name="radio-button-on-outline" size={13} color={visionMode === 'life_areas' ? colors.success : colors.textDim} />
+            <Text style={[s.viewText, visionMode === 'life_areas' && { color: colors.success }]}>Yaşam Alanları</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
-      {/* Tab bar */}
-      <View style={s.tabs}>
+      {visionMode === 'okr' ? (
+        <View style={{ flex: 1 }}>
+          <OKRScreen />
+        </View>
+      ) : visionMode === 'life_areas' ? (
+        <View style={{ flex: 1 }}>
+          <LifeAreasScreen />
+        </View>
+      ) : (
+        <>
+          {/* Tab bar */}
+          <View style={s.tabs}>
         {TABS.map((t) => (
           <TouchableOpacity
             key={t.key}
@@ -220,6 +266,8 @@ export default function GoalsScreen() {
       >
         <Ionicons name="add" size={24} color={colors.white} />
       </TouchableOpacity>
+        </>
+      )}
 
       {/* Modal */}
       <Modal visible={modal} transparent animationType="slide" onRequestClose={closeForm}>
@@ -303,6 +351,43 @@ export default function GoalsScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+
+  topBar: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+    backgroundColor: colors.bg,
+  },
+  viewSwitch: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  viewBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    borderRadius: 9,
+    gap: 5,
+  },
+  viewBtnActive: {
+    backgroundColor: alphaHex(colors.primary, '20'),
+    borderColor: colors.primary,
+    borderWidth: 1,
+  },
+  viewText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textDim,
+  },
+  viewTextActive: {
+    color: colors.primary,
+  },
 
   tabs: { flexDirection: 'row', backgroundColor: colors.coolBlack850, borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: 'transparent' },

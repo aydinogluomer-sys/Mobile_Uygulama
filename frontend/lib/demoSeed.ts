@@ -68,7 +68,13 @@ export async function seedDemoData(): Promise<SeedSummary> {
   const todayStr = ymd(today);
   const nowIso = new Date().toISOString();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const res = await supabase.auth.getUser();
+    user = res?.data?.user ?? null;
+  } catch {
+    user = null;
+  }
 
   // Supabase auth yoksa UI testi icin local demo veri bas.
   if (!user) {

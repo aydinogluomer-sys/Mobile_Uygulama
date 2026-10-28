@@ -3,28 +3,21 @@ import { View, StyleSheet } from 'react-native';
 import SegmentedTabs, { type Segment } from '../../components/SegmentedTabs';
 import { colors } from '../../lib/tokens';
 import ProfileDetailScreen from '../screens/profile';
-import LeaderboardScreen from '../screens/leaderboard';
-import JournalScreen from '../screens/journal';
 import IntegrationsScreen from '../screens/integrations';
 import SettingsScreen from './settings';
 
 /**
- * PROFİL — the account surface: who you are, what you have earned, and how
- * the app is configured.
- *
- * Previously the profile, leaderboard, journal, integrations and settings
- * were five separate drawer entries with no relationship to each other in the
- * navigation, even though they are all "about me and my setup".
- *
- * Composed from the existing screens; their routes are unchanged.
+ * PROFİL (Calm Tech 3 Sütunlu Kimlik & Sistem Merkezi):
+ * 5 sıkışık alt sekme yerine:
+ * 1. Kimlik & Bento (Seviye, Yıllık Isı Haritası, Başarımlar, Liderlik, Odak Puanları)
+ * 2. Bağlantılar (Entegrasyonlar & Webhook)
+ * 3. Ayarlar (Tema, Veri/Gizlilik, Yedekleme)
  */
-type Key = 'me' | 'leaderboard' | 'journal' | 'integrations' | 'settings';
+type Key = 'me' | 'integrations' | 'settings';
 
 const SEGMENTS: readonly Segment<Key>[] = [
-  { key: 'me', label: 'Profil' },
-  { key: 'leaderboard', label: 'Sıralama' },
-  { key: 'journal', label: 'Günlük' },
-  { key: 'integrations', label: 'Entegrasyonlar' },
+  { key: 'me', label: 'Kimlik & Özet' },
+  { key: 'integrations', label: 'Bağlantılar' },
   { key: 'settings', label: 'Ayarlar' },
 ];
 
@@ -35,8 +28,6 @@ export default function ProfileHubScreen() {
       <SegmentedTabs segments={SEGMENTS} value={tab} onChange={setTab} />
       <View style={s.body}>
         {tab === 'me' && <ProfileDetailScreen />}
-        {tab === 'leaderboard' && <LeaderboardScreen />}
-        {tab === 'journal' && <JournalScreen />}
         {tab === 'integrations' && <IntegrationsScreen />}
         {tab === 'settings' && <SettingsScreen />}
       </View>

@@ -1,5 +1,7 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
+import { haptic } from '../../lib/haptics';
 import { useEffect, useState } from 'react';
+import ReadingListScreen from './reading-list';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Modal, KeyboardAvoidingView, Platform, Alert,
@@ -23,6 +25,7 @@ export default function NotesScreen() {
   const [editing, setEditing] = useState<Note | null>(null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [viewMode, setViewMode] = useState<'notes' | 'reading_list'>('notes');
 
   useEffect(() => { fetchNotes(); }, [fetchNotes]);
 
@@ -84,8 +87,38 @@ export default function NotesScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
-      {/* Arama */}
-      <View style={s.searchRow}>
+      {/* Görünüm Geçişi: Notlar vs Okuma Listesi */}
+      <View style={s.topBar}>
+        <View style={s.viewSwitch}>
+          <TouchableOpacity
+            style={[s.viewBtn, viewMode === 'notes' && s.viewBtnActive]}
+            onPress={() => { haptic.select(); setViewMode('notes'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Notlar görünümü"
+          >
+            <Ionicons name="document-text-outline" size={14} color={viewMode === 'notes' ? colors.primary : colors.textDim} />
+            <Text style={[s.viewText, viewMode === 'notes' && s.viewTextActive]}>Notlar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.viewBtn, viewMode === 'reading_list' && s.viewBtnActive]}
+            onPress={() => { haptic.select(); setViewMode('reading_list'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Okuma listesi görünümü"
+          >
+            <Ionicons name="book-outline" size={14} color={viewMode === 'reading_list' ? colors.primary : colors.textDim} />
+            <Text style={[s.viewText, viewMode === 'reading_list' && s.viewTextActive]}>Okuma Listesi</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {viewMode === 'reading_list' ? (
+        <View style={{ flex: 1 }}>
+          <ReadingListScreen />
+        </View>
+      ) : (
+        <>
+          {/* Arama */}
+          <View style={s.searchRow}>
         <Ionicons name="search-outline" size={16} color={colors.textFaint} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         <TextInput
           style={s.searchInput}
@@ -181,6 +214,8 @@ export default function NotesScreen() {
       >
         <Ionicons name="add" size={26} color={colors.white} />
       </TouchableOpacity>
+        </>
+      )}
 
       <Modal visible={showEdit} transparent animationType="slide" onRequestClose={() => setShowEdit(false)}>
         <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -245,6 +280,43 @@ export default function NotesScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+
+  topBar: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+    backgroundColor: colors.bg,
+  },
+  viewSwitch: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  viewBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    borderRadius: 9,
+    gap: 6,
+  },
+  viewBtnActive: {
+    backgroundColor: alphaHex(colors.primary, '20'),
+    borderColor: colors.primary,
+    borderWidth: 1,
+  },
+  viewText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textDim,
+  },
+  viewTextActive: {
+    color: colors.primary,
+  },
 
   searchRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

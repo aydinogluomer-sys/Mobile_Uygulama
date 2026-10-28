@@ -12,6 +12,7 @@ import { Button } from '../../components/ui';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
 import { useNotionSessionStore } from '../../store/notionSessionStore';
 import { NOTION_INTEGRATION_ENABLED } from '../../lib/featureGates';
+import { seedDemoData, isSeedingAllowed } from '../../lib/demoSeed';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -20,6 +21,28 @@ export default function LoginScreen() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  async function handleBypassLogin() {
+    setError('');
+    setLoading(true);
+    try {
+      await seedDemoData();
+    } catch (e) {
+      console.warn('Demo seed warning:', e);
+    }
+    useNotionSessionStore.setState({
+      session: {
+        workspaceName: 'Aderyth Demo',
+        workspaceIcon: '⚡',
+        workspaceId: 'demo-local',
+        connectedAt: new Date().toISOString(),
+      },
+    });
+    router.replace('/tabs/today');
+    setLoading(false);
+  }
+
+  
 
   async function handleLogin() {
     if (!email || !password) {
@@ -128,7 +151,15 @@ export default function LoginScreen() {
               </View>
             )}
 
-            <Button label="Giriş Yap" onPress={handleLogin} loading={loading} size="lg" style={{ marginTop: space.sm }} />
+            <Button
+              label="🚀 Girişi Geç (Demo Modu)"
+              onPress={handleBypassLogin}
+              loading={loading}
+              size="lg"
+              style={{ marginTop: space.sm, backgroundColor: colors.accent }}
+            />
+
+            <Button label="Giriş Yap" onPress={handleLogin} loading={loading} size="lg" variant="secondary" style={{ marginTop: space.xs }} />
 
             <Link href="/(auth)/register" asChild>
               <TouchableOpacity style={s.linkBtn}>

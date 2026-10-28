@@ -16,11 +16,12 @@ import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, AccessibilityInfo, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Speech from 'expo-speech';
 import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
 import { useHabitStore } from '../../store/habitStore';
 import { currentStep, latestVersion, stepActiveMs, summarize, timeUp, validateStep, type StepKind } from '../../lib/routineRunner';
 import { isMeasurableTracking } from '../../lib/habitEngine';
-import { colors, space, radius } from '../../lib/tokens';
+import { colors, space, radius, alphaHex } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 
 const mmss = (ms: number) => {
@@ -38,6 +39,7 @@ export default function RoutineRunnerScreen() {
   const [draftMin, setDraftMin] = useState(5);
   const [draftHabit, setDraftHabit] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const announcedFor = useRef<string | null>(null);
   const buzzedFor = useRef<string | null>(null);
 
@@ -67,14 +69,25 @@ export default function RoutineRunnerScreen() {
     if (step && announcedFor.current !== step.id) {
       announcedFor.current = step.id;
       AccessibilityInfo.announceForAccessibility(`Sıradaki adım: ${step.title}`);
+      if (voiceEnabled) {
+        try {
+          Speech.stop();
+          Speech.speak(`Sıradaki adım: ${step.title}`, { language: 'tr-TR', rate: 0.98 });
+        } catch { /* yoksay */ }
+      }
     }
-  }, [step]);
+  }, [step, voiceEnabled]);
   useEffect(() => {
     if (up && step && buzzedFor.current !== step.id) {
       buzzedFor.current = step.id;
       try { haptic.warning(); } catch { /* yoksay */ }
+      if (voiceEnabled) {
+        try {
+          Speech.speak(`${step.title} süresi tamamlandı.`, { language: 'tr-TR', rate: 0.98 });
+        } catch { /* yoksay */ }
+      }
     }
-  }, [up, step]);
+  }, [up, step, voiceEnabled]);
 
   const linkable = habits.filter((h) => h.status === 'active' && !isMeasurableTracking(h.tracking_type));
 
@@ -134,6 +147,18 @@ export default function RoutineRunnerScreen() {
   const elapsed = stepActiveMs(s, now);
   const remaining = step?.kind === 'timed' && step.durationSec ? step.durationSec * 1000 - elapsed : null;
 
+  // Llama Life / Routinery Dynamic ETA: Kalan adımların toplam süresinden tahmini bitiş saati
+  const remainingTotalMs = s.steps.reduce((acc, p, idx) => {
+    if (s.results[p.id]) return acc;
+    if (idx === s.index) {
+      if (p.kind === 'timed' && p.durationSec) return acc + Math.max(0, p.durationSec * 1000 - elapsed);
+      return acc + 120000;
+    }
+    return acc + ((p.kind === 'timed' && p.durationSec ? p.durationSec : 120) * 1000);
+  }, 0);
+  const etaDate = new Date(now + remainingTotalMs);
+  const etaLabel = `${String(etaDate.getHours()).padStart(2, '0')}:${String(etaDate.getMinutes()).padStart(2, '0')}`;
+
   function addDraft() {
     const d = { title: draftTitle, kind: draftKind, durationSec: draftKind === 'timed' ? draftMin * 60 : undefined, habitId: draftHabit };
     const v = validateStep(d);
@@ -145,11 +170,38 @@ export default function RoutineRunnerScreen() {
   return (
     <SafeAreaView style={x.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={x.scroll}>
-        <Text style={x.label}>{s.templateName.toLocaleUpperCase('tr')} · {marked}/{s.steps.length}{s.status === 'paused' ? ' · DURAKLATILDI' : ''}</Text>
+        <View style={x.topStatusRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={x.label}>{s.templateName.toLocaleUpperCase('tr')} · {marked}/{s.steps.length}{s.status === 'paused' ? ' · DURAKLATILDI' : ''}</Text>
+            <Text style={x.etaBadge}>⏱ Tahmini Bitiş: {etaLabel} (~{Math.max(1, Math.ceil(remainingTotalMs / 60000))} dk kaldı)</Text>
+          </View>
+          <TouchableOpacity
+            style={[x.voicePill, voiceEnabled && x.voicePillOn]}
+            onPress={() => { haptic.select(); setVoiceEnabled((v) => !v); }}
+            accessibilityRole="button"
+            accessibilityLabel={voiceEnabled ? 'Sesli rehberi kapat' : 'Sesli rehberi aç'}
+          >
+            <Ionicons name={voiceEnabled ? 'volume-high' : 'volume-mute-outline'} size={15} color={voiceEnabled ? colors.accent : colors.textDim} />
+            <Text style={[x.voicePillText, voiceEnabled && { color: colors.accent }]}>{voiceEnabled ? 'Sesli Açık' : 'Sesli Rehber'}</Text>
+          </TouchableOpacity>
+        </View>
 
         {step ? (
           <View style={x.stepCard} accessible accessibilityLabel={`Sıradaki adım: ${step.title}`}>
-            <Text style={x.stepEyebrow}>SIRADAKİ ADIM</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={x.stepEyebrow}>SIRADAKİ ADIM</Text>
+              {step.kind === 'timed' && (
+                <TouchableOpacity
+                  style={x.extendBtn}
+                  onPress={() => { haptic.light(); st.setDuration(step.id, (step.durationSec ?? 60) + 120); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Bu adıma 2 dakika ekle"
+                >
+                  <Ionicons name="time-outline" size={13} color={colors.accent} />
+                  <Text style={x.extendBtnText}>+2 Dk Uzat</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <Text style={x.stepTitle}>{step.title}</Text>
             <Text style={[x.timer, up && { color: colors.warning }]}>
               {remaining !== null ? mmss(remaining) : mmss(elapsed)}
@@ -289,4 +341,21 @@ const x = StyleSheet.create({
   error: { fontSize: 12, color: colors.error },
   finish: { alignItems: 'center', marginTop: space.xl, paddingVertical: 12 },
   finishText: { color: colors.textFaint, fontWeight: '700' },
+  topStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
+  etaBadge: { fontSize: 12, fontWeight: '600', color: colors.accent, marginTop: 3 },
+  voicePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  voicePillOn: {
+    borderColor: colors.accent, backgroundColor: alphaHex(colors.accent, '16'),
+  },
+  voicePillText: { fontSize: 11, fontWeight: '700', color: colors.textDim },
+  extendBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.sm,
+    backgroundColor: alphaHex(colors.accent, '15'), borderWidth: 1, borderColor: alphaHex(colors.accent, '35'),
+  },
+  extendBtnText: { fontSize: 11, fontWeight: '700', color: colors.accent },
 });

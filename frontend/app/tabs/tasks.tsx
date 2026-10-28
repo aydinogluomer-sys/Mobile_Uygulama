@@ -13,6 +13,7 @@ import InlineComposer from '../../components/InlineComposer';
 import { todayLocal } from '../../lib/date';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import ADHDTaskSplitter from '../../components/ADHDTaskSplitter';
+import EisenhowerScreen from '../screens/eisenhower';
 
 const TABS: { key: ListType | 'done'; label: string }[] = [
   { key: 'inbox', label: 'Gelen' },
@@ -29,6 +30,7 @@ const PRIORITY_META: Record<TaskPriority, { color: string; label: string }> = {
 };
 
 export default function TasksScreen() {
+  const [viewMode, setViewMode] = useState<'list' | 'matrix'>('list');
   const [activeTab, setActiveTab] = useState<ListType | 'done'>('inbox');
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState('');
@@ -94,30 +96,62 @@ export default function TasksScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
-      {/* Segment tabs */}
-      <View style={s.tabRow}>
-        {TABS.map((tab) => {
-          const count = tab.key === 'done'
-            ? tasks.filter((t) => t.completed).length
-            : byList(tab.key as ListType).length;
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={[s.tabBtn, activeTab === tab.key && s.tabBtnActive]}
-              onPress={() => setActiveTab(tab.key)}
-            >
-              <Text style={[s.tabLabel, activeTab === tab.key && s.tabLabelActive]}>
-                {tab.label}
-              </Text>
-              {count > 0 && (
-                <View style={[s.tabBadge, activeTab === tab.key && s.tabBadgeActive]}>
-                  <Text style={s.tabBadgeText}>{count}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
+      {/* Görünüm Geçişi: Liste vs Eisenhower Matrisi */}
+      <View style={s.topBar}>
+        <View style={s.viewSwitch}>
+          <TouchableOpacity
+            style={[s.viewBtn, viewMode === 'list' && s.viewBtnActive]}
+            onPress={() => { haptic.select(); setViewMode('list'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Liste görünümü"
+          >
+            <Ionicons name="list-outline" size={14} color={viewMode === 'list' ? colors.primary : colors.textDim} />
+            <Text style={[s.viewText, viewMode === 'list' && s.viewTextActive]}>Liste</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.viewBtn, viewMode === 'matrix' && s.viewBtnActive]}
+            onPress={() => { haptic.select(); setViewMode('matrix'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Eisenhower matrisi"
+          >
+            <Ionicons name="grid-outline" size={14} color={viewMode === 'matrix' ? colors.primary : colors.textDim} />
+            <Text style={[s.viewText, viewMode === 'matrix' && s.viewTextActive]}>Eisenhower Matrisi</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {viewMode === 'matrix' ? (
+        <View style={{ flex: 1 }}>
+          <EisenhowerScreen />
+        </View>
+      ) : (
+        <>
+          {/* Segment tabs */}
+          <View style={s.tabRow}>
+            {TABS.map((tab) => {
+              const count = tab.key === 'done'
+                ? tasks.filter((t) => t.completed).length
+                : byList(tab.key as ListType).length;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[s.tabBtn, activeTab === tab.key && s.tabBtnActive]}
+                  onPress={() => setActiveTab(tab.key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${tab.label}, ${count} görev`}
+                >
+                  <Text style={[s.tabLabel, activeTab === tab.key && s.tabLabelActive]}>
+                    {tab.label}
+                  </Text>
+                  {count > 0 && (
+                    <View style={[s.tabBadge, activeTab === tab.key && s.tabBadgeActive]}>
+                      <Text style={s.tabBadgeText}>{count}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
       {/* Görev listesi */}
       <FlatList
@@ -205,13 +239,15 @@ export default function TasksScreen() {
       />
 
       {/* FAB */}
-      {activeTab !== 'done' && (
+      {viewMode === 'list' && activeTab !== 'done' && (
         <TouchableOpacity
           style={s.fab}
           onPress={() => openAdd(activeTab as ListType)}
         >
           <Ionicons name="add" size={26} color={colors.white} />
         </TouchableOpacity>
+      )}
+        </>
       )}
 
       {/* Görev bölücü — yalnızca bir hedef seçildiğinde monte edilir */}
@@ -297,6 +333,43 @@ export default function TasksScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+
+  topBar: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 6,
+    backgroundColor: colors.bg,
+  },
+  viewSwitch: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  viewBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    borderRadius: 9,
+    gap: 6,
+  },
+  viewBtnActive: {
+    backgroundColor: alphaHex(colors.accent, '20'),
+    borderColor: colors.accent,
+    borderWidth: 1,
+  },
+  viewText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textDim,
+  },
+  viewTextActive: {
+    color: colors.accent,
+  },
 
   tabRow: {
     flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10,

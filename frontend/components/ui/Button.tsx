@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, hexA, shadow, onColor } from '../../lib/tokens';
 import { useAccent } from '../../lib/useAccent';
 
-type Variant = 'primary' | 'tonal' | 'ghost' | 'danger';
+type Variant = 'primary' | 'tonal' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
 
 /**
@@ -52,7 +52,7 @@ export default function Button({
   // R06.04 — the label colour is chosen for contrast on the fill (onColor).
   if (variant === 'primary') { bg = accentTheme.primary; fg = onColor(accentTheme.primary); glow = shadow.glow(accentTheme.primary); }
   else if (variant === 'danger') { bg = colors.error; fg = onColor(colors.error); }
-  else if (variant === 'tonal') { bg = hexA(accent, 0.14); fg = accent; border = hexA(accent, 0.28); }
+  else if (variant === 'tonal' || variant === 'secondary') { bg = hexA(accent, 0.14); fg = accent; border = hexA(accent, 0.28); }
   else if (variant === 'ghost') { bg = 'transparent'; fg = accent; border = colors.border; }
 
   const isDisabled = disabled || loading;
