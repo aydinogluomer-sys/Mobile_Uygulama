@@ -573,7 +573,7 @@
     function navigateUrl() {
       const input = document.getElementById('url-input');
       let val = input.value.trim();
-      if (!/^https?:\\/\\//i.test(val)) {
+      if (!/^https?:\/\//i.test(val)) {
         val = 'http://' + val;
       }
       document.getElementById('phone-frame').src = val;
