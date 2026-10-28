@@ -541,6 +541,26 @@ export default function TimelineScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Keşfet & Koleksiyonlar Vitrini Geçişi (TheFor Tarzı Keşfet) */}
+            <TouchableOpacity
+              style={styles.exploreStripCard}
+              onPress={() => router.push('/tabs/hub' as any)}
+              activeOpacity={0.82}
+              accessibilityRole="button"
+              accessibilityLabel="Rutin ve Alışkanlık Keşfet Vitrinini Aç"
+            >
+              <View style={[styles.routineIconWrap, { backgroundColor: '#f59e0b' }]}>
+                <Ionicons name="compass" size={16} color={colors.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.routineBannerTitle}>✨ Rutin & Alışkanlık Keşfet</Text>
+                <Text style={styles.routineBannerSub} numberOfLines={1}>
+                  Küratörlü koleksiyonları incele veya tek dokunuşla atomik alışkanlık ekle
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.neutral400} />
+            </TouchableOpacity>
+
         {/* Aktif Odak — takip edilebilir */}
         <View style={styles.section}>
           <SectionHeader title="Aktif Odak" icon="rocket" iconColor={colors.success} count={activeHabits.length} variant="serif" />
@@ -873,6 +893,11 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
     borderRadius: radius.md, padding: 11,
+  },
+  exploreStripCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: hexA('#f59e0b', 0.35),
+    borderRadius: radius.md, padding: 11, marginHorizontal: 12, marginTop: 10,
   },
   measurableBadge: { backgroundColor: hexA(colors.primary, 0.12), borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   measurableBadgeText: { fontSize: 11, color: colors.primary },

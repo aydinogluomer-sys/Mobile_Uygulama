@@ -50,6 +50,7 @@ const GROUPS: { title: string; subtitle?: string; items: DrawerItem[] }[] = [
     title: 'ALIŞKANLIKLAR',
     subtitle: 'Rutinler ve Döngüler',
     items: [
+      { label: 'Rutin & Alışkanlık Keşfet', shortLabel: 'Keşfet', icon: 'compass-outline', color: '#f59e0b', route: '/tabs/hub', hint: 'Hazır koleksiyonlar & atomik alışkanlıklar' },
       { label: 'Rutin Yürütücü', shortLabel: 'Rutin Koş', icon: 'play-circle-outline', color: colors.success, route: '/screens/routine-runner', hint: 'Sabah & akşam adımları' },
       { label: 'Triage & Matris', shortLabel: 'Triage', icon: 'options-outline', color: colors.primary, route: '/screens/dashboard', hint: 'Aktif, bekleyen ve fikir alışkanlıkları' },
       { label: 'İçgörüler', shortLabel: 'İçgörüler', icon: 'bulb-outline', color: colors.accent, route: '/screens/insights', hint: 'Haftalık & aylık davranış analizi' },
