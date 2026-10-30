@@ -57,6 +57,7 @@ export default function ScreensLayout() {
       <Stack.Screen name="achievements" options={{ title: 'Başarımlar & Rozetler' }} />
       <Stack.Screen name="profile" options={{ title: 'Profilim' }} />
       <Stack.Screen name="routine-runner" options={{ title: 'Rutin Yürütücü' }} />
+      <Stack.Screen name="focus-flow" options={{ title: 'Odak Akışı', headerShown: false }} />
       <Stack.Screen name="privacy" options={{ title: 'Gizlilik Politikası' }} />
     </Stack>
   );

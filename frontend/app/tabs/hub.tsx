@@ -19,6 +19,7 @@ import { colors, space, radius, font, alphaHex } from '../../lib/tokens';
 import { todayLocal } from '../../lib/date';
 import { haptic } from '../../lib/haptics';
 import AIRoutineModal from '../../components/AIRoutineModal';
+import FocusFlowView from '../../components/FocusFlowView';
 import {
   EXPLORE_CATEGORIES,
   EXPLORE_COLLECTIONS,
@@ -30,7 +31,7 @@ import {
   type ExploreAtomicHabit,
 } from '../../lib/exploreCatalog';
 
-type HubMode = 'explore' | 'tools';
+type HubMode = 'flow' | 'explore' | 'tools';
 type HubCategory = 'all' | 'strategy' | 'focus' | 'library' | 'review' | 'system';
 
 type HubItem = {
@@ -100,6 +101,16 @@ const HUB_ITEMS: HubItem[] = [
     color: '#8b5cf6',
     route: '/screens/calendar',
     category: 'strategy',
+  },
+  {
+    id: 'focus_flow',
+    label: 'Odak Akışı (Flow)',
+    subtitle: 'Dikey verimlilik videoları ve Inflow mikro-dersleri',
+    icon: 'play-circle',
+    color: '#f97316',
+    route: '/screens/focus-flow',
+    category: 'focus',
+    featured: true,
   },
   {
     id: 'routine_runner',
@@ -269,7 +280,7 @@ export default function HubScreen() {
     clearGenerated,
   } = useRoutineStore();
 
-  const [mode, setMode] = useState<HubMode>('explore');
+  const [mode, setMode] = useState<HubMode>('flow');
   const [search, setSearch] = useState('');
   const [exploreCat, setExploreCat] = useState<ExploreCategory>('all');
   const [selectedToolCat, setSelectedToolCat] = useState<HubCategory>('all');
@@ -425,75 +436,106 @@ export default function HubScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
-      <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        {/* Başlık & Üst Mod Anahtarı */}
-        <View style={s.header}>
-          <View style={s.titleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.pageTitle}>Keşfet</Text>
-              <Text style={s.pageSub}>
-                {mode === 'explore'
+      {/* Sabit Üst Başlık & 3 Modlu Anahtar */}
+      <View style={s.topChrome}>
+        <View style={s.titleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.pageTitle}>Keşfet</Text>
+            <Text style={s.pageSub}>
+              {mode === 'flow'
+                ? 'Sıfır dikkat dağınıklığıyla dikey verimlilik videoları & Inflow akışı'
+                : mode === 'explore'
                   ? 'Bilimsel rutin koleksiyonları ve tek dokunuşla mikro alışkanlıklar'
                   : 'Tüm sistem modüllerine ve araçlara tek noktadan ulaşın'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={s.aiQuickBtn}
-              onPress={() => {
-                haptic.select();
-                setAiModalVisible(true);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="AI Rutin Tasarımcısını Aç"
-            >
-              <Ionicons name="sparkles" size={14} color={colors.white} />
-              <Text style={s.aiQuickBtnText}>AI Rutin</Text>
-            </TouchableOpacity>
+            </Text>
           </View>
+          <TouchableOpacity
+            style={s.aiQuickBtn}
+            onPress={() => {
+              haptic.select();
+              setAiModalVisible(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="AI Rutin Tasarımcısını Aç"
+          >
+            <Ionicons name="sparkles" size={14} color={colors.white} />
+            <Text style={s.aiQuickBtnText}>AI Rutin</Text>
+          </TouchableOpacity>
+        </View>
 
-          {/* 2 Modlu Segmented Switch (TheFor Keşfet vs. Sistem Araçları) */}
-          <View style={s.modeBar}>
-            <TouchableOpacity
-              style={[s.modeTab, mode === 'explore' && s.modeTabActive]}
-              onPress={() => {
-                haptic.select();
-                setMode('explore');
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Rutin ve Alışkanlık Keşfet"
-            >
-              <Ionicons
-                name="sparkles-outline"
-                size={15}
-                color={mode === 'explore' ? colors.white : colors.textDim}
-              />
-              <Text style={[s.modeTabText, mode === 'explore' && s.modeTabTextActive]}>
-                Rutin & Alışkanlık Keşfet
-              </Text>
-            </TouchableOpacity>
+        {/* 3 Modlu Segmented Switch (Odak Akışı vs. Rutin Keşfet vs. Sistem Araçları) */}
+        <View style={s.modeBar}>
+          <TouchableOpacity
+            style={[s.modeTab, mode === 'flow' && s.modeTabFlowActive]}
+            onPress={() => {
+              haptic.select();
+              setMode('flow');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Odak Akışı (Flow)"
+          >
+            <Ionicons
+              name="flame"
+              size={14}
+              color={mode === 'flow' ? colors.white : '#f97316'}
+            />
+            <Text style={[s.modeTabText, mode === 'flow' && s.modeTabTextActive]}>
+              Odak Akışı
+            </Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[s.modeTab, mode === 'tools' && s.modeTabActive]}
-              onPress={() => {
-                haptic.select();
-                setMode('tools');
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Sistem ve Araçlar"
-            >
-              <Ionicons
-                name="compass-outline"
-                size={15}
-                color={mode === 'tools' ? colors.white : colors.textDim}
-              />
-              <Text style={[s.modeTabText, mode === 'tools' && s.modeTabTextActive]}>
-                Sistem & Araçlar
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={[s.modeTab, mode === 'explore' && s.modeTabActive]}
+            onPress={() => {
+              haptic.select();
+              setMode('explore');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Rutin ve Alışkanlık Keşfet"
+          >
+            <Ionicons
+              name="sparkles-outline"
+              size={14}
+              color={mode === 'explore' ? colors.white : colors.textDim}
+            />
+            <Text style={[s.modeTabText, mode === 'explore' && s.modeTabTextActive]}>
+              Rutin Keşfet
+            </Text>
+          </TouchableOpacity>
 
-          {/* Arama Çubuğu */}
-          <View style={s.searchWrap}>
+          <TouchableOpacity
+            style={[s.modeTab, mode === 'tools' && s.modeTabActive]}
+            onPress={() => {
+              haptic.select();
+              setMode('tools');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Sistem ve Araçlar"
+          >
+            <Ionicons
+              name="compass-outline"
+              size={14}
+              color={mode === 'tools' ? colors.white : colors.textDim}
+            />
+            <Text style={[s.modeTabText, mode === 'tools' && s.modeTabTextActive]}>
+              Araçlar
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {mode === 'flow' ? (
+        <View style={s.flowBody}>
+          <FocusFlowView
+            showExpandButton
+            onRequestExplorePacks={() => setMode('explore')}
+          />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+          <View style={s.header}>
+            {/* Arama Çubuğu */}
+            <View style={s.searchWrap}>
             <Ionicons name="search-outline" size={18} color={colors.textFaint} />
             <TextInput
               style={s.searchInput}
@@ -1042,7 +1084,8 @@ export default function HubScreen() {
             </View>
           </>
         )}
-      </ScrollView>
+        </ScrollView>
+      )}
 
       {/* ── KOLEKSİYON DETAY & KAPASİTE ÖNİZLEME MODALI ── */}
       <Modal
@@ -1236,7 +1279,16 @@ export default function HubScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: space.md, paddingBottom: space.hh },
+  topChrome: {
+    paddingHorizontal: space.md,
+    paddingTop: space.sm,
+    paddingBottom: 2,
+    backgroundColor: colors.bg,
+  },
+  flowBody: {
+    flex: 1,
+  },
+  content: { padding: space.md, paddingTop: space.xs, paddingBottom: space.hh },
 
   header: { marginBottom: space.md },
   titleRow: {
@@ -1279,6 +1331,9 @@ const s = StyleSheet.create({
   },
   modeTabActive: {
     backgroundColor: colors.primary,
+  },
+  modeTabFlowActive: {
+    backgroundColor: '#f97316',
   },
   modeTabText: {
     fontSize: 12,

@@ -32,6 +32,7 @@ import { activePauseOn, isPausedOn } from '../../lib/habitPauses';
 import ChecklistSheet from '../../components/ChecklistSheet';
 import { itemsOn } from '../../lib/habitChecklist';
 import { buildTodayNarrative } from '../../lib/todayNarrative';
+import { pickDailySparkItem } from '../../lib/focusFlowCatalog';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { todayLocal, parseLocalDate, startOfWeekLocal, ymd } from '../../lib/date';
@@ -345,6 +346,13 @@ export default function TodayScreen() {
     used: wp?.used ?? null, budget: wp?.daily_budget ?? null,
     habitsLeft: remainingHabits, tasksLeft: overdueList.length + todayTasks.filter((t) => !t.completed).length,
   });
+  const dailySpark = pickDailySparkItem({
+    hour: now.getHours(),
+    overdueCount: overdueList.length,
+    lowEnergy: lowEnergyFilter,
+    activeHabitCount: activeHabits.length,
+    focusSessionsToday: sessionsCompleted,
+  });
   // R06.02 — the secondary jobs, one tap away instead of on the hero.
   function openMoreMenu() {
     Alert.alert('Diğer', undefined, [
@@ -512,6 +520,54 @@ export default function TodayScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* 🔥 Inflow Odak Akışı — Açar Açmaz Yakalayan 60 Sn Kıvılcım */}
+        <TouchableOpacity
+          style={[
+            s.sparkCard,
+            { borderColor: hexA(dailySpark.item.accentColor, 0.42) },
+          ]}
+          activeOpacity={0.85}
+          onPress={() => {
+            haptic.select();
+            router.push(`/screens/focus-flow?item=${dailySpark.item.id}` as any);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Günün Odak Akışını İzle"
+        >
+          <View
+            style={[
+              s.sparkPlayRing,
+              {
+                borderColor: dailySpark.item.accentColor,
+                backgroundColor: hexA(dailySpark.item.accentColor, 0.16),
+              },
+            ]}
+          >
+            <Ionicons name="play" size={18} color={dailySpark.item.accentColor} />
+          </View>
+          <View style={s.sparkTextCol}>
+            <Text
+              style={[s.sparkEyebrow, { color: dailySpark.item.accentColor }]}
+              numberOfLines={1}
+            >
+              🔥 ODAK AKIŞI · {dailySpark.reasonTag}
+            </Text>
+            <Text style={s.sparkTitle} numberOfLines={1}>
+              {dailySpark.item.hookTitle}
+            </Text>
+          </View>
+          <View
+            style={[
+              s.sparkWatchPill,
+              { backgroundColor: hexA(dailySpark.item.accentColor, 0.18) },
+            ]}
+          >
+            <Text style={[s.sparkWatchText, { color: dailySpark.item.accentColor }]}>
+              {dailySpark.item.durationSec} sn →
+            </Text>
+          </View>
+        </TouchableOpacity>
 
         {/* Günün Odağı & Editöryel Hero */}
         <TodayHero
@@ -1279,6 +1335,47 @@ const s = StyleSheet.create({
     backgroundColor: hexA(colors.error, 0.15),
   },
   taskDate: { ...font.caption, color: colors.textFaint, fontWeight: '500' },
+  sparkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    paddingHorizontal: space.md,
+    paddingVertical: 11,
+  },
+  sparkPlayRing: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sparkTextCol: {
+    flex: 1,
+    gap: 2,
+  },
+  sparkEyebrow: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  sparkTitle: {
+    ...font.bodySm,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  sparkWatchPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+  },
+  sparkWatchText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
   smallStartBtn: {
     padding: space.xs, alignItems: 'center', justifyContent: 'center',
   },
