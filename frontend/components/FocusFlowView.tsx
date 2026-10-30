@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
 import { useRouter } from 'expo-router';
 import { colors, space, radius, hexA } from '../lib/tokens';
+import { todayLocal } from '../lib/date';
 import { haptic } from '../lib/haptics';
 import { useHabitStore } from '../store/habitStore';
 import { useTaskStore } from '../store/taskStore';
@@ -94,7 +95,7 @@ export default function FocusFlowView({
   const scrollRef = useRef<ScrollView | null>(null);
 
   const { habits, fetchHabits, addHabit } = useHabitStore();
-  const { overdue, tasks } = useTaskStore();
+  const { tasks } = useTaskStore();
   const { sessionsCompleted, status: focusStatus, startSmallStep } = useFocusStore();
 
   const [containerHeight, setContainerHeight] = useState<number>(640);
@@ -154,7 +155,12 @@ export default function FocusFlowView({
     return set;
   }, [habits]);
 
-  const overdueCount = useMemo(() => overdue().length, [overdue, tasks]);
+  const overdueCount = useMemo(() => {
+    const today = todayLocal();
+    return tasks.filter(
+      (t) => !t.completed && Boolean(t.due_date && t.due_date < today),
+    ).length;
+  }, [tasks]);
 
   const rankedForYou = useMemo(
     () =>
