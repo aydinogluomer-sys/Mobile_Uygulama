@@ -15,7 +15,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PublicTableName } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
 
-const dynamicClient = () => supabase as unknown as SupabaseClient;
+// CONTRACT (F00, BLD-01/SYN-12/TST-21): the client is resolved on EVERY call,
+// never captured at module load. Tests swap `lib/supabase` through a getter
+// (`get supabase() { return mock; }`) AFTER this module has been required, so a
+// module-level capture would freeze `undefined`. Do not "simplify" this to an
+// eager constant. Do not add a test-only setter here.
+const dynamicClient = (): SupabaseClient => supabase as unknown as SupabaseClient;
 
 export type RepoResult<T> =
   | { ok: true; data: T }
