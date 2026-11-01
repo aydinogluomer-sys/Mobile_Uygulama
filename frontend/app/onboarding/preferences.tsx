@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, font, space } from '../../lib/tokens';
 import OnboardingScaffold from '../../components/onboarding/OnboardingScaffold';
+import { ONBOARDING_ART } from '../../lib/visualAssets';
 import SelectableTile from '../../components/onboarding/SelectableTile';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import {
@@ -72,6 +73,7 @@ export default function OnboardingPreferencesScreen() {
     <OnboardingScaffold
       step={2}
       totalSteps={3}
+      heroSource={ONBOARDING_ART.step2Rhythm}
       title="Sana göre ayarlayalım"
       subtitle="Günlük rutinine uygun bir başlangıç planı oluşturalım."
       primaryLabel="Planımı oluştur ✨"

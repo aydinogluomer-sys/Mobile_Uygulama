@@ -30,7 +30,15 @@
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
-import { colors } from '../../lib/tokens';
+import { alphaHex, colors } from '../../lib/tokens';
+import {
+  AtmosphericScreenCanvas,
+  ChapterDivider,
+  EditorialBanner,
+  EmbeddedFiligree,
+  EmblemMedallion,
+} from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 /** One heading plus its paragraphs. Keeps the body below readable as prose. */
 type Section = { title: string; body: string[] };
@@ -154,10 +162,35 @@ export default function PrivacyScreen() {
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <Stack.Screen options={{ title: 'Gizlilik Politikası' }} />
+      <AtmosphericScreenCanvas
+        source={CANVASES.treasuryVault}
+        textureSource={TEXTURES.linen}
+        scrim={0.64}
+        tintColor={colors.info}
+      />
       <ScrollView contentContainerStyle={s.content}>
+        <EditorialBanner
+          source={SCREEN_BANNERS.privacyVaultSeal}
+          textureSource={TEXTURES.linen}
+          eyebrow="VERİ EGEMENLİĞİ"
+          title="Gizlilik Taahhüdü"
+          subtitle="Reklam yok, izleme SDK’sı yok; verilerin yalnızca senin kontrolünde."
+          accentColor={colors.info}
+          minHeight={96}
+          rightSlot={
+            <EmblemMedallion
+              source={SCREEN_BANNERS.privacyVaultSeal}
+              size={46}
+              unlocked
+              accentColor={colors.info}
+            />
+          }
+        />
         <Text style={s.updated}>Son güncelleme: {UPDATED}</Text>
+        <ChapterDivider source={DECOR.dividerSundial} label="VERİ TAAHHÜTNAMESİ" accentColor={colors.info} />
         {SECTIONS.map((sec) => (
           <View key={sec.title} style={s.section}>
+            <EmbeddedFiligree source={DECOR.guillocheWave} anchor="bottom-right" opacity={0.11} size={96} />
             <Text style={s.h2}>{sec.title}</Text>
             {sec.body.map((p) => (
               <Text key={p.slice(0, 40)} style={s.p}>{p}</Text>
@@ -171,9 +204,18 @@ export default function PrivacyScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, paddingBottom: 48, gap: 20 },
+  content: { padding: 20, paddingBottom: 48, gap: 14 },
   updated: { fontSize: 12, color: colors.textFaint },
-  section: { gap: 8 },
+  section: {
+    gap: 8,
+    backgroundColor: alphaHex(colors.surface, '90'),
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    padding: 16,
+    overflow: 'hidden',
+    position: 'relative',
+  },
   h2: { fontSize: 16, fontWeight: '700', color: colors.text },
   p: { fontSize: 14, color: colors.textDim, lineHeight: 21 },
 });

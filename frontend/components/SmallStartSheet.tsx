@@ -9,6 +9,8 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, space, radius } from '../lib/tokens';
+import { TexturedSurface } from './ui';
+import { TEXTURES } from '../lib/visualAssets';
 import { FLOW_COPY } from '../lib/flowCopy';
 import {
   SMALL_STEP_MINUTES, MAX_STEP_TITLE, draftFor, stepPlaceholder, validateSmallStep,
@@ -47,6 +49,7 @@ export default function SmallStartSheet({ parent, onClose, onStart }: Props) {
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView style={s.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={s.sheet}>
+          <TexturedSurface source={TEXTURES.botanical} textureOpacity={0.05} overlayOnly />
           <View style={s.head}>
             <Text style={s.title} accessibilityRole="header">Küçük başla</Text>
             <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Kapat">
@@ -111,7 +114,7 @@ export default function SmallStartSheet({ parent, onClose, onStart }: Props) {
 
 const s = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
-  sheet: { backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: 6 },
+  sheet: { backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: 6, overflow: 'hidden', position: 'relative' },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.sm },
   title: { fontSize: 18, fontWeight: '700', color: colors.text },
   label: { fontSize: 10, letterSpacing: 1, color: colors.textFaint, fontWeight: '700', marginTop: space.sm },

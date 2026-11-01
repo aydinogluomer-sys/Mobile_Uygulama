@@ -40,8 +40,9 @@ import { useTaskStore, type Task } from '../../store/taskStore';
 import { supabase } from '../../lib/supabase';
 import type { Habit, RecoveryPlan } from '../../lib/supabase';
 import type { FocusSessionRow } from '../../lib/focusReport';
-import { colors, space, font } from '../../lib/tokens';
-import { Card, SectionHeader, EmptyState, IconCircle, Skeleton, SkeletonLines } from '../../components/ui';
+import { colors, space, font, hexA } from '../../lib/tokens';
+import { AtmosphericScreenCanvas, Card, ChapterDivider, SectionHeader, EmptyState, IconCircle, Skeleton, SkeletonLines, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { ymd, ymdFromIso, parseLocalDate, addDaysLocal } from '../../lib/date';
 import { carriesDayLoad } from '../../lib/habitSchedule';
 import { dailyLoad, LOAD_BANDS, type TaskLoadItem } from '../../lib/capacity';
@@ -394,9 +395,11 @@ export default function InsightsScreen() {
   if (loading) {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.observatoryStats} textureSource={TEXTURES.neural} scrim={0.64} tintColor={colors.primary} />
         <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
           <Skeleton width={96} height={11} style={{ marginBottom: space.md }} />
           <Card padding="lg" style={s.heroCard}>
+            <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={124} opacity={0.18} />
             <Skeleton width={72} height={11} />
             <Skeleton width={132} height={40} style={{ marginTop: space.xs, marginBottom: space.sm }} />
             <SkeletonLines count={3} />
@@ -418,7 +421,18 @@ export default function InsightsScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.observatoryStats} textureSource={TEXTURES.neural} scrim={0.64} tintColor={colors.primary} />
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+        <EditorialBanner
+          source={SCREEN_BANNERS.insightsObservatory}
+          textureSource={TEXTURES.neural}
+          eyebrow="DAVRANIŞ GÖZLEMEVİ"
+          title="Örüntü & Eğilimler"
+          subtitle="14 haftalık gerçek tamamlama, kırılganlık ve kapasite analizi."
+          accentColor={colors.primary}
+          minHeight={96}
+          style={{ marginBottom: space.md }}
+        />
         <Text style={s.eyebrow}>İÇGÖRÜLER</Text>
 
         {activeHabits.length === 0 ? (
@@ -429,6 +443,7 @@ export default function InsightsScreen() {
           />
         ) : (
           <Card padding="lg" style={s.heroCard}>
+            <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={124} opacity={0.18} />
             <Text style={s.heroLabel}>BU HAFTA</Text>
             <Text style={s.heroPercent}>%{weekRate}</Text>
             <Text style={s.heroDelta}>
@@ -447,6 +462,7 @@ export default function InsightsScreen() {
           </Card>
         )}
 
+        <ChapterDivider source={DECOR.dividerSundial} label="ALTI EKSENLİ GÖZLEM" />
         {/* HAFTA */}
         <SectionHeader title="HAFTA" variant="overline" style={{ marginTop: space.xl }} />
         <InsightRow icon="trending-up-outline" label="En başarılı gün" result={bestDay} formatOk={(v) => `${DOW_TR[v.weekday]} · %${Math.round(v.rate * 100)}`} />
@@ -495,7 +511,7 @@ const s = StyleSheet.create({
 
   eyebrow: { ...font.overline, color: colors.textFaint, marginBottom: space.md },
 
-  heroCard: { marginBottom: space.md },
+  heroCard: { marginBottom: space.md, overflow: 'hidden', position: 'relative', backgroundColor: hexA(colors.surface, 0.94) },
   heroLabel: { ...font.overline, color: colors.textFaint, marginBottom: space.xs },
   heroPercent: { ...font.display, fontSize: 40, color: colors.text, marginBottom: 2 },
   heroDelta: { fontSize: 13, color: colors.textDim, fontWeight: '600', marginBottom: space.sm },

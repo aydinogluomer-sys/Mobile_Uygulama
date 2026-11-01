@@ -38,7 +38,7 @@
  * AC-U07  WillpowerBand tek parça olarak, sayılarıyla duyurulur
  * AC-U08  SyncStatusBadge etiketi atıl değil (gruplanmış öğe)
  */
-import { Text } from 'react-native';
+import { Platform, Text } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
@@ -417,6 +417,21 @@ describe('AC-U05 — süsleme öğeleri erişilebilirlik ağacında yer tutmaz',
     expect(isHidden(svg[0])).toBe(true);
     // Halkanın ortasındaki metin bu bileşenin tek anlamlı çıktısı — gizlenmemeli.
     expect(textOf(tree)).toContain('12:30');
+  });
+
+  it('ProgressRing web platformunda SVG\'ye DOM hatası üreten RN prop\'ları yerine aria-hidden geçirir', async () => {
+    const prevOS = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      const tree = await render(<ProgressRing progress={0.4} />);
+      const svg = nodes(tree).filter((n) => typeof n.type === 'string' && n.type.startsWith('RNSVG'));
+      expect(svg.length).toBeGreaterThan(0);
+      expect(svg[0].props['aria-hidden']).toBe(true);
+      expect(svg[0].props.accessibilityElementsHidden).toBeUndefined();
+      expect(svg[0].props.importantForAccessibility).toBeUndefined();
+    } finally {
+      Platform.OS = prevOS;
+    }
   });
 
   it('Chip\'in nokta ve ikon süslemeleri gizlidir, etiketi değildir', async () => {

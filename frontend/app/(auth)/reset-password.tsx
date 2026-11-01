@@ -5,7 +5,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { colors, space, radius, font, shadow, fontFamily } from '../../lib/tokens';
-import { Button } from '../../components/ui';
+import {
+  AtmosphericScreenCanvas,
+  Button,
+  EmbeddedFiligree,
+  EmblemMedallion,
+} from '../../components/ui';
+import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
 
 export default function ResetPasswordScreen() {
@@ -120,6 +126,12 @@ export default function ResetPasswordScreen() {
 
   return (
     <SafeAreaView style={s.safe}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.authPoster}
+        textureSource={TEXTURES.linen}
+        scrim={0.62}
+        tintColor={colors.primary}
+      />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
           <View style={s.brand}>
@@ -127,11 +139,21 @@ export default function ResetPasswordScreen() {
               <Text style={s.markLetter}>a</Text>
               <View style={s.markDot} />
             </View>
+            <View style={{ marginBottom: space.md }}>
+              <EmblemMedallion
+                source={ONBOARDING_ART.authKeySeal}
+                size={56}
+                unlocked
+                accentColor={colors.primary}
+              />
+            </View>
             <Text style={s.wordmark}>Yeni Şifre Belirle</Text>
             <Text style={s.tagline}>Hesabına erişimi geri almak için yeni bir şifre oluştur.</Text>
           </View>
 
           <View style={s.panel}>
+            <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.11} />
+            <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" opacity={0.16} size={110} />
             <View style={s.stepRow} accessibilityLabel="Adım 3 / 3">
               {[1, 2, 3].map((item) => <View key={item} style={[s.stepDot, s.stepDotActive]} />)}
             </View>
@@ -222,6 +244,8 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     padding: 20,
     gap: space.md,
+    overflow: 'hidden',
+    position: 'relative',
     ...shadow.md,
   },
   stepRow: { flexDirection: 'row', gap: 6, marginBottom: 2 },

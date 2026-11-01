@@ -18,7 +18,7 @@ old filenames.
 ## Order
 
 | # | File | Applied as (remote ledger version) | Previous filename |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 001 | `001_initial_schema.sql` | — (see note) | unchanged |
 | 002 | `002_integrations.sql` | — (see note) | unchanged |
 | 003 | `003_emergency_gate_0_revoke_mock_activate_subscription.sql` | `20260802181931` | `20260802181931_…` |
@@ -55,6 +55,7 @@ old filenames.
 | 034 | `034_coach_reminder_action.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 | 035 | `035_coach_lighten_week.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 | 036 | `036_live_audit_hardening.sql` | **NOT APPLIED** (proposal from the read-only live audit 2026-10-09) | — |
+| 037 | `037_today_bootstrap_rpc.sql` | **NOT APPLIED** (DB frozen, S1/S2 — single-RTT Today bootstrap RPC) | — |
 
 Keep this table when adding a migration: the old names are cited throughout
 `docs/audit/`, `docs/plan/`, `PROGRESS.md` and the audit reports, which are

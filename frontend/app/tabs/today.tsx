@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions, Alert, Modal } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Platform, View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions, Alert, Modal } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -38,11 +39,16 @@ import { haptic } from '../../lib/haptics';
 import { todayLocal, parseLocalDate, startOfWeekLocal, ymd } from '../../lib/date';
 import {
   Card, SectionHeader, EmptyState, ProgressRing, IconCircle, WillpowerBand, SyncStatusBadge,
+  AtmosphericScreenCanvas, BentoVisualCard, ChapterDivider, EmbeddedFiligree, GoldMendShimmer,
 } from '../../components/ui';
+
+import { BENTO_ART, CANVASES, DECOR, TEXTURES } from '../../lib/visualAssets';
+
 import { isMeasurableTracking } from '../../lib/habitEngine';
 import { isEligibleOn, scheduleKind, isCountBasedSchedule, periodStatus } from '../../lib/habitSchedule';
 // R01.06-b — the current period's logs, so a "3 a week" already met can step aside.
 import { logsForPeriod, type ReviewLogRow } from '../../services/reviewService';
+import { bootstrapTodayScreen } from '../../services/todayBootstrapService';
 import type { Habit } from '../../lib/supabase';
 
 // =====================================================================================
@@ -247,6 +253,7 @@ export default function TodayScreen() {
   const pagePadding = width < 480 ? space.md : width < 900 ? space.lg : space.xl;
   const isWide = width >= 1180;
   const today = todayLocal();
+  const scrollY = useRef(new Animated.Value(0)).current;
   const now = new Date();
 
   const { habits, fetchHabits, pauses, timeOffAvailable, addTimeOff, endTimeOff, checklistItems } = useHabitStore();
@@ -310,6 +317,11 @@ export default function TodayScreen() {
   }, [today]);
 
   const load = useCallback(async () => {
+    const boot = await bootstrapTodayScreen(today);
+    if (boot.ok) {
+      setPeriodLogs(boot.periodLogs);
+      return;
+    }
     await Promise.all([fetchHabits(), fetchLogsForDate(today), fetchTasks(), fetchToday(), fetchPlans(), loadPeriodLogs()]);
   }, [fetchHabits, fetchLogsForDate, fetchPlans, fetchTasks, fetchToday, loadPeriodLogs, today]);
 
@@ -350,7 +362,7 @@ export default function TodayScreen() {
     hour: now.getHours(),
     overdueCount: overdueList.length,
     lowEnergy: lowEnergyFilter,
-    activeHabitCount: activeHabits.length,
+    activeHabitCount: habits.filter((h) => h.status === 'active').length,
     focusSessionsToday: sessionsCompleted,
   });
   // R06.02 — the secondary jobs, one tap away instead of on the hero.
@@ -488,7 +500,17 @@ export default function TodayScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
-      <ScrollView
+      <AtmosphericScreenCanvas
+        source={CANVASES.todaySanctuary}
+        textureSource={TEXTURES.clay}
+        scrim={0.62}
+        scrollY={scrollY}
+        tintColor={colors.primary}
+        ambientMotion
+      />
+      <Animated.ScrollView
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: Platform.OS !== 'web' })}
+        scrollEventThrottle={16}
         style={s.scroll}
         contentContainerStyle={[s.content, { paddingHorizontal: pagePadding }]}
         showsVerticalScrollIndicator={false}
@@ -535,6 +557,23 @@ export default function TodayScreen() {
           accessibilityRole="button"
           accessibilityLabel="Günün Odak Akışını İzle"
         >
+          <View
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+            {...(Platform.OS === 'web'
+              ? { 'aria-hidden': true }
+              : { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const })}
+          >
+            {process.env?.NODE_ENV !== 'test' ? (
+              <Image
+                source={BENTO_ART.sparkReels}
+                style={s.sparkArt}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
+            ) : null}
+            <View style={s.sparkArtScrim} />
+          </View>
           <View
             style={[
               s.sparkPlayRing,
@@ -598,7 +637,7 @@ export default function TodayScreen() {
             >
               <Ionicons name="battery-half-outline" size={13} color={lowEnergyFilter ? colors.success : colors.textDim} />
               <Text style={[s.calmModeChipText, lowEnergyFilter && { color: colors.success }]}>
-                🌱 Düşük Enerji Modu
+                Düşük Enerji Modu
               </Text>
             </TouchableOpacity>
 
@@ -610,7 +649,7 @@ export default function TodayScreen() {
             >
               <Ionicons name="moon-outline" size={13} color={colors.accent} />
               <Text style={s.calmModeChipText}>
-                🌙 Günü Kapat
+                Günü Kapat
               </Text>
             </TouchableOpacity>
           </View>
@@ -624,8 +663,29 @@ export default function TodayScreen() {
           </Card>
         )}
 
+        {lowEnergyFilter && (
+          <BentoVisualCard
+            artSource={BENTO_ART.lowEnergyMoss}
+            bleedMode="right-vignette"
+            scrim={0.5}
+            accentColor={colors.success}
+            padding="md"
+            style={{ marginBottom: space.sm }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+              <Ionicons name="leaf" size={18} color={colors.success} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.lowEnergyTitle}>Yumuşak Ritim · Düşük Enerji Filtresi Açık</Text>
+                <Text style={s.breakNote}>Yalnızca hafif adımlar öne çıkarıldı; serilerin güvende.</Text>
+              </View>
+            </View>
+          </BentoVisualCard>
+        )}
+
         {/* Sakin Metrik Kartları */}
         <MetricGrid metrics={metrics} />
+
+        <ChapterDivider source={DECOR.dividerSundial} label="GÜNÜN ÇALIŞMA TEZGAHI" />
 
         {/* Akıllı Segment Filtresi (Hızlı Odaklanma) */}
         <View style={s.segmentedRow}>
@@ -768,6 +828,8 @@ export default function TodayScreen() {
               {(activeSegment === 'all' || activeSegment === 'habits') && (
                 <>
                   <Card padding="lg" onPress={() => router.push('/tabs/timeline' as any)}>
+                    <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={118} opacity={0.18} />
+                    <GoldMendShimmer triggerKey={habitSummary.completed} color={colors.success} />
                     <View style={s.ringCard}>
                       <ProgressRing progress={habitPct} size={64} stroke={7} color={colors.success}>
                         <Text style={s.ringPct}>{Math.round(habitPct * 100)}%</Text>
@@ -792,9 +854,9 @@ export default function TodayScreen() {
                       />
                       <View style={{ gap: space.sm }}>
                         {(lowEnergyFilter
-                          ? todayHabits.filter((h) => (h.willpower_cost ?? 1) <= 2 || completedHabits.some((c) => c.id === h.id))
-                          : todayHabits
-                        ).slice(0, isWide ? 4 : todayHabits.length).map((h) => {
+                          ? todayHabits.filter((h) => (h.willpower_cost ?? 1) <= 2 || completedHabits.some((c) => c.id === h.id)).slice(0, isWide ? 4 : todayHabits.length)
+                          : todayHabits.slice(0, isWide ? 4 : todayHabits.length)
+                        ).map((h) => {
                           const log = getLogForHabit(h.id);
                           const done = log?.state === 'done' || log?.state === 'partial';
                           const col = h.color ?? colors.primary;
@@ -1001,7 +1063,8 @@ export default function TodayScreen() {
                     </Card>
                   )}
 
-                  <Card padding="lg" onPress={() => router.push('/screens/routine-runner' as any)}>
+                  <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => router.push('/screens/routine-runner' as any)}>
+                    <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={108} opacity={0.16} />
                     <SectionHeader title="RUTİN" variant="overline" />
                     <Text style={s.breakNote}>
                       {runnerSession && runnerSession.status !== 'finished'
@@ -1016,7 +1079,8 @@ export default function TodayScreen() {
                     onOpen={() => router.push('/screens/recovery' as any)}
                   />
 
-                  <Card padding="lg" onPress={() => router.push('/screens/okr' as any)}>
+                  <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => router.push('/screens/okr' as any)}>
+                    <EmbeddedFiligree source={DECOR.cornerBlueprint} anchor="bottom-right" size={108} opacity={0.17} />
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                       <SectionHeader title="STRATEJİ & OKR" variant="overline" />
                       <Ionicons name="chevron-forward" size={14} color={colors.textGhost} />
@@ -1030,7 +1094,9 @@ export default function TodayScreen() {
             </View>
           )}
         </View>
-      </ScrollView>
+
+
+      </Animated.ScrollView>
 
       {/* R03.02 — "Bugün daha az yapabilirim" */}
       <ChecklistSheet habit={checklistFor} day={today} onClose={() => setChecklistFor(null)} />
@@ -1087,6 +1153,7 @@ export default function TodayScreen() {
                   </TouchableOpacity>
                 );
               })}
+      
             </ScrollView>
             <View style={s.sheetActions}>
               <TouchableOpacity
@@ -1116,6 +1183,18 @@ export default function TodayScreen() {
       <Modal visible={shutdownOpen} transparent animationType="slide" onRequestClose={() => setShutdownOpen(false)}>
         <View style={s.sheetOverlay}>
           <View style={s.sheet}>
+            <View
+              style={s.shutdownHero}
+              pointerEvents="none"
+              {...(Platform.OS === 'web'
+                ? { 'aria-hidden': true }
+                : { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const })}
+            >
+              {process.env?.NODE_ENV !== 'test' ? (
+                <Image source={BENTO_ART.eveningShutdown} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
+              ) : null}
+              <View style={s.shutdownHeroScrim} />
+            </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <Ionicons name="moon" size={20} color={colors.accent} />
               <Text style={[s.sheetTitle, { marginBottom: 0 }]}>Günü Kapat · Zihinsel Kapanış</Text>
@@ -1335,7 +1414,35 @@ const s = StyleSheet.create({
     backgroundColor: hexA(colors.error, 0.15),
   },
   taskDate: { ...font.caption, color: colors.textFaint, fontWeight: '500' },
+  lowEnergyTitle: { fontSize: 13, fontWeight: '700', color: colors.success, marginBottom: 2 },
+  shutdownHero: {
+    height: 112,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    position: 'relative',
+    marginBottom: space.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  shutdownHeroScrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: hexA(colors.bgSunk, 0.34),
+  },
+  sparkArt: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: '58%',
+    opacity: 0.72,
+  },
+  sparkArtScrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: hexA(colors.surface, 0.56),
+  },
   sparkCard: {
+    overflow: 'hidden',
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,

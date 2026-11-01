@@ -10,7 +10,8 @@
  */
 import { supabase } from '../lib/supabase';
 import {
-  currentUserId, deleteOwned, fetchPage, updateOwned,
+  currentUserId, deleteOwned, deleteOwnedIfPresent, fetchPage,
+  insertOwnedWithId, isTransportFailure, updateOwned, updateOwnedVersioned,
   type Cursor, type Page, type RepoResult,
 } from './shared';
 
@@ -56,7 +57,7 @@ export async function insertGoal(input: {
 }): Promise<RepoResult<GoalRow>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('goals')
     .insert({
       user_id: u.userId,
@@ -70,7 +71,7 @@ export async function insertGoal(input: {
     })
     .select(COLS)
     .single();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   return { ok: true, data: data as unknown as GoalRow };
 }
 
@@ -97,4 +98,64 @@ export async function deleteGoal(id: string): Promise<RepoResult<true>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   return deleteOwned({ table: 'goals', id, userId: u.userId });
+}
+
+// ---------------------------------------------------------------------------
+// Unified offline outbox delivery helpers (idempotent, owner-scoped)
+// ---------------------------------------------------------------------------
+
+export function insertGoalWithId(
+  row: {
+    id: string;
+    kind: GoalKind;
+    title: string;
+    progress?: number;
+    year?: number | null;
+    quarter?: number | null;
+    month?: number | null;
+    archived?: boolean;
+  },
+  expectedUserId?: string,
+): Promise<RepoResult<GoalRow>> {
+  return insertOwnedWithId<GoalRow>({
+    table: 'goals',
+    row: {
+      id: row.id,
+      kind: row.kind,
+      title: row.title,
+      progress: Math.max(0, Math.min(100, Math.round(row.progress ?? 0))),
+      year: row.year ?? null,
+      quarter: row.quarter ?? null,
+      month: row.month ?? null,
+      archived: row.archived ?? false,
+    },
+    columns: COLS,
+    expectedUserId,
+  });
+}
+
+export function updateGoalOwned(
+  id: string,
+  patch: Record<string, unknown>,
+  expectedUserId?: string,
+): Promise<RepoResult<{ row: GoalRow | null; exists: boolean }>> {
+  const nextPatch = { ...patch };
+  if (typeof nextPatch.progress === 'number') {
+    nextPatch.progress = Math.max(0, Math.min(100, Math.round(nextPatch.progress)));
+  }
+  return updateOwnedVersioned<GoalRow>({
+    table: 'goals',
+    id,
+    patch: nextPatch,
+    baseVersion: null,
+    columns: COLS,
+    expectedUserId,
+  });
+}
+
+export function deleteGoalIfPresent(
+  id: string,
+  expectedUserId?: string,
+): Promise<RepoResult<{ deleted: boolean }>> {
+  return deleteOwnedIfPresent({ table: 'goals', id, expectedUserId });
 }

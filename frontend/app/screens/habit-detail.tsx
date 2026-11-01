@@ -34,7 +34,8 @@ import { useLocalSearchParams } from 'expo-router';
 import { useHabitStore } from '../../store/habitStore';
 import type { Habit, FrequencyConfig } from '../../lib/supabase';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
-import { Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines } from '../../components/ui';
+import { AtmosphericScreenCanvas, Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines, EditorialBanner } from '../../components/ui';
+import { CANVASES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { haptic } from '../../lib/haptics';
 import { addDaysLocal, parseLocalDate, ymd, ymdFromIso, type Ymd } from '../../lib/date';
 import { isCountBasedSchedule, isEligibleOn } from '../../lib/habitSchedule';
@@ -446,8 +447,24 @@ export default function HabitDetailScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.ritualsBotanical}
+        textureSource={TEXTURES.botanical}
+        scrim={0.64}
+        tintColor={habit.color ?? colors.primary}
+      />
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         {/* Header block -- plan §11: name + Strength/Current/Best/Completion, visible on every tab */}
+        <EditorialBanner
+          source={SCREEN_BANNERS.habitDetailAura}
+          textureSource={TEXTURES.botanical}
+          eyebrow="ALIŞKANLIK İNCELEMESİ"
+          title="Ritim & Güç İzi"
+          subtitle={area ? `${area.label} alanı · İrade maliyeti ${habit.willpower_cost}` : `İrade maliyeti ${habit.willpower_cost}`}
+          accentColor={habit.color ?? colors.primary}
+          minHeight={92}
+          style={{ marginBottom: space.md }}
+        />
         <View style={s.header}>
           <Text style={s.habitName} accessibilityRole="header">{habit.name}</Text>
           <Text style={s.headerMetrics}>

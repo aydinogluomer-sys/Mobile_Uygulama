@@ -7,9 +7,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useProfileStore, LeaderboardScope } from '../../store/profileStore';
 import { rankMeta } from '../../lib/ranks';
-import { EmptyState, Skeleton } from '../../components/ui';
+import {
+  AtmosphericScreenCanvas,
+  ChapterDivider,
+  EditorialBanner,
+  EmbeddedFiligree,
+  EmblemMedallion,
+  EmptyState,
+  Skeleton,
+} from '../../components/ui';
+import { CANVASES, DECOR, getRankCrest, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
+const ROMAN_PODIUM = ['I', 'II', 'III'] as const;
 
 export default function LeaderboardScreen() {
   const {
@@ -24,8 +34,8 @@ export default function LeaderboardScreen() {
     fetchLeaderboard('global');
   }, [fetchProfile, fetchMyRank, fetchLeaderboard]);
 
-  function switchScope(s: LeaderboardScope) {
-    if (s !== scope) fetchLeaderboard(s);
+  function switchScope(sc: LeaderboardScope) {
+    if (sc !== scope) fetchLeaderboard(sc);
   }
 
   function refresh() {
@@ -34,9 +44,20 @@ export default function LeaderboardScreen() {
   }
 
   const myTier = profile ? rankMeta(profile.willpower_rank, profile.level) : null;
+  const podiumOrder =
+    !lbLoading && leaderboard.length >= 3
+      ? [leaderboard[1], leaderboard[0], leaderboard[2]]
+      : null;
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.pantheonHall}
+        textureSource={TEXTURES.topographic}
+        scrim={0.62}
+        tintColor={colors.warning}
+      />
+
       {/* Sekmeler */}
       <View style={s.tabs}>
         {(['global', 'weekly'] as LeaderboardScope[]).map((sc) => (
@@ -59,13 +80,32 @@ export default function LeaderboardScreen() {
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={lbLoading} onRefresh={refresh} tintColor={colors.warning} />}
       >
+        <EditorialBanner
+          source={SCREEN_BANNERS.leaderboardPantheon}
+          textureSource={TEXTURES.topographic}
+          eyebrow="İRADE LİGİ"
+          title="Sıralama & Podyum"
+          subtitle="Disiplinini koruyanların haftalık ve genel tablosu."
+          accentColor={colors.warning}
+          minHeight={98}
+        />
+
         {/* Senin sıran kartı */}
         {profile && (
           <View style={s.meCard}>
+            <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.14} />
             <View style={s.meRankWrap}>
               <Text style={s.meRankLabel}>SIRAN</Text>
               <Text style={s.meRank}>{myRank ? `#${myRank}` : '—'}</Text>
             </View>
+            {myTier ? (
+              <EmblemMedallion
+                source={getRankCrest(myTier.name)}
+                size={42}
+                unlocked
+                accentColor={myTier.color}
+              />
+            ) : null}
             <View style={{ flex: 1 }}>
               <Text style={s.meName} numberOfLines={1}>
                 {profile.username || 'Sen (Gizli Savaşçı)'}
@@ -81,6 +121,59 @@ export default function LeaderboardScreen() {
             <Text style={s.meXp}>{profile.total_xp} XP</Text>
           </View>
         )}
+
+        {/* Mimari Top-3 Pantheon Podyum Sahnesi (2. - 1. - 3.) */}
+        {podiumOrder ? (
+          <>
+            <ChapterDivider source={DECOR.dividerSundial} label="PANTHEON PODYUMU" />
+            <View style={s.podiumStage}>
+              {podiumOrder.map((entry) => {
+                const idx = entry.rank - 1;
+                const isFirst = entry.rank === 1;
+                const tier = rankMeta(entry.willpower_rank, entry.level);
+                const val = scope === 'weekly' ? (entry.weekly_xp ?? 0) : entry.total_xp;
+                const accent =
+                  entry.rank === 1 ? colors.warning : entry.rank === 2 ? colors.info : colors.primary;
+                return (
+                  <View
+                    key={`podium-${entry.user_id}`}
+                    style={[
+                      s.podiumColumn,
+                      isFirst ? s.podiumColumnFirst : s.podiumColumnSide,
+                      { borderColor: alphaHex(accent, isFirst ? '55' : '30') },
+                    ]}
+                  >
+                    <EmbeddedFiligree
+                      source={DECOR.cornerAstrolabe}
+                      anchor="bottom-right"
+                      opacity={isFirst ? 0.2 : 0.12}
+                      size={80}
+                    />
+                    <View style={[s.podiumRomanPill, { backgroundColor: alphaHex(accent, '20') }]}>
+                      <Text style={[s.podiumRomanText, { color: accent }]}>
+                        {ROMAN_PODIUM[idx] ?? entry.rank} · {MEDALS[idx] ?? ''}
+                      </Text>
+                    </View>
+                    <EmblemMedallion
+                      source={getRankCrest(tier.name)}
+                      size={isFirst ? 54 : 44}
+                      unlocked
+                      accentColor={accent}
+                    />
+                    <Text style={[s.podiumName, isFirst && s.podiumNameFirst]} numberOfLines={1}>
+                      {entry.username}
+                    </Text>
+                    <Text style={[s.podiumTier, { color: tier.color }]} numberOfLines={1}>
+                      {tier.name}
+                    </Text>
+                    <Text style={[s.podiumXp, { color: accent }]}>{val} XP</Text>
+                  </View>
+                );
+              })}
+            </View>
+            <ChapterDivider source={DECOR.dividerSundial} label="LİG SIRALAMASI" />
+          </>
+        ) : null}
 
         {lbLoading && leaderboard.length === 0 ? (
           // Sıra satırlarının geometrisi sabit — spinner yerine o şekli kur.
@@ -114,6 +207,12 @@ export default function LeaderboardScreen() {
                     {idx < 3 ? MEDALS[idx] : row.rank}
                   </Text>
                 </View>
+                <EmblemMedallion
+                  source={getRankCrest(tier.name)}
+                  size={34}
+                  unlocked
+                  accentColor={tier.color}
+                />
                 <View style={{ flex: 1 }}>
                   <Text style={[s.name, isMe && s.nameMe]} numberOfLines={1}>
                     {row.username}{isMe ? ' (sen)' : ''}
@@ -151,7 +250,7 @@ const s = StyleSheet.create({
   meCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: alphaHex(colors.warning, '12'), borderRadius: 16, borderWidth: 1, borderColor: alphaHex(colors.warning, '40'),
-    padding: 14, marginBottom: 6,
+    padding: 14, marginBottom: 4, overflow: 'hidden', position: 'relative',
   },
   meRankWrap: { alignItems: 'center', minWidth: 48 },
   meRankLabel: { fontSize: 9, fontWeight: '800', color: colors.textFaint, letterSpacing: 1 },
@@ -161,6 +260,60 @@ const s = StyleSheet.create({
   meTier: { fontSize: 12, fontWeight: '700' },
   meLevel: { fontSize: 12, color: colors.textFaint },
   meXp: { fontSize: 15, fontWeight: '800', color: colors.warning },
+
+  podiumStage: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    marginVertical: 4,
+  },
+  podiumColumn: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    gap: 5,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  podiumColumnFirst: {
+    paddingVertical: 18,
+    backgroundColor: alphaHex(colors.warning, '10'),
+  },
+  podiumColumnSide: {
+    paddingVertical: 12,
+  },
+  podiumRomanPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  podiumRomanText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  podiumName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  podiumNameFirst: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  podiumTier: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  podiumXp: {
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 2,
+  },
 
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

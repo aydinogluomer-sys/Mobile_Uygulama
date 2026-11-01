@@ -25,7 +25,7 @@ import MeasuredReportSection from '../../components/MeasuredReportSection';
 import MonthBackground from '../../components/MonthBackground';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
-import { colors, hexA, alphaHex } from '../../lib/tokens';
+import { colors, hexA } from '../../lib/tokens';
 import { buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions, reportBadge, summarizeHabitProgress, type ReportBadge } from '../../lib/reportMetrics';
 import { ymdFromIso, ymd, parseLocalDate } from '../../lib/date';
 import { dailyLoad, type TaskLoadItem } from '../../lib/capacity';
@@ -36,7 +36,8 @@ import {
 } from '../../lib/behaviorIntelligence';
 import { planFromRow } from '../../lib/recovery';
 import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
-import { EmptyState } from '../../components/ui';
+import { ChapterDivider, EmptyState, EmbeddedFiligree, EmblemMedallion } from '../../components/ui';
+import { DECOR, SCREEN_BANNERS } from '../../lib/visualAssets';
 
 const MONTHS_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
@@ -382,7 +383,12 @@ export default function MonthlyReviewScreen() {
 
           <View style={s.hero}>
             <View style={s.heroIcon}>
-              <Ionicons name="calendar-number-outline" size={28} color={colors.accent} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+              <EmblemMedallion
+                source={SCREEN_BANNERS.reviewMonthlySeal}
+                size={48}
+                unlocked
+                accentColor={colors.accent}
+              />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.heroTitle} accessibilityRole="header">Aylık Rapor</Text>
@@ -436,6 +442,7 @@ export default function MonthlyReviewScreen() {
 
           {badge && (
             <View style={s.badgeCard}>
+              <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.16} />
               <Text style={[s.badgeEmoji, { color: badge.color }]}>{badge.emoji}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={s.badgeTitle}>{badge.label}</Text>
@@ -549,6 +556,7 @@ export default function MonthlyReviewScreen() {
           </View>
 
           <View style={s.section}>
+            <ChapterDivider source={DECOR.dividerSundial} label="AYLIK SERTİFİKA" />
             <Text style={s.sectionTitle}>AYLIK YANSIMA</Text>
             {REVIEW_QUESTIONS.map((question) => (
               <View key={question.key} style={s.questionCard}>
@@ -629,7 +637,7 @@ const s = StyleSheet.create({
   },
 
   hero: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
-  heroIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: alphaHex(colors.accent, '20'), alignItems: 'center', justifyContent: 'center' },
+  heroIcon: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   heroTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
   heroDates: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   monthNav: { flexDirection: 'row', gap: 4 },
@@ -639,7 +647,7 @@ const s = StyleSheet.create({
   metric: { flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
   metricValue: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 4 },
   metricLabel: { fontSize: 10, color: colors.textFaint, textAlign: 'center', lineHeight: 14 },
-  badgeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 24 },
+  badgeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: hexA(colors.surface, 0.92), borderRadius: 12, padding: 12, borderWidth: 1, borderColor: hexA(colors.warning, 0.4), marginBottom: 24, overflow: 'hidden', position: 'relative' },
   badgeEmoji: { fontSize: 20 },
   badgeTitle: { fontSize: 14, fontWeight: '700', color: colors.white },
   badgeDesc: { fontSize: 11, color: colors.textFaint, marginTop: 2 },

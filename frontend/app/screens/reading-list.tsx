@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -6,10 +6,27 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useReadingListStore, ReadingType, ReadingStatus, ReadingItem } from '../../store/readingListStore';
-import { EmptyState, Skeleton, LoadErrorState } from '../../components/ui';
+import {
+  AtmosphericScreenCanvas,
+  EditorialBanner,
+  EmbeddedFiligree,
+  EmptyState,
+  LoadErrorState,
+  Skeleton,
+} from '../../components/ui';
+import { BENTO_ART, CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
+
+const decorativeA11y =
+  Platform.OS === 'web'
+    ? ({ 'aria-hidden': true } as Record<string, unknown>)
+    : {
+        accessibilityElementsHidden: true,
+        importantForAccessibility: 'no-hide-descendants' as const,
+      };
 
 const STATUS_TABS: { key: ReadingStatus; label: string; color: string }[] = [
   { key: 'want_to_read', label: 'Okuyacak', color: colors.textFaint },
@@ -18,7 +35,7 @@ const STATUS_TABS: { key: ReadingStatus; label: string; color: string }[] = [
 ];
 
 const TYPE_OPTIONS: { key: ReadingType; label: string; icon: string; color: string }[] = [
-  { key: 'book',    label: 'Kitap',   icon: 'book-outline',         color: '#8b5cf6' },
+  { key: 'book',    label: 'Kitap',   icon: 'book-outline',         color: colors.accent },
   { key: 'article', label: 'Makale',  icon: 'newspaper-outline',    color: colors.teal },
   { key: 'video',   label: 'Video',   icon: 'videocam-outline',     color: colors.error },
   { key: 'podcast', label: 'Podcast', icon: 'headset-outline',      color: colors.warning },
@@ -85,27 +102,32 @@ export default function ReadingListScreen() {
     return 'want_to_read';
   }
 
-
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.libraryPinboard}
+        textureSource={TEXTURES.archivalPaper}
+        scrim={0.62}
+        tintColor={colors.accent}
+      />
 
       {/* Segment tabs */}
       <View style={s.tabs}>
-        {STATUS_TABS.map((tab) => (
+        {STATUS_TABS.map((t) => (
           <TouchableOpacity
-            key={tab.key}
-            style={[s.tab, activeTab === tab.key && { borderBottomColor: tab.color, borderBottomWidth: 2 }]}
-            onPress={() => setActiveTab(tab.key)}
+            key={t.key}
+            style={[s.tab, activeTab === t.key && { borderBottomColor: t.color, borderBottomWidth: 2 }]}
+            onPress={() => setActiveTab(t.key)}
             accessibilityRole="tab"
-            accessibilityLabel={`${tab.label}${counts[tab.key] > 0 ? `, ${counts[tab.key]} kayıt` : ''}`}
-            accessibilityState={{ selected: activeTab === tab.key }}
+            accessibilityLabel={`${t.label}${counts[t.key] > 0 ? `, ${counts[t.key]} kayıt` : ''}`}
+            accessibilityState={{ selected: activeTab === t.key }}
           >
-            <Text style={[s.tabText, activeTab === tab.key && { color: tab.color }]}>
-              {tab.label}
+            <Text style={[s.tabText, activeTab === t.key && { color: t.color }]}>
+              {t.label}
             </Text>
-            {counts[tab.key] > 0 && (
-              <View style={[s.tabBadge, { backgroundColor: tab.color }]}>
-                <Text style={s.tabBadgeText}>{counts[tab.key]}</Text>
+            {counts[t.key] > 0 && (
+              <View style={[s.tabBadge, { backgroundColor: t.color }]}>
+                <Text style={s.tabBadgeText}>{counts[t.key]}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -113,6 +135,16 @@ export default function ReadingListScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.content}>
+        <EditorialBanner
+          source={SCREEN_BANNERS.readingLibrary}
+          textureSource={TEXTURES.archivalPaper}
+          eyebrow="KÜTÜPHANE RAFI"
+          title="Okuma Listesi"
+          subtitle="Kitap, makale, podcast ve öğrenme kaynakların."
+          accentColor={colors.accent}
+          minHeight={90}
+          style={{ marginBottom: 12 }}
+        />
         {loading && filtered.length === 0 ? (
           // Kart şekli sabit: tür ikonu + başlık + yazar + tür rozeti. Boş
           // durumu göstermek yanıltıcı olurdu, veri henüz yolda.
@@ -146,10 +178,25 @@ export default function ReadingListScreen() {
         ) : (
           filtered.map((item) => {
             const typeInfo = TYPE_MAP[item.type];
+            const nextColor = STATUS_TABS.find((t) => t.key === nextStatus(item.status))?.color ?? colors.accent;
             return (
-              <View key={item.id} style={s.card}>
+              <View
+                key={item.id}
+                style={[s.card, { borderLeftWidth: 4, borderLeftColor: typeInfo.color }]}
+              >
+                <View style={s.exlibrisPlate} pointerEvents="none" {...decorativeA11y}>
+                  <Image
+                    source={BENTO_ART.bookExlibris}
+                    style={s.exlibrisImg}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.surface, 0.72) }]} />
+                </View>
+                <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" opacity={0.14} size={82} />
+
                 <View style={s.cardLeft}>
-                  <View style={[s.typeIcon, { backgroundColor: typeInfo.color + '20' }]}>
+                  <View style={[s.typeIcon, { backgroundColor: alphaHex(typeInfo.color, '20') }]}>
                     <Ionicons name={typeInfo.icon as any} size={18} color={typeInfo.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                   </View>
                   <View style={s.cardBody}>
@@ -163,7 +210,7 @@ export default function ReadingListScreen() {
                 </View>
                 <View style={s.cardActions}>
                   <TouchableOpacity
-                    style={[s.statusBtn, { backgroundColor: STATUS_TABS.find(t => t.key === nextStatus(item.status))?.color + '20' }]}
+                    style={[s.statusBtn, { backgroundColor: alphaHex(nextColor, '20') }]}
                     onPress={() => updateStatus(item.id, nextStatus(item.status))}
                     accessibilityRole="button"
                     accessibilityLabel={
@@ -174,7 +221,7 @@ export default function ReadingListScreen() {
                     <Ionicons
                       name={item.status === 'completed' ? 'refresh-outline' : 'arrow-forward-outline'}
                       size={14}
-                      color={STATUS_TABS.find(t => t.key === nextStatus(item.status))?.color}
+                      color={nextColor}
                     />
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -208,6 +255,7 @@ export default function ReadingListScreen() {
       <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
         <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={s.sheet}>
+            <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" opacity={0.14} size={118} />
             <Text style={s.sheetTitle}>Listeye Ekle</Text>
 
             <TextInput
@@ -240,7 +288,7 @@ export default function ReadingListScreen() {
               {TYPE_OPTIONS.map((t) => (
                 <TouchableOpacity
                   key={t.key}
-                  style={[s.typeBtn, type === t.key && { backgroundColor: t.color + '25', borderColor: t.color }]}
+                  style={[s.typeBtn, type === t.key && { backgroundColor: alphaHex(t.color, '25'), borderColor: t.color }]}
                   onPress={() => setType(t.key)}
                   accessibilityRole="radio"
                   accessibilityLabel={`Tür: ${t.label}`}
@@ -298,6 +346,20 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
     backgroundColor: colors.surface, borderRadius: 14, padding: 14,
     borderWidth: 1, borderColor: colors.border, marginBottom: 10,
+    overflow: 'hidden', position: 'relative',
+  },
+  exlibrisPlate: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 104,
+    overflow: 'hidden',
+  },
+  exlibrisImg: {
+    width: '100%',
+    height: '100%',
+    opacity: 0.48,
   },
   cardLeft: { flexDirection: 'row', gap: 12, flex: 1 },
   typeIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
@@ -319,7 +381,10 @@ const s = StyleSheet.create({
   },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  sheet: {
+    backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 40, overflow: 'hidden', position: 'relative',
+  },
   sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 16 },
   input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 12 },
   fieldLabel: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 8 },

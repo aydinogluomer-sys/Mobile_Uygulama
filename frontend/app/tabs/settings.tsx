@@ -43,6 +43,8 @@ import {
 } from '../../constants/integrations';
 import { CURRENT_FEATURES, UPCOMING_FEATURES, type FeatureHighlight } from '../../constants/features';
 import { reportError } from '../../lib/crashReporting';
+import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFiligree, EmblemMedallion } from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const SEASONAL_OPTIONS: { v: SeasonalMotionIntensity; l: string }[] = [
   { v: 'off', l: 'Kapalı' },
@@ -274,8 +276,32 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.treasuryVault}
+        textureSource={TEXTURES.linen}
+        scrim={0.64}
+        tintColor={colors.accent}
+      />
       <ScrollView style={styles.scrollView}>
         <View style={styles.content}>
+          <EditorialBanner
+            source={SCREEN_BANNERS.privacyVaultSeal}
+            textureSource={TEXTURES.linen}
+            eyebrow="SİSTEM & MAHREMİYET"
+            title="Aderyth Ayarları"
+            subtitle="Görünüm, yerel yedekleme ve hesap kontrol merkezi."
+            accentColor={colors.accent}
+            minHeight={94}
+            style={{ marginBottom: 16 }}
+            rightSlot={
+              <EmblemMedallion
+                source={SCREEN_BANNERS.privacyVaultSeal}
+                size={44}
+                unlocked
+                accentColor={colors.accent}
+              />
+            }
+          />
           <Text style={styles.title}>Ayarlar</Text>
           <Text style={styles.subtitle}>Uygulamanızı özelleştirin</Text>
 
@@ -364,11 +390,14 @@ export default function SettingsScreen() {
             </View>
           </View>
 
+          <ChapterDivider source={DECOR.dividerSundial} label="VERİ KASASI & YEDEK" style={{ marginBottom: 18 }} />
+
           {/* Data & Privacy */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Veri ve Gizlilik</Text>
             
             <View style={styles.exportContainer}>
+              <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.11} />
               <Text style={styles.exportTitle}>Verileri Dışa Aktar</Text>
               <Text style={styles.exportSubtitle}>
                 Power BI, Excel veya diğer analiz araçlarında kullanabilirsiniz
@@ -549,7 +578,7 @@ export default function SettingsScreen() {
               'Obsidian Markdown Aktarımı',
               'Alışkanlık ve notları Obsidian kasasına kopyala',
               () => setShowObsidianModal(true),
-              '#8b5cf6'
+              colors.accent
             )}
 
             {renderSettingItem(
@@ -582,6 +611,7 @@ export default function SettingsScreen() {
             <Text style={styles.sectionTitle}>Hakkında</Text>
             
             <View style={styles.infoCard}>
+              <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" opacity={0.14} size={108} />
               <Text style={styles.appName}>Aderyth</Text>
               <Text style={styles.appVersion}>Versiyon 1.0.0</Text>
               <Text style={styles.appDescription}>
@@ -802,6 +832,8 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+    overflow: 'hidden',
+    position: 'relative',
   },
   title: {
     fontSize: 32,
@@ -830,6 +862,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
+    overflow: 'hidden',
+    position: 'relative',
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
@@ -864,6 +898,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 20,
+    overflow: 'hidden',
+    position: 'relative',
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
@@ -895,6 +931,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
+    overflow: 'hidden',
+    position: 'relative',
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -969,6 +1007,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
+    overflow: 'hidden',
+    position: 'relative',
     fontSize: 14,
     color: colors.white,
     marginBottom: 20,
@@ -1005,6 +1045,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     borderRadius: 12,
     padding: 16,
+    overflow: 'hidden',
+    position: 'relative',
     alignItems: 'center',
     marginBottom: 16,
   },
@@ -1026,6 +1068,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
+    overflow: 'hidden',
+    position: 'relative',
     borderWidth: 1,
     borderColor: colors.border,
   },

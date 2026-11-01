@@ -24,7 +24,9 @@
  */
 import { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
-import { colors, alphaHex } from '../../lib/tokens';
+import { colors, alphaHex, hexA } from '../../lib/tokens';
+import EmbeddedFiligree from '../spatial/EmbeddedFiligree';
+import { DECOR } from '../../lib/visualAssets';
 import type { Habit } from '../../lib/supabase';
 import type { CoachLogCompletion } from '../../lib/coachActions';
 import type { ProposalEvaluation, ProposalHabit } from '../../lib/routineProposal';
@@ -293,6 +295,7 @@ export default function CoachActionCard({ staged, busy, onConfirm, onCancel, onP
   if (staged.kind === 'planOffer') {
     return (
       <View style={s.card}>
+        <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={96} opacity={0.14} />
         <Text style={s.title}>{staged.title}</Text>
         <Text style={s.body}>
           {staged.habits.length} alışkanlıklık bir plan. Dönüştürmeden önce her birini
@@ -334,6 +337,7 @@ export default function CoachActionCard({ staged, busy, onConfirm, onCancel, onP
   if (staged.kind === 'nomatch') {
     return (
       <View style={s.card}>
+        <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={96} opacity={0.14} />
         <Text style={s.title}>Eşleşen alışkanlık yok</Text>
         <Text style={s.body}>
           “{staged.query}” adında bir alışkanlığın görünmüyor. Yazarak yeni bir alışkanlık isteyebilirsin.
@@ -350,6 +354,7 @@ export default function CoachActionCard({ staged, busy, onConfirm, onCancel, onP
   if (staged.kind === 'ambiguous') {
     return (
       <View style={s.card}>
+        <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={96} opacity={0.14} />
         <Text style={s.title}>Hangisini kastettin?</Text>
         <Text style={s.body}>Birden fazla alışkanlık eşleşti. Yanlışına işlememek için soruyorum.</Text>
         <View style={s.chipWrap}>
@@ -377,6 +382,7 @@ export default function CoachActionCard({ staged, busy, onConfirm, onCancel, onP
   if (staged.kind === 'unitMismatch') {
     return (
       <View style={s.card}>
+        <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={96} opacity={0.14} />
         <Text style={s.title}>Birim uyuşmuyor</Text>
         <Text style={s.body}>
           “{staged.habit.name}” {staged.habit.unit ?? '—'} cinsinden ölçülüyor, sen “{staged.unit}” dedin.
@@ -405,6 +411,7 @@ export default function CoachActionCard({ staged, busy, onConfirm, onCancel, onP
     const habit = staged.habits[staged.index];
     return (
       <View style={s.card}>
+        <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={96} opacity={0.14} />
         <Text style={s.title}>Bir şey eksik</Text>
         {!!habit && <ClarifyBody habit={habit} missing={staged.missing} onClarify={onClarify} />}
         <View style={s.row}>
@@ -423,6 +430,7 @@ export default function CoachActionCard({ staged, busy, onConfirm, onCancel, onP
     const yStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
     return (
       <View style={s.card}>
+        <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={96} opacity={0.14} />
         <Text style={s.title}>Kaydı onayla</Text>
         {/* The four facts the user is actually consenting to. `Sonuç` is the
             engine's verdict on the value, shown BEFORE the write so "10 of 20"
@@ -491,7 +499,7 @@ export default function CoachActionCard({ staged, busy, onConfirm, onCancel, onP
 const s = StyleSheet.create({
   card: {
     alignSelf: 'stretch',
-    backgroundColor: colors.surface,
+    backgroundColor: hexA(colors.surface, 0.94), overflow: 'hidden', position: 'relative',
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 14,

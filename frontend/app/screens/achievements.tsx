@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,14 @@ import { useTaskStore } from '../../store/taskStore';
 import { useDeepWorkStore } from '../../store/deepWorkStore';
 import { useJournalStore } from '../../store/journalStore';
 import { haptic } from '../../lib/haptics';
+import {
+  AtmosphericScreenCanvas,
+  ChapterDivider,
+  EmbeddedFiligree,
+  EmblemMedallion,
+  TexturedSurface,
+} from '../../components/ui';
+import { CANVASES, DECOR, getAchievementBadge, TEXTURES } from '../../lib/visualAssets';
 
 export type AchievementCategory = 'all' | 'habits' | 'streaks' | 'level' | 'focus';
 
@@ -30,6 +38,7 @@ export type AchievementItem = {
 };
 
 export default function AchievementsScreen() {
+  const { width } = useWindowDimensions();
   const { profile, badges, fetchProfile, fetchBadges } = useProfileStore();
   const { habits } = useHabitStore();
   const { logs } = useLogStore();
@@ -202,12 +211,22 @@ export default function AchievementsScreen() {
 
   const unlockedCount = achievements.filter((a) => a.unlocked).length;
   const progressPercent = Math.round((unlockedCount / achievements.length) * 100);
+  const vitrineWidth = width >= 980 ? '31.8%' : '48.2%';
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.pantheonHall}
+        textureSource={TEXTURES.archivalPaper}
+        scrim={0.62}
+        tintColor={colors.warning}
+      />
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         {/* Başlık & İlerleme Kartı */}
         <View style={s.heroCard}>
+          <TexturedSurface source={TEXTURES.topographic} textureOpacity={0.07} overlayOnly />
+          <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.11} />
+          <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="top-right" opacity={0.18} size={112} />
           <View style={s.heroHeader}>
             <View>
               <Text style={s.heroTitle}>Başarım & Rozetler</Text>
@@ -253,42 +272,50 @@ export default function AchievementsScreen() {
           })}
         </ScrollView>
 
-        {/* Başarımlar Listesi */}
-        <View style={s.list}>
+        <ChapterDivider source={DECOR.dividerSundial} label="KOLEKSİYON VİTRİNİ" />
+
+        {/* Kadife Koleksiyon Vitrini Izgarası (2-Sütun / Geniş Ekranda 3-Sütun) */}
+        <View style={s.vitrineGrid}>
           {filteredAchievements.map((item) => {
             const pct = Math.min(100, Math.round((item.current / item.target) * 100));
             return (
               <View
                 key={item.id}
                 style={[
-                  s.card,
+                  s.vitrineCard,
+                  { width: vitrineWidth },
                   item.unlocked ? s.cardUnlocked : s.cardLocked,
                 ]}
               >
-                <View
-                  style={[
-                    s.iconWrap,
-                    item.unlocked ? s.iconWrapUnlocked : s.iconWrapLocked,
-                  ]}
-                >
-                  <Ionicons
-                    name={item.icon as any}
-                    size={24}
-                    color={item.unlocked ? colors.warning : colors.textFaint}
+                <EmbeddedFiligree
+                  source={DECOR.cornerAstrolabe}
+                  anchor="bottom-right"
+                  opacity={item.unlocked ? 0.16 : 0.06}
+                  size={88}
+                />
+
+                <View style={s.vitrineTopBar}>
+                  <View style={[s.statusDot, item.unlocked ? s.statusDotOn : s.statusDotOff]} />
+                  <View style={s.badgePill}>
+                    <Text style={s.xpBadgeText}>+{item.xpReward} XP</Text>
+                  </View>
+                </View>
+
+                <View style={s.pedestalStage}>
+                  {item.unlocked ? <View style={s.medallionSpotlight} /> : null}
+                  <EmblemMedallion
+                    source={getAchievementBadge(item.id)}
+                    size={62}
+                    unlocked={item.unlocked}
+                    accentColor={colors.warning}
                   />
                 </View>
 
                 <View style={s.cardBody}>
-                  <View style={s.cardTopRow}>
-                    <Text style={[s.cardTitle, !item.unlocked && s.cardTitleLocked]}>
-                      {item.title}
-                    </Text>
-                    <View style={s.badgePill}>
-                      <Text style={s.xpBadgeText}>+{item.xpReward} XP</Text>
-                    </View>
-                  </View>
-
-                  <Text style={s.cardDesc}>{item.description}</Text>
+                  <Text style={[s.cardTitle, !item.unlocked && s.cardTitleLocked]} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={s.cardDesc} numberOfLines={2}>{item.description}</Text>
 
                   {/* İlerleme Çubuğu veya Kazanıldı Bilgisi */}
                   {item.unlocked ? (
@@ -297,7 +324,7 @@ export default function AchievementsScreen() {
                       <Text style={s.unlockedText}>Kazanıldı</Text>
                     </View>
                   ) : (
-                    <View style={s.progressRow}>
+                    <View style={s.progressCol}>
                       <View style={s.subProgressTrack}>
                         <View style={[s.subProgressFill, { width: `${pct}%` }]} />
                       </View>
@@ -327,6 +354,8 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     padding: space.lg,
     gap: space.md,
+    overflow: 'hidden',
+    position: 'relative',
   },
   heroHeader: {
     flexDirection: 'row',
@@ -393,66 +422,79 @@ const s = StyleSheet.create({
     fontWeight: '700',
   },
 
-  list: {
-    gap: space.md,
-  },
-  card: {
+  vitrineGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.md,
+    justifyContent: 'space-between',
+  },
+  vitrineCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     borderWidth: 1,
     padding: space.md,
-    gap: space.md,
-    alignItems: 'center',
+    gap: space.sm,
+    overflow: 'hidden',
+    position: 'relative',
   },
   cardUnlocked: {
-    borderColor: alphaHex(colors.warning, '35'),
-    backgroundColor: alphaHex(colors.surface, '90'),
+    borderColor: alphaHex(colors.warning, '45'),
+    backgroundColor: alphaHex(colors.surface, '96'),
   },
   cardLocked: {
     borderColor: colors.borderSubtle,
-    opacity: 0.85,
+    opacity: 0.88,
   },
-  iconWrap: {
-    width: 50,
-    height: 50,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconWrapUnlocked: {
-    backgroundColor: alphaHex(colors.warning, '20'),
-    borderWidth: 1,
-    borderColor: alphaHex(colors.warning, '40'),
-  },
-  iconWrapLocked: {
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  cardBody: {
-    flex: 1,
-    gap: 4,
-  },
-  cardTopRow: {
+  vitrineTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusDotOn: {
+    backgroundColor: colors.warning,
+  },
+  statusDotOff: {
+    backgroundColor: colors.border,
+  },
+  pedestalStage: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    position: 'relative',
+  },
+  medallionSpotlight: {
+    position: 'absolute',
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: alphaHex(colors.warning, '16'),
+  },
+  cardBody: {
+    gap: 5,
+    alignItems: 'center',
+  },
   cardTitle: {
     ...font.title,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     color: colors.text,
+    textAlign: 'center',
   },
   cardTitleLocked: {
     color: colors.textDim,
   },
   cardDesc: {
     ...font.body,
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textFaint,
-    lineHeight: 16,
+    lineHeight: 15,
+    textAlign: 'center',
+    minHeight: 30,
   },
   badgePill: {
     paddingHorizontal: 8,
@@ -461,29 +503,33 @@ const s = StyleSheet.create({
     backgroundColor: alphaHex(colors.accent, '18'),
   },
   xpBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: colors.accent,
   },
   unlockedRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 5,
     marginTop: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+    backgroundColor: alphaHex(colors.success, '14'),
   },
   unlockedText: {
     fontSize: 11,
     fontWeight: '700',
     color: colors.success,
   },
-  progressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    marginTop: 6,
+  progressCol: {
+    width: '100%',
+    gap: 4,
+    marginTop: 4,
   },
   subProgressTrack: {
-    flex: 1,
+    width: '100%',
     height: 5,
     backgroundColor: colors.surfaceAlt,
     borderRadius: radius.full,
@@ -498,5 +544,6 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: colors.textFaint,
+    textAlign: 'center',
   },
 });

@@ -19,8 +19,10 @@ import HabitListView from '../../components/HabitListView';
 import { colors, space, radius, font, hexA, fontFamily } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import {
-  Card, StatTile, SectionHeader, ProgressBar, ProgressRing, EmptyState, Button,
+  AtmosphericScreenCanvas, Card, ChapterDivider, StatTile, SectionHeader, ProgressBar, ProgressRing, EmptyState, Button, EditorialBanner, EmbeddedFiligree,
+
 } from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const { width } = Dimensions.get('window');
 const CELL_SIZE = Math.floor((width - 48) / 53);
@@ -264,6 +266,7 @@ export default function StatsScreen() {
 
     return (
       <View style={s.heatmapCard}>
+        <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={118} opacity={0.14} />
         <Text style={s.cardTitle}>Yıllık Aktivite</Text>
         <Text style={s.cardSub}>Son 365 gün · günlük tamamlama oranı (yapılan / aktif alışkanlık)</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}
@@ -327,6 +330,7 @@ export default function StatsScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.observatoryStats} textureSource={TEXTURES.topographic} scrim={0.64} tintColor={colors.primary} />
       {/* Görünüm sekmesi */}
       <View style={s.viewToggle}>
         {(['ozet', 'liste'] as const).map((v) => {
@@ -362,8 +366,19 @@ export default function StatsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
 
+        <EditorialBanner
+          source={SCREEN_BANNERS.insightsObservatory}
+          textureSource={TEXTURES.topographic}
+          eyebrow="İSTATİSTİK PANOSU"
+          title="Yıllık İrade Haritası"
+          subtitle={`${monthName} ayı ilerlemesi ve 365 günlük ısı haritası.`}
+          accentColor={colors.primary}
+          minHeight={94}
+          style={{ marginBottom: space.lg }}
+        />
         {/* Hero — bugünün tamamlama halkası + seri */}
         <Card padding="lg" style={s.hero}>
+          <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={116} opacity={0.16} />
           <ProgressRing progress={todayRatio} size={84} stroke={9} color={colors.success}>
             <Text style={s.heroRingPct}>{Math.round(todayRatio * 100)}%</Text>
           </ProgressRing>
@@ -388,6 +403,7 @@ export default function StatsScreen() {
           </View>
         </Card>
 
+        <ChapterDivider source={DECOR.dividerSundial} label="GÖZLEMEVİ ANALİZİ" />
         {/* Alışkanlık hattı — yığılı oran + lejant (4 büyük kart yerine) */}
         <Card padding="lg" style={{ marginBottom: space.lg }}>
           <SectionHeader title="Alışkanlık Hattı" variant="overline" count={habits.length} />
@@ -626,7 +642,7 @@ const s = StyleSheet.create({
   catChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.surface, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 6, borderWidth: 1 },
   catChipText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
-  heatmapCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
+  heatmapCard: { backgroundColor: hexA(colors.surface, 0.92), borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16, overflow: 'hidden', position: 'relative' },
   cardTitle: { fontFamily: fontFamily.serif, fontSize: 18, fontWeight: '400', letterSpacing: -0.3, color: colors.text, marginBottom: 2 },
   cardSub: { fontSize: 12, color: colors.textDim, marginBottom: 14 },
   heatmap: { flexDirection: 'row', gap: CELL_GAP },

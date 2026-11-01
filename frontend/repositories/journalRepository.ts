@@ -11,6 +11,7 @@
  * explicit filter matters here more than anywhere: a policy change that
  * loosened `journal_entries` would have leaked through this query silently.
  */
+import type { TableInsert } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
 import { currentUserId, isTransportFailure, wrongAccountFor, type RepoResult } from './shared';
 
@@ -103,7 +104,7 @@ export async function upsertJournalEntry(input: {
   // R02.06 — a queued entry is only ever written as the account that queued it.
   const wrong = wrongAccountFor(expectedUserId, u.userId);
   if (wrong) return wrong;
-  const row: Record<string, unknown> = {
+  const row: TableInsert<'journal_entries'> = {
     user_id: u.userId,
     date: input.date,
     content: input.content,

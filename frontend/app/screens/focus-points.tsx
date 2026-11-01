@@ -42,6 +42,14 @@ import {
   PAID_SUBSCRIPTIONS_ENABLED,
   PAID_SUBSCRIPTIONS_DISABLED_REASON,
 } from '../../lib/featureGates';
+import {
+  AtmosphericScreenCanvas,
+  ChapterDivider,
+  EmbeddedFiligree,
+  EmblemMedallion,
+  TexturedSurface,
+} from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 /** What a Focus Point is spent on, in the order a new user meets them. */
 const SPEND: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; cost: number }[] = [
@@ -80,9 +88,25 @@ export default function FocusPointsScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.treasuryVault}
+        textureSource={TEXTURES.archivalPaper}
+        scrim={0.62}
+        tintColor={colors.warning}
+      />
       <ScrollView contentContainerStyle={s.content}>
         {/* Balance */}
         <View style={s.balanceCard}>
+          <TexturedSurface source={TEXTURES.topographic} textureOpacity={0.07} overlayOnly />
+          <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.15} />
+          <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="top-right" opacity={0.18} size={110} />
+          <EmblemMedallion
+            source={SCREEN_BANNERS.economyFocusCoin}
+            size={58}
+            unlocked
+            accentColor={colors.warning}
+            style={{ marginBottom: 8 }}
+          />
           <Text style={s.balanceLabel}>Focus Point bakiyen</Text>
           <View style={s.balanceRow}>
             <Ionicons
@@ -121,6 +145,7 @@ export default function FocusPointsScreen() {
         {/* What it buys */}
         <Text style={s.sectionTitle}>Focus Point nerede harcanır</Text>
         <View style={s.card}>
+          <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.1} />
           {SPEND.map((row, i) => (
             <View key={row.label} style={[s.spendRow, i > 0 && s.spendRowBorder]}>
               <Ionicons
@@ -139,8 +164,10 @@ export default function FocusPointsScreen() {
           </Text>
         </View>
 
+        <ChapterDivider source={DECOR.dividerSundial} label="HAZİNE PLANI" style={{ marginTop: 18 }} />
+
         {/* Üyelik Katmanları & Karşılaştırma */}
-        <Text style={s.sectionTitle}>Üyelik Katmanları</Text>
+        <Text style={[s.sectionTitle, { marginTop: 6 }]}>Üyelik Katmanları</Text>
         <View style={{ gap: 12 }}>
           {([TIERS.free, TIERS.plus, TIERS.pro]).map((t) => (
             <View
@@ -151,6 +178,7 @@ export default function FocusPointsScreen() {
                 { borderColor: t.key === tier ? t.color : colors.border },
               ]}
             >
+              <EmbeddedFiligree source={DECOR.guillocheWave} anchor="bottom-right" opacity={0.12} size={110} />
               <View style={s.tierHeader}>
                 <View>
                   <Text style={[s.tierName, { color: t.color }]}>{t.name}</Text>
@@ -229,6 +257,7 @@ const s = StyleSheet.create({
   balanceCard: {
     backgroundColor: colors.surface, borderRadius: 18, padding: 20,
     borderWidth: 1, borderColor: colors.border, alignItems: 'center',
+    overflow: 'hidden', position: 'relative',
   },
   balanceLabel: { fontSize: 12, color: colors.textFaint },
   balanceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
@@ -248,7 +277,10 @@ const s = StyleSheet.create({
   renewNote: { fontSize: 12, color: colors.textFaint, marginTop: 8, paddingHorizontal: 4 },
 
   sectionTitle: { fontSize: 13, fontWeight: '700', color: colors.textDim, marginTop: 22, marginBottom: 8, paddingHorizontal: 4 },
-  card: { backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14 },
+  card: {
+    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 14, overflow: 'hidden', position: 'relative',
+  },
   spendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
   spendRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
   spendLabel: { flex: 1, fontSize: 14, color: colors.text },
@@ -274,6 +306,8 @@ const s = StyleSheet.create({
     borderWidth: 1,
     padding: 16,
     gap: 12,
+    overflow: 'hidden',
+    position: 'relative',
   },
   tierCardActive: {
     backgroundColor: alphaHex(colors.surface, '95'),

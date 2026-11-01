@@ -1,4 +1,4 @@
-import { colors } from '../../lib/tokens';
+import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
@@ -8,7 +8,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { listTransactions } from '../../services/focusPointService';
-import { EmptyState, Skeleton } from '../../components/ui';
+import {
+  AtmosphericScreenCanvas,
+  ChapterDivider,
+  EditorialBanner,
+  EmbeddedFiligree,
+  EmblemMedallion,
+  EmptyState,
+  Skeleton,
+} from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 type Tx = {
   id: string;
@@ -60,6 +69,12 @@ export default function CreditHistoryScreen() {
   if (loading) {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
+        <AtmosphericScreenCanvas
+          source={CANVASES.treasuryVault}
+          textureSource={TEXTURES.archivalPaper}
+          scrim={0.62}
+          tintColor={colors.warning}
+        />
         <View style={s.content}>
           <View style={s.summary}>
             {[0, 1, 2].map((i) => (
@@ -76,28 +91,58 @@ export default function CreditHistoryScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.treasuryVault}
+        textureSource={TEXTURES.archivalPaper}
+        scrim={0.62}
+        tintColor={colors.warning}
+      />
       <ScrollView
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
+        <EditorialBanner
+          source={SCREEN_BANNERS.economyFocusCoin}
+          textureSource={TEXTURES.archivalPaper}
+          eyebrow="ODAK EKONOMİSİ"
+          title="Kredi Geçmişi"
+          subtitle="Aylık yenilemeler ve AI kullanımlarının kayıt defteri."
+          accentColor={colors.warning}
+          minHeight={96}
+          style={{ marginBottom: 14 }}
+          rightSlot={
+            <EmblemMedallion
+              source={SCREEN_BANNERS.economyFocusCoin}
+              size={46}
+              unlocked
+              accentColor={colors.warning}
+            />
+          }
+        />
+
         {/* Özet */}
         <View style={s.summary}>
           <View style={s.sumCard}>
+            <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.13} />
             <Ionicons name="flash" size={16} color={colors.warning} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={s.sumVal}>{focusPoints}</Text>
             <Text style={s.sumLabel}>Mevcut</Text>
           </View>
           <View style={s.sumCard}>
+            <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.13} />
             <Ionicons name="add-circle-outline" size={16} color={colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={[s.sumVal, { color: colors.success }]}>{earned}</Text>
             <Text style={s.sumLabel}>Kazanılan</Text>
           </View>
           <View style={s.sumCard}>
+            <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.13} />
             <Ionicons name="remove-circle-outline" size={16} color={colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={[s.sumVal, { color: colors.error }]}>{spent}</Text>
             <Text style={s.sumLabel}>Harcanan</Text>
           </View>
         </View>
+
+        <ChapterDivider source={DECOR.dividerSundial} label="İŞLEM KAYIT DEFTERİ" style={{ marginBottom: 10 }} />
 
         {txs.length === 0 ? (
           <EmptyState
@@ -111,7 +156,7 @@ export default function CreditHistoryScreen() {
             const positive = t.delta > 0;
             return (
               <View key={t.id} style={s.row}>
-                <View style={[s.rowIcon, { backgroundColor: (positive ? colors.success : colors.error) + '18' }]}>
+                <View style={[s.rowIcon, { backgroundColor: alphaHex(positive ? colors.success : colors.error, '18') }]}>
                   <Ionicons name={m.icon as any} size={16} color={positive ? colors.success : colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -138,10 +183,11 @@ const s = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
 
-  summary: { flexDirection: 'row', gap: 10, marginBottom: 18 },
+  summary: { flexDirection: 'row', gap: 10, marginBottom: 14 },
   sumCard: {
     flex: 1, backgroundColor: colors.surface, borderRadius: 14, paddingVertical: 14,
     alignItems: 'center', borderWidth: 1, borderColor: colors.border, gap: 3,
+    overflow: 'hidden', position: 'relative',
   },
   sumVal: { fontSize: 20, fontWeight: '800', color: colors.warning },
   sumLabel: { fontSize: 11, color: colors.textFaint },

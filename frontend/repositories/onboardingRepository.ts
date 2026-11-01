@@ -21,6 +21,7 @@
  * user sees as "kaydedilemedi". `writeOnboarding` derives the timestamp from
  * the status, so the pair cannot disagree.
  */
+import type { TableInsert } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
 import { currentUserId, type RepoResult } from './shared';
 import {
@@ -106,7 +107,7 @@ export async function writeOnboarding(input: {
   const u = await currentUserId();
   if (!u.ok) return u;
 
-  const row: Record<string, unknown> = {
+  const row: TableInsert<'user_onboarding'> = {
     user_id: u.userId,
     onboarding_version: ONBOARDING_VERSION,
     goals: input.answers.goals,

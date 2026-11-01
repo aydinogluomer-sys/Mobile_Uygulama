@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
   View,
   Text,
   StyleSheet,
@@ -14,10 +16,22 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import * as Speech from 'expo-speech';
 import { useRouter } from 'expo-router';
 import { colors, space, radius, hexA } from '../lib/tokens';
+import {
+  DECOR,
+  EMPTY_VIGNETTES,
+  FLOW_CBT_BACKDROPS,
+  FLOW_CHECKPOINT_ZEN,
+  TEXTURES,
+} from '../lib/visualAssets';
 import { todayLocal } from '../lib/date';
+import EmbeddedFiligree from './spatial/EmbeddedFiligree';
+import { useReducedMotion } from './seasonalMotion/useReducedMotion';
+
+
 import { haptic } from '../lib/haptics';
 import { useHabitStore } from '../store/habitStore';
 import { useTaskStore } from '../store/taskStore';
@@ -33,6 +47,8 @@ import {
   type FocusFeedItem,
   type FocusFlowCategoryKey,
 } from '../lib/focusFlowCatalog';
+
+const IS_TEST = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
 const SAVED_FLOW_STORAGE_KEY = 'aderyth:focus_flow_saved_v1';
 
@@ -65,7 +81,7 @@ function NativeYoutubeEmbed({ videoId, muted }: { videoId: string; muted: boolea
         height: '100%',
         border: 'none',
         borderRadius: '18px',
-        backgroundColor: '#09090d',
+        backgroundColor: colors.bgSunk,
       },
     });
   }
@@ -76,7 +92,7 @@ function NativeYoutubeEmbed({ videoId, muted }: { videoId: string; muted: boolea
   return (
     <WebView
       source={{ uri }}
-      style={{ flex: 1, backgroundColor: '#09090d' }}
+      style={{ flex: 1, backgroundColor: colors.bgSunk }}
       allowsInlineMediaPlayback
       mediaPlaybackRequiresUserAction={false}
       javaScriptEnabled
@@ -92,6 +108,20 @@ export default function FocusFlowView({
   onRequestExplorePacks,
 }: FocusFlowViewProps) {
   const router = useRouter();
+  const reduceMotion = useReducedMotion();
+  const breathAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (IS_TEST || reduceMotion) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathAnim, { toValue: 1, duration: 2800, easing: Easing.inOut(Easing.sin), useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(breathAnim, { toValue: 0, duration: 2800, easing: Easing.inOut(Easing.sin), useNativeDriver: Platform.OS !== 'web' }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [breathAnim, reduceMotion]);
   const scrollRef = useRef<ScrollView | null>(null);
 
   const { habits, fetchHabits, addHabit } = useHabitStore();
@@ -530,9 +560,12 @@ export default function FocusFlowView({
       {/* Boş Kaydedilenler Durumu */}
       {feedEntries.length === 0 ? (
         <View style={[s.emptyStateWrap, { height: containerHeight }]}>
-          <View style={s.emptyIconCircle}>
-            <Ionicons name="bookmark-outline" size={30} color={colors.accent} />
-          </View>
+          <Image
+            source={EMPTY_VIGNETTES.focus}
+            style={{ width: 148, height: 110, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border }}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
           <Text style={s.emptyTitle}>Henüz kaydedilmiş bir akış yok</Text>
           <Text style={s.emptySub}>
              Sağ taraftaki yer imi ikonuna dokunarak en sevdiğin verimlilik videolarını ve Inflow mikro-derslerini burada toplayabilirsin.
@@ -569,8 +602,43 @@ export default function FocusFlowView({
                   style={[s.pageContainer, { height: containerHeight }]}
                 >
                   <View style={s.checkpointCard}>
+                    <View
+                      style={StyleSheet.absoluteFill}
+                      pointerEvents="none"
+                      {...(Platform.OS === 'web'
+                        ? { 'aria-hidden': true }
+                        : {
+                            accessibilityElementsHidden: true,
+                            importantForAccessibility: 'no-hide-descendants' as const,
+                          })}
+                    >
+                      <Image
+                        source={FLOW_CHECKPOINT_ZEN}
+                        style={StyleSheet.absoluteFill}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                      />
+                      <View
+                        style={[
+                          StyleSheet.absoluteFill,
+                          { backgroundColor: hexA(colors.bgSunk, 0.58) },
+                        ]}
+                      />
+                      <Animated.View
+                        style={[
+                          s.zenBreathRing,
+                          !IS_TEST && !reduceMotion
+                            ? {
+                                opacity: breathAnim.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.54] }),
+                                transform: [{ scale: breathAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.08] }) }],
+                              }
+                            : { opacity: 0.28 },
+                        ]}
+                      />
+                    </View>
+                    <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={140} opacity={0.18} />
                     <View style={s.checkpointBadge}>
-                      <Ionicons name="leaf" size={14} color="#10b981" />
+                      <Ionicons name="leaf" size={14} color={colors.success} />
                       <Text style={s.checkpointBadgeText}>
                         INFLOW 5 DAKİKA KURALI · BİLİNÇLİ DURAĞI
                       </Text>
@@ -662,7 +730,36 @@ export default function FocusFlowView({
                     { borderColor: hexA(item.accentColor, 0.32) },
                   ]}
                 >
-                  {/* Arka Plan Vurgu Işığı */}
+                    {/* Arka Plan Sanat & Vurgu Işığı */}
+                  <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={142} opacity={0.14} />
+                  <View
+                    style={StyleSheet.absoluteFill}
+                    pointerEvents="none"
+                    {...(Platform.OS === 'web'
+                      ? { 'aria-hidden': true }
+                      : {
+                          accessibilityElementsHidden: true,
+                          importantForAccessibility: 'no-hide-descendants' as const,
+                        })}
+                  >
+                    <Image
+                      source={FLOW_CBT_BACKDROPS[item.id] ?? TEXTURES.neural}
+                      style={[
+                        StyleSheet.absoluteFill,
+                        { opacity: FLOW_CBT_BACKDROPS[item.id] ? 0.85 : 0.08 },
+                      ]}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                    />
+                    {FLOW_CBT_BACKDROPS[item.id] ? (
+                      <View
+                        style={[
+                          StyleSheet.absoluteFill,
+                          { backgroundColor: hexA(colors.bgSunk, 0.62) },
+                        ]}
+                      />
+                    ) : null}
+                  </View>
                   <View
                     style={[
                       s.ambientGlow,
@@ -813,6 +910,7 @@ export default function FocusFlowView({
                               >
                                 {curSlide.eyebrow}
                               </Text>
+                              <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="top-right" size={96} opacity={0.11} />
                               <Text style={s.slideMainText}>{curSlide.text}</Text>
                               <View
                                 style={[
@@ -919,15 +1017,15 @@ export default function FocusFlowView({
                           style={[
                             s.railIconCircle,
                             isSaved && {
-                              backgroundColor: hexA('#10b981', 0.25),
-                              borderColor: '#10b981',
+                              backgroundColor: hexA(colors.success, 0.25),
+                              borderColor: colors.success,
                             },
                           ]}
                         >
                           <Ionicons
                             name={isSaved ? 'bookmark' : 'bookmark-outline'}
                             size={19}
-                            color={isSaved ? '#10b981' : colors.white}
+                            color={isSaved ? colors.success : colors.white}
                           />
                         </View>
                         <Text style={s.railBtnLabel}>
@@ -1026,9 +1124,9 @@ export default function FocusFlowView({
                         s.ctaBridgeBtn,
                         {
                           backgroundColor: alreadyAdded
-                            ? hexA('#10b981', 0.22)
+                            ? hexA(colors.success, 0.22)
                             : item.accentColor,
-                          borderColor: alreadyAdded ? '#10b981' : item.accentColor,
+                          borderColor: alreadyAdded ? colors.success : item.accentColor,
                         },
                       ]}
                       disabled={isAddingThis}
@@ -1050,12 +1148,12 @@ export default function FocusFlowView({
                                   : 'flash'
                             }
                             size={18}
-                            color={alreadyAdded ? '#10b981' : colors.white}
+                            color={alreadyAdded ? colors.success : colors.white}
                           />
                           <Text
                             style={[
                               s.ctaBridgeText,
-                              alreadyAdded && { color: '#10b981' },
+                              alreadyAdded && { color: colors.success },
                             ]}
                             numberOfLines={1}
                           >
@@ -1167,7 +1265,7 @@ export default function FocusFlowView({
 const s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#09090d',
+    backgroundColor: colors.bgSunk,
     position: 'relative',
   },
   topOverlay: {
@@ -1214,10 +1312,10 @@ const s = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: '#f97316',
+    backgroundColor: colors.primary,
   },
   brandPillText: {
-    color: '#fdba74',
+    color: colors.primaryBright,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.7,
@@ -1285,7 +1383,7 @@ const s = StyleSheet.create({
   },
   reelCard: {
     flex: 1,
-    backgroundColor: '#12131a',
+    backgroundColor: colors.bg,
     borderRadius: 24,
     borderWidth: 1,
     padding: space.md,
@@ -1380,7 +1478,7 @@ const s = StyleSheet.create({
     flex: 1,
     borderRadius: 18,
     overflow: 'hidden',
-    backgroundColor: '#09090d',
+    backgroundColor: colors.bgSunk,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
@@ -1413,7 +1511,20 @@ const s = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.16)',
   },
+  zenBreathRing: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '22%',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    borderWidth: 1.5,
+    borderColor: hexA(colors.success, 0.45),
+    backgroundColor: hexA(colors.success, 0.06),
+  },
   kineticSlideCard: {
+    overflow: 'hidden',
+    position: 'relative',
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderRadius: 16,
     padding: space.md,
@@ -1440,7 +1551,7 @@ const s = StyleSheet.create({
     borderRadius: 8,
   },
   slideHighlightText: {
-    color: '#f3f4f6',
+    color: colors.text,
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '500',
@@ -1459,7 +1570,7 @@ const s = StyleSheet.create({
     gap: 6,
   },
   promptQuestion: {
-    color: '#e5e7eb',
+    color: colors.neutral200,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -1564,7 +1675,7 @@ const s = StyleSheet.create({
   },
   checkpointCard: {
     flex: 1,
-    backgroundColor: '#101817',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.35)',
@@ -1585,7 +1696,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(16, 185, 129, 0.35)',
   },
   checkpointBadgeText: {
-    color: '#34d399',
+    color: colors.success,
     fontSize: 10.5,
     fontWeight: '700',
     letterSpacing: 0.6,
@@ -1610,7 +1721,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#10b981',
+    backgroundColor: colors.success,
     paddingVertical: 14,
     borderRadius: 14,
   },
@@ -1674,7 +1785,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    backgroundColor: '#f97316',
+    backgroundColor: colors.primary,
     paddingHorizontal: space.lg,
     paddingVertical: 12,
     borderRadius: radius.full,
@@ -1690,7 +1801,7 @@ const s = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: '#161722',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: space.lg,
@@ -1737,7 +1848,7 @@ const s = StyleSheet.create({
   },
   takeawayPointText: {
     flex: 1,
-    color: '#e5e7eb',
+    color: colors.neutral200,
     fontSize: 13.5,
     lineHeight: 20,
   },

@@ -10,7 +10,11 @@
  * only ever get called in pairs.
  */
 import { supabase } from '../lib/supabase';
-import { currentUserId, deleteOwned, updateOwned, type RepoResult } from './shared';
+import {
+  currentUserId, deleteOwned, deleteOwnedIfPresent,
+  insertOwnedWithId, isTransportFailure, updateOwned, updateOwnedVersioned,
+  type RepoResult,
+} from './shared';
 
 export type OkrRow = {
   id: string;
@@ -57,7 +61,15 @@ export async function fetchOkrs(opts?: { quarters?: number }): Promise<
     .order('year', { ascending: false })
     .order('quarter', { ascending: false })
     .limit(limit);
-  if (okrRes.error) return { ok: false, error: okrRes.error.message };
+  if (okrRes.error) {
+    return {
+      ok: false,
+      error: okrRes.error.message,
+      offline: isTransportFailure(okrRes.status),
+      status: okrRes.status,
+      code: okrRes.error.code,
+    };
+  }
   const okrs = (okrRes.data ?? []) as unknown as OkrRow[];
 
   if (okrs.length === 0) return { ok: true, data: { okrs: [], keyResults: [] } };
@@ -70,7 +82,15 @@ export async function fetchOkrs(opts?: { quarters?: number }): Promise<
     .eq('user_id', u.userId)
     .in('okr_id', okrs.map((o) => o.id))
     .order('created_at', { ascending: true });
-  if (krRes.error) return { ok: false, error: krRes.error.message };
+  if (krRes.error) {
+    return {
+      ok: false,
+      error: krRes.error.message,
+      offline: isTransportFailure(krRes.status),
+      status: krRes.status,
+      code: krRes.error.code,
+    };
+  }
 
   return {
     ok: true,
@@ -85,12 +105,12 @@ export async function insertObjective(input: {
 }): Promise<RepoResult<OkrRow>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('okrs')
     .insert({ user_id: u.userId, objective: input.objective, year: input.year, quarter: input.quarter })
     .select(OKR_COLS)
     .single();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   return { ok: true, data: data as unknown as OkrRow };
 }
 
@@ -106,7 +126,7 @@ export async function insertKeyResult(input: {
   // `008_child_row_ownership.sql`. A client-side check would be a
   // round trip that an attacker simply skips.
 
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('key_results')
     .insert({
       user_id: u.userId,
@@ -118,7 +138,7 @@ export async function insertKeyResult(input: {
     })
     .select(KR_COLS)
     .single();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   return { ok: true, data: data as unknown as KeyResultRow };
 }
 
@@ -144,4 +164,82 @@ export async function deleteKeyResult(id: string): Promise<RepoResult<true>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   return deleteOwned({ table: 'key_results', id, userId: u.userId });
+}
+
+// ---------------------------------------------------------------------------
+// Unified offline outbox delivery helpers (idempotent, owner-scoped)
+// ---------------------------------------------------------------------------
+
+export function insertObjectiveWithId(
+  row: { id: string; objective: string; year: number; quarter: number },
+  expectedUserId?: string,
+): Promise<RepoResult<OkrRow>> {
+  return insertOwnedWithId<OkrRow>({
+    table: 'okrs',
+    row,
+    columns: OKR_COLS,
+    expectedUserId,
+  });
+}
+
+export function insertKeyResultWithId(
+  row: {
+    id: string;
+    okr_id: string;
+    title: string;
+    current_value?: number;
+    target_value: number;
+    unit?: string | null;
+  },
+  expectedUserId?: string,
+): Promise<RepoResult<KeyResultRow>> {
+  const curVal = typeof row.current_value === 'number' && Number.isFinite(row.current_value)
+    ? Math.max(0, row.current_value)
+    : 0;
+  return insertOwnedWithId<KeyResultRow>({
+    table: 'key_results',
+    row: {
+      id: row.id,
+      okr_id: row.okr_id,
+      title: row.title,
+      current_value: curVal,
+      target_value: row.target_value,
+      unit: row.unit ?? null,
+    },
+    columns: KR_COLS,
+    expectedUserId,
+  });
+}
+
+export function updateKeyResultOwned(
+  id: string,
+  patch: Record<string, unknown>,
+  expectedUserId?: string,
+): Promise<RepoResult<{ row: KeyResultRow | null; exists: boolean }>> {
+  const next = { ...patch };
+  if (typeof next.current_value === 'number') {
+    next.current_value = Number.isFinite(next.current_value) ? Math.max(0, next.current_value) : 0;
+  }
+  return updateOwnedVersioned<KeyResultRow>({
+    table: 'key_results',
+    id,
+    patch: next,
+    baseVersion: null,
+    columns: KR_COLS,
+    expectedUserId,
+  });
+}
+
+export function deleteObjectiveIfPresent(
+  id: string,
+  expectedUserId?: string,
+): Promise<RepoResult<{ deleted: boolean }>> {
+  return deleteOwnedIfPresent({ table: 'okrs', id, expectedUserId });
+}
+
+export function deleteKeyResultIfPresent(
+  id: string,
+  expectedUserId?: string,
+): Promise<RepoResult<{ deleted: boolean }>> {
+  return deleteOwnedIfPresent({ table: 'key_results', id, expectedUserId });
 }

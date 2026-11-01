@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Easing } from 'react-native';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Animated, Easing, useWindowDimensions,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useIsFocused } from 'expo-router';
@@ -12,6 +15,8 @@ import SeasonalMotionPreview from '../../components/seasonalMotion/SeasonalMotio
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
 import GlassPanel from '../../components/ui/GlassPanel';
+import { EmbeddedFiligree } from '../../components/ui';
+import { DECOR } from '../../lib/visualAssets';
 import { colors, hexA } from '../../lib/tokens';
 import { ymd } from '../../lib/date';
 
@@ -31,6 +36,8 @@ function getFirstDayOfMonth(year: number, month: number) {
 export default function CalendarScreen() {
   const headerHeight = useHeaderHeight();
   const isFocused = useIsFocused();
+  const { width } = useWindowDimensions();
+  const isAlmanacSpread = width >= 960;
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -108,91 +115,100 @@ export default function CalendarScreen() {
 
       <SafeAreaView style={s.safe} edges={['bottom']}>
         <ScrollView contentContainerStyle={[s.content, { paddingTop: headerHeight + 8 }]}>
-          {/* Defter sayfası — giriş "açılma" + ay değişiminde sayfa çevirme animasyonu */}
-          <Animated.View style={pageStyle}>
-          {/* Ajanda kapak başlığı — cam YOK; mevsim sahnesi + hareketi burada açıkça görünür */}
-          <View style={s.hero}>
-            <View style={s.heroNavRow}>
-              <TouchableOpacity style={s.heroArrow} onPress={prevMonth} accessibilityRole="button" accessibilityLabel="Önceki ay">
-                <Ionicons name="chevron-back" size={22} color={colors.white} />
-              </TouchableOpacity>
-              <Text style={s.heroMonth} accessibilityRole="header">{MONTHS[month]}</Text>
-              <TouchableOpacity style={s.heroArrow} onPress={nextMonth} accessibilityRole="button" accessibilityLabel="Sonraki ay">
-                <Ionicons name="chevron-forward" size={22} color={colors.white} />
-              </TouchableOpacity>
-            </View>
-            <Text style={s.heroYear}>{year}</Text>
-            <Text style={s.heroTagline}>{MONTH_TAGLINES[month]}</Text>
-          </View>
-
-          {/* Takvim paneli — gün başlıkları + ızgara, cam üzerinde */}
-          <GlassPanel style={s.panel}>
-            <View style={s.weekRow}>
-              {DAYS_SHORT.map((d) => (
-                <Text key={d} style={s.dayHeader}>{d}</Text>
-              ))}
-            </View>
-
-            <View style={s.grid}>
-              {Array.from({ length: firstDay }).map((_, i) => (
-                <View key={`empty-${i}`} style={s.dayCell} />
-              ))}
-              {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
-                const ds = dateStr(day);
-                const isToday = ds === todayStr;
-                const isSelected = ds === selected;
-                const hasDot = hasTask(day);
-                return (
-                  <TouchableOpacity
-                    key={day}
-                    style={[s.dayCell, isSelected && s.dayCellSelected, isToday && !isSelected && s.dayCellToday]}
-                    onPress={() => setSelected(ds)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${day} ${MONTHS[month]} ${year}${isToday ? ', bugün' : ''}${hasDot ? ', görev var' : ''}`}
-                    accessibilityState={{ selected: isSelected }}
-                  >
-                    <Text style={[s.dayText, isSelected && s.dayTextSelected, isToday && !isSelected && s.dayTextToday]}>
-                      {day}
-                    </Text>
-                    {hasDot && <View style={[s.dot, isSelected && s.dotSelected]} />}
+          <View style={isAlmanacSpread ? s.almanacSpread : undefined}>
+            <View style={isAlmanacSpread ? s.almanacLeft : undefined}>
+              {/* Defter sayfası — giriş "açılma" + ay değişiminde sayfa çevirme animasyonu */}
+              <Animated.View style={pageStyle}>
+              {/* Ajanda kapak başlığı — cam YOK; mevsim sahnesi + hareketi burada açıkça görünür */}
+              <View style={s.hero}>
+                <View style={s.heroNavRow}>
+                  <TouchableOpacity style={s.heroArrow} onPress={prevMonth} accessibilityRole="button" accessibilityLabel="Önceki ay">
+                    <Ionicons name="chevron-back" size={22} color={colors.white} />
                   </TouchableOpacity>
-                );
-              })}
+                  <Text style={s.heroMonth} accessibilityRole="header">{MONTHS[month]}</Text>
+                  <TouchableOpacity style={s.heroArrow} onPress={nextMonth} accessibilityRole="button" accessibilityLabel="Sonraki ay">
+                    <Ionicons name="chevron-forward" size={22} color={colors.white} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={s.heroYear}>{year}</Text>
+                <Text style={s.heroTagline}>{MONTH_TAGLINES[month]}</Text>
+              </View>
+
+              {/* Takvim paneli — gün başlıkları + ızgara, cam üzerinde */}
+              <GlassPanel style={s.panel}>
+                <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={112} opacity={0.14} />
+                <View style={s.weekRow}>
+                  {DAYS_SHORT.map((d) => (
+                    <Text key={d} style={s.dayHeader}>{d}</Text>
+                  ))}
+                </View>
+
+                <View style={s.grid}>
+                  {Array.from({ length: firstDay }).map((_, i) => (
+                    <View key={`empty-${i}`} style={s.dayCell} />
+                  ))}
+                  {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+                    const ds = dateStr(day);
+                    const isToday = ds === todayStr;
+                    const isSelected = ds === selected;
+                    const hasDot = hasTask(day);
+                    return (
+                      <TouchableOpacity
+                        key={day}
+                        style={[s.dayCell, isSelected && s.dayCellSelected, isToday && !isSelected && s.dayCellToday]}
+                        onPress={() => setSelected(ds)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${day} ${MONTHS[month]} ${year}${isToday ? ', bugün' : ''}${hasDot ? ', görev var' : ''}`}
+                        accessibilityState={{ selected: isSelected }}
+                      >
+                        <Text style={[s.dayText, isSelected && s.dayTextSelected, isToday && !isSelected && s.dayTextToday]}>
+                          {day}
+                        </Text>
+                        {hasDot && <View style={[s.dot, isSelected && s.dotSelected]} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </GlassPanel>
+              </Animated.View>
             </View>
-          </GlassPanel>
-          </Animated.View>
 
-          {/* Seçili gün görevleri */}
-          <GlassPanel style={s.panel}>
-            <Text style={s.sectionTitle} accessibilityRole="header">
-              {selected === todayStr ? 'BUGÜN' : selected} — GÖREVLER
-            </Text>
-            {selectedTasks.length === 0 ? (
-              <Text style={s.noItem}>Bu gün için görev yok</Text>
-            ) : (
-              selectedTasks.map((t) => (
-                <View key={t.id} style={s.item}>
-                  <View style={[s.priorityDot, { backgroundColor: t.priority === 'high' ? colors.error : t.priority === 'medium' ? colors.warning : colors.success }]} />
-                  <Text style={s.itemText}>{t.title}</Text>
-                </View>
-              ))
-            )}
-          </GlassPanel>
+            <View style={isAlmanacSpread ? s.almanacRight : undefined}>
+              {/* Seçili gün görevleri */}
+              <GlassPanel style={s.panel}>
+                <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={108} opacity={0.16} />
+                <Text style={s.sectionTitle} accessibilityRole="header">
+                  {selected === todayStr ? 'BUGÜN' : selected} — GÖREVLER
+                </Text>
+                {selectedTasks.length === 0 ? (
+                  <Text style={s.noItem}>Bu gün için görev yok</Text>
+                ) : (
+                  selectedTasks.map((t) => (
+                    <View key={t.id} style={s.item}>
+                      <View style={[s.priorityDot, { backgroundColor: t.priority === 'high' ? colors.error : t.priority === 'medium' ? colors.warning : colors.success }]} />
+                      <Text style={s.itemText}>{t.title}</Text>
+                    </View>
+                  ))
+                )}
+              </GlassPanel>
 
-          {/* Seçili gün alışkanlıkları */}
-          <GlassPanel style={s.panelLast}>
-            <Text style={s.sectionTitle} accessibilityRole="header">AKTIF ALIŞKANLIKLAR</Text>
-            {selectedHabitLogs.length === 0 ? (
-              <Text style={s.noItem}>Aktif alışkanlık yok</Text>
-            ) : (
-              selectedHabitLogs.slice(0, 5).map((h) => (
-                <View key={h.id} style={s.item}>
-                  <Ionicons name={(h.icon ?? 'star-outline') as any} size={14} color={h.color ?? colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-                  <Text style={s.itemText}>{h.name}</Text>
-                </View>
-              ))
-            )}
-          </GlassPanel>
+              {/* Seçili gün alışkanlıkları */}
+              <GlassPanel style={s.panelLast}>
+                <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={108} opacity={0.14} />
+                <Text style={s.sectionTitle} accessibilityRole="header">AKTIF ALIŞKANLIKLAR</Text>
+                {selectedHabitLogs.length === 0 ? (
+                  <Text style={s.noItem}>Aktif alışkanlık yok</Text>
+                ) : (
+                  selectedHabitLogs.slice(0, 5).map((h) => (
+                    <View key={h.id} style={s.item}>
+                      <Ionicons name={(h.icon ?? 'star-outline') as any} size={14} color={h.color ?? colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                      <Text style={s.itemText}>{h.name}</Text>
+                    </View>
+                  ))
+                )}
+              </GlassPanel>
+            </View>
+          </View>
         </ScrollView>
       </SafeAreaView>
 
@@ -219,8 +235,21 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: 'transparent' },
   content: { padding: 16, paddingBottom: 40 },
 
-  panel: { marginBottom: 16 },
-  panelLast: { marginBottom: 0 },
+  almanacSpread: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 20,
+  },
+  almanacLeft: {
+    flex: 1.15,
+  },
+  almanacRight: {
+    flex: 0.95,
+    paddingTop: 28,
+  },
+
+  panel: { marginBottom: 16, overflow: 'hidden', position: 'relative' },
+  panelLast: { marginBottom: 0, overflow: 'hidden', position: 'relative' },
 
   // Ajanda kapak başlığı (cam yok → mevsim sahnesi/hareket görünür)
   hero: { minHeight: 156, alignItems: 'center', justifyContent: 'center', paddingVertical: 22, marginBottom: 6 },

@@ -67,7 +67,9 @@
           "speechRecognitionPermission": "Söylediklerini yazıya çevirebilmek için konuşma tanıma gerekiyor. Metin, sen göndermeden önce yazı kutusunda düzenlenebilir."
         }
       ],
-      "@sentry/react-native"
+      "@sentry/react-native",
+      "expo-secure-store",
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true

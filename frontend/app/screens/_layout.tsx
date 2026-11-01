@@ -13,7 +13,6 @@ function GlassHeaderBg() {
     </View>
   );
 }
-
 const seasonalHeader = {
   headerTransparent: true,
   headerTintColor: colors.white,
@@ -36,7 +35,7 @@ export default function ScreensLayout() {
       <Stack.Screen name="recovery" options={{ title: 'Telafi' }} />
       <Stack.Screen name="projects" options={{ title: 'Projeler' }} />
       <Stack.Screen name="notes" options={{ title: 'Notlar' }} />
-      <Stack.Screen name="journal" options={{ title: 'Journal' }} />
+      <Stack.Screen name="journal" options={{ title: 'Günlük' }} />
       <Stack.Screen name="journal-archive" options={{ title: 'Günlük Arşivi' }} />
       <Stack.Screen name="journal-reader" options={{ title: 'Defter' }} />
       <Stack.Screen name="journal-insights" options={{ title: 'AI İçgörüleri' }} />

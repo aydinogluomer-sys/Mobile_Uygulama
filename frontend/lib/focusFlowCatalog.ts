@@ -1,4 +1,14 @@
 import { EXPLORE_ATOMIC_HABITS, type ExploreAtomicHabit } from './exploreCatalog';
+import { colors } from './tokens';
+
+const FLOW_HUE = {
+  all: '#8b5cf6',
+  procrastination: '#ec4899',
+  focus: '#14b8a6',
+  morning_sleep: '#f59e0b',
+  dopamine: '#6366f1',
+  saved: '#10b981',
+} as const;
 
 export type FocusFlowCategoryKey =
   | 'for_you'
@@ -21,13 +31,13 @@ export const FOCUS_FLOW_CATEGORIES: {
   icon: string;
   color: string;
 }[] = [
-  { key: 'for_you', label: 'Sizin İçin', icon: 'flame', color: '#f97316' },
-  { key: 'all', label: 'Tümü', icon: 'sparkles', color: '#8b5cf6' },
-  { key: 'procrastination', label: 'Erteleme & DEHB', icon: 'flash', color: '#ec4899' },
-  { key: 'focus', label: 'Derin Odak', icon: 'hourglass', color: '#14b8a6' },
-  { key: 'morning_sleep', label: 'Sabah & Uyku', icon: 'sunny', color: '#f59e0b' },
-  { key: 'dopamine', label: 'Dopamin Detoksu', icon: 'shield-checkmark', color: '#6366f1' },
-  { key: 'saved', label: 'Kaydedilenler', icon: 'bookmark', color: '#10b981' },
+  { key: 'for_you', label: 'Sizin İçin', icon: 'flame', color: colors.primary },
+  { key: 'all', label: 'Tümü', icon: 'sparkles', color: FLOW_HUE.all },
+  { key: 'procrastination', label: 'Erteleme & DEHB', icon: 'flash', color: FLOW_HUE.procrastination },
+  { key: 'focus', label: 'Derin Odak', icon: 'hourglass', color: FLOW_HUE.focus },
+  { key: 'morning_sleep', label: 'Sabah & Uyku', icon: 'sunny', color: FLOW_HUE.morning_sleep },
+  { key: 'dopamine', label: 'Dopamin Detoksu', icon: 'shield-checkmark', color: FLOW_HUE.dopamine },
+  { key: 'saved', label: 'Kaydedilenler', icon: 'bookmark', color: FLOW_HUE.saved },
 ];
 
 export type KineticSlide = {
@@ -94,7 +104,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'inflow_interactive',
     category: 'procrastination',
     badge: 'INFLOW CBT MİKRO-DERS',
-    accentColor: '#ec4899',
+    accentColor: FLOW_HUE.procrastination,
     icon: 'git-branch-outline',
     hookTitle: 'Görev Felci (Task Paralysis): Beynin Neden Donuyor?',
     subtitle: 'Tembel değilsin; beynin belirsizliği fiziksel tehdit olarak kodluyor.',
@@ -172,7 +182,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'video',
     category: 'procrastination',
     badge: 'TÜRKÇE KISA VİDEO',
-    accentColor: '#f97316',
+    accentColor: colors.primary,
     icon: 'cut',
     hookTitle: 'Parçala, Böl, Yönet: Büyük Hedeflerin Altında Ezilme',
     subtitle: 'Dev bir hedefi beynin yutabileceği mikro dilimlere ayırma sanatı.',
@@ -221,7 +231,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'inflow_interactive',
     category: 'dopamine',
     badge: 'DOPAMİN MİMARİSİ',
-    accentColor: '#6366f1',
+    accentColor: FLOW_HUE.dopamine,
     icon: 'shield-checkmark',
     hookTitle: 'Instagram Tuzağı Yerine "Dopamin Menüsü" Kur',
     subtitle: '5 dakikalık mola diye girdiğin sosyal medya neden 45 dakikanı çalıyor?',
@@ -297,7 +307,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'video',
     category: 'morning_sleep',
     badge: 'STANFORD NÖROBİLİM · KLİP',
-    accentColor: '#f59e0b',
+    accentColor: FLOW_HUE.morning_sleep,
     icon: 'sunny',
     hookTitle: 'Sabah İlk 30 Dakika: Doğal Gün Işığının Odak ve Kortizol Etkisi',
     subtitle: 'Sabah uyanınca telefona değil gökyüzüne bakmak tüm günkü uyanıklığı kilitler.',
@@ -346,7 +356,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'video',
     category: 'procrastination',
     badge: 'PSİKOLOJİ · TÜRKÇE',
-    accentColor: '#ec4899',
+    accentColor: FLOW_HUE.procrastination,
     icon: 'bulb',
     hookTitle: '"Üşeniyorum Öyleyse Yarın": Erteleme Döngüsünden Çıkış',
     subtitle: 'Mükemmel anı beklemeyi bırakıp kusurlu ama gerçek adımlarla ilerlemek.',
@@ -396,7 +406,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'inflow_interactive',
     category: 'focus',
     badge: 'ODAK MÜHENDİSLİĞİ',
-    accentColor: '#14b8a6',
+    accentColor: FLOW_HUE.focus,
     icon: 'flash',
     hookTitle: 'İradeye Güvenme: Başlama Sürtünmesini 120 Saniyede Sıfırla',
     subtitle: 'Yüksek verimli insanlar daha iradeli değil, çevrelerini daha akıllı tasarlıyor.',
@@ -473,7 +483,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'video',
     category: 'procrastination',
     badge: 'VERİMLİLİK · KISA KLİP',
-    accentColor: '#10b981',
+    accentColor: FLOW_HUE.saved,
     icon: 'timer',
     hookTitle: 'Ertelemeyi Bitiren "Sadece 5 Dakika" Anlaşması',
     subtitle: 'Kendinle pazarlık yap: 5 dakika çalış, devam etmek istemezsen bırakma hakkın var!',
@@ -523,7 +533,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'inflow_interactive',
     category: 'dopamine',
     badge: 'DERİN ÇALIŞMA BİLİMİ',
-    accentColor: '#06b6d4',
+    accentColor: colors.info,
     icon: 'eye-off',
     hookTitle: 'Dikkat Kalıntısı: "Sadece 30 Saniye Mesaja Baktım" Yalanı',
     subtitle: '30 saniyelik bir bildirim kontrolü gerçekte 23 dakikalık derin odağa mal olur.',
@@ -600,7 +610,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'video',
     category: 'focus',
     badge: 'ATOMİK ALIŞKANLIKLAR',
-    accentColor: '#8b5cf6',
+    accentColor: FLOW_HUE.all,
     icon: 'sparkles',
     hookTitle: 'Atomik Alışkanlıklar: Yeni Rutin Kurarken "2 Dakika Kuralı"',
     subtitle: 'Bir alışkanlığı mükemmelleştirmeden önce onu standartlaştırmalısın.',
@@ -649,7 +659,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'inflow_interactive',
     category: 'morning_sleep',
     badge: 'UYKU & AKŞAM KAPANIŞI',
-    accentColor: '#6366f1',
+    accentColor: FLOW_HUE.dopamine,
     icon: 'moon',
     hookTitle: 'Yastığa Başını Koyduğunda Zihnin Neden Susmuyor?',
     subtitle: 'Açık kalan görev döngülerini (Zeigarnik Etkisi) uyumadan önce kapatma tekniği.',
@@ -697,7 +707,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
           emoji: '🌀',
           label: 'Yarınki işleri ve yetişmeyenleri düşünmek',
           coachingReply:
-            'Çözüm: Bugün ekranındaki "🌙 Günü Kapat" ritüelini kullan. Açık görevleri yarına devrettiğini görmek amigdalayı sakinleştirir.',
+            'Çözüm: Bugün ekranındaki "Günü Kapat" ritüelini kullan. Açık görevleri yarına devrettiğini görmek amigdalayı sakinleştirir.',
         },
         {
           id: 'late-caffeine',
@@ -726,7 +736,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'video',
     category: 'dopamine',
     badge: 'DEEP WORK · NÖRO-ODAK',
-    accentColor: '#14b8a6',
+    accentColor: FLOW_HUE.focus,
     icon: 'phone-portrait',
     hookTitle: '"Hızlıca Telefona Göz Atmak" Beynini Nasıl Sabote Ediyor?',
     subtitle: 'Cal Newport: Sıkılma kasını kaybettiğimizde derin düşünme yeteneğimizi de kaybederiz.',
@@ -774,7 +784,7 @@ export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
     kind: 'video',
     category: 'focus',
     badge: 'TÜRKÇE REHBER · ODAK',
-    accentColor: '#3b82f6',
+    accentColor: colors.info,
     icon: 'play-circle',
     hookTitle: 'Odağını Kaybetmeden Saatlerce Nasıl Çalışabilirsin?',
     subtitle: 'Zaman blokları, ritim ve mola disipliniyle tükenmeden üretken kalmak.',

@@ -11,7 +11,11 @@
  * No React import. No UI concerns. Pure data access, same as every module
  * under `repositories/`.
  */
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { PublicTableName } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
+
+const dynamicClient = () => supabase as unknown as SupabaseClient;
 
 export type RepoResult<T> =
   | { ok: true; data: T }
@@ -147,7 +151,7 @@ export const DEFAULT_PAGE_SIZE = 30;
  * and then some" without a second count query.
  */
 export async function fetchPage<T extends { id: string }>(params: {
-  table: string;
+  table: PublicTableName;
   /** Columns to select. Explicit lists beat `*` — see each repository. */
   columns: string;
   /** The ordering column. Must be monotonic-ish and present in `columns`. */
@@ -162,7 +166,7 @@ export async function fetchPage<T extends { id: string }>(params: {
 }): Promise<RepoResult<Page<T>>> {
   const limit = Math.max(1, Math.min(params.limit ?? DEFAULT_PAGE_SIZE, 200));
 
-  let q = supabase
+  let q = dynamicClient()
     .from(params.table)
     .select(params.columns)
     .eq('user_id', params.userId);
@@ -180,12 +184,12 @@ export async function fetchPage<T extends { id: string }>(params: {
     q = q.or(`${params.orderBy}.lt.${key},and(${params.orderBy}.eq.${key},id.lt.${id})`);
   }
 
-  const { data, error } = await q
+  const { data, error, status } = await q
     .order(params.orderBy, { ascending: false })
     .order('id', { ascending: false })
     .limit(limit + 1);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
 
   const all = (data ?? []) as unknown as T[];
   const hasMore = all.length > limit;
@@ -207,36 +211,36 @@ export async function fetchPage<T extends { id: string }>(params: {
  * as applied. Both are fixed here rather than in eleven places.
  */
 export async function updateOwned<T>(params: {
-  table: string;
+  table: PublicTableName;
   id: string;
   userId: string;
   patch: Record<string, unknown>;
   columns?: string;
 }): Promise<RepoResult<T>> {
-  const { data, error, status } = await supabase
+  const { data, error, status } = await dynamicClient()
     .from(params.table)
     .update(params.patch)
     .eq('id', params.id)
     .eq('user_id', params.userId)
     .select(params.columns ?? '*')
     .maybeSingle();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   if (!data) return { ok: false, error: 'Kayıt bulunamadı ya da erişim yok.' };
   return { ok: true, data: data as T };
 }
 
 export async function deleteOwned(params: {
-  table: string;
+  table: PublicTableName;
   id: string;
   userId: string;
 }): Promise<RepoResult<true>> {
-  const { data, error, status } = await supabase
+  const { data, error, status } = await dynamicClient()
     .from(params.table)
     .delete()
     .eq('id', params.id)
     .eq('user_id', params.userId)
     .select('id');
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   // A delete that matched nothing is reported, not treated as success -- the
   // stores previously removed the row from local state either way.
   if (!data || data.length === 0) return { ok: false, error: 'Kayıt bulunamadı ya da erişim yok.' };
@@ -256,13 +260,13 @@ export function wrongAccountFor(expected: string | undefined, actual: string): R
 
 /** Insert a row with a CLIENT-made id, so a re-delivery hits 23505 instead of a duplicate. */
 export async function insertOwnedWithId<T>(params: {
-  table: string; row: Record<string, unknown> & { id: string }; columns: string; expectedUserId?: string;
+  table: PublicTableName; row: Record<string, unknown> & { id: string }; columns: string; expectedUserId?: string;
 }): Promise<RepoResult<T>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   const wrong = wrongAccountFor(params.expectedUserId, u.userId);
   if (wrong) return wrong;
-  const { data, error, status } = await supabase.from(params.table)
+  const { data, error, status } = await dynamicClient().from(params.table)
     .insert({ ...params.row, user_id: u.userId }).select(params.columns).single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   return { ok: true, data: data as T };
@@ -270,7 +274,7 @@ export async function insertOwnedWithId<T>(params: {
 
 /** Update only if the row is still at `baseVersion` (`row` null + `exists` = the version moved). */
 export async function updateOwnedVersioned<T>(params: {
-  table: string; id: string; patch: Record<string, unknown>; baseVersion: string | null;
+  table: PublicTableName; id: string; patch: Record<string, unknown>; baseVersion: string | null;
   columns: string; versionColumn?: string; expectedUserId?: string;
 }): Promise<RepoResult<{ row: T | null; exists: boolean }>> {
   const u = await currentUserId();
@@ -278,33 +282,33 @@ export async function updateOwnedVersioned<T>(params: {
   const wrong = wrongAccountFor(params.expectedUserId, u.userId);
   if (wrong) return wrong;
   const col = params.versionColumn ?? 'updated_at';
-  let q = supabase.from(params.table).update(params.patch).eq('id', params.id).eq('user_id', u.userId);
+  let q = dynamicClient().from(params.table).update(params.patch).eq('id', params.id).eq('user_id', u.userId);
   if (params.baseVersion !== null) q = q.eq(col, params.baseVersion);
   const { data, error, status } = await q.select(params.columns).maybeSingle();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   if (data) return { ok: true, data: { row: data as T, exists: true } };
-  const probe = await supabase.from(params.table).select('id').eq('id', params.id).eq('user_id', u.userId).maybeSingle();
+  const probe = await dynamicClient().from(params.table).select('id').eq('id', params.id).eq('user_id', u.userId).maybeSingle();
   if (probe.error) return { ok: false, error: probe.error.message, offline: isTransportFailure(probe.status), status: probe.status, code: probe.error.code };
   return { ok: true, data: { row: null, exists: !!probe.data } };
 }
 
 /** The row as the server has it now, or null if it is gone. */
-export async function fetchOwnedRow<T>(params: { table: string; id: string; columns: string }): Promise<RepoResult<T | null>> {
+export async function fetchOwnedRow<T>(params: { table: PublicTableName; id: string; columns: string }): Promise<RepoResult<T | null>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error, status } = await supabase.from(params.table).select(params.columns)
+  const { data, error, status } = await dynamicClient().from(params.table).select(params.columns)
     .eq('id', params.id).eq('user_id', u.userId).maybeSingle();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   return { ok: true, data: (data ?? null) as T | null };
 }
 
 /** Delete if present; a row already gone is not an error (a re-delivered delete is one effect). */
-export async function deleteOwnedIfPresent(params: { table: string; id: string; expectedUserId?: string }): Promise<RepoResult<{ deleted: boolean }>> {
+export async function deleteOwnedIfPresent(params: { table: PublicTableName; id: string; expectedUserId?: string }): Promise<RepoResult<{ deleted: boolean }>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   const wrong = wrongAccountFor(params.expectedUserId, u.userId);
   if (wrong) return wrong;
-  const { data, error, status } = await supabase.from(params.table).delete()
+  const { data, error, status } = await dynamicClient().from(params.table).delete()
     .eq('id', params.id).eq('user_id', u.userId).select('id');
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   return { ok: true, data: { deleted: !!data && data.length > 0 } };

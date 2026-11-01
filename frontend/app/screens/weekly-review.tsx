@@ -1,4 +1,6 @@
-import { colors, alphaHex } from '../../lib/tokens';
+import { colors, alphaHex, hexA } from '../../lib/tokens';
+import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { currentUser } from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
@@ -316,7 +318,18 @@ export default function WeeklyReviewScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.observatoryStats} textureSource={TEXTURES.topographic} scrim={0.64} tintColor={colors.teal} />
       <ScrollView contentContainerStyle={s.content}>
+        <EditorialBanner
+          source={SCREEN_BANNERS.reviewWeekly}
+          textureSource={TEXTURES.topographic}
+          eyebrow="HAFTALIK UFUK"
+          title="Haftalık Değerlendirme"
+          subtitle={`${start} - ${end} dönemi ritim ve kapasite özeti.`}
+          accentColor={colors.teal}
+          minHeight={92}
+          style={{ marginBottom: 14 }}
+        />
         <View style={s.hero}>
           <View style={s.heroIcon}>
             <Ionicons name="bar-chart-outline" size={28} color="#14b8a6" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
@@ -368,6 +381,7 @@ export default function WeeklyReviewScreen() {
 
         {badge && (
           <View style={s.badgeCard}>
+            <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.14} />
             <Text style={[s.badgeEmoji, { color: badge.color }]}>{badge.emoji}</Text>
             <View style={{ flex: 1 }}>
               <Text style={s.badgeTitle}>{badge.label}</Text>
@@ -399,6 +413,7 @@ export default function WeeklyReviewScreen() {
           </View>
         </View>
 
+        <ChapterDivider source={DECOR.dividerSundial} label="HAFTALIK ÖLÇÜM" />
         <MeasuredReportSection rows={measured} />
 
         {completedTasks.length > 0 && (
@@ -482,7 +497,7 @@ const s = StyleSheet.create({
   metric: { flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
   metricValue: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 4 },
   metricLabel: { fontSize: 10, color: colors.textFaint, textAlign: 'center', lineHeight: 14 },
-  badgeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 24 },
+  badgeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: hexA(colors.surface, 0.92), borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 24, overflow: 'hidden', position: 'relative' },
   badgeEmoji: { fontSize: 20 },
   badgeTitle: { fontSize: 14, fontWeight: '700', color: colors.white },
   badgeDesc: { fontSize: 11, color: colors.textFaint, marginTop: 2 },

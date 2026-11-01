@@ -8,10 +8,31 @@ import {
   type GoalKind,
   type GoalRow,
 } from '../repositories/goalRepository';
-import type { Cursor } from '../repositories/shared';
+import type { Cursor, Page } from '../repositories/shared';
+import { hasPending, newOperationId, overlay } from '../lib/outbox';
+import { readCachedSnapshot, setCachedSnapshot } from '../lib/localReadCache';
+import { currentUser } from '../lib/session';
+import { coreOutbox } from '../services/coreOutbox';
 
 export type { GoalKind };
 export type Goal = GoalRow;
+
+export const GOAL_ENTITY = 'goal';
+const GOALS_CACHE_KEY = 'goals:p1';
+
+async function safeUserId(): Promise<string | null> {
+  try {
+    return (await currentUser())?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const withPendingGoals = (rows: Goal[]): Goal[] => {
+  const box = coreOutbox.state();
+  if (!box) return rows;
+  return overlay(box, GOAL_ENTITY, rows).filter((g) => !g.archived);
+};
 
 /**
  * Goals.
@@ -48,10 +69,40 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
   cursor: null,
 
   loadGoals: async () => {
-    set({ loading: true, error: null });
+    await coreOutbox.ensure();
+    const uid = await safeUserId();
+    const cached = uid ? await readCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY) : null;
+    if (cached) {
+      set({
+        goals: withPendingGoals(cached.data.rows),
+        cursor: cached.data.nextCursor,
+        hasMore: cached.data.hasMore,
+        loading: false,
+        error: null,
+      });
+    } else {
+      set({ loading: true, error: null });
+    }
+
     const res = await fetchGoalsPage(null);
-    if (!res.ok) return set({ loading: false, error: res.error });
-    set({ goals: res.data.rows, cursor: res.data.nextCursor, hasMore: res.data.hasMore, loading: false });
+    if (!res.ok) {
+      if (cached) {
+        set({ loading: false, error: res.offline ? null : res.error });
+      } else {
+        set({ loading: false, error: res.error });
+      }
+      return;
+    }
+    if (uid) {
+      void setCachedSnapshot(uid, GOALS_CACHE_KEY, res.data);
+    }
+    set({
+      goals: withPendingGoals(res.data.rows),
+      cursor: res.data.nextCursor,
+      hasMore: res.data.hasMore,
+      loading: false,
+      error: null,
+    });
   },
 
   loadMore: async () => {
@@ -68,30 +119,165 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
   },
 
   addGoal: async (g) => {
+    const clampedProgress = Math.max(0, Math.min(100, Math.round(g.progress ?? 0)));
     const res = await insertGoal(g);
-    if (!res.ok) { set({ error: res.error }); return false; }
-    set((s) => ({ goals: [res.data, ...s.goals], error: null }));
-    return true;
+    if (res.ok) {
+      set((s) => {
+        const nextGoals = [res.data, ...s.goals];
+        void safeUserId().then((uid) => {
+          if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
+        });
+        return { goals: nextGoals, error: null };
+      });
+      return true;
+    }
+    if (res.offline) {
+      const id = newOperationId();
+      const uid = (await safeUserId()) ?? '';
+      const payload = {
+        kind: g.kind,
+        title: g.title,
+        progress: clampedProgress,
+        year: g.year ?? null,
+        quarter: g.quarter ?? null,
+        month: g.month ?? null,
+        archived: false,
+      };
+      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'create', payload });
+      if (queued.ok) {
+        const optimistic: Goal = {
+          id,
+          user_id: uid,
+          ...payload,
+          created_at: new Date().toISOString(),
+        };
+        set((s) => {
+          const nextGoals = [optimistic, ...s.goals];
+          if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
+          return { goals: nextGoals, error: null };
+        });
+        return true;
+      }
+    }
+    set({ error: res.error });
+    return false;
   },
 
   updateProgress: async (id, progress) => {
-    const res = await updateGoalProgress(id, progress);
-    if (!res.ok) { set({ error: res.error }); return false; }
-    set((s) => ({ goals: s.goals.map((g) => (g.id === id ? res.data : g)), error: null }));
-    return true;
+    const clamped = Math.max(0, Math.min(100, Math.round(progress)));
+    await coreOutbox.ensure();
+    const box = coreOutbox.state();
+    if (box && hasPending(box, GOAL_ENTITY, id)) {
+      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'update', payload: { progress: clamped } });
+      if (!queued.ok) { set({ error: 'Çevrimdışı hedef güncellenemedi.' }); return false; }
+      void coreOutbox.flush();
+      set((s) => ({ goals: s.goals.map((g) => (g.id === id ? { ...g, progress: clamped } : g)), error: null }));
+      return true;
+    }
+
+    const res = await updateGoalProgress(id, clamped);
+    if (res.ok) {
+      set((s) => {
+        const nextGoals = s.goals.map((g) => (g.id === id ? res.data : g));
+        void safeUserId().then((uid) => {
+          if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
+        });
+        return { goals: nextGoals, error: null };
+      });
+      return true;
+    }
+    if (res.offline) {
+      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'update', payload: { progress: clamped } });
+      if (queued.ok) {
+        set((s) => {
+          const nextGoals = s.goals.map((g) => (g.id === id ? { ...g, progress: clamped } : g));
+          void safeUserId().then((uid) => {
+            if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
+          });
+          return { goals: nextGoals, error: null };
+        });
+        return true;
+      }
+    }
+    set({ error: res.error });
+    return false;
   },
 
   archiveGoal: async (id) => {
+    await coreOutbox.ensure();
+    const box = coreOutbox.state();
+    if (box && hasPending(box, GOAL_ENTITY, id)) {
+      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'update', payload: { archived: true } });
+      if (!queued.ok) { set({ error: 'Çevrimdışı hedef arşivlenemedi.' }); return false; }
+      void coreOutbox.flush();
+      set((s) => ({ goals: s.goals.filter((g) => g.id !== id), error: null }));
+      return true;
+    }
+
     const res = await repoArchive(id);
-    if (!res.ok) { set({ error: res.error }); return false; }
-    set((s) => ({ goals: s.goals.filter((g) => g.id !== id), error: null }));
-    return true;
+    if (res.ok) {
+      set((s) => {
+        const nextGoals = s.goals.filter((g) => g.id !== id);
+        void safeUserId().then((uid) => {
+          if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
+        });
+        return { goals: nextGoals, error: null };
+      });
+      return true;
+    }
+    if (res.offline) {
+      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'update', payload: { archived: true } });
+      if (queued.ok) {
+        set((s) => {
+          const nextGoals = s.goals.filter((g) => g.id !== id);
+          void safeUserId().then((uid) => {
+            if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
+          });
+          return { goals: nextGoals, error: null };
+        });
+        return true;
+      }
+    }
+    set({ error: res.error });
+    return false;
   },
 
   removeGoal: async (id) => {
+    await coreOutbox.ensure();
+    const box = coreOutbox.state();
+    if (box && hasPending(box, GOAL_ENTITY, id)) {
+      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'delete' });
+      if (!queued.ok) { set({ error: 'Çevrimdışı hedef silinemedi.' }); return false; }
+      void coreOutbox.flush();
+      set((s) => ({ goals: s.goals.filter((g) => g.id !== id), error: null }));
+      return true;
+    }
+
     const res = await repoDelete(id);
-    if (!res.ok) { set({ error: res.error }); return false; }
-    set((s) => ({ goals: s.goals.filter((g) => g.id !== id), error: null }));
-    return true;
+    if (res.ok) {
+      set((s) => {
+        const nextGoals = s.goals.filter((g) => g.id !== id);
+        void safeUserId().then((uid) => {
+          if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
+        });
+        return { goals: nextGoals, error: null };
+      });
+      return true;
+    }
+    if (res.offline) {
+      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'delete' });
+      if (queued.ok) {
+        set((s) => {
+          const nextGoals = s.goals.filter((g) => g.id !== id);
+          void safeUserId().then((uid) => {
+            if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
+          });
+          return { goals: nextGoals, error: null };
+        });
+        return true;
+      }
+    }
+    set({ error: res.error });
+    return false;
   },
 }));

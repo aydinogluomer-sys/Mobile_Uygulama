@@ -1,6 +1,8 @@
-import { colors, alphaHex } from '../../lib/tokens';
+import { colors, alphaHex, hexA } from '../../lib/tokens';
+import { Image } from 'expo-image';
 import { withEdgeDeadline } from '../../lib/edgeCall';
 import { newRequestId } from '../../services/focusPointService';
+import { invokeAiWithStream } from '../../services/aiStreamService';
 import { useState, useRef, useEffect, useCallback, Fragment } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -46,6 +48,8 @@ import { useSpeechInput } from '../../hooks/useSpeechInput';
 import { useAiConversationStore } from '../../store/aiConversationStore';
 import ConversationSheet from '../../components/coach/ConversationSheet';
 import { useProjectStore } from '../../store/projectStore';
+import { AtmosphericScreenCanvas, EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { BENTO_ART, CANVASES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 type Message = {
   id: string;
@@ -74,6 +78,7 @@ function derivedStateFor(
 const coachAttempt = createAttemptKeeper(newRequestId);
 const summaryAttempt = createAttemptKeeper(newRequestId);
 
+const QUICK_PROMPT_ART = [BENTO_ART.coachAnalyze, BENTO_ART.coachSuggest, BENTO_ART.coachShield, BENTO_ART.coachPlan] as const;
 const QUICK_PROMPTS = [
   'Alışkanlıklarımı analiz et',
   'Yeni alışkanlık öner',
@@ -135,6 +140,7 @@ export default function AICoachScreen() {
   };
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [streamingReply, setStreamingReply] = useState('');
   const [insufficientCredits, setInsufficientCredits] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -576,9 +582,11 @@ export default function AICoachScreen() {
       const res = await sendToStore(msg, {
         requestId,
         invoke: async (payload) => {
-          const { data, error } = await withEdgeDeadline('AI Koç', (signal) =>
-            supabase.functions.invoke('generate-routine', {
-              signal,
+          setStreamingReply('');
+          const { data, error } = await invokeAiWithStream({
+            onReplyText: (partial) => setStreamingReply(partial),
+            /* SSE token streaming via invokeAiWithStream */
+              /* deadline signal managed by aiStreamService */
               body: {
                 ...payload,
                 context: {
@@ -592,7 +600,7 @@ export default function AICoachScreen() {
                 },
                 mode: 'coach',
               },
-            }));
+          });
 
           if (error && isNoAnswer(error)) throw new Error(NO_ANSWER_NOTE);
           coachAttempt.answered();
@@ -617,6 +625,7 @@ export default function AICoachScreen() {
       const errMsg = e instanceof Error ? e.message : 'Bir hata oluştu';
       setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'error', content: errMsg }]);
     } finally {
+      setStreamingReply('');
       setLoading(false);
     }
   }
@@ -687,6 +696,7 @@ export default function AICoachScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.oracleChamber} textureSource={TEXTURES.neural} scrim={0.62} tintColor={colors.primary} />
       <Stack.Screen
         options={{
           headerRight: () => (
@@ -715,9 +725,16 @@ export default function AICoachScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={90}
       >
+        <TexturedSurface source={TEXTURES.neural} textureOpacity={0.05} overlayOnly />
 
         {/* Sohbet çubuğu: hangi sohbetteyiz, ve geçmiş */}
         <View style={s.convBar}>
+          <EmblemMedallion
+            source={SCREEN_BANNERS.coachOracle}
+            size={36}
+            unlocked
+            accentColor={colors.primary}
+          />
           <TouchableOpacity
             style={s.convBtn}
             onPress={() => { void loadMoreConversations({ reset: true }); setSheetOpen(true); }}
@@ -877,7 +894,16 @@ export default function AICoachScreen() {
             // Yanıtın uzunluğu/şekli önceden bilinmiyor — burada iskelet değil,
             // "yazıyor" göstergesi doğru olan. Ekran okuyucuya da duyurulur.
             <View style={[s.bubble, s.bubbleAssistant]} accessibilityRole="progressbar" accessibilityLabel="Koç yanıt yazıyor">
-              <ActivityIndicator size="small" color="#8b5cf6" />
+              {streamingReply ? (
+                <>
+                  <View style={s.assistantIcon}>
+                    <Ionicons name="sparkles" size={12} color={colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                  </View>
+                  <Text style={[s.bubbleText, s.bubbleTextRow]}>{streamingReply}</Text>
+                </>
+              ) : (
+                <ActivityIndicator size="small" color={colors.primary} />
+              )}
             </View>
           )}
         </ScrollView>
@@ -914,6 +940,7 @@ export default function AICoachScreen() {
               accessibilityHint="Bu soruyu koça gönderir"
               accessibilityState={{ disabled: loading }}
             >
+              <Image source={QUICK_PROMPT_ART[QUICK_PROMPTS.indexOf(p)] ?? BENTO_ART.coachAnalyze} style={s.quickThumb} contentFit="cover" cachePolicy="memory-disk" />
               <Text style={s.quickText}>{p}</Text>
             </TouchableOpacity>
           ))}
@@ -1168,10 +1195,11 @@ const s = StyleSheet.create({
   olderBtn: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 14, minHeight: 36, justifyContent: 'center' },
   olderText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
 
-  quickRow: { maxHeight: 44, borderTopWidth: 1, borderTopColor: colors.surface },
+  quickRow: { maxHeight: 54, borderTopWidth: 1, borderTopColor: colors.borderSubtle },
+  quickThumb: { width: 24, height: 24, borderRadius: 6 },
   quickContent: { paddingHorizontal: 12, paddingVertical: 6, gap: 8 },
   quickBtn: {
-    backgroundColor: colors.surface, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: hexA(colors.surface, 0.92), borderRadius: 20, paddingHorizontal: 11, paddingVertical: 6,
     borderWidth: 1, borderColor: colors.border,
   },
   quickText: { fontSize: 12, color: colors.textDim },

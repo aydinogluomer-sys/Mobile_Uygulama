@@ -7,13 +7,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore, type Task, type ListType, type TaskPriority } from '../../store/taskStore';
 import { useProjectStore } from '../../store/projectStore';
-import { colors, space, alphaHex } from '../../lib/tokens';
+import { colors, space, alphaHex, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import InlineComposer from '../../components/InlineComposer';
 import { todayLocal } from '../../lib/date';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import ADHDTaskSplitter from '../../components/ADHDTaskSplitter';
 import EisenhowerScreen from '../screens/eisenhower';
+import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree, EmblemMedallion } from '../../components/ui';
+import { CANVASES, DECOR, EMPTY_VIGNETTES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const TABS: { key: ListType | 'done'; label: string }[] = [
   { key: 'inbox', label: 'Gelen' },
@@ -96,6 +98,12 @@ export default function TasksScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.planDrafting}
+        textureSource={TEXTURES.sacredGrid}
+        scrim={0.66}
+        tintColor={colors.accent}
+      />
       {/* Görünüm Geçişi: Liste vs Eisenhower Matrisi */}
       <View style={s.topBar}>
         <View style={s.viewSwitch}>
@@ -163,18 +171,35 @@ export default function TasksScreen() {
         style={s.list}
         contentContainerStyle={s.listContent}
         ListHeaderComponent={
-          activeTab !== 'done' ? (
-            <View style={{ marginBottom: space.md }}>
-              <InlineComposer
-                placeholder="Hızlı görev ekle…"
-                onSubmit={async (t) => { await addTask({ title: t, priority: 'none', list_type: activeTab as ListType }); }}
-              />
-            </View>
-          ) : null
+          <View>
+            <EditorialBanner
+              source={SCREEN_BANNERS.planArchitect}
+              textureSource={TEXTURES.sacredGrid}
+              eyebrow="EYLEM MİMARİSİ"
+              title="Görev Akışı"
+              subtitle="Önceliklendir, küçük adımlara böl ve tamamla."
+              accentColor={colors.accent}
+              minHeight={90}
+              style={{ marginBottom: space.md }}
+            />
+            {activeTab !== 'done' ? (
+              <View style={{ marginBottom: space.md }}>
+                <InlineComposer
+                  placeholder="Hızlı görev ekle…"
+                  onSubmit={async (t) => { await addTask({ title: t, priority: 'none', list_type: activeTab as ListType }); }}
+                />
+              </View>
+            ) : null}
+          </View>
         }
         ListEmptyComponent={
           <View style={s.empty}>
-            <Ionicons name="checkmark-done-outline" size={40} color={colors.border} />
+            <EmblemMedallion
+              source={EMPTY_VIGNETTES.tasks}
+              size={72}
+              unlocked
+              accentColor={colors.accent}
+            />
             <Text style={s.emptyText}>Görev yok</Text>
             {activeTab !== 'done' && (
               <TouchableOpacity onPress={() => openAdd(activeTab as ListType)} style={s.emptyAdd}>
@@ -185,6 +210,7 @@ export default function TasksScreen() {
         }
         renderItem={({ item }) => (
           <View style={[s.row, item.completed && s.rowDone]}>
+            <EmbeddedFiligree source={DECOR.cornerBlueprint} size={78} opacity={0.12} />
             <TouchableOpacity style={s.check} onPress={() => { haptic.success(); toggleDone(item.id); }}>
               <View style={[
                 s.checkBox,
@@ -338,7 +364,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 6,
-    backgroundColor: colors.bg,
+    backgroundColor: hexA(colors.bg, 0.72),
   },
   viewSwitch: {
     flexDirection: 'row',
@@ -392,8 +418,9 @@ const s = StyleSheet.create({
 
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
+    backgroundColor: hexA(colors.surface, 0.92), borderRadius: 14, padding: 14,
     borderWidth: 1, borderColor: colors.border, marginBottom: 8,
+    overflow: 'hidden', position: 'relative',
   },
   rowDone: { opacity: 0.5 },
   check: { padding: 2 },
@@ -412,7 +439,7 @@ const s = StyleSheet.create({
   deleteBtn: { padding: 4 },
   splitBtn: { padding: 4, marginRight: 2 },
 
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 10 },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 64, gap: 12 },
   emptyText: { fontSize: 15, color: colors.textGhost },
   emptyAdd: { marginTop: 8 },
   emptyAddText: { fontSize: 14, color: colors.accent },

@@ -1,0 +1,68 @@
+name: Supabase Release Parity Verify
+
+# Manual operator-triggered release parity gate (`workflow_dispatch` only).
+#
+# Kept separate from `.github/workflows/ci.yml` by design (see
+# `tools/verify-edge-deployment.mjs` header): reading live Edge Function
+# metadata requires `SUPABASE_ACCESS_TOKEN`, which must never run on untrusted
+# pull requests, and no automatic push workflow may mutate the frozen canonical
+# database (`kbcuolhjjnmhjaarxxmu`).
+
+on:
+  workflow_dispatch:
+    inputs:
+      strict_staleness:
+        description: 'Treat source-newer-than-deployment advisories as failures (--strict)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  release-parity:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_PROJECT_REF: kbcuolhjjnmhjaarxxmu
+    steps:
+      - name: Checkout (full history for last-commit staleness comparison)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node 22 (LTS)
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Setup Deno 2
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Enforce canonical project ref guard
+        run: bash supabase/predeploy_guard.sh
+
+      - name: Typecheck & test Edge Functions before checking live parity
+        run: |
+          deno check \
+            supabase/functions/_shared/aiIdempotency.ts \
+            supabase/functions/_shared/coachContractSchema.ts \
+            supabase/functions/_shared/oauthState.ts \
+            supabase/functions/_shared/redirectAllowlist.ts \
+            supabase/functions/delete-account/index.ts \
+            supabase/functions/generate-routine/index.ts \
+            supabase/functions/google-auth/index.ts \
+            supabase/functions/notion-auth/index.ts \
+            supabase/functions/notion-sync/index.ts \
+            supabase/functions/spotify-auth/index.ts \
+            supabase/functions/subscription-webhook/index.ts
+          deno test supabase/functions/_shared/aiIdempotency_test.ts
+
+      - name: Verify live Edge Function deployment parity against DEPLOYMENT.json
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ fromJSON(toJSON(secrets)).SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ "${{ inputs.strict_staleness }}" = "true" ]; then
+            node tools/verify-edge-deployment.mjs --project-ref "$SUPABASE_PROJECT_REF" --strict
+          else
+            node tools/verify-edge-deployment.mjs --project-ref "$SUPABASE_PROJECT_REF"
+          fi

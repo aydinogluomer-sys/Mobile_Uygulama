@@ -112,9 +112,9 @@ export function attachTimeOff<H extends { id: string }>(
 }
 
 /** Fields that live only in memory and must never reach a `habits` write. */
-export function stripTimeOff<T extends object>(o: T): T {
-  const { pause_intervals: _p, goal_versions: _v, ...rest } = o as T & { pause_intervals?: unknown; goal_versions?: unknown };
-  return rest as T;
+export function stripTimeOff<T extends object>(o: T): Omit<T, 'pause_intervals' | 'goal_versions' | 'current_streak' | 'best_streak'> {
+  const { pause_intervals: _p, goal_versions: _v, current_streak: _cs, best_streak: _bs, ...rest } = o as T & { pause_intervals?: unknown; goal_versions?: unknown; current_streak?: unknown; best_streak?: unknown };
+  return rest as Omit<T, 'pause_intervals' | 'goal_versions' | 'current_streak' | 'best_streak'>;
 }
 
 /** Did this patch change what a goal version records? */

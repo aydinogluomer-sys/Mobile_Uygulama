@@ -11,6 +11,8 @@ import { useCommandStore } from '../store/commandStore';
 import { useProfileStore } from '../store/profileStore';
 import { useSubscriptionStore } from '../store/subscriptionStore';
 import { colors, alphaHex, radius } from '../lib/tokens';
+import { TEXTURES } from '../lib/visualAssets';
+import TexturedSurface from './ui/TexturedSurface';
 import { useReducedMotion } from './seasonalMotion/useReducedMotion';
 
 const DRAWER_WIDTH = 310;
@@ -50,8 +52,8 @@ const GROUPS: { title: string; subtitle?: string; items: DrawerItem[] }[] = [
     title: 'ALIŞKANLIKLAR',
     subtitle: 'Rutinler ve Döngüler',
     items: [
-      { label: 'Odak Akışı (Flow)', shortLabel: 'Odak Akışı', icon: 'flame-outline', color: '#f97316', route: '/screens/focus-flow', badge: 'YENİ', hint: 'Dikey verimlilik videoları & Inflow akışı' },
-      { label: 'Rutin & Alışkanlık Keşfet', shortLabel: 'Keşfet', icon: 'compass-outline', color: '#f59e0b', route: '/tabs/hub', hint: 'Hazır koleksiyonlar & atomik alışkanlıklar' },
+      { label: 'Odak Akışı (Flow)', shortLabel: 'Odak Akışı', icon: 'flame-outline', color: colors.primary, route: '/screens/focus-flow', badge: 'YENİ', hint: 'Dikey verimlilik videoları & Inflow akışı' },
+      { label: 'Rutin & Alışkanlık Keşfet', shortLabel: 'Keşfet', icon: 'compass-outline', color: colors.warning, route: '/tabs/hub', hint: 'Hazır koleksiyonlar & atomik alışkanlıklar' },
       { label: 'Rutin Yürütücü', shortLabel: 'Rutin Koş', icon: 'play-circle-outline', color: colors.success, route: '/screens/routine-runner', hint: 'Sabah & akşam adımları' },
       { label: 'Triage & Matris', shortLabel: 'Triage', icon: 'options-outline', color: colors.primary, route: '/screens/dashboard', hint: 'Aktif, bekleyen ve fikir alışkanlıkları' },
       { label: 'İçgörüler', shortLabel: 'İçgörüler', icon: 'bulb-outline', color: colors.accent, route: '/screens/insights', hint: 'Haftalık & aylık davranış analizi' },
@@ -65,10 +67,10 @@ const GROUPS: { title: string; subtitle?: string; items: DrawerItem[] }[] = [
     items: [
       { label: 'Başarımlar & Rozetler', shortLabel: 'Rozetler', icon: 'ribbon-outline', color: colors.warning, route: '/screens/achievements', hint: 'Kazanılan rozetler & XP ödülleri' },
       { label: 'Sıralama (Leaderboard)', shortLabel: 'Sıralama', icon: 'podium-outline', color: colors.warning, route: '/screens/leaderboard', hint: 'Puan & seviye ligi' },
-      { label: 'Okuma Listesi', shortLabel: 'Kitaplık', icon: 'book-outline', color: '#06b6d4', route: '/screens/reading-list', hint: 'Kitaplık ve okuma hedefleri' },
-      { label: 'Günlük Arşivi', shortLabel: 'Günlükler', icon: 'journal-outline', color: '#ec4899', route: '/screens/journal-archive', hint: 'Geçmiş günlük kayıtları & okuyucu' },
+      { label: 'Okuma Listesi', shortLabel: 'Kitaplık', icon: 'book-outline', color: colors.teal, route: '/screens/reading-list', hint: 'Kitaplık ve okuma hedefleri' },
+      { label: 'Günlük Arşivi', shortLabel: 'Günlükler', icon: 'journal-outline', color: colors.primaryBright, route: '/screens/journal-archive', hint: 'Geçmiş günlük kayıtları & okuyucu' },
       { label: 'Notlar', shortLabel: 'Notlar', icon: 'document-text-outline', color: colors.textDim, route: '/screens/notes', hint: 'Kişisel bilgi kütüphanesi' },
-      { label: 'AI Koç', shortLabel: 'AI Koç', icon: 'sparkles-outline', color: '#8b5cf6', route: '/screens/ai-coach', hint: 'Akıllı davranış & alışkanlık koçu' },
+      { label: 'AI Koç', shortLabel: 'AI Koç', icon: 'sparkles-outline', color: colors.info, route: '/screens/ai-coach', hint: 'Akıllı davranış & alışkanlık koçu' },
     ],
   },
   {
@@ -162,7 +164,7 @@ export default function Drawer() {
   if (!isOpen && Platform.OS !== 'web') return null;
 
   const userLevel = profile?.level ?? 1;
-  const username = profile?.username || 'Kişisel Sistem';
+  const username = profile?.username || 'Aderyth';
 
   const activeShortcuts: DrawerItem[] = shortcutRoutes
     .map((route) => MODULE_BY_ROUTE.get(route))
@@ -177,6 +179,7 @@ export default function Drawer() {
 
       {/* Panel */}
       <Animated.View style={[s.panel, { transform: [{ translateX }] }]}>
+        <TexturedSurface source={TEXTURES.linen} textureOpacity={0.07} overlayOnly />
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
           {/* Header & Profil Kartı */}
           <View style={s.header}>

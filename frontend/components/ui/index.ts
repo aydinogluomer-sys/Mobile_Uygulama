@@ -14,3 +14,8 @@ export { default as SyncStatusBadge, syncBadgeParts, syncBadgeA11yLabel } from '
 export { default as ErrorBoundary } from './ErrorBoundary';
 export { FormError, FormPreview } from './FormFeedback';
 export { default as LoadErrorState, listState, type ListState } from './LoadErrorState';
+export { default as TexturedSurface } from './TexturedSurface';
+export { default as EditorialBanner } from './EditorialBanner';
+export { default as EmblemMedallion } from './EmblemMedallion';
+export { AtmosphericScreenCanvas, EmbeddedFiligree, BentoVisualCard, ChapterDivider } from '../spatial';
+export { StaggeredReveal, MorphingPillTabs, AnimatedMetricValue, GoldMendShimmer } from '../motion';

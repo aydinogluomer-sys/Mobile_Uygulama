@@ -105,13 +105,13 @@ export default function TabLayout() {
         screenOptions={{
           tabBarActiveTintColor: accent.bright,
           tabBarInactiveTintColor: colors.textFaint,
-          tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+          tabBarLabelStyle: { fontSize: 11, lineHeight: 14, fontWeight: '600', paddingBottom: 2 },
           tabBarStyle: {
             backgroundColor: colors.bgElevated,
             borderTopColor: colors.borderSubtle,
             borderTopWidth: 1,
-            height: Platform.OS === 'ios' ? 88 : 62,
-            paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+            height: Platform.OS === 'ios' ? 88 : 68,
+            paddingBottom: Platform.OS === 'ios' ? 24 : 10,
             paddingTop: 6,
           },
           headerStyle: {
@@ -182,12 +182,12 @@ export default function TabLayout() {
           the tab bar would have turned each of those into a dead end, which
           is the failure mode an IA change is most likely to introduce.
         */}
-        <Tabs.Screen name="tasks" options={{ href: null }} />
-        <Tabs.Screen name="focus" options={{ href: null }} />
-        <Tabs.Screen name="stats" options={{ href: null }} />
-        <Tabs.Screen name="habits" options={{ href: null }} />
-        <Tabs.Screen name="hub" options={{ href: null }} />
-        <Tabs.Screen name="settings" options={{ href: null }} />
+        <Tabs.Screen name="tasks" options={{ href: null, title: 'Görevler' }} />
+        <Tabs.Screen name="focus" options={{ href: null, title: 'Odak' }} />
+        <Tabs.Screen name="stats" options={{ href: null, title: 'İstatistikler' }} />
+        <Tabs.Screen name="habits" options={{ href: null, title: 'Alışkanlıklar' }} />
+        <Tabs.Screen name="hub" options={{ href: null, title: 'Keşfet' }} />
+        <Tabs.Screen name="settings" options={{ href: null, title: 'Ayarlar' }} />
       </Tabs>
     </>
   );

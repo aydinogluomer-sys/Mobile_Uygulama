@@ -27,6 +27,8 @@ import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from 
 import { isMeasurableTracking } from '../../lib/habitEngine';
 import { explainActivation } from '../../services/capacityService';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
+import { AtmosphericScreenCanvas, EditorialBanner } from '../../components/ui';
+import { CANVASES, RITUAL_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 export default function HabitsScreen() {
   const reduceMotion = useReducedMotion(); // R06.04 — toasts appear without the slide
@@ -351,6 +353,12 @@ ${e.how}`,
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.ritualsBotanical}
+        textureSource={TEXTURES.botanical}
+        scrim={0.64}
+        tintColor={colors.accent}
+      />
       {/* İrade Bandı */}
       {wp && (
         <View style={styles.wpBar}>
@@ -373,6 +381,17 @@ ${e.how}`,
         style={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
+        <EditorialBanner
+          source={RITUAL_BANNERS.anytime}
+          textureSource={TEXTURES.botanical}
+          eyebrow="ALIŞKANLIK MİMARİSİ"
+          title="İrade & Kapasite Odaları"
+          subtitle={`${activeHabits.length} aktif · ${waitingHabits.length} bekleme odasında`}
+          accentColor={colors.accent}
+          minHeight={92}
+          style={{ marginHorizontal: 16, marginTop: 14 }}
+        />
+
         {/* Aktif */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>

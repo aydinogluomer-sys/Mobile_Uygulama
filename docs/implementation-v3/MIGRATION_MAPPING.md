@@ -15,7 +15,7 @@ md5'i, (2) `;` ile bölünmüş her ifadenin md5'i karşılaştırıldı. Kanıt
 isim benzerliği → içerik.
 
 | Güven | Tanım (bu belgede) |
-|---|---|
+| --- | --- |
 | **KESİN** | normalleştirilmiş metin canlı kayıtla birebir aynı |
 | **KESİN\*** | DDL birebir aynı; fark **yalnız `COMMENT ON` metninde** (dosya, uygulandıktan sonra yorum metni düzeltilerek düzenlenmiş) — şema etkisi aynı |
 | **OLASI** | isim/zaman ve nesneler tutuyor, içerik kısmen farklı |
@@ -28,7 +28,7 @@ gerilemesi veya uygulamayı bozar.
 ## 1. Eşleme tablosu (001..027)
 
 | Repo dosyası | Canlı version | Canlı name | Güven | İçerik farkı | Tekrar çalıştırma riski |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | `001_initial_schema.sql` | `20260606075913` (en yakın) | `add_willpower_and_new_tables` | **OLASI** | 18 ifadenin 9'u ortak (routines/routine_items/willpower_state tabloları, RLS, 3 politika, `habits_user_status` indeksi). Dosya ayrıca `habits`/`habit_logs` tablolarını ve `habits_self`/`habit_logs_self` politikalarını kuruyor — bunlar canlıda **yok** (canlıdaki adlar: "Users can CRUD own habits", "Users can … own logs"). README: 001 defterden önce SQL editöründe elle çalıştırıldı; kendi kaydı yok. | **ORTA** — `willpower_self` zaten var → işlem hatayla durur (tek işlemde etkisiz) ama `db push`'u kilitler; ifade ifade çalıştırılırsa fazladan izin veren politika ekler |
 | `002_integrations.sql` | `20260607061239` (yalnız Notion kısmı) | `notion_integrations` | **OLASI** (kısmi) | 8 ifadenin 1'i ortak. Google tablosu bu dosyayla hiç kurulmadı (006 kurdu); Notion politikası canlıda farklı adla ("Users manage own notion integration"). | **YÜKSEK** — `google_calendar_integrations_self` istemci politikası oluşur: tasarım gereği politikasız (yalnız sunucu) OAuth token tablosu istemciye açılır |
 | `003_emergency_gate_0_revoke_mock_activate_subscription.sql` | `20260802181931` | `emergency_gate_0_revoke_mock_activate_subscription` | **KESİN** | — | DÜŞÜK (REVOKE) |
@@ -66,7 +66,7 @@ kaydı" değil; asıl kayıt defterdeki `statements`.
 ## 2. Her eski migration — sonuç bugün duruyor mu?
 
 | # | Ne yapıyor | Canlıda sonuç | Sonradan ezildi / geri alındı mı |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 001 | çekirdek tablolar + `*_self` politikaları | tablolar var; `habits_self`/`habit_logs_self` **yok** (yerlerinde başka adlı politikalar) | habit_logs politikaları 007 ile yeniden yazıldı |
 | 002 | Notion + Google tabloları, `*_self` politikaları | Notion tablosu var (farklı politika); Google tablosu 006'dan | Google kısmı 006 ile **değiştirildi** (politikasız tasarım) |
 | 003 | `mock_activate_subscription` EXECUTE kaldır | anon: **false** ✓ | — |
@@ -95,7 +95,7 @@ kaydı" değil; asıl kayıt defterdeki `statements`.
 ## 3. Yalnız canlıda (repoda dosyası olmayan kayıtlar — S12)
 
 | Version | Name | Ne yaptı (statements'tan) | Not |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `20260606075913` | add_willpower_and_new_tables | routines, routine_items, willpower_state + habits/habit_logs değişiklikleri | 001 ile kısmen örtüşür (OLASI) |
 | `20260606081143` | security_rls_and_grants | pet_stages/skills okuma politikaları, SELECT revoke | F13 |
 | `20260606081212` | revoke_anon_functions | EXECUTE revoke | |
@@ -138,7 +138,7 @@ telafiyi bozar, 016 `purged_xp`'yi ikiler, 019 onboarding'i atlatır.
 ### Seçenekler
 
 | | Ne | Artı | Risk |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **(a)** Yerel dosyaları canlı zaman damgalarıyla adlandırmak | 003–027'yi `<version>_<name>.sql` yap; 026'yı ikiye böl; 001/002 ve 19 "yalnız canlı" kayıt için dosya üret | defter dokunulmaz; geçmiş okunur kalır | elle yeniden adlandırma 36 dosya + 19 eksik dosya üretme; KESİN\* dosyaların gövdesi zaten defterden farklı (yorum); 001/002 hiçbir sürüme tam karşılık gelmez → biri yanlış eşlenirse ileride yeniden çalıştırılır |
 | **(b)** `supabase migration repair --status applied <version>` | yerel `001…027` sürümlerini defterde "uygulandı" işaretle | dosyalar yerinde kalır | defter **iki ad sistemi** taşır (45 zaman damgası + 27 sıra numarası); CLI defterdeki 45 kaydın yerelde olmamasını yine reddeder → bunlar için `--status reverted` gerekir, bu da **defter satırlarını (ve içindeki `statements` kaydını) siler**. Geri dönüşsüz tarih kaybı. |
 | **(c)** Tek taban migration + yeni zaman damgaları | `live_schema.sql`'i `<ts>_baseline.sql` yap, 45 eski kaydı `reverted`, tabanı `applied` işaretle; 028+ yeni adlarla | yerel kurulum (`supabase db reset`) mümkün olur — bugün değil | 45 defter satırı silinir (b ile aynı kayıp); taban dökümü canlıyla birebir olmalı, değilse sessiz sapma; `live_schema.sql` henüz repoda değil ve sahip kararı |
@@ -204,7 +204,7 @@ tablosu ve "db push çalıştırma" kuralı; dosya adını okuyan testler — `r
 Defterin son sürümü `20260908133800`; aşağıdakilerin hepsi ondan sonra ve uygulama sırasıyla artan:
 
 | Bugün | Önerilen |
-|---|---|
+| --- | --- |
 | `028_habit_pauses_and_goal_versions.sql` | `20261010000100_habit_pauses_and_goal_versions.sql` |
 | `029_habit_checklists.sql` | `20261010000200_habit_checklists.sql` |
 | `030_routine_runner.sql` | `20261010000300_routine_runner.sql` |
@@ -214,6 +214,7 @@ Defterin son sürümü `20260908133800`; aşağıdakilerin hepsi ondan sonra ve 
 | `034_coach_reminder_action.sql` | `20261010000700_coach_reminder_action.sql` |
 | `035_coach_lighten_week.sql` | `20261010000800_coach_lighten_week.sql` |
 | `036_live_audit_hardening.sql` | `20261010000900_live_audit_hardening.sql` |
+| `037_today_bootstrap_rpc.sql` | `20261010001000_today_bootstrap_rpc.sql` |
 
 ## 6. Kullanılan sorgular (hepsi salt-okunur)
 

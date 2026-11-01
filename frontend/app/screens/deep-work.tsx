@@ -1,12 +1,20 @@
-import { colors, alphaHex } from '../../lib/tokens';
+import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Modal, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Skeleton } from '../../components/ui';
+import {
+  AnimatedMetricValue,
+  AtmosphericScreenCanvas,
+  ChapterDivider,
+  EditorialBanner,
+  EmbeddedFiligree,
+  Skeleton,
+} from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { useDeepWorkStore } from '../../store/deepWorkStore';
 import { todayLocal } from '../../lib/date';
 // R05.06 — the shared duration contract (active time, breaks left out).
@@ -15,6 +23,8 @@ import { parseManualMinutes } from '../../lib/focusDuration';
 const QUICK_DURATIONS = [25, 45, 60, 90];
 
 export default function DeepWorkScreen() {
+  const { width } = useWindowDimensions();
+  const isWide = width >= 920;
   const { sessions, loading, loadSessions, addSession, removeSession, todayMinutes, weekMinutes } = useDeepWorkStore();
   const [modal, setModal] = useState(false);
   const [subject, setSubject] = useState('');
@@ -47,110 +57,132 @@ export default function DeepWorkScreen() {
   const weekM = weekMinutes();
 
   const today = todayLocal();
-  const todaySessions = sessions.filter((s) => s.date === today);
-  const pastSessions = sessions.filter((s) => s.date !== today);
+  const todaySessions = sessions.filter((sess) => sess.date === today);
+  const pastSessions = sessions.filter((sess) => sess.date !== today);
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.deepworkMonolith}
+        textureSource={TEXTURES.sacredGrid}
+        scrim={0.6}
+        tintColor={colors.teal}
+      />
       <ScrollView contentContainerStyle={s.scroll}>
+        <EditorialBanner
+          source={SCREEN_BANNERS.deepWorkChamber}
+          textureSource={TEXTURES.sacredGrid}
+          eyebrow="DERİN ODAK ODASI"
+          title="Derin Çalışma"
+          subtitle="Kesintisiz bilişsel bloklarını ve aktif üretim süreni kaydet."
+          accentColor={colors.teal}
+          minHeight={96}
+          style={{ marginBottom: 16 }}
+        />
 
         {/* Özet kartları */}
         <View style={s.metrics}>
           <View style={[s.metricCard, { borderColor: alphaHex(colors.info, '40') }]}>
-            <Ionicons name="today-outline" size={18} color={colors.info} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-            <Text style={s.metricValue}>{formatMins(todayM)}</Text>
+            <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={88} opacity={0.16} />
+            <Ionicons name="today-outline" size={18} color={colors.info} />
+            <AnimatedMetricValue value={formatMins(todayM)} style={s.metricValue} />
             <Text style={s.metricLabel}>Bugün</Text>
           </View>
           <View style={[s.metricCard, { borderColor: alphaHex(colors.accent, '40') }]}>
-            <Ionicons name="calendar-outline" size={18} color={colors.accent} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-            <Text style={s.metricValue}>{formatMins(weekM)}</Text>
+            <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={88} opacity={0.16} />
+            <Ionicons name="calendar-outline" size={18} color={colors.accent} />
+            <AnimatedMetricValue value={formatMins(weekM)} style={s.metricValue} />
             <Text style={s.metricLabel}>Bu Hafta</Text>
           </View>
           <View style={[s.metricCard, { borderColor: alphaHex(colors.success, '40') }]}>
-            <Ionicons name="layers-outline" size={18} color={colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-            <Text style={s.metricValue}>{todaySessions.length}</Text>
+            <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={88} opacity={0.16} />
+            <Ionicons name="layers-outline" size={18} color={colors.success} />
+            <AnimatedMetricValue value={String(todaySessions.length)} style={s.metricValue} />
             <Text style={s.metricLabel}>Seans</Text>
           </View>
         </View>
 
-        {/* Bugünkü seanslar */}
-        <View style={s.section}>
-          <View style={s.sectionHeader}>
-            <Text style={s.sectionTitle}>BUGÜN</Text>
-            <TouchableOpacity
-              style={s.addBtn}
-              onPress={() => setModal(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Seans ekle"
-            >
-              <Ionicons name="add" size={16} color={colors.info} />
-              <Text style={s.addBtnText}>Seans Ekle</Text>
-            </TouchableOpacity>
+        <ChapterDivider source={DECOR.dividerSundial} label="DERİN ÇALIŞMA KONSOLU" accentColor={colors.teal} />
+
+        <View style={[s.consoleCols, isWide && pastSessions.length > 0 && s.consoleColsWide]}>
+          {/* Bugünkü seanslar */}
+          <View style={[s.section, isWide && pastSessions.length > 0 && { flex: 1.2 }]}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionTitle}>BUGÜN</Text>
+              <TouchableOpacity
+                style={s.addBtn}
+                onPress={() => setModal(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Seans ekle"
+              >
+                <Ionicons name="add" size={16} color={colors.info} />
+                <Text style={s.addBtnText}>Seans Ekle</Text>
+              </TouchableOpacity>
+            </View>
+
+            {loading ? (
+              Array.from({ length: 3 }, (_, i) => (
+                <View key={i} style={s.sessionRow}>
+                  <Skeleton width={8} height={8} circle />
+                  <View style={{ flex: 1 }}><Skeleton width="60%" height={13} /></View>
+                  <Skeleton width={44} height={12} />
+                </View>
+              ))
+            ) : todaySessions.length === 0 ? (
+              <View style={s.emptyCard}>
+                <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={120} opacity={0.14} />
+                <Ionicons name="flash-outline" size={28} color={colors.teal} />
+                <Text style={s.emptyText}>Henüz seans yok</Text>
+                <Text style={s.emptyHint}>Derin çalışma seanslarını buraya kaydet</Text>
+              </View>
+            ) : (
+              todaySessions.map((sess) => (
+                <View key={sess.id} style={s.sessionRow}>
+                  <View style={[s.sessionDot, { backgroundColor: colors.teal }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.sessionSubject}>{sess.subject}</Text>
+                  </View>
+                  <Text style={[s.sessionDuration, { color: colors.teal }]}>{formatMins(sess.duration_minutes)}</Text>
+                  <TouchableOpacity
+                    style={s.deleteBtn}
+                    onPress={() => Alert.alert('Sil', 'Bu seans silinsin mi?', [
+                      { text: 'İptal' },
+                      { text: 'Sil', style: 'destructive', onPress: () => removeSession(sess.id) },
+                    ])}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${sess.subject} seansını sil`}
+                  >
+                    <Ionicons name="trash-outline" size={14} color={colors.textGhost} />
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
           </View>
 
-          {loading ? (
-            // `loading` bugüne kadar okunmuyordu: seanslar gelene kadar
-            // "Henüz seans yok" görünüyordu. Seans satırlarının şekli sabit,
-            // o yüzden boş durum yerine önce o geometriyi kur.
-            Array.from({ length: 3 }, (_, i) => (
-              <View key={i} style={s.sessionRow}>
-                <Skeleton width={8} height={8} circle />
-                <View style={{ flex: 1 }}><Skeleton width="60%" height={13} /></View>
-                <Skeleton width={44} height={12} />
-              </View>
-            ))
-          ) : todaySessions.length === 0 ? (
-            <View style={s.emptyCard}>
-              <Ionicons name="flash-outline" size={28} color={colors.border} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-              <Text style={s.emptyText}>Henüz seans yok</Text>
-              <Text style={s.emptyHint}>Derin çalışma seanslarını buraya kaydet</Text>
-            </View>
-          ) : (
-            todaySessions.map((sess) => (
-              <View key={sess.id} style={s.sessionRow}>
-                <View style={[s.sessionDot, { backgroundColor: colors.teal }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.sessionSubject}>{sess.subject}</Text>
+          {/* Geçmiş seanslar */}
+          {pastSessions.length > 0 && (
+            <View style={[s.section, isWide && { flex: 1 }]}>
+              <Text style={[s.sectionTitle, { marginBottom: 12 }]}>GEÇMİŞ (30 GÜN)</Text>
+              {pastSessions.slice(0, 20).map((sess) => (
+                <View key={sess.id} style={s.sessionRow}>
+                  <View style={[s.sessionDot, { backgroundColor: colors.textGhost }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.sessionSubject}>{sess.subject}</Text>
+                    <Text style={s.sessionDate}>{sess.date}</Text>
+                  </View>
+                  <Text style={s.sessionDuration}>{formatMins(sess.duration_minutes)}</Text>
                 </View>
-                <Text style={[s.sessionDuration, { color: colors.teal }]}>{formatMins(sess.duration_minutes)}</Text>
-                <TouchableOpacity
-                  style={s.deleteBtn}
-                  onPress={() => Alert.alert('Sil', 'Bu seans silinsin mi?', [
-                    { text: 'İptal' },
-                    { text: 'Sil', style: 'destructive', onPress: () => removeSession(sess.id) },
-                  ])}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${sess.subject} seansını sil`}
-                >
-                  <Ionicons name="trash-outline" size={14} color={colors.textGhost} />
-                </TouchableOpacity>
-              </View>
-            ))
+              ))}
+            </View>
           )}
         </View>
-
-        {/* Geçmiş seanslar */}
-        {pastSessions.length > 0 && (
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>GEÇMİŞ (30 GÜN)</Text>
-            {pastSessions.slice(0, 20).map((sess) => (
-              <View key={sess.id} style={s.sessionRow}>
-                <View style={[s.sessionDot, { backgroundColor: colors.textGhost }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.sessionSubject}>{sess.subject}</Text>
-                  <Text style={s.sessionDate}>{sess.date}</Text>
-                </View>
-                <Text style={s.sessionDuration}>{formatMins(sess.duration_minutes)}</Text>
-              </View>
-            ))}
-          </View>
-        )}
       </ScrollView>
 
       {/* Seans ekle modal */}
       <Modal visible={modal} transparent animationType="slide" onRequestClose={() => setModal(false)}>
         <View style={s.modalBg}>
           <View style={s.modalCard}>
+            <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="top-right" size={110} opacity={0.14} />
             <View style={s.modalHead}>
               <Text style={s.modalTitle} accessibilityRole="header">Seans Ekle</Text>
               <TouchableOpacity
@@ -220,15 +252,19 @@ export default function DeepWorkScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: 16, paddingBottom: 40 },
+  scroll: { width: '100%', maxWidth: 1120, alignSelf: 'center', padding: 16, paddingBottom: 48 },
 
-  metrics: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  metrics: { flexDirection: 'row', gap: 10, marginBottom: 14 },
   metricCard: {
     flex: 1, alignItems: 'center', gap: 6, padding: 16,
-    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1,
+    overflow: 'hidden', position: 'relative',
+    backgroundColor: hexA(colors.surface, 0.92), borderRadius: 14, borderWidth: 1,
   },
   metricValue: { fontSize: 20, fontWeight: '700', color: colors.white },
   metricLabel: { fontSize: 11, color: colors.textFaint },
+
+  consoleCols: { gap: 16, marginTop: 8 },
+  consoleColsWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 20 },
 
   section: { marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
@@ -241,7 +277,7 @@ const s = StyleSheet.create({
 
   sessionRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.surface, borderRadius: 12, padding: 12,
+    backgroundColor: hexA(colors.surface, 0.92), borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: colors.border, marginBottom: 6,
   },
   sessionDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
@@ -252,13 +288,14 @@ const s = StyleSheet.create({
 
   emptyCard: {
     alignItems: 'center', gap: 6, padding: 32,
-    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
+    overflow: 'hidden', position: 'relative',
+    backgroundColor: hexA(colors.surface, 0.9), borderRadius: 14, borderWidth: 1, borderColor: colors.border,
   },
-  emptyText: { fontSize: 14, color: colors.textGhost, fontWeight: '600' },
+  emptyText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
   emptyHint: { fontSize: 12, color: colors.textGhost, textAlign: 'center' },
 
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: colors.border },
+  modalBg: { flex: 1, backgroundColor: hexA(colors.black, 0.7), justifyContent: 'flex-end' },
+  modalCard: { overflow: 'hidden', position: 'relative', backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: colors.border },
   modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
 

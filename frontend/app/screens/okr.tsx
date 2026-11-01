@@ -1,4 +1,4 @@
-import { colors, alphaHex } from '../../lib/tokens';
+import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal,
@@ -7,7 +7,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useOKRStore, krProgress, objectiveProgress, type KeyResult, type OKR } from '../../store/okrStore';
-import { EmptyState, Skeleton } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmptyState, Skeleton, EditorialBanner, EmbeddedFiligree, EmblemMedallion } from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const now = new Date();
 const CUR_Q = Math.floor(now.getMonth() / 3) + 1;
@@ -60,6 +61,8 @@ export default function OKRScreen() {
     // + birkaç KR. Şeklini göster ki gerçek kartlar geldiğinde düzen zıplamasın.
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.strategyAltitude} textureSource={TEXTURES.topographic} scrim={0.62} tintColor={colors.accent} />
+
         <View style={s.content}>
           {[0, 1].map((i) => (
             <View key={i} style={s.objCard}>
@@ -87,7 +90,18 @@ export default function OKRScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.strategyAltitude} textureSource={TEXTURES.topographic} scrim={0.62} tintColor={colors.accent} />
       <ScrollView contentContainerStyle={s.content}>
+        <EditorialBanner
+          source={SCREEN_BANNERS.goalsSummit}
+          textureSource={TEXTURES.topographic}
+          eyebrow="ALTIN İPLİK · OKR"
+          title="Amaçlar & Anahtar Sonuçlar"
+          subtitle="Vizyonunu ölçülebilir çeyreklik çıktılara bağla."
+          accentColor={colors.accent}
+          minHeight={90}
+          style={{ marginBottom: 14 }}
+        />
         {okrs.length === 0 ? (
           <EmptyState
             icon="flag-outline"
@@ -102,8 +116,12 @@ export default function OKRScreen() {
             const prog = objectiveProgress(o);
             return (
               <View key={o.id} style={s.objCard}>
+                <EmbeddedFiligree source={DECOR.cornerBlueprint} size={108} opacity={0.14} />
                 <View style={s.objHead}>
-                  <View style={s.qBadge}><Text style={s.qBadgeText}>{o.year} Ç{o.quarter}</Text></View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <EmblemMedallion source={DECOR.goldenThreadNode} size={26} unlocked accentColor={colors.warning} />
+                    <View style={s.qBadge}><Text style={s.qBadgeText}>{o.year} Ç{o.quarter}</Text></View>
+                  </View>
                   <TouchableOpacity
                     onPress={() => confirmRemoveObj(o)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -313,7 +331,7 @@ const s = StyleSheet.create({
   emptyHint: { fontSize: 13, color: colors.textFaint, textAlign: 'center' },
   tip: { fontSize: 11, color: colors.textGhost, textAlign: 'center', marginTop: 8 },
 
-  objCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 14 },
+  objCard: { backgroundColor: hexA(colors.surface, 0.92), borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 2, borderLeftColor: hexA(colors.warning, 0.42), marginBottom: 14, overflow: 'hidden', position: 'relative' },
   objHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   qBadge: { backgroundColor: alphaHex(colors.accent, '20'), borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   qBadgeText: { fontSize: 11, color: colors.accent, fontWeight: '700' },

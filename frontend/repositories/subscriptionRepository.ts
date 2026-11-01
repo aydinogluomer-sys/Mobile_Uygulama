@@ -21,7 +21,8 @@ export type SubscriptionRow = {
   billing_period: string | null;
   focus_points: number;
   credits_period_end: string | null;
-  current_period_end: string | null;
+  current_period_end?: string | null;
+  sub_period_end?: string | null;
 };
 
 /**

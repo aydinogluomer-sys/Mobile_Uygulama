@@ -10,6 +10,8 @@ import { INTEGRATION_CATEGORIES, type IntegrationCategory, type IntegrationItem 
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 import IntegrationItemCard from '../../components/IntegrationItemCard';
 import IntegrationDetailModal from '../../components/IntegrationDetailModal';
+import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { useNotionStore } from '../../store/notionStore';
 import { useGoogleCalendarStore } from '../../store/googleCalendarStore';
 import {
@@ -55,11 +57,13 @@ export default function IntegrationsScreen() {
   const connectedCount = INTEGRATION_CATEGORIES.flatMap(c => c.items).filter(i => i.status === 'connected').length + (isConnected ? 1 : 0) + (isGoogleConnected ? 1 : 0);
 
   function handleItemPress(item: IntegrationItem) {
+    if (item.id === 'notion' && !NOTION_INTEGRATION_ENABLED) return;
     if (item.id === 'notion') {
       setSelected(null);
       setTimeout(() => setNotionModal(true), 120);
       return;
     }
+    if (item.id === 'calendar' && !GOOGLE_CALENDAR_INTEGRATION_ENABLED) return;
     if (item.id === 'calendar') {
       setSelected(null);
       setTimeout(() => setGoogleModal(true), 120);
@@ -100,8 +104,15 @@ export default function IntegrationsScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.observatoryStats}
+        textureSource={TEXTURES.neural}
+        scrim={0.62}
+        tintColor={colors.accent}
+      />
       {/* Özet bant */}
       <View style={s.banner}>
+        <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" opacity={0.15} size={86} />
         <View style={s.bannerLeft}>
           <Ionicons name="git-network-outline" size={20} color={colors.accent} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <View>
@@ -117,19 +128,32 @@ export default function IntegrationsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.content}>
+        <EditorialBanner
+          source={SCREEN_BANNERS.integrationsOrrery}
+          textureSource={TEXTURES.neural}
+          eyebrow="EKOSİSTEM KÖPRÜSÜ"
+          title="Bağlı Servisler"
+          subtitle="Takvim, bilgi tabanı ve otomasyon akışları."
+          accentColor={colors.accent}
+          minHeight={88}
+          style={{ marginBottom: 12 }}
+        />
         {INTEGRATION_CATEGORIES.map((cat) => (
           <IntegrationCategoryCard key={cat.id} category={cat} onPress={() => setSelected(cat)} />
         ))}
 
         {/* Notion öne çıkan kart */}
+        <ChapterDivider source={DECOR.dividerSundial} label="ÖNE ÇIKAN BAĞLANTILAR" style={{ marginVertical: 10 }} />
         <TouchableOpacity
           style={[s.featureCard, isConnected && s.featureCardConnected]}
-          onPress={() => setNotionModal(true)}
+          onPress={NOTION_INTEGRATION_ENABLED ? () => setNotionModal(true) : undefined}
+          disabled={!NOTION_INTEGRATION_ENABLED}
           accessibilityRole="button"
           accessibilityLabel={isConnected ? 'Notion, bağlı' : 'Notion, entegrasyon ayarları'}
           accessibilityHint="Notion entegrasyon ayarlarını açar"
         >
           <View style={s.featureLeft}>
+            <EmbeddedFiligree source={DECOR.obsidianPrism} anchor="bottom-right" opacity={0.14} size={88} />
             <View style={[s.featureIcon, { backgroundColor: '#f9731620' }]}>
               <Ionicons name="document-text-outline" size={22} color="#f97316" />
             </View>
@@ -143,7 +167,11 @@ export default function IntegrationsScreen() {
                 </View>
               </View>
               <Text style={s.featureDesc}>
-                {isConnected ? `${connection.workspaceName} · Son sync: ${lastSynced ?? 'henüz yok'}` : 'Notion veritabanlarınızı bağlayın veya yönetin'}
+                {isConnected
+                  ? `${connection.workspaceName} · Son sync: ${lastSynced ?? 'henüz yok'}`
+                  : NOTION_INTEGRATION_ENABLED
+                    ? 'Notion veritabanlarınızı bağlayın veya yönetin'
+                    : INTEGRATION_UNAVAILABLE_REASON}
               </Text>
             </View>
           </View>
@@ -153,12 +181,14 @@ export default function IntegrationsScreen() {
         {/* Google Calendar öne çıkan kart */}
         <TouchableOpacity
           style={[s.featureCard, isGoogleConnected && s.featureCardConnected]}
-          onPress={() => setGoogleModal(true)}
+          onPress={GOOGLE_CALENDAR_INTEGRATION_ENABLED ? () => setGoogleModal(true) : undefined}
+          disabled={!GOOGLE_CALENDAR_INTEGRATION_ENABLED}
           accessibilityRole="button"
           accessibilityLabel={isGoogleConnected ? 'Takvim, bağlı' : 'Takvim, entegrasyon ayarları'}
           accessibilityHint="Google Calendar entegrasyon ayarlarını açar"
         >
           <View style={s.featureLeft}>
+            <EmbeddedFiligree source={DECOR.obsidianPrism} anchor="bottom-right" opacity={0.14} size={88} />
             <View style={[s.featureIcon, { backgroundColor: '#4285F420' }]}> 
               <Ionicons name="calendar-outline" size={22} color="#4285F4" />
             </View>
@@ -488,7 +518,7 @@ const s = StyleSheet.create({
   banner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     margin: 16, padding: 14, borderRadius: 14,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', position: 'relative',
   },
   bannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   bannerTitle: { fontSize: 15, fontWeight: '700', color: colors.white },
@@ -500,7 +530,7 @@ const s = StyleSheet.create({
   featureCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: colors.surface, borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: colors.border, marginBottom: 10,
+    borderWidth: 1, borderColor: colors.border, marginBottom: 10, overflow: 'hidden', position: 'relative',
   },
   featureCardConnected: { borderColor: alphaHex(colors.success, '30') },
   featureLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },

@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import type { NoteRow } from '../repositories/noteRepository';
-import type { Cursor } from '../repositories/shared';
+import type { Cursor, Page } from '../repositories/shared';
 import { overlay, type OutboxCommand } from '../lib/outbox';
+import { readCachedSnapshot, setCachedSnapshot } from '../lib/localReadCache';
+import { currentUser } from '../lib/session';
 import { coreOutbox } from '../services/coreOutbox';
 import {
   listNotesPage as fetchNotesPage, findNotes as repoSearch,
@@ -10,6 +12,16 @@ import {
 } from '../services/noteService';
 
 export type Note = NoteRow;
+
+const NOTES_CACHE_KEY = 'notes:p1';
+
+async function safeUserId(): Promise<string | null> {
+  try {
+    return (await currentUser())?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Notes.
@@ -71,14 +83,35 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
   cursor: null,
 
   fetchNotes: async () => {
-    set({ loading: true, error: null });
     await coreOutbox.ensure();
+    const uid = await safeUserId();
+    const cached = uid ? await readCachedSnapshot<Page<Note>>(uid, NOTES_CACHE_KEY) : null;
+    if (cached) {
+      remember(cached.data.rows);
+      set({
+        notes: withPending(cached.data.rows),
+        cursor: cached.data.nextCursor,
+        hasMore: cached.data.hasMore,
+        loading: false,
+        error: null,
+      });
+    } else {
+      set({ loading: true, error: null });
+    }
+
     const res = await fetchNotesPage(null);
     if (!res.ok) {
-      set({ loading: false, error: res.error });
+      if (cached) {
+        set({ loading: false, error: res.offline ? null : res.error });
+      } else {
+        set({ loading: false, error: res.error });
+      }
       return;
     }
     remember(res.data.rows);
+    if (uid) {
+      void setCachedSnapshot(uid, NOTES_CACHE_KEY, res.data);
+    }
     // A refresh resets the cursor: continuing from a stale one would skip
     // whatever was inserted since.
     set({
@@ -87,6 +120,7 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
       cursor: res.data.nextCursor,
       hasMore: res.data.hasMore,
       loading: false,
+      error: null,
     });
   },
 
@@ -122,7 +156,13 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
     }
     const now = new Date().toISOString();
     const row: Note = { id: res.id, user_id: '', title, content, tags: [], created_at: now, updated_at: serverVersion.get(res.id) ?? now };
-    set((s) => ({ notes: [row, ...s.notes.filter((n) => n.id !== row.id)], error: res.savedOnDevice ? null : 'Not cihaza kaydedilemedi; uygulama kapanırsa kaybolabilir.' }));
+    set((s) => {
+      const nextNotes = [row, ...s.notes.filter((n) => n.id !== row.id)];
+      void safeUserId().then((uid) => {
+        if (uid) void setCachedSnapshot<Page<Note>>(uid, NOTES_CACHE_KEY, { rows: nextNotes, nextCursor: s.cursor, hasMore: s.hasMore });
+      });
+      return { notes: nextNotes, error: res.savedOnDevice ? null : 'Not cihaza kaydedilemedi; uygulama kapanırsa kaybolabilir.' };
+    });
     return row;
   },
 
@@ -133,7 +173,13 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
       return false;
     }
     // Shown at once; `updated_at` stays the server's until delivery reports a new one.
-    set((s) => ({ notes: s.notes.map((n) => (n.id === id ? { ...n, ...patch, updated_at: serverVersion.get(id) ?? n.updated_at } : n)), error: null }));
+    set((s) => {
+      const nextNotes = s.notes.map((n) => (n.id === id ? { ...n, ...patch, updated_at: serverVersion.get(id) ?? n.updated_at } : n));
+      void safeUserId().then((uid) => {
+        if (uid) void setCachedSnapshot<Page<Note>>(uid, NOTES_CACHE_KEY, { rows: nextNotes, nextCursor: s.cursor, hasMore: s.hasMore });
+      });
+      return { notes: nextNotes, error: null };
+    });
     return true;
   },
 
@@ -145,7 +191,13 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
       return false;
     }
     // Queued (and tombstoned): hidden now, and a late edit cannot bring it back.
-    set((s) => ({ notes: s.notes.filter((n) => n.id !== id), error: null }));
+    set((s) => {
+      const nextNotes = s.notes.filter((n) => n.id !== id);
+      void safeUserId().then((uid) => {
+        if (uid) void setCachedSnapshot<Page<Note>>(uid, NOTES_CACHE_KEY, { rows: nextNotes, nextCursor: s.cursor, hasMore: s.hasMore });
+      });
+      return { notes: nextNotes, error: null };
+    });
     return true;
   },
 

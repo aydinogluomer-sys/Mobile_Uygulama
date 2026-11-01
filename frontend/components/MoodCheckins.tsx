@@ -4,7 +4,9 @@
  */
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
-import { colors, space, radius } from '../lib/tokens';
+import { colors, space, radius, hexA } from '../lib/tokens';
+import { EmbeddedFiligree } from './ui';
+import { DECOR } from '../lib/visualAssets';
 import { useMoodStore } from '../store/moodStore';
 import { checkinLabel } from '../lib/moods';
 
@@ -29,6 +31,7 @@ export default function MoodCheckins() {
 
   return (
     <View style={s.box}>
+      <EmbeddedFiligree source={DECOR.cornerBotanical} size={96} opacity={0.14} />
       <Text style={s.head} accessibilityRole="header">ŞU AN NASILSIN?</Text>
       <View style={s.row}>
         {st.moods().map((m) => (
@@ -84,7 +87,7 @@ export default function MoodCheckins() {
 }
 
 const s = StyleSheet.create({
-  box: { padding: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, gap: 8, marginBottom: 20 },
+  box: { padding: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: hexA(colors.surface, 0.88), gap: 8, marginBottom: 20, overflow: 'hidden', position: 'relative' },
   head: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   mood: { alignItems: 'center', width: 58, paddingVertical: 6, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },

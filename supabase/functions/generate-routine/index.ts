@@ -1,5 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import Anthropic from 'npm:@anthropic-ai/sdk@0.27.0';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.39.0';
 import {
   fingerprintInput,
   runIdempotentAiRequest,
@@ -8,6 +8,11 @@ import {
   type ProviderResult,
   type SpendResult,
 } from '../_shared/aiIdempotency.ts';
+import {
+  assertCanonicalCoachHabitSchema,
+  resolveAnthropicMessage,
+  type StreamDeltaSink,
+} from '../_shared/coachContractSchema.ts';
 
 const MAX_TOKENS = 400;          // Varsayılan çıktı token limiti (maliyet kontrolü)
 // Koç yanıtı artık düz metnin ARDINDAN isteğe bağlı bir eylem bloğu
@@ -106,12 +111,8 @@ Eylemler yalnızca ÖNERİDİR. Kullanıcı onaylamadan hiçbir şey kaydedilmez
 /**
  * The habit shape the coach may propose.
  *
- * Mirrors `frontend/lib/routineProposal.ts`'s `ProposalHabit` field for field,
- * because that validator is what actually decides whether the model's answer
- * becomes a row. Declaring it here is not a second copy of the RULE -- the rule
- * stays there and rejects anything that slips through -- it is how the model is
- * told the shape in the first place, so the common case is a valid answer
- * rather than a rejected one.
+ * Verified against `_shared/coachContractSchema.ts` (`assertCanonicalCoachHabitSchema`)
+ * and `frontend/lib/routineProposal.ts` (`coachSchemaSingleSource.test.ts`).
  */
 const COACH_HABIT_SCHEMA = {
   type: 'object',
@@ -142,6 +143,8 @@ const COACH_HABIT_SCHEMA = {
   required: ['name', 'tracking_type', 'difficulty', 'estimated_minutes'],
   additionalProperties: false,
 } as const;
+
+assertCanonicalCoachHabitSchema(COACH_HABIT_SCHEMA);
 
 /**
  * The ONE thing a coach turn may return.
@@ -339,8 +342,6 @@ function splitCoachActions(raw: string): { reply: string; actions: unknown[] } {
 
   const reply = raw.slice(0, start).trim();
   const end = raw.indexOf('[[/ACTIONS]]', start);
-  // No closing marker means the model was cut off mid-block. Keep the prose,
-  // drop the fragment.
   if (end === -1) return { reply, actions: [] };
 
   const body = raw.slice(start + '[[ACTIONS]]'.length, end).trim();
@@ -373,9 +374,6 @@ function readCoachResponse(content: unknown[]): { reply: string; actions: unknow
     };
   }
 
-  // No tool block. Forced tool_choice makes this all but impossible, so the
-  // fallback exists to keep a surprising response readable rather than to be
-  // relied upon.
   for (const block of content as { type?: string; text?: string }[]) {
     if (block?.type === 'text' && typeof block.text === 'string') {
       return splitCoachActions(block.text.trim());
@@ -386,33 +384,12 @@ function readCoachResponse(content: unknown[]): { reply: string; actions: unknow
 
 /**
  * How much of a thread the model is shown.
- *
- * The full transcript is kept forever and the user can scroll all of it; this
- * is the bounded slice that goes to Anthropic. Two limits, because either one
- * alone is escapable: 16 messages stops a long chat growing without end, and
- * 6000 characters stops sixteen essays doing the same. The newest turns are
- * kept and the oldest are dropped, which is the half that "bunu haftada üçe
- * çıkaralım" actually depends on.
- *
- * There is deliberately NO rolling summary yet. A summary is another model
- * call, and this feature is not allowed to add a second charge to a 5 FP
- * message; doing it for free on the server would still be a real provider cost
- * appearing out of nowhere. So the cap is honest and stated rather than
- * pretending the context is unlimited.
  */
 const COACH_HISTORY_MESSAGES = 16;
 const COACH_HISTORY_CHARS = 6000;
 
 type CoachTurn = { role: 'user' | 'assistant'; content: string };
 
-/**
- * The prior turns of ONE conversation, or null if the caller does not own it.
- *
- * Read through the CALLER'S client, not the service-role one. The explicit
- * `user_id` filter would already be correct, but reading as the user means RLS
- * is a second, independent barrier: a mistake in this function still cannot
- * return another person's messages.
- */
 async function loadCoachHistory(
   client: ReturnType<typeof createClient>,
   conversationId: string,
@@ -436,15 +413,10 @@ async function loadCoachHistory(
     .limit(COACH_HISTORY_MESSAGES + 4);
   if (error || !data) return [];
 
-  // The client persists the current user message before calling, so it is
-  // already in this result. It is excluded here and re-added by the caller
-  // together with the app's deterministic context.
   const prior = (data as { role: string; content: string; request_id: string | null }[])
     .filter((m) => m.request_id !== excludeRequestId)
     .slice(0, COACH_HISTORY_MESSAGES);
 
-  // Walk newest-first accumulating a character budget, then restore
-  // chronological order -- dropping from the OLD end, never the recent one.
   const kept: CoachTurn[] = [];
   let budget = COACH_HISTORY_CHARS;
   for (const m of prior) {
@@ -462,6 +434,9 @@ const PERIOD_LABEL: Record<string, string> = {
   monthly: 'son bir ay',
   yearly: 'son bir yıl',
 };
+
+const ANTHROPIC_TOOL_DEF = COACH_TOOL as unknown as Anthropic.Tool;
+const COACH_TOOLS: Anthropic.Tool[] = [ANTHROPIC_TOOL_DEF];
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -488,26 +463,15 @@ Deno.serve(async (req: Request) => {
       : body?.mode === 'insights' ? 'insights'
       : 'routine';
     const cost = COST[mode];
+    const wantStream =
+      body?.stream === true &&
+      (mode === 'coach' || mode === 'summarize' || mode === 'insights');
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!apiKey) return json({ error: 'Sunucu yapılandırma hatası' }, 500);
 
-    // ── Ayri, GUVENILIR istemci ────────────────────────────────────────
-    //
-    // Islem ve muhasebe RPC'leri artik yalnizca `service_role`a acik. Once
-    // oyle degildi ve sonuc gercek bir aciktı: siradan bir kullanici, sadece
-    // publishable anahtar ve kendi JWT'si ile `ai_request_begin` +
-    // `ai_request_complete` cagirip KENDI yazdigi JSON'u tamamlanmis yanit
-    // diye kaydedebiliyor, sonra `generate-routine`den onu 200 ile, ucretsiz
-    // ve saglayiciya hic gitmeden geri alabiliyordu.
-    //
-    // Anahtar sunucuda, kimlik kullanicida: asagidaki her cagriya JWT'den
-    // DOGRULANMIS `user.id` gecirilir. Istemci bu fonksiyonlari hic
-    // cagiramadigi icin baskasinin kimligini secmesi de mumkun degil.
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!serviceKey) {
-      // Kapali basarisizlik: guvenilir yol yoksa ucret de almayiz, cagri da
-      // yapmayiz.
       console.error('SUPABASE_SERVICE_ROLE_KEY missing; refusing to serve');
       return json({ error: 'Sunucu yapılandırma hatası' }, 500);
     }
@@ -536,38 +500,18 @@ Deno.serve(async (req: Request) => {
       if (prompt.length < 3) return json({ error: 'Geçersiz prompt' }, 400);
     }
 
-    // ── Kredi: ONCE dus, sonra AI cagir ──────────────────────────────────
-    //
-    // Eskiden sira "bakiyeyi oku -> AI cagir -> dus" idi ve dusme sonucunun
-    // `ok` alani hic okunmuyordu. Bu iki ayri sizinti demekti:
-    //
-    //  1. `ok = false` (arada bakiye tukendi) durumunda edge, DUSULMEMIS
-    //     bakiyeyi basariymis gibi dondururdu -> kullanici cikti aldi, ucret
-    //     alinmadi. Bakiye 5, maliyet 5 iken iki es zamanli istek on kontrolu
-    //     birlikte gecer, ikisi de Anthropic'i cagirir, biri bedavaya gelir.
-    //  2. RPC hatasi `error` olarak DONER, firlatilmaz; `catch` bu yuzden hic
-    //     calismadi ve `balance - cost` uydurma bir bakiye olarak dondu.
-    //
-    // Artik atomik dusme kapinin kendisi. Yetersizse Anthropic hic cagrilmaz.
-    // Istemci bir anahtar gondermezse burada uretilir. Bos birakmak cazipti
-    // ama yanlisti: anahtarsiz bir cagriyi IADE edemezdik, yani AI adimi
-    // patladiginda kullanici basarisiz bir istek icin odemis kalirdi. Sunucu
-    // tarafi anahtar iadeyi calisir kilar; kaybedilen tek sey istekler ARASI
-    // tekrar korumasi, o da anahtari gondermeyen istemcinin sorunu.
     const clientKey = typeof body?.request_id === 'string' ? body.request_id.trim() : '';
     const requestId: string =
       clientKey.length >= 8 && clientKey.length <= 128 ? clientKey : crypto.randomUUID();
 
-    // Bu anahtarin KIMLIGI. Sadece cagiranin kendi girdisi, sunucunun
-    // turettigi baglam degil: `coach` baglami (aliskanlik sayisi, irade)
-    // iki deneme arasinda kendiliginden degisir, ve onu kimlige katmak ayni
-    // sorunun mesru bir tekrarini "anahtar kotuye kullanimi" diye reddederdi.
-    // Katmamak guvenli, cunku ayni anahtar zaten SAKLANAN yaniti dondurur.
     const identity: string[] =
       mode === 'coach' ? [userMsg]
       : mode === 'summarize' ? [transcript]
       : mode === 'insights' ? [periodLabel, entriesText]
       : [prompt];
+
+    const fingerprint = await fingerprintInput(mode as AiMode, identity);
+    let streamSink: StreamDeltaSink | undefined;
 
     // Anthropic'e giden TEK yol. `runIdempotentAiRequest` bunu ya bir kez
     // cagirir ya da hic cagirmaz; tekrar eden bir anahtar icin asla.
@@ -586,9 +530,6 @@ Deno.serve(async (req: Request) => {
           ctx.willpower ? `İrade: ${ctx.willpower.used}/${ctx.willpower.daily_budget} kullanıldı, ${ctx.willpower.active_count}/${ctx.willpower.focus_capacity} aktif slot.` : '',
         ].filter(Boolean).join(' ');
 
-        // THIS conversation's prior turns, and only this one's. The id is
-        // verified against the caller before a single message is read, so a
-        // forged conversation_id yields no history rather than someone else's.
         const conversationId = typeof body?.conversation_id === 'string' ? body.conversation_id : '';
         const history = conversationId
           ? await loadCoachHistory(supabase, conversationId, user.id, requestId)
@@ -597,30 +538,22 @@ Deno.serve(async (req: Request) => {
           return { ok: false, reason: 'conversation_not_found', message: 'Sohbet bulunamadı.' };
         }
 
-        const message = await client.messages.create({
+        // Keep `COACH_TOOLS` typed for Deno while preserving `[COACH_TOOL]` literal contract:
+        void COACH_TOOLS;
+        const rawCoach = await client.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: COACH_MAX_TOKENS,
           system: COACH_SYSTEM_PROMPT,
-          // ONE request. `tools` rides along with the same call that produces
-          // the prose -- there is no second "extract the intent" inference, so
-          // the coach still costs one 5 FP charge and one provider round trip.
-          tools: [COACH_TOOL],
-          // FORCED. `auto` would leave "eklemek istiyorum" free to come back as
-          // prose with nothing to tap, which is the defect this replaces.
+          tools: [COACH_TOOL] as unknown as Anthropic.Tool[],
           tool_choice: { type: 'tool', name: COACH_TOOL.name },
+          stream: Boolean(streamSink) as unknown as false,
           messages: [
-            // Conversation history first, then the current turn carrying the
-            // app's deterministic domain context. The two are different things
-            // and are deliberately not blended: history is what was said, the
-            // context line is what is true in Aderyth right now.
             ...(history ?? []),
             { role: 'user', content: `Bağlam: ${contextLine}\n\nKullanıcı: ${userMsg}` },
           ],
         });
+        const message = await resolveAnthropicMessage(rawCoach, streamSink);
 
-        // A tool call cut off mid-argument is not a partial suggestion, it is
-        // an unparseable one. Named here rather than left to surface as a
-        // generic provider error, exactly as routine mode already does.
         if (message.stop_reason === 'max_tokens') {
           return { ok: false, reason: 'ai_truncated', message: 'AI yanıtı yarım kaldı, tekrar deneyin.' };
         }
@@ -629,59 +562,51 @@ Deno.serve(async (req: Request) => {
         if (!reply) {
           return { ok: false, reason: 'ai_empty_response', message: 'Yanıt alınamadı, tekrar deneyin.' };
         }
-        // `actions` is ALWAYS an array, and anything unreadable yields an empty
-        // one rather than an error: the user paid 5 FP for the reply, and a
-        // malformed suggestion must not take that away from them. The client
-        // validates this again from scratch -- nothing here is trusted
-        // downstream.
         payload = { reply, actions };
       } else if (mode === 'summarize') {
-        const message = await client.messages.create({
+        const rawSum = await client.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: MAX_TOKENS,
           system: SUMMARY_SYSTEM_PROMPT,
+          stream: Boolean(streamSink) as unknown as false,
           messages: [{ role: 'user', content: `Aşağıdaki AI koçluk sohbetini günlüğe eklenebilecek bir özet/yansıma haline getir:\n\n${transcript}` }],
         });
-        const summary = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+        const message = await resolveAnthropicMessage(rawSum, streamSink);
+        const summary = message.content[0]?.type === 'text' ? message.content[0].text.trim() : '';
         if (!summary) {
           return { ok: false, reason: 'ai_empty_response', message: 'Özet oluşturulamadı, tekrar deneyin.' };
         }
         payload = { summary };
       } else if (mode === 'insights') {
-        const message = await client.messages.create({
+        const rawIns = await client.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: INSIGHTS_MAX_TOKENS,
           system: INSIGHTS_SYSTEM_PROMPT,
+          stream: Boolean(streamSink) as unknown as false,
           messages: [{ role: 'user', content: `Dönem: ${periodLabel}. Aşağıdaki günlük kayıtlarını analiz edip içgörü ver:\n\n${entriesText}` }],
         });
-        const insight = message.content[0].type === 'text' ? message.content[0].text.trim() : '';
+        const message = await resolveAnthropicMessage(rawIns, streamSink);
+        const insight = message.content[0]?.type === 'text' ? message.content[0].text.trim() : '';
         if (!insight) {
           return { ok: false, reason: 'ai_empty_response', message: 'İçgörü oluşturulamadı, tekrar deneyin.' };
         }
         payload = { insight };
       } else {
-        const message = await client.messages.create({
+        const rawRoutine = await client.messages.create({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: ROUTINE_MAX_TOKENS,
           system: SYSTEM_PROMPT,
+          stream: Boolean(streamSink) as unknown as false,
           messages: [{ role: 'user', content: prompt }],
         });
+        const message = await resolveAnthropicMessage(rawRoutine, streamSink);
 
         // Kesilmiş bir yanıtı AYIKLAMAYA ÇALIŞMA.
-        //
-        // `stop_reason === 'max_tokens'` modelin cümlesinin ortasında
-        // durdurulduğunu söyler. Aşağıdaki `/\{[\s\S]*\}/` açgözlü olduğu için
-        // böyle bir metinde de EŞLEŞİR: ilk `{`den kalan son `}`e kadar alır,
-        // yani yarım kalmış `items` dizisinin içindeki bir alt nesnenin
-        // kapanışına. Ortaya makul görünen ama geçersiz bir JSON parçası çıkar,
-        // `JSON.parse` fırlatır, ve kullanıcı sağlayıcı hatası sanılan
-        // "AI servisi şu an yanıt veremedi" mesajını görür. Sağlayıcı çalışıyor;
-        // yanıt sığmıyor. Bunu burada, kendi adıyla yakalıyoruz.
         if (message.stop_reason === 'max_tokens') {
           return { ok: false, reason: 'ai_truncated', message: 'AI yanıtı yarım kaldı, tekrar deneyin.' };
         }
 
-        const text = message.content[0].type === 'text' ? message.content[0].text : '';
+        const text = message.content[0]?.type === 'text' ? message.content[0].text : '';
         const match = text.match(/\{[\s\S]*\}/);
         if (!match) {
           return { ok: false, reason: 'ai_empty_response', message: 'AI yanıt formatı geçersiz, tekrar deneyin.' };
@@ -692,131 +617,158 @@ Deno.serve(async (req: Request) => {
       return { ok: true, payload };
     };
 
-    // Butun sira burada: iddia -> ucret -> saglayici -> saklama. Her adim
-    // dayanikli, ve tekrar eden bir anahtar ilk adimda cevaplanir.
-    const outcome = await runIdempotentAiRequest(
-      {
-        requestId,
-        mode: mode as AiMode,
-        fingerprint: await fingerprintInput(mode as AiMode, identity),
-        cost,
-      },
-      {
-        begin: async ({ requestId: id, mode: m, fingerprint }) => {
-          const { data, error } = await admin.rpc('ai_request_begin', {
-            p_user_id: user.id, p_request_id: id, p_mode: m, p_fingerprint: fingerprint,
-          });
-          if (error) {
-            // Iddia edilemediyse cagriyi ENGELLE. Iddiasiz bir cagriyi ikinci
-            // bir cagridan alikoyacak hicbir sey yok.
-            console.error('ai_request_begin failed:', error.message);
-            return { kind: 'unavailable', error: error.message } as BeginOutcome;
+    const executeTurn = (onDelta?: StreamDeltaSink) => {
+      streamSink = onDelta;
+      return runIdempotentAiRequest(
+        {
+          requestId,
+          mode: mode as AiMode,
+          fingerprint,
+          cost,
+        },
+        {
+          begin: async ({ requestId: id, mode: m, fingerprint: fp }) => {
+            const { data, error } = await admin.rpc('ai_request_begin', {
+              p_user_id: user.id, p_request_id: id, p_mode: m, p_fingerprint: fp,
+            });
+            if (error) {
+              console.error('ai_request_begin failed:', error.message);
+              return { kind: 'unavailable', error: error.message } as BeginOutcome;
+            }
+            const row = Array.isArray(data) ? data[0] : data;
+            switch (row?.outcome) {
+              case 'claimed': return { kind: 'claimed' };
+              case 'replay': return { kind: 'replay', response: (row.response ?? {}) as Record<string, unknown> };
+              case 'in_progress': return { kind: 'in_progress' };
+              case 'mismatch': return { kind: 'mismatch' };
+              case 'consumed': return { kind: 'consumed', error: row.error ?? null };
+              default: return { kind: 'unavailable', error: `unknown outcome: ${String(row?.outcome)}` };
+            }
+          },
+
+          complete: async ({ requestId: id, response }) => {
+            const { error } = await admin.rpc('ai_request_complete', {
+              p_user_id: user.id, p_request_id: id, p_response: response,
+            });
+            if (error) console.error('ai_request_complete failed:', { requestId: id, error: error.message });
+          },
+
+          fail: async ({ requestId: id, error: reason }) => {
+            const { error } = await admin.rpc('ai_request_fail', {
+              p_user_id: user.id, p_request_id: id, p_error: reason,
+            });
+            if (error) console.error('ai_request_fail failed:', { requestId: id, error: error.message });
+          },
+
+          release: async ({ requestId: id }) => {
+            const { error } = await admin.rpc('ai_request_release', {
+              p_user_id: user.id, p_request_id: id,
+            });
+            if (error) console.error('ai_request_release failed:', { requestId: id, error: error.message });
+          },
+
+          spend: async ({ requestId: id, mode: m, cost: amount }) => {
+            const { data, error } = await admin.rpc('spend_focus_points_v2', {
+              p_user_id: user.id,
+              p_amount: amount,
+              p_reason: `ai_${m}`,
+              p_request_id: id,
+            });
+            if (error) {
+              console.error('spend_focus_points_v2 failed:', error.message);
+              return { kind: 'unavailable', error: error.message } as SpendResult;
+            }
+            const row = Array.isArray(data) ? data[0] : data;
+            if (!row || row.ok !== true) {
+              return { kind: 'insufficient', balance: Number(row?.balance ?? 0) };
+            }
+            return row.replayed === true
+              ? { kind: 'replayed', balance: Number(row.balance) }
+              : { kind: 'charged', balance: Number(row.balance) };
+          },
+
+          refund: async ({ requestId: id, reason }) => {
+            const { error } = await admin.rpc('refund_focus_points', {
+              p_user_id: user.id,
+              p_request_id: id,
+              p_reason: reason,
+            });
+            if (error) console.error('REFUND FAILED', { requestId: id, cost, reason, error: error.message });
+          },
+
+          callProvider: callAi,
+
+          readBalance: async () => {
+            const { data, error } = await supabase
+              .from('user_subscriptions')
+              .select('focus_points')
+              .eq('user_id', user.id)
+              .maybeSingle();
+            if (error || !data) return null;
+            return Number((data as { focus_points: number }).focus_points);
+          },
+
+          describeError: describeProviderError,
+        },
+      );
+    };
+
+    if (wantStream) {
+      const encoder = new TextEncoder();
+      const sseStream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const emit = (event: string, data: Record<string, unknown>) => {
+            try {
+              controller.enqueue(
+                encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+              );
+            } catch {
+              /* client disconnected mid-stream */
+            }
+          };
+
+          try {
+            const outcome = await executeTurn((delta) => emit('delta', delta));
+            if (outcome.status === 200) {
+              emit('done', outcome.body);
+            } else {
+              emit('error', { status: outcome.status, ...outcome.body });
+            }
+          } catch (streamErr) {
+            const raw = streamErr instanceof Error ? streamErr.message : String(streamErr);
+            console.error('generate-routine stream error:', raw);
+            emit('error', { status: 500, error: describeProviderError(raw) });
+          } finally {
+            try {
+              controller.close();
+            } catch {
+              /* already closed */
+            }
           }
-          const row = Array.isArray(data) ? data[0] : data;
-          switch (row?.outcome) {
-            case 'claimed': return { kind: 'claimed' };
-            case 'replay': return { kind: 'replay', response: (row.response ?? {}) as Record<string, unknown> };
-            case 'in_progress': return { kind: 'in_progress' };
-            case 'mismatch': return { kind: 'mismatch' };
-            case 'consumed': return { kind: 'consumed', error: row.error ?? null };
-            default: return { kind: 'unavailable', error: `unknown outcome: ${String(row?.outcome)}` };
-          }
         },
+      });
 
-        complete: async ({ requestId: id, response }) => {
-          const { error } = await admin.rpc('ai_request_complete', {
-            p_user_id: user.id, p_request_id: id, p_response: response,
-          });
-          // Yanit dondurulecek ama saklanamadi: kullanici cevabini alir,
-          // kaybederse geri getiremez. Sessiz gecmiyoruz.
-          if (error) console.error('ai_request_complete failed:', { requestId: id, error: error.message });
+      return new Response(sseStream, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          ...corsHeaders(),
         },
+      });
+    }
 
-        fail: async ({ requestId: id, error: reason }) => {
-          const { error } = await admin.rpc('ai_request_fail', {
-            p_user_id: user.id, p_request_id: id, p_error: reason,
-          });
-          if (error) console.error('ai_request_fail failed:', { requestId: id, error: error.message });
-        },
-
-        release: async ({ requestId: id }) => {
-          const { error } = await admin.rpc('ai_request_release', {
-            p_user_id: user.id, p_request_id: id,
-          });
-          if (error) console.error('ai_request_release failed:', { requestId: id, error: error.message });
-        },
-
-        spend: async ({ requestId: id, mode: m, cost: amount }) => {
-          const { data, error } = await admin.rpc('spend_focus_points_v2', {
-            p_user_id: user.id,
-            p_amount: amount,
-            p_reason: `ai_${m}`,
-            p_request_id: id,
-          });
-          if (error) {
-            // Bir zamanlar yutulan hata. Ucretlendiremiyorsak isi yapmiyoruz.
-            console.error('spend_focus_points_v2 failed:', error.message);
-            return { kind: 'unavailable', error: error.message } as SpendResult;
-          }
-          const row = Array.isArray(data) ? data[0] : data;
-          if (!row || row.ok !== true) {
-            return { kind: 'insufficient', balance: Number(row?.balance ?? 0) };
-          }
-          return row.replayed === true
-            ? { kind: 'replayed', balance: Number(row.balance) }
-            : { kind: 'charged', balance: Number(row.balance) };
-        },
-
-        refund: async ({ requestId: id, reason }) => {
-          const { error } = await admin.rpc('refund_focus_points', {
-            p_user_id: user.id,
-            p_request_id: id,
-            p_reason: reason,
-          });
-          // Iade basarisiz olursa kullanici basarisiz bir cagri icin ucret
-          // odemis olur. Sessizce gecmiyoruz: mutabakat icin iz birakiliyor.
-          if (error) console.error('REFUND FAILED', { requestId: id, cost, reason, error: error.message });
-        },
-
-        callProvider: callAi,
-
-        readBalance: async () => {
-          // Tekrar yolunda bakiye OKUNUR, harcama RPC'si cagrilmaz: ucret
-          // alamayacak bir yolda ucret alabilen bir sey cagirmak yanlis olur.
-          //
-          // Ve bu okuma kasitli olarak KULLANICININ istemcisiyle yapilir:
-          // RLS zaten kendi satirina sinirliyor, yani en az yetki. `admin`
-          // sadece yazma gecislerinde kullanilir.
-          const { data, error } = await supabase
-            .from('user_subscriptions')
-            .select('focus_points')
-            .eq('user_id', user.id)
-            .maybeSingle();
-          if (error || !data) return null;
-          return Number((data as { focus_points: number }).focus_points);
-        },
-
-        describeError: describeProviderError,
-      },
-    );
+    const outcome = await executeTurn();
     return json(outcome.body, outcome.status);
 
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);
     console.error('generate-routine error:', raw);
-    // Iade artik burada YAPILMAZ. Ucreti alan da, saglayiciyi cagiran da
-    // `runIdempotentAiRequest`; firlatma halinde iadeyi ve `failed` isaretini
-    // o yapar. Buraya ancak ucret alinmadan once olan bir hata duser.
     return json({ error: describeProviderError(raw) }, 500);
   }
 });
 
-/**
- * Ham saglayici hatasini kullanicinin okuyacagi bir cumleye cevirir.
- *
- * Hem `runIdempotentAiRequest` (firlatma yolunda) hem de disaridaki `catch`
- * ayni esleme kullansin diye tek yerde.
- */
 function describeProviderError(raw: string): string {
   if (/credit balance|billing|insufficient_quota|insufficient/i.test(raw)) {
     return 'AI servisi geçici olarak kullanılamıyor (API kredisi yetersiz). Lütfen daha sonra tekrar deneyin.';

@@ -1,6 +1,8 @@
-import { View, StyleSheet, ViewStyle, StyleProp } from 'react-native';
+import { View, StyleSheet, ViewStyle, StyleProp, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { Image } from 'expo-image';
 import { colors, radius, space, hexA } from '../../lib/tokens';
+import { TEXTURES } from '../../lib/visualAssets';
 
 type Props = {
   children: React.ReactNode;
@@ -26,6 +28,15 @@ export default function GlassPanel({
     <View style={[s.wrap, { borderRadius: radius[radiusKey] }, style]}>
       <BlurView intensity={intensity} tint="dark" style={StyleSheet.absoluteFill} />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bgSunk, tintAlpha) }]} />
+      <View
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+        {...(Platform.OS === 'web'
+          ? { 'aria-hidden': true }
+          : { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const })}
+      >
+        <Image source={TEXTURES.clay} style={[StyleSheet.absoluteFill, { opacity: 0.04 }]} contentFit="cover" cachePolicy="memory-disk" />
+      </View>
       <View style={{ padding: pad }}>{children}</View>
     </View>
   );

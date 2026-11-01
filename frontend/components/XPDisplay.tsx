@@ -1,9 +1,11 @@
-import { colors } from '../lib/tokens';
+import { colors, hexA } from '../lib/tokens';
 import { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useProfileStore } from '../store/profileStore';
 import { rankMeta } from '../lib/ranks';
+import { getRankCrest, TEXTURES } from '../lib/visualAssets';
+import EmblemMedallion from './ui/EmblemMedallion';
+import TexturedSurface from './ui/TexturedSurface';
 
 /**
  * Kullanıcının XP/level/rütbe özeti. Supabase `profiles` tablosundan beslenir
@@ -22,14 +24,14 @@ export default function XPDisplay() {
 
   return (
     <View style={s.container}>
-      <View style={[s.levelBadge, { backgroundColor: tier.color }]}>
-        <Text style={s.levelLabel}>LVL</Text>
-        <Text style={s.levelNumber}>{profile.level}</Text>
-      </View>
+      <TexturedSurface source={TEXTURES.topographic} textureOpacity={0.06} overlayOnly />
+      <EmblemMedallion source={getRankCrest(tier.name)} size={54} unlocked accentColor={tier.color} />
 
       <View style={s.info}>
         <View style={s.rankRow}>
-          <Ionicons name={tier.icon} size={13} color={tier.color} />
+          <View style={[s.lvlChip, { backgroundColor: hexA(tier.color, 0.18), borderColor: hexA(tier.color, 0.45) }]}>
+            <Text style={[s.lvlChipText, { color: tier.color }]}>LVL {profile.level}</Text>
+          </View>
           <Text style={[s.rankText, { color: tier.color }]}>{tier.name}</Text>
           <Text style={s.totalXp}>· {profile.total_xp} XP</Text>
         </View>
@@ -45,20 +47,19 @@ export default function XPDisplay() {
 
 const s = StyleSheet.create({
   container: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingHorizontal: 16, paddingVertical: 14,
     backgroundColor: colors.surface, borderRadius: 16,
     borderWidth: 1, borderColor: colors.border,
+    overflow: 'hidden', position: 'relative',
   },
-  levelBadge: {
-    width: 48, height: 48, borderRadius: 24,
-    alignItems: 'center', justifyContent: 'center',
+  lvlChip: {
+    paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1,
   },
-  levelLabel: { fontSize: 9, fontWeight: '800', color: colors.white, opacity: 0.85 },
-  levelNumber: { fontSize: 18, fontWeight: '800', color: colors.white },
-  info: { flex: 1, gap: 5 },
-  rankRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  rankText: { fontSize: 13, fontWeight: '700' },
+  lvlChipText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+  info: { flex: 1, gap: 6 },
+  rankRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  rankText: { fontSize: 14, fontWeight: '700' },
   totalXp: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
   barBg: { height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 4 },

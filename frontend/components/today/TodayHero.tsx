@@ -1,8 +1,11 @@
-import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { colors, space, radius, font, fontFamily, hexA, onColor } from '../../lib/tokens';
 import { useAccent } from '../../lib/useAccent';
+import { DECOR, getTodayHeroForHour, TEXTURES } from '../../lib/visualAssets';
 import type { TodayNarrative } from '../../lib/todayNarrative';
+import EmbeddedFiligree from '../spatial/EmbeddedFiligree';
 
 type Cta = {
   label: string;
@@ -18,13 +21,32 @@ type Props = {
   ctas: Cta[];
 };
 
+const IS_TEST = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+
+const decorativeA11y =
+  Platform.OS === 'web'
+    ? ({ 'aria-hidden': true } as const)
+    : ({
+        accessibilityElementsHidden: true,
+        importantForAccessibility: 'no-hide-descendants' as const,
+      } as const);
+
 /** Editöryel Bugün hero — eyebrow + anlatısal serif başlık (clay vurgulu) + alt-metin + bağlamsal CTA'lar. */
 export default function TodayHero({ eyebrow, narrative, ctas }: Props) {
   const accent = useAccent();
   const { width } = useWindowDimensions();
   const isCompact = width < 480;
+  const heroArt = getTodayHeroForHour();
   return (
     <View style={s.wrap}>
+      {!IS_TEST ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none" {...decorativeA11y}>
+          <Image source={heroArt} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bgSunk, 0.54) }]} />
+          <Image source={TEXTURES.topographic} style={[StyleSheet.absoluteFill, { opacity: 0.05 }]} contentFit="cover" cachePolicy="memory-disk" />
+          <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" opacity={0.18} size={148} />
+        </View>
+      ) : null}
       <Text style={s.eyebrow}>{eyebrow}</Text>
       <Text style={[s.title, isCompact && s.titleCompact]}>
         {narrative.lead}
@@ -64,7 +86,17 @@ export default function TodayHero({ eyebrow, narrative, ctas }: Props) {
 }
 
 const s = StyleSheet.create({
-  wrap: { maxWidth: 760, marginBottom: space.xxl },
+  wrap: {
+    width: '100%',
+    marginBottom: space.xxl,
+    padding: space.xl,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+    position: 'relative',
+  },
   eyebrow: { ...font.overline, color: colors.textFaint, marginBottom: space.sm },
   title: {
     fontFamily: fontFamily.serif,
@@ -73,6 +105,7 @@ const s = StyleSheet.create({
     color: colors.text,
     letterSpacing: -0.4,
     marginBottom: space.sm,
+    maxWidth: 680,
   },
   titleCompact: { fontSize: 29, lineHeight: 35 },
   em: { fontFamily: fontFamily.serif, fontStyle: 'italic', color: colors.primary },
@@ -83,6 +116,6 @@ const s = StyleSheet.create({
     paddingHorizontal: space.lg, minHeight: 42, borderRadius: radius.md,
     borderWidth: 1, borderColor: colors.border,
   },
-  ctaGhost: { backgroundColor: colors.surface },
+  ctaGhost: { backgroundColor: hexA(colors.surface, 0.85) },
   ctaText: { ...font.bodySm, fontWeight: '700' },
 });

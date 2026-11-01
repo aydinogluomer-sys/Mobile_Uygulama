@@ -32,7 +32,8 @@ import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from 
 import { syncAllReminders } from '../../lib/notifications';
 import { colors, radius, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { WillpowerBand, SectionHeader, EmptyState, ProgressBar } from '../../components/ui';
+import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree, WillpowerBand, SectionHeader, EmptyState, ProgressBar } from '../../components/ui';
+import { CANVASES, DECOR, RITUAL_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { isMeasurableTracking } from '../../lib/habitEngine';
 // R01.03-a: a measurable entry's total and state come from the service, not this screen.
 import { measuredEntryFor } from '../../services/habitLogService';
@@ -448,6 +449,12 @@ export default function TimelineScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.ritualsBotanical}
+        textureSource={TEXTURES.botanical}
+        scrim={0.64}
+        tintColor={colors.primary}
+      />
       {/* İrade Bandı */}
       {wp && (
         <View style={styles.wpBand}>
@@ -506,6 +513,30 @@ export default function TimelineScreen() {
             contentContainerStyle={{ paddingBottom: 100 }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           >
+            {(() => {
+              const hr = new Date().getHours();
+              const slot =
+                hr >= 5 && hr < 11
+                  ? { banner: RITUAL_BANNERS.morning, label: 'Sabah Ritüeli' }
+                  : hr >= 11 && hr < 17
+                    ? { banner: RITUAL_BANNERS.afternoon, label: 'Öğle & Üretim Ritüeli' }
+                    : hr >= 17 && hr < 22
+                      ? { banner: RITUAL_BANNERS.evening, label: 'Akşam Sakinleşme Ritüeli' }
+                      : { banner: RITUAL_BANNERS.anytime, label: 'Zamansız Ritüel Akışı' };
+              return (
+                <EditorialBanner
+                  source={slot.banner}
+                  textureSource={TEXTURES.botanical}
+                  eyebrow="GÜNLÜK RİTÜEL AKIŞI"
+                  title={slot.label}
+                  subtitle={`${todayDone}/${activeHabits.length} aktif alışkanlık tamamlandı`}
+                  accentColor={colors.primary}
+                  minHeight={92}
+                  style={{ marginHorizontal: 12, marginTop: 12, marginBottom: 4 }}
+                />
+              );
+            })()}
+
             {/* İkili Eylem Satırı: Rutin Yürütücü + AI Rutin & Hazır Paketler */}
             <View style={styles.topActionGrid}>
               <TouchableOpacity
@@ -531,7 +562,8 @@ export default function TimelineScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="AI Rutin ve Hazır Paketler"
               >
-                <View style={[styles.routineIconWrap, { backgroundColor: '#8b5cf6' }]}>
+                <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={78} opacity={0.16} />
+                <View style={[styles.routineIconWrap, { backgroundColor: colors.accent }]}>
                   <Ionicons name="sparkles" size={15} color={colors.white} />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -549,7 +581,8 @@ export default function TimelineScreen() {
               accessibilityRole="button"
               accessibilityLabel="Rutin ve Alışkanlık Keşfet Vitrinini Aç"
             >
-              <View style={[styles.routineIconWrap, { backgroundColor: '#f59e0b' }]}>
+              <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={96} opacity={0.16} />
+              <View style={[styles.routineIconWrap, { backgroundColor: colors.warning }]}>
                 <Ionicons name="compass" size={16} color={colors.white} />
               </View>
               <View style={{ flex: 1 }}>
@@ -567,6 +600,7 @@ export default function TimelineScreen() {
           {activeHabits.length === 0 ? (
             <EmptyState
               icon="rocket-outline"
+              illustration="habits"
               title="Aktif alışkanlık yok"
               hint="Bekleme odasından bir alışkanlığı aktifleştir veya + ile yenisini ekle."
               ctaLabel="Alışkanlık Ekle"

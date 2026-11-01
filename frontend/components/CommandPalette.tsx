@@ -1,4 +1,6 @@
-import { colors } from '../lib/tokens';
+import { colors, alphaHex } from '../lib/tokens';
+import { EmbeddedFiligree } from './ui';
+import { DECOR } from '../lib/visualAssets';
 import { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Modal, TextInput,
@@ -25,7 +27,7 @@ const RECENTS_KEY = 'app_cmd_recents';
  * bare colour literals per occurrence — two copies of the same hue is two
  * magic colours, not one.
  */
-const AI_HUE = '#8b5cf6';
+const AI_HUE = colors.accent;
 
 type RecentEntry = { label: string; icon: string; color: string; route: string };
 
@@ -239,6 +241,7 @@ export default function CommandPalette() {
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleClose} />
 
         <View style={styles.container}>
+          <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" opacity={0.14} size={136} />
           {/* Input */}
           <View style={styles.inputRow}>
             <Ionicons name="search-outline" size={18} color={colors.textFaint} />
@@ -297,7 +300,7 @@ export default function CommandPalette() {
                     else handleClose();
                   }}
                 >
-                  <View style={[styles.rowIcon, { backgroundColor: item.color + '20' }]}>
+                  <View style={[styles.rowIcon, { backgroundColor: alphaHex(item.color, '20') }]}>
                     <Ionicons name={item.icon as any} size={18} color={item.color} />
                   </View>
                   <Text style={styles.rowLabel} numberOfLines={1}>{item.label}</Text>

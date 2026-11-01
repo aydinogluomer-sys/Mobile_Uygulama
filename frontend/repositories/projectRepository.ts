@@ -8,7 +8,8 @@
  */
 import { supabase } from '../lib/supabase';
 import {
-  currentUserId, deleteOwned, fetchPage, updateOwned,
+  currentUserId, deleteOwned, deleteOwnedIfPresent, fetchPage,
+  insertOwnedWithId, isTransportFailure, updateOwned, updateOwnedVersioned,
   type Cursor, type Page, type RepoResult,
 } from './shared';
 
@@ -48,18 +49,18 @@ export async function insertProject(input: {
 }): Promise<RepoResult<ProjectRow>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('projects')
     .insert({
       user_id: u.userId,
       name: input.name,
-      color: input.color ?? null,
+      color: input.color ?? undefined,
       description: input.description ?? null,
       status: 'active',
     })
     .select(COLS)
     .single();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   return { ok: true, data: data as unknown as ProjectRow };
 }
 
@@ -90,7 +91,7 @@ export async function searchProjects(query: string, limit = 8): Promise<RepoResu
   const term = query.trim();
   if (!term) return { ok: true, data: [] };
   const safe = term.replace(/[,()%]/g, ' ');
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('projects')
     .select(COLS)
     .eq('user_id', u.userId)
@@ -98,6 +99,57 @@ export async function searchProjects(query: string, limit = 8): Promise<RepoResu
     .ilike('name', `%${safe}%`)
     .order('created_at', { ascending: false })
     .limit(Math.min(limit, 25));
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
   return { ok: true, data: (data ?? []) as unknown as ProjectRow[] };
+}
+
+// ---------------------------------------------------------------------------
+// Unified offline outbox delivery helpers (idempotent, owner-scoped)
+// ---------------------------------------------------------------------------
+
+export function insertProjectWithId(
+  row: {
+    id: string;
+    name: string;
+    color?: string | null;
+    description?: string | null;
+    status?: string;
+  },
+  expectedUserId?: string,
+): Promise<RepoResult<ProjectRow>> {
+  const payload: Record<string, unknown> & { id: string } = {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? null,
+    status: row.status ?? 'active',
+  };
+  if (row.color) payload.color = row.color;
+  return insertOwnedWithId<ProjectRow>({
+    table: 'projects',
+    row: payload,
+    columns: COLS,
+    expectedUserId,
+  });
+}
+
+export function updateProjectOwned(
+  id: string,
+  patch: Record<string, unknown>,
+  expectedUserId?: string,
+): Promise<RepoResult<{ row: ProjectRow | null; exists: boolean }>> {
+  return updateOwnedVersioned<ProjectRow>({
+    table: 'projects',
+    id,
+    patch,
+    baseVersion: null,
+    columns: COLS,
+    expectedUserId,
+  });
+}
+
+export function deleteProjectIfPresent(
+  id: string,
+  expectedUserId?: string,
+): Promise<RepoResult<{ deleted: boolean }>> {
+  return deleteOwnedIfPresent({ table: 'projects', id, expectedUserId });
 }

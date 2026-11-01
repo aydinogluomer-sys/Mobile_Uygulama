@@ -11,12 +11,34 @@ import {
   type ReadingStatus,
   type ReadingType,
 } from '../repositories/readingListRepository';
-import type { Cursor } from '../repositories/shared';
+import type { Cursor, Page } from '../repositories/shared';
+import { hasPending, newOperationId, overlay } from '../lib/outbox';
+import { readCachedSnapshot, setCachedSnapshot } from '../lib/localReadCache';
+import { currentUser } from '../lib/session';
+import { coreOutbox } from '../services/coreOutbox';
 
 export type { ReadingStatus, ReadingType };
 export type ReadingItem = ReadingItemRow;
 
+export const READING_ENTITY = 'reading_item';
 const STATUSES: ReadingStatus[] = ['want_to_read', 'reading', 'completed'];
+
+const tabCacheKey = (status: ReadingStatus) => `reading:${status}:p1`;
+const COUNTS_CACHE_KEY = 'reading:counts';
+
+async function safeUserId(): Promise<string | null> {
+  try {
+    return (await currentUser())?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const withPendingTab = (status: ReadingStatus, rows: ReadingItem[]): ReadingItem[] => {
+  const box = coreOutbox.state();
+  if (!box) return rows;
+  return overlay(box, READING_ENTITY, rows).filter((i) => (i.status ?? 'want_to_read') === status);
+};
 
 type TabState = {
   items: ReadingItem[];
@@ -67,25 +89,67 @@ export const useReadingListStore = create<ReadingListStore>((set, get) => ({
   error: null,
 
   refreshCounts: async () => {
+    const uid = await safeUserId();
+    const cached = uid ? await readCachedSnapshot<Record<ReadingStatus, number>>(uid, COUNTS_CACHE_KEY) : null;
+    if (cached) {
+      set({ counts: cached.data });
+    }
     const res = await fetchReadingCounts();
-    if (res.ok) set({ counts: res.data });
+    if (res.ok) {
+      if (uid) void setCachedSnapshot(uid, COUNTS_CACHE_KEY, res.data);
+      set({ counts: res.data });
+    }
   },
 
   fetchItems: async (status) => {
-    set((s) => ({ tabs: { ...s.tabs, [status]: { ...s.tabs[status], loading: true } }, error: null }));
+    await coreOutbox.ensure();
+    const uid = await safeUserId();
+    const cached = uid ? await readCachedSnapshot<Page<ReadingItem>>(uid, tabCacheKey(status)) : null;
+    if (cached) {
+      set((s) => ({
+        tabs: {
+          ...s.tabs,
+          [status]: {
+            items: withPendingTab(status, cached.data.rows),
+            cursor: cached.data.nextCursor,
+            hasMore: cached.data.hasMore,
+            loading: false,
+            loadingMore: false,
+          },
+        },
+        error: null,
+      }));
+    } else {
+      set((s) => ({ tabs: { ...s.tabs, [status]: { ...s.tabs[status], loading: true } }, error: null }));
+    }
+
     const res = await fetchReadingListPage(null, undefined, { status });
     if (!res.ok) {
-      set((s) => ({ tabs: { ...s.tabs, [status]: { ...s.tabs[status], loading: false } }, error: res.error }));
+      if (cached) {
+        set((s) => ({
+          tabs: { ...s.tabs, [status]: { ...s.tabs[status], loading: false } },
+          error: res.offline ? null : res.error,
+        }));
+      } else {
+        set((s) => ({ tabs: { ...s.tabs, [status]: { ...s.tabs[status], loading: false } }, error: res.error }));
+      }
       return;
+    }
+    if (uid) {
+      void setCachedSnapshot(uid, tabCacheKey(status), res.data);
     }
     set((s) => ({
       tabs: {
         ...s.tabs,
         [status]: {
-          items: res.data.rows, cursor: res.data.nextCursor, hasMore: res.data.hasMore,
-          loading: false, loadingMore: false,
+          items: withPendingTab(status, res.data.rows),
+          cursor: res.data.nextCursor,
+          hasMore: res.data.hasMore,
+          loading: false,
+          loadingMore: false,
         },
       },
+      error: null,
     }));
     await get().refreshCounts();
   },
@@ -117,78 +181,195 @@ export const useReadingListStore = create<ReadingListStore>((set, get) => ({
 
   addItem: async ({ title, author, type, url }) => {
     const res = await insertReadingItem({ title, author, type, url });
-    if (!res.ok) {
-      set({ error: res.error });
-      return false;
+    if (res.ok) {
+      // A new item is always `want_to_read`, so it belongs to that tab only.
+      set((s) => ({
+        tabs: {
+          ...s.tabs,
+          want_to_read: { ...s.tabs.want_to_read, items: [res.data, ...s.tabs.want_to_read.items] },
+        },
+        counts: { ...s.counts, want_to_read: s.counts.want_to_read + 1 },
+        error: null,
+      }));
+      return true;
     }
-    // A new item is always `want_to_read`, so it belongs to that tab only.
-    set((s) => ({
-      tabs: {
-        ...s.tabs,
-        want_to_read: { ...s.tabs.want_to_read, items: [res.data, ...s.tabs.want_to_read.items] },
-      },
-      counts: { ...s.counts, want_to_read: s.counts.want_to_read + 1 },
-      error: null,
-    }));
-    return true;
+    if (res.offline) {
+      const id = newOperationId();
+      const uid = (await safeUserId()) ?? '';
+      const now = new Date().toISOString();
+      const payload = {
+        title,
+        author: author ?? null,
+        type,
+        status: 'want_to_read' as ReadingStatus,
+        url: url ?? null,
+        notes: null,
+        rating: null,
+      };
+      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'create', payload });
+      if (queued.ok) {
+        const optimistic: ReadingItem = {
+          id,
+          user_id: uid,
+          ...payload,
+          created_at: now,
+          updated_at: now,
+        };
+        set((s) => ({
+          tabs: {
+            ...s.tabs,
+            want_to_read: { ...s.tabs.want_to_read, items: [optimistic, ...s.tabs.want_to_read.items] },
+          },
+          counts: { ...s.counts, want_to_read: s.counts.want_to_read + 1 },
+          error: null,
+        }));
+        return true;
+      }
+    }
+    set({ error: res.error });
+    return false;
   },
 
   updateStatus: async (id, status) => {
-    const res = await updateReadingStatus(id, status);
-    if (!res.ok) {
-      set({ error: res.error });
-      return false;
-    }
-    // The row moves between tabs, so it is removed from every tab and
-    // re-inserted into its new one — leaving it in place would show the same
-    // item under two statuses at once.
-    set((s) => {
-      const tabs = { ...s.tabs };
+    const findExisting = (): ReadingItem | null => {
+      const tabs = get().tabs;
       for (const st of STATUSES) {
-        tabs[st] = { ...tabs[st], items: tabs[st].items.filter((i) => i.id !== id) };
+        const found = tabs[st].items.find((i) => i.id === id);
+        if (found) return found;
       }
-      tabs[status] = { ...tabs[status], items: [res.data, ...tabs[status].items] };
-      return { tabs, error: null };
-    });
-    await get().refreshCounts();
-    return true;
+      return null;
+    };
+
+    const moveLocally = (row: ReadingItem) => {
+      set((s) => {
+        const tabs = { ...s.tabs };
+        for (const st of STATUSES) {
+          tabs[st] = { ...tabs[st], items: tabs[st].items.filter((i) => i.id !== id) };
+        }
+        tabs[status] = { ...tabs[status], items: [row, ...tabs[status].items] };
+        return { tabs, error: null };
+      });
+    };
+
+    await coreOutbox.ensure();
+    const box = coreOutbox.state();
+    if (box && hasPending(box, READING_ENTITY, id)) {
+      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { status } });
+      if (!queued.ok) { set({ error: 'Çevrimdışı okuma durumu güncellenemedi.' }); return false; }
+      void coreOutbox.flush();
+      const cur = findExisting();
+      if (cur) moveLocally({ ...cur, status, updated_at: new Date().toISOString() });
+      return true;
+    }
+
+    const res = await updateReadingStatus(id, status);
+    if (res.ok) {
+      moveLocally(res.data);
+      await get().refreshCounts();
+      return true;
+    }
+    if (res.offline) {
+      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { status } });
+      if (queued.ok) {
+        const cur = findExisting();
+        if (cur) moveLocally({ ...cur, status, updated_at: new Date().toISOString() });
+        return true;
+      }
+    }
+    set({ error: res.error });
+    return false;
   },
 
   updateRating: async (id, rating) => {
-    const res = await updateReadingRating(id, rating);
-    if (!res.ok) {
-      set({ error: res.error });
-      return false;
+    await coreOutbox.ensure();
+    const box = coreOutbox.state();
+    if (box && hasPending(box, READING_ENTITY, id)) {
+      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { rating } });
+      if (!queued.ok) { set({ error: 'Çevrimdışı puan güncellenemedi.' }); return false; }
+      void coreOutbox.flush();
+      set((s) => ({ tabs: patchInTabs(s.tabs, id, { rating }), error: null }));
+      return true;
     }
-    set((s) => ({ tabs: replaceInTabs(s.tabs, res.data), error: null }));
-    return true;
+
+    const res = await updateReadingRating(id, rating);
+    if (res.ok) {
+      set((s) => ({ tabs: replaceInTabs(s.tabs, res.data), error: null }));
+      return true;
+    }
+    if (res.offline) {
+      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { rating } });
+      if (queued.ok) {
+        set((s) => ({ tabs: patchInTabs(s.tabs, id, { rating }), error: null }));
+        return true;
+      }
+    }
+    set({ error: res.error });
+    return false;
   },
 
   updateNotes: async (id, notes) => {
-    const res = await updateReadingNotes(id, notes);
-    if (!res.ok) {
-      set({ error: res.error });
-      return false;
+    await coreOutbox.ensure();
+    const box = coreOutbox.state();
+    if (box && hasPending(box, READING_ENTITY, id)) {
+      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { notes } });
+      if (!queued.ok) { set({ error: 'Çevrimdışı not güncellenemedi.' }); return false; }
+      void coreOutbox.flush();
+      set((s) => ({ tabs: patchInTabs(s.tabs, id, { notes }), error: null }));
+      return true;
     }
-    set((s) => ({ tabs: replaceInTabs(s.tabs, res.data), error: null }));
-    return true;
+
+    const res = await updateReadingNotes(id, notes);
+    if (res.ok) {
+      set((s) => ({ tabs: replaceInTabs(s.tabs, res.data), error: null }));
+      return true;
+    }
+    if (res.offline) {
+      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { notes } });
+      if (queued.ok) {
+        set((s) => ({ tabs: patchInTabs(s.tabs, id, { notes }), error: null }));
+        return true;
+      }
+    }
+    set({ error: res.error });
+    return false;
   },
 
   removeItem: async (id) => {
-    const res = await deleteReadingItem(id);
-    if (!res.ok) {
-      set({ error: res.error });
-      return false;
+    const removeFromTabs = () => {
+      set((s) => {
+        const tabs = { ...s.tabs };
+        for (const st of STATUSES) {
+          tabs[st] = { ...tabs[st], items: tabs[st].items.filter((i) => i.id !== id) };
+        }
+        return { tabs, error: null };
+      });
+    };
+
+    await coreOutbox.ensure();
+    const box = coreOutbox.state();
+    if (box && hasPending(box, READING_ENTITY, id)) {
+      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'delete' });
+      if (!queued.ok) { set({ error: 'Çevrimdışı okuma öğesi silinemedi.' }); return false; }
+      void coreOutbox.flush();
+      removeFromTabs();
+      return true;
     }
-    set((s) => {
-      const tabs = { ...s.tabs };
-      for (const st of STATUSES) {
-        tabs[st] = { ...tabs[st], items: tabs[st].items.filter((i) => i.id !== id) };
+
+    const res = await deleteReadingItem(id);
+    if (res.ok) {
+      removeFromTabs();
+      await get().refreshCounts();
+      return true;
+    }
+    if (res.offline) {
+      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'delete' });
+      if (queued.ok) {
+        removeFromTabs();
+        return true;
       }
-      return { tabs, error: null };
-    });
-    await get().refreshCounts();
-    return true;
+    }
+    set({ error: res.error });
+    return false;
   },
 
   byStatus: (status) => get().tabs[status].items,
@@ -201,6 +382,21 @@ function replaceInTabs(
   const next = { ...tabs };
   for (const st of STATUSES) {
     next[st] = { ...next[st], items: next[st].items.map((i) => (i.id === row.id ? row : i)) };
+  }
+  return next;
+}
+
+function patchInTabs(
+  tabs: Record<ReadingStatus, TabState>,
+  id: string,
+  patch: Partial<ReadingItem>,
+): Record<ReadingStatus, TabState> {
+  const next = { ...tabs };
+  for (const st of STATUSES) {
+    next[st] = {
+      ...next[st],
+      items: next[st].items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+    };
   }
   return next;
 }

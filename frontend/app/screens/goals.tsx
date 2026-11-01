@@ -1,4 +1,4 @@
-import { colors, alphaHex } from '../../lib/tokens';
+import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { useEffect, useState } from 'react';
 import OKRScreen from './okr';
@@ -10,7 +10,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useGoalStore, Goal, GoalKind } from '../../store/goalStore';
-import { EmptyState, Skeleton, FormError, FormPreview, LoadErrorState } from '../../components/ui';
+import {
+  AtmosphericScreenCanvas,
+  EmptyState,
+  Skeleton,
+  FormError,
+  FormPreview,
+  LoadErrorState,
+  EditorialBanner,
+  EmbeddedFiligree,
+  EmblemMedallion,
+} from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { goalProgress } from '../../lib/progressModel';
 
 const TABS: { key: GoalKind; label: string; color: string }[] = [
@@ -45,7 +56,9 @@ function GoalCard({ goal, color, onEdit, onDelete }: {
       accessibilityLabel={`${goal.title}, ${goalProgress(goal).label}`}
       accessibilityHint="Bu yüzde elle girilir; görev ve alışkanlık kayıtlarından hesaplanmaz. Güncellemek için aç"
     >
+      <EmbeddedFiligree source={DECOR.cornerBlueprint} size={88} opacity={0.14} />
       <View style={s.goalRow}>
+        <EmblemMedallion source={DECOR.goldenThreadNode} size={28} unlocked accentColor={color} />
         <Text style={[s.goalTitle, goal.progress >= 100 && s.goalTitleDone]} numberOfLines={2}>{goal.title}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={[s.goalPct, { color }]}>{goal.progress}%</Text>
@@ -143,6 +156,13 @@ export default function GoalsScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.strategyAltitude}
+        textureSource={TEXTURES.topographic}
+        scrim={0.62}
+        tintColor={colors.accent}
+      />
+
       {/* Üst Switcher: Hedefler vs OKR vs Yaşam Alanları */}
       <View style={s.topBar}>
         <View style={s.viewSwitch}>
@@ -188,84 +208,96 @@ export default function GoalsScreen() {
         <>
           {/* Tab bar */}
           <View style={s.tabs}>
-        {TABS.map((t) => (
-          <TouchableOpacity
-            key={t.key}
-            style={[s.tab, activeTab === t.key && { borderBottomColor: t.color, borderBottomWidth: 2 }]}
-            onPress={() => setActiveTab(t.key)}
-            accessibilityRole="tab"
-            accessibilityLabel={`${t.label} hedefler`}
-            accessibilityState={{ selected: activeTab === t.key }}
-          >
-            <Text style={[s.tabText, activeTab === t.key && { color: t.color }]}>{t.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+            {TABS.map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                style={[s.tab, activeTab === t.key && { borderBottomColor: t.color, borderBottomWidth: 2 }]}
+                onPress={() => setActiveTab(t.key)}
+                accessibilityRole="tab"
+                accessibilityLabel={`${t.label} hedefler`}
+                accessibilityState={{ selected: activeTab === t.key }}
+              >
+                <Text style={[s.tabText, activeTab === t.key && { color: t.color }]}>{t.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
-      <ScrollView contentContainerStyle={s.scroll}>
-
-        {/* Özet */}
-        <View style={s.summary}>
-          <Text style={s.summaryText}>
-            {filtered.length} hedef · {filtered.filter((g) => g.progress >= 100).length} tamamlandı
-          </Text>
-          {filtered.length > 0 && (
-            <Text style={[s.summaryPct, { color: tabInfo.color }]}>
-              Ort. {Math.round(filtered.reduce((a, g) => a + g.progress, 0) / filtered.length)}%
-            </Text>
-          )}
-        </View>
-
-        {loading && goals.length === 0 ? (
-          // Hedefler yolda. Gelen şekil sabit: başlık satırı + yüzde + ilerleme
-          // çubuğu. Boş durumu göstermek yanıltıcı olurdu — henüz bilmiyoruz.
-          [0, 1, 2].map((i) => (
-            <View key={i} style={s.goalCard}>
-              <View style={s.goalRow}>
-                <View style={{ flex: 1 }}><Skeleton width="70%" height={15} /></View>
-                <Skeleton width={34} height={15} />
-              </View>
-              <Skeleton height={6} />
-            </View>
-          ))
-        ) : goals.length === 0 && loadError ? (
-          // R06.06 — not reached is not the same as empty
-          <LoadErrorState what="Hedefler" onRetry={() => { void loadGoals(); }} />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon="trophy-outline"
-            title="Henüz hedef yok"
-            hint={
-              activeTab === 'yearly' ? 'Bu yıl için hedeflerini ekle.' :
-              activeTab === 'quarterly' ? 'Bu çeyrek için hedeflerini ekle.' :
-              'Bu ay için hedeflerini ekle.'
-            }
-            ctaLabel={`${tabInfo.label} hedef ekle`}
-            onCta={openAdd}
-            color={tabInfo.color}
-          />
-        ) : (
-          filtered.map((g) => (
-            <GoalCard
-              key={g.id}
-              goal={g}
-              color={tabInfo.color}
-              onEdit={openEdit}
-              onDelete={handleDelete}
+          <ScrollView contentContainerStyle={s.scroll}>
+            <EditorialBanner
+              source={SCREEN_BANNERS.goalsSummit}
+              textureSource={TEXTURES.topographic}
+              eyebrow="STRATEJİ ZİRVESİ"
+              title="Hedefler"
+              subtitle="Yıllık, çeyreklik ve aylık kilometre taşların."
+              accentColor={tabInfo.color}
+              minHeight={90}
+              style={{ marginBottom: 14 }}
             />
-          ))
-        )}
-      </ScrollView>
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={[s.fab, { backgroundColor: tabInfo.color }]}
-        onPress={openAdd}
-        accessibilityRole="button"
-        accessibilityLabel={`Yeni ${tabInfo.label.toLowerCase()} hedef ekle`}
-      >
-        <Ionicons name="add" size={24} color={colors.white} />
-      </TouchableOpacity>
+            {/* Özet */}
+            <View style={s.summary}>
+              <Text style={s.summaryText}>
+                {filtered.length} hedef · {filtered.filter((g) => g.progress >= 100).length} tamamlandı
+              </Text>
+              {filtered.length > 0 && (
+                <Text style={[s.summaryPct, { color: tabInfo.color }]}>
+                  Ort. {Math.round(filtered.reduce((a, g) => a + g.progress, 0) / filtered.length)}%
+                </Text>
+              )}
+            </View>
+
+            {loading && goals.length === 0 ? (
+              // Hedefler yolda. Gelen şekil sabit: başlık satırı + yüzde + ilerleme
+              // çubuğu. Boş durumu göstermek yanıltıcı olurdu — henüz bilmiyoruz.
+              [0, 1, 2].map((i) => (
+                <View key={i} style={s.goalCard}>
+                  <View style={s.goalRow}>
+                    <View style={{ flex: 1 }}><Skeleton width="70%" height={15} /></View>
+                    <Skeleton width={34} height={15} />
+                  </View>
+                  <Skeleton height={6} />
+                </View>
+              ))
+            ) : goals.length === 0 && loadError ? (
+              // R06.06 — not reached is not the same as empty
+              <LoadErrorState what="Hedefler" onRetry={() => { void loadGoals(); }} />
+            ) : filtered.length === 0 ? (
+              <EmptyState
+                icon="trophy-outline"
+                title="Henüz hedef yok"
+                hint={
+                  activeTab === 'yearly' ? 'Bu yıl için hedeflerini ekle.' :
+                  activeTab === 'quarterly' ? 'Bu çeyrek için hedeflerini ekle.' :
+                  'Bu ay için hedeflerini ekle.'
+                }
+                ctaLabel={`${tabInfo.label} hedef ekle`}
+                onCta={openAdd}
+                color={tabInfo.color}
+              />
+            ) : (
+              <View style={s.goldenThreadSpine}>
+                {filtered.map((g) => (
+                  <GoalCard
+                    key={g.id}
+                    goal={g}
+                    color={tabInfo.color}
+                    onEdit={openEdit}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </View>
+            )}
+          </ScrollView>
+
+          {/* FAB */}
+          <TouchableOpacity
+            style={[s.fab, { backgroundColor: tabInfo.color }]}
+            onPress={openAdd}
+            accessibilityRole="button"
+            accessibilityLabel={`Yeni ${tabInfo.label.toLowerCase()} hedef ekle`}
+          >
+            <Ionicons name="add" size={24} color={colors.white} />
+          </TouchableOpacity>
         </>
       )}
 
@@ -308,7 +340,7 @@ export default function GoalsScreen() {
               {QUICK_PCT.map((p) => (
                 <TouchableOpacity
                   key={p}
-                  style={[s.quickBtn, progress === String(p) && { backgroundColor: tabInfo.color + '20', borderColor: tabInfo.color }]}
+                  style={[s.quickBtn, progress === String(p) && { backgroundColor: alphaHex(tabInfo.color, '20'), borderColor: tabInfo.color }]}
                   onPress={() => setProgress(String(p))}
                   accessibilityRole="radio"
                   accessibilityLabel={`İlerlemeyi yüzde ${p} yap`}
@@ -356,11 +388,11 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 4,
-    backgroundColor: colors.bg,
+    backgroundColor: hexA(colors.bg, 0.72),
   },
   viewSwitch: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
+    backgroundColor: hexA(colors.surface, 0.92),
     borderRadius: 12,
     padding: 3,
     borderWidth: 1,
@@ -389,7 +421,7 @@ const s = StyleSheet.create({
     color: colors.primary,
   },
 
-  tabs: { flexDirection: 'row', backgroundColor: colors.coolBlack850, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tabs: { flexDirection: 'row', backgroundColor: hexA(colors.coolBlack850, 0.88), borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
 
@@ -399,12 +431,18 @@ const s = StyleSheet.create({
   summaryText: { fontSize: 12, color: colors.textFaint },
   summaryPct: { fontSize: 13, fontWeight: '700' },
 
+  goldenThreadSpine: {
+    borderLeftWidth: 2,
+    borderLeftColor: hexA(colors.warning, 0.38),
+    paddingLeft: 12,
+  },
   goalCard: {
-    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
+    backgroundColor: hexA(colors.surface, 0.92), borderRadius: 14, padding: 14,
     borderWidth: 1, borderColor: colors.border, marginBottom: 10,
+    overflow: 'hidden', position: 'relative',
   },
   goalDone: { borderColor: alphaHex(colors.success, '30'), backgroundColor: alphaHex(colors.success, '08') },
-  goalRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
+  goalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   goalTitle: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '500', lineHeight: 20 },
   goalTitleDone: { textDecorationLine: 'line-through', color: colors.textFaint },
   goalPct: { fontSize: 15, fontWeight: '700' },

@@ -1,7 +1,8 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, space, radius, font, shadow, fontFamily, hexA } from '../../lib/tokens';
-import { Button } from '../ui';
+import { Button, EmblemMedallion } from '../ui';
+import { ONBOARDING_ART } from '../../lib/visualAssets';
 
 type Props = {
   /** The address the account was opened with — shown so a typo is catchable. */
@@ -58,7 +59,12 @@ export default function SignupPending({
   return (
     <View style={s.wrap} accessibilityRole="summary">
       <View style={s.mark}>
-        <Ionicons name="mail-open-outline" size={26} color={colors.primary} />
+        <EmblemMedallion
+          source={ONBOARDING_ART.authKeySeal}
+          size={56}
+          unlocked
+          accentColor={colors.primary}
+        />
       </View>
 
       <Text style={s.eyebrow}>KAYIT ALINDI</Text>

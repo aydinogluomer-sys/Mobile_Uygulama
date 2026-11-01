@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, font, space } from '../../lib/tokens';
 import OnboardingScaffold from '../../components/onboarding/OnboardingScaffold';
+import { ONBOARDING_ART } from '../../lib/visualAssets';
 import SelectableTile from '../../components/onboarding/SelectableTile';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import {
@@ -53,6 +54,7 @@ export default function OnboardingNeedsScreen() {
     <OnboardingScaffold
       step={1}
       totalSteps={3}
+      heroSource={ONBOARDING_ART.step1Compass}
       title="Seni biraz tanıyalım"
       subtitle="Hedeflerini bilirsek sana daha uygun bir başlangıç hazırlayabiliriz."
       primaryLabel="Devam et"

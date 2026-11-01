@@ -1,6 +1,7 @@
 /**
  * R02.03 / R02.05 — the outbox for the core records that are not tasks:
- * journal entries, notes, recovery plans and focus sessions.
+ * journal entries, notes, recovery plans, focus sessions, goals, projects,
+ * reading list items, OKR objectives/key results, and life area check-ins.
  *
  * Each entity has one transport. Every transport is idempotent, so the same
  * command delivered five times (a lost response, an app kill between the
@@ -23,11 +24,20 @@ import { classifyFailure, type Transport } from './outboxRunner';
 import { createOutboxChannel } from './outboxChannel';
 import { asyncStorageOutboxNs } from '../lib/outboxStorage';
 import type { DeliveryOutcome, OutboxCommand } from '../lib/outbox';
+import { clearReadCacheMemory } from '../lib/localReadCache';
 import { currentUser } from '../lib/session';
 import { fetchJournalEntry, upsertJournalEntry } from '../repositories/journalRepository';
 import { insertNoteWithId, updateNoteVersioned, fetchNoteRow, deleteNoteIfPresent, type NoteRow } from '../repositories/noteRepository';
 import { insertRecoveryPlanRow, updateRecoveryPlanRow, deleteRecoveryPlanIfPresent } from '../repositories/recoveryRepository';
 import { insertFocusSessionRow } from '../repositories/focusSessionRepository';
+import { insertGoalWithId, updateGoalOwned, deleteGoalIfPresent, type GoalKind } from '../repositories/goalRepository';
+import { insertProjectWithId, updateProjectOwned, deleteProjectIfPresent } from '../repositories/projectRepository';
+import { insertReadingItemWithId, updateReadingItemOwned, deleteReadingItemIfPresent, type ReadingStatus, type ReadingType } from '../repositories/readingListRepository';
+import {
+  insertObjectiveWithId, insertKeyResultWithId, updateKeyResultOwned,
+  deleteObjectiveIfPresent, deleteKeyResultIfPresent,
+} from '../repositories/okrRepository';
+import { upsertLifeAreaLogs } from '../repositories/lifeAreaRepository';
 
 export const CORE_OUTBOX_NAMESPACE = 'core';
 
@@ -115,15 +125,144 @@ export const focusSessionTransport: Transport = async (cmd: OutboxCommand) => {
   return classifyFailure(res);
 };
 
+export const goalTransport: Transport = async (cmd) => {
+  if (cmd.kind === 'create') {
+    const p = cmd.payload as {
+      kind: GoalKind;
+      title: string;
+      progress?: number;
+      year?: number | null;
+      quarter?: number | null;
+      month?: number | null;
+      archived?: boolean;
+    };
+    const res = await insertGoalWithId({ ...p, id: cmd.entityId }, cmd.userId);
+    if (res.ok || res.code === '23505') return applied();
+    return classifyFailure(res);
+  }
+  if (cmd.kind === 'update') {
+    const res = await updateGoalOwned(cmd.entityId, cmd.payload, cmd.userId);
+    if (!res.ok) return classifyFailure(res);
+    return res.data.exists ? applied() : { kind: 'gone' };
+  }
+  const res = await deleteGoalIfPresent(cmd.entityId, cmd.userId);
+  return res.ok ? applied() : classifyFailure(res);
+};
+
+export const projectTransport: Transport = async (cmd) => {
+  if (cmd.kind === 'create') {
+    const p = cmd.payload as {
+      name: string;
+      color?: string | null;
+      description?: string | null;
+      status?: string;
+    };
+    const res = await insertProjectWithId({ ...p, id: cmd.entityId }, cmd.userId);
+    if (res.ok || res.code === '23505') return applied();
+    return classifyFailure(res);
+  }
+  if (cmd.kind === 'update') {
+    const res = await updateProjectOwned(cmd.entityId, cmd.payload, cmd.userId);
+    if (!res.ok) return classifyFailure(res);
+    return res.data.exists ? applied() : { kind: 'gone' };
+  }
+  const res = await deleteProjectIfPresent(cmd.entityId, cmd.userId);
+  return res.ok ? applied() : classifyFailure(res);
+};
+
+export const readingItemTransport: Transport = async (cmd) => {
+  if (cmd.kind === 'create') {
+    const p = cmd.payload as {
+      title: string;
+      author?: string | null;
+      type: ReadingType;
+      status?: ReadingStatus;
+      url?: string | null;
+      notes?: string | null;
+      rating?: number | null;
+    };
+    const res = await insertReadingItemWithId({ ...p, id: cmd.entityId }, cmd.userId);
+    if (res.ok || res.code === '23505') return applied();
+    return classifyFailure(res);
+  }
+  if (cmd.kind === 'update') {
+    const res = await updateReadingItemOwned(cmd.entityId, cmd.payload, cmd.userId);
+    if (!res.ok) return classifyFailure(res);
+    return res.data.exists ? applied() : { kind: 'gone' };
+  }
+  const res = await deleteReadingItemIfPresent(cmd.entityId, cmd.userId);
+  return res.ok ? applied() : classifyFailure(res);
+};
+
+export const okrObjectiveTransport: Transport = async (cmd) => {
+  if (cmd.kind === 'create') {
+    const p = cmd.payload as { objective: string; year: number; quarter: number };
+    const res = await insertObjectiveWithId({ ...p, id: cmd.entityId }, cmd.userId);
+    if (res.ok || res.code === '23505') return applied();
+    return classifyFailure(res);
+  }
+  if (cmd.kind === 'delete') {
+    const res = await deleteObjectiveIfPresent(cmd.entityId, cmd.userId);
+    return res.ok ? applied() : classifyFailure(res);
+  }
+  return { kind: 'rejected', error: 'unsupported okr_objective command' };
+};
+
+export const keyResultTransport: Transport = async (cmd) => {
+  if (cmd.kind === 'create') {
+    const p = cmd.payload as {
+      okr_id: string;
+      title: string;
+      current_value?: number;
+      target_value: number;
+      unit?: string | null;
+    };
+    const res = await insertKeyResultWithId({ ...p, id: cmd.entityId }, cmd.userId);
+    if (res.ok || res.code === '23505') return applied();
+    return classifyFailure(res);
+  }
+  if (cmd.kind === 'update') {
+    const res = await updateKeyResultOwned(cmd.entityId, cmd.payload, cmd.userId);
+    if (!res.ok) return classifyFailure(res);
+    return res.data.exists ? applied() : { kind: 'gone' };
+  }
+  const res = await deleteKeyResultIfPresent(cmd.entityId, cmd.userId);
+  return res.ok ? applied() : classifyFailure(res);
+};
+
+export const lifeAreaLogTransport: Transport = async (cmd) => {
+  if (cmd.kind !== 'update' && cmd.kind !== 'create') {
+    return { kind: 'rejected', error: 'life_area_log only supports upsert' };
+  }
+  const values = cmd.payload as Record<string, number>;
+  const res = await upsertLifeAreaLogs(cmd.entityId, values, cmd.userId);
+  if (!res.ok) return classifyFailure(res);
+  return applied();
+};
+
 export const CORE_TRANSPORTS = {
   journal_entry: journalTransport,
   note: noteTransport,
   recovery_plan: recoveryPlanTransport,
   focus_session: focusSessionTransport,
+  goal: goalTransport,
+  project: projectTransport,
+  reading_item: readingItemTransport,
+  okr_objective: okrObjectiveTransport,
+  key_result: keyResultTransport,
+  life_area_log: lifeAreaLogTransport,
 } as const;
 
-export const coreOutbox = createOutboxChannel({
+const rawCoreOutbox = createOutboxChannel({
   storage: asyncStorageOutboxNs(CORE_OUTBOX_NAMESPACE),
   transports: CORE_TRANSPORTS,
   currentUserId: async () => (await currentUser())?.id ?? null,
 });
+
+export const coreOutbox = {
+  ...rawCoreOutbox,
+  reset() {
+    clearReadCacheMemory();
+    rawCoreOutbox.reset();
+  },
+};

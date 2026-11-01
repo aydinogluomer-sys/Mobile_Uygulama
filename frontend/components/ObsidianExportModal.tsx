@@ -11,6 +11,8 @@ import { useJournalStore } from '../store/journalStore';
 import { useNoteStore } from '../store/noteStore';
 import { todayLocal } from '../lib/date';
 import { haptic } from '../lib/haptics';
+import { EmbeddedFiligree } from './ui';
+import { DECOR } from '../lib/visualAssets';
 
 interface ObsidianExportModalProps {
   visible: boolean;
@@ -127,11 +129,12 @@ tags:
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.backdrop}>
         <View style={s.card}>
+          <EmbeddedFiligree source={DECOR.obsidianPrism} anchor="top-right" opacity={0.18} size={138} />
           {/* Header */}
           <View style={s.header}>
             <View style={s.headerLeft}>
               <View style={s.iconBox}>
-                <Ionicons name="document-text" size={22} color="#8b5cf6" />
+                <Ionicons name="document-text" size={22} color={colors.accent} />
               </View>
               <View>
                 <Text style={s.title}>Obsidian Markdown Aktarımı</Text>
@@ -173,9 +176,12 @@ tags:
             <Text style={s.previewLabel}>MARKDOWN ÖNİZLEME</Text>
             <Text style={s.charCount}>{markdownContent.length} karakter</Text>
           </View>
-          <ScrollView style={s.previewBox} contentContainerStyle={{ padding: space.sm }}>
-            <Text style={s.codeText}>{markdownContent}</Text>
-          </ScrollView>
+          <View style={s.previewWrap}>
+            <EmbeddedFiligree source={DECOR.obsidianPrism} anchor="bottom-right" opacity={0.12} size={110} />
+            <ScrollView style={s.previewBox} contentContainerStyle={{ padding: space.sm }}>
+              <Text style={s.codeText}>{markdownContent}</Text>
+            </ScrollView>
+          </View>
 
           {/* Alt Aksiyon Butonu */}
           <TouchableOpacity
@@ -211,6 +217,8 @@ const s = StyleSheet.create({
     paddingBottom: space.xxl,
     gap: space.md,
     maxHeight: '88%',
+    overflow: 'hidden',
+    position: 'relative',
   },
   header: {
     flexDirection: 'row',
@@ -229,7 +237,7 @@ const s = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: alphaHex('#8b5cf6', '20'),
+    backgroundColor: alphaHex(colors.accent, '20'),
   },
   title: {
     ...font.title,
@@ -290,12 +298,16 @@ const s = StyleSheet.create({
     fontSize: 10,
     color: colors.textFaint,
   },
-  previewBox: {
-    maxHeight: 240,
+  previewWrap: {
     backgroundColor: colors.bg,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  previewBox: {
+    maxHeight: 240,
   },
   codeText: {
     fontFamily: 'monospace',
@@ -309,7 +321,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#8b5cf6',
+    backgroundColor: colors.accent,
     borderRadius: radius.md,
     paddingVertical: space.md,
     marginTop: 4,

@@ -1,4 +1,4 @@
-import { colors, alphaHex } from '../../lib/tokens';
+import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { withEdgeDeadline } from '../../lib/edgeCall';
 import { newRequestId } from '../../services/focusPointService';
 import { useEffect, useMemo, useState } from 'react';
@@ -18,7 +18,8 @@ import { insightBasis, insightFacts, insightPrompt } from '../../lib/journalInsi
 import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../../lib/aiAttempt';
 import { decimalTR } from '../../lib/chartText';
 import { extractInvokeError } from '../../lib/aiInvoke';
-import { EmptyState } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmptyState, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const PERIODS: { key: InsightPeriod; label: string }[] = [
   { key: 'weekly', label: 'Haftalık' },
@@ -106,6 +107,7 @@ export default function JournalInsightsScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.journalScriptorium} textureSource={TEXTURES.neural} scrim={0.62} tintColor={colors.accent} />
       {/* FP barı */}
       <View style={[s.fpBar, lowCredits && s.fpBarWarn]}>
         <View style={s.fpLeft}>
@@ -140,6 +142,16 @@ export default function JournalInsightsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+        <EditorialBanner
+          source={SCREEN_BANNERS.journalAiMirror}
+          textureSource={TEXTURES.neural}
+          eyebrow="YANSIMA AYNASI"
+          title="Dönemsel Günlük İçgörüsü"
+          subtitle="Seçtiğin kayıtlardan tekrar eden temaları ve ruh hali örüntüsünü keşfet."
+          accentColor={colors.accent}
+          minHeight={94}
+          style={{ marginBottom: 12 }}
+        />
         <View style={s.metaRow}>
           <Text style={s.metaLabel}>{win.label}</Text>
           <Text style={s.metaCount}>{periodEntries.length} kayıt</Text>
@@ -156,6 +168,7 @@ export default function JournalInsightsScreen() {
           <>
             {/* İçgörü kartı */}
             <View style={s.card}>
+              <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={114} opacity={0.16} />
               <View style={s.cardHead}>
                 <View style={s.cardTitleWrap}>
                   <Ionicons name="sparkles" size={15} color="#8b5cf6" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
@@ -188,6 +201,7 @@ export default function JournalInsightsScreen() {
 
             {/* R09.05 — kaynak: hangi kayıtlar gidecek (kullanıcı seçer) ve uygulamanın kendi hesabı */}
             <View style={s.card}>
+              <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={114} opacity={0.16} />
               <Text style={s.cardTitle} accessibilityRole="header">{'AI’ya gidecek kayıtlar'}</Text>
               <Text style={s.cardMeta}>
                 {`Uygulamanın hesabı: ${facts.count} kayıt${facts.moodAvg !== null ? ` · ruh hali ort. ${decimalTR(facts.moodAvg)}` : ''}${facts.first ? ` · ${facts.first === facts.last ? facts.first : `${facts.first} – ${facts.last}`}` : ''}`}
@@ -269,7 +283,7 @@ const s = StyleSheet.create({
   metaCount: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
 
   card: {
-    backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: hexA(colors.surface, 0.92), borderRadius: 16, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', position: 'relative',
     padding: 16, marginBottom: 12,
   },
   cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },

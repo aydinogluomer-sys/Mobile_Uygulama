@@ -260,20 +260,24 @@ export function makeSupabaseMock(db: MockDb, opts?: { userId?: string | null }) 
        * whether a second write on the same day creates a duplicate row or
        * replaces the first.
        */
-      upsert(payload: Record<string, unknown>, opts?: { onConflict?: string }) {
+      upsert(payload: Record<string, unknown> | Record<string, unknown>[], opts?: { onConflict?: string }) {
         const keys = (opts?.onConflict ?? 'id').split(',').map((k) => k.trim());
+        const rowsIn = Array.isArray(payload) ? payload : [payload];
         const commit = () => {
           const failure = takeWriteFailure();
           if (failure) return failure;
-          const existing = db.rows[t].find((row) => keys.every((k) => row[k] === payload[k]));
-          if (existing) {
-            Object.assign(existing, payload);
-            return { data: existing, error: null };
-          }
-          const row = { id: 'r' + ++db.idSeq, created_at: 'now', ...payload } as MockRow;
-          db.rows[t].push(row);
-          db.inserts.push({ table: t, payload });
-          return { data: row, error: null };
+          const upserted = rowsIn.map((item) => {
+            const existing = db.rows[t].find((row) => keys.every((k) => row[k] === item[k]));
+            if (existing) {
+              Object.assign(existing, item);
+              return existing;
+            }
+            const row = { id: 'r' + ++db.idSeq, created_at: 'now', ...item } as MockRow;
+            db.rows[t].push(row);
+            db.inserts.push({ table: t, payload: item });
+            return row;
+          });
+          return { data: Array.isArray(payload) ? upserted : upserted[0], error: null };
         };
         const b: Record<string, unknown> = {
           select: () => ({

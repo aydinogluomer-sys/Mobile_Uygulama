@@ -9,7 +9,13 @@ import { Link, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { supabase } from '../../lib/supabase';
 import { colors, space, radius, font, shadow, fontFamily } from '../../lib/tokens';
-import { Button } from '../../components/ui';
+import {
+  AtmosphericScreenCanvas,
+  Button,
+  EmbeddedFiligree,
+  EmblemMedallion,
+} from '../../components/ui';
+import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
 
 type Step = 'email' | 'code';
@@ -111,12 +117,26 @@ export default function ForgotPasswordScreen() {
 
   return (
     <SafeAreaView style={s.safe}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.authPoster}
+        textureSource={TEXTURES.linen}
+        scrim={0.62}
+        tintColor={colors.primary}
+      />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
           <View style={s.brand}>
             <View style={s.mark}>
               <Text style={s.markLetter}>a</Text>
               <View style={s.markDot} />
+            </View>
+            <View style={{ marginBottom: space.md }}>
+              <EmblemMedallion
+                source={ONBOARDING_ART.authKeySeal}
+                size={56}
+                unlocked
+                accentColor={colors.primary}
+              />
             </View>
             <Text style={s.wordmark}>{step === 'email' ? 'Hesabını Kurtar' : 'Kodunu Gir'}</Text>
             <Text style={s.tagline}>
@@ -127,6 +147,8 @@ export default function ForgotPasswordScreen() {
           </View>
 
           <View style={s.panel}>
+            <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.11} />
+            <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" opacity={0.16} size={110} />
             <View style={s.stepRow} accessibilityLabel={`Adım ${step === 'email' ? '1' : '2'} / 3`}>
               {[1, 2, 3].map((item) => (
                 <View key={item} style={[s.stepDot, item <= (step === 'email' ? 1 : 2) && s.stepDotActive]} />
@@ -223,7 +245,10 @@ const s = StyleSheet.create({
   markDot: { position: 'absolute', top: 12, right: 12, width: 5, height: 5, borderRadius: 3, backgroundColor: colors.primary },
   wordmark: { ...font.display, color: colors.text, marginBottom: 8, textAlign: 'center' },
   tagline: { ...font.body, color: colors.textDim, textAlign: 'center', maxWidth: 380, lineHeight: 22 },
-  panel: { backgroundColor: colors.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, padding: 20, gap: space.md, ...shadow.md },
+  panel: {
+    backgroundColor: colors.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border,
+    padding: 20, gap: space.md, overflow: 'hidden', position: 'relative', ...shadow.md,
+  },
   stepRow: { flexDirection: 'row', gap: 6, marginBottom: 2 },
   stepDot: { flex: 1, height: 3, borderRadius: 2, backgroundColor: colors.border },
   stepDotActive: { backgroundColor: colors.primary },

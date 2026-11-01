@@ -1,4 +1,6 @@
 import { colors, alphaHex } from '../lib/tokens';
+import { EmbeddedFiligree, TexturedSurface } from './ui';
+import { DECOR, TEXTURES } from '../lib/visualAssets';
 import React, { useState } from 'react';
 import {
   View,
@@ -153,6 +155,7 @@ export default function ADHDTaskSplitter({
     >
       <View style={styles.overlay}>
         <View style={styles.content}>
+          <TexturedSurface source={TEXTURES.sacredGrid} textureOpacity={0.05} overlayOnly />
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <Ionicons name="flash" size={24} color={colors.warning} />
@@ -168,6 +171,7 @@ export default function ADHDTaskSplitter({
           </Text>
 
           <View style={styles.taskCard}>
+            <EmbeddedFiligree source={DECOR.cornerBlueprint} size={96} opacity={0.16} />
             <Text style={styles.taskTitle}>{task.title}</Text>
             {task.description && (
               <Text style={styles.taskDescription}>{task.description}</Text>
@@ -211,7 +215,7 @@ export default function ADHDTaskSplitter({
                 style={styles.optionButton}
                 onPress={() => handlePick(45)}
               >
-                <Ionicons name="hourglass-outline" size={24} color="#8b5cf6" />
+                <Ionicons name="hourglass-outline" size={24} color={colors.accent} />
                 <View style={styles.optionText}>
                   <Text style={styles.optionTitle}>Derin Odaklanma</Text>
                   <Text style={styles.optionSubtitle}>45 dakikalık bloklara böl</Text>
@@ -305,6 +309,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 24,
     minHeight: '70%',
+    overflow: 'hidden',
+    position: 'relative',
   },
   header: {
     flexDirection: 'row',
@@ -328,7 +334,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     lineHeight: 22,
   },
-  taskCard: {
+  taskCard: { overflow: 'hidden', position: 'relative',
     backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,

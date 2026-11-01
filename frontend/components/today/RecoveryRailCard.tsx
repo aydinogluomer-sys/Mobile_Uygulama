@@ -1,6 +1,9 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, space, radius, font, fontFamily } from '../../lib/tokens';
+import { DECOR, TEXTURES } from '../../lib/visualAssets';
+import TexturedSurface from '../ui/TexturedSurface';
+import EmbeddedFiligree from '../spatial/EmbeddedFiligree';
 import type { RecoveryPlan } from '../../lib/supabase';
 
 type Props = {
@@ -9,7 +12,7 @@ type Props = {
   onOpen: () => void;
 };
 
-/** Telafi rail kartı — son 7 günün telafi planı özeti (Atlas atl-rail-card deseni). */
+/** Telafi rail kartı — son 7 günün Kintsugi altın damarlı telafi planı özeti. */
 export default function RecoveryRailCard({ plans, today, onOpen }: Props) {
   const planned = plans.filter((p) => p.status === 'planned');
   const dueToday = planned.filter((p) => p.target_date === today).length;
@@ -29,9 +32,11 @@ export default function RecoveryRailCard({ plans, today, onOpen }: Props) {
 
   return (
     <View style={s.card}>
+      <TexturedSurface source={TEXTURES.kintsugi} textureOpacity={0.09} overlayOnly />
+      <EmbeddedFiligree source={DECOR.cornerKintsugiSeam} anchor="bottom-right" size={132} opacity={0.22} />
       <View style={s.head}>
         <Text style={s.title}>Telafi · son 7 gün</Text>
-        <Ionicons name="moon-outline" size={16} color={colors.textFaint} />
+        <Ionicons name="moon-outline" size={16} color={colors.warning} />
       </View>
       {planned.length === 0 && done === 0 ? (
         <Text style={s.calm}>Telafi planın yok — her şey yolunda.</Text>
@@ -53,7 +58,7 @@ export default function RecoveryRailCard({ plans, today, onOpen }: Props) {
 const s = StyleSheet.create({
   card: {
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-    borderRadius: radius.lg, padding: space.lg,
+    borderRadius: radius.lg, padding: space.lg, overflow: 'hidden', position: 'relative',
   },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.md },
   title: { ...font.h3, color: colors.text },

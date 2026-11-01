@@ -22,6 +22,7 @@ export default function LoadErrorState({ what, onRetry }: { what: string; onRetr
   return (
     <EmptyState
       icon="cloud-offline-outline"
+      illustration="offline"
       title={`${what} yüklenemedi`}
       hint="Bağlantı ya da erişim sorunu — kayıtların silinmedi. Bağlantı gelince tekrar dene."
       ctaLabel="Tekrar dene"

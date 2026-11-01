@@ -4,9 +4,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, alphaHex, radius, space, font } from '../lib/tokens';
-import { coreOutbox } from '../services/coreOutbox';
+import { flushAllOutboxes, getUnifiedOutboxSummary, subscribeUnifiedOutbox } from '../services/unifiedOutbox';
 import { haptic } from '../lib/haptics';
 import type { OutboxSummary } from '../lib/outbox';
+import { EmblemMedallion, TexturedSurface } from './ui';
+import { EMPTY_VIGNETTES, TEXTURES } from '../lib/visualAssets';
 
 interface OutboxStatusModalProps {
   visible: boolean;
@@ -14,15 +16,15 @@ interface OutboxStatusModalProps {
 }
 
 export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModalProps) {
-  const [summary, setSummary] = useState<OutboxSummary>(coreOutbox.sync());
+  const [summary, setSummary] = useState<OutboxSummary>(() => getUnifiedOutboxSummary());
   const [isFlushing, setIsFlushing] = useState(false);
   const [flushMessage, setFlushMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
-    setSummary(coreOutbox.sync());
-    const unsub = coreOutbox.subscribe(() => {
-      setSummary(coreOutbox.sync());
+    setSummary(getUnifiedOutboxSummary());
+    const unsub = subscribeUnifiedOutbox(() => {
+      setSummary(getUnifiedOutboxSummary());
     });
     return unsub;
   }, [visible]);
@@ -32,8 +34,8 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
     setIsFlushing(true);
     setFlushMessage(null);
     try {
-      await coreOutbox.flush();
-      setSummary(coreOutbox.sync());
+      await flushAllOutboxes();
+      setSummary(getUnifiedOutboxSummary());
       setFlushMessage('Tüm bekleyen işlemler sunucuya iletildi.');
     } catch {
       setFlushMessage('Senkronizasyon sırasında bir sorun oluştu.');
@@ -53,6 +55,7 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
     >
       <View style={s.backdrop}>
         <View style={s.card}>
+          <TexturedSurface source={TEXTURES.linen} textureOpacity={0.05} overlayOnly />
           {/* Header */}
           <View style={s.header}>
             <View style={s.headerLeft}>
@@ -93,7 +96,12 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
 
           {/* Durum Açıklaması */}
           <View style={s.infoBanner}>
-            <Ionicons name="information-circle-outline" size={18} color={colors.textDim} />
+            <EmblemMedallion
+              source={EMPTY_VIGNETTES.offline}
+              size={38}
+              unlocked
+              accentColor={isClean ? colors.success : colors.warning}
+            />
             <Text style={s.infoText}>
               İnternet bağlantınız koptuğunda aldığınız notlar, tamamlanan alışkanlıklar ve günlükler cihazda güvenle saklanır; bağlantı gelince otomatik eşitlenir.
             </Text>
@@ -142,6 +150,8 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     padding: space.lg,
     paddingBottom: space.xxl,
+    overflow: 'hidden',
+    position: 'relative',
     gap: space.md,
   },
   header: {

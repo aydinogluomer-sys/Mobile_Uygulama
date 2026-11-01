@@ -8,9 +8,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useProjectStore, type Project } from '../../store/projectStore';
 import { useTaskStore } from '../../store/taskStore';
 import InlineComposer from '../../components/InlineComposer';
-import { EmptyState, LoadErrorState } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmptyState, LoadErrorState, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
-import { colors } from '../../lib/tokens';
+import { colors, hexA } from '../../lib/tokens';
 import { projectProgress } from '../../lib/progressModel';
 
 const PRESET_COLORS = [
@@ -54,6 +55,7 @@ export default function ProjectsScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.planDrafting} textureSource={TEXTURES.sacredGrid} scrim={0.66} tintColor={colors.primary} />
       <FlatList
         data={projects}
         keyExtractor={(p) => p.id}
@@ -62,6 +64,18 @@ export default function ProjectsScreen() {
         ListFooterComponent={<LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />}
         style={s.list}
         contentContainerStyle={s.listContent}
+        ListHeaderComponent={
+          <EditorialBanner
+            source={SCREEN_BANNERS.projectsWorkshop}
+            textureSource={TEXTURES.sacredGrid}
+            eyebrow="PROJE ATÖLYESİ"
+            title="Projeler"
+            subtitle="Görevlerini anlamlı çıktılar etrafında grupla."
+            accentColor={colors.primary}
+            minHeight={90}
+            style={{ marginBottom: 12 }}
+          />
+        }
         ListEmptyComponent={loadError ? (
           // R06.06 — not reached is not the same as empty
           <LoadErrorState what="Projeler" onRetry={() => { void fetchProjects(); }} />
@@ -83,6 +97,7 @@ export default function ProjectsScreen() {
             accessibilityLabel={`${item.name}, ${taskCount(item.id)} açık görev, ${progressOf(item.id).label}`}
             accessibilityHint="Açmak için dokun, silmek için uzun bas"
           >
+            <EmbeddedFiligree source={DECOR.cornerBlueprint} size={92} opacity={0.14} />
             <View style={[s.colorDot, { backgroundColor: item.color ?? colors.primary }]} />
             <View style={s.rowBody}>
               <Text style={s.rowName}>{item.name}</Text>
@@ -246,7 +261,7 @@ const s = StyleSheet.create({
   listContent: { padding: 16, paddingBottom: 100 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: colors.surface, borderRadius: 14, padding: 16,
+    backgroundColor: hexA(colors.surface, 0.92), borderRadius: 14, padding: 16, overflow: 'hidden', position: 'relative',
     borderWidth: 1, borderColor: colors.border, marginBottom: 10,
   },
   colorDot: { width: 14, height: 14, borderRadius: 7 },

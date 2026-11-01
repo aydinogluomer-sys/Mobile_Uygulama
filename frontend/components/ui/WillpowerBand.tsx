@@ -1,7 +1,9 @@
 import { View, Text, StyleProp, ViewStyle, TouchableOpacity, type AccessibilityProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, space, font } from '../../lib/tokens';
+import { TEXTURES } from '../../lib/visualAssets';
 import ProgressBar from './ProgressBar';
+import TexturedSurface from './TexturedSurface';
 
 type WP = {
   used: number;
@@ -49,8 +51,9 @@ export default function WillpowerBand({ wp, onPress, style, ...a11y }: Props) {
       }
       accessibilityValue={{ min: 0, max: wp.daily_budget, now: wp.used }}
       {...a11y}
-      style={[{ flexDirection: 'row', alignItems: 'center', gap: space.md }, style]}
+      style={[{ flexDirection: 'row', alignItems: 'center', gap: space.md, position: 'relative', overflow: 'hidden' }, style]}
     >
+      <TexturedSurface source={TEXTURES.topographic} textureOpacity={0.05} overlayOnly />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 56 }}>
         <Ionicons name="flash" size={14} color={col} />
         <Text style={{ ...font.bodySm, color: col, fontWeight: '700' }}>

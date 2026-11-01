@@ -10,9 +10,19 @@
  * before JS redraws -- best effort there, stated in R06_ACCESSIBILITY.md.
  */
 import { useEffect, useState } from 'react';
-import { AppState, View, Text, StyleSheet, type AppStateStatus } from 'react-native';
+import { AppState, Platform, View, Text, StyleSheet, type AppStateStatus } from 'react-native';
 import { colors } from '../lib/tokens';
 import { loadReminderSettings } from '../services/reminderService';
+import { EmblemMedallion, TexturedSurface } from './ui';
+import { ONBOARDING_ART, TEXTURES } from '../lib/visualAssets';
+
+const decorativeA11y =
+  Platform.OS === 'web'
+    ? ({ 'aria-hidden': true } as Record<string, unknown>)
+    : {
+        accessibilityElementsHidden: true,
+        importantForAccessibility: 'no-hide-descendants' as const,
+      };
 
 /** Cover when the preference is on and the app is not active. */
 export function shouldCover(hideTitles: boolean, state: AppStateStatus): boolean {
@@ -34,13 +44,33 @@ export default function PrivacyCover() {
   }, []);
   if (!shouldCover(hide, state)) return null;
   return (
-    <View style={s.cover} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none">
+    <View style={s.cover} pointerEvents="none" {...decorativeA11y}>
+      <TexturedSurface source={TEXTURES.linen} textureOpacity={0.07} overlayOnly />
+      <EmblemMedallion
+        source={ONBOARDING_ART.privacyMonolith}
+        size={88}
+        unlocked
+        accentColor={colors.primary}
+      />
       <Text style={s.mark}>Aderyth</Text>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  cover: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', zIndex: 9999, elevation: 9999 },
+  cover: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    overflow: 'hidden',
+    zIndex: 9999,
+    elevation: 9999,
+  },
   mark: { color: colors.textFaint, fontSize: 18, letterSpacing: 2 },
 });

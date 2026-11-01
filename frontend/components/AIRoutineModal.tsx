@@ -13,7 +13,8 @@ import { ACTION_COST } from '../lib/subscription';
 import { ROUTINE_PACKS, type RoutinePack } from '../lib/routinePacks';
 import { MAX_ESTIMATED_MINUTES, type ProposalCompletion } from '../lib/routineProposal';
 import { DIFFICULTY_LEVELS } from '../lib/triage';
-import { Chip } from './ui';
+import { Chip, EmblemMedallion, TexturedSurface } from './ui';
+import { SCREEN_BANNERS, TEXTURES } from '../lib/visualAssets';
 
 interface Props {
   visible: boolean;
@@ -122,10 +123,17 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { overflow: 'hidden', position: 'relative' }]}>
+          <TexturedSurface source={TEXTURES.neural} textureOpacity={0.06} overlayOnly />
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
+              <EmblemMedallion
+                source={SCREEN_BANNERS.coachOracle}
+                size={34}
+                unlocked
+                accentColor={colors.accent}
+              />
               <Text style={styles.title}>Routine AI</Text>
               <View style={styles.betaBadge}>
                 <Text style={styles.betaText}>BETA</Text>

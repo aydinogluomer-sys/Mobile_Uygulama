@@ -7,14 +7,13 @@ import { useSpotifyStore } from '../../store/spotifyStore';
 import { FOCUS_PLAYLISTS, type FocusPlaylist } from '../../lib/spotifyFocus';
 import { haptic } from '../../lib/haptics';
 import { colors } from '../../lib/tokens';
-import { SPOTIFY_OAUTH_ENABLED } from '../../lib/featureGates';
 
 const SPOTIFY = '#1DB954';
 
 export default function FocusSpotifyCard() {
   const {
-    connection, status, error, nowPlaying, busy,
-    fetchStatus, connect, disconnect, fetchNowPlaying, play, pause, next, previous, playContext,
+    connection, nowPlaying, busy,
+    fetchStatus, disconnect, fetchNowPlaying, play, pause, next, previous, playContext,
   } = useSpotifyStore();
   const [hint, setHint] = useState('');
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

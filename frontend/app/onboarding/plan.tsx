@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, font, hexA, radius, space } from '../../lib/tokens';
 import OnboardingScaffold from '../../components/onboarding/OnboardingScaffold';
+import { ONBOARDING_ART } from '../../lib/visualAssets';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { DAYPART_LABELS, GOAL_LABELS, PACE_LABELS } from '../../lib/onboarding';
 import { DAYPART_ORDER } from '../../lib/starterPlan';
@@ -174,6 +175,7 @@ export default function OnboardingPlanScreen() {
     <OnboardingScaffold
       step={3}
       totalSteps={3}
+      heroSource={ONBOARDING_ART.step3Blueprint}
       title="Sana özel başlangıç planın ✨"
       primaryLabel="Bu planla başla"
       onPrimary={handleInstall}

@@ -18,7 +18,9 @@ import { makeupLoadPreview, LOAD_BANDS, type LoadBandKey } from '../../lib/capac
 import { recoveryBacklog, consecutiveMissedDue as consecutiveMissedDueOf } from '../../lib/recoveryBacklog';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton, FormError } from '../../components/ui';
+import { Image } from 'expo-image';
+import { AtmosphericScreenCanvas, Card, ChapterDivider, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton, FormError, EditorialBanner, EmbeddedFiligree, GoldMendShimmer } from '../../components/ui';
+import { BENTO_ART, CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { todayLocal } from '../../lib/date';
 import { logsForHabitsSince as fetchHabitLogsForHabitsSince } from '../../services/habitService';
 import { completePlanWithMakeup, makeupNeedsValue, makeupSuggestedValue } from '../../services/recoveryService';
@@ -45,6 +47,12 @@ type StreakMap = Record<string, number>;
 // bire bir ayni sey DEGIL: 'mini' ("2 dk minimum") v2'de karsiligi olmayan
 // bir kavramdi ve adaptor onu 'skip'e -- yani "telafi etme"ye -- esliyordu.
 // Artik dort secenek de kalici sozlukte adlandirildigi gibi.
+const STRATEGY_ART: Record<RecoveryStrategy, (typeof BENTO_ART)[keyof typeof BENTO_ART]> = {
+  complete_today: BENTO_ART.recoveryToday,
+  push_tomorrow: BENTO_ART.recoveryTomorrow,
+  split_two_days: BENTO_ART.recoverySplit,
+  skip: BENTO_ART.recoveryRelease,
+};
 export const STRATEGY_META: Record<RecoveryStrategy, { label: string; desc: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
   complete_today: { label: 'Bugün Tamamla', desc: 'Tamamını bugün yap', icon: 'refresh', color: colors.success },
   push_tomorrow: { label: 'Yarına Aktar', desc: 'İleri bir güne taşı', icon: 'calendar-outline', color: colors.primaryBright },
@@ -417,6 +425,7 @@ export default function RecoveryScreen() {
   if (loading) {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.kintsugiAtelier} textureSource={TEXTURES.kintsugi} scrim={0.62} tintColor={colors.warning} />
         <View style={s.content}>
           <View style={s.hero}>
             <Skeleton width={64} height={64} circle />
@@ -438,6 +447,7 @@ export default function RecoveryScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.kintsugiAtelier} textureSource={TEXTURES.kintsugi} scrim={0.62} tintColor={colors.warning} />
       <ScrollView
         contentContainerStyle={s.content}
         showsVerticalScrollIndicator={false}
@@ -445,9 +455,18 @@ export default function RecoveryScreen() {
       >
         {/* Hero */}
         <View style={s.hero}>
-          <IconCircle icon="refresh-outline" color={colors.warning} size={64} iconSize={32} radiusKey="lg" />
-          <Text style={s.heroTitle}>Telafi</Text>
-          <Text style={s.heroSub}>Bir kez kaçırmak olur — ikinci kez kaçırma. Toparlanma zamanı.</Text>
+          <EditorialBanner
+            source={SCREEN_BANNERS.recoveryKintsugi}
+            textureSource={TEXTURES.kintsugi}
+            eyebrow="ŞEFKATLİ ONARIM"
+            title="Telafi"
+            subtitle="Bir kez kaçırmak olur — ikinci kez kaçırma. Toparlanma zamanı."
+            accentColor={colors.warning}
+            minHeight={112}
+            style={{ alignSelf: 'stretch' }}
+          />
+
+
         </View>
 
         {/* Özet şerit */}
@@ -481,6 +500,7 @@ export default function RecoveryScreen() {
           </Card>
         )}
 
+        {!allClear && <ChapterDivider source={DECOR.dividerSundial} label="KINTSUGI ONARIM ATÖLYESİ" />}
         {/* Telafi Planın — aktif planlar */}
         {totalPlans > 0 && (
           <View style={s.section}>
@@ -490,7 +510,9 @@ export default function RecoveryScreen() {
               const m = STRATEGY_META[p.strategy];
               const overdue = p.target_date < today;
               return (
-                <Card key={p.id} padding="md" style={{ marginBottom: space.sm }} selected={overdue} accent={colors.error}>
+                <Card key={p.id} padding="md" style={{ marginBottom: space.sm, overflow: 'hidden', position: 'relative' }} selected={overdue} accent={colors.error}>
+                  <EmbeddedFiligree source={DECOR.cornerKintsugiSeam} size={108} opacity={0.18} />
+                  <GoldMendShimmer triggerKey={totalPlans} />
                   <View style={s.habitRow}>
                     <IconCircle icon={(h?.icon ?? 'star-outline') as any} color={h?.color ?? colors.primary} size={40} radiusKey="sm" />
                     <View style={{ flex: 1 }}>
@@ -547,7 +569,8 @@ export default function RecoveryScreen() {
               const isLogging = loggingId === key;
               const streak = streaks[h.id] ?? 0;
               return (
-                <Card key={key} padding="md" style={{ marginBottom: space.sm }}>
+                <Card key={key} padding="md" style={{ marginBottom: space.sm, overflow: 'hidden', position: 'relative' }}>
+                  <EmbeddedFiligree source={DECOR.cornerKintsugiSeam} size={104} opacity={0.16} />
                   <View style={s.habitRow}>
                     <IconCircle icon={(h.icon ?? 'star-outline') as any} color={h.color ?? colors.primary} size={40} radiusKey="sm" />
                     <View style={{ flex: 1 }}>
@@ -711,6 +734,7 @@ export default function RecoveryScreen() {
                       accessibilityLabel={`${m.label} — ${m.desc}`}
                       accessibilityState={{ checked: sel, selected: sel }}
                     >
+                      <Image source={STRATEGY_ART[k]} style={s.stratArt} contentFit="cover" cachePolicy="memory-disk" />
                       <Ionicons name={m.icon} size={18} color={m.color} />
                       <Text style={[s.stratLabel, sel && { color: m.color }]}>{m.label}</Text>
                       <Text style={s.stratDesc}>{m.desc}</Text>
@@ -794,7 +818,7 @@ const s = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { padding: space.xl, paddingBottom: space.hh },
 
-  hero: { alignItems: 'center', paddingVertical: space.lg, gap: 8, marginBottom: space.lg },
+  hero: { alignItems: 'center', gap: 8, marginBottom: space.lg },
   heroTitle: { ...font.title, color: colors.text },
   heroSub: { ...font.bodySm, color: colors.textFaint, textAlign: 'center', maxWidth: 280, lineHeight: 19 },
 
@@ -858,7 +882,8 @@ const s = StyleSheet.create({
   loadPreviewLabel: { fontSize: 10, letterSpacing: 1, color: colors.textFaint, fontWeight: '700' },
   loadPreviewValue: { fontSize: 14, color: colors.text, fontWeight: '700' },
   loadPreviewHint: { fontSize: 12, color: colors.warning, marginTop: 4, lineHeight: 17 },
-  stratCard: {
+  stratArt: { width: '100%', height: 54, borderRadius: radius.sm, marginBottom: 4, opacity: 0.92 },
+  stratCard: { overflow: 'hidden', position: 'relative',
     width: '48%', backgroundColor: colors.bgElevated, borderRadius: radius.md, padding: space.md,
     borderWidth: 1, borderColor: colors.border, gap: 4,
   },

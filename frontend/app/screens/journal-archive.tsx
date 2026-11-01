@@ -11,7 +11,9 @@ import MoodHabitCard from '../../components/MoodHabitCard';
 import { useJournalStore, JournalEntry } from '../../store/journalStore';
 import { moodMeta } from '../../lib/journalMoods';
 import { computeJournalStats } from '../../lib/journalStats';
-import { EmptyState } from '../../components/ui';
+import { Image } from 'expo-image';
+import { AtmosphericScreenCanvas, ChapterDivider, EmptyState, EditorialBanner, EmbeddedFiligree, TexturedSurface } from '../../components/ui';
+import { CANVASES, DECOR, getMoodSeal, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 // R07.03 — search and a month calendar over the same entries.
 import { searchEntries, monthGrid, shiftMonth } from '../../lib/journalBrowse';
 import { todayLocal } from '../../lib/date';
@@ -65,9 +67,22 @@ export default function JournalArchiveScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.journalScriptorium} textureSource={TEXTURES.archivalPaper} scrim={0.58} tintColor={colors.warning} />
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         {/* Rapor kartı */}
+        <EditorialBanner
+          source={SCREEN_BANNERS.journalArchive}
+          textureSource={TEXTURES.archivalPaper}
+          eyebrow="ARŞİV KÜTÜPHANESİ"
+          title="Geçmiş Sayfalar"
+          subtitle="Yazdığın tüm günlerin kronolojik defteri."
+          accentColor={colors.warning}
+          minHeight={94}
+          style={{ marginBottom: 14 }}
+        />
         <View style={s.report}>
+          <TexturedSurface source={TEXTURES.archivalPaper} textureOpacity={0.08} overlayOnly />
+          <EmbeddedFiligree source={DECOR.cornerBotanical} size={112} opacity={0.16} />
           <Text style={s.reportTitle}>DEFTERİN</Text>
           <View style={s.statRow}>
             <Stat value={`${stats.total}`} label="kayıt" />
@@ -150,12 +165,14 @@ export default function JournalArchiveScreen() {
           <EmptyState
             variant="editorial"
             icon="book-outline"
+            illustration="journal"
             title="Henüz günlük kaydın yok"
             hint="Bir şeyler yazdıkça eski sayfaların burada birikecek."
           />
         ) : (
           sections.map((sec) => (
             <View key={sec.key} style={s.section}>
+              <ChapterDivider source={DECOR.dividerSundial} />
               <Text style={s.sectionLabel}>{sec.label.toLocaleUpperCase('tr-TR')}</Text>
               {sec.items.map((e) => {
                 const dt = parseDate(e.date);
@@ -176,6 +193,7 @@ export default function JournalArchiveScreen() {
                     accessibilityHint="Bu günün defter sayfasını açar"
                   >
                     {/* sol tarih şeridi */}
+                    <EmbeddedFiligree source={DECOR.cornerBotanical} size={84} opacity={0.12} />
                     <View style={s.spine}>
                       <Text style={s.spineDay}>{dt.getDate()}</Text>
                       <Text style={s.spineDow}>{DAYS[dt.getDay()]}</Text>
@@ -197,7 +215,7 @@ export default function JournalArchiveScreen() {
                       </View>
                       <Text style={s.preview} numberOfLines={3}>{e.content}</Text>
                     </View>
-                    {m && <Text style={s.mood}>{m.emoji}</Text>}
+                    {e.mood ? <Image source={getMoodSeal(e.mood)} style={s.moodSeal} contentFit="contain" cachePolicy="memory-disk" /> : null}
                   </TouchableOpacity>
                 );
               })}
@@ -238,7 +256,7 @@ const s = StyleSheet.create({
 
   report: {
     backgroundColor: colors.paperSurface, borderRadius: 16, borderWidth: 1, borderColor: colors.paperBorder,
-    padding: 16, marginBottom: 18,
+    padding: 16, marginBottom: 18, overflow: 'hidden', position: 'relative',
   },
   reportTitle: { fontSize: 11, fontWeight: '800', color: colors.paperLabel, letterSpacing: 1.5, marginBottom: 12 },
   statRow: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -252,7 +270,7 @@ const s = StyleSheet.create({
   page: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
     backgroundColor: colors.paperSurface, borderRadius: 12, borderWidth: 1, borderColor: colors.paperBorder,
-    padding: 14, marginBottom: 8,
+    padding: 14, marginBottom: 8, overflow: 'hidden', position: 'relative',
   },
   spine: {
     alignItems: 'center', minWidth: 38,
@@ -275,6 +293,7 @@ const s = StyleSheet.create({
   },
   aiChipText: { fontSize: 10, color: '#ec4899', fontWeight: '700' },
   preview: { fontSize: 13, color: colors.paperTextDim, lineHeight: 19 },
+  moodSeal: { width: 28, height: 28 },
   mood: { fontSize: 20 },
 
   empty: { alignItems: 'center', gap: 12, paddingTop: 50, paddingHorizontal: 30 },

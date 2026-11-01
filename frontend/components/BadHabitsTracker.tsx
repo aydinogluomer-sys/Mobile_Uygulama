@@ -19,6 +19,8 @@ import {
   listBadHabits, createBadHabit, savingsFor, type Savings,
 } from '../services/badHabitService';
 import type { BadHabitRow } from '../repositories/badHabitRepository';
+import { EmblemMedallion, TexturedSurface } from './ui';
+import { BAD_HABIT_SHIELD, TEXTURES } from '../lib/visualAssets';
 
 const URGE_STORAGE_KEY = 'aderyth.deflected_urges_count';
 
@@ -150,7 +152,14 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
         ) : (
           <ScrollView style={styles.content}>
             {/* One Sec / Opal İlhamlı: 60 Saniye Dürtü Kalkanı (Urge Surfing) */}
-            <View style={styles.urgeBanner}>
+            <View style={[styles.urgeBanner, { overflow: 'hidden', position: 'relative' }]}>
+              <TexturedSurface source={TEXTURES.kintsugi} textureOpacity={0.06} overlayOnly />
+              <EmblemMedallion
+                source={BAD_HABIT_SHIELD}
+                size={48}
+                unlocked
+                accentColor={colors.teal}
+              />
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Ionicons name="shield-checkmark" size={18} color={colors.teal} />

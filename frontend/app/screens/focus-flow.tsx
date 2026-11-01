@@ -2,6 +2,7 @@ import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import FocusFlowView from '../../components/FocusFlowView';
+import { colors } from '../../lib/tokens';
 import {
   FOCUS_FLOW_CATEGORIES,
   type FocusFlowCategoryKey,
@@ -29,7 +30,6 @@ export default function FocusFlowScreen() {
 const s = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#09090d',
+    backgroundColor: colors.bgSunk,
   },
 });
-

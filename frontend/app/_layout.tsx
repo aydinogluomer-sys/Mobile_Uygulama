@@ -174,6 +174,7 @@ export default function RootLayout() {
       if (next === 'active') {
         void flushPendingSync();
         void useTaskStore.getState().flush();
+        void coreOutbox.flush();
         // R04.04 — the plan is built from local dates at run time, so this
         // also re-plans after a timezone or DST change.
         void reconcileReminders(() => useHabitStore.getState().habits);

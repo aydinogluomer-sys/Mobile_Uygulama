@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, space, radius } from '../lib/tokens';
+import { TexturedSurface } from './ui';
+import { TEXTURES } from '../lib/visualAssets';
 import { addDaysLocal, parseLocalDate, ymd } from '../lib/date';
 import { EXCUSE_EFFECTS, type PauseDraft, type PauseKind } from '../lib/habitPauses';
 
@@ -69,6 +71,7 @@ export default function TimeOffSheet({ visible, kind, habitName, today, availabl
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.backdrop}>
         <View style={s.sheet}>
+          <TexturedSurface source={TEXTURES.botanical} textureOpacity={0.05} overlayOnly />
           <View style={s.head}>
             <Text style={s.title} accessibilityRole="header">{fx.title}{habitName ? ` · ${habitName}` : ''}</Text>
             <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Kapat">
@@ -135,7 +138,7 @@ export default function TimeOffSheet({ visible, kind, habitName, today, availabl
 
 const s = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
-  sheet: { maxHeight: '88%', backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg },
+  sheet: { maxHeight: '88%', backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, overflow: 'hidden', position: 'relative' },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.sm },
   title: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text },
   span: { fontSize: 13, color: colors.textDim },

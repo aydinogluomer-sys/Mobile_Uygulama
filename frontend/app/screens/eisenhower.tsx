@@ -1,8 +1,8 @@
-import { colors, alphaHex } from '../../lib/tokens';
+import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Modal, FlatList,
+  Modal, FlatList, type ImageSourcePropType,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,22 +11,31 @@ import { useTaskStore, Task, QuadrantType } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import type { Habit } from '../../lib/supabase';
 import { computeTriage, TRIAGE_META, type Triage } from '../../lib/triage';
+import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
-type Quadrant = { key: QuadrantType; label: string; action: string; color: string; icon: string };
+type Quadrant = {
+  key: QuadrantType;
+  label: string;
+  action: string;
+  color: string;
+  icon: string;
+  relief: ImageSourcePropType;
+};
 
 const QUADRANTS: Quadrant[] = [
-  { key: 'UI', label: 'YAP', action: 'Acil + Önemli', color: colors.error, icon: 'flame-outline' },
-  { key: 'NI', label: 'PLANLA', action: 'Önemli, Acil Değil', color: colors.accent, icon: 'calendar-outline' },
-  { key: 'UN', label: 'DELEGE ET', action: 'Acil, Önemsiz', color: colors.warning, icon: 'people-outline' },
-  { key: 'NN', label: 'SİL', action: 'Ne Acil Ne Önemli', color: colors.textFaint, icon: 'trash-outline' },
+  { key: 'UI', label: 'YAP', action: 'Acil + Önemli', color: colors.error, icon: 'flame-outline', relief: DECOR.quadrantFlame },
+  { key: 'NI', label: 'PLANLA', action: 'Önemli, Acil Değil', color: colors.accent, icon: 'calendar-outline', relief: DECOR.quadrantCompass },
+  { key: 'UN', label: 'DELEGE ET', action: 'Acil, Önemsiz', color: colors.warning, icon: 'people-outline', relief: DECOR.quadrantHourglass },
+  { key: 'NN', label: 'SİL', action: 'Ne Acil Ne Önemli', color: colors.textFaint, icon: 'trash-outline', relief: DECOR.quadrantFeather },
 ];
 
 // Alışkanlık matrisi — görev kadranlarıyla aynı 2×2 konumlar, triaj eşlemesi
-const TRIAGE_CELLS: { key: Triage; action: string }[] = [
-  { key: 'do_now', action: 'Acil + Önemli' },
-  { key: 'plan', action: 'Önemli, Acil Değil' },
-  { key: 'wait_watch', action: 'Acil, Önemsiz' },
-  { key: 'eliminate', action: 'Ne Acil Ne Önemli' },
+const TRIAGE_CELLS: { key: Triage; action: string; relief: ImageSourcePropType }[] = [
+  { key: 'do_now', action: 'Acil + Önemli', relief: DECOR.quadrantFlame },
+  { key: 'plan', action: 'Önemli, Acil Değil', relief: DECOR.quadrantCompass },
+  { key: 'wait_watch', action: 'Acil, Önemsiz', relief: DECOR.quadrantHourglass },
+  { key: 'eliminate', action: 'Ne Acil Ne Önemli', relief: DECOR.quadrantFeather },
 ];
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -45,7 +54,8 @@ function QuadrantBox({
   onAssign: (task: Task) => void;
 }) {
   return (
-    <View style={[s.quadrant, { borderColor: q.color + '40' }]}>
+    <View style={[s.quadrant, { borderColor: alphaHex(q.color, '40') }]}>
+      <EmbeddedFiligree source={q.relief} anchor="bottom-right" size={118} opacity={0.22} />
       <View style={s.qHeader}>
         <Ionicons name={q.icon as any} size={14} color={q.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         <Text style={[s.qLabel, { color: q.color }]}>{q.label}</Text>
@@ -80,13 +90,15 @@ function HabitQuadrantBox({
   onTap: () => void;
 }) {
   const m = TRIAGE_META[triage];
+  const cell = TRIAGE_CELLS.find((c) => c.key === triage);
   return (
-    <View style={[s.quadrant, { borderColor: m.color + '40' }]}>
+    <View style={[s.quadrant, { borderColor: alphaHex(m.color, '40') }]}>
+      {cell ? <EmbeddedFiligree source={cell.relief} anchor="bottom-right" size={118} opacity={0.22} /> : null}
       <View style={s.qHeader}>
         <Text style={{ fontSize: 13 }}>{m.emoji}</Text>
         <Text style={[s.qLabel, { color: m.color }]}>{m.label}</Text>
       </View>
-      <Text style={s.qAction}>{TRIAGE_CELLS.find((c) => c.key === triage)?.action}</Text>
+      <Text style={s.qAction}>{cell?.action}</Text>
       {habits.length === 0 ? (
         <Text style={s.qEmpty}>— boş —</Text>
       ) : (
@@ -143,7 +155,24 @@ export default function EisenhowerScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.planDrafting}
+        textureSource={TEXTURES.sacredGrid}
+        scrim={0.64}
+        tintColor={colors.accent}
+      />
       <ScrollView contentContainerStyle={s.scroll}>
+
+        <EditorialBanner
+          source={SCREEN_BANNERS.eisenhowerCompass}
+          textureSource={TEXTURES.sacredGrid}
+          eyebrow="ÖNCELİK PUSULASI"
+          title="Eisenhower Matrisi"
+          subtitle="Acil ile önemliyi ayır; enerjini doğru kadrana yönlendir."
+          accentColor={colors.accent}
+          minHeight={90}
+          style={{ marginBottom: 12 }}
+        />
 
         {/* Mod seçici */}
         <View style={s.toggle}>
@@ -184,7 +213,7 @@ export default function EisenhowerScreen() {
           </TouchableOpacity>
         )}
 
-        {/* 2x2 Matrix */}
+        {/* 2x2 Gravürlü Pirinç Pusula Matrisi */}
         <View style={s.matrix}>
           <View style={s.row}>
             {isTasks ? (
@@ -211,6 +240,13 @@ export default function EisenhowerScreen() {
                 <HabitQuadrantBox triage="eliminate" habits={byTriage('eliminate')} onTap={() => router.push('/tabs/habits')} />
               </>
             )}
+          </View>
+
+          {/* 4 kadranın kesişim noktasındaki pirinç pusula rozeti */}
+          <View style={s.crosshairWrap} pointerEvents="none">
+            <View style={s.crosshairBadge}>
+              <Ionicons name="compass-outline" size={16} color={colors.warning} />
+            </View>
           </View>
         </View>
 
@@ -312,7 +348,7 @@ const s = StyleSheet.create({
   toggle: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   toggleBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 10,
+    backgroundColor: hexA(colors.surface, 0.92), borderRadius: 12, paddingVertical: 10,
     borderWidth: 1, borderColor: colors.border,
   },
   toggleBtnSel: { backgroundColor: colors.accent, borderColor: colors.accent },
@@ -328,12 +364,28 @@ const s = StyleSheet.create({
   unassignedText: { flex: 1, fontSize: 13, color: colors.warning },
   unassignedLink: { fontSize: 13, color: colors.warning, fontWeight: '700' },
 
-  matrix: { gap: 10 },
+  matrix: { gap: 10, position: 'relative' },
   row: { flexDirection: 'row', gap: 10 },
+  crosshairWrap: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  crosshairBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.bgSunk,
+    borderWidth: 1,
+    borderColor: hexA(colors.warning, 0.55),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   quadrant: {
-    flex: 1, minHeight: 160, backgroundColor: colors.surface,
+    flex: 1, minHeight: 168, backgroundColor: hexA(colors.surface, 0.92),
     borderRadius: 14, padding: 12, borderWidth: 1,
+    overflow: 'hidden', position: 'relative',
   },
   qHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   qLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
@@ -342,7 +394,7 @@ const s = StyleSheet.create({
 
   taskChip: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
-    backgroundColor: colors.coolBlack850, borderRadius: 8, padding: 8, marginBottom: 6,
+    backgroundColor: hexA(colors.coolBlack850, 0.9), borderRadius: 8, padding: 8, marginBottom: 6,
   },
   dot: { width: 7, height: 7, borderRadius: 4, marginTop: 3, flexShrink: 0 },
   taskTitle: { flex: 1, fontSize: 12, color: colors.neutral300, lineHeight: 16 },

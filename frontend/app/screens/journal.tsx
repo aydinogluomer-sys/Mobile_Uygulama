@@ -1,4 +1,5 @@
-import { colors } from '../../lib/tokens';
+import { colors, hexA, alphaHex } from '../../lib/tokens';
+import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -18,6 +19,8 @@ import { draftDiffers, draftKey, extractTags, toggleListLine, wrapSelection, typ
 import MoodCheckins from '../../components/MoodCheckins';
 import ConflictChoice from '../../components/ConflictChoice';
 import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
+import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFiligree, TexturedSurface } from '../../components/ui';
+import { CANVASES, DECOR, getMoodSeal, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const PROMPTS = [
   'Bugün ne için minnettarsın?',
@@ -113,6 +116,7 @@ export default function JournalScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.journalScriptorium} textureSource={TEXTURES.archivalPaper} scrim={0.58} tintColor={colors.warning} />
       <Stack.Screen
         options={{
           headerRight: () => (
@@ -131,6 +135,16 @@ export default function JournalScreen() {
       />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+          <EditorialBanner
+            source={SCREEN_BANNERS.journalDesk}
+            textureSource={TEXTURES.archivalPaper}
+            eyebrow="GÜNLÜK & YANSIMA"
+            title="Günün Defteri"
+            subtitle="Zihnini kağıda dök; düşüncelerin bu cihazda güvende."
+            accentColor={colors.primary}
+            minHeight={96}
+            style={{ marginBottom: 14 }}
+          />
           {conflicts().some((c) => c.entityId === selectedDate) && (
             <ConflictChoice what="Bu günün kaydı" busy={resolving}
               onChoose={async (choice) => { setResolving(true); await resolveConflict(selectedDate, choice); setResolving(false); }} />
@@ -179,7 +193,7 @@ export default function JournalScreen() {
                   accessibilityLabel={`Ruh hali: ${m.label}`}
                   accessibilityState={{ selected: mood === m.value, checked: mood === m.value }}
                 >
-                  <Text style={s.moodEmoji}>{m.emoji}</Text>
+                  <Image source={getMoodSeal(m.value)} style={s.moodSeal} contentFit="contain" cachePolicy="memory-disk" />
                   <Text style={[s.moodLabel, mood === m.value && { color: m.color }]}>{m.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -188,6 +202,9 @@ export default function JournalScreen() {
 
           {/* Yazma alanı */}
           <View style={s.writeCard}>
+            <TexturedSurface source={TEXTURES.archivalPaper} textureOpacity={0.08} overlayOnly />
+            <EmbeddedFiligree source={DECOR.cornerBotanical} size={118} opacity={0.16} />
+            <View style={s.parchmentMargin} pointerEvents="none" />
             {todayEntry?.ai_summary && (
               <View style={s.aiChip}>
                 <Ionicons name="sparkles" size={11} color="#ec4899" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
@@ -267,6 +284,7 @@ export default function JournalScreen() {
           {/* Geçmiş kayıtlar */}
           {entries.filter((e) => e.date !== today).length > 0 && (
             <View style={s.historySection}>
+              <ChapterDivider source={DECOR.dividerSundial} label="ARŞİV YAPRAKLARI" />
               <View style={s.historyHeader}>
                 <Text style={s.historyTitle}>GEÇMİŞ KAYITLAR</Text>
                 <TouchableOpacity
@@ -301,7 +319,7 @@ export default function JournalScreen() {
                     <Text style={s.historyPreview} numberOfLines={2}>{e.content}</Text>
                   </View>
                   {e.mood && (
-                    <Text style={s.historyMood}>{MOODS.find((m) => m.value === e.mood)?.emoji}</Text>
+                    <Image source={getMoodSeal(e.mood)} style={s.historySeal} contentFit="contain" cachePolicy="memory-disk" />
                   )}
                 </TouchableOpacity>
               ))}
@@ -346,10 +364,13 @@ const s = StyleSheet.create({
     alignItems: 'center', gap: 4, padding: 10, borderRadius: 12,
     borderWidth: 1, borderColor: colors.border, flex: 1, marginHorizontal: 2,
   },
+  moodSeal: { width: 34, height: 34 },
+  historySeal: { width: 28, height: 28 },
+  parchmentMargin: { position: 'absolute', top: 0, bottom: 0, left: 18, width: 1, backgroundColor: alphaHex(colors.warning, '35') },
   moodEmoji: { fontSize: 22 },
   moodLabel: { fontSize: 10, color: colors.textFaint },
 
-  writeCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
+  writeCard: { backgroundColor: hexA(colors.paperSurface, 0.94), borderRadius: 16, padding: 16, paddingLeft: 28, borderWidth: 1, borderColor: colors.paperBorder, marginBottom: 16, overflow: 'hidden', position: 'relative' },
   aiChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start',
     backgroundColor: '#ec489918', borderColor: '#ec489940', borderWidth: 1,

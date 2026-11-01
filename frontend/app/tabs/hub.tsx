@@ -10,16 +10,19 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTaskStore } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useRoutineStore } from '../../store/routineStore';
-import { colors, space, radius, font, alphaHex } from '../../lib/tokens';
+import { colors, space, radius, font, alphaHex, hexA } from '../../lib/tokens';
 import { todayLocal } from '../../lib/date';
 import { haptic } from '../../lib/haptics';
 import AIRoutineModal from '../../components/AIRoutineModal';
 import FocusFlowView from '../../components/FocusFlowView';
+import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree, EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { BENTO_ART, CANVASES, DECOR, getPackCover, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import {
   EXPLORE_CATEGORIES,
   EXPLORE_COLLECTIONS,
@@ -61,7 +64,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'OKR & Key Results',
     subtitle: 'Çeyreklik hedefler ve ölçülebilir sonuçlar',
     icon: 'flag',
-    color: '#ef4444',
+    color: colors.error,
     route: '/screens/okr',
     category: 'strategy',
     featured: true,
@@ -71,7 +74,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Hedefler',
     subtitle: 'Yıllık ve aylık vizyon hedefleri',
     icon: 'trophy',
-    color: '#f59e0b',
+    color: colors.warning,
     route: '/screens/goals',
     category: 'strategy',
   },
@@ -80,7 +83,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Yaşam Alanları',
     subtitle: '8 alanlık yaşam dengesi çarkı',
     icon: 'pie-chart',
-    color: '#10b981',
+    color: colors.success,
     route: '/screens/life-areas',
     category: 'strategy',
   },
@@ -89,7 +92,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Projeler',
     subtitle: 'Aktif hedefler ve kilometre taşları',
     icon: 'folder',
-    color: '#3b82f6',
+    color: colors.info,
     route: '/screens/projects',
     category: 'strategy',
   },
@@ -98,7 +101,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Takvim Planı',
     subtitle: 'Zaman blokları ve gün planı',
     icon: 'calendar',
-    color: '#8b5cf6',
+    color: colors.info,
     route: '/screens/calendar',
     category: 'strategy',
   },
@@ -107,7 +110,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Odak Akışı (Flow)',
     subtitle: 'Dikey verimlilik videoları ve Inflow mikro-dersleri',
     icon: 'play-circle',
-    color: '#f97316',
+    color: colors.primary,
     route: '/screens/focus-flow',
     category: 'focus',
     featured: true,
@@ -117,7 +120,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Rutin Yürütücü',
     subtitle: 'Sabah & akşam adımlarını koştur',
     icon: 'play-circle',
-    color: '#10b981',
+    color: colors.success,
     route: '/screens/routine-runner',
     category: 'focus',
     featured: true,
@@ -137,7 +140,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Eisenhower Matrisi',
     subtitle: 'Acil / önemli 4 çeyrek analizi',
     icon: 'grid',
-    color: '#f43f5e',
+    color: colors.error,
     route: '/screens/eisenhower',
     category: 'focus',
   },
@@ -146,7 +149,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Telafi & Shield',
     subtitle: 'Geciken görevleri toparla',
     icon: 'refresh-circle',
-    color: '#f59e0b',
+    color: colors.warning,
     route: '/screens/recovery',
     category: 'focus',
   },
@@ -155,7 +158,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Okuma Listesi',
     subtitle: 'Kitaplık ve sayfa hedefleri',
     icon: 'book',
-    color: '#06b6d4',
+    color: colors.teal,
     route: '/screens/reading-list',
     category: 'library',
   },
@@ -173,7 +176,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Günlük & Yansıma',
     subtitle: 'Duygu ve düşünce günlüğü',
     icon: 'journal',
-    color: '#ec4899',
+    color: colors.primaryBright,
     route: '/screens/journal',
     category: 'library',
   },
@@ -182,7 +185,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'AI Koç',
     subtitle: 'Alışkanlık ve davranış rehberi',
     icon: 'sparkles',
-    color: '#8b5cf6',
+    color: colors.info,
     route: '/screens/ai-coach',
     category: 'library',
   },
@@ -191,7 +194,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Aylık Değerlendirme',
     subtitle: 'Aylık başarı ve gelişim raporu',
     icon: 'calendar-number',
-    color: '#8b5cf6',
+    color: colors.info,
     route: '/screens/monthly-review',
     category: 'review',
   },
@@ -200,7 +203,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Haftalık Rapor',
     subtitle: 'Haftalık kazanımlar ve trendler',
     icon: 'bar-chart',
-    color: '#14b8a6',
+    color: colors.teal,
     route: '/screens/weekly-review',
     category: 'review',
   },
@@ -209,7 +212,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Başarımlar & Rozetler',
     subtitle: 'Kazanılan rozetler ve XP ödülleri',
     icon: 'ribbon',
-    color: '#f59e0b',
+    color: colors.warning,
     route: '/screens/achievements',
     category: 'review',
   },
@@ -218,7 +221,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Sıralama Ligi',
     subtitle: 'Seviye ve küresel lig sıralaması',
     icon: 'podium',
-    color: '#eab308',
+    color: colors.warning,
     route: '/screens/leaderboard',
     category: 'review',
   },
@@ -227,7 +230,7 @@ const HUB_ITEMS: HubItem[] = [
     label: 'Detaylı İstatistikler',
     subtitle: 'Alışkanlık oranları ve heatmap',
     icon: 'stats-chart',
-    color: '#6366f1',
+    color: colors.info,
     route: '/tabs/stats',
     category: 'review',
   },
@@ -436,6 +439,12 @@ export default function HubScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.todaySanctuary}
+        textureSource={TEXTURES.clay}
+        scrim={0.66}
+        tintColor={colors.primary}
+      />
       {/* Sabit Üst Başlık & 3 Modlu Anahtar */}
       <View style={s.topChrome}>
         <View style={s.titleRow}>
@@ -477,7 +486,7 @@ export default function HubScreen() {
             <Ionicons
               name="flame"
               size={14}
-              color={mode === 'flow' ? colors.white : '#f97316'}
+              color={mode === 'flow' ? colors.white : colors.primary}
             />
             <Text style={[s.modeTabText, mode === 'flow' && s.modeTabTextActive]}>
               Odak Akışı
@@ -645,13 +654,23 @@ export default function HubScreen() {
                 <TouchableOpacity
                   style={[
                     s.exploreHeroCard,
-                    { borderColor: alphaHex(recommendedCollection.color, '45') },
+                    { borderColor: alphaHex(recommendedCollection.color, '45'), overflow: 'hidden', position: 'relative' },
                   ]}
                   onPress={() => openCollectionPreview(recommendedCollection)}
                   activeOpacity={0.85}
                   accessibilityRole="button"
                   accessibilityLabel={`${recommendedCollection.pack.title} koleksiyonunu incele`}
                 >
+                  <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                    <Image
+                      source={getPackCover(recommendedCollection.key)}
+                      style={StyleSheet.absoluteFill}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                    />
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bgSunk, 0.68) }]} />
+                  </View>
+                  <TexturedSurface source={TEXTURES.topographic} textureOpacity={0.06} overlayOnly />
                   <View style={s.exploreHeroTop}>
                     <View
                       style={[
@@ -744,25 +763,39 @@ export default function HubScreen() {
                         accessibilityRole="button"
                         accessibilityLabel={`${col.pack.title} paketi`}
                       >
-                        <View style={s.collectionCardHeader}>
+                        <View style={s.collectionCoverWrap}>
+                          <Image
+                            source={getPackCover(col.key)}
+                            style={StyleSheet.absoluteFill}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
+                          />
                           <View
                             style={[
-                              s.collectionIcon,
-                              { backgroundColor: alphaHex(col.color, '20') },
+                              StyleSheet.absoluteFill,
+                              { backgroundColor: hexA(colors.bgSunk, 0.42) },
                             ]}
-                          >
-                            <Ionicons name={col.icon as any} size={20} color={col.color} />
-                          </View>
-                          <View style={s.collectionHeaderBadges}>
-                            {ownedCount > 0 && (
-                              <View style={s.ownedBadge}>
-                                <Text style={s.ownedBadgeText}>
-                                  {ownedCount}/{col.pack.habits.length} eklendi
-                                </Text>
+                          />
+                          <View style={s.collectionCardHeader}>
+                            <View
+                              style={[
+                                s.collectionIcon,
+                                { backgroundColor: hexA(colors.bgSunk, 0.72) },
+                              ]}
+                            >
+                              <Ionicons name={col.icon as any} size={18} color={col.color} />
+                            </View>
+                            <View style={s.collectionHeaderBadges}>
+                              {ownedCount > 0 && (
+                                <View style={s.ownedBadge}>
+                                  <Text style={s.ownedBadgeText}>
+                                    {ownedCount}/{col.pack.habits.length} eklendi
+                                  </Text>
+                                </View>
+                              )}
+                              <View style={s.collectionMetaPill}>
+                                <Text style={s.collectionMetaPillText}>~{col.totalMinutes} dk</Text>
                               </View>
-                            )}
-                            <View style={s.collectionMetaPill}>
-                              <Text style={s.collectionMetaPillText}>~{col.totalMinutes} dk</Text>
                             </View>
                           </View>
                         </View>
@@ -932,7 +965,7 @@ export default function HubScreen() {
 
             {/* 4. Kendi Rutinini AI ile Tasarla Stüdyo Kartı */}
             <TouchableOpacity
-              style={s.aiStudioCard}
+              style={[s.aiStudioCard, { overflow: 'hidden', position: 'relative' }]}
               onPress={() => {
                 haptic.select();
                 setAiModalVisible(true);
@@ -941,16 +974,20 @@ export default function HubScreen() {
               accessibilityRole="button"
               accessibilityLabel="Kendi rutinini AI ile tasarla"
             >
-              <View style={s.aiStudioIconWrap}>
-                <Ionicons name="sparkles" size={22} color="#8b5cf6" />
-              </View>
+              <TexturedSurface source={TEXTURES.neural} textureOpacity={0.07} overlayOnly />
+              <EmblemMedallion
+                source={SCREEN_BANNERS.coachOracle}
+                size={46}
+                unlocked
+                accentColor={colors.primary}
+              />
               <View style={{ flex: 1 }}>
                 <Text style={s.aiStudioTitle}>Aradığın rutini bulamadın mı?</Text>
                 <Text style={s.aiStudioSub}>
                   Hedefini veya yaşam temponu yaz; kapasite motoru senin için kişisel bir paket tasarlasın.
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#8b5cf6" />
+              <Ionicons name="chevron-forward" size={18} color={colors.info} />
             </TouchableOpacity>
           </>
         ) : (
@@ -970,6 +1007,11 @@ export default function HubScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="OKR ve Strateji Merkezini Aç"
                 >
+                  <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                    <Image source={BENTO_ART.hubToolsStrategy} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bgSunk, 0.56) }]} />
+                  </View>
+                  <EmbeddedFiligree source={DECOR.cornerBlueprint} anchor="bottom-right" size={124} opacity={0.18} />
                   <View style={s.heroContent}>
                     <View style={s.heroBadge}>
                       <Text style={s.heroBadgeText}>BÜYÜK RESİM & STRATEJİ</Text>
@@ -993,6 +1035,11 @@ export default function HubScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="Rutin Yürütücüyü Başlat"
                   >
+                    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                      <Image source={SCREEN_BANNERS.runnerSteppingStones} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
+                      <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bgSunk, 0.62) }]} />
+                    </View>
+                    <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={96} opacity={0.18} />
                     <View style={[s.twinIcon, { backgroundColor: alphaHex(colors.success, '20') }]}>
                       <Ionicons name="play" size={20} color={colors.success} />
                     </View>
@@ -1012,6 +1059,11 @@ export default function HubScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="Derin Çalışma Başlat"
                   >
+                    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                      <Image source={BENTO_ART.hubToolsDeepfocus} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
+                      <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bgSunk, 0.58) }]} />
+                    </View>
+                    <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={96} opacity={0.18} />
                     <View style={[s.twinIcon, { backgroundColor: alphaHex(colors.teal, '20') }]}>
                       <Ionicons name="flash" size={20} color={colors.teal} />
                     </View>
@@ -1055,6 +1107,7 @@ export default function HubScreen() {
                         accessibilityRole="button"
                         accessibilityLabel={item.label}
                       >
+                        <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={82} opacity={0.12} />
                         <View style={s.cardTop}>
                           <View
                             style={[
@@ -1132,6 +1185,16 @@ export default function HubScreen() {
                   showsVerticalScrollIndicator={false}
                   contentContainerStyle={{ paddingBottom: space.lg }}
                 >
+                  <EditorialBanner
+                    source={getPackCover(selectedCollection.key)}
+                    textureSource={TEXTURES.topographic}
+                    eyebrow={selectedCollection.badge}
+                    title={selectedCollection.pack.title}
+                    subtitle={selectedCollection.pack.goal}
+                    accentColor={selectedCollection.color}
+                    minHeight={104}
+                    style={{ marginBottom: space.md }}
+                  />
                   <Text style={s.modalSummary}>{selectedCollection.scientificSummary}</Text>
 
                   {/* Kapasite Değerlendirme Bandı */}
@@ -1304,7 +1367,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: '#8b5cf6',
+    backgroundColor: colors.info,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: radius.pill,
@@ -1333,7 +1396,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   modeTabFlowActive: {
-    backgroundColor: '#f97316',
+    backgroundColor: colors.primary,
   },
   modeTabText: {
     fontSize: 12,
@@ -1516,11 +1579,20 @@ const s = StyleSheet.create({
     padding: space.md,
     justifyContent: 'space-between',
   },
+  collectionCoverWrap: {
+    height: 80,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    position: 'relative',
+    padding: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
   collectionCardHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 8,
   },
   collectionIcon: {
     width: 38,
@@ -1695,7 +1767,7 @@ const s = StyleSheet.create({
     gap: 12,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: alphaHex('#8b5cf6', '45'),
+    borderColor: alphaHex(colors.info, '45'),
     borderRadius: radius.lg,
     padding: space.md,
     marginBottom: space.xl,
@@ -1704,7 +1776,7 @@ const s = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: radius.md,
-    backgroundColor: alphaHex('#8b5cf6', '18'),
+    backgroundColor: alphaHex(colors.info, '18'),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1722,6 +1794,8 @@ const s = StyleSheet.create({
 
   // Existing Tools Mode Styles
   heroCard: {
+    overflow: 'hidden',
+    position: 'relative',
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: alphaHex(colors.error, '40'),
@@ -1755,6 +1829,8 @@ const s = StyleSheet.create({
     gap: space.sm,
   },
   twinCard: {
+    overflow: 'hidden',
+    position: 'relative',
     flex: 1,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -1791,6 +1867,8 @@ const s = StyleSheet.create({
     rowGap: 10,
   },
   card: {
+    overflow: 'hidden',
+    position: 'relative',
     width: '48.5%',
     backgroundColor: colors.surface,
     borderRadius: radius.lg,

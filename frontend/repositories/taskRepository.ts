@@ -5,6 +5,7 @@
  * `store/taskStore.ts` owns the rest of the `tasks` table's CRUD and is out
  * of scope for this task (CODER-D territory / the store layer, not touched).
  */
+import type { TableInsert, TableUpdate } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
 import type { Task } from '../store/taskStore';
 import {
@@ -150,7 +151,7 @@ export async function insertTaskRow(row: Partial<Task> & { id: string }, expecte
   if (wrong) return wrong;
   const { data, error, status } = await supabase
     .from('tasks')
-    .insert({ ...row, user_id: u.userId })
+    .insert({ ...row, title: row.title ?? '', user_id: u.userId } as TableInsert<'tasks'>)
     .select(TASK_COLS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
@@ -165,7 +166,7 @@ export async function updateTaskVersioned(
   if (!u.ok) return u;
   const wrong = wrongAccount(expectedUserId, u.userId);
   if (wrong) return wrong;
-  let q = supabase.from('tasks').update(patch as Record<string, unknown>).eq('id', id).eq('user_id', u.userId);
+  let q = supabase.from('tasks').update(patch as TableUpdate<'tasks'>).eq('id', id).eq('user_id', u.userId);
   if (baseVersion !== null) q = q.eq('updated_at', baseVersion);
   const { data, error, status } = await q.select(TASK_COLS).maybeSingle();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };

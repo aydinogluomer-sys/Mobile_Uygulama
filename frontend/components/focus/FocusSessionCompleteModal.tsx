@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { currentUser } from '../../lib/session';
-import { colors, fontFamily } from '../../lib/tokens';
+import { colors, fontFamily, hexA } from '../../lib/tokens';
+import { DECOR, FOCUS_COMPLETE_GONG } from '../../lib/visualAssets';
+import { EmbeddedFiligree } from '../ui';
 import { CompletedSession, useFocusStore } from '../../store/focusStore';
 import { FocusSessionRow, inRange, summary, byTask, buckets, fmtDuration, fmtHours } from '../../lib/focusReport';
 import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
@@ -49,19 +52,23 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
       <View style={s.backdrop}>
         <SafeAreaView style={s.sheet} edges={['bottom']}>
           {/* Kutlama başlığı */}
-          <View style={s.head}>
-            <View style={[s.badge, { backgroundColor: accent + '22', borderColor: accent + '55' }]}>
-              <Ionicons name="checkmark" size={26} color={accent} />
+          <View style={s.headBanner}>
+            <Image source={FOCUS_COMPLETE_GONG} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bgSunk, 0.52) }]} />
+            <View style={s.head}>
+              <View style={[s.badge, { backgroundColor: accent + '22', borderColor: accent + '55' }]}>
+                <Ionicons name="checkmark" size={26} color={accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.title}>Seans Tamamlandı</Text>
+                <Text style={s.sub} numberOfLines={1}>
+                  {session?.taskTitle ? session.taskTitle : 'Odak seansı'} · {session ? fmtDuration(session.seconds) : ''}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Tamamlandı penceresini kapat">
+                <Ionicons name="close" size={22} color={colors.textFaint} />
+              </TouchableOpacity>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.title}>Seans Tamamlandı</Text>
-              <Text style={s.sub} numberOfLines={1}>
-                {session?.taskTitle ? session.taskTitle : 'Odak seansı'} · {session ? fmtDuration(session.seconds) : ''}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={onClose} hitSlop={10}>
-              <Ionicons name="close" size={22} color={colors.textFaint} />
-            </TouchableOpacity>
           </View>
 
           <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
@@ -123,6 +130,7 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
 function Stat({ value, label }: { value: string; label: string }) {
   return (
     <View style={s.stat}>
+      <EmbeddedFiligree source={DECOR.guillocheWave} anchor="bottom-right" size={92} opacity={0.14} />
       <Text style={s.statValue}>{value}</Text>
       <Text style={s.statLabel}>{label}</Text>
     </View>
@@ -136,14 +144,24 @@ const s = StyleSheet.create({
     paddingHorizontal: 20, paddingTop: 18, maxHeight: '88%',
     borderTopWidth: 1, borderColor: colors.border,
   },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  headBanner: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    position: 'relative',
+    marginBottom: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   badge: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 19, fontWeight: '800', color: colors.text },
   sub: { fontSize: 12.5, color: colors.textFaint, marginTop: 3 },
 
   body: { paddingBottom: 16 },
   statRow: { flexDirection: 'row', gap: 10, marginBottom: 22 },
-  stat: { flex: 1, backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 14, alignItems: 'center' },
+  stat: { flex: 1, overflow: 'hidden', position: 'relative', backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 14, alignItems: 'center' },
   statValue: { fontFamily: fontFamily.mono, fontSize: 22, fontWeight: '800', color: colors.text },
   statLabel: { fontSize: 10, color: colors.textFaint, marginTop: 4, letterSpacing: 0.4, textTransform: 'uppercase' },
 

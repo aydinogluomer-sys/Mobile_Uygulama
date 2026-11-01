@@ -1,15 +1,20 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
+  Animated, Easing, View, Text, StyleSheet, TouchableOpacity,
   ScrollView, AppState, type AppStateStatus,
   TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusStore } from '../../store/focusStore';
-import { ProgressRing } from '../../components/ui';
+import { EmbeddedFiligree, ProgressRing } from '../../components/ui';
 import { haptic } from '../../lib/haptics';
-import { colors, fontFamily, alphaHex } from '../../lib/tokens';
+import { colors, fontFamily, alphaHex, hexA } from '../../lib/tokens';
+import { DECOR, getFocusBackdrop } from '../../lib/visualAssets';
+import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
+
+
 import DeepWorkScreen from '../screens/deep-work';
 import FocusReportModal from '../../components/focus/FocusReportModal';
 import FocusThemeModal from '../../components/focus/FocusThemeModal';
@@ -18,6 +23,8 @@ import FocusSpotifyCard from '../../components/focus/FocusSpotifyCard';
 import FocusSessionCompleteModal from '../../components/focus/FocusSessionCompleteModal';
 import { FOCUS_PRESETS } from '../../lib/focusThemes';
 import { FLOW_COPY, isBackFromFocusBreak } from '../../lib/flowCopy';
+
+const IS_TEST = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
 const PHASE_LABELS: Record<string, string> = {
   work: 'Çalışma Seansı',
@@ -42,7 +49,24 @@ export default function FocusScreen() {
     updateSettings, loadSettings, restoreSession, clearJustCompleted,
   } = useFocusStore();
 
+  const reduceMotion = useReducedMotion();
+  const haloAnim = useRef(new Animated.Value(0)).current;
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (IS_TEST || reduceMotion || status !== 'running') {
+      haloAnim.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(haloAnim, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.sin), useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(haloAnim, { toValue: 0, duration: 3000, easing: Easing.inOut(Easing.sin), useNativeDriver: Platform.OS !== 'web' }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [haloAnim, reduceMotion, status]);
   const appStateRef = useRef(AppState.currentState);
   const [showAddTask, setShowAddTask] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -126,8 +150,23 @@ export default function FocusScreen() {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: activePreset.bg }]} edges={['bottom']}>
-      {settings.overlayOpacity > 0 && (
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: colors.black, opacity: settings.overlayOpacity }]} />
+      {focusMode === 'timer' && (
+        <View
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+          {...(Platform.OS === 'web'
+            ? { 'aria-hidden': true }
+            : { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const })}
+        >
+          <Image
+            source={getFocusBackdrop(activePreset.id)}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={260}
+            cachePolicy="memory-disk"
+          />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bgSunk, 0.34 + settings.overlayOpacity) }]} />
+        </View>
       )}
 
       {/* Görünüm Geçişi: Pomodoro Zamanlayıcı vs Derin Çalışma */}
@@ -194,7 +233,22 @@ export default function FocusScreen() {
         {/* Timer kartı */}
         <View style={[s.timerCard, { backgroundColor: activePreset.cardBg, borderColor: phaseColor + '40' }]}>
           {/* Ring progress — gerçek SVG yay */}
+          <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={142} opacity={0.14} />
           <View style={s.ringWrap}>
+            {status === 'running' && !IS_TEST && !reduceMotion && (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  s.breathHalo,
+                  {
+                    borderColor: hexA(phaseColor, 0.42),
+                    backgroundColor: hexA(phaseColor, 0.08),
+                    opacity: haloAnim.interpolate({ inputRange: [0, 1], outputRange: [0.32, 0.78] }),
+                    transform: [{ scale: haloAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.12] }) }],
+                  },
+                ]}
+              />
+            )}
             <ProgressRing progress={progressPct / 100} size={200} stroke={12} color={phaseColor}>
               <View style={s.timerInner}>
                 <Text style={[s.timerText, { color: phaseColor }]}>{pad(mins)}:{pad(secs)}</Text>
@@ -438,10 +492,12 @@ const s = StyleSheet.create({
   presetLabel: { fontSize: 12, color: colors.textFaint, fontWeight: '500' },
 
   timerCard: {
+    overflow: 'hidden', position: 'relative',
     borderRadius: 24, borderWidth: 1,
     alignItems: 'center', paddingVertical: 32, paddingHorizontal: 20, marginBottom: 20,
   },
-  ringWrap: { marginBottom: 16 },
+  ringWrap: { marginBottom: 16, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  breathHalo: { position: 'absolute', width: 224, height: 224, borderRadius: 112, borderWidth: 1.5 },
   ring: {
     width: 180, height: 180, borderRadius: 90, borderWidth: 6,
     alignItems: 'center', justifyContent: 'center', position: 'relative',

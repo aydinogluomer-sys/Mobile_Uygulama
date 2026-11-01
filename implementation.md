@@ -1,890 +1,749 @@
-# Karar Çerçeveleri → Alışkanlık Ekleme Akışı Entegrasyonu
+# Aderyth — Uçtan Uca Mühendislik, Mimari Dönüşüm ve 28 Rakip Özellik Uygulama Rehberi (`implementation.md`)
 
-## Bağlam (Neden?)
+**Durum:** `ONAY BEKLİYOR (AWAITING USER APPROVAL)`  
+**Kaynak Denetim Belgesi:** [aderyth_360_audit_and_competitor_master_report.md](docs/ADERYTH_360_AUDIT_AND_COMPETITOR_REPORT.md)  
+**Hedef Kapsam:** Master rapordaki **tüm teknik bozuklukların, güvenlik açıklarının, veritabanı/migrasyon kopukluklarının, Spatial UI/UX & Bilgi Mimarisi sorunlarının, production operasyon katmanlarının ve 28 rakip uygulamadan eşlenen özelliklerin** **4 Dalga / 24 Atomik Faz** halinde sıfır regresyonla hayata geçirilmesi.  
+**Çalışma Dizini:** `c:\Users\Trade Bilisim\Mobile_Uygulama` (`frontend/`, `supabase/`, `.github/workflows/`, `docs/`, `tools/`)
 
-A.JPEG / A2.JPEG referansında 4 karar çerçevesi tanımlanmış. Bunlar orijinalde **görev** yönetimi içindir; biz bunları **alışkanlık oluşturma** akışına anlamlı biçimde tercüme edeceğiz. Amaç: kullanıcı sezgisel olarak "bu alışkanlık ne kadar önemli, ne kadar acil" diye karar versin ve sistem onu otomatik olarak doğru Kanban kutusuna (Aktif Odak / Bekleme Odası / Fikirler) yerleştirsin. Bu, mevcut **irade ekonomisi** (willpower) sistemiyle birleşir.
+---
 
-### 4 Çerçevenin Alışkanlığa Tercümesi
+## 0. Yürütme Anayasası, Sıfır-Regresyon Kuralları & Mimari Karar Kayıtları (ADR)
 
-| Çerçeve | Orijinal | Alışkanlıkta Karşılığı | Form Alanı |
-|---|---|---|---|
-| **Etki-Şiddet** | Kritik/Yüksek/Orta/Düşük | Bu alışkanlık hayatımda ne kadar önemli? | `impact_level` (yeni) |
-| **Eisenhower** | Acil × Önemli | Önemli = etki seviyesi; Acil = şimdi mi başlamalıyım? | `impact_level` + `urgency` (yeni) |
-| **Kanban Durumları** | Fikir→Yapılacak→Yapılıyor→Askıda→Yapıldı | Habit `status`: idea→waiting→active→paused→completed | `status` (mevcut, `idea` eklenir) |
-| **Karar/Triaj** | Hemen Yap/Planla/Beklet-İzle/Ele | Etki+Aciliyet+Kapasite → otomatik yerleşim | Hesaplanır (saklanmaz) |
+### 0.1 Atomik Faz Yürütme Döngüsü ("Teker Teker ve Kusursuz" Protokolü)
 
-### Triaj Mantığı (Eisenhower → Karar → Kanban)
+Hiçbir faz toplu veya doğrulanmadan geçilmez. Her **Faz (`Faz 01` .. `Faz 24`)** kendi içinde bağımsız, derlenebilir, testleri %100 yeşil ve geri alınabilir bir mühendislik teslimatıdır:
 
-```
-                 ACİL                    ACİL DEĞİL
-            ┌──────────────────┬──────────────────┐
-  ÖNEMLİ    │ 🔥 HEMEN YAP     │ 📋 PLANLA        │
- (Kritik/   │ → Aktif Odak     │ → Bekleme Odası  │
-  Yüksek)   │ status: active   │ status: waiting  │
-            ├──────────────────┼──────────────────┤
-  ÖNEMSİZ   │ 👁 BEKLET-İZLE   │ 🗑 ELE/İPTAL     │
- (Orta/     │ → Bekleme Odası  │ → Fikirler       │
-  Düşük)    │ status: waiting  │ status: idea     │
-            └──────────────────┴──────────────────┘
+```mermaid
+flowchart LR
+    P["1. Faz Hazırlığı\nHedef dosyaları & yakın testleri oku"] --> I["2. Atomik Uygulama\nYalnız faz kapsamındaki dosyaları değiştir"]
+    I --> V["3. Mühendislik Kapısı\ntypecheck + typecheck:ci + lint:ci + jest + deno/sql"]
+    V --> Q["4. Görsel & Etkileşim QA\n375x812 · 768x1024 · 1366x900 + a11y + Reduce Motion"]
+    Q --> R["5. Kanıt & Faz Kapanışı\ngit diff incelemesi + yeni regresyon testi + Faz Tamam"]
+    V -- "Hata varsa" --> I
+    Q -- "Kusur varsa" --> I
 ```
 
-```ts
-important = impact_level ∈ {critical, high}
-urgent    = urgency === 'urgent'
+#### Her Faz Sonunda Zorunlu Doğrulama Komutları (Hard Gates)
+```powershell
+# 1. Frontend Tip Güvenliği (Yerel + CI Paritesi)
+cd frontend
+npm run typecheck
+npm run typecheck:ci
 
-triage = important && urgent   ? 'do_now'      // 🔥
-       : important && !urgent  ? 'plan'        // 📋
-       : !important && urgent  ? 'wait_watch'  // 👁
-       :                         'eliminate'   // 🗑
+# 2. Sıfır Uyarı ESLint Kapısı
+npm run lint:ci
 
-// Kapasite kapısı (sadece 'do_now' aktif olmak ister):
-finalStatus = triage==='do_now' && canActivate(cost) ? 'active'
-            : triage==='eliminate'                    ? 'idea'
-            :                                           'waiting'
+# 3. Çalışma Zamanı Test Paketi (Mevcut 264+ suite + ilgili fazın yeni testleri)
+npx jest --runInBand
+
+# 4. Web Production Bundle Doğrulaması (UI/Rota değişen her fazda)
+npx expo export --platform web
+
+# 5. Backend / SQL / Edge Değişen Fazlarda Ek Zorunlu Kapılar
+deno check supabase/functions/_shared/*.ts supabase/functions/*/index.ts
+deno test supabase/functions/_shared/
+# + Yerel/CI Postgres 17 üzerinde live_schema.sql + 028..03X migrasyon + xp_drift() = 0 testi
 ```
 
-### Etki → Önerilen İrade Maliyeti
-
-Önemli alışkanlıklar daha fazla irade taahhüdü ister (irade ekonomisi doğal olarak önceliklendirmeyi zorlar):
-
-| Etki | Önerilen `willpower_cost` |
-|---|---|
-| Kritik | 5 |
-| Yüksek | 4 |
-| Orta | 3 |
-| Düşük | 2 |
-
-Kullanıcı son adımda 1–10 arası override edebilir.
+> [!CAUTION]
+> **Değiştirilemez Güvenlik Sınırları (Hard Invariants):**
+> 1. **Canlı DB Koruması:** Canlı Supabase projesine (`kbcuolhjjnmhjaarxxmu`) doğrudan ham `supabase db push` çalıştırılmaz ([ciGatesWired.test.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/__tests__/repo/ciGatesWired.test.ts#L51) bu kuralı denetler). Tüm SQL migrasyonları önce izole `postgres:17` konteynerinde [live_schema.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/live_schema.sql) üzerine uygulanarak ve **Supabase Staging Branch** üzerinde `supabase db advisors` + `xp_drift() = 0` kanıtlanarak doğrulanır.
+> 2. **Supabase RLS & Fonksiyon Güvenliği:** Yeni veya güncellenen her tabloda `ALTER TABLE ... ENABLE ROW LEVEL SECURITY;`, açık `REVOKE ALL ON TABLE ... FROM anon, PUBLIC;`, `GRANT ... TO authenticated;` ve `auth.role()` yerine `TO authenticated USING ((select auth.uid()) = user_id) WITH CHECK ((select auth.uid()) = user_id)` kalıbı zorunludur. Tüm yeni view'lar `WITH (security_invoker = true)` ile tanımlanır.
+> 3. **Görsel QA Kapısı:** Derlemenin geçmesi görsel başarı sayılmaz; UI değişen her fazda mobil (`375×812`), tablet (`768×1024`) ve masaüstü (`1366×900`) görünümlerinde taşma, kesilme, klavye odak halkası, `>= 44×44pt` dokunma hedefi ve `Reduce Motion` davranışı doğrulanır.
 
 ---
 
-## Adım Yapısı: 4 → 5 Adım
+### 0.2 Onaya Sunulan 6 Temel Mimari Karar (ADR-01 .. ADR-06)
 
-| # | Eski | Yeni |
-|---|---|---|
-| 1 | İsim + Davranış Tipi | İsim + Davranış Tipi *(değişmez)* |
-| 2 | Ölçüm Tipi | Ölçüm Tipi *(değişmez)* |
-| 3 | Frekans | Frekans *(değişmez)* |
-| 4 | İkon+Renk+İrade | **🆕 Öncelik & Strateji** (Etki + Aciliyet + canlı Eisenhower + Triaj kararı) |
-| 5 | — | İkon+Renk+İrade Önizleme *(eski 4, etki→cost otomatik, Kanban hedefi gösterimi)* |
+Bu planda aşağıdaki 6 mimari karar varsayılan standart olarak benimsenmiştir (onay aşamasında yorum bırakarak herhangi birini değiştirebilirsiniz):
 
----
-
-## Kullanıcı Akışı (User Flow)
-
-```
-[FAB +] → Onboarding açılır (üstte kalıcı İRADE BANDI)
- │
- ├─ Adım 1: "Sabah Sporu" yaz, Pozitif seç → Devam
- ├─ Adım 2: Evet/Hayır veya Ölçülebilir → Devam
- ├─ Adım 3: Günlük/Haftalık + günler + günün bölümü → Devam
- ├─ Adım 4 (YENİ): 
- │    • Etki seç (Kritik/Yüksek/Orta/Düşük)  ──┐
- │    • Aciliyet seç (Acil / Acil Değil)      ──┤→ canlı Eisenhower 2×2'de
- │    • Eisenhower matrisi ilgili hücreyi vurgular │  hücre parlar
- │    • Triaj kararı kartı belirir (🔥/📋/👁/🗑)  ──┘  willpower_cost otomatik önerilir
- │    → Devam
- └─ Adım 5:
-      • İkon + Renk
-      • İrade Maliyeti (etki'den önceden dolu, ayarlanabilir)
-      • İrade bandı + Kanban hedef kartı:
-          "🔥 Aktif Odak'a eklenecek" / "📋📋👁 Bekleme Odası'na" / "🗑 Fikirler'e"
-      • Submit butonu hedefe göre renk+etiket
-        → Kaydet → habits.tsx doğru bölüme yerleştirir + (aktifse) irade harcanır
-```
+| Kod | Konu | Alınan Mühendislik & Ürün Kararı |
+| :--- | :--- | :--- |
+| **ADR-01** | **Tema Mimarisi** | 158 WebP görsel ve Kintsugi sanat yönetimi sıcak koyu kanvas üzerine inşa edildiği için çalışmayan (placebo) `Açık / Koyu / Sistem` anahtarı kaldırılır; **Spatial Kintsugi Koyu Tema** kanonik tema olur. Buna karşılık [useAccent.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/useAccent.ts) içindeki 4 Kintsugi vurgu rengi (*Toprak, Adaçayı, Arduvaz, Kehribar*) tüm aktif bileşenlere bağlanır ve neon SaaS renkleri (`#6366f1`, `#ec4899`) temizlenir. |
+| **ADR-02** | **Uyuyan Oyunlaştırma Şeması & Calm-Tech Sınırı** | Canlı DB'deki `user_pets`, `pet_stages`, `quests`, `user_quests`, `shop_items`, `user_inventory`, `challenges`, `user_challenges` ve `boss_contributors` silinmez; önce `on_habit_completed_damage_boss` satır kilidi kaldırılır (`Faz 03`), ardından `today.tsx` dinginliğine **tek piksel sokulmadan** yalnızca [hub.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/hub.tsx) (**"Kintsugi Sığınağı"**) içinde *ölümü olmayan, `recovery_plans` ile altın damarlarla iyileşen yoldaş + kişisel gerçek hayat ödül menüsü* olarak canlandırılır (`Faz 16`). Yerine yeni yapı geçmiş 6 miras tablo (`ai_calls`, `daily_capacity`, `habit_reminders`, `habit_templates`, `routine_items`, `user_gamification`) ise güvenli `archive_legacy` şemasına taşınır. |
+| **ADR-03** | **Backend Dil & Runtime** | `%100 Supabase Native` (**PostgreSQL 17 PLpgSQL/RLS + Deno 2 TypeScript Edge Functions** + istemciyle ortak `zod`/TS sözleşmeleri) korunur; çift kod tabanı yaratacak erken bir Go göçü yapılmaz. |
+| **ADR-04** | **Migrasyon Stratejisi** | Mevcut `001..037` dosya adları ve [ciGatesWired.test.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/__tests__/repo/ciGatesWired.test.ts) CI sözleşmesi kırılmadan `028..037` eksikleri tamamlanır, güvenlik/indeks/saat dilimi yamaları yeni sıralı migrasyonlarla (`038+`) eklenir ve uzak `schema_migrations` defteri Staging üzerinde `supabase migration repair` protokolüyle hizalanır. |
+| **ADR-05** | **Çevrimdışı (Offline) Motor** | 3 ayrı kuyruk (`syncQueue.ts`, `outbox.ts`, `coreOutbox.ts`) ve 5 sahte Network-First store kademeli olarak `expo-sqlite` tabanlı **Tekil Atomik Outbox-First Motorunda** (`Faz 24`) birleştirilir. |
+| **ADR-06** | **Küresel Dil (`i18n`)** | `expo-localization` + `i18next` altyapısı `Faz 21`'de 5 dil (**TR, EN, JA, DE, ES**) destekleyecek şekilde kurulur; TR ve EN %100 insan kalitesinde ana sözlük olarak, JA/DE/ES genişleme sözlükleri olarak paketlenir. |
 
 ---
 
-## UI/UX Tasarımı
+### 0.3 24 Fazlık Master Yol Haritası Özeti
 
-### İrade Bandı (mevcut, korunur)
-Header ile progress dots arasında; skor %, kullanılan/bütçe, aktif slot. Renk: yeşil→amber→kırmızı.
-
-### Adım 4 — Öncelik & Strateji (YENİ)
-
-```
-┌─────────────────────────────────────────┐
-│  Öncelik & Strateji                       │
-│  Bu alışkanlık ne kadar önemli ve acil?  │
-│                                           │
-│  ETKİ SEVİYESİ                            │
-│  ┌────────┬────────┬────────┬────────┐   │
-│  │🔴Kritik│🟠Yüksek│🟡 Orta │⚪Düşük │   │
-│  │ hayati │ önemli │anlamlı │ küçük  │   │
-│  └────────┴────────┴────────┴────────┘   │
-│                                           │
-│  ACİLİYET                                 │
-│  ┌──────────────┬──────────────┐         │
-│  │ ⚡ Acil      │ 🕐 Acil Değil│         │
-│  │ Hemen        │ Zamanla      │         │
-│  └──────────────┴──────────────┘         │
-│                                           │
-│  STRATEJİ HARİTASI                        │
-│        Acil        Acil Değil             │
-│      ┌────────┬────────┐                  │
-│ Önem │🔥 HEMEN│📋PLANLA│  ← seçili hücre  │
-│      ├────────┼────────┤    parlar        │
-│ Önm- │👁BEKLET│🗑 ELE  │                  │
-│      └────────┴────────┘                  │
-│                                           │
-│  ┌─────────────────────────────────────┐ │
-│  │ 🔥 HEMEN YAP                        │ │
-│  │ Aktif Odak'a alınmaya aday          │ │
-│  │ Önerilen irade: 5                   │ │
-│  └─────────────────────────────────────┘ │
-└─────────────────────────────────────────┘
-```
-
-- **Etki kartları**: seçilince renkli kenarlık (kritik=#ef4444, yüksek=#f59e0b, orta=#eab308, düşük=#6b7280). Seçim `willpower_cost`'u otomatik günceller.
-- **Aciliyet**: 2 kart, indigo seçim vurgusu.
-- **Eisenhower 2×2**: küçük grid; seçili (urgent×important) hücresi triaj rengiyle dolu, diğerleri soluk. Etki/aciliyet değiştikçe anlık güncellenir.
-- **Triaj kartı**: büyük, triaj rengiyle; ikon + başlık + "şu kutuya aday" + önerilen irade.
-
-### Adım 5 — Son Ayarlar (eski 4, zenginleştirilmiş)
-- İkon + Renk (değişmez).
-- İrade Maliyeti satırı: etki seviyesinden önceden dolu; üstünde küçük not "Etki seviyene göre önerildi".
-- İrade bandı (mevcut routingCard) → artık triaj+kapasiteyle hesaplanan **3 olası Kanban hedefi** gösterir: Aktif Odak (yeşil) / Bekleme Odası (amber) / Fikirler (gri).
-- Submit butonu: hedefe göre renk + etiket ("Aktif Ekle" / "Beklemeye Ekle" / "Fikir Olarak Sakla").
-
-### habits.tsx — Kanban Görünümü
-- Mevcut: Aktif Odak + Bekleme Odası.
-- **YENİ**: en altta soluk "💡 Fikirler" bölümü (status='idea'). Buradaki kartta "Aktifleştir" yerine "Beklemeye Al" aksiyonu.
-- Habit kartlarına **etki çipi** (renkli nokta + Kritik/Yüksek/Orta/Düşük) + küçük triaj ikonu eklenir.
+| Dalga | Faz Aralığı | Odak Alanı | Yeni Native Binary Derlemesi? |
+| :--- | :--- | :--- | :---: |
+| **Dalga 0 (`P0 BLOCKER`)** | `Faz 01` – `Faz 04` | Auth kilidi, `signOut` + 29 store hesap izolasyonu, `restoreRepository` çökme yaması, SDK 57 paket hijyeni, `028..038` DB güvenlik/indeks/saat dilimi yamaları, `subscription-webhook` & yasal URL'ler | Hayır *(yalnız Expo uyumlu `expo-document-picker` / `expo-sharing`)* |
+| **Dalga 1 (`P0 CORE`)** | `Faz 05` – `Faz 12` | `zod` + 281 tip kaçışı temizliği, EMA Alışkanlık Gücü, Kintsugi Onarılmış Seri, Habit Stacking, HabitKit 16×7 SVG ızgara, satır içi süre sayacı, TTS Sesli Rutin Yürütücü, Todoist NLP + kayan tekrar + gerçek alt görevler + AI SOS, 24s `DayRibbon` + Boşluk Avcısı + Due Nagging bildirimler, Daylio 5 sn bağlam check-in + 4-kaynak korelasyon motoru, 6-bar Matruşka yıkımı, Reanimated/BottomSheet/FlashList & 401 MB bitmap optimizasyonu | Hayır *(halihazırda kurulu Reanimated 4, Gesture Handler, SVG, Speech kullanılır)* |
+| **Dalga 2 (`P1 DIFFERENTIATION`)** | `Faz 13` – `Faz 20` | RevenueCat IAP, APNs/FCM çoklu cihaz push + `pg_cron` + analitik, iOS WidgetKit/Dynamic Island & Android Glance, Apple Health / Health Connect oto-tamamlama, `hub.tsx` Kintsugi Sığınağı (`user_pets`/`quests`/`shop_items`/`challenges`), Supabase Realtime Presence Body Doubling + Forest Derin Kalkan, MindShift BDT & Dear Me `low_day` Zaman Kapsülü, HelloHabit saniyelik bırakma sayacı + Loop CSV göçü + Year in Pixels, TimeTune şablonları & Todoist Kanban/Ramble | **Evet** *(EAS Dev/Prod Build: RevenueCat, HealthKit/Health Connect, Widget targets)* |
+| **Dalga 3 (`P2 SCALE & GLOBAL`)** | `Faz 21` – `Faz 24` | 5 dil `i18n` (TR/EN/JA/DE/ES), canlı `google-sync` & idempotent `notion-sync` + PKCE `spotify-auth` + Share Intent, Geofencing + Fotoğraf/Ses anıları + Arkadaş meydan okumaları + WaterDo akşam hasadı, Tekil SQLite Outbox + React 19 Compiler + Maestro/Playwright E2E | Opsiyonel (`expo-share-intent`, `expo-location`, `expo-image-picker`) |
 
 ---
 
-## Faz Planı (sırayla, bir faz bitmeden diğerine geçilmez)
-
-### FAZ 1 — Veri Modeli & Yardımcılar
-1. **Supabase migration** (`execute_sql` ile canlı DB):
-   ```sql
-   ALTER TABLE public.habits ADD COLUMN IF NOT EXISTS impact_level text;
-   ALTER TABLE public.habits ADD COLUMN IF NOT EXISTS urgency text;
-   ALTER TABLE public.habits ADD CONSTRAINT habits_impact_level_check
-     CHECK (impact_level IS NULL OR impact_level IN ('critical','high','medium','low'));
-   ALTER TABLE public.habits ADD CONSTRAINT habits_urgency_check
-     CHECK (urgency IS NULL OR urgency IN ('urgent','not_urgent'));
-   ```
-   (status'ta CHECK yok → 'idea' migration gerektirmez.)
-2. **`lib/supabase.ts`** — `Habit` tipine `impact_level`, `urgency` ekle; `status`'a `'idea'` ekle.
-3. **`store/habitStore.ts`** — `fetchHabits` ve `addHabit` select listelerine `impact_level,urgency` ekle.
-4. **`lib/triage.ts`** (YENİ) — paylaşılan tek kaynak:
-   - `IMPACT_LEVELS` sabiti (key,label,color,suggestedCost)
-   - `computeTriage(impact, urgency)`
-   - `triageToStatus(triage, canActivate)`
-   - `TRIAGE_META` (ikon,label,renk,kutuAdı)
-5. **`components/AIRoutineModal.tsx`** — habit oluştururken yeni alanlara default ver (TS kırılmasın).
-6. **Doğrulama**: `tsc --noEmit` temiz.
-
-### FAZ 2 — Onboarding Adım 4 (Strateji)
-1. `DEFAULT_FORM`'a `impact_level:'medium'`, `urgency:'not_urgent'` ekle.
-2. `TOTAL_STEPS = 5`; eski step 4 → renderStep5; yeni `renderStep4` (strateji).
-3. Etki seçici + aciliyet seçici + canlı Eisenhower 2×2 + triaj kartı.
-4. Etki seçimi `willpower_cost`'u otomatik set eder.
-5. `canProceed` step 4 için her zaman true (varsayılanlar dolu).
-6. Yeni stiller.
-7. **Doğrulama**: `tsc --noEmit` + manuel adım gezinme.
-
-### FAZ 3 — Onboarding Adım 5 (Son Ayarlar + Routing)
-1. `renderStep5` (eski 4) — irade maliyeti notu + önceden doldurma.
-2. `willGoActive` → triaj tabanlı 3 yönlü hedef hesabı (`lib/triage.ts`).
-3. routingCard 3 durumu (active/waiting/idea) gösterir.
-4. Submit butonu 3 yönlü renk+etiket.
-5. **Doğrulama**: `tsc --noEmit`.
-
-### FAZ 4 — habits.tsx (Kanban + Yönlendirme)
-1. `handleAddHabit`: `computeTriage` + `triageToStatus` ile status hesapla; aktifse `spend`.
-2. `ideaHabits` filtresi + "💡 Fikirler" bölümü; kartında "Beklemeye Al" aksiyonu (`updateHabit status:'waiting'`).
-3. Habit kartına etki çipi + triaj ikonu.
-4. **Doğrulama**: `tsc --noEmit`.
-
-### FAZ 5 — Uçtan Uca Doğrulama
-1. `npx tsc --noEmit` (frontend).
-2. Expo başlat; ekle akışını 4 senaryoyla test et:
-   - Kritik+Acil (kapasite var) → Aktif Odak
-   - Kritik+Acil (kapasite dolu) → Bekleme Odası
-   - Yüksek+Acil Değil → Bekleme Odası (Planla)
-   - Düşük+Acil Değil → Fikirler
-3. Eisenhower hücresi ve triaj kartı seçimle anlık değişiyor mu.
-4. Dark tema tutarlılığı.
+## DALGA 0 — Üretim Engelleyicileri, Güvenlik, Oturum İzolasyonu & Veritabanı Bütünlüğü (`Faz 01` – `Faz 04`)
 
 ---
 
-## Dosya Özeti
+### Faz 01 — Auth Kapısı, Gerçek `signOut`, 29 Store Hesap İzolasyonu & Placebo Tema Temizliği
 
-| Dosya | Faz | Değişiklik |
-|---|---|---|
-| Supabase `habits` | 1 | `impact_level`, `urgency` kolonları |
-| `lib/supabase.ts` | 1 | `Habit` tipi: impact_level, urgency, status+idea |
-| `store/habitStore.ts` | 1 | select listeleri |
-| `lib/triage.ts` | 1 | YENİ — triaj çekirdek mantığı |
-| `components/AIRoutineModal.tsx` | 1 | yeni alanlara default |
-| `components/HabitOnboarding.tsx` | 2,3 | Adım 4 (yeni) + Adım 5 (routing) |
-| `app/tabs/habits.tsx` | 4 | Fikirler bölümü + triaj routing + çipler |
+#### Çözdüğü Rapor Bulguları
+- Yönetici Özeti `#1` ([login.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/(auth)/login.tsx#L49-L67) üretimde açık "🚀 Girişi Geç (Demo Modu)" birincil butonu)
+- Yönetici Özeti `#2` & Bölüm `2.3` (Normal `signOut` butonu yokluğu; çıkışta 29 store'un 24'ünün RAM'de kalması; `<uid>` kapsamı olmayan 5 `AsyncStorage` anahtarından hesaplar arası veri sızıntısı)
+- Yönetici Özeti `#3` & Bölüm `5.2.1` (259 dosyada 0 kez okunan placebo `Açık/Koyu` tema seçici; yarım kalan `useAccent`)
+- Bölüm `5.3.3` ([register.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/(auth)/register.tsx#L274-L283) tıklanamayan Kullanım Koşulları / Gizlilik metni — App Store 5.1.1 ret nedeni)
 
----
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni:** `frontend/services/sessionLifecycleService.ts`
+   - `frontend/store/*.ts` altındaki **29 Zustand store'un tamamı** için standart bir `resetMemoryState()` kayıt defteri (`registerStoreReset`) ve `resetAllStoresOnAccountChange(prevUserId, nextUserId)` orkestratörü oluştur.
+   - Çıkış anında: (a) aktif zamanlayıcıları (`focusStore`, `routineRunnerStore`) durdur, (b) zamanlanmış yerel bildirimleri iptal et (`cancelAllScheduledNotificationsAsync`), (c) SQLite bellek içi okuma önbelleği referanslarını temizle, (d) `supabase.auth.signOut({ scope: 'local' })` + çevrimiçiyse global oturum kapatmayı çalıştır ve `/(auth)/login` rotasına yönlendir.
+2. **Güncelleme:** `frontend/store/` altındaki `<uid>` kapsamsız ve RAM temizliksiz store'lar:
+   - [focusStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/focusStore.ts#L50-L52): `focus.session.v1` anahtarını `focus.session.v2:${userId}` yap; eski unscoped anahtarı ilk okumada sil.
+   - [aiConversationStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/aiConversationStore.ts): `lastConversationId` anahtarını `ai.lastConversation.v2:${userId}` kapsamına al ve çıkışta mesaj dizisini boşalt.
+   - [logStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/logStore.ts): Hesap değişiminde `queueOwnerId` ve `logsByDate` Map'ini sıfırla.
+   - [noteStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/noteStore.ts) & [journalStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/journalStore.ts): Modül-seviyesi `serverVersion` / `serverContent` Map yapılarını sıfırlayan `resetAccountCache()` fonksiyonlarını bağla.
+   - [BadHabitsTracker.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/BadHabitsTracker.tsx): Unscoped `deflected_urges_count` anahtarını yeni `frontend/store/badHabitStore.ts` içine `badHabits.urges.v2:${userId}` olarak taşı.
+3. **Güncelleme:** [login.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/(auth)/login.tsx) & [register.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/(auth)/register.tsx)
+   - `login.tsx`: `"Giriş Yap"` butonunu birincil (`variant="primary"`, `size="lg"`) yap. `"Demo Olarak Dene"` bloğunu yalnızca `if (__DEV__ && isSeedingAllowed())` koşulunda ikincil geliştirici aracı olarak göster ve [demoSeed.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/demoSeed.ts) modülünü dinamik `await import('../../lib/demoSeed')` ile yükle.
+   - `register.tsx`: Kullanım Koşulları ve Gizlilik Politikası metinlerini `Linking.openURL` / uygulama içi yasal görünüm açan erişilebilir (`accessibilityRole="link"`) tıklanabilir bağlantılara dönüştür.
+4. **Güncelleme:** [app/_layout.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/_layout.tsx), [app/tabs/_layout.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/_layout.tsx), [app/tabs/settings.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/settings.tsx), [store/themeStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/themeStore.ts), [lib/useAccent.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/useAccent.ts)
+   - `app/_layout.tsx` `onAuthStateChange` dinleyicisinde `SIGNED_OUT` veya `session?.user?.id !== prevUserId` yakalandığında `resetAllStoresOnAccountChange` çağır.
+   - `settings.tsx` Hesap bölümüne bekleyen outbox kaydı varsa kullanıcıyı uyaran (*"Senkronize edilmemiş X değişiklik var, yine de çıkılsın mı?"*) gerçek **"Çıkış Yap"** aksiyonu ekle.
+   - Üst bardaki ve `settings.tsx` içindeki işlevsiz `Açık / Koyu / Sistem` tema düğmelerini kaldır; yerine `settings.tsx` Görünüm kartında 4 Kintsugi Vurgu Rengi (*Toprak `#C87D55`, Adaçayı `#7A9A86`, Arduvaz `#7B8FA1`, Kehribar `#D4AF37`*) seçicisini öne çıkar ve aktif tab ikonu, birincil buton, ilerleme halkası ve odak vurgularına gerçek zamanlı bağla.
 
-# ETAP 2 — İrade Motoru, Kapasite Yöneticisi, Silme Akışı
-
-## Bağlam (Neden?)
-
-Kullanıcı 6 ek istek verdi: (1) ekleme sonrası/ilk açılışta Aktif Oda + Bekleme Odası net görünsün, (2) irade (XP) maliyeti çok iyi/şeffaf hesaplansın, (3) daha fazla adım, (4) aktif alışkanlıklar iradeden yer, (5) limit aşılırsa ekleme engellenip "aktiflerden birini beklemeye al" önerisi, (6) her kartta silme → neden sor → geri-al → süre dolunca kalıcı sil.
-
-## Adım sayısı: 5 → 6
-
-5. 🆕 **Zorluk & İrade** — Kolay/Orta/Zor seçimi + şeffaf maliyet dökümü
-6. Son Ayarlar (ikon/renk + cost override + routing)
-
-## İrade (XP) Maliyet Formülü — `lib/triage.ts`
-
-```
-cost = round( difficulty × frekansFaktörü + davranışBonus + etkiBonus + takipBonus )  → 1..10
-  difficulty:    Kolay=1, Orta=3, Zor=5   (DB difficulty kolonu)
-  frekansFaktörü: günlük=1.0, haftalık=0.7, aylık=0.5
-  davranışBonus:  negatif(bırakma)=+1.5, pozitif=0
-  etkiBonus:      kritik=+1.5, yüksek=+1.0, orta=+0.5, düşük=0
-  takipBonus:     ölçülebilir=+0.5, evet/hayır=0
-```
-Etki (adım 4) veya zorluk (adım 5) değişince otomatik yeniden hesaplanır; adım 6'da 1–10 override.
-
-## Faz Planı (ETAP 2)
-
-### FAZ A — Veri & İrade Motoru
-- `Habit` tipine `difficulty: number`; `DEFAULT_FORM.difficulty=3`; store select'lerine `difficulty`.
-- `lib/triage.ts`: `DIFFICULTY_LEVELS`, `computeWillpowerCost(form)`, `costBreakdown(form)`.
-- Supabase: `habit_deletions` tablosu (id,user_id,habit_id,habit_name,reason,created_at) + RLS.
-
-### FAZ B — Onboarding Adım 5 (Zorluk & İrade)
-- Yeni `renderStep5` (zorluk kartları + maliyet dökümü); eski 5 → 6; TOTAL_STEPS=6.
-- Zorluk/etki değişiminde `willpower_cost` otomatik.
-
-### FAZ C — Habits ekranı: oda görünürlüğü + silme
-- Aktif Oda + Bekleme Odası **her zaman** render (boş durum dahil).
-- Her kartta çöp kutusu → `DeleteReasonModal` (hazır sebepler + not).
-- Onay → optimistik gizle + (aktifse) irade iadesi + **Geri Al** toast (~6sn).
-- Geri al → geri yükle; süre dolunca hard `DELETE` (cascade) + `habit_deletions` kaydı.
-
-### FAZ D — Kapasite Yöneticisi
-- do_now hedefli ekleme + yer yoksa: ekleme finalize edilmeden `CapacityModal`.
-- Aktif alışkanlıkları "Beklemeye Al" (pause→refund) ile yer aç; yeterince boşalınca pending habit AKTİF eklenir.
-- Seçenekler: Yer Aç / Beklemeye Ekle / Vazgeç.
-
-### FAZ E — Doğrulama
-- `tsc --noEmit` + Android bundle + DB round-trip (difficulty insert, habit_deletions insert).
+#### Kabul Kriterleri & Faz 01 Testleri
+- Üretim modunda (`__DEV__ === false`) `login.tsx` render edildiğinde Demo butonu DOM/ağaçta kesinlikle bulunmaz.
+- Hesap A'da görev, alışkanlık, odak seansı, AI sohbeti ve not oluşturup `Çıkış Yap` -> Hesap B'ye giriş yapıldığında Hesap A'ya ait **sıfır** RAM state'i ve **sıfır** unscoped `AsyncStorage` anahtarı okunur (`__tests__/services/sessionAccountIsolation.test.ts` — 29 store'un tamamını döngüyle doğrulayan yeni otomatik test).
 
 ---
 
-# ETAP 3 — Bitiş Koşulu, Özet Adımı, Kanban "Tamamlandı"
+### Faz 02 — Yedekleme/Geri Yükleme Saatli Bombası (`restoreRepository.ts`) & SDK `57.0.22` Paket/Derleyici Hijyeni
 
-## Bağlam (Neden?)
+#### Çözdüğü Rapor Bulguları
+- Bölüm `6.4` ([restoreRepository.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/repositories/restoreRepository.ts#L44) `.order('id')` çağrısının `id` kolonu olmayan `habit_goal_versions` ve `habit_checklist_checks` tablolarında `42703` ile çökmesi; panodan MB'larca JSON yapıştırma zorunluluğu)
+- Bölüm `1.2` & `1.3` (SDK `57.0.22` native sürüm sapmaları, `fix-expo-tsconfig.js` monkey-patch, `metro.config.js` `maxWorkers = 2` darboğazı, ölü `react-native-dotenv` / `@expo/ngrok` / `react-native-animatable` paketleri, eksik `zod`)
 
-Denetim sonucu: 4 çekirdek çerçeve (Eisenhower + Etki-Şiddet + Triaj + Öncelik) tam entegre. Boşluklar: (a) A2 "Zaman Faktörü → Son Tarih" karşılığı ekleme akışında yok (`end_condition` şemada var, UI yok), (b) A2 "Mini Tablo Formatı" gibi kaydetmeden önce karar özeti yok, (c) Kanban'da "Yapıldı/Tamamlandı" durumu arayüzde yok. Bu etap bu üç boşluğu kapatır.
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Güncelleme:** [frontend/repositories/restoreRepository.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/repositories/restoreRepository.ts) & [frontend/lib/backupFormat.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/backupFormat.ts)
+   - Sabit `.order('id', { ascending: true })` yerine her yedeklenen tablo için deterministik birincil/bileşik anahtar haritası (`BACKUP_TABLE_ORDER_SPEC`) tanımla:
+     - `habit_goal_versions`: `['habit_id', 'effective_from']`
+     - `habit_checklist_checks`: `['item_id', 'checked_date']`
+     - `weekly_xp`: `['user_id', 'week_start']`
+     - `willpower_state`: `['user_id', 'state_date']`
+     - `user_onboarding` / `user_subscriptions`: `['user_id']`
+     - Standart `id` tabloları: `['id']`
+   - `028..031` tablolarını (`habit_pauses`, `habit_goal_versions`, `habit_checklist_items`, `habit_checklist_checks`, `routine_templates`, `mood_checkins`, `review_next_actions`) yedekleme şeması `v3`'e (`zod` doğrulamalı, `v1/v2` geriye uyumlu) dahil et.
+2. **Güncelleme:** [frontend/app/tabs/settings.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/settings.tsx) & [frontend/package.json](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/package.json)
+   - `npx expo install expo-document-picker expo-sharing zod` kurulumu (Web'de `<input type="file" accept=".json,application/json">` + Blob indirme, mobilde native paylaşım sayfası ve dosya seçici).
+   - SDK `57.0.22` sürüm hizalaması: `expo-sqlite` -> `~57.0.3`, `expo-asset` -> `~57.0.17`, `expo-constants` -> `~57.0.18`, `expo-font` -> `~57.0.4`, `@react-native-async-storage/async-storage` -> `2.2.0`, `react-native-web` -> `~0.21.0`, `@types/react-test-renderer` -> `~19.2.0`.
+   - `react-native-dotenv` paketini sil; `@expo/ngrok` paketini `devDependencies` altına taşı; [timeline.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/timeline.tsx#L17) ve [habits.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/habits.tsx#L18) içindeki `react-native-animatable` kullanımını `react-native-reanimated` (`Animated.View entering={FadeInDown.duration(220)}`) ile değiştirip `react-native-animatable` paketini kaldır.
+3. **Güncelleme:** [frontend/metro.config.js](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/metro.config.js#L27) & [frontend/scripts/fix-expo-tsconfig.js](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/scripts/fix-expo-tsconfig.js)
+   - `metro.config.js`: Sabit `config.maxWorkers = 2` yerine `Math.max(2, Math.min(8, os.cpus().length - 1))` (veya `process.env.METRO_MAX_WORKERS` override) kullan.
+   - `node_modules` içine fiziksel yazım yapan `postinstall` yamasını (`fix-expo-tsconfig.js`) `tsconfig.json` `skipLibCheck: true` + temiz yerel tip bildirimleriyle gereksiz kılıp kaldır.
 
-## Adım sayısı: 6 → 7
-
-- **Adım 3 (Frekans)** içine **Bitiş Koşulu** alt-bölümü eklenir (yeni adım değil).
-- **Adım 6 (Son Ayarlar)**: ikon/renk/irade maliyeti (routing kartı buradan çıkar).
-- **🆕 Adım 7 (Özet & Onayla)**: tüm kararların özeti (Mini Tablo karşılığı) + hedef kartı + Submit.
-
-## Faz Planı (ETAP 3)
-
-### FAZ 1 — Bitiş Koşulu (`end_condition`)
-- `Habit.end_condition` ve store select zaten hazır (`EndCondition = {kind:'date'|'amount', value}`).
-- `renderStep3` sonuna "Bitiş Koşulu" alt-bölümü:
-  - 3 seçenek çipi: **Süresiz** (null) · **Tarihe kadar** (date) · **Hedef sayıya** (amount)
-  - date → hızlı presetler [30/60/90/180 gün] → `{kind:'date', value: format(addDays(now,N),'yyyy-MM-dd')}` (datepicker bağımlılığı yok)
-  - amount → numeric TextInput + "kez" → `{kind:'amount', value:N}`
-- Kart/özette insanca gösterim: "Süresiz" / "DD.MM.YYYY'e kadar" / "N kez".
-- Yardımcı: `lib/triage.ts` veya inline `endConditionLabel(ec)`.
-
-### FAZ 2 — Adım 7 "Özet & Onayla"
-- Yeni `renderStep7`: tek kartta özet satırları — Ad (ikon/renk) · Davranış · Takip (evet-hayır/ölçülebilir+birim/hedef) · Frekans + Bitiş · Etki · Aciliyet · Triaj kararı · İrade maliyeti.
-- Routing/hedef kartı (Aktif/Bekleme/Fikir) Adım 6'dan buraya taşınır.
-- Submit butonu (dinamik renk/etiket) burada; Adım 6 artık "Devam".
-- `TOTAL_STEPS=7`, render switch'e `step===7`.
-
-### FAZ 3 — Kanban "Tamamlandı"
-- `habitStore`: `completeHabit(id, wasActive, cost)` → status `completed` (+ aktifse `refund`).
-- `habits.tsx` ve `timeline.tsx`:
-  - Aktif/Bekleme kartlarına **"Tamamla"** aksiyonu (✓).
-  - **"Tamamlanan"** bölümü (soluk, sayıyla) — `status==='completed'` kartları; "Geri Aç" (→ waiting) + sil.
-- Böylece Kanban: Fikir(idea) · Yapılacak(waiting) · Yapılıyor(active) · **Yapıldı(completed)** görünür olur.
-
-### FAZ 4 — Doğrulama
-- `tsc --noEmit` (her faz) + Android bundle + DB round-trip (`end_condition` jsonb insert, `status='completed'` insert/oku/temizle).
-
-## İleriye Dönük (bu etapta DEĞİL)
-Tahmini süre (dk/gün), hatırlatıcı saati, alışkanlık zincirleme (cue), Dashboard & Filtreler, tam AI Coach, "Askıda/Bloke" ayrı durumu.
-
-## Dosya Özeti (ETAP 3)
-| Dosya | Faz | Değişiklik |
-|---|---|---|
-| `components/HabitOnboarding.tsx` | 1,2 | Bitiş koşulu alt-bölümü + Adım 7 özet + routing taşı |
-| `lib/triage.ts` | 1 | `endConditionLabel` |
-| `store/habitStore.ts` | 3 | `completeHabit` |
-| `app/tabs/habits.tsx` | 3 | Tamamla aksiyonu + Tamamlanan bölümü |
-| `app/tabs/timeline.tsx` | 3 | Tamamla aksiyonu + Tamamlanan bölümü |
+#### Kabul Kriterleri & Faz 02 Testleri
+- `BACKUP_TABLE_ORDER_SPEC` içindeki her tablonun sıralama kolonlarının [live_schema.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/live_schema.sql) + `028..031` SQL tanımlarıyla %100 eşleştiğini kanıtlayan `__tests__/repositories/restoreRepositoryOrderColumns.test.ts` testi yeşil geçer.
+- `npx expo-doctor` paket sürüm uyumluluğu kontrolünde SDK 57 sapması sıfırlanır.
 
 ---
 
-# ETAP 4 — İleriye Dönük 5 Özellik (Tam Set)
+### Faz 03 — Veritabanı Migrasyon Uzlaştırması (`028..037`) & `038` Güvenlik, XP, İndeks ve Saat Dilimi Sertleştirmesi
 
-## Bağlam (Neden?)
-Kullanıcı 5 ileriye dönük özelliğin tamamını istedi. Her madde bağımsız bir ana FAZ; her ana FAZ kendi içinde alt-fazlara bölünür; her ana FAZ bittiğinde **test kapısı** (tsc + Android bundle + gerekli DB round-trip) çalışır, geçerse sonraki FAZ'a geçilir. Onay beklenmez.
+#### Çözdüğü Rapor Bulguları
+- Bölüm `4.1` & `4.2` (`028..037` uygulanmamış migrasyonlar, `028..031` unutulmuş `GRANT/REVOKE` blokları, soğuk açılışta boşa giden `get_today_bootstrap` `PGRST202` RTT'si, 6 atıl miras tablo)
+- Bölüm `4.3` (`weekly_xp` liderlik tablosu sabotajı, `S11` + `036` sonrası kalan **`purged_xp` 1990..1995 sonsuz XP istismarı**, 100K kullanıcıda tek satırı kilitleyen `on_habit_completed_damage_boss` trigger'ı, `notion_integrations.access_token` istemci sızıntısı, `get_user_rank` BOLA ve tam tablo taraması, eksik 12 `user_id` + sıcak keyset bileşik indeksler, `tasks_parent_task_id_fkey` `ON DELETE CASCADE` eksikliği, Türkiye Pazartesi `00:00-02:59` UTC kayması, `habit_deletions` çift kayıt hatası)
 
-## Test Protokolü (her ana FAZ sonunda)
-1. `npx tsc --noEmit` temiz olmalı.
-2. `npx expo export --platform android` başarılı bundle üretmeli (tüm modül grafiği çalışma-zamanı derlemesi).
-3. Veri modeli değiştiyse canlı Supabase round-trip (insert/oku/temizle).
-Başarısızsa düzelt, tekrar test et; geçmeden sonraki FAZ'a geçme.
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/038_security_indexes_and_tz_hardening.sql`
+   - **A. Eksik API Yetkileri (`028..031` Düzeltmesi):** `habit_pauses`, `habit_goal_versions`, `habit_checklist_items`, `habit_checklist_checks`, `routine_templates`, `routine_template_versions`, `routine_sessions`, `mood_definitions`, `mood_checkins`, `review_next_actions` tablolarında `REVOKE ALL ON TABLE ... FROM anon, PUBLIC; GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE ... TO authenticated;` ve `(select auth.uid()) = user_id` (`USING` + `WITH CHECK`) politikalarının sıkılaştırılması.
+   - **B. `global_bosses` Küresel Satır Kilidinin Kaldırılması (`DB-03`):**
+     ```sql
+     DROP TRIGGER IF EXISTS on_habit_completed_damage_boss ON public.habit_logs;
+     ```
+     *(Topluluk hedefi `Faz 16`'da kilitsiz append-only `boss_contributors` üzerinden ve `xp_drift()` uyumlu olarak yeniden bağlanacaktır).*
+   - **C. `S11` + `purged_xp` Sonsuz XP İstismarının Tam Kapatılması:**
+     - `habit_xp_awards` tablosundaki `habit_id` foreign key kısıtından `ON DELETE CASCADE` kaldırılır (`habit_id UUID NOT NULL` düz değer olarak kalır); böylece bir alışkanlık silinip yeniden açılsa bile aynı `(user_id, habit_id, awarded_date)` veya günlük XP tavanı (`MAX_DAILY_HABIT_XP = 300`) aşılamaz!
+     - Doğrudan istemci `habit_logs` `INSERT/UPDATE` işlemlerinde `completed_date` alanı kullanıcının yerel bugününe göre `[today - 31 days, today + 1 day]` penceresiyle sınırlandırılır; daha eski tarihsel veri göçleri (`Faz 19` CSV import) yalnızca `xp_awarded = 0` garantili `import_historical_habit_logs` RPC'si üzerinden yapılır.
+   - **D. `notion_integrations` Token İzolasyonu & `get_user_rank` Yaması:**
+     - `REVOKE ALL ON TABLE public.notion_integrations FROM anon, authenticated;` — istemciye yalnız `workspace_name`, `connected_at`, `last_synced_at`, `database_id` döndüren `get_notion_integration_status()` (`SECURITY DEFINER`, `SET search_path = public`, `WHERE user_id = (select auth.uid())`) RPC'si açılır (`access_token` asla istemciye çıkmaz!).
+     - `get_user_rank()` parametresiz veya yalnız `(select auth.uid())` için çalışacak şekilde daraltılır ve `profiles(total_xp DESC)` indeksini kullanan `O(log N)` sorguya çevrilir.
+   - **E. Eksik 12 `user_id` İndeksi + Sıcak Keyset / Zaman İndeksleri + Cascade:**
+     - `projects(user_id)`, `goals(user_id)`, `okrs(user_id)`, `key_results(okr_id)`, `focus_tasks(user_id)`, `deep_work_sessions(user_id, started_at DESC)`, `habit_deletions(user_id)`, `routines(user_id)`, `habit_checklist_items(user_id, habit_id)`, `routine_templates(user_id)`, `routine_template_versions(template_id)`, `mood_definitions(user_id)`
+     - `tasks(user_id, created_at DESC, id DESC)`, `tasks(user_id, due_date) WHERE is_completed = false`, `habit_logs(user_id, completed_date DESC)`, `mood_checkins(user_id, created_at DESC)`, `profiles(total_xp DESC)`, `weekly_xp(week_start, xp_earned DESC)`
+     - `tasks_parent_task_id_fkey` -> `ON DELETE CASCADE` olarak yenilenmesi; JSONB kolonlarına `pg_column_size(...) <= 32768` `CHECK` kısıtları.
+   - **F. `profiles.timezone` (`Europe/Istanbul`) Saat Dilimi Doğrulaması:**
+     - `track_weekly_xp`, `get_weekly_leaderboard` ve `get_today_bootstrap` içinde UTC `CURRENT_DATE` yerine kullanıcının `COALESCE(profiles.timezone, 'Europe/Istanbul')` saat dilimine göre hesaplanan yerel tarih ve yerel Pazartesi başlangıcı (`date_trunc('week', (now() AT TIME ZONE tz))::date`) kullanılır.
+   - **G. 6 Atıl Miras Tablonun İzolasyonu:** `CREATE SCHEMA IF NOT EXISTS archive_legacy;` -> `ai_calls`, `daily_capacity`, `habit_reminders`, `habit_templates`, `routine_items`, `user_gamification` tablolarından `anon`/`authenticated` yetkileri tamamen geri alınır (`REVOKE ALL`) ve şema kalabalığından çıkarılır.
+2. **Güncelleme:** [frontend/repositories/habitRepository.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/repositories/habitRepository.ts#L141)
+   - DB trigger'ı zaten `habit_deletions` kaydı ürettiği için istemcinin mükerrer `habit_deletions` insert çağrısını tekilleştir (veya `ON CONFLICT DO NOTHING` / tek otoriteye indir).
+3. **Güncelleme:** [.github/workflows/ci.yml](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/../.github/workflows/ci.yml) & `supabase/predeploy_guard.sh`
+   - `db-migrations-verify` (`postgres:17`) işine `038_security_indexes_and_tz_hardening.sql` uygulanmasını, negatif güvenlik testlerini (`weekly_xp` doğrudan yazım reddi, `1995` tarihli log XP farming reddi, `notion_integrations` token okuma reddi, `xp_drift() = 0`) ve Staging release runbook'unu ([supabase/migrations/README.md](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/migrations/README.md)) ekle *(Not: [ciGatesWired.test.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/__tests__/repo/ciGatesWired.test.ts) içindeki tüm mevcut beklentiler %100 korunur!)*.
 
----
-
-## FAZ 1 — Tahmini Süre (dk/gün)
-**Amaç:** Alışkanlığın günlük tahmini süresi; irade maliyetine girer, ileride Odak/Derin Çalışma'ya bağlanır.
-
-- **1.1 Veri:** `habits.estimated_minutes int DEFAULT 0`. `Habit` tipine `estimated_minutes:number`; `DEFAULT_FORM=0`; store select'lere ekle; `routineStore` default 0.
-- **1.2 İrade motoru:** `lib/triage.ts` `CostInput`'a `estimated_minutes`; `costBreakdown`'a `timeBonus = min(2, floor(dk/30)*0.5)`; formül + döküm satırı.
-- **1.3 Onboarding UI:** Adım 5 (Zorluk & İrade) içine "Tahmini süre/gün" — çipler [5/15/30/45/60/90 dk] + serbest giriş; değişince cost yeniden hesap.
-- **1.4 Gösterim:** Özet (Adım 7) + kartlarda küçük "⏱ N dk" rozeti (habits + timeline).
-- **1.5 TEST.**
-
-## FAZ 2 — Hatırlatıcı Saati
-**Amaç:** Alışkanlığa günlük yerel bildirim saati.
-
-- **2.1 Bağımlılık & config:** `npx expo install expo-notifications expo-device`; `app.json` plugin + (varsa) izin alanları.
-- **2.2 Veri:** `reminders` jsonb (mevcut) → `{ time:'HH:mm', enabled:bool } | null`. `Habit` tipine `reminders`; form default null; store select'e ekle.
-- **2.3 Onboarding UI:** Adım 3'e "Hatırlatıcı" alt-bölümü — aç/kapa + saat çipleri [07:00/08:00/12:00/18:00/21:00] + serbest HH:MM.
-- **2.4 Zamanlama lib:** `lib/notifications.ts` — `ensurePermission()`, `scheduleHabitReminder(habit)`, `cancelHabitReminder(id)`, günlük tekrarlı tetik.
-- **2.5 Entegrasyon:** ekle/aktifleştir → schedule; beklet/tamamla/sil/arşiv → cancel; uygulama açılışında izin + senkron. Kartlarda "🔔 HH:mm" rozeti.
-- **2.6 TEST.** (Bildirim teslimi cihazda; burada tsc+bundle.)
-
-## FAZ 3 — Alışkanlık Zincirleme (Çağrışım / Cue)
-**Amaç:** "X alışkanlığından sonra" veya "Kahvaltıdan sonra" tetikleyici (atomic habits).
-
-- **3.1 Veri:** `cue_habit_id uuid REFERENCES habits(id) ON DELETE SET NULL`, `cue_note text`. Tip + form default null + select.
-- **3.2 Onboarding UI:** Adım 3'e "Çağrışım" alt-bölümü — mod seçimi: Yok / Mevcut alışkanlıktan sonra (liste) / Serbest metin.
-- **3.3 Gösterim:** kart + özette "🔗 X'ten sonra" veya "📝 not". `lib/triage.ts` `cueLabel(habit, allHabits)`.
-- **3.4 TEST.**
-
-## FAZ 4 — Dashboard & Filtreler
-**Amaç:** Tüm alışkanlıkların tablo görünümü + Durum/Etki/Aciliyet filtreleri (A2 "Mini Tablo + Dashboard & Filtreler").
-
-- **4.1 Ekran:** `app/screens/dashboard.tsx` — satır listesi: Ad · Durum · Etki · Karar(triaj) · İrade · Bitiş; üstte özet metrikler.
-- **4.2 Filtreler:** çip barı — Durum (active/waiting/idea/paused/completed), Etki (kritik/yüksek/orta/düşük), Aciliyet; çoklu seçim + temizle; arama (ad).
-- **4.3 Navigasyon:** `app/screens/_layout.tsx` stack + `components/Drawer.tsx` ALIŞKANLIKLAR grubuna "Dashboard".
-- **4.4 TEST.**
-
-## FAZ 5 — Askıda / Bloke Durumu (Kanban 5. durum)
-**Amaç:** "Beklemede (kuyruk)" ile "Askıda/Bloke (geçici durduruldu)" ayrımı.
-
-- **5.1 Store/aksiyon:** `blockHabit(id,cost,wasActive)` → status `paused` (+ aktifse refund); `resumeHabit` → waiting. Mevcut "Beklet" (waiting) korunur; ayrı "Askıya Al".
-- **5.2 UI:** habits + timeline'da "Askıda" bölümü; aktif/bekleme kartına "Askıya Al" (pause-circle), askıdakine "Devam Et" (→ waiting). Soluk + kilit ikonu.
-- **5.3 Yansıma:** Dashboard filtresine 'paused' dahil; Kanban tam 5 durum (Fikir/Yapılacak/Yapılıyor/Yapıldı/Askıda).
-- **5.4 TEST.**
-
-## Yeni Supabase kolonları (özet)
-```sql
-ALTER TABLE habits ADD COLUMN IF NOT EXISTS estimated_minutes int DEFAULT 0;
-ALTER TABLE habits ADD COLUMN IF NOT EXISTS cue_habit_id uuid REFERENCES habits(id) ON DELETE SET NULL;
-ALTER TABLE habits ADD COLUMN IF NOT EXISTS cue_note text;
--- reminders jsonb, preferred_time_of_day text: mevcut
-```
-
-## Dosya Özeti (ETAP 4)
-| Dosya | FAZ | Değişiklik |
-|---|---|---|
-| Supabase habits | 1,3 | estimated_minutes, cue_habit_id, cue_note |
-| lib/supabase.ts | 1,2,3 | Habit: estimated_minutes, reminders, cue_* |
-| lib/triage.ts | 1,3 | timeBonus, cueLabel |
-| lib/notifications.ts (YENİ) | 2 | yerel bildirim zamanlama |
-| store/habitStore.ts | 1,2,3,5 | select + blockHabit/resumeHabit |
-| store/routineStore.ts | 1 | default estimated_minutes |
-| components/HabitOnboarding.tsx | 1,2,3 | tahmini süre + hatırlatıcı + çağrışım + özet |
-| app/tabs/habits.tsx | 1,2,3,5 | rozetler + Askıda bölümü + bildirim kancaları |
-| app/tabs/timeline.tsx | 1,2,3,5 | rozetler + Askıda bölümü |
-| app/screens/dashboard.tsx (YENİ) | 4 | tablo + filtreler |
-| app/screens/_layout.tsx, Drawer.tsx | 4 | navigasyon |
-| app.json, package.json | 2 | expo-notifications |
+#### Kabul Kriterleri & Faz 03 Testleri
+- `postgres:17` CI işinde `live_schema.sql` + `028..038` sıfır hatayla uygulanır; simüle edilen `authenticated` rolüyle yapılan `weekly_xp` sahteciliği, `purged_xp` döngüsü ve `notion_integrations` token okuması Postgres tarafından reddedilir; `xp_drift()` sonucu `0` satır döner.
 
 ---
 
-# ETAP 5 — Tam AI Coach (kalan dokümante madde)
+### Faz 04 — Edge Functions Deno 2 Sertleştirmesi, `subscription-webhook` İstismar Yaması & Mağaza Hukuki Uyumluluğu
 
-## Bağlam (Neden?)
-`app/screens/ai-coach.tsx` arayüzü var ama backend coach modunu desteklemiyor: `generate-routine` edge function yalnızca `body.prompt` okuyup rutin JSON (`{name,description,items}`) döndürüyor; AI Coach'un gönderdiği `{message, context, mode:'coach'}` yok sayılıyor ve `{reply}` dönmüyor → coach pratikte ÇALIŞMIYOR. Bu etap coach modunu uçtan uca işler hale getirir. Rutin modu (AIRoutineModal → `{prompt}`) AYNEN korunur.
+#### Çözdüğü Rapor Bulguları
+- Bölüm `4.4.1` (Deno 2 altında eski `deno.land/std@0.168.0` importları, `deno.lock` yokluğu, `config.toml` içinde eksik `[functions.<slug>] verify_jwt` tanımları)
+- Bölüm `4.4.2` (`subscription-webhook` idempotency yokluğu, **`UNCANCELLATION` sonsuz ücretsiz abonelik + 1.000 FP kredi istismarı**, haftalık planda 4x kredi hatası, `` `$RCAnonymousID:` `` `500` çökmesi, `get_or_init_subscription` `FOR UPDATE` yarış koşulu)
+- Bölüm `4.4.5` (`generate-routine` RPM burst sınırı yokluğu, `routine` modunda kırılgan regex `JSON.parse`, `summarize`/`insights` ham metin LLM proxy açığı, tek sağlayıcı `529` çökme riski)
+- Bölüm `6.6` (`delete-account` OAuth token revocation eksikliği, `aderyth.com/{privacy,support,delete-account}` yayın doğrulaması, Auth CAPTCHA)
 
-## Faz Planı (ETAP 5)
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/039_subscription_webhook_idempotency.sql`
+   - `public.subscription_webhook_events(event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, app_user_id TEXT, processed_at TIMESTAMPTZ NOT NULL DEFAULT now())` (`REVOKE ALL FROM anon, authenticated;` — yalnız `service_role`).
+   - `process_revenuecat_event_v2(...)` atomik PLpgSQL fonksiyonu:
+     - `INSERT INTO subscription_webhook_events ... ON CONFLICT (event_id) DO NOTHING` ile %100 replay/retry koruması.
+     - `INITIAL_PURCHASE` ve `RENEWAL`: Gerçek `p_expiration_at` tarihini yazar ve dönem uzunluğuna göre kredi verir (`weekly -> 250 FP`, `monthly -> 1000 FP`, `annual -> ilk ay 1000 FP + aylık yenileme`).
+     - `UNCANCELLATION` ve `PRODUCT_CHANGE`: **Asla yeni kredi basmaz** ve süreyi `now() + 1 month` diye uzatmaz; yalnızca `p_expiration_at > now()` ise `cancel_at_period_end = false` ve gerçek `sub_period_end = p_expiration_at` günceller!
+     - `get_or_init_subscription`: `SELECT * FROM public.user_subscriptions WHERE user_id = v_uid FOR UPDATE;` kilidiyle ay dönümü çift kredi yarışını kapatır.
+2. **Güncelleme:** `supabase/config.toml`, `supabase/functions/deno.json` (YENİ) & 7 Edge Function
+   - Tüm Edge Function'larda `Deno.serve(...)` ve pinlenmiş `npm:@supabase/supabase-js@2.107.0` / `jsr:` importlarına geç; `deno.lock` üret.
+   - `supabase/config.toml` içine 7 fonksiyonun tamamı için açık `[functions.<slug>]` bloklarını ekle (`subscription-webhook` -> `verify_jwt = false` + zorunlu sabit-zamanlı `Authorization: Bearer <REVENUECAT_WEBHOOK_SECRET>` kontrolü; OAuth callback'leri ve `generate-routine` / `delete-account` kendi güvenlik politikalarıyla).
+   - [subscription-webhook/index.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/functions/subscription-webhook/index.ts): `` `$RCAnonymousID:` `` veya geçersiz UUID geldiğinde `500` yerine `202 Accepted ({ ignored: 'anonymous_id' })` döndür.
+   - [generate-routine/index.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/functions/generate-routine/index.ts): (a) Son 60 saniyede `ai_requests` sayısına göre `RPM <= 10` burst rate-limit (`HTTP 429 + Retry-After`), (b) `routine` ve `split_task` modlarında regex yerine yapılandırılmış `tool_choice` (`coachContractSchema`), (c) `summarize` ve `insights` modlarında ham metin yerine kullanıcının kendi `journal_entry_id` / `note_id` kaydını DB'den okuma (veya sıkı uzunluk + sistem görevi kilidi), (d) Anthropic `529/5xx` veya `8 sn` ilk-token zaman aşımında `GEMINI_API_KEY` varsa otomatik `gemini-2.5-flash` yedek akışı, `Nexus Pro` abonelerinde üst model seçimi.
+   - [delete-account/index.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/functions/delete-account/index.ts): Kullanıcı silinmeden önce `google_calendar_integrations` (`oauth2.googleapis.com/revoke`), `spotify_accounts` ve `notion_integrations` token iptallerini `Promise.allSettled` ile çalıştır; aktif mağaza aboneliği varsa istemci onay ekranında Google Play / App Store abonelik yönetim linkini zorunlu göster.
+3. **Güncelleme:** `docs/store/web/` & `tools/verify-public-legal-urls.mjs` (YENİ)
+   - `privacy.html`, `support.html`, `delete-account.html` sayfalarını tek komutla Cloudflare Pages / Vercel / GitHub Pages üzerinden `aderyth.com` alan adına yayınlayacak yapılandırma (`vercel.json` / `_redirects`) ve HTTP 200 doğrulama betiği.
 
-### FAZ 1 — Backend: coach modu
-`supabase/functions/generate-routine/index.ts`:
-- `mode` oku (varsayılan 'routine'). Rate limit + cooldown ikisinde de geçerli.
-- **routine** (mevcut, değişmez): `prompt` → rutin JSON.
-- **coach** (yeni): `message` (3–500 char) + `context` (activeHabits[], habitCount, pendingTaskCount). Koçluk sistem promptu (ADHD-dostu, yargılamayan, kısa, Türkçe, somut öneri). Düz metin `{reply: "..."}` döndür (JSON parse YOK).
-- MCP `deploy_edge_function` ile deploy; `get_logs` ile boot hatası kontrolü.
-
-### FAZ 2 — Frontend hizalama
-- `ai-coach.tsx`: hata mesajını sunucudan düzgün çek (routineStore deseni: `error.context.json().error`), 429/limit mesajları görünsün.
-- Bağlam zenginleştir: willpower durumu + bekleyen görev sayısı (zaten var) gönder.
-- Navigasyon zaten var (Drawer KİŞİSEL + _layout). Boş durum/ipucu metni gözden geçir.
-
-### FAZ 3 — Test
-- `tsc --noEmit` + Android bundle.
-- Edge function deploy başarılı + logs temiz.
-- NOT: gerçek AI yanıtı kullanıcı JWT'si gerektirir → cihazda giriş yapılmış oturumla doğrulanır (bu ortamda auth'lu uçtan uca çağrı yapılamaz).
-
-## Dosya Özeti (ETAP 5)
-| Dosya | FAZ | Değişiklik |
-|---|---|---|
-| supabase/functions/generate-routine/index.ts | 1 | coach modu + deploy |
-| app/screens/ai-coach.tsx | 2 | hata çıkarımı + bağlam |
+#### Kabul Kriterleri & Faz 04 Testleri
+- `deno test supabase/functions/` altında: (a) aynı `event_id` ile 3 kez gönderilen `INITIAL_PURCHASE` yalnız 1 kez kredi yazar, (b) 10 kez gönderilen `UNCANCELLATION` **0 FP** kredi yazar ve tarihi keyfi uzatmaz, (c) `` `$RCAnonymousID:abc` `` `202` döner, (d) `generate-routine` 11. dakikadaki burst isteğe `429` döner.
 
 ---
 
-# ETAP 6 — Katmanlı Abonelik + Focus Point Kredi Sistemi (Tiered Monetization)
-
-## Bağlam (Neden?)
-AI maliyetini kontrol etmek ve gelir üretmek için katmanlı abonelik (Free / Nexus Plus / Nexus Pro) + tüketim bazlı **Focus Point** kredi sistemi kurulur. AI yine backend Claude anahtarıyla çalışır; her çağrı krediden düşer. Krediler aylık yenilenir, devretmez. Gerçek ödeme (IAP/Stripe) bu ortamda test edilemez → ödeme sınırına kadar kurulur, test için mock aktivasyon eklenir, gerçek IAP dokümante edilir.
-
-## Parametreler (varsayımlar)
-| Katman | Aylık Grant | Fiyatlar |
-|---|---|---|
-| Free | 30 FP | — |
-| Plus | 100 FP | Haftalık $4.99 · Aylık $12.99 · Yıllık $39.99 |
-| Pro | 1000 FP | Aylık $29.99 · Yıllık $99.99 (haftalık yok) |
-
-**Aksiyon maliyeti (FP):** Coach sohbet = 5 · Rutin planlama (ağır) = 25.
-Krediler **aylık** yenilenir (reset, devretmez). Abonelik süresi bitince Free'ye düşer.
-
-## Faz Planı (her faz sonunda tsc + bundle + DB/deploy test kapısı)
-
-### FAZ 1 — Veri modeli + kredi RPC'leri (Supabase)
-- `user_subscriptions` (user_id PK, tier, billing_period, status, focus_points, monthly_grant, credits_period_end, sub_period_end, provider, provider_ref) + RLS (yalnız SELECT own; yazma DEFINER fonksiyonlarıyla).
-- `credit_transactions` (ledger: delta, reason, balance_after) + RLS SELECT own.
-- SECURITY DEFINER fonksiyonlar (hepsi `auth.uid()` ile yalnız kendi satırına): 
-  - `get_or_init_subscription()` — yoksa free oluştur; süre dolduysa kredi yenile + abonelik bittiyse Free'ye düşür.
-  - `spend_focus_points(amount, reason)` → `(ok, balance)` atomik düşüm + ledger.
-  - `mock_activate_subscription(tier, period)` — DEV-ONLY: tier ata + grant yükle. ⚠️ Prod'da ödeme-doğrulamalı webhook ile değiştirilecek.
-- Test: SQL round-trip (init → spend → yetersiz → mock activate → renewal).
-
-### FAZ 2 — Edge function kredi gating
-- `generate-routine`: aksiyon maliyeti (coach=5, routine=25). Önce `get_or_init_subscription` ile bakiye kontrol → yetersizse `{error, code:'INSUFFICIENT_CREDITS', balance, cost}` 402. Anthropic başarılıysa `spend_focus_points` ile düş; yanıta `balance` ekle. (Eski 3/gün limiti kaldırılır; kredi sistemi gating'i devralır, cooldown kalır.)
-- Deploy + logs.
-
-### FAZ 3 — Frontend config + store
-- `lib/subscription.ts` — TIERS (grant, fiyatlar, özellik listeleri), ACTION_COST.
-- `store/subscriptionStore.ts` — `fetch()` (get_or_init RPC), `tier`, `focusPoints`, `canAfford(cost)`, `activateMock(tier, period)`, `refresh()`.
-- Test (tsc + bundle).
-
-### FAZ 4 — Paywall + Focus Point UI + entegrasyon
-- `app/screens/paywall.tsx` — Plus/Pro kartları, fiyat çıpalama (Pro öne), özellik listeleri, periyot seçimi, "Abone Ol" → `activateMock` (test). En altta "gerçek ödeme yakında" notu.
-- Focus Point rozeti (AI Coach başlığı + Drawer'da kalan FP).
-- AI Coach + AIRoutineModal: `INSUFFICIENT_CREDITS` → paywall'a yönlendiren CTA; başarılı çağrı sonrası `subscriptionStore.refresh()`.
-- Navigasyon: `_layout.tsx` + Drawer (SİSTEM/KİŞİSEL → "Üyelik & Krediler").
-- Test (tsc + bundle).
-
-### FAZ 5 — Gerçek IAP dokümantasyonu (kod değil)
-- RevenueCat (RN cross-store) entegrasyon adımları implementation.md'ye: ürün tanımları, `react-native-purchases`, satın alma → store webhook → sunucu doğrulama → `activate_subscription` (verified) ile tier yükleme. `mock_activate` kaldırılır.
-
-## Dosya Özeti (ETAP 6)
-| Dosya | FAZ | Değişiklik |
-|---|---|---|
-| Supabase (tablolar+RPC) | 1 | user_subscriptions, credit_transactions, fonksiyonlar |
-| supabase/functions/generate-routine | 2 | kredi gating |
-| lib/subscription.ts (YENİ) | 3 | tier/fiyat/maliyet config |
-| store/subscriptionStore.ts (YENİ) | 3 | abonelik+kredi store |
-| app/screens/paywall.tsx (YENİ) | 4 | paywall |
-| app/screens/ai-coach.tsx, components/AIRoutineModal.tsx | 4 | yetersiz kredi CTA + refresh |
-| app/screens/_layout.tsx, components/Drawer.tsx | 4 | navigasyon |
-
-## ETAP 6 — FAZ 5: Gerçek Ödeme Entegrasyonu (RevenueCat) — Yapılacaklar
-
-Şu an `mock_activate_subscription` ile test ediliyor. Yayına çıkmadan önce gerçek ödeme:
-
-**Önerilen: RevenueCat** (RN'de iOS+Android tek SDK, makbuz doğrulama dahil).
-
-1. **Mağaza ürünleri tanımla**
-   - App Store Connect + Play Console'da abonelik ürünleri: `plus_weekly`, `plus_monthly`, `plus_yearly`, `pro_monthly`, `pro_yearly` (fiyatlar lib/subscription.ts ile aynı).
-2. **RevenueCat kurulumu**
-   - `npx expo install react-native-purchases` (+ dev build; Expo Go desteklemez).
-   - RevenueCat dashboard'da ürünleri "Entitlements"a bağla: `plus`, `pro`. Offerings oluştur.
-   - `Purchases.configure({ apiKey })` app açılışında; kullanıcıyı `Purchases.logIn(user.id)` ile eşle.
-3. **Paywall'u bağla**
-   - `paywall.tsx`'te `activateMock` yerine `Purchases.purchasePackage(pkg)`.
-   - Satın alma sonrası `customerInfo.entitlements.active` → tier belirle.
-4. **Sunucu doğrulama (kritik)**
-   - RevenueCat **webhook** → yeni bir edge function (`subscription-webhook`, `verify_jwt:false`, imza doğrulamalı) → doğrulanmış olayda `activate_subscription(tier, period)` (SECURITY DEFINER, **service-role/webhook'tan** çağrılır) ile tier + grant yükle.
-   - **`mock_activate_subscription` fonksiyonunu KALDIR** (client'ın kendine Pro vermesini engelle).
-5. **Geri yükleme & iptal**
-   - "Satın alımları geri yükle" butonu (`Purchases.restorePurchases`).
-   - Webhook `EXPIRATION`/`CANCELLATION` → `get_or_init_subscription`'daki süre-bitti mantığı zaten Free'ye düşürür; webhook anında senkron yapar.
-6. **Web için (opsiyonel):** Stripe Checkout + Stripe webhook → aynı `activate_subscription`.
-
-**Güvenlik notu:** Tier yükseltme YALNIZCA doğrulanmış sunucu webhook'undan yapılmalı; istemci asla doğrudan tier set edememeli.
-
-## ETAP 6 — FAZ 6: Sunucu-tarafı ödeme altyapısı (TAMAMLANDI)
-Kuruldu & test edildi:
-- `activate_subscription(user_id, tier, period, provider, ref)` — **service-role only** (authenticated/anon EXECUTE reddedildi; doğrulandı). Upsert + grant + ledger.
-- `expire_subscription(user_id)` — Free'ye düşürür (service-role only).
-- `subscription-webhook` edge function (verify_jwt=false, `REVENUECAT_WEBHOOK_SECRET` ile Bearer doğrulama). INITIAL_PURCHASE/RENEWAL/PRODUCT_CHANGE/UNCANCELLATION/NON_RENEWING → activate; EXPIRATION → expire. Yetkisiz istek → 401 (doğrulandı).
-- `mock_activate_subscription` hâlâ duruyor (dev paywall testi için) — **prod'da KALDIRILACAK**.
-
-### Kullanıcının yapması gerekenler (sunucu için)
-1. Supabase Dashboard → Edge Functions → Secrets: `REVENUECAT_WEBHOOK_SECRET` = güçlü rastgele değer.
-2. RevenueCat → Integrations → Webhooks: URL `https://kbcuolhjjnmhjaarxxmu.supabase.co/functions/v1/subscription-webhook`, Authorization header `Bearer <aynı secret>`.
-3. RevenueCat ürün id'leri: `plus_weekly/plus_monthly/plus_yearly/pro_monthly/pro_yearly` (webhook mapProduct ile uyumlu).
-4. İstemci: `Purchases.logIn(user.id)` → `app_user_id` Supabase user.id ile eşleşmeli (webhook bunu kullanır).
-5. Client SDK bağlandıktan sonra `mock_activate_subscription` DROP edilir; paywall `activateMock` yerine gerçek satın almayı kullanır.
-
-## ETAP 6 — FAZ 7: Kredi Geçmişi ekranı (TAMAMLANDI)
-- `app/screens/credit-history.tsx` — `credit_transactions` ledger'ı (RLS SELECT own): özet (mevcut/kazanılan/harcanan) + işlem listesi (yenileme/aktivasyon/ai_coach/ai_routine, +/− renkli, bakiye). Paywall'da "Geçmiş" linki + stack kaydı. tsc + web export ✅.
+## DALGA 1 — Çekirdek Motor Onarımları, Tip/Mimari Temizlik, Bilgi Mimarisi & Sıfır-Paket Rakip Özellikleri (`Faz 05` – `Faz 12`)
 
 ---
 
-# DEVİR & UÇTAN UCA TEST REHBERİ (FAZ C)
+### Faz 05 — Tip Güvenliği (`dynamicClient` & 281 Tip Kaçışı Temizliği), `zod` Şemaları & Katman Mimarisi Onarımı
 
-## ŞİMDİ test edilebilir (dışsal adım gerekmez)
-Dev'de/web'de doğrulanabilir:
-- Tüm alışkanlık akışı (7 adım), Kanban 5 durum, takip+yönetim, dashboard/filtreler, OKR, kredi geçmişi.
-- **Paywall**: Drawer → Üyelik & Krediler → Plus/Pro "Abone Ol" (mock) → FP 100/1000 yüklenir → Kredi Geçmişi'nde "aktivasyon" satırı.
-- AI Coach FP barı + "Yükselt" akışı (yanıt için Track 1 gerekir).
+#### Çözdüğü Rapor Bulguları
+- Bölüm `1.1` (`repositories/shared.ts:18` `dynamicClient()` ile tüm PostgREST şema tip korumasının sıfırlanması, 281 tip kaçışı, `today.tsx` 34 `as any`, `tsconfig.json` vs `tsconfig.ci.json` ayrışması, `noUncheckedIndexedAccess` eksikliği, 4 GB heap baskısı)
+- Bölüm `1.3.B.1` (`zod` olmadığı için 2.300+ satır elle yazılmış `typeof` doğrulayıcısı)
+- Bölüm `2.1` (`services/` katmanını atlayan 9+5 store, `activateHabit` + `willpower.spend` yarışı, `todayBootstrapService` stale-overwrite yarışı)
 
-## TRACK 1 — AI'yı çalıştır (Anthropic kredisi) [5 dk]
-1. console.anthropic.com → Plans & Billing → kredi yükle.
-2. AI Coach'a yaz → gerçek yanıt gelir, **5 FP düşer**; AI Rutin → **25 FP düşer**.
-3. FP bitince → 402 → AI Coach'ta "Yükselt", AIRoutineModal'da "Üyeliği Yükselt" CTA'sı çıkar. Kredi Geçmişi harcamaları gösterir.
-> Not: Gating zaten çalışıyor; FP yalnızca AI çağrısı BAŞARILI olunca düşer (başarısız çağrı ücretsiz).
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Güncelleme:** [frontend/lib/database.types.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/database.types.ts) & [frontend/repositories/shared.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/repositories/shared.ts#L18)
+   - `database.types.ts` dosyasını `028..039` tablolarını/RPC'lerini içerecek ve `archive_legacy` şemasındaki ölü tabloları dışlayacak şekilde yenile (TSC bellek tüketimini düşürür).
+   - `dynamicClient = () => supabase as unknown as SupabaseClient` kaçışını kaldır; `typedClient = () => supabase` üzerinden tüm `repositories/*.ts` dosyalarındaki **50 adet `as unknown as`** ifadesini gerçek `Database['public']['Tables'][T]['Row']` satır eşleyicileriyle değiştir.
+2. **Yeni:** `frontend/lib/schemas/` (`routineProposalSchema.ts`, `taskDecompositionSchema.ts`, `coachActionsSchema.ts`, `backupSchema.ts`)
+   - `zod` şemaları ile [routineProposal.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/routineProposal.ts), [taskDecomposition.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/taskDecomposition.ts), [coachActions.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/coachActions.ts) ve [backupFormat.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/backupFormat.ts) içindeki yüzlerce satırlık manuel `typeof` bloklarını sadeleştir (tüm mevcut birim testleri birebir yeşil kalacak şekilde).
+3. **Güncelleme:** `frontend/lib/routes.ts` (YENİ tipli rota yardımcıları) + `frontend/tsconfig.json` & `tsconfig.ci.json`
+   - `today.tsx` içindeki 34 adet `router.push(... as any)` çağrısını tipli `Href` sabitleriyle sıfırla.
+   - `tsconfig.json` içinde `noImplicitOverride: true` ve `noUncheckedIndexedAccess: true` bayraklarını açıp ortaya çıkan indeks erişimlerini güvenli hale getir.
+4. **Yeni / Güncelleme (`services/` Katman Tamamlaması):**
+   - `goalService.ts`, `projectService.ts`, `okrService.ts`, `readingListService.ts`, `lifeAreasService.ts`, `deepWorkService.ts`, `insightsService.ts`, `profileService.ts`, `subscriptionService.ts` ve `integrationAuthService.ts` üzerinden tüm store'ların `UI -> Store -> Service -> Repository` katman kuralına uymasını sağla.
+   - [habitStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/habitStore.ts#L284-L312) `activateHabit`: İrade harcaması başarısız olursa alışkanlık durumunu geri alan (compensating rollback) veya tek RPC/servis işleminde yürüten atomik akış kur.
+   - [todayBootstrapService.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/services/todayBootstrapService.ts#L174-L205): Her store için `mutationEpoch` sayacı tut; bootstrap uçuş halindeyken kullanıcı bir görev/alışkanlık işaretlediyse eski bootstrap yanıtının o store'u ezmesini engelle!
 
-## TRACK 2 — Gerçek ödeme (RevenueCat) [sonra, yayın öncesi]
-1. Supabase → Edge Functions → Secrets: `REVENUECAT_WEBHOOK_SECRET` = güçlü rastgele.
-2. RevenueCat → Webhooks: URL `https://kbcuolhjjnmhjaarxxmu.supabase.co/functions/v1/subscription-webhook`, Authorization `Bearer <secret>`.
-3. Ürünler: `plus_weekly/monthly/yearly`, `pro_monthly/yearly`.
-4. `npx expo install react-native-purchases` (dev build) → `Purchases.logIn(user.id)` → paywall'da `activateMock` yerine gerçek satın alma.
-5. Çalışınca: `DROP FUNCTION mock_activate_subscription(text,text);` (istemci kendine tier veremesin).
-
-## Production Android binary
-Windows hermesc `expo export`'ta çöküyor (toolchain). Gerçek APK/AAB için **EAS Build**: `npx eas build -p android` (cloud/Linux). Dev/web etkilenmez.
-
----
-
-# ETAP 7 — Özet ↔ Dashboard Bağlantısı (Eisenhower deseniyle paralel)
-
-## Bağlam
-Alışkanlık ekleme Adım 7 ("Özet & Onayla") tek alışkanlığın mini-tablosu; bağımsız Dashboard tüm alışkanlıkların aynı tablosu. Aynı `lib/triage` dilini paylaşıyorlar ama aralarında açık bağ yok. Eisenhower'da yaptığımız gibi (in-flow ↔ standalone) bağlanacak. Karar: ikisi de kalır, çift yönlü köprü kurulur.
-
-## Yaklaşım
-1. **Adım 7 (HabitOnboarding renderStep7)** — özet tablonun altına ayna notu: "📊 Bu özet Dashboard'da bir satır olarak görünür." (Modal içinden navigasyon yok — taslak kaybolmasın; pasif not.)
-2. **Dashboard (`app/screens/dashboard.tsx`)** — eyleme dönük köprü:
-   - Üstte tek satır ipucu: "Her satır = bir alışkanlığın özeti · dokun → yönet · + → ekle".
-   - Satırlar tıklanabilir → `router.push('/tabs/habits')` (yönet).
-   - Sağ-altta **"+" FAB** → `/tabs/habits` (ekle; yeni alışkanlık panoda satır olur).
-3. Görsel dil zaten ortak (computeTriage/TRIAGE_META/impactMeta/endConditionLabel) — yeni mantık/şema yok.
-
-## Doğrulama
-- `tsc --noEmit` + `expo export --platform web`.
-- Manuel: Dashboard'da satıra dokun → habits; + → habits; Adım 7'de ayna notu görünür; yeni eklenen alışkanlık panoda satır olarak çıkar.
+#### Kabul Kriterleri & Faz 05 Testleri
+- `repositories/` dizininde `as unknown as` sayısı `50 -> 0`; `app/tabs/today.tsx` içinde `as any` sayısı `34 -> 0`.
+- Bootstrap uçuş sırasında yapılan kullanıcı check-in işleminin bootstrap döndüğünde ezilmediğini kanıtlayan `__tests__/services/todayBootstrapRace.test.ts` yeşil geçer.
 
 ---
 
-# ETAP 8 — Alışkanlık Kategorisi (Yaşam Alanı) + İstatistikte Alan Performansı
+### Faz 06 — Çekirdek Davranış Motorları: Bilimsel EMA Alışkanlık Gücü (*Loop*), Kintsugi Onarılmış Seri (*Disciplined / Dear Me*) & Aktif Habit Stacking (*Habitify*)
 
-## Bağlam
-Kullanıcı her alışkanlığa bir **yaşam alanı kategorisi** (Sağlık/Kariyer/Eğitim/Finans/Aile/Sosyal/Ruhsal/Hobiler = `LIFE_AREAS`) seçmek ve **İstatistikler** ekranında bu alanlarda nasıl gittiğini (alışkanlık tamamlamalarından türetilmiş) görmek istiyor. Mevcut `life-areas.tsx` elle 1-10 öz-değerlendirme radarı; bu yeni görünüm **veri-temelli** (habit_logs'tan).
+#### Çözdüğü Rapor Bulguları
+- Bölüm `3.2.1` & `7.3 (#15 Loop)` ([habitStrength.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/habitStrength.ts#L154-L197) takvim-körlüğü nedeniyle haftada 3 günlük %100 başarılı alışkanlığın `%43`'te kilitlenmesi, mola günlerinin `miss` sayılması, `partial` oranın sabit `0.5`'e ezilmesi)
+- Bölüm `3.2.2`, `7.2 (#12 Dear Me)` & `7.3 (#21 Disciplined)` (`currentStreak` sabahleyin `0` göstermesi; tamamlanan `recovery_plans` telafisinin `source_date`'i köprülememesi; `recovery.tsx:548` kırmızı `colors.error` ceza kutusu)
+- Bölüm `3.1` (`habits.tsx` vs `timeline.tsx` ~150 satır kopya yaşam döngüsü kodu ve `timeline.tsx`'te eksik kapasite override hakkı)
+- Bölüm `7.3 (#13 Habitify)` (`habits.cue_habit_id` kolonunun pasif metin olarak kalması)
 
-## Faz Planı (her faz sonunda tsc + web export; veri değişiminde SQL round-trip)
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Güncelleme:** [frontend/lib/habitStrength.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/habitStrength.ts)
+   - Yeni kanonik imza: `computeHabitStrength(habit, logsByDate, pauses, mendedDates, todayStr)` (eski imza geriye uyumlu sarmalayıcıyla `@deprecated` işaretlenir, tüm çağrı noktaları yeni imzaya geçirilir).
+   - **Loop (`uhabits`) Sıklık-Ölçekli EMA Denklemi:**
+     - Alışkanlığın haftalık beklenen sıklığından günlük frekans `f = expectedPerWeek / 7` hesaplanır; zayıflama çarpanı `alpha = 1 - Math.pow(0.5, Math.sqrt(f) / 13.0)`.
+     - Kronolojik taramada:
+       - `isPausedOn(habit, date, pauses)` veya `log?.status === 'skip'`: **Dondur** (`score` değişmez — ne ödül ne ceza!).
+       - `carriesDayLoad(habit, date) === false` ve o gün ekstra tamamlama yok: **Dinlenme günü** (`score` korunur).
+       - `done` veya `mendedDates.has(date)` (Kintsugi onarımı): `score = score * (1 - alpha) + 1.0 * alpha` (`mended` için `0.85` onarım katsayısı).
+       - `partial`: Gerçek `clamp(value / target, 0.15, 0.95)` oranıyla ağırlıklı güncelleme.
+       - Planlı gün kaçırıldıysa (`miss`, ancak `date === todayStr` ve gün henüz bitmediyse cezalandırma!): `score = score * (1 - alpha)`.
+   - `today.tsx`, `timeline.tsx` ve `habit-detail.tsx` üzerinde her alışkanlıkta `%91 Güç` mikro-halkası/rozeti gösterilir.
+2. **Güncelleme:** [frontend/lib/behaviorIntelligence.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/behaviorIntelligence.ts#L457-L468) & [frontend/app/screens/recovery.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/recovery.tsx)
+   - **Sabah Grace-Period:** `todayStr` henüz tamamlanmadıysa seri sayacı `0` döndürmez; bir önceki planlı günden geriye doğru sayar (`today` tamamlandığında `+1` eklenir).
+   - **Kintsugi Onarılmış Seri (`mendedStreak`):** `recoveryStore` içinde `status === 'completed'` olan `recovery_plans` kayıtlarının `source_date` tarihleri seri motoruna `mendedDates` kümesi olarak verilir; kaçan gün altın dikişle köprülenir ve kullanıcıya [GoldMendShimmer.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/spatial/GoldMendShimmer.tsx) efektiyle *"14 Günlük Seri (1 Kintsugi Onarımı)"* olarak gösterilir. Ayrıca hastalık/seyahat için ayda 2 haklı retroaktif dün-`skip` (**"Şefkat İzni"**) eklenir.
+   - `recovery.tsx:548-555`: Parlak hata kırmızısı (`colors.error`) tamamen sıcak Kintsugi altınına (`#D4AF37`) çevrilir ve Kristin Neff'in 3 adımlı öz-şefkat karşılaması (*Farkındalık -> Ortak İnsanlık -> Nazik İlk Adım*) yerleştirilir.
+3. **Yeni:** `frontend/lib/habitChains.ts` & `frontend/hooks/useHabitLifecycleActions.ts`
+   - `habitChains.ts`: `habits.cue_habit_id` bağlantılarını döngü-korumalı (cycle-safe) topolojik zincirlere dönüştürür. `today.tsx` ve `timeline.tsx` üzerinde bağlı alışkanlıkları sol kenarda altın Kintsugi bağlantı rayıyla gruplar; çapa alışkanlık tamamlandığında *"⛓️ Sıradaki halka: 10 dk Esneme -> [Şimdi Başlat]"* çubuğu açar ve tüm zinciri tek tuşla `routine-runner.tsx` oturumu olarak başlatabilir.
+   - `useHabitLifecycleActions.ts`: `habits.tsx` ve `timeline.tsx` içindeki kopya silme/geri alma/etkinleştirme/kapasite override mantığını tek kancada birleştirir.
 
-### FAZ 1 — Veri modeli
-- Supabase: `ALTER TABLE habits ADD COLUMN life_area text` + CHECK (8 anahtar: saglik/kariyer/egitim/finans/aile/sosyal/ruhsal/hobiler, NULL serbest).
-- `lib/supabase.ts` `Habit`: `life_area: string | null`.
-- `store/habitStore.ts` select listelerine `life_area`.
-- `HabitOnboarding` `DEFAULT_FORM.life_area = null`.
-
-### FAZ 2 — Onboarding kategori seçimi
-- Adım 1'e (İsim + Davranış) **"Yaşam Alanı"** çip ızgarası (`LIFE_AREAS`, renkli, tek seçim, opsiyonel).
-- Adım 7 özet tablosuna "Alan" satırı (seçilen alan label'ı).
-
-### FAZ 3 — İstatistik alan performansı
-- `components/AreaRadar.tsx` (YENİ, paylaşılan): `life-areas.tsx`'deki radar SVG'si buraya taşınır; props `{ values: Record<AreaKey,number>(0-10), size?, color? }`. `life-areas.tsx` bunu kullanacak (DRY).
-- `stats.tsx`:
-  - `loadData`'ya 30 günlük `habit_logs(habit_id, state done/partial)` sorgusu.
-  - Render'da her alan için: o alana ait aktif alışkanlık sayısı + son 30g tamamlama oranı `done/(aktifSayı×30)` (capped 100). Radar değeri = oran/10.
-  - "Yaşam Alanları" kartı (Trend kartından sonra): radar + alan başına satır (renk noktası, label, "(N alışkanlık)", %). Alan boşsa soluk "alışkanlık yok".
-
-### FAZ 4 — Doğrulama
-- SQL: life_area insert/oku/temizle.
-- `tsc --noEmit` + `expo export --platform web`.
-- Manuel: alışkanlığa alan seç → stats'ta o alanın çubuğu/radarı tamamlamalarla dolar.
-
-## Dosyalar
-| Dosya | Değişiklik |
-|---|---|
-| Supabase habits | +life_area |
-| lib/supabase.ts, store/habitStore.ts | Habit.life_area + select |
-| components/HabitOnboarding.tsx | Adım 1 alan çipleri + Adım 7 satırı |
-| components/AreaRadar.tsx (YENİ) | paylaşılan radar |
-| app/screens/life-areas.tsx | paylaşılan radarı kullan |
-| app/tabs/stats.tsx | alan performans kartı + 30g sorgu |
+#### Kabul Kriterleri & Faz 06 Testleri
+- Haftada 3 gün (`Pzt/Çar/Cum`) planlanıp 90 gün %100 yapılan alışkanlık `%43` yerine **`>= %95` ("Köklü")** güç skoru üretir; 14 günlük `habit_pauses` tatili boyunca güç `%0,0` düşer (`__tests__/lib/habitStrengthScheduleAware.test.ts`).
+- Sabah 08:30'da henüz bugünkü kutu işaretlenmemişken 21 günlük aktif seri tüm ekranlarda `21` görünür; dünkü kaçan günü `recovery_plans` ile telafi eden kullanıcının serisi kırılmaz (`__tests__/lib/kintsugiMendedStreak.test.ts`).
 
 ---
 
-# ETAP 9 — İstatistik Özet: alışkanlık-odaklı sayılar
+### Faz 07 — HabitKit Tarzı 16×7 SVG Katkı Izgarası, Satır İçi Canlı Süre Sayacı (*HabitNow*) & `today.tsx` Ölçülebilir Check-in Akışı
 
-## Bağlam / Neden
-Kullanıcının 0 görevi (task) var, sadece alışkanlığı var (1 aktif/4 bekleyen/1 tamamlanan). Özet'teki "Bekleyen Görev / Tamamlanan Görev / Aktif Görev" task verisinden 0 gösteriyor; kullanıcı bunları alışkanlık (Bekleme=4, Tamamlanan=1) sanıp "yanlış" diyor. Çözüm: Özet'i alışkanlık-odaklı yap, görev sayılarını yalnız görev varsa göster.
+#### Çözdüğü Rapor Bulguları
+- Bölüm `7.3 (#14 HabitKit)` (`timeline.tsx` üzerinde çoklu-alışkanlık GitHub katkı ızgarası olmaması; `fetchCompletedHabitLogsRange` sorgusunun `.eq('is_completed', true)` yüzünden `partial` ve `skip` kayıtlarını silmesi)
+- Bölüm `7.3 (#16 HabitNow / #20 HelloHabit)` (`duration` alışkanlıklarda satır üstü canlı kronometre/geri sayım olmaması)
+- Bölüm `5.1.4` ([today.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/today.tsx#L454-L457) üzerinde ölçülebilir alışkanlığa basınca kullanıcıyı `/tabs/timeline` ekranına fırlatma sürtünmesi)
 
-## FAZ 1 — stats.tsx Özet düzeltmesi
-- Alt "Özet" quick kartı → hesaplanan `summaryRows`: Aktif Odak / Bekleme Odası (waitingHabits) / Tamamlanan (completedHabits) / Toplam Tamamlama. `tasks.length > 0` ise ek satırlar: Bekleyen Görev / Tamamlanan Görev.
-- Grid 2'deki "Aktif Görev" (activeTasks=0) kartı → "Bu Ay" (monthCompletions) ile değiştir.
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Güncelleme:** [frontend/repositories/habitRepository.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/repositories/habitRepository.ts#L166-L185) + **Yeni:** `frontend/components/habits/HabitTileGridCard.tsx`
+   - `fetchHabitGridStatesRange(userId, startDate, endDate)`: Tek sorguda son 112 günün (`16 hafta × 7 gün`) `habit_id, completed_date, status, is_completed, value` alanlarını eksiksiz çeker (`partial` ve `skip` dahil!).
+   - `HabitTileGridCard.tsx`: Kurulu `react-native-svg` ile alışkanlık başına **tek bir `<Svg>`** yüzeyinde (112 ayrı RN `<View>` mount etmeden, 60 FPS!) 16×7 katkı ızgarası çizer:
+     - `done`: Alışkanlık vurgu rengi (`1.0` opaklık)
+     - `partial`: Orantılı opaklık (`0.35 – 0.75`)
+     - `skip` / `pause` / `mended`: İç dolgusu koyu, **1px altın Kintsugi çerçeveli (`#D4AF37`)** hücre
+     - Kartın sağ üstünde 1-tap tamamlama / `+` artırım butonu ve `%Güç` + `Seri` rozeti.
+   - [timeline.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/timeline.tsx#L533-L547): Görünüm seçiciye `'flow' | 'matrix' | 'grid'` (**"Akış | 7 Gün | Izgara"**) olarak eklenir.
+2. **Yeni:** `frontend/store/activeHabitTimerStore.ts` + `frontend/components/habits/InlineHabitTimerPill.tsx`
+   - `startedAtEpochMs`, `accumulatedSeconds`, `targetSeconds` ve `habitId` alanlarını `<uid>` kapsamlı saklar (uygulama arka plana atılıp 12 dakika sonra açıldığında duvar saatinden saniyesi saniyesine doğru hesaplar!).
+   - `goal_type === 'duration'` olan her alışkanlık satırında (`today.tsx` ve `timeline.tsx`) doğrudan `[▶ 20:00]` / `[⏸ 14:22 · Kaydet]` hapı görünür; hedef dolduğunda nazik haptik + `persistCompletion` otomatik çalışır.
+3. **Yeni:** `frontend/components/habits/MeasuredCheckInSheet.tsx` + **Güncelleme:** [today.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/today.tsx#L454-L457)
+   - `today.tsx` üzerinde `"2000 ml Su"` gibi sayısal bir alışkanlığa dokunulduğunda sayfa değiştirmeden anında `"+250 ml"`, `"+500 ml"`, `"Hedefi Tamamla"` ve özel sayı çipleri sunan kompakt alt çekmece açılır.
 
-## FAZ 2 — Test
-- `tsc --noEmit` + `expo export --platform web`.
-- Manuel: Özet'te Bekleme Odası 4, Tamamlanan 1 görünür; görev yoksa görev satırları çıkmaz.
-
----
-
-# ETAP 10 — Oran-temelli Yıllık Isı Haritası
-
-## Bağlam / Neden
-Mevcut "Yıllık Aktivite" ısı haritası rengi o günkü ham tamamlama SAYISINA göre (1/2/3/4+). Kullanıcı, rengin günlük tamamlama ORANINA (yapılan/beklenen) göre olmasını, 0'da gri, yüksek oranda parlak yeşil olmasını istiyor — yıllık 365 kare, günü gününe.
-
-## FAZ 1 — Oran renklendirme (stats.tsx)
-- Payda D = `max(1, activeHabits.length)`.
-- Hücre oranı = `min(1, (heatmap[gün] ?? 0) / D)`.
-- `ratioColor(r)`: 0→#1a1a1a (gri); (0,.2]→#0e4429; (.2,.4]→#006d32; (.4,.6]→#15803d; (.6,.8]→#26a641; >.8→#39d353.
-- renderHeatmap hücre rengi = ratioColor; lejant 0%→100% gradiyent; alt başlık "Günlük tamamlama oranı".
-
-## FAZ 2 — Kapsamlılık
-- Ay etiketleri: hafta sütunlarının üstünde, ay değiştiğinde MONTHS_TR kısaltması (aynı sütun genişliği/gap ile hizalı, aynı yatay ScrollView içinde).
-- Hücre tıklanabilir → `selectedDay` state → grid altında "DD.MM.YYYY · %oran (sayı/aktif)" satırı.
-
-## FAZ 3 — Test
-- `tsc --noEmit` + `expo export --platform web`.
-- Manuel: günlük renk orana göre değişiyor; ay etiketleri hizalı; hücreye dokununca detay çıkıyor.
+#### Kabul Kriterleri & Faz 07 Testleri
+- 15 aktif alışkanlık × 112 gün (`1.680` hücre) `Izgara` görünümünde tek toplu sorgu ve 15 `<Svg>` düğümüyle `< 16ms` kare süresinde çizilir; `partial` ve `skip` hücreleri görsel olarak ayrışır.
+- Süreli alışkanlık sayacı başlatılıp 5 dakika arka planda bekledikten sonra ön plana dönüldüğünde tam `5:00` ilerlemiş görünür.
 
 ---
 
-# ETAP 11 — Odak (Focus): Tema · Ayarlar · Raporlar
+### Faz 08 — Sesli Rutin Yürütücü (*RoutineDay / Routinery*) & `030` Bulut Senkronizasyonu
 
-## Bağlam / Neden
-Referans artifact (POS v2 web) "Odak" modunda **Tema** butonu (arka plan paneli), **Ayarlar** butonu (çok bölümlü ayarlar) ve **Raporlar** özelliği var. RN uygulamasının Odak sekmesinde: Raporlar HİÇ yok; Tema dedike buton değil (inline preset şeridi); Ayarlar yalnız 3 süre alanı. Bu üç özellik RN'e uyarlanacak (gradient yok — `expo-linear-gradient` yüklü değil; düz renk + overlay kullanılır).
+#### Çözdüğü Rapor Bulguları
+- Yönetici Özeti `#6`, Bölüm `3.2.4` & `7.2 (#3 RoutineDay, #4 Routinery)` (`routine-runner.tsx` `expo-speech` çağırmadığı için %100 sessiz çalışması; Act 1 şablon kartlarında toplam süre ve *"Şimdi başlarsan 08:47'de biter"* projeksiyonunun olmaması; ölçülebilir alışkanlıkların atlanması)
+- Bölüm `2.2` & `4.1` (`030_routine_runner.sql` tablolarına %0 frontend bağlantısı; rutin şablonlarının cihaz silinince yok olması)
 
-**Ortak mimari:** Odak ekranı başlık aksiyon satırına 3 ikon buton → Raporlar (`stats-chart-outline`), Tema (`color-palette-outline`), Ayarlar (`settings-outline`). Her biri tam-ekran `Modal`. Bileşenler `components/focus/` altında. Renkler `lib/tokens.ts`. `focus_sessions` kolonları: id,user_id,task_id,task_title,mode,started_at,ended_at,planned_seconds,completed_seconds,completed,created_at (mode hep 'work').
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni:** `frontend/repositories/routineRunnerRepository.ts` & `frontend/services/routineRunnerService.ts`
+   - `routine_templates`, `routine_template_versions` ve `routine_sessions` tablolarına Outbox-First CRUD bağlantısı.
+   - İlk oturum açılışında `routineRunnerStore` içindeki mevcut yerel `AsyncStorage` şablonlarını buluta kayıpsız göç ettiren tek seferlik `migrateLocalRoutineTemplatesToCloud(userId)` köprüsü.
+2. **Güncelleme:** [frontend/app/screens/routine-runner.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/routine-runner.tsx) & [frontend/lib/routineRunner.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/routineRunner.ts)
+   - **Act 1 Başlangıç Öncesi Zaman Projeksiyonu:** Her şablon kartında her dakikada bir güncellenen **`"5 adım · 18 dk · Şimdi başlarsan 08:47'de biter"`** satırı.
+   - **Gerçek `expo-speech` Sesli Koç (`lib/routineVoiceCoach.ts`):** Kapatılabilir `🔊 Sesli Rehber` anahtarıyla:
+     - Adım başladığında: *"Sıradaki adım: Yatağı topla. Süre: 3 dakika."*
+     - Son 60 saniyede (adım `>= 3 dk` ise): *"Son bir dakika."*
+     - Adım tamamlandığında nazik haptik + sesli geçiş (*"Harika. Sıradaki adıma geçiyoruz."*). `Speech.stop()` yaşam döngüsü unmount ve duraklatmada temizlenir.
+   - **Pozitif Overtime & Esnek Uzatma:** Süre `00:00` olduğunda kırmızı hata vermez; sıcak kehribar renginde **`+01:24 Ek Süre`** olarak ileri saymaya devam eder ve tek dokunuşla `+1 dk` / `+5 dk` uzatma sunar.
+   - **Adım İçi Ölçülebilir Tamamlama:** Adım bir `numeric` veya `duration` alışkanlığa bağlıysa (`routineRunner.ts:275` atlama hatası giderilerek) adım kartında doğrudan `[Hedef: 500 ml — Kaydet ✓]` veya adım kronometresi değeriyle otomatik `persistCompletion` çalıştırılır.
 
-**Test geçidi (her faz):** `cd frontend && node run-tests.js` → tsc 0 hata + **92/92** (regresyon yok). Geçmeden sonraki faza geçilmez.
-
-## FAZ 1 — Raporlar
-- `lib/focusReport.ts` (yeni, saf fn): `rangeStart(range)`, `inRange(sessions,range)`, `summary` (toplam saniye/oturum/odaklı gün/tamam/kesilen), `byTask`, `buckets(range)` (today=saat, week=7 gün, month=gün, year=ay), `ranking` (en çok odaklanılan görev, en uzun toplam, en çok tamamlanan, en verimli gün/saat, streak), `fmtDuration`/`fmtHours`. mode='work' & tamamlanan seanslar baz.
-- `components/focus/FocusReportModal.tsx` (yeni): üstte range filtresi (Bugün/Hafta/Ay/Yıl) + 3 sekme (Özet/Detay/Sıralama). Özet: 3 stat kartı + bar grafik (View yükseklikleri) + göreve göre süre listesi. Detay: seans satırları. Sıralama: rank kartları. Supabase'den kendi `focus_sessions` çekilir (RLS). Boş durum.
-- `app/tabs/focus.tsx`: "Raporlar" ikon butonu → modal aç.
-- **Test:** `node run-tests.js` (92/92, tsc 0); DB sanity (focus_sessions kolon uyumu); manuel akış.
-
-## FAZ 2 — Tema
-- `FOCUS_PRESETS` zenginleştir (daha fazla atmosferik düz-renk preset). `focusStore.settings.overlayOpacity` ekle (zemin koyuluğu, 0–0.6).
-- `components/focus/FocusThemeModal.tsx` (yeni): preset kart ızgarası (swatch önizleme + aktif tik) + koyuluk seçenekleri (Az/Orta/Çok). Seçim anında uygulanır.
-- `focus.tsx`: inline preset şeridini "Tema" ikon butonuyla değiştir → modal.
-- **Test:** `node run-tests.js`; manuel: tema değişince zemin/kart rengi değişir.
-
-## FAZ 3 — Ayarlar (genişletilmiş)
-- `focusStore.settings` genişlet: `autoStartBreaks`, `autoStartPomodoros`, `longBreakInterval`, `requireTaskBeforeStart`, `soundOnFinish`, `notifyOnFinish`. AsyncStorage'a kalıcı (init'te yükle, değişimde kaydet).
-- Zamanlayıcı mantığına bağla: `nextPhase` longBreakInterval (sabit 4 yerine ayar); `autoStart*` ile otomatik başlat; `start()` requireTaskBeforeStart kontrolü.
-- `components/focus/FocusSettingsModal.tsx` (yeni): bölümlü — Zamanlayıcı (süreler), Otomasyon (autoStart toggle + longBreakInterval), Görevler (requireTaskBeforeStart), Sesler (soundOnFinish/notifyOnFinish). Custom toggle. Mevcut basit ayarlar modalını değiştir.
-- **Test:** `node run-tests.js`; manuel: ayar kalıcı; longBreakInterval/autoStart davranışı.
-
-## FAZ 4 — Kapanış
-- Son `node run-tests.js` (92/92, tsc 0) + memory güncelle (odak tema/ayarlar/raporlar).
+#### Kabul Kriterleri & Faz 08 Testleri
+- `Speech.speak` çağrılarının adım geçişlerinde ve son 60 saniyede tetiklendiğini, sessiz modda sustuğunu ve unmount anında `Speech.stop()` çağırdığını doğrulayan `__tests__/screens/routineRunnerVoiceAndSync.test.ts` yeşil geçer.
 
 ---
 
-# ETAP 12 — Odak Ayarlar (çok bölümlü) + Rapor dışa aktarma
+### Faz 09 — Görev Motoru Evrimi (*Todoist* TR/EN NLP, Kayan Tekrar, Gerçek Alt Görevler, *Inflow* Canlı AI SOS & `focus_tasks` Birleştirmesi)
 
-## Bağlam / Neden
-ETAP 11 Ayarlar bottom-sheet'inin (1) en üstte kenar boşluğu sorunu var (SafeAreaView top yok), (2) kapsamı çok dar. Referans artifact'te Ayarlar tam-ekran ve bölümlü: **Genel · Zamanlayıcı · Görevler · Raporlar · Sesler · Hesap · Entegrasyonlar · Gelişmiş**. Ayrıca Rapor'da artifact'teki **"Yerel rapor · cihazında" footer + CSV/JSON dışa aktarma** eksik; grafik başlığı "Odak saatleri" değil.
+#### Çözdüğü Rapor Bulguları
+- Yönetici Özeti `#7` & Bölüm `3.2.3` (`ADHDTaskSplitter` sahte yerel şablonu ve `parent_task_id` kullanmadığı için 1 görevi 4 kök göreve şişirmesi)
+- Bölüm `5.1.3` (`focus.tsx` ekranının ana `tasks` tablosu yerine kopuk `focus_tasks` tablosunu okuması)
+- Bölüm `7.2 (#1 Inflow)` (`FocusFlowView.tsx:200` `lowEnergy: false` sabit kodu; `today.tsx` üzerinde "Başlayamıyorum (SOS)" butonu yokluğu)
+- Bölüm `7.4 (#24 Todoist)` (`tasks.tsx` Yeni Görev modalında tarih ve proje seçicisinin bile olmaması; %0 NLP hızlı ekleme; %0 görev tekrarlama)
 
-**Saptanan eksikler:** Ayarlar tam-ekran değil + 8 bölüm yok; Rapor CSV/JSON dışa aktarma + footer yok; ayar↔davranış bağı yok (varsayılan rapor aralığı, grafik/sıralama görünürlüğü, saat formatı, görev otomatik tamamlama).
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/040_tasks_recurrence_estimates_and_focus_unification.sql`
+   - `tasks` tablosuna `estimated_minutes SMALLINT CHECK (estimated_minutes IS NULL OR estimated_minutes BETWEEN 1 AND 720)`, `recurrence_config JSONB CHECK (pg_column_size(recurrence_config) <= 2048)`, `reminder_at TIMESTAMPTZ`, `nag_interval_minutes SMALLINT CHECK (nag_interval_minutes IN (5, 10, 15, 30))` kolonlarını ekle.
+   - `focus_sessions` tablosuna `main_task_id UUID REFERENCES public.tasks(id) ON DELETE SET NULL` ekle ve mevcut `focus_tasks` satırlarını kullanıcının `tasks` tablosuna (`category = 'focus'`) kayıpsız göç ettiren veri migrasyonunu çalıştır.
+2. **Yeni:** `frontend/lib/taskNlpParser.ts` + `frontend/components/tasks/NlpChipPreviewBar.tsx`
+   - Sıfır AI token harcayan deterministik **TR + EN Doğal Dil Ayrıştırıcı**:
+     - Tarih: `bugün`, `yarın`, `öbür gün`, `haftaya pazartesi..pazar`, `15 mayıs`, `tomorrow`, `next tue`
+     - Saat & Zaman Bloğu: `14:30`, `saat 09:00`, `14:00-15:30` (-> otomatik `time_block_start` & `time_block_end` + `estimated_minutes = 90`!)
+     - Tahmini Süre: `~25dk`, `~1s`, `45m` (-> `estimated_minutes`, [capacity.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/capacity.ts#L59) sabit 15 dk varsayımı yerine gerçek süreyi kullanır!)
+     - Proje & Öncelik & Etiket: `#ProjeAdı` (mevcut projeyle eşleştirir), `p1`/`p2`/`p3` veya `!!!`/`!!`, `@etiket`
+     - **Çift Modlu Tekrar:** `her gün` / `her pazartesi` (`anchor: 'schedule'` sabit takvim) vs **`her! 3 gün` / `every! 2 weeks` (`anchor: 'completion'` — gecikse bile birikme yapmayan DEHB-dostu kayan tekrar!)**
+   - [InlineComposer.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/InlineComposer.tsx) ve [tasks.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/tasks.tsx) görev oluşturma çekmecesine tam Tarih, Saat Bloğu, Tahmini Süre, Proje, Tekrar seçicileri ve canlı `NlpChipPreviewBar` bağlanır.
+3. **Güncelleme:** [frontend/lib/taskDecomposition.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/taskDecomposition.ts), [frontend/components/ADHDTaskSplitter.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/ADHDTaskSplitter.tsx), `frontend/store/energyStore.ts` (YENİ) & [frontend/app/tabs/focus.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/focus.tsx)
+   - `ADHDTaskSplitter`: Canlı `generate-routine` (`mode: 'split_task'`) uç noktasını çağırır (çevrimdışıysa yerel şablona düşer); oluşturulan 3–5 mikro-adımı `parent_task_id = rootTask.id, is_subtask = true` olarak kaydeder; `computeDailyLoad` ana görev + alt görevleri çift saymaz ve ilk 2 dakikalık mikro-adımı tek tuşla `SmallStartSheet` sayacında başlatır.
+   - `today.tsx` üst aksiyon şeridine **"⚡ Başlayamıyor musun? (SOS)"** çekmecesi ve küresel `energyStore` (`low | steady | high`) bağlanır (`FocusFlowView.tsx:200` gerçek enerji durumunu okur).
+   - `focus.tsx`: Kopuk `focus_tasks` yerine doğrudan `useTaskStore` üzerindeki bugünkü görevleri ve alt görevleri listeler; tamamlanan Pomodoro seansı gerçek görevin ilerlemesine yazılır.
 
-## FAZ 1 — Rapor dışa aktarma + footer
-- `lib/focusReport.ts`: `toCSV(sessions)`.
-- `components/focus/FocusReportModal.tsx`: alt footer "Yerel rapor · cihazında" + **CSV** + **JSON** butonları → RN `Share.share` ile metin paylaş. Grafik başlığı "ODAK SAATLERİ".
-- Test: `node run-tests.js` (92/92, tsc 0).
-
-## FAZ 2 — Ayarlar: tam-ekran + 8 bölüm
-- `focusStore.settings` yeni alanlar: `hourFormat('24h'|'12h')`, `autoCheckTasks`, `enableLocalReports`, `defaultReportRange`, `showFocusChart`, `showRanking` (persist + load DEFAULT merge ile geriye uyumlu).
-- `components/focus/FocusSettingsModal.tsx` yeniden: tam-ekran `Modal` + `SafeAreaView edges=['top','bottom']` (margin fix) + yatay bölüm sekmesi (8 bölüm). Bölüm içerikleri:
-  - **Genel:** Tema & arka plan (→ tema modal), Saat formatı (24/12), Bitince bildirim.
-  - **Zamanlayıcı:** work/short/long stepper + uzun mola aralığı + otomatik başlat (mola/pomodoro) toggle.
-  - **Görevler:** Başlamadan görev zorunlu, Tahmini bitince otomatik tamamla.
-  - **Raporlar:** Yerel rapor, Varsayılan aralık, Grafik göster, Sıralama göster, "Rapor verisini temizle" (danger).
-  - **Sesler:** Bitince titreşim, Bitince bildirim.
-  - **Hesap:** oturum e-postası + "yerel mod" notu.
-  - **Entegrasyonlar:** "Entegrasyonları yönet" → `/screens/integrations`.
-  - **Gelişmiş:** Ayarları sıfırla, Tüm odak verisini dışa aktar (Share JSON).
-- `focus.tsx`: settings modalına `onOpenTheme` (tema modalını aç) prop'u.
-- Test: `node run-tests.js`.
-
-## FAZ 3 — Ayar ↔ davranış bağlama
-- `FocusReportModal`: store'dan settings → başlangıç aralığı `defaultReportRange`; `showFocusChart`/`showRanking` görünürlük; `hourFormat` detay saat; footer `enableLocalReports`.
-- `focusStore.nextPhase`: `autoCheckTasks` → görev tahmini pomodoroya ulaşınca otomatik tamamla.
-- Aksiyonlar: "Rapor verisini temizle" → focus_sessions sil (Alert onaylı); "Ayarları sıfırla" → DEFAULT_SETTINGS.
-- Test: `node run-tests.js`.
-
-## FAZ 4 — Kapanış
-- Son `node run-tests.js` (92/92, tsc 0) + memory güncelle.
-
-# ETAP 13 — Odak verisi dışa aktarma (CSV + Excel) + "Ayarları sıfırla" düzeltmesi
-
-## Bağlam / Neden
-Gelişmiş sekmesindeki "Tüm odak verisini dışa aktar" yalnızca **JSON**. Kullanıcı **CSV** ve **Excel** formatı da istiyor. RN'de native dosya yazımı yok (`expo-file-system`/`expo-sharing` yüklü değil) → dışa aktarma `Share.share({ message })` ile metin paylaşımı. Excel için bağımlılıksız çözüm: **SpreadsheetML 2003 XML** (düz metin; Excel/Google Sheets/LibreOffice gerçek **çok sayfalı** tablo olarak açar) — gerçek `.xlsx` ikili formatı için kütüphane (SheetJS) gerekir, kaçınılır.
-
-Ayrıca **"Odak ayarlarını sıfırla" butonu "çalışmıyor" görünüyor**: aslında veri katmanında `onSave(DEFAULT_SETTINGS)` çalışıyor ama `clearReports`'ın aksine **görsel geri bildirim yok** ve sıfırlama Gelişmiş sekmesinde görünür bir değişiklik yaratmıyor → kullanıcı çalışmadığını sanıyor. Düzeltme: onaydan sonra haptic + başarı bildirimi (clearReports kalıbı).
-
-## FAZ 1 — Dışa aktarma yardımcıları (lib, saf)
-- `lib/focusReport.ts`: `ExcelSheet` tipi + `toExcelXML(sheets)` (SpreadsheetML 2003 XML üretici: çok sayfa, başlık + satır, `Number`/`String` tip ayrımı, XML-escape, sayfa adı 31 char + yasak karakter temizliği) + `sessionsSheet(sessions, name?)` (oturum kolonları `toCSV` ile aynı). `toCSV` korunur.
-- Test: `node run-tests.js` (tsc 0 + yeni assertion: `toExcelXML` & `sessionsSheet` mevcut).
-
-## FAZ 2 — Gelişmiş sekmesi: JSON · CSV · Excel
-- `components/focus/FocusSettingsModal.tsx`: tek "dışa aktar (JSON)" ActionRow → **ExportRow** bloğu (JSON/CSV/Excel 3 buton). `exportAll(fmt)`: `focus_tasks` + `focus_sessions` çek →
-  - **JSON** = tam paket `{ settings, focus_tasks, focus_sessions }`,
-  - **CSV** = oturumlar (`toCSV`),
-  - **Excel** = 3 sayfalı workbook (Ayarlar key/value · Görevler · Oturumlar) `toExcelXML`.
-  - `Share.share({ message })`.
-- Test: `node run-tests.js` (yeni assertion: CSV + Excel dışa aktarma var).
-
-## FAZ 3 — Rapor modalına Excel butonu (tutarlılık)
-- `components/focus/FocusReportModal.tsx`: footer'da CSV/JSON yanına **Excel** butonu. `exportData('excel')` → `toExcelXML([sessionsSheet(sessions)])`.
-- Test: `node run-tests.js` (yeni assertion: rapor Excel butonu).
-
-## FAZ 4 — "Ayarları sıfırla" düzeltmesi + kapanış
-- `FocusSettingsModal.tsx`: `resetSettings` onay sonrası `onSave(DEFAULT_SETTINGS)` + `haptic.success()` + başarı Alert ("Odak ayarları varsayılana döndürüldü."). `haptic` import.
-- Test: son `node run-tests.js` (tsc 0 + tüm yeni assertion'lar) + memory güncelle.
-
-## FAZ 5 — Platform-güvenli dışa aktarma + Modal-içi onay (bug fix)
-**Sorun:** JSON/CSV/Excel + "ayarları sıfırla" butonları çalışmıyordu. Kök neden: `Share.share` ve `Alert.alert` **tam-ekran RN Modal'in üstünde açılamıyor** (iOS: root VC zaten Modal sunuyor; **web**: react-native-web `Alert` no-op, `Share` masaüstü tarayıcılarda yok). FAZ 4'teki "başarı Alert'i" de aynı sebeple görünmüyordu → sıfırla "çalışmıyor" sanılıyordu.
-- `lib/focusReport.ts`: `ExportFmt`, `EXPORT_META` (ext/mime), `webDownload(filename,mime,content)` (Blob + `<a download>` ile gerçek tarayıcı indirmesi; `globalThis` guard).
-- `FocusSettingsModal.tsx` + `FocusReportModal.tsx` `exportAll/exportData`: **Platform dalı** — `web` → `webDownload` (gerçek dosya), `ios` → `onClose()` + 350ms sonra `Share.share` (Modal üstü sunum sorunu), `android` → doğrudan `Share.share`.
-- `Alert.alert` onayları kaldırıldı → **`ConfirmRow`** (modal-içi iki-aşamalı: etiket → "Vazgeç / Evet"; her platformda çalışır). Reset + "rapor verisini temizle" bununla. Geri bildirim: `Alert` yerine **`flash`** (modal-içi geçici banner, 2.6s).
-- Test: `node run-tests.js` → tsc 0 + **100/100** (+webDownload, platform-güvenli, ConfirmRow assertion'ları).
-
-# ETAP 14 — Spotify OAuth + Odak mini-oynatıcı
-
-## Bağlam / Neden
-Kullanıcı Odak sekmesine **Spotify OAuth** istedi: kişi API ile uğraşmadan "Spotify ile Bağlan" → Google/Gmail ile Spotify'da oturum açar → çalışırken müzik dinler/kontrol eder. Kullanıcı **OAuth** yolunu ve **Premium** üyeliği seçti (uygulama-içi çal/duraklat/atla aktif). Mevcut kanıtlanmış desen: `notion-auth` edge fonksiyonu (`verify_jwt:false`, `?action=url|callback|status|disconnect`, kullanıcı Authorization header ile doğrulanır, token'lar service-role client ile tabloya yazılır) + `googleCalendarStore` (WebBrowser.openAuthSessionAsync + Linking redirect). Spotify bunu birebir izler + oynatma proxy aksiyonları ekler.
-
-**Tek seferlik dış kurulum (yönetici):** Spotify Developer app → Client ID/Secret; redirect URI olarak `Linking.createURL('spotify-callback')` çıktıları (dev: `exp://…/--/spotify-callback`, prod: `frontend://spotify-callback`); Supabase edge secrets `SPOTIFY_CLIENT_ID` + `SPOTIFY_CLIENT_SECRET`. Son kullanıcı hiçbir şey yapmaz.
-
-## FAZ 0 — Backend (DB + edge) [production değişiklik]
-- **Migration `spotify_accounts`**: `user_id uuid pk → auth.users`, `access_token`, `refresh_token`, `expires_at timestamptz`, `scope`, `spotify_user_id`, `display_name`, `product`, `created_at/updated_at`. RLS **etkin, istemci policy YOK** → token'lara yalnız service-role edge erişir (status/disconnect bile edge'de admin client ile, kullanıcı JWT doğrulandıktan sonra).
-- **Edge `spotify-auth`** (verify_jwt false). Aksiyonlar: `url` (authorize URL + scope'lar), `callback` (kod→token, `/me` profil, upsert), `status`, `disconnect`, `now-playing`, `play`, `pause`, `next`, `previous`, `play-context` (çalma listesi). `getValidToken` helper: süresi dolan token'ı `refresh_token` ile yeniler. Premium olmayan/aktif-cihaz-yok durumlarında anlamlı hata döner.
-- Doğrulama: `list_edge_functions` → spotify-auth ACTIVE; `list_tables` → spotify_accounts var.
-
-## FAZ 1 — Frontend store + lib
-- `store/spotifyStore.ts`: `googleCalendarStore` deseni — `connection{display_name,product}`, `status`, `error`, `nowPlaying`, metotlar `fetchStatus/connect/disconnect` + `fetchNowPlaying/play/pause/next/previous/playContext`. `REDIRECT_URI=Linking.createURL('spotify-callback')`, edge'i `?action=` ile çağıran `callFn` helper.
-- `lib/spotifyFocus.ts`: küratörlü odak çalma listeleri (ad + `spotify:playlist:` uri + open URL).
-- Test: `node run-tests.js` (tsc 0 + store/lib assertion'ları).
-
-## FAZ 2 — Odak mini-oynatıcı kartı
-- `components/focus/FocusSpotifyCard.tsx`: bağlı değil → "Spotify ile Bağlan"; bağlı → çalan şarkı (kapak+başlık+sanatçı) + prev/play-pause/next + odak çalma listesi çipleri (Premium→`playContext`, değilse `Linking.openURL`). Spotify yeşili `#1DB954`. Çalışırken now-playing periyodik yenilenir.
-- `app/tabs/focus.tsx`: kontrol bloğu ile görev listesi arası `<FocusSpotifyCard />`; mount'ta `fetchStatus`.
-- Test: `node run-tests.js` (tsc 0 + kart/focus assertion'ları).
-
-## FAZ 3 — Kapanış + kurulum dökümanı
-- `SPOTIFY_SETUP.md` (repo): dev app + redirect URI + secret adımları.
-- Son `node run-tests.js` + memory güncelle.
+#### Kabul Kriterleri & Faz 09 Testleri
+- `"Yarın 14:00-15:00 Sunum taslağını bitir #Ürün p1 ~60dk her! 7 gün"` metni `< 1ms` içinde başlık, tarih, zaman bloğu, proje, `high` öncelik, `60 dk` süre ve `completion`-bazlı 7 günlük tekrar nesnesine ayrışır (`__tests__/lib/taskNlpParser.test.ts`).
+- 1 görevi 4 alt adıma bölmek kök görev sayısını `1`'de tutar ve `dailyLoad` kapasitesini 4x şişirmez.
 
 ---
 
-# ETAP 15 — Atlas HTML Paritesi: Editöryel Dashboard, Komut Paleti, Aksan Temaları & UX Cilası
+### Faz 10 — Birleşik 24 Saatlik Gün Şeridi (*Super Planner / TimeTune*), Boşluk Avcısı, Yeniden Planlama & Israrcı Bildirimler (*Due / Habit It*)
 
-## Bağlam / Neden
-Referans tasarım `Downloads/personal-os-v2 (8).html` (Atlas "Paper/Clay Editorial" dil sistemi, 9427 satır, tek-dosya web prototipi). **Sayfa düzeyinde uygulama referansın ÖNÜNDE** — HTML'deki 18 sayfanın (dashboard, tasks, recovery, eisenhower, calendar, habits, pomodoro, deep, coach, goals, okrs, projects, life, journal, notes, analytics, review, settings + list-* + project-detail) tamamı uygulamada karşılığı olan ekranlara sahip; üstüne uygulamada HTML'de **olmayan** ekranlar da var (hub, timeline, stats, focus, leaderboard, profile, journal-archive/reader/insights, monthly-review, integrations, paywall, credit-history, reading-list, recovery). GTD liste filtreleri (Gelen/Bu Hafta/Bir Gün/Arşiv) zaten `tabs/tasks.tsx`'te, Komut Paleti zaten `components/CommandPalette.tsx`'te, Atlas token'ları zaten `lib/tokens.ts`'te.
+#### Çözdüğü Rapor Bulguları
+- Bölüm `7.0` & `7.4 (#25 TimeTune, #26 Super Planner)` (Canlı DB'de hazır bekleyen `tasks.time_block_start/end`, `calendars`, `events` tablolarının %0 UI olması; `calendar.tsx`'in sadece aylık nokta takvimi göstermesi; `computeDailyLoad` kapasite motorunun takvimdeki 6 saatlik toplantıdan habersiz olması)
+- Bölüm `6.2`, `7.3 (#18 Habit It)` & `7.4 (#27 Apple Reminders & Due)` (Görevler için %0 bildirim; `notifications.ts:26` `shouldPlaySound: false` sabit kodu; `opensAppToForeground: true` yüzünden bildirim aksiyonunun uygulamayı zorla açması; DEHB bildirim körlüğü için otomatik takip hatırlatıcısı olmaması)
 
-**Demek ki gerçek boşluklar sayfa değil, derinlik/cila.** HTML'in editöryel zenginliği uygulamada henüz yok.
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni:** `frontend/repositories/calendarEventRepository.ts`, `frontend/lib/dayRibbonEngine.ts` & `frontend/components/calendar/DayRibbonView.tsx`
+   - Canlı DB'deki `calendars` ve `events` tablolarını tipli repository ile aktif hale getirir (`RLS` + Outbox-First etkinlik ekleme/düzenleme).
+   - **`DayRibbonEngine`:** Seçilen gün için (1) sabit takvim etkinliklerini (`events`), (2) zaman bloklu görevleri (`tasks.time_block_start/end`), (3) saate bağlı alışkanlıkları ve rutinleri tek bir 24 saatlik kronolojik akışta birleştirir.
+   - **Boşluk Avcısı (*Gap Matcher*):** Bloklar arasındaki `>= 25 dk` serbest aralıkları otomatik tespit edip şerit üzerinde **`[14:00–15:30 • 90 dk Serbest Pencere — Uygun Görev Yerleştir +]`** kartı olarak çizer; dokunulduğunda yalnızca `estimated_minutes <= 90` olan bekleyen görevleri önerir.
+   - **`replanRemainingDay(now)` ("Öğleden Sonrayı Yeniden Planla"):** Saat 15:00'te sarkan esnek görevleri, sabit `events` bloklarına dokunmadan `now + 10dk` sonrasındaki serbest pencerelere otomatik kaydırır; akşama sığmayanları tek onayla yarına veya düşük enerji moduna aktarır.
+   - **Toplantı-Duyarlı `computeDailyLoad` ([capacity.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/capacity.ts)):** O günkü sabit `events` toplam dakikasını günlük kullanılabilir kapasite bütçesinden düşer (*6 saat toplantısı olan günde kullanıcıya aşırı görev yüklenmesini engeller!*).
+   - [calendar.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/calendar.tsx) ekranına **`Gün Şeridi (24s) | Hafta | Ay`** görünüm geçişi eklenir.
+2. **Güncelleme:** [frontend/lib/notifications.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/notifications.ts) + **Yeni:** `frontend/lib/taskNotifications.ts`
+   - `shouldPlaySound`: Kullanıcı ayarına bağlı olarak varsayılan `true` yapılır; Android kanalları (`habit-reminders`, `task-urgent-nag`) ve iOS `interruptionLevel: 'timeSensitive'` yapılandırılır.
+   - **Uygulamayı Açmadan Arka Plan Aksiyonları:** `COMPLETE_ACTION` ve yeni `QUICK_INCREMENT_ACTION` (`"+1"`) için `opensAppToForeground: false` ayarlanır; arka plan bildirim dinleyicisi doğrudan `habitLogService` / `taskStore.toggleDone` çağırarak kilit ekranından 1 saniyede tamamlama yapar.
+   - **Due Tarzı Israrcı Takip Kaskadı (`Nagging Cascade`):** iOS 64 yerel bildirim limiti içinde `44 Alışkanlık + 20 Görev/Nag` bütçe yöneticisi kurulur. `nag_interval_minutes` (`5 | 10 | 15 | 30`) seçili kritik görevlerde `[T, T+Δ, T+2Δ, T+3Δ]` 4 bildirimlik yerel kaskad zamanlanır; görev tamamlandığı veya bildirimden `"+15 dk" / "5 dk Küçük Başlangıç" / "Bu Akşam 20:00" / "Yarın 09:00"` seçildiği anda kalan kaskad iptal edilir.
 
-### Boşluk Tablosu (HTML (8) → uygulama)
-| # | HTML'de var | Uygulamada durum | Boşluk türü |
-|---|---|---|---|
-| 1 | Editöryel "Bugün" hero (anlatısal serif başlık + 3 bağlamsal CTA) | `today.tsx` jenerik "Günaydın 👋" | **özellik** |
-| 2 | Sakin 4'lü metrik ızgarası (eyebrow/num/sub: uyku·odak·açık görev·telafi) | 2 adet StatTile | özellik |
-| 3 | "Sırada" şeridi (yatay, zamanlı sıradaki işler) | yok | özellik |
-| 4 | Bugün: Masadakiler ↔ Zaman çizelgesi sekmesi | yalnız liste | özellik |
-| 5 | Satır-içi görev ekleyici (inline composer, modalsız) | yalnız modal | iyileştirme |
-| 6 | Zengin QuickSearch (görev/proje/not + son kullanılanlar + bağlamsal öneri) | yalnız hızlı eylem + alışkanlık | iyileştirme |
-| 7 | Aksan renk temaları (clay/moss/slate/amber) | yalnız dark/light | özellik |
-| 8 | Telafi sağ-rail kartı (uyku/antrenman/stres/sosyal mini satırlar) | yok | özellik |
-| 9 | Editöryel boş durumlar (sakin serif italik kopya) | EmptyState var ama düz | cila |
-| 10 | Breadcrumb/bağlamsal başlık | sade başlık | cila (düşük) |
-| 11 | Proje detay görünümü (gruplanmış görevler + ilerleme) | `projects.tsx` yalnız liste+ekle | özellik |
+#### Kabul Kriterleri & Faz 10 Testleri
+- `09:00-12:00` ve `13:30-17:00` toplantıları olan bir günde `DayRibbonEngine` tam olarak `12:00-13:30 (90 dk)` ve `17:00+` boşluklarını bulur; `replanRemainingDay(15:00)` sabah kaçan 45 dakikalık görevi `17:10-17:55` penceresine taşır (`__tests__/lib/dayRibbonEngine.test.ts`).
+- `nag_interval_minutes = 10` olan görev tamamlandığında bekleyen 3 takip bildiriminin tamamı iptal edilir ve toplam zamanlanmış bildirim sayısı asla `60`'ı aşmaz (`__tests__/lib/taskNotificationsBudget.test.ts`).
 
-### Genel iyileştirme adayları
-- **Açık tema denetimi (büyük):** `lib/tokens.ts` `colors` dark-only sabit; ekranlar `colors`'ı doğrudan import ediyor → light tema pratikte ekran-genelinde çalışmıyor olabilir. Doğruluk açısından en büyük kazanç ama en geniş refactor → bilinçli olarak **ayrı bir etaba** bırakılır (aşağıda "kapsam dışı" notu).
-- Tabular-num/haptik/erişilebilirlik tutarlılığı (faz faz, ilgili dosyalarda).
+---
 
-## Kapsam kararı
-Önce **katma değeri yüksek + bağımsız + düşük riskli** (saf frontend, additive) boşluklar uygulanır: editöryel Bugün dashboard (1·2·3·4), satır-içi ekleyici (5), zengin komut paleti (6), telafi rail + editöryel boş durum (8·9), aksan temaları (7), proje detay (11). **Açık tema ekran-genel denetimi** ve breadcrumb (10) bu etaba alınmaz (büyük/riskli refactor; ayrı etap notu bırakılır). Habit/calendar mantığına dokunulmaz. Her faz sonunda `node run-tests.js` kapısı + o faza özel assertion'lar.
+### Faz 11 — 5 Saniyelik Bağlam Check-in (*Daylio*), `031` Bulut Senkronu, Sıfır-Token 4-Kaynak Korelasyon Motoru & V2 Koç Aksiyonları
 
-## Faz Planı (bir faz bitmeden diğerine geçilmez; her faz sonunda test kapısı)
+#### Çözdüğü Rapor Bulguları
+- Bölüm `2.2`, `4.1` & `7.4 (#28 Daylio)` (`moodStore.ts` ve `reviewActions.ts` dosyalarının `031_moods_and_review_actions.sql` bulut tablolarına %0 bağlı olması; bağlam etiketleri olmaması; korelasyon motorunun `journal-archive.tsx:160` içinde gizli kalıp `focus_sessions`, `tasks` ve ertesi gün Lag-1 etkisini hesaplamaması)
+- Bölüm `2.4` (`032..035` hazır olduğu halde `COACH_ACTIONS_V2_ENABLED` ve `LOG_TIMEZONE_ENABLED` kilitlerinin kapalı kalması)
 
-### FAZ 1 — Editöryel "Bugün" hero + sakin metrik ızgarası
-- **Yeni `lib/todayNarrative.ts`:** gerçek veriden (gecikmiş/bugün görev sayısı, kalan/biten alışkanlık, bugünkü odak seansı, saat dilimi) anlatısal serif başlık + alt-metin üretir (`buildTodayNarrative({...})`). Saf fonksiyon, deterministik.
-- **Yeni `components/today/TodayHero.tsx`:** eyebrow (tarih · hafta), serif başlık (`narrative.title`, `<em>` vurgusu için renkli span), alt-metin, 3 bağlamsal CTA: "Odağa geç" (`/tabs/focus`), "Haftalık rapor" (`/screens/weekly-review`), "Telafiye bak" (`/screens/recovery`). Token'lar `lib/tokens`.
-- **Yeni `components/today/MetricGrid.tsx`:** 2×2 sakin metrik ızgarası — Açık görev (gecikmiş·bugün alt), Odak (bugünkü seans), Alışkanlık (% / kalan), Telafi (planlı telafi sayısı). `eyebrow/num/sub` Atlas deseni; mono tabular num.
-- `today.tsx`: jenerik header + 2 StatTile yerine `<TodayHero/>` + `<MetricGrid/>` mount; mevcut ring/irade/alışkanlık/görev blokları korunur.
-- Test: `node run-tests.js` + yeni bölüm "🗞️ 17. Editöryel Bugün" (todayNarrative + TodayHero + MetricGrid + today.tsx mount).
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/041_mood_context_tags.sql`
+   - `mood_checkins` tablosuna `context_tags TEXT[] NOT NULL DEFAULT '{}'::TEXT[] CHECK (cardinality(context_tags) <= 12)` ekle.
+2. **Yeni:** `frontend/repositories/moodRepository.ts`, `frontend/repositories/reviewActionRepository.ts` & `frontend/components/mood/QuickMoodContextSheet.tsx`
+   - `moodStore.ts` ve `reviewActions.ts` Outbox-First olarak `031` + `041` bulut tablolarına bağlanır (mevcut yerel `AsyncStorage` kayıtları ilk senkronda buluta taşınır).
+   - `QuickMoodContextSheet`: `today.tsx` üzerindeki duygu çubuğuna dokunulduğunda klavye açmadan 5 saniyede `1..5 Mod + 12 Bağlam Çipi (İyi Uyku, Kötü Uyku, Egzersiz, Açık Hava, Sosyal, Derin Odak, Geç Ekran, Kafein, Sağlıklı Öğün, Stres, Mola, Şükran)` kaydeder.
+3. **Yeni:** `frontend/lib/correlationEngine.ts` + **Güncelleme:** `frontend/app/screens/insights.tsx` & `frontend/app/screens/ai-coach.tsx`
+   - Sıfır AI kredisi harcayan cihaz-içi **4-Kaynak Çapraz Korelasyon Motoru**:
+     - Aynı gün etkisi (`Lag-0`): `habit_logs × mood_checkins`, `context_tags × mood_checkins`, `focus_sessions dakikası × mood_checkins`, `dailyLoad aşımı × ertesi gün tamamlama oranı`.
+     - **Ertesi Gün Etkisi (`Lag-1`):** *"Geç Ekran işaretlediğin gecelerin ertesi günü odak süren ortalama %32 daha düşük"* veya *"Akşam Yürüyüşü yaptığın günlerin ertesi sabahı rutin tamamlama oranın +%28 daha yüksek"*.
+     - İstatistiksel güvenlik: Yalnızca `n >= 10` gözlem (`>= 5` pozitif + `>= 5` negatif gün) ve anlamlı etki büyüklüğü (`|Δ| >= 0.4` mod puanı veya `>= %18` tamamlama farkı) olduğunda kart üretir; nedensellik iddia etmeyen dürüst dil (*"Birlikte görülme eğilimi"*) kullanır.
+   - `insights.tsx` ana ekranının en üstüne **"Keşfedilen Kişisel Örüntülerin"** vitrini olarak yerleşir ve `ai-coach` sohbet başlangıcına özet bağlam olarak enjekte edilir.
+4. **Güncelleme:** [frontend/lib/featureGates.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/featureGates.ts#L242-L251)
+   - `032..035` migrasyonları doğrulandıktan sonra `COACH_ACTIONS_V2_ENABLED = true` ve `LOG_TIMEZONE_ENABLED = true` bayraklarını üretimde aç.
 
-### FAZ 2 — "Sırada" yaklaşan görev şeridi (NextUpStrip)
-- **Veri gerçeği:** uygulama `tasks` modelinde **saat (clock-time) alanı yok** (yalnız `due_date`); alışkanlıklarda da net saat yok. Bu yüzden HTML'in saat-tabanlı "Zaman çizelgesi" sekmesi **uydurma veri** olur → uygulanmaz. Bunun yerine HTML'in görsel olarak ayırt edici parçası olan **"Sırada" şeridi** son-tarih sıralamasıyla yapılır.
-- **Yeni `components/today/NextUpStrip.tsx`:** yatay ScrollView; öğeler öncelik sırasıyla — gecikmiş (kırmızı "gecikmiş") → bugün ("bugün") → en yakın son-tarihli birkaç görev. Her öğe: öncelik noktası + başlık (kısaltılmış) + son-tarih etiketi; aralarda "→". Boşsa render edilmez. `onPress` → `/tabs/tasks`.
-- **today.tsx:** hero/metrik altına `<NextUpStrip items={...}/>`.
-- Test: `node run-tests.js` + assertion'lar (NextUpStrip).
+#### Kabul Kriterleri & Faz 11 Testleri
+- `n < 10` veriyle gürültülü/yanıltıcı korelasyon üretilmediğini, `n >= 14` sentetik veriyle hem `Lag-0` hem `Lag-1` örüntülerinin doğru bulunduğunu doğrulayan `__tests__/lib/correlationEngine.test.ts` yeşil geçer.
 
-### FAZ 3 — Satır-içi görev ekleyici (inline composer)
-- **Yeni `components/InlineComposer.tsx`:** tek satır TextInput + "Ekle" — Enter/buton ile `taskStore.addTask` çağırır, alanı temizler. Opsiyonel `dueToday` ve `projectId` props.
-- `tasks.tsx` liste başına ve `today.tsx` görev bölümüne mount (modalsız hızlı ekleme; mevcut modal korunur).
-- Test: `node run-tests.js` + assertion'lar.
+---
 
-### FAZ 4 — Zengin Komut Paleti
-- `CommandPalette.tsx`: mevcut hızlı eylem + alışkanlık aramasına ek olarak **görev** (`taskStore`), **not** (`noteStore`), **proje** (`projectStore`) araması; sonuç bölümleri ayrı. Son kullanılan rotalar (`recents`, AsyncStorage `app_cmd_recents`) boş sorguda gösterilir. Seçim doğru rotaya/aksiyona gider.
-- Test: `node run-tests.js` + assertion'lar.
+### Faz 12 — Bilgi Mimarisi ("6 Barlı Matruşka" Yıkımı), Reanimated/BottomSheet Devrimi, FlashList, a11y & 401 MB Bitmap Optimizasyonu
 
-### FAZ 5 — Telafi rail kartı + editöryel boş durumlar
-- **Yeni `components/today/RecoveryRailCard.tsx`:** `recoveryStore` planlarından mini özet (planlı/bugün/tamamlanan) + "Tam dökümü aç →" (`/screens/recovery`). today.tsx'e ek blok.
-- `EmptyState` (veya today/tasks boş durumları): sakin serif italik kopya varyantı (`variant="editorial"`), Atlas tonunda.
-- Test: `node run-tests.js` + assertion'lar.
+#### Çözdüğü Rapor Bulguları
+- Yönetici Özeti `#8`, `#9`, `#11` & Bölüm `5.1` (`plan.tsx` + `goals.tsx` üzerinde üst üste 6 navigasyon barı; 6 gizli yetim `/tabs/*` rotası ve Dual-Mount çift SafeArea/Canvas sorunu; ilk günden 35+ modül ADHD aşırı yüklemesi; `dashboard.tsx` sahte matris rotası; `profile.tsx` kopya entegrasyon listesi)
+- Bölüm `5.2` & `5.3` (0% Reanimated/Gesture kullanımı; 35 ham `<Modal>`; Android/Web'de kırık 6-butonlu `Alert.alert`; `ChecklistSheet` 20×20pt kapanmayan modal; `MorphingPillTabs` JS-thread takılması; `useReducedMotion` ilk kare sıçraması; `stats.tsx`/`life-areas.tsx` SE 320pt taşması; çift `edges={['top']}`; `timeline.tsx:951` FAB ve Undo Toast çakışması; `< 44×44pt` dokunma hedefleri; `Drawer.tsx:258` iç içe `<button>` Web DOM hatası; çalışmayan `⌘ K` / `ESC` rozetleri)
+- Bölüm `3.1` & `3.3` (Top-6 God-File monolitleri; 57 sanallaştırılmamış liste ve 365 `<TouchableOpacity>` ısı haritası; 401,17 MB RGBA8888 bitmap bellek ayak izi)
 
-### FAZ 6 — Aksan renk temaları (clay/moss/slate/amber)
-- **Mimari gerçek:** `lib/tokens.ts` `colors` sabit ve `StyleSheet.create` ile uygulama-geneline gömülü → runtime aksan değişimi her ekrana yayılamaz (tam yayılım = theme-context refactor = ayrı etap). **Bu yüzden FAZ render-anında hesaplanan baskın aksan yüzeylerine uygulanır:** her **primary Button** (bg render'da hesaplanıyor), **tab bar aktif tint** (screenOptions render'da), ve **Today hero** (vurgu + birincil CTA). Bu, tutarlı bir aksan kimliği verir; StyleSheet'e gömülü kalan küçük clay tonları "açık tema ekran-genel denetimi" etabına bırakılır.
-- **`lib/tokens.ts`:** `ACCENTS` haritası (clay/moss/slate/amber → primary·bright·deep·soft·label) + `AccentKey` + `DEFAULT_ACCENT`.
-- **`lib/useAccent.ts` (yeni):** `useThemeStore(s=>s.accent)` → `ACCENTS[accent]` döndüren hook.
-- **`store/themeStore.ts`:** `accent: AccentKey` + `setAccent`, AsyncStorage `app_accent`, `load()`.
-- **`Button.tsx` + `tabs/_layout.tsx` + `TodayHero.tsx`:** `useAccent()` ile aksanı oku.
-- **`settings.tsx`:** Görünüm bölümüne "Aksan rengi" — 4 renk dairesi seçici.
-- Test: `node run-tests.js` + assertion'lar.
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Navigasyon & Bilgi Mimarisi Tekilleştirmesi:**
+   - **5 Kök Alt Sekme:** `Bugün (today)` | `Plan (plan: Görevler & 24s Gün Şeridi)` | `Alışkanlıklar (timeline: Akış / 7 Gün / 16×7 Izgara)` | `İçgörüler (insights + stats)` | `Sığınak (hub + profil)`.
+   - `plan.tsx` ve `goals.tsx` içindeki kopya 3. ve 4. sekme çubuklarını tek bir bağlamsal segment şeridine indir (**maksimum 1 üst bağlam şeridi + 1 alt kök sekme çubuğu!**).
+   - 6 gizli yetim `/tabs/*` rotasını (`tasks`, `focus`, `stats`, `habits`, `hub`, `settings`) Dual-Mount olmaktan çıkar: kanonik tam ekran rotalar yalnız `/screens/*` altında (açık `<BackHeader />` ile, çift `SafeAreaView` ve çift `AtmosphericScreenCanvas` olmadan!) çalışır; eski `/tabs/*` linkleri `<Redirect />` ile kanonik rotaya yönlendirilir.
+   - **ADHD Kademeli Açılım (*Progressive Disclosure*):** Yeni kullanıcı modunda `Bugün` ekranı yalnızca *Enerji/Mod Çubuğu + Odak Taşı (#1 Öncelik) + Bugünkü Alışkanlıklar + Bugünkü Görevler* gösterir (`Odak Akışı` daraltılmış tek satırlık kapsül olur; OKR, Eisenhower, Haftalık/Aylık İnceleme gibi ileri modüller kullanıcı 3. günü tamamladığında veya *"İleri Planlama Araçlarını Göster"* dediğinde açılır).
+   - `Drawer.tsx` içindeki `"Triage & Matris"` linkini gerçekten Eisenhower Matrisi görünümüne bağla; `profile.tsx` içindeki kopya entegrasyon sekmesini teke indir ve hazır olmayan 20+ `'comingSoon'` kalabalığını tek bir *"Yakında Gelecek Bağlantılar"* daraltılabilir (collapsible) çekmecesinde topla.
+2. **Reanimated 4 + Gesture Handler + `@gorhom/bottom-sheet` Geçişi:**
+   - `npx expo install @gorhom/bottom-sheet @shopify/flash-list` kurulumu.
+   - Paylaşımlı `frontend/components/ui/AtlasBottomSheet.tsx` ve `ConfirmActionSheet.tsx` oluştur:
+     - `today.tsx:370` (6-butonlu kırık `Alert.alert`), `routine-runner.tsx:361`, `ChecklistEditor.tsx:37`, `ChecklistSheet.tsx` ve `today/timeline/focus/settings` içindeki ham `<Modal>` yığınlarını arka plana dokununca ve aşağı kaydırınca kapanan gerçek bottom-sheet'lere taşı.
+   - `frontend/components/motion/SwipeableActionRow.tsx` (YENİ): `GestureDetector` + Reanimated ile alışkanlık ve görev satırlarında **sağa kaydır -> Tamamla (Haptic)**, **sola kaydır -> Yarına Ertele / 5 dk Küçük Başlangıç**.
+   - [MorphingPillTabs.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/motion/MorphingPillTabs.tsx#L69-L82): `useNativeDriver: false` JS animasyonunu Reanimated `useSharedValue` + `useAnimatedStyle` ile UI thread'e taşı.
+   - [useReducedMotion.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/seasonalMotion/useReducedMotion.ts): İlk senkron değeri `AccessibilityInfo.isReduceMotionEnabled()` önbelleğinden / Web `matchMedia('(prefers-reduced-motion: reduce)')` üzerinden okuyarak ilk kare sıçramasını bitir ve tüm animasyon bileşenlerine uygula.
+3. **Performans, Görsel RAM Bütçesi, Responsive & Erişilebilirlik (a11y):**
+   - `YearlyHeatmap.tsx`: 365 ayrı `<TouchableOpacity>` yerine **tek bir `<Svg>`** + dokunma `(x, y)` koordinatından gün hesaplayan `Pressable` kapsayıcıya geç (365 fiber düğümü -> 1 düğüm!) ve seçili günü büyüteçli bilgi kartında göster.
+   - `@shopify/flash-list` + `useMemo`: `today.tsx` seçicilerini (`selectTodayHabits`, `dueToday`, `overdue`) ve `habit-detail.tsx` 10 analitik hesabını `useMemo` ile sar; uzun listeleri `FlashList` ile sanallaştır.
+   - **401 MB Bitmap RAM Optimizasyonu:**
+     - [AtmosphericScreenCanvas.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/spatial/AtmosphericScreenCanvas.tsx): `useIsFocused()` `false` olduğunda arka plan katman görsellerini unmount ederek aktif olmayan sekmelerin GPU doku belleğini sıfırla; `allowDownscaling={true}` ve hafif Kintsugi renk `placeholder` geçişi ekle; [OnboardingScaffold.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/onboarding/OnboardingScaffold.tsx#L55-L84) çift görsel render'ını teke indir; [GlassPanel.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/ui/GlassPanel.tsx) içine performans-korumalı gerçek `BlurView` (`expo-blur`) katmanı ekle.
+     - `tools/optimize-webp-dimensions.mjs` ile ekran genişliğinin 2 katını aşan dev arka plan WebP dosyalarını görsel kalite kaybı olmadan optimal piksel sınırlarına (`<= 1080px` dikey kanvas) indirerek disk ve RGBA8888 RAM ayak izini `%70` küçült.
+   - **Responsive & a11y Tamiri:** `stats.tsx`, `journal-reader.tsx` ve `life-areas.tsx` (`320pt` SE taşması) içinde `useWindowDimensions()` dinamik genişliğine geç; `timeline.tsx`, `habits.tsx`, `settings.tsx` çift `edges={['top']}` boşluğunu kaldır; `timeline.tsx:951-971` Undo Toast konumunu FAB'ın üstüne (`bottom: fabBottom + 68`) taşı; tüm ikon/kapatma butonlarına `minWidth: 44, minHeight: 44` veya `hitSlop={12}` ekle; `Drawer.tsx:258` iç içe `<TouchableOpacity>` yapısını kardeş (sibling) düzene çevirerek Web `<button><button>` HTML hatasını sıfırla; Web'de gerçek `window.addEventListener('keydown', ...)` ile `⌘ K` / `Ctrl+K` (`CommandPalette`) ve `ESC` kısayollarını çalıştır.
+   - **God-File Modülerleştirme:** `today.tsx` (1.490 satır), `hub.tsx` (2.115 satır), `FocusFlowView.tsx` (1.855 satır), `ai-coach.tsx` (1.251 satır), `HabitOnboarding.tsx` (1.243 satır) ve `settings.tsx` (1.126 satır) ekranlarını odaklanmış alt bileşenlere (`components/today/*`, `components/hub/*`, `components/coach/*`, `components/settings/*`) böl.
 
-### FAZ 7 — Proje detay görünümü
-- `projects.tsx`: bir projeye dokununca detay (modal veya inline) — proje adı, ilerleme (tamamlanan/toplam görev), o projeye ait görev listesi (toggle/ekle). `taskStore` `project_id` filtresi.
-- Test: `node run-tests.js` + assertion'lar.
+#### Kabul Kriterleri & Faz 12 Testleri
+- `320×568` (SE), `375×812` (Mobil), `768×1024` (Tablet) ve `1366×900` (Web Masaüstü) çözünürlüklerinin hiçbirinde yatay taşma, çift üst boşluk, FAB/Toast çakışması, `< 44×44pt` etkileşim hedefi veya konsolda Web `<button>` iç içe geçme uyarısı kalmaz.
+- Herhangi bir ekranda aynı anda görünen navigasyon barı sayısı **en fazla 2** (`1 Alt Kök Tab Bar + maks 1 İkincil Bağlam Şeridi`) olur.
 
-## Kapsam dışı (bu etapta DEĞİL — ayrı etap)
-- **Açık tema ekran-genel denetimi** (tüm ekranların `colors`'tan token okuduğunu garanti eden geniş refactor) — büyük yüzey, regresyon riski; aksan temaları (FAZ 6) bunun küçük öncüsü.
-- Masaüstüne özgü breadcrumb/sidebar collapsible (mobilde gereksiz).
-- Habit/calendar/Supabase şema değişikliği YOK (saf frontend etabı).
 
-## Dosya Özeti (ETAP 15)
-| Dosya | FAZ | Değişiklik |
-|---|---|---|
-| frontend/lib/todayNarrative.ts | 1 | **yeni** — anlatısal başlık üreteci |
-| frontend/components/today/TodayHero.tsx | 1 | **yeni** |
-| frontend/components/today/MetricGrid.tsx | 1 | **yeni** |
-| frontend/components/today/NextUpStrip.tsx | 2 | **yeni** |
-| frontend/components/InlineComposer.tsx | 3 | **yeni** |
-| frontend/components/today/RecoveryRailCard.tsx | 5 | **yeni** |
-| frontend/app/tabs/today.tsx | 1·2·3·5 | hero/metrik/sırada/sekme/composer/rail mount |
-| frontend/app/tabs/tasks.tsx | 3 | inline composer |
-| frontend/components/CommandPalette.tsx | 4 | görev/not/proje arama + recents |
-| frontend/lib/tokens.ts + store/themeStore.ts + app/tabs/settings.tsx | 6 | aksan temaları |
-| frontend/app/screens/projects.tsx | 7 | proje detay |
-| frontend/components/ui/EmptyState.tsx | 5 | editöryel varyant |
-| frontend/run-tests.js | her faz | ETAP 15 assertion bölümleri |
+---
 
-## Doğrulama
-1. Her faz sonunda `cd frontend && node run-tests.js` → tsc 0 + tüm yapısal kontroller geçer (126'dan artar).
-2. Habit/calendar mantığı, Supabase şeması, 12 takvim görseli ve mevsimsel hareket dokunulmadan kalır.
+## DALGA 2 — Native Ekosistem, Gelir/Operasyon Katmanı, Kintsugi Sığınağı & BDT/DEHB Derinliği (`Faz 13` – `Faz 20`)
+
+---
+
+### Faz 13 — Gerçek Mağaza Aboneliği (RevenueCat), Çoklu Cihaz Uzak Bildirimler (APNs / FCM), `pg_cron` & Ürün Analitiği
+
+#### Çözdüğü Rapor Bulguları
+- Bölüm `2.4` & `6.1` (`react-native-purchases` eksikliği, `PAID_SUBSCRIPTIONS_ENABLED = false`)
+- Bölüm `6.2` (%100 yerel bildirim sınırı nedeniyle 7 gün uygulama açılmazsa bildirimlerin tamamen susması; ölü `profiles.push_token` tekil kolonu)
+- Bölüm `6.3` & `6.5` (`analytics.ts:151` `noopSink` — sıfır ürün verisi; Sentry anonim *crash-free user* metriği ve Edge korelasyon logu eksikliği; `0` adet `pg_cron` bakım işi)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/042_push_tokens_and_pg_cron_maintenance.sql`
+   - `public.user_push_tokens(id UUID PK, user_id UUID NOT NULL REFERENCES auth.users ON DELETE CASCADE, platform TEXT CHECK (platform IN ('ios','android','web')), expo_push_token TEXT NOT NULL, device_name TEXT, is_active BOOLEAN DEFAULT true, last_seen_at TIMESTAMPTZ DEFAULT now(), UNIQUE(user_id, expo_push_token))` (`RLS` + `TO authenticated` sahiplik politikası).
+   - `pg_cron` zamanlanmış bakım görevleri:
+     - Her gece `03:15 UTC`: `DELETE FROM public.ai_requests WHERE created_at < now() - INTERVAL '7 days';` ve `DELETE FROM public.subscription_webhook_events WHERE processed_at < now() - INTERVAL '90 days';`
+     - Her saat başı: `UPDATE public.user_subscriptions SET tier = 'free', status = 'expired' WHERE status = 'active' AND sub_period_end IS NOT NULL AND sub_period_end < now() - INTERVAL '24 hours';` (mağaza grace-period payıyla).
+2. **Yeni:** `frontend/services/purchasesService.ts` + **Güncelleme:** `frontend/app/screens/paywall.tsx` & [subscriptionStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/subscriptionStore.ts)
+   - `react-native-purchases` (RevenueCat SDK) kurulumu; `Purchases.logIn(session.user.id)` ile anonim ID çakışmasını kaynağında önleme; StoreKit 2 / Google Play Billing paket listeleme, satın alma, *"Satın Alımları Geri Yükle"* ve mağaza abonelik iptal/yönetim sayfası bağlantısı; doğrulama sonrası `PAID_SUBSCRIPTIONS_ENABLED = true`.
+3. **Yeni:** `supabase/functions/dispatch-push-reminders/index.ts` & `frontend/services/pushRegistrationService.ts`
+   - İstemci izin verdiğinde Expo Push / FCM / APNs cihaz jetonunu `user_push_tokens` tablosuna kaydeder, `SIGNED_OUT` anında o cihazın jetonunu `is_active = false` yapar!
+   - Sunucu işçisi 3+ gündür uygulamayı açmayan kullanıcıların kritik hatırlatıcılarını ve nazik Kintsugi geri dönüş davetini (günde maks 1 bildirim spam korumasıyla) iletir.
+4. **Güncelleme:** `frontend/lib/analytics.ts`, `frontend/lib/sentry.ts` & `supabase/functions/_shared/telemetry.ts` (YENİ)
+   - Kullanıcı verisi / günlük metni / görev başlığı **asla** göndermeyen (PII-free), KVKK/GDPR onayına (`profiles.analytics_opt_in`) bağlı AB-merkezli `PostHog` / `TelemetryDeck` sink entegrasyonu.
+   - `SecureStore` içinde dönen anonim `installation_id` ile Sentry *crash-free user rate* ölçümü ve 7 Edge Function için yapılandırılmış `{ request_id, fn, duration_ms, status, error_code }` JSON log standardı.
+
+#### Kabul Kriterleri & Faz 13 Testleri
+- Çıkış yapılan cihazın push token'ı `is_active = false` olur (aynı telefonda başka hesaba veya çıkış sonrası eski hesaba bildirim sızmaz!).
+- `analytics_opt_in = false` iken hiçbir ağ telemetri isteği çıkmaz; `true` iken yalnızca beyaz listedeki anonim olay adları gönderilir (`__tests__/lib/analyticsPrivacyGuard.test.ts`).
+
+---
+
+### Faz 14 — İnteraktif Ana Ekran / Kilit Ekranı Widget'ları & Dynamic Island (*HabitGenius / HabitKit / Routinery*)
+
+#### Çözdüğü Rapor Bulguları
+- Bölüm `7.2 (#4 Routinery)` & `7.3 (#14 HabitKit, #19 HabitGenius)` (Native iOS/Android ana ekran widget'larının ve kilit ekranı / Dynamic Island canlı sayaçlarının %0 olması)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni:** `frontend/services/widgetBridgeService.ts` + iOS `targets/widgets/` (`@bacons/apple-targets`) + Android `frontend/widgets/` (`react-native-android-widget`)
+   - Uygulama içi her `logStore`, `taskStore`, `focusStore` ve `routineRunnerStore` güncellemesinde App Groups (`group.com.aderyth.app`) / Android `SharedPreferences` üzerine hafif, şemasız/PII-kontrollü `widget_snapshot_v1.json` yazılır.
+   - **3 Native Widget Varyantı:**
+     1. **Küçük (`2×2` — Günün Odak Alışkanlığı):** 16×7 mini Kintsugi katkı ızgarası + iOS 17+ `AppIntent` / Android `WidgetTaskHandler` ile **uygulamayı açmadan 1-tap tamamlama!**
+     2. **Orta (`4×2` — Bugün Özeti):** Günün en önemli 3 alışkanlığı + #1 Odak Görevi + kapasite çubuğu (satır başı anında tikleme).
+     3. **Kilit Ekranı & Dynamic Island (`ActivityKit` Live Activity):** `focus.tsx` Pomodoro sayacı veya `routine-runner.tsx` aktif adımı çalışırken kilit ekranında ve Dynamic Island'da gerçek zamanlı geri sayım + `[⏸ Duraklat]` / `[⏭ Sıradaki Adım]` kontrolü.
+
+#### Kabul Kriterleri & Faz 14 Testleri
+- `widgetBridgeService` snapshot serileştiricisinin çevrimdışı tamamlamaları outbox'a kuyruklayıp ana uygulama açıldığında bulutla uzlaştırdığını doğrulayan `__tests__/services/widgetBridgeSync.test.ts` yeşil geçer; EAS Development Build üzerinde iOS ve Android widget etkileşimi doğrulanır.
+
+---
+
+### Faz 15 — Apple Health & Google Health Connect Biyometrik Oto-Tamamlama (*Habitify*)
+
+#### Çözdüğü Rapor Bulguları
+- Bölüm `7.3 (#13 Habitify)` ([integrations.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/integrations.ts#L79-L91) içinde Apple Health / Google Fit bağlantısının `'comingSoon'` kalması)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/043_habit_health_sync.sql`
+   - `habits` tablosuna `health_sync_config JSONB CHECK (pg_column_size(health_sync_config) <= 1024)` (`{ provider: 'healthkit' | 'health_connect', metric: 'steps' | 'water_ml' | 'sleep_minutes' | 'workout_minutes' | 'mindful_minutes', autoComplete: boolean }`) ve `habit_logs` tablosuna `source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','routine','widget','notification','apple_health','health_connect','import'))` ekle.
+2. **Yeni:** `frontend/services/healthSyncService.ts` + **Güncelleme:** [HabitOnboarding.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/HabitOnboarding.tsx) & `settings.tsx`
+   - `@kingstinct/react-native-healthkit` (iOS) ve `react-native-health-connect` (Android) üzerinden salt-okunur (minimum izin ilkesiyle yalnız kullanıcının seçtiği metrik için!) günlük toplam okuma.
+   - Uygulama ön plana geldiğinde (`AppState -> active`) ve iOS arka plan gözlemcisinde günlük toplamı mevcut [habitLogService.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/services/habitLogService.ts) `persistCompletion` motoruna aktarır (`value >= target` ise `done`, değilse gerçek oranla `partial`!).
+
+#### Kabul Kriterleri & Faz 15 Testleri
+- Sağlık verisi `6.400 / 8.000 adım` geldiğinde `partial (6400)`, `8.200 adım` geldiğinde `done (8200, source: 'apple_health')` yazıldığını ve kullanıcının elle girdiği daha yüksek değeri ezmediğini (`Math.max`) kanıtlayan `__tests__/services/healthSyncService.test.ts` yeşil geçer.
+
+---
+
+### Faz 16 — "Kintsugi Sığınağı" (`hub.tsx`): Uyuyan Oyunlaştırma Veritabanının Sakin Aktivasyonu (*Rabit / Roubit / Fun Habit / Wipepp*)
+
+#### Çözdüğü Rapor Bulguları
+- Yönetici Özeti `#5`, Bölüm `4.1`, `7.0` & `7.2 (#7 Rabit, #8 Fun Habit, #9 Roubit, #10 Hizo, #11 Wipepp)` (Canlı DB'de hazır bekleyen `user_pets`, `pet_stages`, `quests`, `user_quests`, `shop_items`, `user_inventory`, `challenges`, `user_challenges`, `boss_contributors` ve `profiles.coins` tablolarının %0 UI olması)
+- Bölüm `5.1.3` & `7.3 (#22 Alışkanlık Takip, #23 Hedef ve Alışkanlık Takibi)` (`goals.tsx` hedef ilerlemesinin bağlı alışkanlık/görev tamamlandıkça otomatik yükselmemesi)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/044_sanctuary_economy_and_lockfree_coop.sql`
+   - `shop_items` tablosuna kullanıcıya özel ödül desteği için `owner_user_id UUID REFERENCES auth.users ON DELETE CASCADE` (`NULL` = sistem kataloğu, dolu = kullanıcının kişisel gerçek hayat ödülü!) ekle.
+   - Kilitsiz Topluluk Anıtı RPC'si `record_coop_monument_contribution(p_points INT)`: `global_bosses` satırına senkron kilit atmadan yalnız `boss_contributors(boss_id, user_id, damage_dealt)` (`ON CONFLICT (boss_id, user_id) DO UPDATE`) yazar; anıt ilerlemesi `SUM(damage_dealt)` önbellekli view'dan okunur ve ödüller kanonik XP defterine uyumlu verilir (`xp_drift() = 0` korunur!).
+2. **Yeni:** `frontend/store/sanctuaryStore.ts`, `frontend/services/sanctuaryService.ts`, `frontend/repositories/sanctuaryRepository.ts` & `frontend/components/sanctuary/*`
+   - **Calm-Tech Sınır Kuralı:** `today.tsx` ekranına **sıfır** oyunlaştırma rozeti/sayacı girer; tüm deneyim `Sığınak (hub.tsx)` sekmesinde yaşar:
+     1. **Kintsugi Bonsai / Sığınak Yoldaşı (`user_pets` + `pet_stages`):** Alışkanlıklarla büyür; gün kaçırıldığında **asla ölmez**, dingin uyku moduna geçer. Kullanıcı `recovery.tsx` üzerinde bir Kintsugi onarım planı tamamladığında **altın Kintsugi damarlarıyla tam canlılığa (`health: 100`) döner!**
+     2. **Fun Habit Tarzı Kişisel Ödül Menüsü (`shop_items` + `profiles.coins`):** Alışkanlık, odak seansı, günlük `quests` ve `Urge Shield` (+15 Altın) tamamlamalarından kazanılan altınlarla kullanıcı kendi gerçek hayat ödüllerini (*"Kahve Molası = 50 Altın", "1 Bölüm Dizi = 120 Altın", "Suçluluksuz Oyun Saati = 200 Altın"*) satın alır.
+     3. **Wipepp Tarzı Kırılgan Olmayan 21 Gün Yolculukları (`challenges` + `user_challenges`):** **"21 Günde 17 Gün + Kintsugi Onarım Hakkı = Başarı"** kuralıyla çalışan rehberli paketler + yerel günlük ritim şablonları (*Su, Okuma, Yürüyüş, Dijital Detoks, Farkındalık*).
+3. **Güncelleme:** `frontend/services/goalService.ts` & [goals.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/goals.tsx)
+   - Bir hedefe (`goal_id`) bağlı alışkanlıklar veya projeler/görevler tamamlandıkça hedefin yüzdesel ilerlemesini ve `goals.tsx` zirve taşını (`cairn`) otomatik güncelleyen `recomputeLinkedGoalProgress(goalId)` köprüsü.
+
+#### Kabul Kriterleri & Faz 16 Testleri
+- `today.tsx` bileşen ağacında `sanctuaryStore` aboneliği bulunmaz (Calm-Tech izolasyonu).
+- `xp_drift()` sorgusu `quests` ve topluluk katkısı sonrasında bile `0` satır döner.
+
+---
+
+### Faz 17 — Canlı Sessiz Body Doubling (*Inflow*), Derin Kalkan & Kintsugi Bahçesi (*Forest*) ve Dopamin Menüsü
+
+#### Çözdüğü Rapor Bulguları
+- Bölüm `7.2 (#1 Inflow, #5 Forest)` (`focus.tsx` %100 solo olması; arka plana atılınca sessizce duraklaması; `focus_sessions` geçmişinin görsel bir bahçe üretmemesi; etkileşimli Dopamin Menüsü eksikliği)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/045_dopamine_menu_and_focus_garden.sql`
+   - `profiles` tablosuna `dopamine_menu JSONB` (`appetizers`, `mains`, `sides`, `desserts`) ve `focus_sessions` tablosuna `tree_archetype TEXT DEFAULT 'kintsugi_pine'`, `shield_intact BOOLEAN DEFAULT true` kolonlarını ekle.
+2. **Yeni:** `frontend/services/focusPresenceService.ts`, `frontend/components/focus/SilentLibraryPresenceBar.tsx`, `frontend/components/focus/FocusGardenGrid.tsx` & `frontend/components/focus/DopamineMenuSheet.tsx`
+   - **Sıfır-Tablolu Supabase Realtime Presence (`focus_room:silent_library`):** Kullanıcı odak sayacını başlattığında isteğe bağlı (varsayılan anonim, sıfır metin/kamera/moderasyon riski!) Presence kanalına `{ mode: 'deep_work' | 'small_start', startedAt }` yazar; ekranda *"🟢 Şu an 42 kişi Sessiz Kütüphane'de seninle odaklanıyor"* görünür ve seans bittiğinde anonim `✨ Kıvılcım Gönder` haptik dalgası paylaşılabilir.
+   - **Opsiyonel `"🛡️ Derin Kalkan (Strict Focus)"`:** Kullanıcı bu anahtarı açarsa `AppState` arka plana düştüğünde yerel bildirimle *"15 saniye içinde Sığınağa dönmezsen odak taşın çatlayacak"* uyarısı verir (dönmezse seans silinmez ama bahçeye *çatlak taş* olarak kaydedilir — `recovery` ile altınla onarılabilir!).
+   - **`FocusGardenGrid`:** Tamamlanan her `focus_sessions` kaydını aylık izometrik Kintsugi Taş & Bonsai Bahçesi üzerinde görselleştirir.
+   - **`DopamineMenuSheet`:** Mola başladığında ve `today.tsx` SOS menüsünde kullanıcının önceden seçtiği sağlıklı mikro-ödülleri rastgele ("🎲 Bana 5 Dakikalık Sağlıklı Dopamin Seç") önerir.
+
+#### Kabul Kriterleri & Faz 17 Testleri
+- Odak seansı bittiğinde veya bileşen unmount olduğunda Realtime Presence kanalından `untrack()` ve `removeChannel()` çağrılarak soket sızıntısı sıfırlanır (`__tests__/services/focusPresenceService.test.ts`).
+
+---
+
+### Faz 18 — BDT Düşünce Tuzağı Çözücü, Chill Zone (*MindShift CBT*) & `low_day` Zaman Kapsülü Mektupları (*Dear Me*)
+
+#### Çözdüğü Rapor Bulguları
+- Bölüm `7.2 (#2 MindShift CBT, #12 Dear Me)` (`journal.tsx` içinde yapılandırılmış BDT bilişsel çarpıtma aracı olmaması; nefes/topraklama aracının `BadHabitsTracker` içinde kilitli kalması; gelecekteki zor günler için Zaman Kapsülü mektubu olmaması)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/046_cbt_thought_records_and_time_capsules.sql`
+   - `public.cbt_thought_records(id UUID PK, user_id UUID NOT NULL, situation TEXT, automatic_thought TEXT, distortions TEXT[], balanced_thought TEXT, anxiety_before SMALLINT, anxiety_after SMALLINT, created_at TIMESTAMPTZ)` (`RLS` + `TO authenticated`).
+   - `public.time_capsules(id UUID PK, user_id UUID NOT NULL, title TEXT, body TEXT NOT NULL, unlock_type TEXT CHECK (unlock_type IN ('date','low_day')), unlock_at TIMESTAMPTZ, opened_at TIMESTAMPTZ, created_at TIMESTAMPTZ)` (`RLS` + `TO authenticated`).
+2. **Yeni:** `frontend/components/journal/CbtThoughtTrapWizard.tsx`, `frontend/components/journal/TimeCapsuleComposer.tsx` & `frontend/components/wellness/ChillZoneSheet.tsx`
+   - `journal.tsx`: Üst mod seçiciye `Serbest Günlük | 🧠 Düşünce Tuzağı Çözücü | ⏳ Zaman Kapsülü` eklenir.
+   - **Düşünce Tuzağı Çözücü:** 60 saniyelik 4 adım (*Olay -> Otomatik Düşünce -> 10 Bilişsel Çarpıtma Çipi [Ya Hep Ya Hiç, Felaketleştirme, Zihin Okuma, Duygusal Kanıt, -meli/-malı...] -> Dengeli Yeniden Çerçeveleme* + isteğe bağlı Sokratik AI Koç yardımı).
+   - **Paylaşımlı `ChillZoneSheet`:** *Fizyolojik İç Çekme (2 kısa nefes al + uzun ver)*, *Kutu Nefesi (4-4-4-4)*, *5-4-3-2-1 Duyusal Topraklama* ve *Kişisel Başa Çıkma Kartları* — hem `today.tsx` SOS butonundan hem `BadHabitsTracker` hem `focus.tsx` üzerinden erişilebilir. `SmallStartSheet` içine de 1 satırlık *Beklenen Zorluk vs Gerçekleşen Zorluk* **İnanç Deneyi** eklenir.
+   - **Aderyth İmza Özelliği — `low_day` Zaman Kapsülü:** Kullanıcı iyi bir gününde *"Gelecekte Zincirim Kırıldığında Açılacak Mektup"* mühürler. Kullanıcı haftalar sonra bir serisini kaçırıp [recovery.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/recovery.tsx) ekranını açtığında balmumu mühür animasyonuyla **kendi geçmiş benliğinden gelen şefkat mektubu** açılır!
+
+#### Kabul Kriterleri & Faz 18 Testleri
+- `unlock_type === 'date'` kapsüllerinin `unlock_at > now()` iken içeriğinin arayüzde kilitli kaldığı, `unlock_type === 'low_day'` kapsülünün ise aktif bir `recovery` tetiklendiğinde açıldığı `__tests__/services/timeCapsuleService.test.ts` ile doğrulanır.
+
+---
+
+### Faz 19 — Saniyelik Canlı Bırakma Motoru (*HelloHabit*), Saat Histogramı, CSV Göç Sihirbazı (*Loop*), Year in Pixels & Viral Kintsugi Kartları
+
+#### Çözdüğü Rapor Bulguları
+- Bölüm `7.3 (#14 HabitKit, #15 Loop, #20 HelloHabit)` & `7.4 (#28 Daylio)` (`BadHabitsTracker` sadece tam gün sayması, relapse butonu ve tetikleyici kaydı olmaması; `morningEveningDifference` `'unsupported'` dönmesi; rakip uygulamalardan CSV içe aktarım olmaması; Year in Pixels ve Story paylaşım kartı eksikliği)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/047_abstinence_events_performed_at_and_csv_import.sql`
+   - `bad_habits` tablosuna `started_at TIMESTAMPTZ NOT NULL DEFAULT now()`, `category TEXT DEFAULT 'custom'`, `daily_cost_cents INT DEFAULT 0`, `daily_minutes_saved INT DEFAULT 0`, `longest_streak_seconds BIGINT DEFAULT 0`; yeni `public.bad_habit_events(id UUID PK, user_id UUID NOT NULL, bad_habit_id UUID REFERENCES public.bad_habits ON DELETE CASCADE, event_type TEXT CHECK (event_type IN ('urge_resisted','slip','reset')), trigger_tag TEXT, note TEXT, occurred_at TIMESTAMPTZ DEFAULT now())` (`RLS`).
+   - `habit_logs` tablosuna `performed_at TIMESTAMPTZ`, `is_backfill BOOLEAN DEFAULT false`, `mood SMALLINT CHECK (mood BETWEEN 1 AND 5)` ekle.
+   - `import_historical_habit_logs(p_rows JSONB)` RPC'si: Tarihsel göç loglarını **`xp = 0, source = 'import'`** ile toplu yazar (`012_xp_integrity` liderlik tablosunu bozmadan 5 yıllık geçmişi 2 saniyede içe aktarır!).
+2. **Güncelleme:** [BadHabitsTracker.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/BadHabitsTracker.tsx) & `frontend/lib/abstinenceMilestones.ts` (YENİ)
+   - Saniyesine kadar canlı akan `14g 06s 42dk 19sn` + biriken TL ve kurtarılan saat sayacı.
+   - Kategori bazlı (*Sigara/Nikotin, Şeker, Sosyal Medya/Doomscrolling, Kafein, Alkol, Özel*) bilimsel fizyolojik/zihinsel iyileşme eşikleri (*20 dk, 8 saat, 48 saat, 72 saat, 14 gün, 90 gün*).
+   - `longest_streak_seconds` rekorunu koruyan şefkatli **Kayma / Yeniden Başlat (`slip` / `reset`)** akışı ve tetikleyici etiketi (*Stres, Yalnızlık, Sıkılma, Gece Geç Saat, Sosyal Ortam*) ısı haritası.
+3. **Güncelleme & Yeni (`Loop` + `Daylio` + `HabitKit` Analitik/Paylaşım):**
+   - [behaviorIntelligence.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/behaviorIntelligence.ts#L793) & [habitSchedule.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/habitSchedule.ts): `is_backfill === false` olan `performed_at` kayıtlarından gerçek **Günün Saati Histogramı** ve *"Hatırlatıcın 09:00'da ama %82 oranla 21:30'da tamamlıyorsun -> 21:15'e taşı"* önerisi + `rolling_window` (*"10 günde 3 kez"*) ve `anchor_mode: 'floating'` (*tamamlandığı günden N gün sonra*) sıklıkları + check-in sonrası 3.5 sn zorlamayan `[+ His / 🎙️ Sesli Not]` çubuğu.
+   - `frontend/lib/importers/habitCsvImporter.ts` (YENİ): **Loop (`uhabits`), Habitify, HabitKit ve Aderyth CSV** formatlarını otomatik tanıyan önizlemeli Göç Sihirbazı (`settings.tsx`).
+   - [YearlyHeatmap.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/YearlyHeatmap.tsx): `Alışkanlık Yoğunluğu | Yılın Mod Gobleni (Year in Pixels 1..5)` mod anahtarı.
+   - `frontend/components/share/KintsugiShareCardModal.tsx` (YENİ): `react-native-view-shot` + `expo-sharing` ile `9:16` Story ve `1:1` Post boyutunda, *"Alışkanlık adını gizle"* gizlilik anahtarlı Kintsugi paylaşım kartı.
+
+#### Kabul Kriterleri & Faz 19 Testleri
+- Loop (`Checkmarks.csv`) ve Habitify örnek CSV dosyaları içe aktarıldığında `xp_drift() = 0` kalır ve kullanıcının liderlik tablosu puanı yapay şişmez (`__tests__/lib/habitCsvImporter.test.ts`).
+
+---
+
+### Faz 20 — Gün Blok Şablonları (*TimeTune* `event_templates`), Proje Kanban Panosu & Sesli "Ramble" Çoklu Görev (*Todoist*)
+
+#### Çözdüğü Rapor Bulguları
+- Bölüm `7.0` & `7.4 (#24 Todoist, #25 TimeTune)` (Canlı DB'deki `event_templates` tablosunun %0 UI olması; `projects.tsx` üzerinde Kanban görünümü ve Akıllı Listeler olmaması; kurulu `expo-speech-recognition` paketinin çoklu görev beyin boşaltımı için kullanılmaması)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni:** `frontend/repositories/eventTemplateRepository.ts` & `frontend/components/calendar/DayTemplatePickerSheet.tsx`
+   - Canlı DB'deki `event_templates` tablosunu **Gün Blok Şablonları** (*Ofis Günü, Evden Derin Çalışma, Düşük Enerji Kurtarma Günü, Hafta Sonu Yenilenme*) olarak canlandırır; tek dokunuşla seçilen güne sabit ve esnek blokları uygular.
+2. **Güncelleme:** [frontend/app/screens/projects.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/projects.tsx) & [tasks.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/tasks.tsx)
+   - `projects.tsx` içine **`Liste | Kanban (Bekleyen · Odakta · Tamamlandı)`** görünümü ve sürükle-taşı durum geçişi eklenir.
+   - `tasks.tsx` üstüne kayıtlı **Akıllı Filtreler** (*Bugün, Gecikmiş, `<15 dk` Hızlı Kazanç, Düşük Enerjiye Uygun, Bayraklı*) eklenir.
+3. **Yeni:** `frontend/components/tasks/VoiceRambleSheet.tsx`
+   - Kurulu `expo-speech-recognition` ile kullanıcının 30–60 saniyelik dağınık konuşmasını (*"Yarın sabah 10'da dişçiyi ara, cuma gününe kadar kira faturasını öde ve bugün 20 dakika sunum notlarını gözden geçir"*) canlı metne döker -> `generate-routine` (`mode: 'ramble_extract'`) ile yapılandırılmış görev + tarih + süre önerilerine ayırır -> Gate-D onay listesinde kullanıcı onayladıktan sonra toplu oluşturur!
+
+#### Kabul Kriterleri & Faz 20 Testleri
+- `VoiceRambleSheet` hiçbir görevi kullanıcı Gate-D önizleme kartında `"Onayla ve Ekle"` demeden veritabanına yazmaz (`__tests__/components/voiceRambleGateD.test.ts`).
+
+---
+
+## DALGA 3 — Küresel Ölçek (`i18n`), Çift Yönlü Entegrasyonlar, Zengin Medya, Tekil SQLite Outbox & E2E Kalite Kapısı (`Faz 21` – `Faz 24`)
+
+---
+
+### Faz 21 — Küresel Çoklu Dil Mimarisi (`expo-localization` + `i18next` — TR / EN / JA / DE / ES)
+
+#### Çözdüğü Rapor Bulguları
+- Bölüm `1.3.B.4` & `5.3.3` (139 `.tsx` bileşeninde ve 20 tarih/sıralama dosyasında %100 sabit kodlu Türkçe metinler ve `'tr-TR'` locale sabitleri)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni:** `frontend/i18n/` (`index.ts`, `formatters.ts`, `locales/{tr,en,ja,de,es}/{common,today,habits,tasks,focus,coach,recovery,sanctuary,settings}.json`)
+   - `npx expo install expo-localization i18next react-i18next` kurulumu.
+   - `profiles.locale` (`'tr' | 'en' | 'ja' | 'de' | 'es'`) tercihi + cihaz dili otomatik algılama + `date-fns/locale` dinamik tarih/gün formatlayıcı (`formatters.ts` — sabit `'tr-TR'` çağrılarının tamamı kaldırılır).
+   - `taskNlpParser.ts` (aktif dile göre doğal dil kalıpları), `routineVoiceCoach.ts` (`Speech.speak` `language` parametresi) ve `generate-routine` Edge Function sistem promptu kullanıcının aktif diline tam uyumlu çalışır.
+   - CI sözlük parite kapısı: `__tests__/i18n/localeKeyParity.test.ts` (`tr` ana sözlüğündeki her anahtarın `en, ja, de, es` sözlüklerinde eksiksiz ve parametre (`{{count}}`) uyumlu olduğunu denetler).
+
+#### Kabul Kriterleri & Faz 21 Testleri
+- Dil `Settings -> English` veya `日本語` olarak değiştirildiğinde yeniden başlatma gerekmeden tüm ekranlar, tarih başlıkları, TTS sesli rutin koçu ve AI Koç yanıtları seçilen dilde çalışır; eksik çeviri anahtarı sayısı `0`'dır.
+
+---
+
+### Faz 22 — Gerçek Çift Yönlü Entegrasyonlar (`google-sync`, Idempotent `notion-sync`, PKCE `spotify-auth`) & OS Share-Sheet
+
+#### Çözdüğü Rapor Bulguları
+- Bölüm `2.4` & `4.4.3 / 4.4.4` (`google-auth` arkasında hiç `google-sync` olmaması; `notion-sync` her basışta kopya sayfa üretmesi, saatli görevleri düşürmesi ve `3 req/s` `429` hatası alması; `spotify-auth` PKCE/state eksikliği)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/048_external_sync_mappings.sql`
+   - `tasks` ve `habit_logs` için harici senkron eşleme tablosu `public.external_entity_mappings(user_id UUID, provider TEXT CHECK (provider IN ('notion','google_calendar')), local_type TEXT, local_id UUID, remote_id TEXT, last_synced_hash TEXT, updated_at TIMESTAMPTZ, PRIMARY KEY (user_id, provider, local_type, local_id))` (`REVOKE ALL FROM anon, authenticated;` — yalnız Edge `service_role`).
+2. **Yeni Edge Function:** `supabase/functions/google-sync/index.ts` + **Güncelleme:** `google-auth`, `notion-sync`, `spotify-auth`
+   - `google-sync`: Süresi dolan `access_token`'ı `refresh_token` ile otomatik yeniler, Google Calendar etkinliklerini `events` tablosuna (`DayRibbonView` ve `computeDailyLoad` içine!) çeker ve zaman bloklu Aderyth görevlerini isteğe bağlı Google Takvim'e yazar -> `GOOGLE_CALENDAR_INTEGRATION_ENABLED = true`.
+   - `notion-sync`: `external_entity_mappings` tablosunda `remote_id` (`notion_page_id`) varsa yeni sayfa açmak yerine `PATCH` ile günceller (**sıfır kopya!**); `tasks.due_date` sorgusunu `[dayStartUtc, dayEndUtc)` aralığına düzeltir ve Notion'ın `3 istek/sn` sınırına uyan `350ms` aralıklı sıralı/batch yürütücü + `Retry-After` backoff uygular -> `NOTION_INTEGRATION_ENABLED = true`.
+   - `spotify-auth`: PKCE + `_shared/oauthState.ts` HMAC imzalı state + `_shared/redirectAllowlist.ts` doğrulamasıyla sertleştirilir -> `SPOTIFY_OAUTH_ENABLED = true` (`focus.tsx` odak çalma listesi kontrolü).
+   - `ci.yml` `edge-deno-verify` listesine `supabase/functions/google-sync/index.ts` eklenir.
+3. **Yeni:** OS Paylaşım Hedefi (`expo-share-intent`)
+   - Safari/Chrome veya herhangi bir uygulamadan metin/URL paylaşıldığında Aderyth hızlı çekmecesi açılır (*"Görev Olarak Ekle"* veya *"Okuma Listesine Kaydet"*).
+
+#### Kabul Kriterleri & Faz 22 Testleri
+- Aynı gün içinde 5 kez art arda `"Notion ile Senkronize Et"` çağrıldığında Notion tarafında yalnızca **1** sayfa oluşturulur ve sonraki 4 çağrı yalnız değişen satırları `PATCH` eder (`deno test supabase/functions/notion-sync/`).
+
+---
+
+### Faz 23 — Konum Geofencing, Fotoğraf/Ses Mikro-Anıları, Arkadaş Meydan Okumaları & Akşam Küre Hasadı (*WaterDo*)
+
+#### Çözdüğü Rapor Bulguları
+- Bölüm `7.0`, `7.2 (#6 WaterDo)`, `7.3 (#13 Habitify, #19 HabitGenius)`, `7.4 (#25 TimeTune, #28 Daylio)` (Şemada hazır bekleyen `habit_logs.photo_url` ve `voice_note_url` kolonlarının %0 UI olması; konum hatırlatıcısı, arkadaş meydan okuması, akşam hasat ritüeli ve 168 saat planlanan vs gerçekleşen analizinin eksikliği)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni Migrasyon:** `supabase/migrations/049_storage_buckets_and_friend_challenges.sql`
+   - Özel (`public = false`) Supabase Storage bucket'ları: `habit-proofs` ve `voice-notes` (`(storage.foldername(name))[1] = (select auth.uid())::text` kuralıyla `SELECT + INSERT + UPDATE + DELETE` tam RLS politikaları — upsert hatasız çalışır!).
+   - Davet kodlu ortak alışkanlık meydan okumaları: `public.friend_challenges` ve `public.friend_challenge_members` (`RLS` — katılımcılar yalnızca paylaştıkları o tek meydan okumanın tamamlama yüzdesini görür, özel günlük/not verisi asla paylaşılmaz!).
+2. **Yeni Bileşenler & Servisler:**
+   - `frontend/services/geofenceReminderService.ts`: `expo-location` + `expo-task-manager` ile OS limiti içinde (`<= 15` aktif bölge) *Spor Salonu'na Varınca / Ofisten Çıkınca* konum tetikleyicisi.
+   - `frontend/components/habits/HabitProofGallery.tsx` & `VoiceMicroNoteRecorder.tsx`: `expo-image-picker` (istemci tarafında `<= 1080px` WebP sıkıştırmalı!) ile `habit_logs.photo_url` *Before/After* ilerleme galerisi ve 30 saniyelik `voice_note_url` sesli mikro-anı kaydı.
+   - `frontend/app/screens/leaderboard.tsx`: Küresel XP sıralamasının yanına davet kodlu **"Arkadaş Meydan Okumaları"** sekmesi.
+   - `frontend/components/today/EveningHarvestRitual.tsx`: `today.tsx` Akşam Kapanışı ekranında *WaterDo* tarzı 10 saniyelik `Reanimated` + Haptic **"Gün Sonu Küre Hasadı"** ve `insights.tsx` üzerinde *Planlanan Zaman Bloğu vs Gerçekleşen Odak (`168 Saat`)* karşılaştırma grafiği.
+
+#### Kabul Kriterleri & Faz 23 Testleri
+- Kullanıcı A'nın yüklediği `habit-proofs/<uid_A>/...` görseline Kullanıcı B'nin imzalı URL veya doğrudan Storage okumasıyla erişmesi Storage RLS tarafından `%100` engellenir.
+
+---
+
+### Faz 24 — Tekil Atomik SQLite Outbox Motoru, React 19 Compiler Aktivasyonu & Maestro / Playwright E2E Kalite Kapısı
+
+#### Çözdüğü Rapor Bulguları
+- Yönetici Özeti `#10` & Bölüm `2.2` (3 ayrı offline kuyruğu: `syncQueue.ts`, `outbox.ts`, `coreOutbox.ts`; 5 sahte Network-First store; outbox kullanmayan `habitStore` mutasyonları; `expo-sqlite` motorunun atıl kalması)
+- Bölüm `1.2` (React 19 Compiler'ın kapalı olması ve `eslint.config.js` içinde 87 kural ihlalinin bastırılması)
+- Bölüm `3.4` (112 `fs.readFileSync` metin-dilimleme testi, deprecated `react-test-renderer` ve 0 E2E testi)
+
+#### Değişecek ve Yeni Oluşturulacak Dosyalar
+1. **Yeni:** `frontend/lib/sqliteOutboxEngine.ts` + **Güncelleme:** `unifiedOutbox.ts` & Tüm Mutasyon Servisleri
+   - `expo-sqlite` (WAL modunda) içinde tekil `outbox_mutations(id TEXT PK, user_id TEXT, entity_type TEXT, entity_id TEXT, op TEXT, payload_json TEXT, base_updated_at TEXT, attempt_count INT, next_retry_at INT, last_error TEXT, status TEXT, created_at INT)` tablosu.
+   - `syncQueue.ts` (`habit_logs`), `outbox.ts` (`tasks`), `coreOutbox.ts` (`notes`, `journal`, `recovery`, `focus`), 5 sahte Network-First store (`goals`, `projects`, `reading_list`, `okr`, `life_areas`) ve `habitStore` yaşam döngüsü (`habits`, `habit_pauses`, `habit_checklists`, `mood_checkins`, `routine_templates`) **%100 gerçek Outbox-First** olarak bu tekil SQLite motoruna bağlanır!
+   - İlk açılışta eski `AsyncStorage` kuyruklarında bekleyen kayıt varsa sıfır kayıpla SQLite kuyruğuna aktarılıp flush edilir; HTTP `502/503/504/429` hataları veri kaybetmeden üstel backoff (`1s, 4s, 16s, 60s, 300s`) ile yeniden denenir ve `OutboxStatusSheet` tüm varlık tiplerini tek ekranda yönetir.
+2. **Güncelleme:** [frontend/eslint.config.js](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/eslint.config.js#L35-L90) & [frontend/app.json](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app.json#L74-L76)
+   - Bastırılmış 87 React Compiler kural ihlali (`react-hooks/refs`, `react-hooks/set-state-in-effect`, `preserve-manual-memoization`, `purity`) tek tek temizlenir; `eslint.config.js` içindeki `'off'` istisnaları kaldırılır ve `app.json` içinde `"experiments": { "typedRoutes": true, "reactCompiler": true }` aktif edilir.
+3. **Test Piramidi Modernizasyonu & E2E CI Kapısı:**
+   - `@testing-library/react-native` kurularak deprecated `react-test-renderer` testleri modern erişilebilirlik sorgularına (`getByRole`, `getByLabelText`) geçirilir; kırılgan `.indexOf()` metin-dilimleme testleri gerçek modül çalıştıran davranış testleriyle güçlendirilir.
+   - **Playwright Web E2E (`frontend/e2e/web/*.spec.ts`):** `375×812`, `768×1024`, `1366×900` çözünürlüklerinde *Giriş -> Onboarding -> NLP Görev Ekleme -> Alışkanlık Tamamlama & 16×7 Izgara -> 24s Gün Şeridi -> Kintsugi Onarım -> Çıkış Yap & Hesap İzolasyonu* uçtan uca akışı.
+   - **Maestro Mobil E2E (`frontend/e2e/maestro/*.yaml`):** iOS Simulator ve Android Emulator üzerinde çekirdek kullanıcı yolculukları, sesli rutin yürütücü ve çevrimdışı uçak modu senkronizasyon testi.
+
+#### Kabul Kriterleri & Faz 24 Testleri
+- Uçak modunda (veya sunucu `HTTP 503` dönerken) alışkanlık ekleme, alışkanlık işaretleme, görev ekleme, hedef oluşturma, günlük yazma ve mod kaydı anında optimist olarak arayüze yansır; uygulama kapatılıp açıldığında SQLite kuyruğundan kaybolmaz ve ağ geldiğinde tek seferde bulutla eşitlenir (`__tests__/lib/sqliteOutboxEngine.test.ts`).
+- `npm run lint:ci` React Compiler kuralları açıkken **0 hata / 0 uyarı** döner; Playwright + Jest + Deno + Postgres 17 CI kapılarının tamamı %100 yeşil geçer.
+
+---
+
+## Ek A — 28 Rakip Uygulama -> Faz İzlenebilirlik Matrisi (%100 Kapsama Kanıtı)
+
+| # | Rakip Uygulama | Uygulanan Özellikler | Atandığı Faz(lar) |
+| ---: | :--- | :--- | :--- |
+| 1 | **Inflow** | Canlı AI görev parçalayıcı + `today.tsx` SOS + küresel enerji modu; Realtime Presence Sessiz Body Doubling + Dopamin Menüsü | `Faz 09`, `Faz 17` |
+| 2 | **MindShift CBT** | 4 adımlı BDT Düşünce Tuzağı Çözücü, küresel `ChillZoneSheet` (nefes/topraklama), Küçük Başlangıç İnanç Deneyi | `Faz 18` |
+| 3 | **RoutineDay** | Başlamadan önce kart üstünde canlı bitiş saati (*"08:47'de biter"*), gerçek `expo-speech` TTS sesli koç | `Faz 08` |
+| 4 | **Routinery** | Pozitif `+overtime` sayacı, `+1/+5 dk`, adım içi ölçülebilir tamamlama, `030` bulut senkronu, Dynamic Island Live Activity | `Faz 08`, `Faz 14` |
+| 5 | **Forest** | Opsiyonel `"🛡️ Derin Kalkan"` modu, `focus_sessions` verisinden izometrik Kintsugi Odak Bahçesi, topluluk hedefi | `Faz 16`, `Faz 17` |
+| 6 | **WaterDo** | `today.tsx` #1 Odak Taşı görsel hiyerarşisi + Akşam Kapanışında 10 sn Haptic/Reanimated Küre Hasadı | `Faz 12`, `Faz 23` |
+| 7 | **Rabit** | `user_pets` + `pet_stages` ile büyüyen, asla ölmeyen, `recovery_plans` ile altın damarlarla canlanan Kintsugi Bonsai/Yoldaş | `Faz 16` |
+| 8 | **Fun Habit** | `profiles.coins` + `quests` + kullanıcının kendi gerçek hayat ödüllerini eklediği Kişisel Ödül Menüsü (`shop_items`) | `Faz 16` |
+| 9 | **Roubit** | `hub.tsx` tam ekran Spatial Kintsugi Sığınağı + yoldaş durumu ile mikro-rutin bağlantısı | `Faz 16` |
+| 10 | **Hizo** | `today.tsx` kademeli açılım dinginliği ve oyunlaştırmanın %100 `hub.tsx` Sığınağında izole edilmesi | `Faz 12`, `Faz 16` |
+| 11 | **Wipepp** | `challenges` + `user_challenges` aktivasyonu ile kırılgan olmayan *"21 Günde 17 Gün + Kintsugi Onarım"* yolculukları | `Faz 16` |
+| 12 | **Dear Me** | `recovery.tsx` sıcak altın öz-şefkat dili + zincir kırıldığında mührü açılan `low_day` Zaman Kapsülü mektupları | `Faz 06`, `Faz 18` |
+| 13 | **Habitify** | Aktif `cue_habit_id` Habit Stacking, Apple Health/Health Connect oto-tamamlama, check-in his/sesli not, geofence, arkadaş yarışması | `Faz 06`, `Faz 15`, `Faz 19`, `Faz 23` |
+| 14 | **HabitKit** | `timeline.tsx` 16×7 SVG GitHub katkı ızgarası (altın Kintsugi `skip` çerçeveli) + 1-tap check-in + Viral Story/Post kartı | `Faz 07`, `Faz 19` |
+| 15 | **Loop (`uhabits`)** | Sıklık-ölçekli bilimsel EMA Alışkanlık Gücü (`%0-100`), `performed_at` saat histogramı, esnek sıklık, CSV Göç Sihirbazı | `Faz 06`, `Faz 19` |
+| 16 | **HabitNow** | `duration` alışkanlık satırına gömülü canlı sayaç (`activeHabitTimerStore`) + zengin alt görev/kontrol listesi | `Faz 07`, `Faz 09` |
+| 17 | **Habit360** | Çoklu hatırlatıcı desteği, alışkanlık bazlı yıllık ısı haritası ve kategori şablonları | `Faz 10`, `Faz 16`, `Faz 19` |
+| 18 | **Habit It** | `opensAppToForeground: false` ile kilit ekranı bildiriminden uygulamayı açmadan `"✓"` ve `"+1"` tamamlama | `Faz 10` |
+| 19 | **HabitGenius** | Native iOS WidgetKit & Android Glance interaktif widget'ları + `habit-proofs` *Before/After* fotoğraf galerisi | `Faz 14`, `Faz 23` |
+| 20 | **HelloHabit** | Canlı saniyelik bırakma sayacı (`Gün:Saat:Dk:Sn`), kurtarılan TL/zaman, fizyolojik iyileşme eşikleri, tetikleyici analizi | `Faz 19` |
+| 21 | **Disciplined** | Sabah grace-period düzeltmesi + `recovery_plans` destekli Kintsugi Onarılmış Seri + ayda 2 Şefkat İzni | `Faz 06` |
+| 22 | **Alışkanlık Takip** | Tek dokunuşluk yerel günlük ritim şablonları ve sürtünmesiz ölçülebilir check-in çekmecesi | `Faz 07`, `Faz 16` |
+| 23 | **Hedef ve Alışkanlık Takibi** | Bağlı alışkanlık ve görevler tamamlandıkça `goals.tsx` hedef ilerlemesinin ve zirve taşının otomatik yükselmesi | `Faz 16` |
+| 24 | **Todoist** | Sıfır-token TR/EN `taskNlpParser`, `her!` kayan tekrar, `parent_task_id` alt görevler, Proje Kanban, Akıllı Listeler, Sesli Ramble | `Faz 09`, `Faz 20` |
+| 25 | **TimeTune** | 24s Boşluk Avcısı (*Gap Matcher*), `event_templates` Gün Blok Şablonları, 168 saat planlanan vs gerçekleşen analizi | `Faz 10`, `Faz 20`, `Faz 23` |
+| 26 | **Super Planner** | Takvim + Görev + Alışkanlık birleşik 24s `DayRibbon`, *"Öğleden Sonrayı Yeniden Planla"*, toplantı-duyarlı `computeDailyLoad` | `Faz 10`, `Faz 22` |
+| 27 | **Apple Reminders & Due** | Sesli `timeSensitive` görev bildirimleri + `[T..T+30dk]` Israrcı Takip Kaskadı (*Nagging Cascade*) + zengin erteleme | `Faz 10` |
+| 28 | **Daylio** | `031` bulut senkronu, 5 sn klavyesiz `Mod + 12 Bağlam İkonu`, sıfır-token 4-Kaynak (`Lag-0` + `Lag-1`) Korelasyon Motoru, *Year in Pixels* | `Faz 11`, `Faz 19` |
+
+---
+
+## Ek B — Faz Başlatma Onayı
+
+Bu `implementation.md` rehberini onayladığınız anda (`Proceed`), **Dalga 0 -> `Faz 01` (Auth Kapısı, Gerçek `signOut`, 29 Store Hesap İzolasyonu & Placebo Tema Temizliği)** adımından başlayarak her fazı sırayla kodlayacak, mühendislik + görsel QA kapılarından geçirecek ve her faz tamamlandığında kanıtlarıyla birlikte bir sonraki faza ilerleyeceğim.

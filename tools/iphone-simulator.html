@@ -17,6 +17,9 @@
       --phone-width: 393px;
       --phone-height: 852px;
       --phone-radius: 54px;
+      --safe-top: 48px;
+      --safe-bottom: 22px;
+      --app-chrome-bg: #1d1c17;
     }
 
     * {
@@ -178,7 +181,7 @@
       height: var(--phone-height);
       background: var(--titanium-dark);
       border-radius: var(--phone-radius);
-      box-shadow: 
+      box-shadow:
         0 0 0 2px #444852,
         0 0 0 6px var(--titanium-bezel),
         0 30px 80px -20px rgba(0, 0, 0, 0.9),
@@ -230,16 +233,18 @@
       border-radius: 0 3px 3px 0;
     }
 
-    /* IPHONE SCREEN AREA */
+    /* IPHONE SCREEN AREA (iOS Safe-Area Top + Bottom Insets) */
     .iphone-screen {
       position: relative;
       width: 100%;
       height: 100%;
-      background: #000;
+      background: var(--app-chrome-bg);
       border-radius: calc(var(--phone-radius) - 10px);
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      padding-top: var(--safe-top);
+      padding-bottom: var(--safe-bottom);
       box-shadow: inset 0 0 4px rgba(255, 255, 255, 0.12);
     }
 
@@ -249,13 +254,13 @@
       top: 0;
       left: 0;
       right: 0;
-      height: 48px;
-      padding: 12px 24px 0 24px;
+      height: var(--safe-top);
+      padding: 4px 26px 0 26px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       z-index: 50;
-      color: #fff;
+      color: #f5f2eb;
       font-size: 13px;
       font-weight: 600;
       pointer-events: none;
@@ -269,18 +274,18 @@
     .status-icons {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-size: 12px;
+      gap: 5px;
+      font-size: 11.5px;
     }
 
     /* DYNAMIC ISLAND */
     .dynamic-island {
       position: absolute;
-      top: 11px;
+      top: 8px;
       left: 50%;
       transform: translateX(-50%);
-      width: 124px;
-      height: 35px;
+      width: 120px;
+      height: 32px;
       background: #000;
       border-radius: 20px;
       z-index: 60;
@@ -294,7 +299,7 @@
     }
 
     .dynamic-island:hover {
-      width: 140px;
+      width: 136px;
       box-shadow: 0 0 12px rgba(217, 119, 87, 0.5);
     }
 
@@ -314,10 +319,11 @@
       border-radius: 50%;
     }
 
-    /* IFRAME APP CONTENT */
+    /* IFRAME APP CONTENT — strictly bounded between top & bottom safe areas */
     .app-frame {
       width: 100%;
-      height: 100%;
+      flex: 1;
+      min-height: 0;
       border: none;
       background: #15140f;
       display: block;
@@ -326,15 +332,26 @@
     /* HOME INDICATOR */
     .home-indicator {
       position: absolute;
-      bottom: 8px;
+      bottom: 7px;
       left: 50%;
       transform: translateX(-50%);
-      width: 135px;
+      width: 134px;
       height: 5px;
-      background: rgba(255, 255, 255, 0.65);
+      background: rgba(245, 242, 235, 0.62);
       border-radius: 10px;
       z-index: 50;
       pointer-events: none;
+    }
+
+    /* CLASSIC BEZEL MODEL (iPhone SE) */
+    .iphone-device.model-se .dynamic-island,
+    .iphone-device.model-se .home-indicator {
+      display: none;
+    }
+
+    .iphone-device.model-se .status-bar {
+      padding: 0 18px;
+      font-size: 12px;
     }
 
     /* LANDSCAPE MODE */
@@ -343,9 +360,22 @@
       height: var(--phone-width);
     }
 
+    .iphone-device.landscape .iphone-screen {
+      padding-top: 0;
+      padding-bottom: 18px;
+      padding-left: 48px;
+      padding-right: 18px;
+    }
+
+    .iphone-device.landscape.model-se .iphone-screen {
+      padding-left: 0;
+      padding-right: 0;
+      padding-bottom: 0;
+    }
+
     .iphone-device.landscape .dynamic-island {
       top: 50%;
-      left: 14px;
+      left: 10px;
       transform: translateY(-50%) rotate(90deg);
     }
 
@@ -354,7 +384,7 @@
     }
 
     .iphone-device.landscape .home-indicator {
-      bottom: 8px;
+      bottom: 6px;
     }
 
     /* FINISH THEMES */
@@ -463,9 +493,9 @@
           </div>
 
           <!-- App Iframe -->
-          <iframe 
-            id="phone-frame" 
-            class="app-frame" 
+          <iframe
+            id="phone-frame"
+            class="app-frame"
             src="http://localhost:8081"
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write; geolocation; microphone; camera; midi; vr; accelerometer; gyroscope; payment; ambient-light-sensor"
           ></iframe>
@@ -493,7 +523,6 @@
     function applyScaling() {
       const stage = document.getElementById('stage');
       const scaler = document.getElementById('scaler');
-      const device = document.getElementById('device');
 
       if (currentScale !== 'auto') {
         scaler.style.transform = 'scale(' + currentScale + ')';
@@ -503,8 +532,10 @@
       const stageW = stage.clientWidth - 40;
       const stageH = stage.clientHeight - 40;
 
-      const deviceW = isLandscape ? 852 : parseInt(getComputedStyle(document.documentElement).getPropertyValue('--phone-width'));
-      const deviceH = isLandscape ? 393 : parseInt(getComputedStyle(document.documentElement).getPropertyValue('--phone-height'));
+      const phoneW = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--phone-width'));
+      const phoneH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--phone-height'));
+      const deviceW = isLandscape ? phoneH : phoneW;
+      const deviceH = isLandscape ? phoneW : phoneH;
 
       const scaleX = stageW / deviceW;
       const scaleY = stageH / deviceH;
@@ -523,22 +554,33 @@
 
     function changeModel(model) {
       const root = document.documentElement;
+      const device = document.getElementById('device');
+      device.classList.toggle('model-se', model === 'iphonese');
+
       if (model === 'iphone16pro') {
         root.style.setProperty('--phone-width', '393px');
         root.style.setProperty('--phone-height', '852px');
         root.style.setProperty('--phone-radius', '54px');
+        root.style.setProperty('--safe-top', '48px');
+        root.style.setProperty('--safe-bottom', '22px');
       } else if (model === 'iphone16promax') {
         root.style.setProperty('--phone-width', '430px');
         root.style.setProperty('--phone-height', '932px');
         root.style.setProperty('--phone-radius', '56px');
+        root.style.setProperty('--safe-top', '50px');
+        root.style.setProperty('--safe-bottom', '24px');
       } else if (model === 'iphone15') {
         root.style.setProperty('--phone-width', '390px');
         root.style.setProperty('--phone-height', '844px');
         root.style.setProperty('--phone-radius', '50px');
+        root.style.setProperty('--safe-top', '48px');
+        root.style.setProperty('--safe-bottom', '22px');
       } else if (model === 'iphonese') {
         root.style.setProperty('--phone-width', '375px');
         root.style.setProperty('--phone-height', '667px');
         root.style.setProperty('--phone-radius', '36px');
+        root.style.setProperty('--safe-top', '26px');
+        root.style.setProperty('--safe-bottom', '0px');
       }
       applyScaling();
     }

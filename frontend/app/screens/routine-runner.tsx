@@ -8,21 +8,26 @@
  * to the template as a new version (a built-in becomes the user's copy).
  *
  * R05.05 (partial): the next step is announced to the screen reader and a
- * time-up gives one haptic. There is no spoken announcement -- that needs
- * expo-speech, a new native dependency (stop point S13) -- so a silent phone
- * stays silent by construction.
+ * time-up gives one haptic.
  */
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, AccessibilityInfo, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Speech from 'expo-speech';
 import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
 import { useHabitStore } from '../../store/habitStore';
 import { currentStep, latestVersion, stepActiveMs, summarize, timeUp, validateStep, type StepKind } from '../../lib/routineRunner';
 import { isMeasurableTracking } from '../../lib/habitEngine';
-import { colors, space, radius, alphaHex } from '../../lib/tokens';
+import { colors, space, radius, alphaHex, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
+import {
+  AtmosphericScreenCanvas,
+  ChapterDivider,
+  EditorialBanner,
+  EmbeddedFiligree,
+  EmblemMedallion,
+} from '../../components/ui';
+import { CANVASES, DECOR, FOCUS_COMPLETE_GONG, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const mmss = (ms: number) => {
   const t = Math.max(0, Math.round(ms / 1000));
@@ -39,7 +44,6 @@ export default function RoutineRunnerScreen() {
   const [draftMin, setDraftMin] = useState(5);
   const [draftHabit, setDraftHabit] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const announcedFor = useRef<string | null>(null);
   const buzzedFor = useRef<string | null>(null);
 
@@ -53,7 +57,7 @@ export default function RoutineRunnerScreen() {
     if (!running) return;
     let n = 0;
     const id = setInterval(() => {
-      setTick((x) => x + 1);
+      setTick((cnt) => cnt + 1);
       n += 1;
       if (n % 15 === 0) useRoutineRunnerStore.getState().heartbeat();
     }, 1000);
@@ -69,66 +73,112 @@ export default function RoutineRunnerScreen() {
     if (step && announcedFor.current !== step.id) {
       announcedFor.current = step.id;
       AccessibilityInfo.announceForAccessibility(`Sıradaki adım: ${step.title}`);
-      if (voiceEnabled) {
-        try {
-          Speech.stop();
-          Speech.speak(`Sıradaki adım: ${step.title}`, { language: 'tr-TR', rate: 0.98 });
-        } catch { /* yoksay */ }
-      }
     }
-  }, [step, voiceEnabled]);
+  }, [step]);
   useEffect(() => {
     if (up && step && buzzedFor.current !== step.id) {
       buzzedFor.current = step.id;
       try { haptic.warning(); } catch { /* yoksay */ }
-      if (voiceEnabled) {
-        try {
-          Speech.speak(`${step.title} süresi tamamlandı.`, { language: 'tr-TR', rate: 0.98 });
-        } catch { /* yoksay */ }
-      }
     }
-  }, [up, step, voiceEnabled]);
+  }, [up, step]);
 
   const linkable = habits.filter((h) => h.status === 'active' && !isMeasurableTracking(h.tracking_type));
 
-  // ---- no session: pick a template ----
+  // ---- Act 1: no session — pick a template ----
   if (!s) {
     return (
       <SafeAreaView style={x.safe} edges={['bottom']}>
+        <AtmosphericScreenCanvas
+          source={CANVASES.runnerZenGarden}
+          textureSource={TEXTURES.botanical}
+          scrim={0.58}
+          tintColor={colors.accent}
+        />
         <ScrollView contentContainerStyle={x.scroll}>
+          <EditorialBanner
+            source={SCREEN_BANNERS.runnerSteppingStones}
+            textureSource={TEXTURES.botanical}
+            eyebrow="ADIM ADIM AKIŞ"
+            title="Rutin Yürütücü"
+            subtitle="Tek seferde tek bir adım; acele etmeden ritmini tamamla."
+            accentColor={colors.accent}
+            minHeight={96}
+          />
           <Text style={x.h1} accessibilityRole="header">Rutin başlat</Text>
-          {st.allTemplates().map((t) => (
-            <TouchableOpacity key={t.id} style={x.card} onPress={() => { haptic.light(); st.start(t.id); }}
-              accessibilityRole="button" accessibilityLabel={`${t.name} rutinini başlat, ${latestVersion(t).steps.length} adım`}>
-              <View style={{ flex: 1 }}>
-                <Text style={x.cardTitle}>{t.name}{t.builtIn ? '' : ' · bu cihazda'}</Text>
-                <Text style={x.cardSub}>{latestVersion(t).steps.map((p) => p.title).join(' · ')}</Text>
-              </View>
-              <Ionicons name="play-circle" size={28} color={colors.accent} />
-            </TouchableOpacity>
-          ))}
-          {st.history.length > 0 && <Text style={x.label}>SON OTURUMLAR</Text>}
-          {st.history.slice(0, 5).map((h) => (
-            <Text key={h.id} style={x.hist}>
-              {h.templateName}: {h.summary.done}/{h.summary.total} yapıldı · {h.summary.skipped} geçildi · {Math.round(h.summary.activeMs / 60000)} dk aktif
-            </Text>
-          ))}
+          {st.allTemplates().map((t) => {
+            const verSteps = latestVersion(t).steps;
+            return (
+              <TouchableOpacity
+                key={t.id}
+                style={x.card}
+                activeOpacity={0.82}
+                onPress={() => { haptic.light(); st.start(t.id); }}
+                accessibilityRole="button"
+                accessibilityLabel={`${t.name} rutinini başlat, ${verSteps.length} adım`}
+              >
+                <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={108} opacity={0.16} />
+                <View style={{ flex: 1, gap: 4 }}>
+                  <View style={x.templateTitleRow}>
+                    <Text style={x.cardTitle}>{t.name}{t.builtIn ? '' : ' · bu cihazda'}</Text>
+                    <View style={x.stepCountPill}>
+                      <Text style={x.stepCountText}>{verSteps.length} adım</Text>
+                    </View>
+                  </View>
+                  <Text style={x.cardSub}>{verSteps.map((p) => p.title).join(' · ')}</Text>
+                </View>
+                <Ionicons name="play-circle" size={30} color={colors.accent} />
+              </TouchableOpacity>
+            );
+          })}
+          {st.history.length > 0 && (
+            <>
+              <ChapterDivider source={DECOR.dividerSundial} label="SON OTURUMLAR" accentColor={colors.accent} />
+              {st.history.slice(0, 5).map((h) => (
+                <View key={h.id} style={x.histCard}>
+                  <Text style={x.hist}>
+                    {h.templateName}: {h.summary.done}/{h.summary.total} yapıldı · {h.summary.skipped} geçildi · {Math.round(h.summary.activeMs / 60000)} dk aktif
+                  </Text>
+                </View>
+              ))}
+            </>
+          )}
           <Text style={x.note}>Kendi düzenlediğin şablonlar şimdilik yalnız bu cihazda saklanır (sunucu güncellemesi bekleniyor).</Text>
         </ScrollView>
       </SafeAreaView>
     );
   }
 
-  // ---- finished: summary ----
+  // ---- Act 3: finished — ceremonial summary ----
   if (s.status === 'finished') {
     const sum = summarize(s);
     return (
       <SafeAreaView style={x.safe} edges={['bottom']}>
+        <AtmosphericScreenCanvas
+          source={CANVASES.runnerZenGarden}
+          textureSource={TEXTURES.botanical}
+          scrim={0.56}
+          tintColor={colors.success}
+        />
         <ScrollView contentContainerStyle={x.scroll}>
-          <Text style={x.h1} accessibilityRole="header">{s.templateName} bitti</Text>
-          <Text style={x.big}>{sum.done}/{sum.total} adım yapıldı</Text>
-          <Text style={x.cardSub}>{sum.skipped} geçildi · {sum.open} işaretlenmedi · {Math.round(sum.activeMs / 60000)} dk aktif (molalar hariç)</Text>
-          {st.logged.length > 0 && <Text style={x.cardSub}>{st.logged.length} alışkanlık bugün için yapıldı olarak kaydedildi.</Text>}
+          <View style={x.ceremonyCard}>
+            <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.14} />
+            <EmblemMedallion
+              source={FOCUS_COMPLETE_GONG}
+              size={76}
+              unlocked
+              accentColor={colors.accent}
+            />
+            <Text style={x.h1} accessibilityRole="header">{s.templateName} bitti</Text>
+            <Text style={x.big}>{sum.done}/{sum.total} adım yapıldı</Text>
+            <Text style={[x.cardSub, { textAlign: 'center' }]}>
+              {sum.skipped} geçildi · {sum.open} işaretlenmedi · {Math.round(sum.activeMs / 60000)} dk aktif (molalar hariç)
+            </Text>
+            {st.logged.length > 0 && (
+              <Text style={[x.cardSub, { color: colors.success, fontWeight: '600' }]}>
+                {st.logged.length} alışkanlık bugün için yapıldı olarak kaydedildi.
+              </Text>
+            )}
+          </View>
           {s.edited && (
             <TouchableOpacity style={x.secondary} onPress={() => st.applyToTemplate()} accessibilityRole="button" accessibilityLabel="Bu oturumdaki değişiklikleri şablona uygula">
               <Text style={x.secondaryText}>Değişiklikleri şablona uygula</Text>
@@ -142,12 +192,11 @@ export default function RoutineRunnerScreen() {
     );
   }
 
-  // ---- running / paused ----
+  // ---- Act 2: running / paused — Zen Stepping-Stone Stage ----
   const marked = Object.keys(s.results).length;
   const elapsed = stepActiveMs(s, now);
   const remaining = step?.kind === 'timed' && step.durationSec ? step.durationSec * 1000 - elapsed : null;
 
-  // Llama Life / Routinery Dynamic ETA: Kalan adımların toplam süresinden tahmini bitiş saati
   const remainingTotalMs = s.steps.reduce((acc, p, idx) => {
     if (s.results[p.id]) return acc;
     if (idx === s.index) {
@@ -169,27 +218,44 @@ export default function RoutineRunnerScreen() {
 
   return (
     <SafeAreaView style={x.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.runnerZenGarden}
+        textureSource={TEXTURES.botanical}
+        scrim={0.56}
+        tintColor={colors.accent}
+      />
       <ScrollView contentContainerStyle={x.scroll}>
         <View style={x.topStatusRow}>
           <View style={{ flex: 1 }}>
-            <Text style={x.label}>{s.templateName.toLocaleUpperCase('tr')} · {marked}/{s.steps.length}{s.status === 'paused' ? ' · DURAKLATILDI' : ''}</Text>
+            <Text style={x.label}>{s.templateName.toLocaleUpperCase('tr-TR')} · {marked}/{s.steps.length}{s.status === 'paused' ? ' · DURAKLATILDI' : ''}</Text>
             <Text style={x.etaBadge}>⏱ Tahmini Bitiş: {etaLabel} (~{Math.max(1, Math.ceil(remainingTotalMs / 60000))} dk kaldı)</Text>
           </View>
-          <TouchableOpacity
-            style={[x.voicePill, voiceEnabled && x.voicePillOn]}
-            onPress={() => { haptic.select(); setVoiceEnabled((v) => !v); }}
-            accessibilityRole="button"
-            accessibilityLabel={voiceEnabled ? 'Sesli rehberi kapat' : 'Sesli rehberi aç'}
-          >
-            <Ionicons name={voiceEnabled ? 'volume-high' : 'volume-mute-outline'} size={15} color={voiceEnabled ? colors.accent : colors.textDim} />
-            <Text style={[x.voicePillText, voiceEnabled && { color: colors.accent }]}>{voiceEnabled ? 'Sesli Açık' : 'Sesli Rehber'}</Text>
-          </TouchableOpacity>
+        </View>
+
+        {/* Görsel Basamak Taşları (Stepping-Stone Path) */}
+        <View style={x.stonePathRow}>
+          {s.steps.map((p, idx) => {
+            const mark = s.results[p.id]?.mark;
+            const isCurrent = idx === s.index;
+            return (
+              <View
+                key={p.id}
+                style={[
+                  x.stoneNode,
+                  mark === 'done' && x.stoneNodeDone,
+                  mark === 'skipped' && x.stoneNodeSkipped,
+                  isCurrent && x.stoneNodeCurrent,
+                ]}
+              />
+            );
+          })}
         </View>
 
         {step ? (
           <View style={x.stepCard} accessible accessibilityLabel={`Sıradaki adım: ${step.title}`}>
+            <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={136} opacity={0.17} />
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={x.stepEyebrow}>SIRADAKİ ADIM</Text>
+              <Text style={x.stepEyebrow}>SIRADAKİ ADIM · {s.index + 1}/{s.steps.length}</Text>
               {step.kind === 'timed' && (
                 <TouchableOpacity
                   style={x.extendBtn}
@@ -306,34 +372,76 @@ export default function RoutineRunnerScreen() {
 
 const x = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: space.lg, gap: space.sm, paddingBottom: space.xxl },
-  h1: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: space.sm },
+  scroll: { width: '100%', maxWidth: 840, alignSelf: 'center', padding: space.lg, gap: space.sm, paddingBottom: space.xxl },
+  h1: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: space.xs },
   big: { fontSize: 28, fontWeight: '700', color: colors.text },
   label: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint, marginTop: space.md },
-  card: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgElevated },
+  card: {
+    flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md,
+    overflow: 'hidden', position: 'relative',
+    borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: hexA(colors.bgElevated, 0.92),
+  },
+  templateTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
+  stepCountPill: {
+    paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.full,
+    backgroundColor: hexA(colors.accent, 0.14), borderWidth: 1, borderColor: hexA(colors.accent, 0.34),
+  },
+  stepCountText: { fontSize: 10.5, fontWeight: '700', color: colors.accent },
   cardTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
   cardSub: { fontSize: 12, color: colors.textDim, lineHeight: 17 },
+  histCard: {
+    paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.md,
+    backgroundColor: hexA(colors.surface, 0.85), borderWidth: 1, borderColor: colors.borderSubtle,
+  },
   hist: { fontSize: 12, color: colors.textDim },
   note: { fontSize: 12, color: colors.textFaint, lineHeight: 17, marginTop: space.sm },
-  stepCard: { padding: space.lg, borderRadius: radius.lg, backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.border, gap: space.sm },
-  stepEyebrow: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint },
-  stepTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
-  timer: { fontSize: 40, fontWeight: '700', color: colors.text, fontVariant: ['tabular-nums'] },
+  ceremonyCard: {
+    alignItems: 'center', gap: space.sm, padding: space.xl,
+    overflow: 'hidden', position: 'relative',
+    borderRadius: radius.xl, borderWidth: 1, borderColor: hexA(colors.accent, 0.38),
+    backgroundColor: hexA(colors.bgElevated, 0.92), marginVertical: space.sm,
+  },
+  stonePathRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginVertical: space.xs,
+  },
+  stoneNode: {
+    flex: 1, height: 6, borderRadius: radius.full,
+    backgroundColor: hexA(colors.surfaceAlt, 0.9), borderWidth: 1, borderColor: colors.border,
+  },
+  stoneNodeDone: {
+    backgroundColor: colors.success, borderColor: colors.success,
+  },
+  stoneNodeSkipped: {
+    backgroundColor: hexA(colors.textGhost, 0.4), borderColor: colors.textGhost,
+  },
+  stoneNodeCurrent: {
+    height: 9, backgroundColor: colors.accent, borderColor: colors.accent,
+  },
+  stepCard: {
+    padding: space.lg, borderRadius: radius.lg,
+    overflow: 'hidden', position: 'relative',
+    backgroundColor: hexA(colors.bgElevated, 0.94), borderWidth: 1, borderColor: hexA(colors.accent, 0.34),
+    gap: space.sm,
+  },
+  stepEyebrow: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.accent },
+  stepTitle: { fontSize: 22, fontWeight: '700', color: colors.text },
+  timer: { fontSize: 44, fontWeight: '700', color: colors.text, fontVariant: ['tabular-nums'] },
   upNote: { fontSize: 13, color: colors.warning },
   row: { flexDirection: 'row', gap: space.sm, alignItems: 'center', flexWrap: 'wrap' },
   primary: { flex: 1, alignItems: 'center', backgroundColor: colors.accent, borderRadius: radius.md, paddingVertical: 14, marginTop: space.sm },
   primaryText: { color: colors.bg, fontWeight: '700', fontSize: 15 },
   secondary: { alignItems: 'center', borderWidth: 1, borderColor: colors.accent, borderRadius: radius.md, paddingVertical: 12, marginTop: space.sm },
   secondaryText: { color: colors.accent, fontWeight: '700' },
-  ghost: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: 10 },
+  ghost: { flex: 1, alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: 10, backgroundColor: hexA(colors.surface, 0.6) },
   ghostText: { color: colors.textDim, fontWeight: '600' },
   listHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   link: { fontSize: 12, color: colors.accent, fontWeight: '700', marginTop: space.md },
-  stepRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
-  stepRowNow: { backgroundColor: colors.surfaceAlt },
+  stepRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 10, paddingHorizontal: space.sm, borderRadius: radius.sm, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle },
+  stepRowNow: { backgroundColor: hexA(colors.surfaceAlt, 0.9) },
   stepRowTitle: { flex: 1, fontSize: 14, color: colors.text },
   editRow: { flexDirection: 'row', gap: space.sm },
-  addBox: { gap: space.sm, marginTop: space.md },
+  addBox: { gap: space.sm, marginTop: space.md, padding: space.md, borderRadius: radius.md, backgroundColor: hexA(colors.surface, 0.9), borderWidth: 1, borderColor: colors.border },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: space.md, color: colors.text },
   chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
   chipOn: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
@@ -343,15 +451,6 @@ const x = StyleSheet.create({
   finishText: { color: colors.textFaint, fontWeight: '700' },
   topStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
   etaBadge: { fontSize: 12, fontWeight: '600', color: colors.accent, marginTop: 3 },
-  voicePill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.md,
-    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
-  },
-  voicePillOn: {
-    borderColor: colors.accent, backgroundColor: alphaHex(colors.accent, '16'),
-  },
-  voicePillText: { fontSize: 11, fontWeight: '700', color: colors.textDim },
   extendBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.sm,

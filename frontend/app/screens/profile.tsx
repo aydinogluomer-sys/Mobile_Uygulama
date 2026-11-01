@@ -14,6 +14,23 @@ import XPDisplay from '../../components/XPDisplay';
 // R04.02 — device-wide reminder settings and the real permission state.
 import NotificationSettingsCard from '../../components/NotificationSettingsCard';
 import YearlyHeatmap from '../../components/YearlyHeatmap';
+import {
+  AtmosphericScreenCanvas,
+  BentoVisualCard,
+  ChapterDivider,
+  EmbeddedFiligree,
+  EmblemMedallion,
+  TexturedSurface,
+} from '../../components/ui';
+import {
+  ACHIEVEMENT_BADGES,
+  BENTO_ART,
+  CANVASES,
+  DECOR,
+  getAchievementBadge,
+  getRankCrest,
+  TEXTURES,
+} from '../../lib/visualAssets';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -42,6 +59,12 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas
+        source={CANVASES.pantheonHall}
+        textureSource={TEXTURES.topographic}
+        scrim={0.62}
+        tintColor={colors.warning}
+      />
       <ScrollView contentContainerStyle={s.content}>
         <XPDisplay />
         <YearlyHeatmap />
@@ -49,10 +72,16 @@ export default function ProfileScreen() {
 
         {/* Rütbe kartı */}
         {tier && profile && (
-          <View style={[s.rankCard, { borderColor: tier.color + '50', backgroundColor: tier.color + '12' }]}>
-            <View style={[s.rankIcon, { backgroundColor: tier.color + '25' }]}>
-              <Ionicons name={tier.icon} size={28} color={tier.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-            </View>
+          <View style={[s.rankCard, { borderColor: alphaHex(tier.color, '50'), backgroundColor: alphaHex(tier.color, '14') }]}>
+            <TexturedSurface source={TEXTURES.topographic} textureOpacity={0.07} overlayOnly />
+            <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.14} />
+            <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="top-right" opacity={0.18} size={104} />
+            <EmblemMedallion
+              source={getRankCrest(tier.name)}
+              size={64}
+              unlocked
+              accentColor={tier.color}
+            />
             <Text style={[s.rankName, { color: tier.color }]}>{tier.name}</Text>
             <Text style={s.rankSub}>
               {nextTier
@@ -64,48 +93,63 @@ export default function ProfileScreen() {
 
         {/* 3'lü Bento Özet Izgarası: Sıralama · Focus Points · Başarımlar */}
         <View style={s.bentoGrid}>
-          <TouchableOpacity
-            style={s.bentoCard}
+          <BentoVisualCard
+            style={s.bentoItem}
+            padding={12}
+            artSource={BENTO_ART.profileLeague}
+            artOpacity={0.42}
+            scrim={0.72}
+            accentColor={colors.warning}
             onPress={() => router.push('/screens/leaderboard' as any)}
-            accessibilityRole="button"
             accessibilityLabel="Sıralamayı gör"
           >
-            <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.warning, '20') }]}>
+            <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.warning, '22') }]}>
               <Ionicons name="podium-outline" size={18} color={colors.warning} />
             </View>
             <Text style={s.bentoTitle}>Sıralama</Text>
             <Text style={s.bentoSub}>Haftalık Lig →</Text>
-          </TouchableOpacity>
+          </BentoVisualCard>
 
-          <TouchableOpacity
-            style={s.bentoCard}
+          <BentoVisualCard
+            style={s.bentoItem}
+            padding={12}
+            artSource={BENTO_ART.profileTreasury}
+            artOpacity={0.42}
+            scrim={0.72}
+            accentColor={colors.primary}
             onPress={() => router.push('/screens/focus-points' as any)}
-            accessibilityRole="button"
             accessibilityLabel="Focus Points ve kredi geçmişini gör"
           >
-            <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.primary, '20') }]}>
+            <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.primary, '22') }]}>
               <Ionicons name="diamond-outline" size={18} color={colors.primary} />
             </View>
             <Text style={s.bentoTitle}>{focusPoints} FP</Text>
             <Text style={s.bentoSub}>Focus Points →</Text>
-          </TouchableOpacity>
+          </BentoVisualCard>
 
-          <TouchableOpacity
-            style={s.bentoCard}
+          <BentoVisualCard
+            style={s.bentoItem}
+            padding={12}
+            artSource={BENTO_ART.profileVitrine}
+            artOpacity={0.42}
+            scrim={0.72}
+            accentColor={colors.success}
             onPress={() => router.push('/screens/achievements' as any)}
-            accessibilityRole="button"
             accessibilityLabel="Başarımlar ve rozetleri gör"
           >
-            <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.success, '20') }]}>
+            <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.success, '22') }]}>
               <Ionicons name="ribbon-outline" size={18} color={colors.success} />
             </View>
             <Text style={s.bentoTitle}>Rozetler</Text>
             <Text style={s.bentoSub}>{badges.length} Kazanım →</Text>
-          </TouchableOpacity>
+          </BentoVisualCard>
         </View>
+
+        <ChapterDivider source={DECOR.dividerSundial} label="KİMLİK PASAPORTU" />
 
         {/* Kullanıcı adı */}
         <View style={s.section}>
+          <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.11} />
           <Text style={s.sectionTitle}>KULLANICI ADI</Text>
           <Text style={s.sectionHint}>Sıralamada görünecek ad. Boş bırakırsan &quot;Gizli Savaşçı&quot; görünürsün.</Text>
           <View style={s.nameRow}>
@@ -140,6 +184,7 @@ export default function ProfileScreen() {
 
         {/* Rozetler */}
         <View style={s.section}>
+          <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" opacity={0.14} size={110} />
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={s.sectionTitle}>ROZETLER {badges.length > 0 ? `(${badges.length})` : ''}</Text>
             <TouchableOpacity
@@ -165,7 +210,16 @@ export default function ProfileScreen() {
             <View style={s.badgeGrid}>
               {badges.map((b) => (
                 <View key={b.id} style={s.badge}>
-                  <Text style={s.badgeIcon}>{b.icon ?? '🏅'}</Text>
+                  {b.id in ACHIEVEMENT_BADGES ? (
+                    <EmblemMedallion
+                      source={getAchievementBadge(b.id)}
+                      size={42}
+                      unlocked
+                      accentColor={colors.warning}
+                    />
+                  ) : (
+                    <Text style={s.badgeIcon}>{b.icon ?? '🏅'}</Text>
+                  )}
                   <Text style={s.badgeName} numberOfLines={1}>{b.badge_name}</Text>
                   {b.description ? (
                     <Text style={s.badgeDesc} numberOfLines={2}>{b.description}</Text>
@@ -186,6 +240,7 @@ const s = StyleSheet.create({
 
   rankCard: {
     alignItems: 'center', gap: 6, borderRadius: 18, borderWidth: 1, padding: 18,
+    overflow: 'hidden', position: 'relative',
   },
   rankIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
   rankName: { fontSize: 20, fontWeight: '800' },
@@ -200,19 +255,19 @@ const s = StyleSheet.create({
   bentoGrid: {
     flexDirection: 'row', gap: 10,
   },
-  bentoCard: {
-    flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg,
-    borderWidth: 1, borderColor: colors.border, padding: 12, gap: 4,
+  bentoItem: {
+    flex: 1,
   },
   bentoIconWrap: {
     width: 34, height: 34, borderRadius: radius.md,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 6,
   },
   bentoTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
-  bentoSub: { fontSize: 11, fontWeight: '600', color: colors.textDim },
+  bentoSub: { fontSize: 11, fontWeight: '600', color: colors.textDim, marginTop: 2 },
 
   section: {
-    backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 8,
+    backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border,
+    padding: 16, gap: 8, overflow: 'hidden', position: 'relative',
   },
   sectionTitle: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1 },
   sectionHint: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },

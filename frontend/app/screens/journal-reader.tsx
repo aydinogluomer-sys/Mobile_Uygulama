@@ -11,7 +11,9 @@ import JournalBody from '../../components/JournalBody';
 import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore, JournalEntry } from '../../store/journalStore';
 import { moodMeta } from '../../lib/journalMoods';
-import { EmptyState } from '../../components/ui';
+import { Image } from 'expo-image';
+import { AtmosphericScreenCanvas, EmptyState, EmbeddedFiligree, TexturedSurface } from '../../components/ui';
+import { CANVASES, DECOR, getMoodSeal, TEXTURES } from '../../lib/visualAssets';
 
 const DAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -58,11 +60,13 @@ export default function JournalReaderScreen() {
   if (entries.length === 0) {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.journalScriptorium} textureSource={TEXTURES.archivalPaper} scrim={0.6} tintColor={colors.warning} />
         <View style={s.empty}>
           {/* Defter tonuna uyan editöryel boş durum */}
           <EmptyState
             variant="editorial"
             icon="book-outline"
+            illustration="journal"
             title="Okunacak günlük sayfası yok"
             hint="Günlük sekmesinde bir şeyler yazdığında sayfaların burada okunabilir olacak."
           />
@@ -73,6 +77,7 @@ export default function JournalReaderScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
+      <AtmosphericScreenCanvas source={CANVASES.journalScriptorium} textureSource={TEXTURES.archivalPaper} scrim={0.6} tintColor={colors.warning} />
       <FlatList
         ref={listRef}
         data={entries}
@@ -130,13 +135,15 @@ function Page({ entry }: { entry: JournalEntry }) {
   return (
     <View style={[s.pageWrap, { width: W }]}>
       <View style={s.paper}>
+        <TexturedSurface source={TEXTURES.archivalPaper} textureOpacity={0.09} overlayOnly />
+        <EmbeddedFiligree source={DECOR.cornerBotanical} size={132} opacity={0.16} />
         {/* sol kenar marjı (defter çizgisi) */}
         <View style={s.margin} />
         <ScrollView contentContainerStyle={s.paperContent} showsVerticalScrollIndicator={false}>
           <Text style={s.dow}>{DAYS[dt.getDay()]}</Text>
           <View style={s.dateRow}>
             <Text style={s.dateBig} accessibilityRole="header">{dt.getDate()} {MONTHS[dt.getMonth()]} {dt.getFullYear()}</Text>
-            {m && <Text style={s.moodBig}>{m.emoji}</Text>}
+            {entry.mood ? <Image source={getMoodSeal(entry.mood)} style={s.moodSealBig} contentFit="contain" cachePolicy="memory-disk" /> : m ? <Text style={s.moodBig}>{m.emoji}</Text> : null}
           </View>
           <View style={s.hairline} />
 
@@ -170,7 +177,7 @@ const s = StyleSheet.create({
   pageWrap: { paddingHorizontal: 16, paddingVertical: 14 },
   paper: {
     flex: 1, backgroundColor: colors.paperSurface, borderRadius: 16,
-    borderWidth: 1, borderColor: colors.paperBorder, overflow: 'hidden',
+    borderWidth: 1, borderColor: colors.paperBorder, overflow: 'hidden', position: 'relative',
   },
   margin: {
     position: 'absolute', top: 0, bottom: 0, left: 30, width: 1,
@@ -180,6 +187,7 @@ const s = StyleSheet.create({
   dow: { fontSize: 13, color: colors.paperLabel, fontWeight: '600' },
   dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
   dateBig: { fontSize: 22, fontWeight: '800', color: colors.text },
+  moodSealBig: { width: 38, height: 38 },
   moodBig: { fontSize: 26 },
   hairline: { height: 1, backgroundColor: colors.paperBorder, marginVertical: 14 },
 

@@ -6,9 +6,30 @@ import {
   updateProject as repoUpdate,
   type ProjectRow,
 } from '../repositories/projectRepository';
-import type { Cursor } from '../repositories/shared';
+import type { Cursor, Page } from '../repositories/shared';
+import { hasPending, newOperationId, overlay } from '../lib/outbox';
+import { readCachedSnapshot, setCachedSnapshot } from '../lib/localReadCache';
+import { currentUser } from '../lib/session';
+import { coreOutbox } from '../services/coreOutbox';
 
 export type Project = ProjectRow & { status: 'active' | 'completed' | 'archived' };
+
+export const PROJECT_ENTITY = 'project';
+const PROJECTS_CACHE_KEY = 'projects:p1';
+
+async function safeUserId(): Promise<string | null> {
+  try {
+    return (await currentUser())?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const withPendingProjects = (rows: Project[]): Project[] => {
+  const box = coreOutbox.state();
+  if (!box) return rows;
+  return overlay(box, PROJECT_ENTITY, rows).filter((p) => p.status !== 'archived');
+};
 
 /**
  * Projects.
@@ -45,14 +66,44 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   cursor: null,
 
   fetchProjects: async () => {
-    set({ loading: true, error: null });
+    await coreOutbox.ensure();
+    const uid = await safeUserId();
+    const cached = uid ? await readCachedSnapshot<Page<Project>>(uid, PROJECTS_CACHE_KEY) : null;
+    if (cached) {
+      set({
+        projects: withPendingProjects(cached.data.rows),
+        cursor: cached.data.nextCursor,
+        hasMore: cached.data.hasMore,
+        loading: false,
+        error: null,
+      });
+    } else {
+      set({ loading: true, error: null });
+    }
+
     const res = await fetchProjectsPage(null);
-    if (!res.ok) return set({ loading: false, error: res.error });
-    set({
-      projects: res.data.rows as Project[],
-      cursor: res.data.nextCursor,
+    if (!res.ok) {
+      if (cached) {
+        set({ loading: false, error: res.offline ? null : res.error });
+      } else {
+        set({ loading: false, error: res.error });
+      }
+      return;
+    }
+    const page: Page<Project> = {
+      rows: res.data.rows as Project[],
+      nextCursor: res.data.nextCursor,
       hasMore: res.data.hasMore,
+    };
+    if (uid) {
+      void setCachedSnapshot(uid, PROJECTS_CACHE_KEY, page);
+    }
+    set({
+      projects: withPendingProjects(page.rows),
+      cursor: page.nextCursor,
+      hasMore: page.hasMore,
       loading: false,
+      error: null,
     });
   },
 
@@ -76,35 +127,128 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   addProject: async ({ name, color, description }) => {
     const res = await insertProject({ name, color, description });
-    if (!res.ok) {
-      set({ error: res.error });
-      return null;
+    if (res.ok) {
+      const row = res.data as Project;
+      set((s) => {
+        const nextProjects = [row, ...s.projects];
+        void safeUserId().then((uid) => {
+          if (uid) void setCachedSnapshot<Page<Project>>(uid, PROJECTS_CACHE_KEY, { rows: nextProjects, nextCursor: s.cursor, hasMore: s.hasMore });
+        });
+        return { projects: nextProjects, error: null };
+      });
+      return row;
     }
-    const row = res.data as Project;
-    set((s) => ({ projects: [row, ...s.projects], error: null }));
-    return row;
+    if (res.offline) {
+      const id = newOperationId();
+      const uid = (await safeUserId()) ?? '';
+      const payload = {
+        name,
+        color,
+        description: description ?? null,
+        status: 'active' as const,
+      };
+      const queued = await coreOutbox.write({ entity: PROJECT_ENTITY, entityId: id, kind: 'create', payload });
+      if (queued.ok) {
+        const optimistic: Project = {
+          id,
+          user_id: uid,
+          ...payload,
+          created_at: new Date().toISOString(),
+        };
+        set((s) => {
+          const nextProjects = [optimistic, ...s.projects];
+          if (uid) void setCachedSnapshot<Page<Project>>(uid, PROJECTS_CACHE_KEY, { rows: nextProjects, nextCursor: s.cursor, hasMore: s.hasMore });
+          return { projects: nextProjects, error: null };
+        });
+        return optimistic;
+      }
+    }
+    set({ error: res.error });
+    return null;
   },
 
   updateProject: async (id, patch) => {
-    const res = await repoUpdate(id, patch as Partial<ProjectRow>);
-    if (!res.ok) {
-      set({ error: res.error });
-      return false;
+    await coreOutbox.ensure();
+    const box = coreOutbox.state();
+    if (box && hasPending(box, PROJECT_ENTITY, id)) {
+      const queued = await coreOutbox.write({ entity: PROJECT_ENTITY, entityId: id, kind: 'update', payload: patch as Record<string, unknown> });
+      if (!queued.ok) { set({ error: 'Çevrimdışı proje güncellenemedi.' }); return false; }
+      void coreOutbox.flush();
+      set((s) => ({
+        projects: s.projects
+          .map((p) => (p.id === id ? ({ ...p, ...patch } as Project) : p))
+          .filter((p) => p.status !== 'archived'),
+        error: null,
+      }));
+      return true;
     }
-    set((s) => ({
-      projects: s.projects.map((p) => (p.id === id ? (res.data as Project) : p)),
-      error: null,
-    }));
-    return true;
+
+    const res = await repoUpdate(id, patch as Partial<ProjectRow>);
+    if (res.ok) {
+      set((s) => {
+        const nextProjects = s.projects.map((p) => (p.id === id ? (res.data as Project) : p));
+        void safeUserId().then((uid) => {
+          if (uid) void setCachedSnapshot<Page<Project>>(uid, PROJECTS_CACHE_KEY, { rows: nextProjects, nextCursor: s.cursor, hasMore: s.hasMore });
+        });
+        return { projects: nextProjects, error: null };
+      });
+      return true;
+    }
+    if (res.offline) {
+      const queued = await coreOutbox.write({ entity: PROJECT_ENTITY, entityId: id, kind: 'update', payload: patch as Record<string, unknown> });
+      if (queued.ok) {
+        set((s) => {
+          const nextProjects = s.projects
+            .map((p) => (p.id === id ? ({ ...p, ...patch } as Project) : p))
+            .filter((p) => p.status !== 'archived');
+          void safeUserId().then((uid) => {
+            if (uid) void setCachedSnapshot<Page<Project>>(uid, PROJECTS_CACHE_KEY, { rows: nextProjects, nextCursor: s.cursor, hasMore: s.hasMore });
+          });
+          return { projects: nextProjects, error: null };
+        });
+        return true;
+      }
+    }
+    set({ error: res.error });
+    return false;
   },
 
   removeProject: async (id) => {
-    const res = await archiveProject(id);
-    if (!res.ok) {
-      set({ error: res.error });
-      return false;
+    await coreOutbox.ensure();
+    const box = coreOutbox.state();
+    if (box && hasPending(box, PROJECT_ENTITY, id)) {
+      const queued = await coreOutbox.write({ entity: PROJECT_ENTITY, entityId: id, kind: 'update', payload: { status: 'archived' } });
+      if (!queued.ok) { set({ error: 'Çevrimdışı proje arşivlenemedi.' }); return false; }
+      void coreOutbox.flush();
+      set((s) => ({ projects: s.projects.filter((p) => p.id !== id), error: null }));
+      return true;
     }
-    set((s) => ({ projects: s.projects.filter((p) => p.id !== id), error: null }));
-    return true;
+
+    const res = await archiveProject(id);
+    if (res.ok) {
+      set((s) => {
+        const nextProjects = s.projects.filter((p) => p.id !== id);
+        void safeUserId().then((uid) => {
+          if (uid) void setCachedSnapshot<Page<Project>>(uid, PROJECTS_CACHE_KEY, { rows: nextProjects, nextCursor: s.cursor, hasMore: s.hasMore });
+        });
+        return { projects: nextProjects, error: null };
+      });
+      return true;
+    }
+    if (res.offline) {
+      const queued = await coreOutbox.write({ entity: PROJECT_ENTITY, entityId: id, kind: 'update', payload: { status: 'archived' } });
+      if (queued.ok) {
+        set((s) => {
+          const nextProjects = s.projects.filter((p) => p.id !== id);
+          void safeUserId().then((uid) => {
+            if (uid) void setCachedSnapshot<Page<Project>>(uid, PROJECTS_CACHE_KEY, { rows: nextProjects, nextCursor: s.cursor, hasMore: s.hasMore });
+          });
+          return { projects: nextProjects, error: null };
+        });
+        return true;
+      }
+    }
+    set({ error: res.error });
+    return false;
   },
 }));

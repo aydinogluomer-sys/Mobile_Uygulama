@@ -1,4 +1,4 @@
-import { View, type AccessibilityProps } from 'react-native';
+import { Platform, View, type AccessibilityProps } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { colors, hexA } from '../../lib/tokens';
 
@@ -49,8 +49,12 @@ export default function ProgressRing({
         width={size}
         height={size}
         style={{ position: 'absolute' }}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
+        {...(Platform.OS === 'web'
+          ? { 'aria-hidden': true }
+          : {
+              accessibilityElementsHidden: true,
+              importantForAccessibility: 'no-hide-descendants' as const,
+            })}
       >
         {/* track */}
         <Circle

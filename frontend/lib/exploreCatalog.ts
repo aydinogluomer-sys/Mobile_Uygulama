@@ -5,7 +5,7 @@ import {
   type RoutinePackKey,
 } from './routinePacks';
 import { computeWillpowerCost } from './triage';
-import { dailyLoad, type HabitLoadInput } from './capacity';
+import { habitLoadPoints, habitsInRangeOn } from './capacity';
 import type { FrequencyConfig, Habit } from './supabase';
 
 export type ExploreCategory =
@@ -17,19 +17,29 @@ export type ExploreCategory =
   | 'mind'
   | 'finance';
 
+const EXPLORE_HUE: Record<ExploreCategory, string> = {
+  all: '#8b5cf6',
+  morning: '#f59e0b',
+  focus: '#14b8a6',
+  sleep: '#6366f1',
+  health: '#10b981',
+  mind: '#ec4899',
+  finance: '#06b6d4',
+};
+
 export const EXPLORE_CATEGORIES: {
   key: ExploreCategory;
   label: string;
   icon: string;
   color: string;
 }[] = [
-  { key: 'all', label: 'Tümü', icon: 'sparkles-outline', color: '#8b5cf6' },
-  { key: 'morning', label: 'Sabah Enerjisi', icon: 'sunny-outline', color: '#f59e0b' },
-  { key: 'focus', label: 'Odak & Üretkenlik', icon: 'flash-outline', color: '#14b8a6' },
-  { key: 'sleep', label: 'Uyku Hijyeni', icon: 'moon-outline', color: '#6366f1' },
-  { key: 'health', label: 'Beden & Sağlık', icon: 'fitness-outline', color: '#10b981' },
-  { key: 'mind', label: 'Zihin & Sakinlik', icon: 'leaf-outline', color: '#ec4899' },
-  { key: 'finance', label: 'Finans & Düzen', icon: 'wallet-outline', color: '#06b6d4' },
+  { key: 'all', label: 'Tümü', icon: 'sparkles-outline', color: EXPLORE_HUE.all },
+  { key: 'morning', label: 'Sabah Enerjisi', icon: 'sunny-outline', color: EXPLORE_HUE.morning },
+  { key: 'focus', label: 'Odak & Üretkenlik', icon: 'flash-outline', color: EXPLORE_HUE.focus },
+  { key: 'sleep', label: 'Uyku Hijyeni', icon: 'moon-outline', color: EXPLORE_HUE.sleep },
+  { key: 'health', label: 'Beden & Sağlık', icon: 'fitness-outline', color: EXPLORE_HUE.health },
+  { key: 'mind', label: 'Zihin & Sakinlik', icon: 'leaf-outline', color: EXPLORE_HUE.mind },
+  { key: 'finance', label: 'Finans & Düzen', icon: 'wallet-outline', color: EXPLORE_HUE.finance },
 ];
 
 export type ExploreCollection = {
@@ -57,7 +67,7 @@ const COLLECTION_META: Record<
   'morning-reset': {
     badge: 'SABAH RİTÜELİ',
     icon: 'sunny',
-    color: '#f59e0b',
+    color: EXPLORE_HUE.morning,
     timeWindowLabel: '06:30 – 10:00',
     scientificSummary:
       'Uyandıktan sonraki ilk 60 dakikada hidratasyon, doğal gün ışığı ve mikro hareket ile kortizol uyanış tepkisini (CAR) dengeler; güne reaktif değil kontrollü başlamanızı sağlar.',
@@ -65,7 +75,7 @@ const COLLECTION_META: Record<
   'deep-work': {
     badge: 'ODAK PROTOKOLÜ',
     icon: 'flash',
-    color: '#14b8a6',
+    color: EXPLORE_HUE.focus,
     timeWindowLabel: '09:30 – 16:30',
     scientificSummary:
       'Bilişsel bağlam değiştirme (context-switching) maliyetini sıfırlamak için tekil öncelik belirleme ve bildirimsiz 50 dakikalık ultradian odak blokları kurar.',
@@ -73,7 +83,7 @@ const COLLECTION_META: Record<
   'sleep-reset': {
     badge: 'GECE & UYKU HİJYENİ',
     icon: 'moon',
-    color: '#6366f1',
+    color: EXPLORE_HUE.sleep,
     timeWindowLabel: '21:00 – 23:30',
     scientificSummary:
       'Mavi ışık maruziyetini keserek melatonin baskılanmasını önler, parasempatik sinir sistemini devreye sokar ve derin uyku (REM/NREM) mimarisini korur.',
@@ -81,7 +91,7 @@ const COLLECTION_META: Record<
   'fitness-foundation': {
     badge: 'FİZİKSEL DAYANIKLILIK',
     icon: 'barbell',
-    color: '#10b981',
+    color: EXPLORE_HUE.health,
     timeWindowLabel: 'Gün İçi & Akşam',
     scientificSummary:
       'Direnç antrenmanı, eklem mobilitesi, günlük 8000 adım ve makro/su takibini birleştirerek metabolik ve kas-iskelet sağlığını sürdürülebilir bir rutine bağlar.',
@@ -89,7 +99,7 @@ const COLLECTION_META: Record<
   'everyday-foundations': {
     badge: 'DÜŞÜK SÜRTÜNMELİ ÇAPALAR',
     icon: 'leaf',
-    color: '#ec4899',
+    color: EXPLORE_HUE.mind,
     timeWindowLabel: 'Tüm Gün · Mikro',
     scientificSummary:
       'Yorgun veya yoğun günlerde bile seriyi kırmadan sürdürülebilen, her biri 3–10 dakikalık düşük irade maliyetli atomik alışkanlık çapaları sunar.',
@@ -149,7 +159,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-water-morning',
     name: 'Bir bardak su iç',
     icon: 'water-outline',
-    color: '#f59e0b',
+    color: EXPLORE_HUE.morning,
     category: 'morning',
     daypartLabel: 'Sabah · Uyanınca',
     difficulty: 1,
@@ -164,7 +174,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-make-bed',
     name: 'Yatağını topla',
     icon: 'bed-outline',
-    color: '#f59e0b',
+    color: EXPLORE_HUE.morning,
     category: 'morning',
     daypartLabel: 'Sabah · 3 dk',
     difficulty: 1,
@@ -179,7 +189,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-sunlight-walk',
     name: 'Gün ışığında kısa yürüyüş',
     icon: 'sunny-outline',
-    color: '#f59e0b',
+    color: EXPLORE_HUE.morning,
     category: 'morning',
     daypartLabel: 'Sabah · 15 dk',
     difficulty: 3,
@@ -196,7 +206,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-top3-priorities',
     name: 'Günün 3 önceliğini yaz',
     icon: 'journal-outline',
-    color: '#14b8a6',
+    color: EXPLORE_HUE.focus,
     category: 'focus',
     daypartLabel: 'Sabah · Planlama',
     difficulty: 3,
@@ -211,7 +221,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-deep-work-50',
     name: 'Kesintisiz derin çalışma bloğu',
     icon: 'hourglass-outline',
-    color: '#14b8a6',
+    color: EXPLORE_HUE.focus,
     category: 'focus',
     daypartLabel: 'Gün İçi · 50 dk',
     difficulty: 5,
@@ -226,7 +236,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-no-notif-sprint',
     name: 'Bildirimsiz odak seansı',
     icon: 'eye-off-outline',
-    color: '#14b8a6',
+    color: EXPLORE_HUE.focus,
     category: 'focus',
     daypartLabel: 'Gün İçi · 25 dk',
     difficulty: 5,
@@ -243,7 +253,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-no-screen-bedtime',
     name: 'Yatmadan 1 saat önce ekran yok',
     icon: 'phone-portrait-outline',
-    color: '#6366f1',
+    color: EXPLORE_HUE.sleep,
     category: 'sleep',
     daypartLabel: 'Gece · Uyku Öncesi',
     difficulty: 3,
@@ -258,7 +268,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-caffeine-cutoff',
     name: 'Öğleden sonra kafeini kes',
     icon: 'cafe-outline',
-    color: '#6366f1',
+    color: EXPLORE_HUE.sleep,
     category: 'sleep',
     daypartLabel: '14:00 Sonrası',
     difficulty: 1,
@@ -273,7 +283,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-dim-lights',
     name: 'Işıkları kıs',
     icon: 'bulb-outline',
-    color: '#6366f1',
+    color: EXPLORE_HUE.sleep,
     category: 'sleep',
     daypartLabel: 'Gece · 5 dk',
     difficulty: 1,
@@ -290,7 +300,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-mobility-10',
     name: '10 dakika esneme / mobilite',
     icon: 'body-outline',
-    color: '#10b981',
+    color: EXPLORE_HUE.health,
     category: 'health',
     daypartLabel: 'Sabah / Akşam · 12 dk',
     difficulty: 3,
@@ -305,7 +315,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-steps-8000',
     name: 'Adım hedefi',
     icon: 'footsteps-outline',
-    color: '#10b981',
+    color: EXPLORE_HUE.health,
     category: 'health',
     daypartLabel: 'Tüm Gün · 8000 adım',
     difficulty: 3,
@@ -323,7 +333,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-water-8-glasses',
     name: 'Su hedefi',
     icon: 'water-outline',
-    color: '#10b981',
+    color: EXPLORE_HUE.health,
     category: 'health',
     daypartLabel: 'Tüm Gün · 8 bardak',
     difficulty: 1,
@@ -343,7 +353,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-breath-5min',
     name: '5 dakika nefes egzersizi',
     icon: 'leaf-outline',
-    color: '#ec4899',
+    color: EXPLORE_HUE.mind,
     category: 'mind',
     daypartLabel: 'Sabah / Stres Anı · 5 dk',
     difficulty: 1,
@@ -358,7 +368,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-reading-10min',
     name: '10 dakika okuma',
     icon: 'book-outline',
-    color: '#ec4899',
+    color: EXPLORE_HUE.mind,
     category: 'mind',
     daypartLabel: 'Akşam · 10 dk',
     difficulty: 1,
@@ -373,7 +383,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-gratitude-note',
     name: 'Uyumadan önce şükran notu',
     icon: 'heart-outline',
-    color: '#ec4899',
+    color: EXPLORE_HUE.mind,
     category: 'mind',
     daypartLabel: 'Gece · 5 dk',
     difficulty: 3,
@@ -390,7 +400,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-expense-log',
     name: 'Günlük harcamaları kaydet',
     icon: 'wallet-outline',
-    color: '#06b6d4',
+    color: EXPLORE_HUE.finance,
     category: 'finance',
     daypartLabel: 'Akşam · 5 dk',
     difficulty: 1,
@@ -405,7 +415,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-clear-desk',
     name: 'Çalışma alanını topla',
     icon: 'file-tray-outline',
-    color: '#06b6d4',
+    color: EXPLORE_HUE.finance,
     category: 'finance',
     daypartLabel: 'Akşam · 5 dk',
     difficulty: 1,
@@ -420,7 +430,7 @@ export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
     id: 'atomic-evening-review',
     name: 'Gün sonu değerlendirme',
     icon: 'checkmark-done-outline',
-    color: '#06b6d4',
+    color: EXPLORE_HUE.finance,
     category: 'finance',
     daypartLabel: 'Akşam · 5 dk',
     difficulty: 1,
@@ -440,22 +450,27 @@ export function buildAtomicHabitInsert(
   insertPayload: Omit<Habit, 'id' | 'created_at' | 'user_id'>;
   assignedStatus: 'active' | 'waiting';
 } {
-  const activeInputs: HabitLoadInput[] = existingActiveHabits.map((h) => ({
-    difficulty: h.difficulty ?? 3,
-    estimated_minutes: h.estimated_minutes ?? 15,
-    frequency_config: h.frequency_config,
-    impact_level: h.impact_level ?? null,
-  }));
-  const candidateInput: HabitLoadInput = {
+  const inRangeHabits = habitsInRangeOn(existingActiveHabits, new Date());
+  const currentPoints = inRangeHabits.reduce(
+    (sum, h) =>
+      sum +
+      habitLoadPoints({
+        difficulty: h.difficulty ?? 3,
+        estimated_minutes: h.estimated_minutes ?? 15,
+        frequency_config: h.frequency_config,
+        impact_level: h.impact_level ?? null,
+      }),
+    0,
+  );
+  const candidatePoints = habitLoadPoints({
     difficulty: item.difficulty,
     estimated_minutes: item.estimated_minutes,
     frequency_config: item.frequency_config,
     impact_level: 'medium',
-  };
+  });
 
-  const afterEval = dailyLoad({ habits: [...activeInputs, candidateInput] });
   const assignedStatus: 'active' | 'waiting' =
-    afterEval.band === 'asiri' ? 'waiting' : 'active';
+    Math.round(currentPoints + candidatePoints) >= 86 ? 'waiting' : 'active';
 
   const willpowerCost = computeWillpowerCost({
     difficulty: item.difficulty,
@@ -492,4 +507,3 @@ export function buildAtomicHabitInsert(
     },
   };
 }
-

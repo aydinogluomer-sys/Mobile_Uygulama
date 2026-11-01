@@ -8,7 +8,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { colors, space, radius } from '../../lib/tokens';
+import { colors, space, radius, hexA } from '../../lib/tokens';
+import EmbeddedFiligree from '../spatial/EmbeddedFiligree';
+import { DECOR } from '../../lib/visualAssets';
 import { useHabitStore } from '../../store/habitStore';
 import { useTaskStore } from '../../store/taskStore';
 import { useLogStore } from '../../store/logStore';
@@ -162,6 +164,7 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
 
   return (
     <View style={s.box}>
+      <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={96} opacity={0.14} />
       <Text style={s.head}>KOÇ ÖNERİSİ</Text>
       <Text style={s.body}>{describe()}</Text>
       {staged.kind === 'ambiguous' && (
@@ -204,7 +207,7 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
 }
 
 const s = StyleSheet.create({
-  box: { padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, gap: space.sm, backgroundColor: colors.bgElevated },
+  box: { padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, gap: space.sm, backgroundColor: hexA(colors.bgElevated, 0.94), overflow: 'hidden', position: 'relative' },
   head: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint },
   body: { fontSize: 14, color: colors.text, lineHeight: 20 },
   note: { fontSize: 12, color: colors.warning },
