@@ -116,8 +116,30 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Verify canonical project ref guard (offline string check)
-        run: SUPABASE_PROJECT_REF=kbcuolhjjnmhjaarxxmu bash supabase/predeploy_guard.sh
+      # The guard resolves the ref in this order: the SUPABASE_PROJECT_REF variable, then
+      # supabase/.temp, then supabase/config.toml. Passing the canonical value in through the
+      # variable made this step compare a constant with itself (BLD-14): it could never notice
+      # config.toml's project_id drifting to another project. `env -u` removes the variable so
+      # the ref really is read from config.toml (supabase/.temp does not exist in a checkout),
+      # and the two negative controls prove the guard still refuses a wrong ref and a drifted
+      # config.toml. No project identifier other than the canonical one is written here.
+      - name: Verify canonical project ref guard (offline; ref resolved from supabase/config.toml)
+        run: env -u SUPABASE_PROJECT_REF bash supabase/predeploy_guard.sh
+
+      - name: Guard must refuse a non-canonical ref (negative control)
+        run: |
+          if SUPABASE_PROJECT_REF=not-the-canonical-ref bash supabase/predeploy_guard.sh; then
+            echo "predeploy_guard.sh accepted a non-canonical ref" >&2; exit 1
+          fi
+
+      - name: Guard must refuse a drifted config.toml (negative control)
+        run: |
+          tmp="$(mktemp -d)"; mkdir -p "$tmp/supabase"
+          cp supabase/predeploy_guard.sh "$tmp/supabase/predeploy_guard.sh"
+          printf 'project_id = "not-the-canonical-ref"\n' > "$tmp/supabase/config.toml"
+          if env -u SUPABASE_PROJECT_REF bash "$tmp/supabase/predeploy_guard.sh"; then
+            echo "predeploy_guard.sh accepted a drifted config.toml" >&2; exit 1
+          fi
 
       - name: Typecheck Edge Functions & _shared modules (deno check)
         run: |
@@ -264,7 +286,7 @@ jobs:
           SELECT set_config('request.jwt.claim.role', 'authenticated', true);
 
           INSERT INTO public.habits (id, user_id, name, tracking_type, status)
-          VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 'Sabah Yürüyüşü', 'binary', 'active');
+          VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111', 'Sabah Yürüyüşü', 'boolean', 'active');
 
           INSERT INTO public.tasks (id, user_id, title, status, priority, list_type)
           VALUES ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '11111111-1111-4111-8111-111111111111', 'Rapor hazırla', 'pending', 'high', 'inbox');
@@ -308,3 +330,11 @@ jobs:
           END $$;
           COMMIT;
           SQL
+
+      # Behavioural SQL gate (F01, TST-01 / TST-V01 / TST-07). Runs against the throwaway
+      # Postgres above only: run.sh refuses any PGHOST that is not local. It checks the client
+      # write bans, SECURITY DEFINER hygiene, xp_drift() = 0 through the real trigger chain,
+      # two-user isolation and real concurrency. Known holes are listed in
+      # supabase/tests/expected_failures.txt, which is reconciled in both directions.
+      - name: Behavioural SQL tests (grants, RLS, SECURITY DEFINER hygiene, xp_drift, concurrency)
+        run: bash supabase/tests/run.sh

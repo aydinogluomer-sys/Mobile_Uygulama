@@ -164,3 +164,51 @@ gerçek `tasks` tanımı gelince bir FK + sahiplik kontrolü ayrı migration'la 
   yeniden yazımda tekrar veriliyor. Düzeltme 036-A.
 - **§4 KD-10/KD-11:** `kd10_targetless = 0`, `kd10_empty_part_of_day = 0`, `kd11_suspect = 0` → backfill gerekmiyor.
 - Canlıda son migration `account_deletion_cascade` (027 karşılığı); §0.1 beklentisi doğru.
+
+## 8. CI davranış testleri (sahip eylemi gerektirmez)
+
+F01 ile `db-migrations-verify` işi (Postgres 17, `ci.yml`) son adım olarak `bash supabase/tests/run.sh`
+koşar. Bu bölüm yalnız o testleri anlatır; **burada çalıştırılacak bir sorgu yoktur ve canlıya hiçbir
+şey yazılmaz.** Testler geçici Postgres'te `live_schema.sql` + 028–037 üzerinde koşar (bugünkü canlı
+değil: canlıda 028–037 uygulanmamıştır). Canlıdaki açıklar (örneğin `weekly_xp`, TST-V01) 036 sizin
+tarafınızdan uygulanana kadar canlıda açık kalır; test CI'da 036 uygulanmış halin kapalı olduğunu kanıtlar,
+canlıyı denetlemez. Canlı doğrulama §2'dir.
+
+| Dosya | Ne denetler | Bugünkü beklenti |
+|---|---|---|
+| `01_client_cannot_write_server_tables.sql` | `authenticated` / `anon` rolü `weekly_xp`, `profiles.total_xp·level·coins`, `user_subscriptions`, `credit_transactions` tablolarına yazamaz (SQLSTATE 42501); sahibin kendi `user_subscriptions` satırını silememesi ile `credit_transactions` ve `ai_requests` satırlarını değiştirememesi (tablo yetkisi açıktır, satırı RLS korur: hiçbir satır değişmez); bu "satır değişmedi" denemelerinin boş geçmediğini gösteren pozitif kontroller | 22 sonuç, hepsi PASS |
+| `02_security_definer_hygiene.sql` | anon'un `public` SECURITY DEFINER fonksiyonunda EXECUTE hakkı yok (`T02a`); hepsinde `search_path` sabit (`T02b`); yalnız-servis fonksiyonlar istemciye kapalı (`T02c`–`T02e`) | `T02a` PASS; `T02b` 20 FAIL (listede) |
+| `03_xp_drift_zero.sql` | gerçek `habit_logs` yazma / güncelleme / silme sonrası `xp_drift()` boş (tetikleyici zinciri olduğu gibi) | 4 PASS |
+| `04_today_bootstrap_isolation.sql` | `get_today_bootstrap` iki kullanıcı izolasyonu, doğrudan tablo izolasyonu, JWT'siz çağrının fonksiyonun KENDİ `authentication required` hatasıyla reddi (bekçi satırı kalkarsa başka bir 42501 gelir ve test kırmızı olur), anon çağrı reddi | 6 PASS |
+| `05_concurrency_spend.sh` | 8 eşzamanlı oturumla `spend_focus_points_v2` (tek kazanan, bakiye eksiye düşmez, aynı `request_id` tek borç) ve `ai_request_begin` (tek `claimed`) yarışı | 5 PASS + 1 INFO |
+
+**`supabase/tests/expected_failures.txt` ne demek.** Bilinen açıkların test adı listesidir; her satır bulgu
+kimliğini taşır ve başlıkta kapatan faz yazar. Koşucu iki yönlü karşılaştırır: listede olmayan bir test kırmızıysa
+`UNEXPECTED FAILURES`, listede olup yeşile dönmüş bir satır kalmışsa `STALE` ile CI kırmızı olur. Yani liste yalnız
+küçülebilir; bir açığı kapatan migration aynı commit'te kendi satırlarını siler. Bugün listede 20 satır vardır
+(`T02b_search_path.*`: `search_path` sabitlenmemiş 20 SECURITY DEFINER fonksiyon); hepsini F09 kapatır. Sizin
+canlıya uyguladığınız bir migration bu listeyi değiştirmez: liste canlıyı değil CI'daki şemayı anlatır.
+
+**Yerel koşum (yalnız geçici veritabanı).** Koşucu `PGHOST` yerel değilse (`127.0.0.1`, `localhost`, `::1`),
+`PGHOSTADDR` yerel değilse ya da `PGSERVICE` tanımlıysa hiçbir şey yazmadan `REFUSED` ile 2 koduyla çıkar. Yerel bir
+adres tek başına güvence değildir (bir SSH ya da havuz tüneli canlı bir veritabanına çıkabilir), bu yüzden koşucu ikinci
+bir salt-okunur katalog denetimi daha yapar: hedef CI'daki geçici veritabanına benzemiyorsa (GoTrue'nun `auth.users`
+tablosunda olan `encrypted_password` sütunu varsa ya da bağlanan kullanıcı superuser değilse) yine `REFUSED` ile çıkar ve
+hiçbir şey yazmaz. Bu bir güvence katmanıdır, mutlak değildir: testler şema ve satır oluşturur, bu yüzden hedef her
+zaman tek kullanımlık, CI'daki gibi hazırlanmış bir veritabanı olmalıdır. **`supabase test db` komutunu (özellikle
+`--linked` ile) bu dizine yöneltmeyin:** Supabase CLI'nin pgTAP koşucusu testleri geleneksel olarak `supabase/tests/`
+altında arar; buradaki dosyalar pgTAP değildir ve `01` ile `05` kalıcı satır yazar. Bunlar yalnız `bash supabase/tests/run.sh`
+ile koşar.
+
+```bash
+docker run --rm -d --name aderyth-pg17 -e POSTGRES_PASSWORD=ci_ephemeral_pg_password -e POSTGRES_DB=aderyth_ci -p 127.0.0.1:55432:5432 postgres:17
+export PGHOST=127.0.0.1 PGPORT=55432 PGUSER=postgres PGPASSWORD=ci_ephemeral_pg_password PGDATABASE=aderyth_ci
+# ci.yml db-migrations-verify adımlarını aynı sırayla uygula: bootstrap, live_schema.sql, 037 ön kontrolü, 028+ döngüsü; sonra:
+bash supabase/tests/run.sh; echo exit=$?
+docker rm -f aderyth-pg17
+```
+
+Çıkış kodları: `0` başarılı; `1` beklenmeyen kırmızı ya da bayat liste satırı; `2` `REFUSED` (yerel olmayan ya da
+CI'daki geçici veritabanına benzemeyen hedef); `3` bir test dosyası fixture / tetikleyici / sözdizimi hatasıyla düştü ya da
+veritabanına ulaşılamadı (bulgudur, fixture gevşetilmez); `4` sonuç akışı kullanılamaz (30'dan az, ayrıştırılamayan,
+tekrarlanan ya da hiç rapor vermeyen test ya da `T02a` / `T02b` sonuç ailesi).
