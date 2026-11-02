@@ -51,7 +51,7 @@ export default function OutboxIssues() {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               onPress={() => discardChange(c.operationId)}
               accessibilityRole="button"
-              accessibilityLabel={`${title}: değişiklikten vazgeç`}
+              accessibilityLabel={`${title}: bu değişikliği bırak`}
             >
               <Text style={s.drop}>Bu değişikliği bırak</Text>
             </TouchableOpacity>

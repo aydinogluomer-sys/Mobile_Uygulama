@@ -1599,3 +1599,12 @@ Taban: 12 suite, 266/266, çıkış 0 (`logQueueOwnerRebind`, `outboxErrorClassi
 **OWNER DECISION (plan 5.8, uygulanmadı; ve sapma 12):** (0) `coreSheets.test.tsx:116` erişilebilirlik etiketi beklentisinin güncellenmesi (sapma 12). (1) Webhook yük imzası (`X-Aderyth-Signature`, `webhooks.secret` sütunu = migrasyon) ve `webhooks.headers`'ın açık metin saklanması. (2) `task_completed` yükünden `title` çıkarıldı: başlığa bağlı mevcut n8n akışları KIRILIR; "başlığı da gönder" seçeneği (`include_titles`, migrasyon) ayrı bir karardır. (3) NetInfo / `expo-network` gerekirse sahip kararı.
 
 **Açık:** (1) Görsel QA ve elle senaryolar sahipte. (2) Commit özeti bu başlıkta yok ("bu commit"). (3) Sahibin çalışma ağacındaki üç dosya commit'e alınmadı.
+
+### F05 commit: `17611778`
+
+**Sahip kararları (2026-11-02), F05 OWNER DECISION maddeleri:**
+
+1. **Sapma 12 / madde (0) ONAYLANDI ve UYGULANDI** (ayrı küçük commit, F06'dan önce): `OutboxIssues` "bırak" düğmesinin erişilebilirlik etiketi görünen metinle eşitlendi: `"<başlık>: bu değişikliği bırak"` (WCAG 2.5.3 Label in Name; `OutboxStatusModal` ile aynı biçim). `coreSheets.test.tsx:116` beklentisi sahip izniyle `'Rapor: bu değişikliği bırak'` oldu; aynı vakadaki `:115` ("benim değişikliğimi uygula") ve `retryChange`/`discardChange('op1')` iddiaları değişmedi. Mutant L1 (etiket eski haline döner) `coreSheets` tarafından öldürüldü; taban 10/10 yeşil, dosya bayt bayt geri yüklendi. Bulundu, düzeltilmedi: çakışma satırının birincil düğmesi görünürde "Benimkini uygula" der, etiketi "<başlık>: benim değişikliğimi uygula"dır; aynı Label in Name açığı, fakat `coreSheets.test.tsx:115` onu sabitler ve sahip izni yalnız `:116` içindir.
+2. **Madde (1) webhook imzası: ERTELENDİ** (sahip onayı). `X-Aderyth-Signature` ve `webhooks.secret` sütunu migrasyon gerektirir; `webhooks.headers`'ın açık metin saklanması da aynı karara bağlı. Bu dalda kod değişikliği yok.
+3. **Madde (2) `task_completed` yükünden `title` çıkarılması: ONAYLANDI** (F05'te uygulanmıştı; `webhookDispatchOnce` W8 sabitler). Başlığa bağlı n8n akışları kırılır; `include_titles` seçeneği ayrı bir karar olarak açık.
+4. Madde (3) NetInfo / `expo-network`: karar istenmedi, açık kalır.

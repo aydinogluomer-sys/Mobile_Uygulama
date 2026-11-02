@@ -113,7 +113,7 @@ describe('OutboxIssues', () => {
     expect(textOf(r)).toMatch(/Rapor\s+—\s+değişti/);
     expect(textOf(r)).toMatch(/Başka bir yerde değiştirilmiş/);
     await act(async () => { byLabel(r, 'Rapor: benim değişikliğimi uygula').props.onPress(); });
-    await act(async () => { byLabel(r, 'Rapor: değişiklikten vazgeç').props.onPress(); });
+    await act(async () => { byLabel(r, 'Rapor: bu değişikliği bırak').props.onPress(); });
     expect(retryChange).toHaveBeenCalledWith('op1');
     expect(discardChange).toHaveBeenCalledWith('op1');
   });
