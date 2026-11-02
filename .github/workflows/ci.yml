@@ -107,6 +107,14 @@ jobs:
 
   edge-deno-verify:
     runs-on: ubuntu-latest
+    # The repo-root package.json (a tooling dependency, playwright) makes Deno 2 switch to "manual"
+    # node_modules: every npm: package must already be installed there. jsr:@supabase/supabase-js
+    # 2.118.0 pulls in npm:@supabase/realtime-js, which is not, so `deno check` failed before it
+    # read any of our code (this job had never been green). The Edge Functions do not use that
+    # package.json; with it ignored Deno resolves npm: packages from its own cache, as the
+    # Supabase Edge runtime does.
+    env:
+      DENO_NO_PACKAGE_JSON: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v5

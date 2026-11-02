@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import Anthropic from 'npm:@anthropic-ai/sdk@0.39.0';
 import {
   fingerprintInput,
@@ -391,7 +392,10 @@ const COACH_HISTORY_CHARS = 6000;
 type CoachTurn = { role: 'user' | 'assistant'; content: string };
 
 async function loadCoachHistory(
-  client: ReturnType<typeof createClient>,
+  // `SupabaseClient`, not `ReturnType<typeof createClient>`: with supabase-js 2.118 types the latter
+  // resolves to the default generics (`<unknown, ..., never>`) and the real client no longer fits
+  // (deno check TS2345). Type-only; nothing changes at run time.
+  client: SupabaseClient,
   conversationId: string,
   userId: string,
   excludeRequestId: string,
