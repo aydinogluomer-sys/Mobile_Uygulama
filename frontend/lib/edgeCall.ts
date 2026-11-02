@@ -40,6 +40,13 @@
  */
 export const EDGE_TIMEOUT_MS = 20_000;
 
+/**
+ * 409 REQUEST_IN_PROGRESS alınca AYNI request_id ile beklenecek süreler (ms).
+ * Toplam ~9,5 sn: 20 sn'lik istemci süresinin içinde değil, her çağrıdan SONRA; sunucudaki ilk
+ * istek tipik olarak birkaç saniyede biter. Bütçe dolarsa anahtar korunur, kullanıcı elle tekrar dener.
+ */
+export const REQUEST_IN_PROGRESS_RETRY_DELAYS_MS = [1_500, 3_000, 5_000] as const;
+
 /** Thrown when the deadline passes. Distinguishable from a transport error. */
 export class EdgeTimeoutError extends Error {
   constructor(public readonly label: string) {

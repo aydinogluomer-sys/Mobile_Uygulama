@@ -217,6 +217,18 @@ export async function insertMessage(input: {
   const content = input.content.trim();
   if (!content) return { ok: false, error: 'Boş mesaj kaydedilemez.' };
 
+  // Kullanıcı rolü: aynı (conversation, request_id) için mevcut satır varsa onu döndür.
+  // 039 uygulanmadan önce DB bunu zorlamaz; 039 sonrası aşağıdaki 23505 dalı yarışı kapatır.
+  if (input.role === 'user' && input.requestId) {
+    const existing = await supabase
+      .from('ai_messages').select(MSG_COLS)
+      .eq('conversation_id', input.conversationId)
+      .eq('user_id', u.userId)
+      .eq('request_id', input.requestId)
+      .eq('role', 'user')
+      .maybeSingle();
+    if (existing.data) return { ok: true, data: existing.data as MessageRow };
+  }
   const { data, error } = await supabase
     .from('ai_messages')
     .insert({
@@ -230,18 +242,12 @@ export async function insertMessage(input: {
     .single();
 
   if (error) {
-    // 23505 is the partial unique index on (conversation_id, request_id) for
-    // assistant rows. It means this exact answer was already stored — a replay
-    // after the app died between the provider answering and React rendering.
-    // That is a SUCCESS for the caller, not a failure, so the stored row is
-    // returned instead of an error.
-    if (error.code === '23505' && input.role === 'assistant' && input.requestId) {
+    if (error.code === '23505' && input.requestId) {
       const existing = await supabase
-        .from('ai_messages')
-        .select(MSG_COLS)
+        .from('ai_messages').select(MSG_COLS)
         .eq('conversation_id', input.conversationId)
         .eq('request_id', input.requestId)
-        .eq('role', 'assistant')
+        .eq('role', input.role)
         .maybeSingle();
       if (existing.data) return { ok: true, data: existing.data as MessageRow };
     }

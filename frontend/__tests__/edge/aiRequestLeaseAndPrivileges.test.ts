@@ -291,7 +291,9 @@ function makeHarness(opts: { balance: number; provider?: () => ProviderResult })
       ledger.set(requestId, -cost);
       return roundTrip<SpendResult>({ kind: 'charged', balance });
     },
-    refund: async ({ requestId, reason }) => { refundKey(requestId, reason); },
+    // F07 OWNER DECISION (2026-11-02): refund answers true (written / nothing to credit); expireLease added to the fake
+    refund: async ({ requestId, reason }) => { refundKey(requestId, reason); return true; },
+    expireLease: async () => {},
     callProvider: () => { providerCalls += 1; return roundTrip(provider()); },
     readBalance: async () => balance,
     describeError: (raw) => `mapped:${raw}`,

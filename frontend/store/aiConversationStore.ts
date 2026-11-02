@@ -84,6 +84,7 @@ type SendDeps = {
   /** Calls the coach edge function. Injected so tests never hit the network. */
   invoke: (body: Record<string, unknown>) => Promise<CoachInvokeResult>;
   requestId: string;
+  onConversationCreated?: (row: ConversationRow) => void;
 };
 
 type AiConversationStore = {
@@ -290,10 +291,13 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
           activeId: adopt ? row.id : s.activeId,
         }));
         if (adopt) writeLastActive(row.id);
+        deps.onConversationCreated?.(row);
       },
       onUserMessage: (row) => {
         if (!stillOpen()) return;
-        set((s) => ({ messages: [...s.messages, toStoreMessage(row)] }));
+        set((s) => ({
+          messages: s.messages.some((m) => m.id === row.id) ? s.messages : [...s.messages, toStoreMessage(row)],
+        }));
       },
     });
 

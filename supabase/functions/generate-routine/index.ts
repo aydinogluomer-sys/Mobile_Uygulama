@@ -692,12 +692,33 @@ Deno.serve(async (req: Request) => {
           },
 
           refund: async ({ requestId: id, reason }) => {
-            const { error } = await admin.rpc('refund_focus_points', {
-              p_user_id: user.id,
-              p_request_id: id,
-              p_reason: reason,
-            });
-            if (error) console.error('REFUND FAILED', { requestId: id, cost, reason, error: error.message });
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+              try {
+                const { error } = await admin.rpc('refund_focus_points', {
+                  p_user_id: user.id,
+                  p_request_id: id,
+                  p_reason: reason,
+                });
+                if (!error) return true;
+                console.error('REFUND FAILED', { requestId: id, cost, reason, attempt, error: error.message });
+              } catch (e) {
+                console.error('REFUND THREW', { requestId: id, cost, reason, attempt, error: e instanceof Error ? e.message : String(e) });
+              }
+              if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 250));
+            }
+            return false;
+          },
+
+          expireLease: async ({ requestId: id }) => {
+            const { error } = await admin
+              .from('ai_requests')
+              .update({ lease_expires_at: new Date(0).toISOString() })
+              .eq('user_id', user.id)
+              .eq('request_id', id)
+              .eq('status', 'in_progress');
+            if (error) console.error('REFUND_PENDING lease expire failed:', { requestId: id, error: error.message });
+            const rec = await admin.rpc('ai_request_reconcile_stale', { p_user_id: user.id, p_limit: 5 });
+            if (rec.error) console.error('REFUND_PENDING reconcile failed:', { requestId: id, error: rec.error.message });
           },
 
           callProvider: callAi,

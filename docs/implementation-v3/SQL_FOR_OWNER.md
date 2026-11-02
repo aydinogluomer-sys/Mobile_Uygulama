@@ -26,6 +26,22 @@ where table_schema='public' and table_name='habit_logs' and column_name='tz';
 -- 0 satır değilse 038 uygulanmaz. 036 tek başına silinmiş bir günün XP'sini purged_xp'ye taşımaz (DB2-07);
 -- önce rebuild_profile_xp(uuid) ile onarım gerekir ve bu ayrı bir sahip kararıdır.
 select * from public.xp_drift();
+
+-- 0.5 039 öncesi (F07)
+-- (a) silinecek yinelenen kullanıcı mesajı sayısı
+SELECT coalesce(sum(n - 1), 0) AS fazla_satir
+FROM (SELECT count(*) AS n FROM public.ai_messages
+      WHERE role = 'user' AND request_id IS NOT NULL
+      GROUP BY conversation_id, request_id HAVING count(*) > 1) d;
+
+-- (b) iade edilecek kullanıcı ve FP
+SELECT count(*) AS istek, coalesce(sum(-t.delta), 0) AS fp
+FROM public.ai_requests a
+JOIN public.credit_transactions t
+  ON t.user_id = a.user_id AND t.request_id = a.request_id AND t.delta < 0 AND t.created_at >= a.created_at
+WHERE a.status = 'failed'
+  AND NOT EXISTS (SELECT 1 FROM public.credit_transactions t2
+                  WHERE t2.user_id = a.user_id AND t2.request_id = a.request_id || ':refund');
 ```
 
 ## 1. Uygulama sırası
@@ -43,6 +59,7 @@ select * from public.xp_drift();
 | 036 | `036_live_audit_hardening.sql` | **canlı denetimden öneri** (`LIVE_SCHEMA_AUDIT.md`): XP/seri (alışkanlık, gün) defteri — S11 çiftliğini kapatır; `weekly_xp` istemci yazımı kapanır; kullanılmayan/tetikleyici SECURITY DEFINER fonksiyonlarda EXECUTE alınır; grant hijyeni. 028–035'ten bağımsız. **Önce bir branch'te dene.** | yok (R01.03-b geri alma bundan sonra açılabilir); **038 ile birlikte** uygulanır: 036 tek başına silinen bir logun XP'sini `purged_xp`'ye taşımaz (DB2-06/07) | §2.9 | `supabase/rollbacks/036_live_audit_hardening.rollback.sql` — önce 038 geri alınır (varsa); **geri alma açıkları yeniden açar** (weekly_xp yazımı, istemci EXECUTE hakları), yalnız 036 branch denemesinde sorun çıkarsa kullanılır ve ardından F03 (038) uygulanamaz |
 | 037 | `037_today_bootstrap_rpc.sql` | tek gidiş-dönüşlü Bugün önyüklemesi `get_today_bootstrap(date)` (çağıranın kendi RLS bağlamında, SECURITY INVOKER; 028/029 tabloları yoksa `to_regclass` ile atlar) | yok (istemci RPC yoksa tablo okumalarına düşer: `todayBootstrapRepository.ts`, `isMissingRpcError`) | `ci.yml` bootstrap adımı (`get_today_bootstrap`) | `supabase/rollbacks/037_today_bootstrap_rpc.rollback.sql` |
 | 038 | `038_xp_streak_integrity.sql` | XP/seri bütünlüğü (F03): gün penceresi (sunucu `CURRENT_DATE - 15`..`+ 1`, istemci bugün ve önceki 14 gün), XP'yi yalnız sunucu hesaplar, günlük XP tavanı (2000), defter alışkanlığı silinse de kalır (sil-yeniden-yaz ve aynı adla yeniden oluşturma ikinci kez ödenmez), seri defterdeki ardışık günlerden, `streak_current`/`streak_best` istemciden yazılamaz, log silinince XP `purged_xp`'ye geçer, boss tetikleyicisi kapanır. **036 önkoşul** (betik kendisi denetler). Sıra 036 → 037 → 038; §0.4 `xp_drift()` boş değilse uygulanmaz. Pencere/tavan/çarpan değerleri OD-04 önerisidir. | yok | §2.11 | `supabase/rollbacks/038_xp_streak_integrity.rollback.sql` — 036'nınkinden ÖNCE; **XP sahteciliğini yeniden açar** (pencere, tavan, seri sütunları) |
+| 039 | `039_focus_point_hardening.sql` | Focus Point kredi bütünlüğü (F07): aynı (konuşma, `request_id`) için tek kullanıcı mesajı (`ai_messages_user_request_uniq`, önce yinelenen kopyalar silinir), iadesi yazılmamış başarısız AI isteklerine `refund_focus_points` ile tek seferlik iade, eski `spend_focus_points(integer, text)` istemcilere kapanır (036 ile aynı). İstemci sürümünden SONRA (§5). | yok | §2.12 | `supabase/rollbacks/039_focus_point_hardening.rollback.sql` |
 
 ### Geri alma nasıl çalıştırılır
 
@@ -51,7 +68,7 @@ tek kullanımlık Postgres 17'de sınanır: ileri uygula, sondan başa geri al, 
 yeniden ileri uygula. **Canlıda hiçbiri çalıştırılmadı; yalnız sahip çalıştırır (OD-02).**
 
 1. Önce yedek (S1), sonra `select * from public.xp_drift();` (0 satır beklenir).
-2. Sıra **büyükten küçüğe**: 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 036'dan önce 038 geri alınır
+2. Sıra **büyükten küçüğe**: 039 (F07), 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 036'dan önce 038 geri alınır
    (036 betiği, `fn_habit_log_guard` varken reddeder).
 3. Her betik için **aynı oturumda** önce onay, sonra dosya. Onay değeri betiğin kendi numarası değilse betik `P0001` ile durur
    ve hiçbir şey değiştirmez:
@@ -143,6 +160,14 @@ from pg_proc p where p.proname in ('fn_habit_log_guard','fn_habit_log_set_xp','f
 select conname, convalidated from pg_constraint where conname = 'weekly_xp_xp_earned_sane';
 -- drift yine boş
 select * from public.xp_drift();
+
+-- 2.12 (039) sonrası doğrulama
+SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'ai_messages_user_request_uniq';  -- 1 satır
+SELECT count(*) FROM (SELECT 1 FROM public.ai_messages WHERE role = 'user' AND request_id IS NOT NULL
+                      GROUP BY conversation_id, request_id HAVING count(*) > 1) d;                            -- 0
+SELECT has_function_privilege('anon', 'public.spend_focus_points(integer, text)', 'EXECUTE') AS anon_exec,
+       has_function_privilege('authenticated', 'public.spend_focus_points(integer, text)', 'EXECUTE') AS auth_exec;  -- f, f
+SELECT * FROM public.xp_drift();                                                                               -- 0 satır
 ```
 
 ## 3. BLOCKED — tanımı repoda olmayan nesneler (yalnız okuma sorguları)
@@ -193,6 +218,8 @@ where h.tracking_type in ('numeric','duration')
 | 1 | 028, 029, 030, 031 uygulandı + §2.1–2.4 doğrulandı | yok — istemci tabloları fail-open okur (PGRST205/42P01), tablo gelince kendiliğinden açılır |
 | 2 | 033 uygulandı + §2.6 | `LOG_TIMEZONE_ENABLED = true` |
 | 3 | 032 → 034 → 035 uygulandı + §2.8 `has_lighten_week = true` **ve** `generate-routine` edge function deploy edildi (S3) | `COACH_ACTIONS_V2_ENABLED = true` |
+
+039'u uygulamadan ÖNCE istemci sürümü mağazalarda olmalı; sonra 039; Edge deploy (S3) sıradan bağımsızdır. Her adımdan sonra `select * from public.xp_drift();` 0 satır.
 
 Mevcut beş kapı (`SPOTIFY_OAUTH_ENABLED`, `NOTION_INTEGRATION_ENABLED`, `GOOGLE_CALENDAR_INTEGRATION_ENABLED`,
 `PAID_SUBSCRIPTIONS_ENABLED`, `PUBLIC_SITE_URLS_LIVE`) bu migration'larla **ilgisizdir** ve kapalı kalır.

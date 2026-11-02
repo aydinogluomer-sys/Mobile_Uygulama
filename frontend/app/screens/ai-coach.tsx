@@ -19,7 +19,7 @@ import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useJournalStore } from '../../store/journalStore';
 import { ACTION_COST } from '../../lib/subscription';
 import { extractInvokeError } from '../../lib/aiInvoke';
-import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../../lib/aiAttempt';
+import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE, IN_PROGRESS_NOTE, retryWhileInProgress } from '../../lib/aiAttempt';
 import { todayLocal, ymd, addDaysLocal, parseLocalDate } from '../../lib/date';
 import { habitCompletionRate, weekdayBreakdown, bestWeekday, worstWeekday, recoverySuccessRate } from '../../lib/behaviorIntelligence';
 import { planFromRow } from '../../lib/recovery';
@@ -87,6 +87,7 @@ const QUICK_PROMPTS = [
 ];
 
 export default function AICoachScreen() {
+  const mountedRef = useRef(true);
   const router = useRouter();
   const { habits } = useHabitStore();
   const { tasks } = useTaskStore();
@@ -179,6 +180,7 @@ export default function AICoachScreen() {
   // over whatever the user opened next is not something anyone asked for, and
   // the copy timer would otherwise touch state after unmount.
   useEffect(() => () => {
+    mountedRef.current = false;
     if (copyTimer.current) clearTimeout(copyTimer.current);
     Speech.stop();
   }, []);
@@ -567,6 +569,7 @@ export default function AICoachScreen() {
     // rather than paying for a second answer. See newRequestId(). R09.06 --
     // "a retry" includes sending the same text again after a lost answer.
     const requestId = coachAttempt.begin(`${activeId ?? ''}|${msg}`);
+    const startedKey = `${activeId ?? ''}|${msg}`;
 
     try {
       // Deterministic analytics summary when available (see loadAnalyticsSummary
@@ -581,12 +584,12 @@ export default function AICoachScreen() {
       // screen supplies is the transport and the app's domain context.
       const res = await sendToStore(msg, {
         requestId,
+        onConversationCreated: (row) => coachAttempt.rebind(startedKey, `${row.id}|${msg}`),
         invoke: async (payload) => {
           setStreamingReply('');
-          const { data, error } = await invokeAiWithStream({
-            onReplyText: (partial) => setStreamingReply(partial),
-            /* SSE token streaming via invokeAiWithStream */
-              /* deadline signal managed by aiStreamService */
+          const outcome = await retryWhileInProgress(
+            () => invokeAiWithStream({
+              onReplyText: (partial) => setStreamingReply(partial),
               body: {
                 ...payload,
                 context: {
@@ -600,13 +603,16 @@ export default function AICoachScreen() {
                 },
                 mode: 'coach',
               },
-          });
+            }),
+            { isCancelled: () => !mountedRef.current },
+          );
+          const { data, error } = outcome;
 
           if (error && isNoAnswer(error)) throw new Error(NO_ANSWER_NOTE);
+          if (outcome.stillInProgress) throw new Error(IN_PROGRESS_NOTE); // anahtar KORUNUR: answered() çağrılmaz
           coachAttempt.answered();
           if (error) {
-            // Sunucunun döndürdüğü gerçek hata mesajını çek (kredi, rate limit, vb.)
-            const { msg: emsg, code, balance } = await extractInvokeError(error);
+            const { msg: emsg, code, balance } = outcome.errorInfo ?? await extractInvokeError(error);
             if (typeof balance === 'number') setBalance(balance);
             if (code === 'INSUFFICIENT_CREDITS') setInsufficientCredits(true);
             throw new Error(emsg);
@@ -647,16 +653,21 @@ export default function AICoachScreen() {
     // transcript sent again after a lost answer is that retry.
     const requestId = summaryAttempt.begin(transcript);
     try {
-      const { data, error } = await withEdgeDeadline('AI Koç', (signal) =>
-        supabase.functions.invoke('generate-routine', {
-        signal,
-        body: { mode: 'summarize', transcript, request_id: requestId },
-      }));
+      const outcome = await retryWhileInProgress(
+        () => withEdgeDeadline('AI Koç', (signal) =>
+          supabase.functions.invoke('generate-routine', {
+            signal,
+            body: { mode: 'summarize', transcript, request_id: requestId },
+          })),
+        { isCancelled: () => !mountedRef.current },
+      );
+      const { data, error } = outcome;
 
       if (error && isNoAnswer(error)) throw new Error(NO_ANSWER_NOTE);
+      if (outcome.stillInProgress) throw new Error(IN_PROGRESS_NOTE);
       summaryAttempt.answered();
       if (error) {
-        const { msg, code, balance } = await extractInvokeError(error);
+        const { msg, code, balance } = outcome.errorInfo ?? await extractInvokeError(error);
         if (typeof balance === 'number') setBalance(balance);
         if (code === 'INSUFFICIENT_CREDITS') setInsufficientCredits(true);
         throw new Error(msg);

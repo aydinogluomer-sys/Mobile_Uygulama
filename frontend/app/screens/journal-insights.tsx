@@ -15,7 +15,7 @@ import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { ACTION_COST } from '../../lib/subscription';
 import { periodWindow, InsightPeriod } from '../../lib/journalStats';
 import { insightBasis, insightFacts, insightPrompt } from '../../lib/journalInsightContext';
-import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../../lib/aiAttempt';
+import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE, IN_PROGRESS_NOTE, retryWhileInProgress } from '../../lib/aiAttempt';
 import { decimalTR } from '../../lib/chartText';
 import { extractInvokeError } from '../../lib/aiInvoke';
 import { AtmosphericScreenCanvas, EmptyState, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
@@ -78,16 +78,20 @@ export default function JournalInsightsScreen() {
     const requestId = insightAttempt.begin(`${period}|${win.key}|${text}`);
 
     try {
-      const { data, error: invErr } = await withEdgeDeadline('Günlük içgörüsü', (signal) =>
-        supabase.functions.invoke('generate-routine', {
-        signal,
-        body: { mode: 'insights', period, entries: text, request_id: requestId },
-      }));
+      const outcome = await retryWhileInProgress(
+        () => withEdgeDeadline('Günlük içgörüsü', (signal) =>
+          supabase.functions.invoke('generate-routine', {
+            signal,
+            body: { mode: 'insights', period, entries: text, request_id: requestId },
+          })),
+      );
+      const { data, error: invErr } = outcome;
 
       if (invErr && isNoAnswer(invErr)) throw invErr;
+      if (outcome.stillInProgress) { setError(IN_PROGRESS_NOTE); return; }
       insightAttempt.answered();
       if (invErr) {
-        const { msg, code, balance } = await extractInvokeError(invErr);
+        const { msg, code, balance } = outcome.errorInfo ?? await extractInvokeError(invErr);
         if (typeof balance === 'number') setBalance(balance);
         if (code === 'INSUFFICIENT_CREDITS') setLowCredits(true);
         throw new Error(msg);

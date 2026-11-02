@@ -7,7 +7,7 @@ Postgres 17 hizmetinde sınanmak üzere bağlanmıştır; ilk gerçek CI koşusu
 
 ## Amaç
 
-`supabase/migrations/028` ile `038` arasındaki on bir migration ileri yönde yazılmıştır ve canlıda
+`supabase/migrations/028` ile `039` arasındaki on iki migration ileri yönde yazılmıştır ve canlıda
 uygulanmamıştır. Sahip birini bir Supabase branch'inde ya da canlıda uygulayıp bir sorun görürse,
 elinde sınanmış bir geri dönüş yolu olmalıdır. Her migration için bir geri alma betiği, CI'da
 "ileri uygula, sondan başa geri al, kataloğu baştakiyle karşılaştır, yeniden ileri uygula" döngüsüyle
@@ -77,10 +77,11 @@ seri açıklarını yeniden açar) yedek ister
 
 ## Betikler ve sıra
 
-Sıra **büyükten küçüğe**: 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
+Sıra **büyükten küçüğe**: 039, 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
 
 | Betik | Geri aldığı migration | Etkisi | Veri kaybı |
 | --- | --- | --- | --- |
+| `039_focus_point_hardening.rollback.sql` | `039_focus_point_hardening.sql` | `ai_messages_user_request_uniq` düşer | yok; 039'un sildiği yinelenen kullanıcı mesajları ve yazdığı iadeler geri alınmaz, `spend_focus_points(integer, text)` REVOKE'u 036'ya da aittir (gerekçe betiğin başında) |
 | `038_xp_streak_integrity.rollback.sql` | `038_xp_streak_integrity.sql` | gün penceresi, günlük XP tavanı, seri sütunu koruması ve silmede `purged_xp` aktarımı düşer; `fn_habit_log_set_xp` canlı, `fn_habit_log_award` 036 gövdesine döner; boss tetikleyicisi geri gelir | ad parmak izleri, silinmiş alışkanlıkların defter satırları, 038 döneminde silinip yeniden yazılmış günlerin en yüksek ödül işareti; **XP sahteciliğini yeniden açar** |
 | `037_today_bootstrap_rpc.rollback.sql` | `037_today_bootstrap_rpc.sql` | `get_today_bootstrap(date)` düşer; istemci tablo okumalarına düşer | yok |
 | `036_live_audit_hardening.rollback.sql` | `036_live_audit_hardening.sql` | defter düşer, `fn_habit_log_award` canlı gövdesine döner, `weekly_xp` yazımı ve istemci EXECUTE hakları yeniden açılır | defter satırları (gün başına en yüksek ödül); **güvenlik açıklarını yeniden açar** |

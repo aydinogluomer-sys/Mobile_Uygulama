@@ -143,13 +143,18 @@ describe('every path out after the charge settles it', () => {
     expect(src).toContain("reason: 'ai_truncated'");
   });
 
+  // F07 OWNER DECISION (2026-11-02): both failure branches go through `failAndRefund`
+  // (implementation.md F07, Blok A step 2), which refunds first and settles the key only when the
+  // refund was written. The three assertions below pin that shape instead of the inline one.
+  const settle = orch.slice(orch.indexOf('const failAndRefund = async'), orch.indexOf('let result: ProviderResult'));
+
   it('a refused provider result refunds and settles the key', () => {
     const refused = orch.indexOf('if (!result.ok)');
-    const refund = orch.indexOf('deps.refund(', refused);
-    const fail = orch.indexOf('deps.fail(', refused);
     expect(refused).toBeGreaterThan(-1);
-    expect(refund).toBeGreaterThan(refused);
-    expect(fail).toBeGreaterThan(refused);
+    expect(orch.indexOf('return failAndRefund(', refused)).toBeGreaterThan(refused);
+    const refund = settle.indexOf('deps.refund(');
+    expect(refund).toBeGreaterThan(-1);
+    expect(settle.indexOf('deps.fail(')).toBeGreaterThan(refund);
   });
 
   it('a thrown AI error refunds too', () => {
@@ -157,7 +162,7 @@ describe('every path out after the charge settles it', () => {
     // declared inside the `try` the catch could not see. The orchestrator has
     // no such split: one try/catch around the one provider call, with the
     // refund in scope, so the hazard is gone rather than worked around.
-    expect(orch).toMatch(/catch \(err\)[\s\S]{0,320}deps\.refund\(\{ requestId, reason: 'ai_error' \}\)/);
+    expect(orch).toMatch(/catch \(err\)[\s\S]{0,320}failAndRefund\(\{ reason: 'ai_error'/);
     expect(src).not.toContain('refundOnThrow');
   });
 
@@ -165,6 +170,21 @@ describe('every path out after the charge settles it', () => {
     // The user has paid for a failed call. Silence would make that
     // permanently invisible.
     expect(src).toContain("console.error('REFUND FAILED'");
+  });
+
+  // F07 (EDG-01)
+  it('the refund implementation answers true / false instead of swallowing the error and returning void', () => {
+    const refund = src.slice(src.indexOf('refund: async ({ requestId: id, reason }) =>'), src.indexOf('expireLease: async'));
+    expect(refund).toContain("admin.rpc('refund_focus_points'");
+    expect(refund).toContain('return true');
+    expect(refund).toContain('return false');
+  });
+
+  it('expireLease updates ai_requests only while in_progress and calls ai_request_reconcile_stale', () => {
+    const expire = src.slice(src.indexOf('expireLease: async'), src.indexOf('callProvider: callAi'));
+    expect(expire).toMatch(/admin\s*\.from\('ai_requests'\)/);
+    expect(expire).toContain(".eq('status', 'in_progress')");
+    expect(expire).toContain("'ai_request_reconcile_stale'");
   });
 
   it('the success path returns the database balance', () => {
@@ -177,7 +197,9 @@ describe('every path out after the charge settles it', () => {
     // is skipped. Otherwise a retry that failed would credit back a charge
     // belonging to the first, successful attempt.
     expect(orch).toContain("const charged = spend.kind === 'charged'");
-    expect(orch.match(/if \(charged\) await deps\.refund\(/g)).toHaveLength(2);
+    // F07 OWNER DECISION (2026-11-02): one refund call site, inside `if (charged)` in failAndRefund
+    expect(orch.match(/deps\.refund\(/g)).toHaveLength(1);
+    expect(settle).toMatch(/if \(charged\) \{\s*try \{ refunded = await deps\.refund\(/);
   });
 
   it('a successful answer is stored before it is returned', () => {

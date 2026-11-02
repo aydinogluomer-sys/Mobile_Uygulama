@@ -32,6 +32,19 @@ describe('coach screen', () => {
     expect(noAns).toBeGreaterThan(-1);
     expect(summ.indexOf('summaryAttempt.answered();')).toBeGreaterThan(noAns);
   });
+  it('F07: a message waits out REQUEST_IN_PROGRESS and rebinds its attempt; the stillInProgress branch comes before answered()', () => {
+    expect(send).toContain('retryWhileInProgress(');
+    expect(send).toContain('coachAttempt.rebind(');
+    const still = send.indexOf('outcome.stillInProgress');
+    expect(still).toBeGreaterThan(-1);
+    expect(still).toBeLessThan(send.indexOf('coachAttempt.answered();'));
+  });
+  it('F07: a summary the same way', () => {
+    expect(summ).toContain('retryWhileInProgress(');
+    const still = summ.indexOf('outcome.stillInProgress');
+    expect(still).toBeGreaterThan(-1);
+    expect(still).toBeLessThan(summ.indexOf('summaryAttempt.answered();'));
+  });
   it('the keepers live outside the component (they survive a re-render)', () => {
     const comp = src.indexOf('export default function AICoachScreen');
     expect(src.indexOf('const coachAttempt = createAttemptKeeper(newRequestId);')).toBeLessThan(comp);

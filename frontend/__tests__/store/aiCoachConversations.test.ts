@@ -143,10 +143,10 @@ jest.mock('../../repositories/aiConversationRepository', () => ({
   insertMessage: async (input: { conversationId: string; role: 'user' | 'assistant'; content: string; requestId?: string | null }) => {
     const content = input.content.trim();
     if (!content) return { ok: false, error: 'Boş mesaj kaydedilemez.' };
-    if (input.role === 'assistant' && input.requestId) {
-      // The partial unique index on (conversation_id, request_id).
+    if (input.requestId) {
+      // The partial unique indexes on (conversation_id, request_id): assistant (live) and, F07, user (039).
       const dup = mockDb.messages.find(
-        (m) => m.conversation_id === input.conversationId && m.role === 'assistant' && m.request_id === input.requestId,
+        (m) => m.conversation_id === input.conversationId && m.role === input.role && m.request_id === input.requestId,
       );
       if (dup) return { ok: true, data: { ...dup } };
     }
@@ -306,6 +306,14 @@ describe('a conversation survives leaving the screen', () => {
     const assistants = mockDb.messages.filter((m) => m.role === 'assistant');
     expect(assistants).toHaveLength(1);
     expect(contents().filter((c) => c === 'Tek yanıt')).toHaveLength(1);
+  });
+
+  it('F07 (INT-11): two sends with the same requestId store one user message', async () => {
+    const requestId = nextRequestId();
+    await store().send('Aynı soru', { invoke: replyWith('Tek yanıt').invoke, requestId });
+    await store().send('Aynı soru', { invoke: replyWith('Tek yanıt').invoke, requestId });
+
+    expect(mockDb.messages.filter((m) => m.role === 'user')).toHaveLength(1);
   });
 
   it('a provider failure leaves the question stored and fabricates no answer', async () => {

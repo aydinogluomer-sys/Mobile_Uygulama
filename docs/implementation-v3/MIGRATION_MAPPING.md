@@ -216,6 +216,7 @@ Defterin son sürümü `20260908133800`; aşağıdakilerin hepsi ondan sonra ve 
 | `036_live_audit_hardening.sql` | `20261010000900_live_audit_hardening.sql` |
 | `037_today_bootstrap_rpc.sql` | `20261010001000_today_bootstrap_rpc.sql` |
 | `038_xp_streak_integrity.sql` | `20261010001100_xp_streak_integrity.sql` |
+| `039_focus_point_hardening.sql` | `20261010001200_focus_point_hardening.sql` |
 
 ## 6. Kullanılan sorgular (hepsi salt-okunur)
 

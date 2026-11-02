@@ -1,7 +1,7 @@
 import { registerAccountScoped } from '../lib/accountScope';
 import { withEdgeDeadline } from '../lib/edgeCall';
 import { newRequestId } from '../services/focusPointService';
-import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../lib/aiAttempt';
+import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE, IN_PROGRESS_NOTE, retryWhileInProgress } from '../lib/aiAttempt';
 import { create } from 'zustand';
 import { supabase, Routine } from '../lib/supabase';
 import { useSubscriptionStore } from './subscriptionStore';
@@ -200,27 +200,27 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
     });
     const requestId = routineAttempt.begin(prompt);
     try {
-      const { data, error } = await withEdgeDeadline('AI rutin', (signal) =>
-        supabase.functions.invoke('generate-routine', {
-        signal,
-        body: { prompt, request_id: requestId },
-      }));
+      const outcome = await retryWhileInProgress(
+        () => withEdgeDeadline('AI rutin', (signal) =>
+          supabase.functions.invoke('generate-routine', {
+            signal,
+            body: { prompt, request_id: requestId },
+          })),
+      );
+      const { data, error } = outcome;
 
       if (error && isNoAnswer(error)) {
         set({ generateError: NO_ANSWER_NOTE, generating: false });
         return;
       }
+      if (outcome.stillInProgress) { set({ generateError: IN_PROGRESS_NOTE, generating: false }); return; }
       routineAttempt.answered();
       if (error) {
         // FunctionsHttpError içinden sunucunun döndürdüğü mesajı çek
         let msg = 'Bir hata oluştu, tekrar deneyin.';
-        try {
-          const body = await (error as any).context?.json?.();
-          if (body?.error) msg = body.error;
-          if (typeof body?.balance === 'number') useSubscriptionStore.getState().setBalance(body.balance);
-        } catch {
-          if (error.message) msg = error.message;
-        }
+        const body = outcome.errorInfo;
+        if (body?.msg) msg = body.msg;
+        if (typeof body?.balance === 'number') useSubscriptionStore.getState().setBalance(body.balance);
         set({ generateError: msg, generating: false });
         return;
       }

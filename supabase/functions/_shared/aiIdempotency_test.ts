@@ -7,6 +7,7 @@
 import {
   fingerprintInput,
   INSUFFICIENT_CREDITS,
+  REFUND_PENDING_NOTE,
   runIdempotentAiRequest,
   type IdempotencyDeps,
 } from './aiIdempotency.ts';
@@ -57,7 +58,8 @@ Deno.test('runIdempotentAiRequest charges once, calls provider once, and replays
       spendCalls += 1;
       return { kind: 'charged', balance: 20 };
     },
-    refund: async () => {},
+    refund: async () => true,
+    expireLease: async () => {},
     callProvider: async () => {
       providerCalls += 1;
       return { ok: true, payload: { reply: 'Harika gidiyorsun!', actions: [] } };
@@ -100,7 +102,8 @@ Deno.test('runIdempotentAiRequest releases claim on insufficient credits and ref
         released = true;
       },
       spend: async () => ({ kind: 'insufficient', balance: 4 }),
-      refund: async () => {},
+      refund: async () => true,
+      expireLease: async () => {},
       callProvider: async () => {
         throw new Error('must not reach provider');
       },
@@ -122,7 +125,9 @@ Deno.test('runIdempotentAiRequest releases claim on insufficient credits and ref
       spend: async () => ({ kind: 'charged', balance: 15 }),
       refund: async ({ reason }) => {
         refundedReason = reason;
+        return true;
       },
+      expireLease: async () => {},
       callProvider: async () => ({ ok: false, reason: 'ai_truncated', message: 'Yarım kaldı' }),
       readBalance: async () => 15,
       describeError: (r) => r,
@@ -130,6 +135,60 @@ Deno.test('runIdempotentAiRequest releases claim on insufficient credits and ref
   );
   assertEquals(failed.status, 500, 'truncated provider status');
   assertEquals(refundedReason, 'ai_truncated', 'refunded with exact reason');
+});
+
+// F07 (EDG-01): a refund that cannot be written must not mark the claim failed.
+function refundCase(refund: IdempotencyDeps['refund'], spendKind: 'charged' | 'replayed' = 'charged') {
+  const calls = { fail: 0, expireLease: 0, refund: 0, provider: 0 };
+  const deps: IdempotencyDeps = {
+    begin: async () => ({ kind: 'claimed' }),
+    complete: async () => {},
+    fail: async () => { calls.fail += 1; },
+    release: async () => {},
+    spend: async () => ({ kind: spendKind, balance: 25 }),
+    refund: async (input) => { calls.refund += 1; return refund(input); },
+    expireLease: async () => { calls.expireLease += 1; },
+    callProvider: async () => { calls.provider += 1; return { ok: false, reason: 'ai_truncated', message: 'Yarım kaldı' }; },
+    readBalance: async () => 25,
+    describeError: (r) => r,
+  };
+  return { deps, calls };
+}
+
+Deno.test('F07 (i): refund returns false -> fail is never called, expireLease once, 500 REFUND_PENDING', async () => {
+  const { deps, calls } = refundCase(async () => false);
+  const res = await runIdempotentAiRequest({ requestId: 'req-f07-1', mode: 'coach', fingerprint: 'fp', cost: 5 }, deps);
+  assertEquals(calls.fail, 0, 'fail never called');
+  assertEquals(calls.expireLease, 1, 'expireLease once');
+  assertEquals(res.status, 500, 'status');
+  assertEquals(res.body.code, 'REFUND_PENDING', 'code');
+  assert(String(res.body.error).includes(REFUND_PENDING_NOTE), 'the error carries the refund note');
+  assertEquals(calls.provider, 1, 'providerCalls');
+});
+
+Deno.test('F07 (ii): refund throws -> the same as (i)', async () => {
+  const { deps, calls } = refundCase(async () => { throw new Error('connection reset'); });
+  const res = await runIdempotentAiRequest({ requestId: 'req-f07-2', mode: 'coach', fingerprint: 'fp', cost: 5 }, deps);
+  assertEquals(calls.fail, 0, 'fail never called');
+  assertEquals(calls.expireLease, 1, 'expireLease once');
+  assertEquals(res.status, 500, 'status');
+  assertEquals(res.body.code, 'REFUND_PENDING', 'code');
+  assert(String(res.body.error).includes(REFUND_PENDING_NOTE), 'the error carries the refund note');
+  assertEquals(calls.provider, 1, 'providerCalls');
+});
+
+Deno.test('F07 (iii): refund returns true -> fail once, expireLease never', async () => {
+  const { deps, calls } = refundCase(async () => true);
+  await runIdempotentAiRequest({ requestId: 'req-f07-3', mode: 'coach', fingerprint: 'fp', cost: 5 }, deps);
+  assertEquals(calls.fail, 1, 'fail once');
+  assertEquals(calls.expireLease, 0, 'expireLease never');
+});
+
+Deno.test('F07 (iv): charged === false (spend replayed) -> refund never called, fail is called', async () => {
+  const { deps, calls } = refundCase(async () => { throw new Error('must not be called'); }, 'replayed');
+  await runIdempotentAiRequest({ requestId: 'req-f07-4', mode: 'coach', fingerprint: 'fp', cost: 5 }, deps);
+  assertEquals(calls.refund, 0, 'refund never called');
+  assertEquals(calls.fail, 1, 'fail called');
 });
 
 Deno.test('coachContractSchema validates canonical bounds and streams tool_use JSON deltas cleanly', async () => {

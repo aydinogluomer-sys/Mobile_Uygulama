@@ -189,7 +189,11 @@ export type CoachTurnInput = {
   /** One key per attempt, so a retry replays the first charge. */
   requestId: string;
   invoke: (body: Record<string, unknown>) => Promise<CoachInvokeResult>;
-  /** Progress hooks so the screen can render the turn as it happens. */
+  /**
+   * Progress hooks so the screen can render the turn as it happens. The user row is idempotent:
+   * the same `requestId` returns the existing row, so `onUserMessage` can fire a second time for a
+   * row already shown; the store's id check keeps it from being drawn twice.
+   */
   onConversationCreated?: (row: ConversationRow) => void;
   onUserMessage?: (row: MessageRow) => void;
 };
@@ -214,7 +218,9 @@ export type CoachTurn = {
  * about to be torn down.
  *
  * On failure nothing is fabricated. The user message stays as sent and the
- * same `request_id` can be retried without paying twice.
+ * same `request_id` can be retried without paying twice. The user row is
+ * idempotent: a retry with the same `request_id` gets the existing row back
+ * (so `onUserMessage` may fire again for it; the store's id check closes that).
  */
 export async function runCoachTurn(input: CoachTurnInput): Promise<RepoResult<CoachTurn>> {
   const msg = input.text.trim();

@@ -45,6 +45,14 @@
  * it can be driven by a test that COUNTS provider invocations, which is the
  * only way to prove "zero additional Anthropic calls" rather than assert it.
  * `_shared/oauthState.ts` is here for the same reason.
+ *
+ * ## A refund that cannot be written
+ *
+ * Marking the claim `failed` while its refund was not written loses the refund
+ * for good: `ai_request_reconcile_stale` only looks at `in_progress` rows, so
+ * nothing ever comes back to it. `fail` is therefore called only after the
+ * refund is confirmed. When it is not, the claim stays `in_progress`, its lease
+ * is ended (`expireLease`) and the reconcile refunds it.
  */
 
 export type AiMode = 'coach' | 'routine' | 'summarize' | 'insights';
@@ -84,7 +92,10 @@ export type IdempotencyDeps = {
   fail(input: { requestId: string; error: string }): Promise<void>;
   release(input: { requestId: string }): Promise<void>;
   spend(input: { requestId: string; mode: AiMode; cost: number }): Promise<SpendResult>;
-  refund(input: { requestId: string; reason: string }): Promise<void>;
+  /** true: iade kaydedildi ya da zaten kayıtlıydı (RPC hatasız döndü). false: iade yazılamadı. Fırlatabilir; çağıran fırlatmayı false sayar. */
+  refund(input: { requestId: string; reason: string }): Promise<boolean>;
+  /** İade yazılamadığında çağrılır: in_progress satırın kirasını hemen bitirir ve reconcile'ı bir kez dener. Fırlatmaz. */
+  expireLease(input: { requestId: string }): Promise<void>;
   /** The ONLY thing in here that costs provider money. */
   callProvider(): Promise<ProviderResult>;
   /**
@@ -106,6 +117,8 @@ export const IDEMPOTENCY_MISMATCH = 'IDEMPOTENCY_KEY_REUSE_MISMATCH';
 export const REQUEST_IN_PROGRESS = 'REQUEST_IN_PROGRESS';
 export const IDEMPOTENCY_CONSUMED = 'IDEMPOTENCY_KEY_CONSUMED';
 export const INSUFFICIENT_CREDITS = 'INSUFFICIENT_CREDITS';
+export const REFUND_PENDING = 'REFUND_PENDING';
+export const REFUND_PENDING_NOTE = 'Focus Point iaden güvende; hesabına otomatik olarak işlenecek.';
 
 /**
  * A stable identity for the input that claimed a key.
@@ -233,20 +246,29 @@ export async function runIdempotentAiRequest(
   // refunding would return money this call never took.
   const charged = spend.kind === 'charged';
 
+  const failAndRefund = async (p: { reason: string; dbError: string; userMessage: string }): Promise<AiResponse> => {
+    let refunded = true;
+    if (charged) {
+      try { refunded = await deps.refund({ requestId, reason: p.reason }); } catch { refunded = false; }
+    }
+    if (refunded) {
+      await deps.fail({ requestId, error: p.dbError });
+      return { status: 500, body: { error: p.userMessage } };
+    }
+    // İade yazılamadı: satır in_progress KALIR (fail çağrılsaydı reconcile onu bir daha görmezdi).
+    await deps.expireLease({ requestId });
+    return { status: 500, body: { error: `${p.userMessage} ${REFUND_PENDING_NOTE}`, code: REFUND_PENDING } };
+  };
+
   let result: ProviderResult;
   try {
     result = await deps.callProvider();
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);
-    if (charged) await deps.refund({ requestId, reason: 'ai_error' });
-    await deps.fail({ requestId, error: raw });
-    return { status: 500, body: { error: deps.describeError(raw) } };
+    return failAndRefund({ reason: 'ai_error', dbError: raw, userMessage: deps.describeError(raw) });
   }
-
   if (!result.ok) {
-    if (charged) await deps.refund({ requestId, reason: result.reason });
-    await deps.fail({ requestId, error: result.message });
-    return { status: 500, body: { error: result.message } };
+    return failAndRefund({ reason: result.reason, dbError: result.message, userMessage: result.message });
   }
 
   // Stored BEFORE returning, so a client that never sees this response can
