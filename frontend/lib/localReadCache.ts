@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
+// expo-sqlite is reached only through the platform seam: importing it here
+// put its wasm worker into the web bundle and broke `expo export --platform web`.
+import { loadSqlite, type SQLiteDatabase } from './sqliteDriver';
 
 /**
  * Local-First Read-Through Snapshot Cache (Stale-While-Revalidate).
@@ -26,7 +28,7 @@ const DB_NAME = 'aderyth_read_cache.db';
 const WEB_PREFIX = 'aderyth.rcache.v1';
 
 const memoryCache = new Map<string, { payload: string; updatedAt: number }>();
-let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+let dbPromise: Promise<SQLiteDatabase> | null = null;
 
 function isNativePlatform(): boolean {
   return Platform.OS === 'ios' || Platform.OS === 'android';
@@ -44,10 +46,12 @@ function webKey(userId: string, cacheKey: string): string {
   return `${WEB_PREFIX}:${userId}:${cacheKey}`;
 }
 
-async function getDb(): Promise<SQLite.SQLiteDatabase> {
+async function getDb(): Promise<SQLiteDatabase> {
   if (!dbPromise) {
     dbPromise = (async () => {
-      const db = await SQLite.openDatabaseAsync(DB_NAME);
+      const sqlite = loadSqlite();
+      if (!sqlite) throw new Error('expo-sqlite is not available on this platform');
+      const db = await sqlite.openDatabaseAsync(DB_NAME);
       await db.execAsync(
         'CREATE TABLE IF NOT EXISTS read_cache (user_id TEXT NOT NULL, cache_key TEXT NOT NULL, payload TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, cache_key));',
       );

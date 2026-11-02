@@ -715,7 +715,7 @@ Matris plan kaydından (trace.md) aynen alınmıştır ve 348 satırdır: 319 ka
 | GAP2-06 | P3 | Clipboard copy unguarded on web; success feedback via dead Alert | F20 |
 | GAP2-08 | P3 | detectSessionInUrl true races manual recovery-link handling | F22 |
 | GAP2-11 | P3 | IntegrationDetailModal claims test event sent without any request | F23 |
-| GAP2-12 | P3 | Top-level expo-sqlite/secure-store imports unverified on web bundle | F18, F49 |
+| GAP2-12 | P1 (F00 uygulamasında P3'ten yükseltildi: web paketi hiç derlenmiyordu) | Top-level expo-sqlite/secure-store imports unverified on web bundle | F00 (expo-sqlite sınırı uygulandı), F18, F49 |
 | INT-12 | P3 | V2 `edit_reminder_time`: sahnelenen payload yeniden doğrulamada reddediliyor (gate kapalı, gizli) | F21 |
 | INT-13 | P3 | Koç plan kurulumu idempotent değil: kurulum ile "confirmed" çözümlemesi arasında çift kurulum penceresi | F21 |
 | INT-16 | P3 | Hesap silme/oturum kapanması sonrası odak ve irade belleği sıfırlanmıyor; `focus.session.v1` kullanıcıya bağlı değil | F04 |
@@ -13169,7 +13169,8 @@ export function getLatestSnapshot<T>(userId: string | null | undefined, keyPrefi
 **A. Yerel okuma önbelleği**
 
 1. `frontend/lib/localReadCache.ts` (F04 `clearReadCacheMemory` içinde tutamacı kapatır ve `clearAllReadCache` ekler; bu faz onların üstüne ekler)
-   - `:1-3` ve `:29` — `import * as SQLite from 'expo-sqlite'` kaldırılır; yerine `import type { SQLiteDatabase } from 'expo-sqlite'` ve `loadSqlite()` (`require('expo-sqlite')`, önbellekli, `// eslint-disable-next-line @typescript-eslint/no-require-imports` + gerekçe yorumu; kalıp `hooks/useSpeechInput.ts:58`). `getDb` (`:47-61`) yalnız `isNativePlatform()` iken `loadSqlite()` çağırır; aksi hâlde hata fırlatır ve çağıranlar zaten AsyncStorage koluna düşer (GAP2-12).
+   - **Uygulama notu (F00, 2026-11-02):** bu madde F00'da öne çekilerek farklı biçimde uygulandı. `npx expo export --platform web`, `lib/localReadCache.ts:2` üst düzey `import * as SQLite from 'expo-sqlite'` yüzünden "Unable to resolve module ./wa-sqlite/wa-sqlite.wasm" ile tamamen düşüyordu (GAP2-12 bu nedenle P1'e yükseltildi). Aşağıdaki `require('expo-sqlite')` önerisi bu hatayı GİDERMEZ: Metro `require` çağrılarını grafiği kurarken toplar, çevresindeki çalışma zamanı koşuluna bakmaz. Uygulanan çözüm platform dikişidir: `frontend/lib/sqliteDriver.native.ts` (iOS/Android, tek çalışma zamanı içe aktarıcısı) ve `frontend/lib/sqliteDriver.ts` (web, yalnız `import type`, `loadSqlite()` `null` döner); `localReadCache.ts` `import { loadSqlite, type SQLiteDatabase } from './sqliteDriver'` kullanır ve `getDb` `loadSqlite()` `null` ise hata fırlatır. Sınır `frontend/__tests__/repo/sqliteWebBoundary.test.ts` ile kilitlidir (`require('expo-sqlite')` ve dinamik `import()` da reddedilir). F18 bu maddede yalnız bellek sınırı (SYN-21) işini yapar ve `loadSqlite()`'ı `./sqliteDriver`'dan alır; `require('expo-sqlite')` YAZMAZ. Özgün öneri kayıt için aşağıda bırakılmıştır.
+   - (Özgün öneri, F00 notuyla geçersiz) `:1-3` ve `:29` — `import * as SQLite from 'expo-sqlite'` kaldırılır; yerine `import type { SQLiteDatabase } from 'expo-sqlite'` ve `loadSqlite()` (`require('expo-sqlite')`, önbellekli, `// eslint-disable-next-line @typescript-eslint/no-require-imports` + gerekçe yorumu; kalıp `hooks/useSpeechInput.ts:58`). `getDb` (`:47-61`) yalnız `isNativePlatform()` iken `loadSqlite()` çağırır; aksi hâlde hata fırlatır ve çağıranlar zaten AsyncStorage koluna düşer (GAP2-12).
    - `:28` `memoryCache` — `READ_CACHE_MEMORY_MAX` (200) aşılınca en eski giriş (Map ekleme sırası) atılır (SYN-21 bellek sınırı).
    - `:109-147` `setCachedSnapshot` — dönüşte yazma yine en iyi çabadır; sınır uygulaması `memoryCache.set` hemen sonrasındadır.
    - Yeni: `pruneReadCache` ve `getLatestSnapshot` (aşağıda bölüm 4 adım 36-37). `getCachedSnapshot` (`:63-107`) değişmez; yaş denetimi çağıranındır.
@@ -14061,7 +14062,7 @@ useRefreshOnFocus(() => {
 
 **K. Yerel okuma önbelleği ve Today bootstrap (GAP2-12, SYN-21, SYN-24)**
 
-35. `lib/localReadCache.ts` — `expo-sqlite` tembel yükleme (GAP2-12) ve bellek sınırı:
+35. `lib/localReadCache.ts` — `expo-sqlite` tembel yükleme (GAP2-12) ve bellek sınırı. **Uygulama notu (F00, 2026-11-02):** tembel yükleme F00'da platform dikişiyle (`lib/sqliteDriver.native.ts` / `lib/sqliteDriver.ts`) yapıldı; aşağıdaki kod bloğundaki `loadSqlite` tanımı ve `require('expo-sqlite')` UYGULANMAZ, yerine `import { loadSqlite, type SQLiteDatabase } from './sqliteDriver'` kullanılır (gerekçe ve guard: Bölüm 2'deki F00 notu, `__tests__/repo/sqliteWebBoundary.test.ts`). Bu adımın geçerli kısmı `READ_CACHE_MEMORY_MAX` bellek sınırı ve budamadır:
 
 ```ts
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -24763,7 +24764,7 @@ Bu fazda veritabanı / Edge değişikliği yok. Gerekçe: kapı istemci web pake
 4. `ciTsconfigParity.test.ts` yaz (Bölüm 5). `routeLiterals.test.ts` yaz: kaynak okuma `readSource`, yorum atma `stripComments` (F48 yardımcıları).
 5. `npx jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB __tests__/repo/ciTsconfigParity.test.ts __tests__/repo/routeLiterals.test.ts; echo exit=$?`.
 
-**E2 — Web paket sözleşmesi (GAP2-12).**
+**E2 — Web paket sözleşmesi (GAP2-12).** **Uygulama notu (F00, 2026-11-02):** `expo-sqlite` için sınır F00'da kuruldu (`frontend/lib/sqliteDriver.native.ts` tek çalışma zamanı içe aktarıcısı, `frontend/lib/sqliteDriver.ts` web dikişi, `frontend/__tests__/repo/sqliteWebBoundary.test.ts` guard'ı) ve `npx expo export --platform web` yeşile döndü (2.772 modül). F49 bu guard'ı korur; `webBundleImports.test.ts` onu `expo-secure-store` ve `app.json` eklenti paketlerine genişletir, `expo-sqlite` kuralını yeniden yazmaz.
 1. `fixtures/webImportReview.json`: `app.json` eklenti paketleri ve `expo-sqlite`, `expo-secure-store` için üretim içe aktarıcıları (`rg -n "from 'expo-sqlite'|from 'expo-secure-store'" frontend/app frontend/components frontend/hooks frontend/lib frontend/services frontend/store frontend/repositories`) tek tek incelenip yazılır: `localReadCache.ts` ve `authStorage.ts` için `guard: 'platform-check'`, gerekçe "çağrılar `isNativePlatform()`/`Platform.OS` arkasında".
 2. `webBundleImports.test.ts` yaz (Bölüm 5).
 3. Karar kuralı (E1 keşfine göre): bölme gerekmiyorsa `localReadCache.ts:1` üstüne yorum; gerekiyorsa 2.1 madde 4(b). `app.json` `web.lang` eklenir.
