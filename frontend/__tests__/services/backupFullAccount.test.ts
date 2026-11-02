@@ -80,16 +80,20 @@ describe('export', () => {
     await AsyncStorage.multiSet([
       ['moods.v1.u1', JSON.stringify({ v: 1, checkins: [{ id: 'c' }] })],
       ['routine.v1.u1', JSON.stringify({ v: 1, history: [] })],
-      ['focus.settings.v1', JSON.stringify({ work: 25 })],
+      // F04: focus settings are per user; the old unscoped key and another account's key stay out
+      ['focus.settings.v1.u1', JSON.stringify({ work: 25 })],
+      ['focus.settings.v1', JSON.stringify({ work: 50 })],
+      ['focus.settings.v1.u2', JSON.stringify({ work: 45 })],
       ['journal.draft.v1.u1.2026-10-08', JSON.stringify({ content: 'taslak' })],
       ['moods.v1.u2', JSON.stringify({ v: 1 })],
       ['journal.draft.v1.u2.2026-10-08', JSON.stringify({ content: 'başkasının taslağı' })],
       ['atlas_notion_login_session', JSON.stringify({ access_token: 'SECRET' })],
       ['outbox.v1.core.u1', JSON.stringify({ v: 1 })],
       ['focus.session.v1', '{}'],
+      ['focus.session.v1.u1', '{}'],
     ]);
     const b = await buildBackup(new Date(), { userId: 'u1' });
-    expect(b.device.map((d) => d.key)).toEqual(['focus.settings.v1', 'journal.draft.v1.u1.2026-10-08', 'moods.v1.u1', 'routine.v1.u1']);
+    expect(b.device.map((d) => d.key)).toEqual(['focus.settings.v1.u1', 'journal.draft.v1.u1.2026-10-08', 'moods.v1.u1', 'routine.v1.u1']);
     expect(JSON.stringify(b)).not.toMatch(/SECRET/);
   });
 });

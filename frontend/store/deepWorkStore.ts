@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import {
   deleteDeepWorkSession,
@@ -71,3 +72,6 @@ export const useDeepWorkStore = create<DeepWorkStore>((set, get) => ({
       .reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'deepWork', store: useDeepWorkStore });

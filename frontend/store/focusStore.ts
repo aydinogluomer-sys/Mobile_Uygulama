@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { accountEpoch, registerAccountScoped, registerAccountStorage } from '../lib/accountScope';
+import { currentUser } from '../lib/session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   addTask as repoInsertFocusTask,
@@ -47,9 +49,16 @@ const PHASE_TOKEN: Record<Phase, string> = {
   longBreak: 'long_break',
 };
 
-const SETTINGS_KEY = 'focus.settings.v1';
+/**
+ * F04 (STO-13, INT-16): both keys carry the user id, so a paused session or a setting never
+ * crosses accounts on a shared device. The bare prefix is the old, unscoped key: it is read
+ * once to adopt settings (a session under it is dropped, its owner is unknown).
+ */
+export const SETTINGS_KEY_PREFIX = 'focus.settings.v1';
 /** R05.03 — the session in progress, so an app kill does not lose it. */
-export const SESSION_KEY = 'focus.session.v1';
+export const SESSION_KEY_PREFIX = 'focus.session.v1';
+export const sessionKey = (uid: string): string => `${SESSION_KEY_PREFIX}.${uid}`;
+export const settingsKey = (uid: string): string => `${SETTINGS_KEY_PREFIX}.${uid}`;
 /** How often a running session refreshes its `lastSeenAt` (ms). */
 const HEARTBEAT_MS = 15_000;
 
@@ -103,6 +112,47 @@ export const DEFAULT_SETTINGS: FocusSettings = {
   showFocusChart: true,
   showRanking: true,
 };
+
+/** The same bounds as the Stepper controls of `components/focus/FocusSettingsModal.tsx`. */
+export const FOCUS_SETTING_BOUNDS = {
+  workMinutes: [1, 120],
+  shortBreakMinutes: [1, 60],
+  longBreakMinutes: [1, 60],
+  longBreakInterval: [2, 12],
+  overlayOpacity: [0, 1],
+} as const;
+
+const BOOLEAN_SETTINGS = [
+  'autoStartBreaks', 'autoStartPomodoros', 'requireTaskBeforeStart', 'autoCheckTasks',
+  'soundOnFinish', 'notifyOnFinish', 'enableLocalReports', 'showFocusChart', 'showRanking',
+] as const;
+
+/**
+ * F04 (INT-16): stored settings are untrusted input. `{"workMinutes":"abc"}` used to spread into
+ * the store and make `phaseSeconds` return NaN. Numbers outside the Stepper range are clamped
+ * (minutes rounded), anything of the wrong type falls back to its default, unknown keys are dropped.
+ */
+export function normaliseFocusSettings(raw: unknown): FocusSettings {
+  const out: FocusSettings = { ...DEFAULT_SETTINGS };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  const r = raw as Record<string, unknown>;
+  for (const key of Object.keys(FOCUS_SETTING_BOUNDS) as (keyof typeof FOCUS_SETTING_BOUNDS)[]) {
+    const v = r[key];
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    const [lo, hi] = FOCUS_SETTING_BOUNDS[key];
+    const clamped = Math.min(hi, Math.max(lo, v));
+    out[key] = key === 'overlayOpacity' ? clamped : Math.round(clamped);
+  }
+  for (const key of BOOLEAN_SETTINGS) {
+    if (typeof r[key] === 'boolean') out[key] = r[key] as boolean;
+  }
+  if (r.hourFormat === '24h' || r.hourFormat === '12h') out.hourFormat = r.hourFormat;
+  if (r.defaultReportRange === 'today' || r.defaultReportRange === 'week' || r.defaultReportRange === 'month' || r.defaultReportRange === 'year') {
+    out.defaultReportRange = r.defaultReportRange;
+  }
+  if (typeof r.presetId === 'string') out.presetId = r.presetId;
+  return out;
+}
 
 /** The configured length of one phase, in seconds. */
 export function phaseSeconds(s: FocusSettings, phase: Phase): number {
@@ -191,11 +241,34 @@ function persistSession(st: Pick<FocusStore, 'phase' | 'clock' | 'sessionStarted
   const now = Date.now();
   lastHeartbeat = now;
   const snap = snapshotOf({ phase: st.phase, clock: st.clock, sessionStartedAt: st.sessionStartedAt, sessionsCompleted: st.sessionsCompleted, now, step: st.smallStep });
-  AsyncStorage.setItem(SESSION_KEY, JSON.stringify(snap)).catch(() => {});
+  const payload = JSON.stringify(snap);
+  // F04: under the signed-in user's key; a write that resolves after an account boundary is dropped.
+  const epoch = accountEpoch();
+  void (async () => {
+    const uid = (await currentUser())?.id;
+    if (!uid || epoch !== accountEpoch()) return;
+    await AsyncStorage.setItem(sessionKey(uid), payload);
+  })().catch(() => {});
 }
 
 function clearSession(): void {
-  AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
+  void (async () => {
+    const uid = (await currentUser())?.id;
+    if (!uid) return;
+    await AsyncStorage.removeItem(sessionKey(uid));
+  })().catch(() => {});
+}
+
+/** F04: the user's settings key, adopting the old unscoped key once (the `lib/syncQueue.ts` migration pattern). */
+async function readSettings(uid: string): Promise<FocusSettings | null> {
+  const own = await AsyncStorage.getItem(settingsKey(uid));
+  if (own) return normaliseFocusSettings(JSON.parse(own));
+  const legacy = await AsyncStorage.getItem(SETTINGS_KEY_PREFIX);
+  if (!legacy) return null;
+  const adopted = normaliseFocusSettings(JSON.parse(legacy));
+  await AsyncStorage.setItem(settingsKey(uid), JSON.stringify(adopted));
+  await AsyncStorage.removeItem(SETTINGS_KEY_PREFIX);
+  return adopted;
 }
 
 export const useFocusStore = create<FocusStore>((set, get) => ({
@@ -217,8 +290,13 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   updateSettings: (patch) => {
     const next = { ...get().settings, ...patch };
     set({ settings: next });
-    // Kalıcı kaydet (yangın-ve-unut)
-    AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next)).catch(() => {});
+    // Kalıcı kaydet (yangın-ve-unut) -- F04: kullanıcının kendi anahtarına
+    const payload = JSON.stringify(next);
+    void (async () => {
+      const uid = (await currentUser())?.id;
+      if (!uid) return;
+      await AsyncStorage.setItem(settingsKey(uid), payload);
+    })().catch(() => {});
     // Süreyi güncelle (mevcut seans yoksa). An open session keeps the plan
     // it started with -- its clock carries `plannedSeconds`.
     if (get().status === 'idle') {
@@ -228,10 +306,11 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
 
   loadSettings: async () => {
     try {
-      const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-      if (!raw) return;
-      const saved = JSON.parse(raw);
-      const next = { ...DEFAULT_SETTINGS, ...saved } as FocusSettings;
+      const epoch = accountEpoch();
+      const uid = (await currentUser())?.id;
+      if (!uid) return;
+      const next = await readSettings(uid);
+      if (!next || epoch !== accountEpoch()) return;
       set({ settings: next });
       if (get().status === 'idle') {
         set({ secondsLeft: phaseSeconds(next, get().phase) });
@@ -241,8 +320,13 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
 
   restoreSession: async () => {
     try {
-      const snap = parseSnapshot(await AsyncStorage.getItem(SESSION_KEY));
-      if (!snap) return;
+      const epoch = accountEpoch();
+      const uid = (await currentUser())?.id;
+      if (!uid) return;
+      // F04: a session saved under the old unscoped key belongs to nobody we can name: drop it, never load it.
+      await AsyncStorage.removeItem(SESSION_KEY_PREFIX).catch(() => {});
+      const snap = parseSnapshot(await AsyncStorage.getItem(sessionKey(uid)));
+      if (!snap || epoch !== accountEpoch()) return;
       // A session already open in memory wins over the stored one.
       if (get().status !== 'idle') return;
       const clock = restoredClock(snap);
@@ -527,3 +611,17 @@ async function advancePhase(): Promise<void> {
     if (auto) get().start();
   }
 }
+
+// F04 (STO-13, INT-16): the timer, the small step and the task list belong to the signed-in account.
+// `tick` returns at once on `status: 'idle'`, so the reset also stops a running timer.
+registerAccountScoped({
+  name: 'focus',
+  store: useFocusStore,
+  onReset: () => {
+    lastHeartbeat = 0;
+    advancing = false;
+  },
+});
+// the half-finished session goes on every account boundary; the settings stay under their user's key
+registerAccountStorage({ name: 'focus.session', transient: true, keysFor: (uid) => [sessionKey(uid)] });
+registerAccountStorage({ name: 'focus.settings', transient: false, keysFor: (uid) => [settingsKey(uid)] });

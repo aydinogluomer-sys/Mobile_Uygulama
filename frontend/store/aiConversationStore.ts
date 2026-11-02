@@ -22,6 +22,8 @@
  * proposal can never be confirmed while looking at B.
  */
 import { create } from 'zustand';
+import { accountEpoch, registerAccountScoped, registerAccountStorage } from '../lib/accountScope';
+import { currentUser } from '../lib/session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   listThreads, findThread, openThread, olderMessages, renameThread,
@@ -31,7 +33,41 @@ import {
 import type { CoachAction } from '../lib/coachActions';
 
 /** Where the last-open thread id is remembered. Preference, never data. */
-const LAST_ACTIVE_KEY = 'aderyth.coach.lastConversationId';
+/**
+ * F04 (STO-22): the last-open thread is remembered per user. The old, unscoped key
+ * (the bare prefix) is never read: whose thread it named is unknown.
+ */
+const LAST_ACTIVE_KEY_PREFIX = 'aderyth.coach.lastConversationId';
+export const lastActiveKey = (uid: string): string => `${LAST_ACTIVE_KEY_PREFIX}:${uid}`;
+
+async function readLastActive(): Promise<string | null> {
+  const uid = (await currentUser())?.id;
+  if (!uid) return null;
+  return AsyncStorage.getItem(lastActiveKey(uid));
+}
+
+function writeLastActive(id: string): void {
+  void (async () => {
+    const uid = (await currentUser())?.id;
+    if (!uid) return;
+    await AsyncStorage.setItem(lastActiveKey(uid), id);
+  })().catch(() => {});
+}
+
+function forgetLastActive(): void {
+  void (async () => {
+    const uid = (await currentUser())?.id;
+    if (!uid) return;
+    await AsyncStorage.removeItem(lastActiveKey(uid));
+  })().catch(() => {});
+}
+
+/**
+ * F04 (STO-V02): every conversation-list request takes a number; only the newest one may write
+ * the list. A reset (an account boundary, a new hydrate) bumps it, so the answer to a request the
+ * previous account started is dropped instead of becoming the new account's list.
+ */
+let listSeq = 0;
 
 export type CoachStoreMessage = {
   id: string;
@@ -116,12 +152,16 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
    * rather than showing an error about something the user never did.
    */
   hydrate: async () => {
+    const epoch = accountEpoch();
     await get().loadConversations({ reset: true });
+    if (epoch !== accountEpoch()) return;
     let last: string | null = null;
-    try { last = await AsyncStorage.getItem(LAST_ACTIVE_KEY); } catch { last = null; }
+    try { last = await readLastActive(); } catch { last = null; }
+    if (epoch !== accountEpoch()) return;
 
     if (last) {
       const res = await findThread(last);
+      if (epoch !== accountEpoch()) return;
       if (res.ok && res.data) { await get().openConversation(last); return; }
     }
     const first = get().conversations[0];
@@ -130,9 +170,14 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
 
   loadConversations: async (opts) => {
     const reset = opts?.reset ?? false;
-    if (get().loadingConversations) return;
+    // STO-V02: a reset is never swallowed by a load already in flight (that one may belong to the
+    // previous account); a plain "load more" still waits its turn.
+    if (get().loadingConversations && !reset) return;
+    const seq = ++listSeq;
+    const epoch = accountEpoch();
     set({ loadingConversations: true });
     const res = await listThreads(reset ? null : get().conversationsCursor, 30);
+    if (seq !== listSeq || epoch !== accountEpoch()) return; // a newer request owns the list now
     if (!res.ok) { set({ loadingConversations: false, error: res.error }); return; }
     set((s) => ({
       conversations: reset ? res.data.rows : [...s.conversations, ...res.data.rows],
@@ -147,9 +192,12 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
     // Swap EVERYTHING that belongs to a thread at once. A staged proposal from
     // the previous conversation must not survive this call.
     set({ activeId: id, messages: [], pendingAction: null, loadingMessages: true, messagesHasMore: false });
-    try { await AsyncStorage.setItem(LAST_ACTIVE_KEY, id); } catch { /* preference only */ }
+    writeLastActive(id);
+    const epoch = accountEpoch();
 
     const res = await openThread(id);
+    // another thread was opened meanwhile, or the account changed: this answer is not for the screen
+    if (get().activeId !== id || epoch !== accountEpoch()) return;
     if (!res.ok) { set({ loadingMessages: false, error: res.error }); return; }
 
     set({
@@ -179,7 +227,7 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
   /** A blank slate. The row is created by the first message, not by this. */
   newChat: () => {
     set({ activeId: null, messages: [], pendingAction: null, messagesHasMore: false, error: null });
-    void AsyncStorage.removeItem(LAST_ACTIVE_KEY).catch(() => {});
+    forgetLastActive();
   },
 
   rename: async (id, title) => {
@@ -241,7 +289,7 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
           conversations: [row, ...s.conversations],
           activeId: adopt ? row.id : s.activeId,
         }));
-        if (adopt) void AsyncStorage.setItem(LAST_ACTIVE_KEY, row.id).catch(() => {});
+        if (adopt) writeLastActive(row.id);
       },
       onUserMessage: (row) => {
         if (!stillOpen()) return;
@@ -287,9 +335,19 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
     await resolveStagedAction(current.row.id, status);
   },
 
-  reset: () => set({
-    conversations: [], conversationsCursor: null, conversationsHasMore: false,
-    activeId: null, messages: [], messagesHasMore: false,
-    pendingAction: null, sending: false, error: null,
-  }),
+  reset: () => {
+    listSeq += 1;
+    set({
+      conversations: [], conversationsCursor: null, conversationsHasMore: false, loadingConversations: false,
+      activeId: null, messages: [], messagesHasMore: false,
+      pendingAction: null, sending: false, error: null,
+    });
+    // The last-open thread is NOT forgotten here: leaving the screen and coming back must reopen it.
+    // It leaves with the account (the registry's transient key below) or with `newChat`.
+  },
 }));
+
+// F04 (STO-22, STO-V02): the transcript belongs to the signed-in account; a list request in flight
+// across the boundary is dropped, and the last-open thread of the account leaves with it.
+registerAccountScoped({ name: 'aiConversation', store: useAiConversationStore, onReset: () => { listSeq += 1; } });
+registerAccountStorage({ name: 'coach.lastConversation', transient: true, keysFor: (uid) => [lastActiveKey(uid)] });

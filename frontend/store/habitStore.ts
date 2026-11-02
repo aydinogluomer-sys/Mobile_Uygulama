@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import type { Habit } from '../lib/supabase';
 import { scheduleHabitReminder, cancelHabitReminder } from '../lib/notifications';
@@ -314,3 +315,6 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     await wp.fetchToday();
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'habit', store: useHabitStore });

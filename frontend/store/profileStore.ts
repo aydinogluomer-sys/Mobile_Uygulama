@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import type { Profile, ProfileBadge, LeaderboardRow } from '../lib/supabase';
 import {
@@ -66,3 +67,6 @@ export const useProfileStore = create<ProfileStore>((set, get) => ({
     if (res.ok) set({ myRank: res.data });
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'profile', store: useProfileStore });

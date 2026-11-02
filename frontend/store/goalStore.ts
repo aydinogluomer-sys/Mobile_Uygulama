@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import {
   archiveGoal as repoArchive,
@@ -281,3 +282,6 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
     return false;
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'goal', store: useGoalStore });

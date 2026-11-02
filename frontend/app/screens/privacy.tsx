@@ -126,6 +126,8 @@ const SECTIONS: Section[] = [
     body: [
       'Veriler Supabase üzerinde barındırılan bir PostgreSQL veritabanında saklanır. Uygulama ile sunucu arasındaki tüm trafik HTTPS/TLS ile şifrelenir.',
       'Cihazında ayrıca oturum bilgin, çevrimdışı kayıt kuyruğun ve bazı tercihlerin yerel olarak saklanır.',
+      'Mobilde oturum anahtarın cihazın güvenli deposunda (Keychain / Keystore) saklanır; web’de tarayıcının yerel depolamasında (localStorage) tutulur. Ortak bir bilgisayarda işin bitince Ayarlar > Hesap > Oturumu Kapat’ı kullan.',
+      'Oturumu kapattığında bu cihazdaki önbellek temizlenir ve hatırlatıcıların iptal edilir; henüz sunucuya gitmemiş değişikliklerin cihazda güvende kalır ve aynı hesapla tekrar girdiğinde gönderilir.',
     ],
   },
   {

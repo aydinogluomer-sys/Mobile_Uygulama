@@ -10,17 +10,19 @@
  *   routine.v1.<uid>          routine templates, history (until migration 030)
  *   review.actions.v1.<uid>   weekly review next actions (until migration 031)
  *   journal.draft.v1.<uid>.*  unsaved journal drafts
- *   focus.settings.v1, reminders.settings.v1, app_theme_dark,
+ *   focus.settings.v1.<uid>   focus settings (per user since F04)
+ *   reminders.settings.v1, app_theme_dark,
  *   app_seasonal_motion, app_accent   display and reminder preferences
  *
  * Another account's keys never match (the uid is part of the key).
  */
-const SETTINGS = new Set(['focus.settings.v1', 'reminders.settings.v1', 'app_theme_dark', 'app_seasonal_motion', 'app_accent']);
+const SETTINGS = new Set(['reminders.settings.v1', 'app_theme_dark', 'app_seasonal_motion', 'app_accent']);
 
 export function isDeviceExportKey(key: string, userId: string): boolean {
   if (!userId) return false;
   if (SETTINGS.has(key)) return true;
   return key === `moods.v1.${userId}`
+    || key === `focus.settings.v1.${userId}`
     || key === `routine.v1.${userId}`
     || key === `review.actions.v1.${userId}`
     || key.startsWith(`journal.draft.v1.${userId}.`);

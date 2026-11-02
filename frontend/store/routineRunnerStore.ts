@@ -13,6 +13,7 @@
  * today, once per session (R05.07). Nothing else is written, and no XP is
  * awarded by the routine itself.
  */
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -176,3 +177,6 @@ export const useRoutineRunnerStore = create<RunnerStore>((set, get) => {
     },
   };
 });
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'routineRunner', store: useRoutineRunnerStore });

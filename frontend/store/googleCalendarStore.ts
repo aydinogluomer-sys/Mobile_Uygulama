@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { withEdgeDeadline } from '../lib/edgeCall';
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
@@ -180,3 +181,6 @@ export const useGoogleCalendarStore = create<GoogleCalendarStore>((set, get) => 
     set({ connection: null, status: 'idle', error: null });
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'googleCalendar', store: useGoogleCalendarStore });

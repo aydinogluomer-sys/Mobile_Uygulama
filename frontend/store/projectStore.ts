@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import {
   archiveProject,
@@ -252,3 +253,6 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     return false;
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'project', store: useProjectStore });

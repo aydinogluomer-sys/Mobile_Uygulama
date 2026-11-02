@@ -42,8 +42,12 @@ describe('R02 — lifecycle', () => {
     expect((layout.match(/useTaskStore\.getState\(\)\.flush\(\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
   it('drops the account from memory on sign-out, resumes after a session refresh', () => {
-    // R02.03: the same two lines now also reset / resume the core outbox (a block, not a bare call).
-    expect(layout).toMatch(/if \(event === 'SIGNED_OUT'\) \{ useTaskStore\.getState\(\)\.resetForAccount\(\); coreOutbox\.reset\(\); \}/);
+    // R02.03: the core outbox is reset / resumed together with the task outbox.
+    // F04: the sign-out resets both through the one account registry (lib/accountScope.ts), which
+    // is where each of them is registered; the layout calls nothing else on SIGNED_OUT.
+    expect(layout).toMatch(/if \(event === 'SIGNED_OUT'\) \{ void endAccountScope\('signed_out', prevUid\); \}/);
+    expect(code('store/taskStore.ts')).toMatch(/registerAccountScoped\(\{ name: 'task', store: useTaskStore \}\)/);
+    expect(code('services/coreOutbox.ts')).toMatch(/registerAccountScoped\(\{ name: 'coreOutbox', onReset: \(\) => coreOutbox\.reset\(\) \}\)/);
     expect(layout).toMatch(/event === 'TOKEN_REFRESHED' \|\| event === 'SIGNED_IN'\) \{ void useTaskStore\.getState\(\)\.authRefreshed\(\); void coreOutbox\.authRefreshed\(\); \}/);
     expect(layout).toMatch(/void coreOutbox\.flush\(\);/);
   });

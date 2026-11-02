@@ -32,7 +32,8 @@
  * proves the app layer never even asks for the wrong rows, which is a
  * different claim and worth making separately.
  */
-import { useAiConversationStore } from '../../store/aiConversationStore';
+import { useAiConversationStore, lastActiveKey } from '../../store/aiConversationStore';
+import { endAccountScope, resetAccountMemory } from '../../lib/accountScope';
 
 // ---------------------------------------------------------------------------
 // The fake database
@@ -56,6 +57,9 @@ const mockDb: { user: string; conversations: Conv[]; messages: Msg[]; actions: A
   user: 'user-A', conversations: [], messages: [], actions: [], seq: 0,
 };
 const mockId = (p: string) => `${p}-${++mockDb.seq}`;
+/** F04: how often a thread was looked up, and a gate that can hold the list request at the "network". */
+const mockRepoCalls = { findThread: 0 };
+const mockGate = { listThreads: null as Promise<void> | null };
 /** Monotonic, so ordering by `created_at` is deterministic under a fast clock. */
 const mockNow = () => new Date(Date.UTC(2026, 0, 1) + mockDb.seq * 1000).toISOString();
 /** The user's own projects. A project id outside this set is another user's. */
@@ -66,10 +70,12 @@ jest.mock('../../repositories/aiConversationRepository', () => ({
   MESSAGE_PAGE_SIZE: 40,
 
   fetchConversationsPage: async (cursor: unknown, limit?: number) => {
+    // the rows of the caller at the time of the request, even if the answer is held back
     const rows = mockDb.conversations
       .filter((c) => c.user_id === mockDb.user)
       .slice()
       .sort((a, b) => (a.last_message_at < b.last_message_at ? 1 : -1));
+    if (mockGate.listThreads) await mockGate.listThreads;
     const capped = limit ?? 30;
     return { ok: true, data: { rows: rows.slice(0, capped), nextCursor: null, hasMore: rows.length > capped } };
   },
@@ -120,7 +126,7 @@ jest.mock('../../repositories/aiConversationRepository', () => ({
   },
 
   fetchConversation: async (id: string) => ({
-    ok: true,
+    ok: ++mockRepoCalls.findThread > 0,
     data: mockDb.conversations.find((c) => c.id === id && c.user_id === mockDb.user) ?? null,
   }),
 
@@ -190,13 +196,16 @@ jest.mock('../../repositories/aiConversationRepository', () => ({
   },
 }));
 
-/** The last-open thread id. A preference, and the only local state there is. */
-let mockLastActive: string | null = null;
+/** Local storage, by key. The last-open thread id is the only local state there is (F04: per user). */
+const mockKv = new Map<string, string>();
 jest.mock('@react-native-async-storage/async-storage', () => ({
-  getItem: async () => mockLastActive,
-  setItem: async (_k: string, v: string) => { mockLastActive = v; },
-  removeItem: async () => { mockLastActive = null; },
+  getItem: async (k: string) => mockKv.get(k) ?? null,
+  setItem: async (k: string, v: string) => { mockKv.set(k, v); },
+  removeItem: async (k: string) => { mockKv.delete(k); },
+  multiRemove: async (keys: string[]) => { keys.forEach((k) => mockKv.delete(k)); },
 }));
+// F04: the signed-in user is whoever the fake database says is calling.
+jest.mock('../../lib/session', () => ({ currentUser: async () => ({ id: mockDb.user, email: null }) }));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -237,7 +246,8 @@ beforeEach(() => {
   mockDb.messages = [];
   mockDb.actions = [];
   mockDb.seq = 0;
-  mockLastActive = null;
+  mockKv.clear();
+  mockGate.listThreads = null;
   requestSeq = 0;
   store().reset();
 });
@@ -279,7 +289,7 @@ describe('a conversation survives leaving the screen', () => {
     const b = store().activeId;
 
     // Deleted from another device: the id in AsyncStorage now points nowhere.
-    mockLastActive = 'conv-does-not-exist';
+    mockKv.set(lastActiveKey('user-A'), 'conv-does-not-exist');
     await remount();
 
     expect(store().activeId).toBe(b);
@@ -641,5 +651,92 @@ describe('one thread never leaks into another', () => {
     const row = mockDb.conversations.find((c) => c.id === id)!;
     expect(row.title).toBe(A_ONLY);
     expect(row.project_id).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F04 (STO-22, STO-V02) — the last-open thread and the list belong to one account
+// ---------------------------------------------------------------------------
+
+describe('F04 — account boundary', () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("A's last-open thread is stored under A and is not read for B", async () => {
+    await send(A_ONLY, 'A yanıtı');
+    const aThread = store().activeId!;
+    await flush();
+    expect(mockKv.get(lastActiveKey('user-A'))).toBe(aThread);
+
+    resetAccountMemory('signed_out');
+    mockDb.user = 'user-B';
+    const finds = mockRepoCalls.findThread;
+    await store().hydrate();
+    expect(store().activeId).toBeNull(); // B has no thread; A's id was never looked up
+    expect(mockRepoCalls.findThread).toBe(finds);
+  });
+
+  it("the account boundary removes the account's last-open key; reset() alone keeps it", async () => {
+    await send(A_ONLY, 'A yanıtı');
+    await flush();
+    store().reset();
+    await flush();
+    expect(mockKv.has(lastActiveKey('user-A'))).toBe(true); // leaving the screen is not leaving the account
+    await endAccountScope('signed_out', 'user-A');
+    expect(mockKv.has(lastActiveKey('user-A'))).toBe(false);
+  });
+
+  it('no key: findThread is not called (and with a key it is: the counter is live)', async () => {
+    const finds = mockRepoCalls.findThread;
+    await store().hydrate();
+    expect(mockRepoCalls.findThread).toBe(finds);
+    mockKv.set(lastActiveKey('user-A'), 'conv-anything');
+    await store().hydrate();
+    expect(mockRepoCalls.findThread).toBe(finds + 1);
+  });
+
+  it('STO-V02, same account: a reset while a "load more" is in flight runs, and the older answer is dropped', async () => {
+    await send(A_ONLY, 'A yanıtı');
+    let release!: () => void;
+    mockGate.listThreads = new Promise<void>((r) => { release = r; });
+    const older = store().loadConversations();          // a page request, held
+    await flush();
+    expect(store().loadingConversations).toBe(true);
+
+    mockGate.listThreads = null;
+    // a thread written on another device: only a real reload can show it
+    mockDb.conversations.push({
+      id: 'conv-elsewhere', user_id: 'user-A', title: 'Başka cihaz', project_id: null,
+      created_at: '2027-01-01T00:00:00.000Z', updated_at: '2027-01-01T00:00:00.000Z',
+      last_message_at: '2027-01-01T00:00:00.000Z', archived_at: null,
+    } as never);
+    await store().loadConversations({ reset: true });    // must not be skipped
+    expect(store().conversations.map((c) => c.title)).toEqual(expect.arrayContaining(['Başka cihaz']));
+    expect(store().loadingConversations).toBe(false);
+
+    release();
+    await older;
+    expect(store().conversations.map((c) => c.title)).toEqual(expect.arrayContaining(['Başka cihaz']));
+    expect(store().loadingConversations).toBe(false);
+  });
+
+  it('STO-V02: a reset request is not swallowed by a load in flight, and the late answer is dropped', async () => {
+    await send(A_ONLY, 'A yanıtı');
+    let release!: () => void;
+    mockGate.listThreads = new Promise<void>((r) => { release = r; });
+    const stale = store().loadConversations();          // A's request, held at the "network"
+    await flush();
+    expect(store().loadingConversations).toBe(true);
+
+    resetAccountMemory('signed_out');
+    mockDb.user = 'user-B';
+    mockGate.listThreads = null;
+    await store().loadConversations({ reset: true });    // B's request is not skipped
+    expect(store().conversations).toEqual([]);
+    expect(store().loadingConversations).toBe(false);
+
+    release();
+    await stale;                                         // A's answer arrives late
+    expect(store().conversations).toEqual([]);           // and is not written into B's list
+    expect(store().loadingConversations).toBe(false);
   });
 });

@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import { Platform } from 'react-native';
 import {
@@ -794,3 +795,13 @@ export function onboardingRoute(status: OnboardingStatus | 'unknown'): Onboardin
   if (status === 'pending') return '/onboarding/needs';
   return null;
 }
+
+// F04: the store, the install in flight and the once-per-session `onboarding_started` flag belong to the account.
+registerAccountScoped({
+  name: 'onboarding',
+  store: useOnboardingStore,
+  onReset: () => {
+    installInFlight = null;
+    startedEmitted = false;
+  },
+});

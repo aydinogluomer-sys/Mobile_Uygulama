@@ -2,12 +2,14 @@ import { resetWebhookCache } from '../services/webhookService';
 import { coreOutbox } from '../services/coreOutbox';
 import PrivacyCover from '../components/PrivacyCover';
 import { maybeRunDailyLocalBackup } from '../services/localBackupService';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, View, type AppStateStatus } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../lib/supabase';
+// F04 — one account boundary for everything account-scoped (stores, read cache, reminders, keys).
+import { endAccountScope } from '../lib/accountScope';
 import { colors } from '../lib/tokens';
 import { useThemeStore } from '../store/themeStore';
 import { useNotionSessionStore } from '../store/notionSessionStore';
@@ -67,6 +69,9 @@ export default function RootLayout() {
   const onboardingStatus = useOnboardingStore((s) => s.status);
   const onboardingLoadError = useOnboardingStore((s) => s.loadError);
   const personalizing = useOnboardingStore((s) => s.personalizing);
+  // F04: the user the app last saw. A SIGNED_OUT event carries no session, so whose state to
+  // clear comes from here; it is set at boot and after every auth event.
+  const lastUidRef = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -87,6 +92,7 @@ export default function RootLayout() {
       await Promise.all([hydrateNotionSession(), hydrateSyncQueue()]);
       const { data: { session } } = await supabase.auth.getSession();
       if (!alive) return;
+      lastUidRef.current = session?.user?.id ?? null;
       setSession(session);
       setLoading(false);
       // §18 ilk replay: önceki oturumun kuyruğa alıp da onaylatamadığı
@@ -104,11 +110,16 @@ export default function RootLayout() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
-      // R02.06 — the task outbox is per account. A sign-out drops this
-      // account's tasks from memory (its unsent work stays saved under its
-      // own key); a refreshed or new session may resume a paused outbox.
-      if (event === 'SIGNED_OUT') { useTaskStore.getState().resetForAccount(); coreOutbox.reset(); }
+      // F04 (STO-01) — every account-scoped store, module map, the read cache and the reminders
+      // are cleared through ONE registry (lib/accountScope.ts): on a sign-out, and when a different
+      // user appears without one. Unsent work stays saved under its own account's key (R02.06).
+      // A refreshed or new session may resume a paused outbox.
+      const nextUid = session?.user?.id ?? null;
+      const prevUid = lastUidRef.current;
+      if (event === 'SIGNED_OUT') { void endAccountScope('signed_out', prevUid); }
+      else if (prevUid && nextUid && prevUid !== nextUid) { void endAccountScope('user_changed', prevUid); void hydrateSyncQueue(); }
       else if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') { void useTaskStore.getState().authRefreshed(); void coreOutbox.authRefreshed(); }
+      lastUidRef.current = nextUid;
       // Webhook kayıtları oturum boyunca bellekte tutuluyor (tamamlama yolu
       // her tik'te PostgREST'e gitmesin diye). Hesap değişince o liste artık
       // yanlış sahibe ait; bırakılırsa A'nın uç noktasına B'nin tamamlaması

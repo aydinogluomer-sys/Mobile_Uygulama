@@ -27,16 +27,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { withEdgeDeadline } from '../lib/edgeCall';
-import { useAiConversationStore } from '../store/aiConversationStore';
 import { useTaskStore } from '../store/taskStore';
 import { useLogStore } from '../store/logStore';
-import { useJournalStore } from '../store/journalStore';
-import { useNoteStore } from '../store/noteStore';
-import { useRecoveryStore } from '../store/recoveryStore';
 import { coreOutbox } from './coreOutbox';
-import { useRoutineRunnerStore } from '../store/routineRunnerStore';
-import { useMoodStore } from '../store/moodStore';
-import { listScheduled, cancelScheduled } from '../lib/notifications';
+import { flushAllOutboxes } from './unifiedOutbox';
+// F04 — one account boundary: every registered store, module map, the read cache, reminders, keys.
+import { endAccountScope } from '../lib/accountScope';
+import { currentUser } from '../lib/session';
 import type { RepoResult } from '../repositories/shared';
 
 /**
@@ -53,25 +50,18 @@ const DEVICE_PREFERENCE_KEYS = new Set(['app_theme_dark', 'app_seasonal_motion',
 /**
  * Everything this device remembered about the person who just left.
  *
- * Named explicitly in the doc rather than only in code because the list is the
- * claim: the offline log queue, the Notion login session, monthly-review
- * drafts, the focus settings and the AI Coach's last-open thread all carry
+ * F04: memory, the read cache (this user's rows and, for a deletion, every user's), the reminders
+ * and the account's own keys go through the one registry (`lib/accountScope.ts`), the same path a
+ * sign-out takes; there is no second, hand-written list here to fall behind. Then the whole of
+ * AsyncStorage is swept except the display preferences: the offline log queue, the Notion login
+ * session, monthly-review drafts, the focus settings and the AI Coach's last-open thread all carry
  * user content or user-scoped identifiers.
  */
-async function clearLocalState(): Promise<void> {
-  // R02.06 / R10.04 — memory first: a delivery still running must not write
-  // the deleted account's outbox back after the device copy is removed.
-  try { coreOutbox.reset(); } catch { /* not loaded */ }
-  try { useTaskStore.getState().resetForAccount(); } catch { /* not mounted */ }
-  try { useJournalStore.setState({ entries: [] }); useNoteStore.setState({ notes: [], cursor: null, hasMore: false, error: null }); } catch { /* not mounted */ }
-  try { useRecoveryStore.setState({ plans: [] }); useLogStore.setState({ logs: [], pendingSyncCount: 0, deadSyncCount: 0 }); } catch { /* not mounted */ }
-  // `userId: null` first: both stores only persist while they know their owner,
-  // so nothing they hold can be written back after the wipe below.
-  try { useRoutineRunnerStore.setState({ userId: null, templates: [], session: null, logged: [], history: [], error: null }); } catch { /* not mounted */ }
-  try { useMoodStore.setState({ userId: null, definitions: [], checkins: [] }); } catch { /* not mounted */ }
-  // The person is gone: no reminder of theirs may fire on this phone again
-  // (habit reminders, snoozes, recovery-plan reminders).
-  try { await cancelScheduled((await listScheduled()).map((n) => n.identifier)); } catch { /* nothing scheduled / no permission */ }
+async function clearLocalState(userId: string): Promise<void> {
+  // R02.06 / R10.04 — memory first (inside endAccountScope, synchronously): a delivery still running
+  // must not write the deleted account's outbox back after the device copy is removed, and stores
+  // that persist only while they know their owner (mood, routine runner) forget the owner first.
+  await endAccountScope('account_deleted', userId);
   try {
     const keys = await AsyncStorage.getAllKeys();
     const toRemove = keys.filter((k) => !DEVICE_PREFERENCE_KEYS.has(k));
@@ -81,8 +71,6 @@ async function clearLocalState(): Promise<void> {
     // the server deletion failed -- it did not. The session still ends below,
     // and the rows are already gone.
   }
-  // In-memory, and the one store that holds message text rather than ids.
-  try { useAiConversationStore.getState().reset(); } catch { /* store not mounted */ }
 }
 
 /**
@@ -137,8 +125,63 @@ export async function deleteAccount(): Promise<RepoResult<true>> {
   if (!ok) return { ok: false, error: 'Hesap silinemedi, lütfen tekrar deneyin.' };
 
   // Server said yes. Now, and only now, the device forgets.
-  await clearLocalState();
+  await clearLocalState(session.user.id);
   try { await supabase.auth.signOut(); } catch { /* the account is gone regardless */ }
 
   return { ok: true, data: true };
+}
+
+// ---------------------------------------------------------------------------
+// F04 (NAV-02, SYN-22) — signing out of THIS device, on purpose
+// ---------------------------------------------------------------------------
+
+const SYNC_FIRST_DEADLINE_MS = 6000;
+
+/**
+ * Ends the session on this device only (`scope: 'local'`: other devices stay signed in, and it works
+ * offline), then clears what the account left in memory, in the read cache and in its transient keys.
+ * Unsent work is NOT removed: it stays under the account's own key and is sent when the same account
+ * signs in again. Nothing is cleared when the sign-out itself failed: no false success.
+ */
+export async function signOutLocal(): Promise<RepoResult<true>> {
+  const uid = (await currentUser())?.id ?? null;
+  let failed = false;
+  try {
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    failed = !!error;
+  } catch {
+    failed = true;
+  }
+  if (failed) return { ok: false, error: 'Oturum kapatılamadı, lütfen tekrar dene.' };
+  await endAccountScope('signed_out', uid);
+  return { ok: true, data: true };
+}
+
+/**
+ * The Settings action. With `syncFirst` (the default) and unsent changes, one delivery attempt is
+ * made first, for at most six seconds; offline it simply moves on. Its result never blocks the
+ * sign-out: whatever is still unsent stays on the device for this account.
+ */
+export async function signOutCurrentAccount(opts?: { syncFirst?: boolean }): Promise<RepoResult<true>> {
+  if (opts?.syncFirst !== false && unsentChangeCount() > 0) {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await Promise.race([
+        flushAllOutboxes().then(() => undefined, () => undefined),
+        new Promise<void>((resolve) => { timer = setTimeout(resolve, SYNC_FIRST_DEADLINE_MS); }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+  return signOutLocal();
+}
+
+/**
+ * What the confirmation says about unsent work (pure; the modal and the tests share it). Informs,
+ * never alarms: the changes are not lost, they wait on this device for the same account.
+ */
+export function signOutNotice(unsent: number): string | null {
+  if (!Number.isFinite(unsent) || unsent <= 0) return null;
+  return `Henüz eşitlenmemiş ${Math.floor(unsent)} değişiklik var. Eşitlenmeden çıkarsan bu değişiklikler bu cihazda kalır; aynı hesapla tekrar girince gönderilir.`;
 }

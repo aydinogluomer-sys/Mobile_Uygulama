@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import type { RecoveryPlan, RecoveryStrategy, HabitLog } from '../lib/supabase';
 import { scheduleRecoveryReminder, cancelRecoveryReminder } from '../lib/notifications';
@@ -196,3 +197,6 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
     return recoveryOptions(deficit, { fromDate });
   },
 }));
+
+// F04 (STO-20): the store and the completion metadata of the account's plans.
+registerAccountScoped({ name: 'recovery', store: useRecoveryStore, onReset: () => completionMeta.clear() });

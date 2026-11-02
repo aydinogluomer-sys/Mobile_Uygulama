@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import type { NoteRow } from '../repositories/noteRepository';
 import type { Cursor, Page } from '../repositories/shared';
@@ -220,3 +221,6 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
     return res.data;
   },
 }));
+
+// F04 (STO-20): the store and the server versions its conflict check compares against belong to the account.
+registerAccountScoped({ name: 'note', store: useNoteStore, onReset: () => serverVersion.clear() });

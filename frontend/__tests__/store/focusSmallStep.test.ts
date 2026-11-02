@@ -13,6 +13,8 @@ jest.mock('../../services/focusService', () => ({
   addTask: jest.fn(), completeTask: jest.fn(), listOpenTasks: jest.fn(async () => ({ ok: true, data: [] })), removeTask: jest.fn(),
 }));
 jest.mock('../../lib/haptics', () => ({ haptic: { success: jest.fn() } }));
+// F04: a focus session is saved under the signed-in user's key; this suite runs as one user.
+jest.mock('../../lib/session', () => ({ currentUser: async () => ({ id: 'u1', email: null }) }));
 jest.mock('../../lib/analytics', () => ({ buildEvent: jest.fn((n: string, p: unknown) => ({ name: n, props: p })), emitEvent: jest.fn() }));
 
 import AsyncStorage from '@react-native-async-storage/async-storage';

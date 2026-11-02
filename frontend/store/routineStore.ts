@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { withEdgeDeadline } from '../lib/edgeCall';
 import { newRequestId } from '../services/focusPointService';
 import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../lib/aiAttempt';
@@ -455,3 +456,6 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
     }
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'routine', store: useRoutineStore });

@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { currentUser } from '../lib/session';
 import { create } from 'zustand';
 import type { HabitLog } from '../lib/supabase';
@@ -347,6 +348,13 @@ async function attemptWrite(
   return { ok: true, log: res.log };
 }
 
+/**
+ * F04 (STO-01): the queue state lives inside the `create` closure, so the account registry cannot reach
+ * it directly. The closure assigns this function; the registry calls it. Memory only: the queue on disk
+ * (`atlas_sync_queue_v1:<uid>`) is saved after every mutation and stays for the same account.
+ */
+let resetQueueMemory: () => void = () => undefined;
+
 export const useLogStore = create<LogStore>((set, get) => {
   // In-memory mirror of the persisted queue. Replaced wholesale by
   // `hydrateSyncQueue()` (see that method's doc for the ordering contract),
@@ -392,6 +400,11 @@ export const useLogStore = create<LogStore>((set, get) => {
    * they drive the backoff clock sequentially, awaiting each pass.
    */
   let flushInFlight: Promise<LogResult[]> | null = null;
+  resetQueueMemory = () => {
+    queueOwnerId = null;
+    queueState = emptyQueueState();
+    flushInFlight = null;
+  };
 
   function publishSyncCounts() {
     set(() => ({
@@ -637,4 +650,15 @@ export const useLogStore = create<LogStore>((set, get) => {
       return pass;
     },
   };
+});
+
+// F04 (STO-20): the store, the per-key write chains, the optimistic generations and the queue in memory.
+registerAccountScoped({
+  name: 'log',
+  store: useLogStore,
+  onReset: () => {
+    chains.clear();
+    optimisticGen.clear();
+    resetQueueMemory();
+  },
 });

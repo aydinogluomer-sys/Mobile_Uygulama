@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { withEdgeDeadline } from '../lib/edgeCall';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
@@ -147,3 +148,6 @@ export const useNotionSessionStore = create<NotionLoginStore>((set, get) => ({
     }
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'notionSession', store: useNotionSessionStore });

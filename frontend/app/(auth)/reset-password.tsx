@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
+import { signOutLocal } from '../../services/accountService';
 import { colors, space, radius, font, shadow, fontFamily } from '../../lib/tokens';
 import {
   AtmosphericScreenCanvas,
@@ -120,7 +121,10 @@ export default function ResetPasswordScreen() {
       return;
     }
 
-    await supabase.auth.signOut({ scope: 'local' });
+    // F04: the recovery session ends through the same door as any sign-out, so memory and the
+    // read cache are cleared too; a failed sign-out is shown, not hidden behind a redirect.
+    const out = await signOutLocal();
+    if (!out.ok) { setError(out.error); return; }
     router.replace('/(auth)/login');
   }
 

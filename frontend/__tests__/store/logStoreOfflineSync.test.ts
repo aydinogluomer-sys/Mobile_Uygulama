@@ -193,6 +193,7 @@ jest.mock('../../lib/supabase', () => {
 
 import { useLogStore } from '../../store/logStore';
 import { pinToday } from '../helpers/pinnedClock';
+import { resetAccountMemory } from '../../lib/accountScope';
 
 const DAY = new Date(2026, 7, 4);
 // F03: the store refuses days outside today and the previous 14 (migration 038); DAY must stay "recent".
@@ -378,5 +379,26 @@ describe('AC-O06 -- a real (non-network) failure still surfaces ok:false (commit
     // no phantom "done" in local state, same net effect as the pre-offline
     // store/logStore.test.ts AC-L02 assertion this mirrors.
     expect(useLogStore.getState().getLogForHabit(habitId, DATE_STR)).toBeUndefined();
+  });
+});
+
+describe('F04 (STO-01) -- the queue in memory goes with the account', () => {
+  it("after an account boundary A's queued write is not replayed by this session; it stays on disk for A", async () => {
+    mockDb.networkDown = true;
+    await useLogStore.getState().logHabit({ habitId: 'acc-1', date: DAY, state: 'done' });
+    expect(useLogStore.getState().pendingSyncCount).toBe(1);
+    mockDb.networkDown = false;
+
+    resetAccountMemory('signed_out');
+    expect(useLogStore.getState().pendingSyncCount).toBe(0);
+    expect(useLogStore.getState().logs).toEqual([]);
+    await useLogStore.getState().flushPendingSync();
+    expect(mockDb.calls.filter((c) => c === 'insert')).toHaveLength(0);
+
+    // the same account hydrates its own queue back from disk and delivers it
+    await useLogStore.getState().hydrateSyncQueue();
+    expect(useLogStore.getState().pendingSyncCount).toBe(1);
+    await useLogStore.getState().flushPendingSync();
+    expect(mockDb.calls.filter((c) => c === 'insert')).toHaveLength(1);
   });
 });
