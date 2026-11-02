@@ -192,8 +192,11 @@ jest.mock('../../lib/supabase', () => {
 });
 
 import { useLogStore } from '../../store/logStore';
+import { pinToday } from '../helpers/pinnedClock';
 
 const DAY = new Date(2026, 7, 4);
+// F03: the store refuses days outside today and the previous 14 (migration 038); DAY must stay "recent".
+pinToday(new Date(2026, 7, 4, 12, 0, 0));
 const DATE_STR = '2026-08-04';
 
 beforeEach(async () => {

@@ -136,8 +136,12 @@ jest.mock('../../lib/supabase', () => {
 });
 
 import { useLogStore } from '../../store/logStore';
+import { LOGGABLE_DAY_MESSAGE } from '../../lib/pgErrors';
+import { pinToday } from '../helpers/pinnedClock';
 
 const DAY = new Date(2026, 7, 4);
+// F03: the store refuses days outside today and the previous 14 (migration 038); DAY must stay "recent".
+pinToday(new Date(2026, 7, 4, 12, 0, 0));
 
 beforeEach(() => {
   mockDb.calls.length = 0;
@@ -223,5 +227,40 @@ describe('AC-L05 -- different habits are not coupled', () => {
     await Promise.all([a, b]);
     expect(mockDb.calls.filter((c) => c === 'insert')).toHaveLength(2);
     expect(mockDb.rows).toHaveLength(2);
+  });
+});
+
+describe('F03 -- a day outside the loggable window never enters the store or the queue', () => {
+  const daysBack = (n: number) => new Date(2026, 7, 4 - n);
+
+  it('refuses the 15th day back with calm copy, before the optimistic row, the queue and the network', async () => {
+    const before = useLogStore.getState();
+    const res = await useLogStore.getState().logHabit({ habitId: 'h1', date: daysBack(15), state: 'done' });
+
+    expect(res).toEqual({ ok: false, error: LOGGABLE_DAY_MESSAGE });
+    expect(mockDb.calls).toEqual([]); // no insert, no read
+    expect(useLogStore.getState().logs).toEqual([]); // no optimistic row either
+    expect(useLogStore.getState().pendingSyncCount).toBe(before.pendingSyncCount); // nothing queued
+  });
+
+  it('refuses tomorrow the same way', async () => {
+    const res = await useLogStore.getState().logHabit({ habitId: 'h1', date: new Date(2026, 7, 5), state: 'done' });
+    expect(res).toEqual({ ok: false, error: LOGGABLE_DAY_MESSAGE });
+    expect(mockDb.calls).toEqual([]);
+  });
+
+  it('writes the 14th day back as usual (the recovery screen offers it)', async () => {
+    const res = await useLogStore.getState().logHabit({ habitId: 'h1', date: daysBack(14), state: 'done' });
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.log.completed_at).toBe('2026-07-21');
+    expect(mockDb.calls).toEqual(['insert']);
+  });
+
+  it('shows the server refusal of migration 038 as the same calm copy, not the raw token', async () => {
+    mockDb.insertError = { message: 'habit_log_day_out_of_range', code: '22023' };
+    const res = await useLogStore.getState().logHabit({ habitId: 'h1', date: DAY, state: 'done' });
+    // the translation keeps every other field of the result: it reached the server, so not offline
+    expect(res).toEqual({ ok: false, error: LOGGABLE_DAY_MESSAGE, offline: false });
+    expect(useLogStore.getState().logs).toEqual([]); // rolled back like any real rejection
   });
 });

@@ -56,6 +56,7 @@ old filenames.
 | 035 | `035_coach_lighten_week.sql` | **NOT APPLIED** (DB frozen, S1/S2) | — |
 | 036 | `036_live_audit_hardening.sql` | **NOT APPLIED** (proposal from the read-only live audit 2026-10-09) | — |
 | 037 | `037_today_bootstrap_rpc.sql` | **NOT APPLIED** (DB frozen, S1/S2 — single-RTT Today bootstrap RPC) | — |
+| 038 | `038_xp_streak_integrity.sql` | **NOT APPLIED** (P0 XP/seri bütünlüğü; 036 önkoşul) | — |
 
 Keep this table when adding a migration: the old names are cited throughout
 `docs/audit/`, `docs/plan/`, `PROGRESS.md` and the audit reports, which are
@@ -75,7 +76,8 @@ created nor closed it.
 ## Rollbacks
 
 Every `NNN_*.sql` from `028` on has a rollback script, `supabase/rollbacks/NNN_<name>.rollback.sql`
-(`036_live_audit_hardening.sql` has `036_live_audit_hardening.rollback.sql`). The scripts live
+(`036_live_audit_hardening.sql` has `036_live_audit_hardening.rollback.sql`, `038_xp_streak_integrity.sql`
+has `038_xp_streak_integrity.rollback.sql`, which runs before 036's). The scripts live
 **outside** this directory on purpose: the Supabase CLI applies every `.sql` file it finds here
 forward, so a rollback filed here would be run as if it were the next migration. A script does
 nothing unless the same session first ran `SET aderyth.rollback_confirm = 'NNN';` with its own

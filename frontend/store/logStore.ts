@@ -1,7 +1,8 @@
 import { currentUser } from '../lib/session';
 import { create } from 'zustand';
 import type { HabitLog } from '../lib/supabase';
-import { ymd, deviceTimeZone } from '../lib/date';
+import { ymd, deviceTimeZone, isLoggableDay } from '../lib/date';
+import { LOGGABLE_DAY_MESSAGE } from '../lib/pgErrors';
 import {
   emptyQueueState,
   enqueue as enqueueOp,
@@ -525,6 +526,12 @@ export const useLogStore = create<LogStore>((set, get) => {
 
     logHabit: ({ habitId, date, state, value, targetValue, baseXp = 30, targetDirection }) => {
       const dateStr = ymd(date);
+      // F03 — a day outside the loggable window (today and the previous 14 days)
+      // is refused HERE, before the optimistic row and before the queue: the
+      // server (migration 038) would refuse it on every replay until the op went
+      // `dead`, while the user believed it saved. Local clock only, so it works
+      // offline too.
+      if (!isLoggableDay(dateStr)) return Promise.resolve({ ok: false, error: LOGGABLE_DAY_MESSAGE });
       const key = `${habitId}|${dateStr}`;
       // R01.06 — the zone is captured now, at the tap, and queued with the intent.
       const tz = deviceTimeZone();

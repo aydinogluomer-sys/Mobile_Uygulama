@@ -276,6 +276,20 @@ jobs:
           COMMIT;
           SQL
 
+      # F03: 038 builds on 036's XP ledger. On a database without 036 (here: live_schema.sql and 037 only)
+      # it must stop at its first statement and change nothing.
+      - name: 038 refuses to run before 036 (precondition, negative control)
+        run: |
+          set -euo pipefail
+          err="$RUNNER_TEMP/m038_precondition.err"
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_before_038_refusal.txt"
+          if psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/038_xp_streak_integrity.sql 2>"$err"; then
+            echo "038 ran although 036 is not applied" >&2; exit 1
+          fi
+          grep -q "038 requires 036" "$err"
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_after_038_refusal.txt"
+          diff -u "$RUNNER_TEMP/fp_before_038_refusal.txt" "$RUNNER_TEMP/fp_after_038_refusal.txt"
+
       - name: Apply forward migrations 028+ and verify RLS-isolated single-RTT bootstrap
         run: |
           for mig in $(ls supabase/migrations/[0-9][0-9][0-9]_*.sql | sort); do
@@ -374,12 +388,11 @@ jobs:
             fi
             grep -q "aderyth.rollback_confirm = '${num}'" "$err"
           done
-          if psql -X -v ON_ERROR_STOP=1 \
-               -c "BEGIN" \
-               -c "CREATE FUNCTION public.fn_habit_log_guard() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NULL; END'" \
-               -c "SET aderyth.rollback_confirm = '036'" \
+          # 038 is applied in this state (its real fn_habit_log_guard exists), so 036 must refuse to go first
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regprocedure('public.fn_habit_log_guard()') IS NOT NULL")" = "t"
+          if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '036'" \
                -f supabase/rollbacks/036_live_audit_hardening.rollback.sql 2>"$err"; then
-            echo "036 rollback ran while fn_habit_log_guard exists" >&2; exit 1
+            echo "036 rollback ran while 038 (fn_habit_log_guard) is applied" >&2; exit 1
           fi
           grep -q "038 is still applied" "$err"
           # a client that does NOT stop on errors (psql without ON_ERROR_STOP, a script runner) gets no further
@@ -413,9 +426,9 @@ jobs:
           echo "xp_drift rows after rollback: ${drift}"
           test "${drift}" = "0"
 
-      # A second pass: every script converges to the same state, except 036, which refuses on
-      # purpose once the ledger is gone (its TO PUBLIC grants must never run on a database where
-      # 036 is not applied).
+      # A second pass: every script converges to the same state, except 036 and 038, which refuse on
+      # purpose once they are gone (036's TO PUBLIC grants must never run on a database where 036 is
+      # not applied; 038 would give the award trigger a body that writes a ledger 036 no longer has).
       - name: Second rollback pass changes nothing (036 refuses once it is gone)
         run: |
           set -euo pipefail
@@ -427,6 +440,11 @@ jobs:
                 echo "036 rollback ran a second time" >&2; exit 1
               fi
               grep -q "036 is not applied" "$err"
+            elif [ "${num}" = "038" ]; then
+              if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb" 2>"$err"; then
+                echo "038 rollback ran a second time" >&2; exit 1
+              fi
+              grep -q "038 is not applied" "$err"
             else
               psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb"
             fi
@@ -455,13 +473,15 @@ jobs:
       # lower award: the ledger keeps each day's highest award, total_xp was raised by it once, habit_logs
       # no longer carries it, and xp_drift() reports the user. The rollback must move that XP into
       # purged_xp, and must refuse (changing nothing) when that would leave a user out of balance.
-      # The fixture relies on the trigger chain of 036 alone: when 038 (F03) lands, this step has to roll
-      # 038 back first (the 036 script refuses while fn_habit_log_guard exists) and apply it again after.
+      # The fixture relies on the trigger chain of 036 alone, so 038 (F03) is rolled back first (the 036
+      # script refuses while fn_habit_log_guard exists) and applied again at the end.
       - name: Rollback 036 keeps the XP books straight when the ledger holds more than habit_logs (DB2-07)
         run: |
           set -euo pipefail
           err="$RUNNER_TEMP/rollback_036_drift.err"
           uid='f2000000-0000-4000-8000-000000000001'
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '038'" -f supabase/rollbacks/038_xp_streak_integrity.rollback.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regprocedure('public.fn_habit_log_guard()') IS NULL")" = "t"
           psql -X -v ON_ERROR_STOP=1 <<'SQL'
           INSERT INTO auth.users (id, email) VALUES ('f2000000-0000-4000-8000-000000000001', 'f02@aderyth.test');
           BEGIN;
@@ -509,6 +529,74 @@ jobs:
           test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.habit_xp_awards') IS NULL")" = "t"
           # (c) forward again: the ledger is rebuilt from habit_logs and the books stay straight
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/036_live_audit_hardening.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+          # ... and 038 on top of it again
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/038_xp_streak_integrity.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+
+      # F03: the same books one migration later. Under 038 a deleted log's xp moves into purged_xp when the
+      # log is deleted, so the ledger may hold more than habit_logs while the books already balance (a day
+      # deleted for good, a day deleted and written again, a habit recreated under the same name). The 038
+      # rollback must cut the ledger down to what the logs carry; otherwise 036's rollback, which moves
+      # every such excess into purged_xp, would count it a second time and refuse.
+      - name: Rollback 038 then 036 on rows written under 038 keeps the XP books straight (no second transfer)
+        run: |
+          set -euo pipefail
+          uid='f3000000-0000-4000-8000-000000000001'
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO auth.users (id, email) VALUES ('f3000000-0000-4000-8000-000000000001', 'f03@aderyth.test');
+          BEGIN;
+          -- the dormant pet trigger would trip over the unseeded pet_stages table: only this insert runs without triggers
+          SET LOCAL session_replication_role = replica;
+          INSERT INTO public.profiles (id, email, username) VALUES ('f3000000-0000-4000-8000-000000000001', 'f03@aderyth.test', 'f03');
+          SET LOCAL session_replication_role = origin;
+          SET LOCAL ROLE authenticated;
+          SELECT set_config('request.jwt.claim.sub', 'f3000000-0000-4000-8000-000000000001', true);
+          SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+          INSERT INTO public.habits (id, user_id, name, tracking_type, status)
+          VALUES ('f3aaaaaa-0000-4000-8000-000000000001', 'f3000000-0000-4000-8000-000000000001', 'F03 kitap', 'boolean', 'active'),
+                 ('f3aaaaaa-0000-4000-8000-000000000002', 'f3000000-0000-4000-8000-000000000001', 'F03 yürüyüş', 'boolean', 'active');
+          INSERT INTO public.habit_logs (habit_id, user_id, completed_at, state, is_completed)
+          VALUES ('f3aaaaaa-0000-4000-8000-000000000001', 'f3000000-0000-4000-8000-000000000001', CURRENT_DATE, 'done', true);
+          INSERT INTO public.habit_logs (habit_id, user_id, completed_at, state, is_completed)
+          VALUES ('f3aaaaaa-0000-4000-8000-000000000001', 'f3000000-0000-4000-8000-000000000001', CURRENT_DATE - 1, 'done', true);
+          INSERT INTO public.habit_logs (habit_id, user_id, completed_at, state, is_completed)
+          VALUES ('f3aaaaaa-0000-4000-8000-000000000001', 'f3000000-0000-4000-8000-000000000001', CURRENT_DATE - 2, 'done', true);
+          INSERT INTO public.habit_logs (habit_id, user_id, completed_at, state, is_completed)
+          VALUES ('f3aaaaaa-0000-4000-8000-000000000002', 'f3000000-0000-4000-8000-000000000001', CURRENT_DATE, 'done', true);
+          -- a day deleted for good, a day deleted and written again (the rewrite carries 0: it was paid)
+          DELETE FROM public.habit_logs WHERE habit_id = 'f3aaaaaa-0000-4000-8000-000000000001' AND completed_at IN (CURRENT_DATE, CURRENT_DATE - 1);
+          INSERT INTO public.habit_logs (habit_id, user_id, completed_at, state, is_completed)
+          VALUES ('f3aaaaaa-0000-4000-8000-000000000001', 'f3000000-0000-4000-8000-000000000001', CURRENT_DATE - 1, 'done', true);
+          -- a habit deleted and recreated under the same name, its day written again
+          DELETE FROM public.habits WHERE id = 'f3aaaaaa-0000-4000-8000-000000000002';
+          INSERT INTO public.habits (id, user_id, name, tracking_type, status)
+          VALUES ('f3aaaaaa-0000-4000-8000-000000000003', 'f3000000-0000-4000-8000-000000000001', 'F03 Yürüyüş ', 'boolean', 'active');
+          INSERT INTO public.habit_logs (habit_id, user_id, completed_at, state, is_completed)
+          VALUES ('f3aaaaaa-0000-4000-8000-000000000003', 'f3000000-0000-4000-8000-000000000001', CURRENT_DATE, 'done', true);
+          COMMIT;
+          SQL
+          excess_sql="SELECT coalesce(sum(greatest(a.xp_awarded - coalesce(l.xp, 0), 0)), 0) FROM public.habit_xp_awards a LEFT JOIN public.habit_logs l ON l.habit_id = a.habit_id AND l.completed_at = a.day WHERE a.user_id = '${uid}'"
+          # the fixture is not vacuous: the books balance, yet the ledger holds more than the logs, orphans included
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+          excess="$(psql -X -At -v ON_ERROR_STOP=1 -c "${excess_sql}")"
+          echo "ledger excess under 038: ${excess}"
+          test "${excess}" -gt 0
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.habit_xp_awards a WHERE a.user_id = '${uid}' AND NOT EXISTS (SELECT 1 FROM public.habits h WHERE h.id = a.habit_id)")" -ge 1
+          purged="$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT purged_xp FROM public.profiles WHERE id = '${uid}'")"
+          test "${purged}" -gt 0
+          # 038 goes: the books are untouched, the ledger holds what the logs carry and no orphan
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '038'" -f supabase/rollbacks/038_xp_streak_integrity.rollback.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "${excess_sql}")" = "0"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT purged_xp FROM public.profiles WHERE id = '${uid}'")" = "${purged}"
+          # 036 goes: nothing is moved a second time
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '036'" -f supabase/rollbacks/036_live_audit_hardening.rollback.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT purged_xp FROM public.profiles WHERE id = '${uid}'")" = "${purged}"
+          # forward again for the steps below
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/036_live_audit_hardening.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/038_xp_streak_integrity.sql
           test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
 
       # The no-data-loss contract of the coach CHECK rollbacks (032, 034, 035), on a real row. A row of

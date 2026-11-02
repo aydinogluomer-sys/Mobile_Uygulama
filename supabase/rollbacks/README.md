@@ -7,7 +7,7 @@ Postgres 17 hizmetinde sınanmak üzere bağlanmıştır; ilk gerçek CI koşusu
 
 ## Amaç
 
-`supabase/migrations/028` ile `037` arasındaki on migration ileri yönde yazılmıştır ve canlıda
+`supabase/migrations/028` ile `038` arasındaki on bir migration ileri yönde yazılmıştır ve canlıda
 uygulanmamıştır. Sahip birini bir Supabase branch'inde ya da canlıda uygulayıp bir sorun görürse,
 elinde sınanmış bir geri dönüş yolu olmalıdır. Her migration için bir geri alma betiği, CI'da
 "ileri uygula, sondan başa geri al, kataloğu baştakiyle karşılaştır, yeniden ileri uygula" döngüsüyle
@@ -71,15 +71,17 @@ Hiçbir betikte `DROP ... CASCADE` biçimi, `DROP SCHEMA` ya da `auth.` şeması
 select * from public.xp_drift();   -- 0 satır beklenir
 ```
 
-Yıkıcı betikler (028, 029, 030, 031, 033 veri siler; 036 güvenlik açıklarını yeniden açar) yedek ister
+Yıkıcı betikler (028, 029, 030, 031, 033 veri siler; 036 güvenlik açıklarını, 038 XP pencere, tavan ve
+seri açıklarını yeniden açar) yedek ister
 (S1). Ayrıntılı salt-okunur sorgular `docs/implementation-v3/SQL_FOR_OWNER.md` §2.10'dadır.
 
 ## Betikler ve sıra
 
-Sıra **büyükten küçüğe**: 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
+Sıra **büyükten küçüğe**: 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
 
 | Betik | Geri aldığı migration | Etkisi | Veri kaybı |
 | --- | --- | --- | --- |
+| `038_xp_streak_integrity.rollback.sql` | `038_xp_streak_integrity.sql` | gün penceresi, günlük XP tavanı, seri sütunu koruması ve silmede `purged_xp` aktarımı düşer; `fn_habit_log_set_xp` canlı, `fn_habit_log_award` 036 gövdesine döner; boss tetikleyicisi geri gelir | ad parmak izleri, silinmiş alışkanlıkların defter satırları, 038 döneminde silinip yeniden yazılmış günlerin en yüksek ödül işareti; **XP sahteciliğini yeniden açar** |
 | `037_today_bootstrap_rpc.rollback.sql` | `037_today_bootstrap_rpc.sql` | `get_today_bootstrap(date)` düşer; istemci tablo okumalarına düşer | yok |
 | `036_live_audit_hardening.rollback.sql` | `036_live_audit_hardening.sql` | defter düşer, `fn_habit_log_award` canlı gövdesine döner, `weekly_xp` yazımı ve istemci EXECUTE hakları yeniden açılır | defter satırları (gün başına en yüksek ödül); **güvenlik açıklarını yeniden açar** |
 | `035_coach_lighten_week.rollback.sql` | `035_coach_lighten_week.sql` | CHECK 9 türe döner (`lighten_week` çıkar) | yok (satır silinmez, `NOT VALID`) |
@@ -105,6 +107,9 @@ Zorunlu sıra kısıtları yalnız ikisidir:
 028, 029, 030, 031, 033 ve 037 `IF EXISTS` kullanır: ikinci çalıştırma no-op'tur. 032, 034 ve 035
 aynı kısıtı yeniden kurar. **036 ikinci çalıştırmada reddeder** (`036 is not applied`): defter yoksa 036
 uygulanmamış sayılır ve böyle bir veritabanına `TO PUBLIC` hakları vermemek bilinçli bir güvencedir.
+**038 de ikinci çalıştırmada reddeder** (`038 is not applied`, `fn_habit_log_guard` yoksa): 038'in
+geri alması ödül tetikleyicisine 036'nın defter yazan gövdesini verir; 036 da geri alınmışsa bu gövde
+her log yazımını kırardı.
 
 ## Neyi geri almaz
 
@@ -114,6 +119,13 @@ uygulanmamış sayılır ve böyle bir veritabanına `TO PUBLIC` hakları vermem
   `purged_xp`'ye taşınır ki `total_xp = sum(habit_logs.xp) + purged_xp` geçerli kalsın ve
   `xp_drift()` o kullanıcıyı raporlamasın (DB2-07). Betik sonunda kendi içinde doğrular: geri alma
   yeni bir "drift'li kullanıcı" üretecekse tüm transaction geri sarılır.
+- 038 geri alması seri yeniden hesabını (038 bölüm 9) geri almaz: eski "ömür boyu geçiş sayacı" zaten
+  yanlıştı.
+- 038 geri alması defteri `habit_logs`'un taşıdığı değere indirir. 038 altında silinen bir logun XP'si
+  silindiği anda `purged_xp`'ye taşınır; defter fazlası bu yüzden zaten hesaptadır. İndirilmezse 036
+  geri alması aynı fazlayı ikinci kez `purged_xp`'ye taşır ve kendi drift denetimiyle reddeder. Bedeli:
+  038 döneminde silinmiş bir gün, yalnız 036 kalınca yeniden yazılırsa yeniden ödenir; defter dengede
+  kalır (`xp_drift()` boş).
 - 036 geri alması `interact_with_pet`, `upgrade_skill`, `buy_shop_item`, `claim_quest_reward` ve
   öteki uykudaki RPG RPC'lerine yalnız 036 öncesindeki canlı EXECUTE haklarını geri verir. İstemcide
   bunlar için yüzey yoktur ve olmayacaktır (kapsam eki F13, kalıcı iptal).
@@ -125,20 +137,25 @@ sütun ACL, kısıt, indeks, politika, tetikleyici, fonksiyon imzası/ACL/gövde
 sıralı satırlar olarak yazar. CI sırayla:
 
 1. `live_schema.sql` uygulanır, **taban parmak izi** alınır (037 ve 028+ öncesi).
-2. 037 ön denetimi, 028+ ileri uygulama ve `supabase/tests/run.sh` (F01).
+2. 037 ön denetimi; 036'sız veritabanında 038'in ilk ifadesinde durduğu ve katalogu değiştirmediği
+   (olumsuz kontrol); 028+ ileri uygulama ve `supabase/tests/run.sh` (F01, F03'ün 06 testi dahil).
 3. **İleri parmak izi** alınır; her betik onaysız ve başka bir numarayla reddettirilir (olumsuz
    kontroller). Hatada durmayan bir istemci de (`ON_ERROR_STOP` yok) denenir: başarısız onay bloğu
    transaction'ı iptal durumunda bırakır, sonraki ifadeler reddedilir, `COMMIT` geri sarar. Reddedilen
    denemeler katalogu değiştirmez.
-4. 037'den 028'e, her betik kendi `SET aderyth.rollback_confirm` değeriyle geri alınır.
+4. 038'den 028'e, her betik kendi `SET aderyth.rollback_confirm` değeriyle geri alınır.
 5. Geri alınmış katalog tabanla `diff -u` ile karşılaştırılır, `xp_drift()` 0 satır olmalıdır.
-6. İkinci geri alma turu hiçbir şeyi değiştirmez (036 reddeder).
+6. İkinci geri alma turu hiçbir şeyi değiştirmez (036 ve 038 reddeder).
 7. Yeniden ileri uygulama; ikinci ileri parmak izi ilkine eşit olmalı, `run.sh` yeniden yeşil olmalıdır.
-8. Gerçek XP satırlarıyla 036 geri alması (DB2-07): defterde `habit_logs`'tan fazla XP varken
-   `xp_drift()` geri almadan sonra 0 satırdır; aynı XP zaten elle düzeltilmişse betik reddeder.
-9. Kasıtlı yeni türde satırla 032/034/035: satır silinmez, kısıt `NOT VALID` kalır ve yalnız yeni
-   yazımları denetler.
-10. Parmak izi öz-sınaması: hiç dokunulmamış bir ACL (NULL) ile REVOKE edilip geri GRANT edilmiş ACL
+8. Gerçek XP satırlarıyla 036 geri alması (DB2-07): önce 038 geri alınır; defterde `habit_logs`'tan
+   fazla XP varken `xp_drift()` geri almadan sonra 0 satırdır; aynı XP zaten elle düzeltilmişse betik
+   reddeder. Sonda 036 ve 038 yeniden uygulanır.
+9. Gerçek XP satırlarıyla 038 sonra 036 geri alması (F03): 038 altında silinmiş, silinip yeniden yazılmış
+   ve aynı adla yeniden oluşturulmuş alışkanlık günleri; iki geri almadan sonra `xp_drift()` 0 satırdır ve
+   `purged_xp` değişmez (ikinci aktarım yok).
+10. Kasıtlı yeni türde satırla 032/034/035: satır silinmez, kısıt `NOT VALID` kalır ve yalnız yeni
+    yazımları denetler.
+11. Parmak izi öz-sınaması: hiç dokunulmamış bir ACL (NULL) ile REVOKE edilip geri GRANT edilmiş ACL
     (açık varsayılan) aynı satırı basar. Betiklerin dokunduğu nesnelerin hepsi `live_schema.sql`'de
     zaten açık ACL taşır, bu yüzden bu özelliği döngü göstermez; geçici bir tablo ve fonksiyon gösterir.
 

@@ -160,3 +160,47 @@ export function daysBetweenLocal(a: Date, b: Date): number {
 export function isSameLocalDay(a: Date, b: Date): boolean {
   return ymd(a) === ymd(b);
 }
+
+// ---------------------------------------------------------------------------
+// Loggable days (F03, migration 038)
+//
+// The server refuses a habit log whose day lies outside
+// [CURRENT_DATE - 15, CURRENT_DATE + 1] (UTC). The client allows today and the
+// previous 14 local days: every local day of UTC-12..UTC+14 is at most one day
+// away from the UTC day, so this window always sits inside the server's. Days are
+// compared as `YYYY-MM-DD` strings (lexical order is calendar order), never as
+// timestamps, so a 23- or 25-hour DST day cannot shift the edge.
+// ---------------------------------------------------------------------------
+
+/** Earliest loggable day, in days before the device-local today. Server accepts CURRENT_DATE - 15 (one day of timezone tolerance). Equals RECOVERY_LOOKBACK (lib/recoveryBacklog.ts). */
+export const LOGGABLE_DAYS_BACK = 14;
+/** Server accepts CURRENT_DATE + 1; the client never writes a future day. */
+export const LOGGABLE_DAYS_AHEAD = 0;
+
+export interface LoggableRange {
+  readonly earliest: Ymd;
+  readonly latest: Ymd;
+}
+
+/** Inclusive range of days the user may log, as local YYYY-MM-DD. */
+export function loggableDayRange(now: Date = new Date()): LoggableRange {
+  return {
+    earliest: ymd(addDaysLocal(now, -LOGGABLE_DAYS_BACK)),
+    latest: ymd(addDaysLocal(now, LOGGABLE_DAYS_AHEAD)),
+  };
+}
+
+/** True when `day` (a Ymd string or a Date) lies inside loggableDayRange(now). Malformed strings are not loggable. */
+export function isLoggableDay(day: Ymd | Date, now: Date = new Date()): boolean {
+  let key: Ymd;
+  if (day instanceof Date) {
+    if (Number.isNaN(day.getTime())) return false;
+    key = ymd(day);
+  } else {
+    if (typeof day !== 'string' || parseLocalDate(day) === null) return false;
+    key = day;
+  }
+  if (Number.isNaN(now.getTime())) return false;
+  const { earliest, latest } = loggableDayRange(now);
+  return earliest <= key && key <= latest;
+}

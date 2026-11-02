@@ -36,6 +36,7 @@ import {
   insertHabitLog as repoInsertHabitLog,
   updateHabitLog as repoUpdateHabitLog,
 } from '../repositories/habitLogRepository';
+import { describeHabitLogError } from '../lib/pgErrors';
 
 export type LogState = HabitLog['state'];
 
@@ -226,12 +227,27 @@ function wirePatch(patch: LogPatch): Record<string, unknown> {
   return rest as Record<string, unknown>;
 }
 
-export async function persistCompletion(params: {
+type PersistParams = {
   habitId: string;
   dateStr: string;
   patch: LogPatch;
   confirmedId?: string;
-}): Promise<PersistResult> {
+};
+
+/**
+ * F03 — every failure of a write leaves through this one door, so a server refusal
+ * of migration 038 (`habit_log_day_out_of_range`, `habit_log_key_immutable`) reaches
+ * the user as calm Turkish copy whichever branch produced it (update, insert, or the
+ * 23505 recovery). One wrapper rather than one call per `return`: a fourth failure
+ * branch added later cannot forget it. `offline` and every other field are kept.
+ */
+export async function persistCompletion(params: PersistParams): Promise<PersistResult> {
+  const res = await persistCompletionRaw(params);
+  if (res.ok) return res;
+  return { ...res, error: describeHabitLogError(res.error) };
+}
+
+async function persistCompletionRaw(params: PersistParams): Promise<PersistResult> {
   params = { ...params, patch: wirePatch(params.patch) as LogPatch };
   if (params.confirmedId) {
     const updated = await repoUpdateHabitLog(params.confirmedId, params.patch as Record<string, unknown>);

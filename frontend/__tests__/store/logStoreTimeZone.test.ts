@@ -32,6 +32,9 @@ jest.mock('../../lib/session', () => ({ currentUser: jest.fn(async () => ({ id: 
 import { persistCompletion, toPatch } from '../../services/habitLogService';
 import { useLogStore } from '../../store/logStore';
 import { emptyQueueState, enqueue, saveSyncQueue, loadSyncQueue } from '../../lib/syncQueue';
+import { pinToday } from '../helpers/pinnedClock';
+// F03: the tap below logs 29 March 2026; the store refuses days outside today and the previous 14 (migration 038).
+pinToday(new Date(2026, 2, 29, 23, 45, 0));
 
 beforeEach(() => { mockInserts.length = 0; mockUpdates.length = 0; mockGates.LOG_TIMEZONE_ENABLED = false; });
 
