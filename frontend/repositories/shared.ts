@@ -14,6 +14,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PublicTableName } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
+// F06: the bounded read lives in a dependency-free module (many tests mock lib/session with only `currentUser`)
+import { boundSession, isRetryableAuthError, LOCAL_USER_TIMEOUT_MS } from '../lib/bootSession';
 
 // CONTRACT (F00, BLD-01/SYN-12/TST-21): the client is resolved on EVERY call,
 // never captured at module load. Tests swap `lib/supabase` through a getter
@@ -36,7 +38,10 @@ export type RepoResult<T> =
 
 export type ScopedUser =
   | { ok: true; userId: string }
-  /** F05 (SYN-03): `offline` when the session could not be read or refreshed for lack of a connection. */
+  /**
+   * F05 (SYN-03) / F06 (SYN-02): `offline` when the session could not be read or refreshed for lack
+   * of a connection (or the read took longer than LOCAL_USER_TIMEOUT_MS). Assignable to `RepoResult`.
+   */
   | { ok: false; error: string; offline?: boolean };
 
 /**
@@ -131,12 +136,31 @@ export async function currentUserId(): Promise<ScopedUser> {
   // server verifies, not from anything this function returns. A client that
   // lied here would produce a query that RLS rejects. An expired session
   // likewise fails at the request, which is the correct outcome.
-  const { data: { session }, error } = await supabase.auth.getSession();
+  //
+  // F06 (SYN-02): bounded. Near expiry `getSession()` refreshes, and offline auth-js retries that
+  // refresh for ~25 s before answering; every repository call waited for it. After 2 s, or when
+  // the refresh could not reach the auth server, the answer is `offline` (the caller keeps the work
+  // and tries later), never "Oturum bulunamadı." (which reads as signed out). A rejected read is a
+  // failure value, not a throw into the repository.
+  const b = await boundSession(() => supabase.auth.getSession(), LOCAL_USER_TIMEOUT_MS);
+  const userId = b.session?.user?.id;
+  if (userId) return { ok: true, userId };
   // F05: a refresh that failed for lack of a connection is `offline`, not a rejection (the queue keeps the tap)
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(null, error) };
-  const userId = session?.user?.id;
-  if (!userId) return { ok: false, error: 'Oturum bulunamadı.' };
-  return { ok: true, userId };
+  if (b.timedOut || isRetryableAuthError(b.error) || isTransportFailure(null, b.error)) {
+    return { ok: false, error: OFFLINE_SESSION_ERROR, offline: true };
+  }
+  if (b.error) return { ok: false, error: errorMessage(b.error) };
+  return { ok: false, error: 'Oturum bulunamadı.' };
+}
+
+/** F06: what a repository says when the session could not be refreshed for lack of a connection. */
+export const OFFLINE_SESSION_ERROR = 'Çevrimdışısın; oturum bağlantı gelince yenilenecek.';
+
+function errorMessage(e: unknown): string {
+  if (e && typeof e === 'object' && typeof (e as { message?: unknown }).message === 'string') {
+    return (e as { message: string }).message;
+  }
+  return String(e);
 }
 
 // ---------------------------------------------------------------------------

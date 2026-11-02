@@ -26,23 +26,68 @@
  * The guard is kept rather than deleted because it is what lets a screen
  * render zeros instead of stale numbers when nobody is signed in. It is now
  * simply free.
+ *
+ * ## F06 (SYN-02): offline with an expired token is still "signed in"
+ *
+ * Near expiry `getSession()` refreshes, and offline that refresh fails: auth-js answers
+ * `{ session: null, error: AuthRetryableFetchError }` after retrying for about 25 s. Read as "not
+ * signed in", the outbox and the task store refused every local write and the Today read cache was
+ * skipped. Now `getSession()` is bounded (2 s), and when the only reason for "no session" is that
+ * the auth server could not be reached, the session stored on this device answers. It is used for
+ * LOCAL reads and writes only; an expired token is still refused by the server.
  */
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { authStorage } from './authStorage';
+import { AUTH_STORAGE_KEY } from './authStorageKey';
+import { boundSession, isRetryableAuthError, LOCAL_USER_TIMEOUT_MS, type BoundedSession } from './bootSession';
 
 export type LocalUser = { id: string; email: string | null };
+export type { BoundedSession };
+export { isRetryableAuthError, LOCAL_USER_TIMEOUT_MS };
 
-/** The signed-in user from the local session, or null. Never throws. */
-export async function currentUser(): Promise<LocalUser | null> {
+/**
+ * The session persisted by auth-js (possibly expired). Invalid, incomplete or unreadable => null.
+ * Never throws. Only the shape is checked: a user id and a refresh token.
+ */
+export async function readStoredSession(): Promise<Session | null> {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user;
-    if (!user?.id) return null;
-    return { id: user.id, email: user.email ?? null };
+    const raw = await authStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<Session> | null;
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (typeof parsed.user?.id !== 'string' || parsed.user.id.length === 0) return null;
+    if (typeof parsed.refresh_token !== 'string' || parsed.refresh_token.length === 0) return null;
+    return parsed as Session;
   } catch {
-    // A storage read that fails is "not signed in" as far as a render guard
-    // is concerned; it must not take the screen down.
     return null;
   }
+}
+
+/** `getSession` against `timeoutMs`; the timer is cleared on every path. Never throws. */
+export function getSessionBounded(timeoutMs: number = LOCAL_USER_TIMEOUT_MS): Promise<BoundedSession> {
+  return boundSession(() => supabase.auth.getSession(), timeoutMs);
+}
+
+/**
+ * The signed-in user from the local session, or null. Never throws.
+ *
+ * Live session -> its user. No session because the auth server was out of reach (timeout or a
+ * retryable fetch error) -> the stored session's user. Anything else (a permanent error, nothing
+ * stored, a storage read that failed) -> null: a read that fails is "not signed in" as far as a
+ * render guard is concerned, and it must not take the screen down.
+ */
+export async function currentUser(): Promise<LocalUser | null> {
+  const b = await getSessionBounded();
+  const user = b.session?.user;
+  if (user?.id) return { id: user.id, email: user.email ?? null };
+  if (b.rejected) return null;
+  if (b.timedOut || isRetryableAuthError(b.error)) {
+    const stored = await readStoredSession();
+    const s = stored?.user;
+    if (s?.id) return { id: s.id, email: s.email ?? null };
+  }
+  return null;
 }
 
 export async function isSignedIn(): Promise<boolean> {

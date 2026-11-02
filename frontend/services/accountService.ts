@@ -34,6 +34,10 @@ import { flushAllOutboxes } from './unifiedOutbox';
 // F04 — one account boundary: every registered store, module map, the read cache, reminders, keys.
 import { endAccountScope } from '../lib/accountScope';
 import { currentUser } from '../lib/session';
+// F06: an offline sign-out (see signOutLocal)
+import { isRetryableAuthError } from '../lib/bootSession';
+import { authStorage } from '../lib/authStorage';
+import { AUTH_STORAGE_KEY } from '../lib/authStorageKey';
 import type { RepoResult } from '../repositories/shared';
 
 /**
@@ -148,13 +152,32 @@ export async function signOutLocal(): Promise<RepoResult<true>> {
   let failed = false;
   try {
     const { error } = await supabase.auth.signOut({ scope: 'local' });
-    failed = !!error;
+    // F06 (NAV-04): auth-js 2.107 still calls POST /logout for scope 'local' (and an expired token
+    // first tries a refresh), so offline this answered AuthRetryableFetchError and nobody could sign
+    // out without a connection -- including from the onboarding gate, whose escape this is.
+    failed = !!error && !(isRetryableAuthError(error) && (await forgetSessionOnDevice()));
   } catch {
     failed = true;
   }
   if (failed) return { ok: false, error: 'Oturum kapatılamadı, lütfen tekrar dene.' };
   await endAccountScope('signed_out', uid);
   return { ok: true, data: true };
+}
+
+/**
+ * F06: the local half of a sign-out when the auth server cannot be reached. The stored session is
+ * removed first; the second `signOut` then finds no session, makes no request, and auth-js clears
+ * its own state and emits SIGNED_OUT (the root layout routes to the login screen). The refresh
+ * token is not revoked on the server (that needs the network); it no longer exists on this device.
+ */
+async function forgetSessionOnDevice(): Promise<boolean> {
+  try {
+    await authStorage.removeItem(AUTH_STORAGE_KEY);
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 /**

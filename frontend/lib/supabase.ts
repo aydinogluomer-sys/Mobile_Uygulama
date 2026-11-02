@@ -4,13 +4,28 @@ import { authStorage } from './authStorage';
 import type { Database } from './database.types';
 import { Platform } from 'react-native';
 import { signalOnSuccess } from './networkSignal';
+import { AUTH_STORAGE_KEY, CONFIG_MISSING_URL } from './authStorageKey';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+const rawUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const rawAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+/**
+ * F06 (SYN-23): non-null when the build has no Supabase configuration; the root layout then shows
+ * BootGate('config'). `createClient` used to throw "supabaseUrl is required" while this module was
+ * loading, which took the whole app down before any screen (or error reporter) could render.
+ */
+export const SUPABASE_CONFIG_ERROR: string | null =
+  rawUrl && rawAnonKey ? null : 'EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_ANON_KEY tanımlı değil.';
+
+// placeholders only when the configuration is missing: no request to them ever succeeds
+const supabaseUrl = rawUrl || CONFIG_MISSING_URL;
+const supabaseAnonKey = rawAnonKey || 'config-missing';
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: authStorage,
+    // F06: EXACTLY the supabase-js default for this URL (lib/authStorageKey.ts); changing its value signs everyone out
+    storageKey: AUTH_STORAGE_KEY,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: Platform.OS === 'web',

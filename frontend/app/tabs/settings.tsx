@@ -30,7 +30,8 @@ import { PUBLIC_SITE_URLS_LIVE, PUBLIC_SITE_URLS } from '../../lib/featureGates'
 import { useRouter } from 'expo-router';
 import BadHabitsTracker from '../../components/BadHabitsTracker';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import { seedDemoData, isSeedingAllowed } from '../../lib/demoSeed';
+// F06 (PRF-03): the seeder is loaded through its __DEV__-only gate, never imported statically
+import { loadDemoSeed } from '../../lib/demoSeedGate';
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 // R08 — check an export and merge what is missing; never a full restore.
 import RestorePanel from '../../components/RestorePanel';
@@ -231,9 +232,11 @@ export default function SettingsScreen() {
   };
 
   const handleSeedDemoData = async () => {
+    const demo = loadDemoSeed();
+    if (!demo) return;
     try {
       setSeedingDemo(true);
-      const result = await seedDemoData();
+      const result = await demo.seedDemoData();
       Alert.alert(
         'Demo veri hazir',
         `Projeler: +${result.projects}\nGorevler: +${result.tasks}\nAliskanliklar: +${result.habits}\nLoglar: +${result.logs}\nOdak gorevleri: +${result.focusTasks}\nTelafi planlari: +${result.recoveryPlans}\nGunluk girdileri: +${result.journalEntries}`
@@ -510,7 +513,7 @@ export default function SettingsScreen() {
             {/* DEMO-001B - sadece gelistirme derlemesinde. Kaynak koruma
                 lib/demoSeed.ts icindedir; bu yalnizca calismayacak bir
                 kontrolu kullaniciya gostermemek icin. */}
-            {isSeedingAllowed() && (
+            {__DEV__ && loadDemoSeed()?.isSeedingAllowed() === true && (
               <TouchableOpacity
                 style={[styles.settingItem, seedingDemo && styles.seedBtnDisabled]}
                 onPress={handleSeedDemoData}

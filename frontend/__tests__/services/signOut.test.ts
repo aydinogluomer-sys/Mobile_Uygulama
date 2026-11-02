@@ -5,7 +5,13 @@
  * memory, in the read cache and in its transient keys. Unsent work is never removed: it waits under
  * the account's own key for the same account. A failed sign-out clears nothing (no false success).
  */
-const mockAuth = { uid: 'A' as string | null, signOutError: null as null | { message: string }, signOutCalls: [] as unknown[] };
+const mockAuth = {
+  uid: 'A' as string | null,
+  signOutError: null as null | { message: string; name?: string },
+  signOutCalls: [] as unknown[],
+  // F06: per-call answers, consumed first (an offline sign-out answers differently the second time)
+  signOutQueue: [] as (null | { message: string; name?: string })[],
+};
 jest.mock('../../lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
@@ -13,7 +19,10 @@ jest.mock('../../lib/supabase', () => ({
     auth: {
       getSession: async () => ({ data: { session: mockAuth.uid ? { user: { id: mockAuth.uid }, access_token: 't' } : null } }),
       getUser: async () => ({ data: { user: mockAuth.uid ? { id: mockAuth.uid } : null } }),
-      signOut: async (opts?: unknown) => { mockAuth.signOutCalls.push(opts); return { error: mockAuth.signOutError }; },
+      signOut: async (opts?: unknown) => {
+        mockAuth.signOutCalls.push(opts);
+        return { error: mockAuth.signOutQueue.length > 0 ? mockAuth.signOutQueue.shift()! : mockAuth.signOutError };
+      },
     },
   },
 }));
@@ -46,6 +55,8 @@ import { useLogStore } from '../../store/logStore';
 import { useFocusStore, sessionKey } from '../../store/focusStore';
 import { useAiConversationStore, lastActiveKey } from '../../store/aiConversationStore';
 import { urgeStorageKey } from '../../components/BadHabitsTracker';
+import { authStorage } from '../../lib/authStorage';
+import { AUTH_STORAGE_KEY } from '../../lib/authStorageKey';
 
 /** A's device state: two transient keys, the rest must survive a sign-out. */
 const A_KEYS = {
@@ -55,7 +66,7 @@ const A_KEYS = {
 
 beforeEach(async () => {
   await AsyncStorage.clear();
-  Object.assign(mockAuth, { uid: 'A', signOutError: null, signOutCalls: [] });
+  Object.assign(mockAuth, { uid: 'A', signOutError: null, signOutCalls: [], signOutQueue: [] });
   mockScheduled.ids = [];
   mockReadCache.userCleared = [];
   mockReadCache.allCleared = 0;
@@ -120,6 +131,39 @@ describe('signOutLocal', () => {
     mockAuth.uid = null;
     await expect(signOutLocal()).resolves.toEqual({ ok: true, data: true });
     expect(mockReadCache.userCleared).toEqual([]);
+  });
+});
+
+describe('signOutLocal without a connection (F06, NAV-04: the onboarding gate escape)', () => {
+  // auth-js 2.107 calls POST /logout even for scope 'local'; offline that is AuthRetryableFetchError.
+  const OFFLINE = { name: 'AuthRetryableFetchError', message: 'Failed to fetch' };
+
+  it('removes the stored session on the device, signs out locally a second time, and clears A', async () => {
+    await seedA();
+    await authStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ access_token: 'at', refresh_token: 'rt', user: { id: 'A' } }));
+    mockAuth.signOutQueue = [OFFLINE, null];
+
+    await expect(signOutLocal()).resolves.toEqual({ ok: true, data: true });
+    expect(mockAuth.signOutCalls).toEqual([{ scope: 'local' }, { scope: 'local' }]);
+    expect(await authStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
+    expect(useHabitStore.getState().habits).toEqual([]);
+    expect(mockReadCache.userCleared).toEqual(['A']);
+  });
+
+  it('if even the local half fails, nothing is cleared and it says so', async () => {
+    await seedA();
+    mockAuth.signOutQueue = [OFFLINE, { message: 'still failing' }];
+    expect(await signOutLocal()).toEqual({ ok: false, error: 'Oturum kapatılamadı, lütfen tekrar dene.' });
+    expect(useHabitStore.getState().habits).toHaveLength(1);
+    expect(mockReadCache.userCleared).toEqual([]);
+  });
+
+  it('a server REFUSAL is not treated as offline: no second attempt, no local removal', async () => {
+    await authStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ access_token: 'at', refresh_token: 'rt', user: { id: 'A' } }));
+    mockAuth.signOutQueue = [{ name: 'AuthApiError', message: 'boom' }];
+    expect(await signOutLocal()).toMatchObject({ ok: false });
+    expect(mockAuth.signOutCalls).toHaveLength(1);
+    expect(await authStorage.getItem(AUTH_STORAGE_KEY)).not.toBeNull();
   });
 });
 

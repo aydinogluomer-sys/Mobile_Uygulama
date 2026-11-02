@@ -185,3 +185,26 @@ describe('AC-OP04 completed_at is derived from status', () => {
     expect(row.completed_at).toBeNull();
   });
 });
+
+describe('AC-OP05 (F06) a failed read says whether the server was reached', () => {
+  afterEach(() => { mockDb.failNextRead = null; });
+
+  it('status 0 (the request never completed) is offline, with its status', async () => {
+    mockDb.failNextRead = { error: 'TypeError: Network request failed', status: 0 };
+    await expect(fetchOnboarding()).resolves.toMatchObject({ ok: false, offline: true, status: 0 });
+  });
+
+  it('a 503 reached a server: not offline, and the status is carried for the caller to decide', async () => {
+    mockDb.failNextRead = { error: 'upstream connect error', status: 503 };
+    await expect(fetchOnboarding()).resolves.toMatchObject({ ok: false, offline: false, status: 503 });
+  });
+
+  it('a refusal (RLS 42501, 403) is not offline and carries its code', async () => {
+    mockDb.failNextRead = { error: 'permission denied for table user_onboarding', status: 403, code: '42501' };
+    await expect(fetchOnboarding()).resolves.toMatchObject({ ok: false, offline: false, status: 403, code: '42501' });
+  });
+
+  it('no session: the repository says so without a request', async () => {
+    await expect(as(null, () => fetchOnboarding())).resolves.toEqual({ ok: false, error: 'Oturum bulunamadı.' });
+  });
+});
