@@ -62,6 +62,38 @@ it('covers the migrations this implementation wrote (028..035)', () => {
   expect(NEW.length).toBeGreaterThanOrEqual(8);
 });
 
+// F02: a rollback script filed inside this directory would be applied FORWARD (the Supabase CLI
+// applies every .sql file it finds here, and so does the CI loop): the most dangerous mistake the
+// rollback contract can make. Rollbacks live in supabase/rollbacks/. One file here is named after a
+// rollback and is NOT one in this sense: 014 is a "compatibility rollback" of 013's vocabulary that
+// was itself applied FORWARD on 2026-08-31, a numbered migration like the others. It is the only
+// exemption, and only because it predates 028.
+const FORWARD_MIGRATIONS_NAMED_ROLLBACK = ['014_recovery_vocabulary_compat_rollback.sql'];
+const hidingRollbacks = (files: string[]) =>
+  files.filter((f) => /rollback/i.test(f) && !FORWARD_MIGRATIONS_NAMED_ROLLBACK.includes(f));
+
+it('no rollback script is hiding inside supabase/migrations (the CLI would apply it forward)', () => {
+  expect(hidingRollbacks(readdirSync(DIR))).toEqual([]);
+});
+
+it('the rollback check sees a misplaced script and spares only the historic forward migration (synthetic listing)', () => {
+  const listing = ['036_live_audit_hardening.sql', 'README.md'];
+  expect(hidingRollbacks([...listing, '036_live_audit_hardening.rollback.sql'])).toEqual(['036_live_audit_hardening.rollback.sql']);
+  expect(hidingRollbacks([...listing, '038_rollback_036.sql'])).toEqual(['038_rollback_036.sql']);
+  expect(hidingRollbacks([...listing, '037_ROLLBACK.SQL'])).toEqual(['037_ROLLBACK.SQL']);
+  expect(hidingRollbacks([...listing, '014_recovery_vocabulary_compat_rollback.sql'])).toEqual([]);
+  expect(hidingRollbacks(listing)).toEqual([]);
+});
+
+it('the one exemption is a real, applied, pre-028 forward migration (it cannot grow into a loophole)', () => {
+  for (const f of FORWARD_MIGRATIONS_NAMED_ROLLBACK) {
+    expect(readdirSync(DIR)).toContain(f);
+    expect(Number(f.slice(0, 3))).toBeLessThan(28);
+    expect(NEW).not.toContain(f);
+    expect(README).toMatch(new RegExp(`\`${f}\` \\| \`\\d{14}\``)); // listed with the ledger version it was applied as
+  }
+});
+
 it.each(NEW)('%s is marked and listed NOT APPLIED', (f) => {
   expect(readFileSync(join(DIR, f), 'utf8')).toMatch(/STATUS: WRITTEN, NOT APPLIED/);
   expect(README).toContain(`\`${f}\` | **NOT APPLIED**`);

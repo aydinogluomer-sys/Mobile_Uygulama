@@ -72,6 +72,21 @@ created later, by `006`). That gap is pre-existing and documented in
 `docs/audit/07_ARCHITECTURE_AND_DATA_MODEL_REVIEW.md`; renumbering neither
 created nor closed it.
 
+## Rollbacks
+
+Every `NNN_*.sql` from `028` on has a rollback script, `supabase/rollbacks/NNN_<name>.rollback.sql`
+(`036_live_audit_hardening.sql` has `036_live_audit_hardening.rollback.sql`). The scripts live
+**outside** this directory on purpose: the Supabase CLI applies every `.sql` file it finds here
+forward, so a rollback filed here would be run as if it were the next migration. A script does
+nothing unless the same session first ran `SET aderyth.rollback_confirm = 'NNN';` with its own
+number. Run them newest to oldest, take a backup first, and check `select * from public.xp_drift();`
+before and after. CI proves the cycle on a throwaway Postgres 17 (apply, roll back, compare the
+catalog with the baseline, apply again). Details: `supabase/rollbacks/README.md`. The migration
+files themselves are never edited.
+
+When you add a migration, add its rollback in the same commit; `migrationRollbackPresent.test.ts`
+fails otherwise.
+
 ## Rules
 
 **Numbers are append-only.** A new migration takes the next unused number. Never

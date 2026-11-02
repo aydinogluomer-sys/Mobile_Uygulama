@@ -25,17 +25,43 @@ where table_schema='public' and table_name='habit_logs' and column_name='tz';
 
 ## 1. Uygulama sırası
 
-| # | Dosya | Açtığı şey | Sonra çevrilecek kapı | Doğrulama |
-|---|---|---|---|---|
-| 028 | `028_habit_pauses_and_goal_versions.sql` | tarihli duraklatma/tatil (`habit_pauses`), etkin tarihli hedef sürümleri (`habit_goal_versions`) — R01.05; yedek/geri yükleme bu tabloları kendiliğinden kapsar (R08.01) | yok (istemci fail-open okur; tablo gelince kendiliğinden açılır) | §2.1 |
-| 029 | `029_habit_checklists.sql` | alışkanlık checklist'i (`habit_checklist_items`, `habit_checklist_checks`) — R01.04; yedek/geri yükleme kendiliğinden kapsar (R08.01) | yok (fail-open) | §2.2 |
-| 030 | `030_routine_runner.sql` | rutin şablon/sürüm/oturum — R05.01/02/07 | yok (cihaz-yerel → sunucu) | §2.3 |
-| 031 | `031_moods_and_review_actions.sql` | adlı duygular, çoklu check-in, review sonraki eylemi — R07.02/06 | yok (cihaz-yerel → sunucu) | §2.4 |
-| 032 | `032_coach_actions_v2.sql` | koçun ikinci eylem seti için CHECK — R09.02 | `COACH_ACTIONS_V2_ENABLED` **ancak** `generate-routine` edge function deploy edildikten sonra (S3) | §2.5 |
-| 033 | `033_habit_log_timezone.sql` | `habit_logs.tz` (log'un yazıldığı IANA bölgesi) — R01.06 | `LOG_TIMEZONE_ENABLED` | §2.6 |
-| 034 | `034_coach_reminder_action.sql` | koçun hatırlatma saati eylemi `edit_reminder_time` — R09.02 (CHECK'i 9 türle baştan yazar; 032'den bağımsız doğru) | `COACH_ACTIONS_V2_ENABLED` — 032 + 034 uygulanıp `generate-routine` deploy edildikten SONRA (S3) | §2.7 |
-| 035 | `035_coach_lighten_week.sql` | koçun "bu hafta hafiflet" eylemi `lighten_week` — R09.04 (CHECK'i 10 türle baştan yazar; 032/034'ten bağımsız doğru) | `COACH_ACTIONS_V2_ENABLED` — 032 + 034 + 035 uygulanıp `generate-routine` deploy edildikten SONRA (S3) | §2.8 |
-| 036 | `036_live_audit_hardening.sql` | **canlı denetimden öneri** (`LIVE_SCHEMA_AUDIT.md`): XP/seri (alışkanlık, gün) defteri — S11 çiftliğini kapatır; `weekly_xp` istemci yazımı kapanır; kullanılmayan/tetikleyici SECURITY DEFINER fonksiyonlarda EXECUTE alınır; grant hijyeni. 028–035'ten bağımsız. **Önce bir branch'te dene.** | yok (R01.03-b geri alma bundan sonra açılabilir) | §2.9 |
+| # | Dosya | Açtığı şey | Sonra çevrilecek kapı | Doğrulama | Geri alma |
+|---|---|---|---|---|---|
+| 028 | `028_habit_pauses_and_goal_versions.sql` | tarihli duraklatma/tatil (`habit_pauses`), etkin tarihli hedef sürümleri (`habit_goal_versions`) — R01.05; yedek/geri yükleme bu tabloları kendiliğinden kapsar (R08.01) | yok (istemci fail-open okur; tablo gelince kendiliğinden açılır) | §2.1 | `supabase/rollbacks/028_habit_pauses_and_goal_versions.rollback.sql` |
+| 029 | `029_habit_checklists.sql` | alışkanlık checklist'i (`habit_checklist_items`, `habit_checklist_checks`) — R01.04; yedek/geri yükleme kendiliğinden kapsar (R08.01) | yok (fail-open) | §2.2 | `supabase/rollbacks/029_habit_checklists.rollback.sql` |
+| 030 | `030_routine_runner.sql` | rutin şablon/sürüm/oturum — R05.01/02/07 | yok (cihaz-yerel → sunucu) | §2.3 | `supabase/rollbacks/030_routine_runner.rollback.sql` |
+| 031 | `031_moods_and_review_actions.sql` | adlı duygular, çoklu check-in, review sonraki eylemi — R07.02/06 | yok (cihaz-yerel → sunucu) | §2.4 | `supabase/rollbacks/031_moods_and_review_actions.rollback.sql` |
+| 032 | `032_coach_actions_v2.sql` | koçun ikinci eylem seti için CHECK — R09.02 | `COACH_ACTIONS_V2_ENABLED` **ancak** `generate-routine` edge function deploy edildikten sonra (S3) | §2.5 | `supabase/rollbacks/032_coach_actions_v2.rollback.sql` |
+| 033 | `033_habit_log_timezone.sql` | `habit_logs.tz` (log'un yazıldığı IANA bölgesi) — R01.06 | `LOG_TIMEZONE_ENABLED` | §2.6 | `supabase/rollbacks/033_habit_log_timezone.rollback.sql` |
+| 034 | `034_coach_reminder_action.sql` | koçun hatırlatma saati eylemi `edit_reminder_time` — R09.02 (CHECK'i 9 türle baştan yazar; 032'den bağımsız doğru) | `COACH_ACTIONS_V2_ENABLED` — 032 + 034 uygulanıp `generate-routine` deploy edildikten SONRA (S3) | §2.7 | `supabase/rollbacks/034_coach_reminder_action.rollback.sql` |
+| 035 | `035_coach_lighten_week.sql` | koçun "bu hafta hafiflet" eylemi `lighten_week` — R09.04 (CHECK'i 10 türle baştan yazar; 032/034'ten bağımsız doğru) | `COACH_ACTIONS_V2_ENABLED` — 032 + 034 + 035 uygulanıp `generate-routine` deploy edildikten SONRA (S3) | §2.8 | `supabase/rollbacks/035_coach_lighten_week.rollback.sql` |
+| 036 | `036_live_audit_hardening.sql` | **canlı denetimden öneri** (`LIVE_SCHEMA_AUDIT.md`): XP/seri (alışkanlık, gün) defteri — S11 çiftliğini kapatır; `weekly_xp` istemci yazımı kapanır; kullanılmayan/tetikleyici SECURITY DEFINER fonksiyonlarda EXECUTE alınır; grant hijyeni. 028–035'ten bağımsız. **Önce bir branch'te dene.** | yok (R01.03-b geri alma bundan sonra açılabilir) | §2.9 | `supabase/rollbacks/036_live_audit_hardening.rollback.sql` — önce 038 geri alınır (varsa); **geri alma açıkları yeniden açar** (weekly_xp yazımı, istemci EXECUTE hakları), yalnız 036 branch denemesinde sorun çıkarsa kullanılır ve ardından F03 (038) uygulanamaz |
+| 037 | `037_today_bootstrap_rpc.sql` | tek gidiş-dönüşlü Bugün önyüklemesi `get_today_bootstrap(date)` (çağıranın kendi RLS bağlamında, SECURITY INVOKER; 028/029 tabloları yoksa `to_regclass` ile atlar) | yok (istemci RPC yoksa tablo okumalarına düşer: `todayBootstrapRepository.ts`, `isMissingRpcError`) | `ci.yml` bootstrap adımı (`get_today_bootstrap`) | `supabase/rollbacks/037_today_bootstrap_rpc.rollback.sql` |
+
+### Geri alma nasıl çalıştırılır
+
+Her migration'ın geri alma betiği `supabase/rollbacks/` altındadır (ayrıntı: `supabase/rollbacks/README.md`). Betikler CI'da
+tek kullanımlık Postgres 17'de sınanır: ileri uygula, sondan başa geri al, katalog parmak izini baştakiyle karşılaştır,
+yeniden ileri uygula. **Canlıda hiçbiri çalıştırılmadı; yalnız sahip çalıştırır (OD-02).**
+
+1. Önce yedek (S1), sonra `select * from public.xp_drift();` (0 satır beklenir).
+2. Sıra **büyükten küçüğe**: 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 036'dan önce 038 geri alınır
+   (036 betiği, `fn_habit_log_guard` varken reddeder).
+3. Her betik için **aynı oturumda** önce onay, sonra dosya. Onay değeri betiğin kendi numarası değilse betik `P0001` ile durur
+   ve hiçbir şey değiştirmez:
+
+```sql
+-- SQL editöründe: SET satırı ve betiğin tamamı AYNI çalıştırmada (tek "Run")
+SET aderyth.rollback_confirm = 'NNN';
+-- ardından supabase/rollbacks/NNN_<ad>.rollback.sql dosyasının tamamı
+```
+
+   `psql` ile: `psql <bağlantı> -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = 'NNN'" -f supabase/rollbacks/NNN_<ad>.rollback.sql`.
+4. Her geri almadan sonra `select * from public.xp_drift();` (0 satır) ve §2.10 sorguları.
+5. Yıkıcı betikler yedek ister: 028, 029, 030, 031 ve 033 satır/sütun siler; yeniden ileri uygulama o veriyi geri getirmez.
+   032/034/035 satır silmez (yeni türde satır varsa kısıt `NOT VALID` kalır). 036 `weekly_xp` yazımını ve istemci
+   EXECUTE haklarını yeniden açar; yalnız 036 branch denemesinde sorun çıkarsa kullanılır.
+6. Bir hata alırsanız hiçbir değişiklik uygulanmamıştır (tek transaction); oturumda açık kalmış transaction varsa `ROLLBACK;`.
 
 ## 2. Doğrulama sorguları (her migration'dan sonra, salt-okunur)
 
@@ -80,6 +106,16 @@ select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public' and p.prosecdef and has_function_privilege('anon', p.oid, 'execute');            -- 0 satır
 select proname, has_function_privilege('authenticated', oid, 'execute') as auth
 from pg_proc where proname in ('get_user_rank','get_weekly_leaderboard','get_global_leaderboard','get_or_init_subscription'); -- hepsi true
+
+-- 2.10 geri alma öncesi/sonrası: XP defteri sağlıklı mı (0 satır beklenir)
+select * from public.xp_drift();
+-- hangi migration'ların etkisi var (rollback'ten sonra ilgili satırlar yok olmalı)
+select to_regclass('public.habit_pauses') as m028, to_regclass('public.habit_checklist_items') as m029,
+       to_regclass('public.routine_templates') as m030, to_regclass('public.mood_checkins') as m031,
+       to_regclass('public.habit_xp_awards') as m036, to_regprocedure('public.get_today_bootstrap(date)') as m037;
+select exists (select 1 from information_schema.columns
+               where table_schema='public' and table_name='habit_logs' and column_name='tz') as m033;
+select pg_get_constraintdef(oid) from pg_constraint where conname = 'ai_actions_type_check';
 ```
 
 ## 3. BLOCKED — tanımı repoda olmayan nesneler (yalnız okuma sorguları)

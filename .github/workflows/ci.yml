@@ -241,6 +241,13 @@ jobs:
       - name: Apply live_schema.sql baseline
         run: psql -v ON_ERROR_STOP=1 -f supabase/live_schema.sql
 
+      # F02, rollback contract (DB1-15, DB2-07). This records the catalog of live_schema.sql alone,
+      # before 037 or any 028+ migration touches it. After the forward run, the rollback scripts in
+      # supabase/rollbacks/ must bring the catalog back to exactly this file. The files in $RUNNER_TEMP
+      # live for this job only; every command here talks to the throwaway Postgres above.
+      - name: Fingerprint baseline catalog (live_schema.sql only)
+        run: psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_baseline.txt"
+
       - name: Verify 037_today_bootstrap_rpc.sql works even before 028..036 are applied
         run: |
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/037_today_bootstrap_rpc.sql
@@ -338,3 +345,230 @@ jobs:
       # supabase/tests/expected_failures.txt, which is reconciled in both directions.
       - name: Behavioural SQL tests (grants, RLS, SECURITY DEFINER hygiene, xp_drift, concurrency)
         run: bash supabase/tests/run.sh
+
+      # F02, rollback contract (DB1-15, DB2-07): forward state -> every rollback script, newest to
+      # oldest -> the catalog must equal the baseline -> forward again, with the same catalog and the
+      # same behavioural tests. Nothing below leaves the throwaway Postgres service of this job.
+      - name: Fingerprint forward catalog (028..last)
+        run: psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_forward_1.txt"
+
+      # A rollback must refuse unless its own number was confirmed in the same session (a neighbour's
+      # confirmation must not unlock it), and 036 must refuse while 038, which uses the XP ledger,
+      # is still applied. A refusal changes nothing: the catalog is compared with the forward one after.
+      - name: Rollback scripts must refuse without their own confirmation (negative controls)
+        run: |
+          set -euo pipefail
+          err="$RUNNER_TEMP/rollback_refusal.err"
+          scripts="$(ls supabase/rollbacks/[0-9][0-9][0-9]_*.rollback.sql | sort)"
+          nums="$(for rb in $scripts; do basename "$rb" | cut -d'_' -f1; done)"
+          for rb in $scripts; do
+            num="$(basename "$rb" | cut -d'_' -f1)"
+            wrong="$(printf '%s\n' $nums | awk -v n="$num" '$0 > n && !found { print; found = 1 }')"
+            if [ -z "$wrong" ]; then wrong="$(printf '%s\n' $nums | awk 'NR == 1')"; fi
+            if psql -X -v ON_ERROR_STOP=1 -f "$rb" 2>"$err"; then
+              echo "$rb ran without any confirmation" >&2; exit 1
+            fi
+            grep -q "aderyth.rollback_confirm = '${num}'" "$err"
+            if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${wrong}'" -f "$rb" 2>"$err"; then
+              echo "$rb ran with the confirmation of ${wrong}" >&2; exit 1
+            fi
+            grep -q "aderyth.rollback_confirm = '${num}'" "$err"
+          done
+          if psql -X -v ON_ERROR_STOP=1 \
+               -c "BEGIN" \
+               -c "CREATE FUNCTION public.fn_habit_log_guard() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NULL; END'" \
+               -c "SET aderyth.rollback_confirm = '036'" \
+               -f supabase/rollbacks/036_live_audit_hardening.rollback.sql 2>"$err"; then
+            echo "036 rollback ran while fn_habit_log_guard exists" >&2; exit 1
+          fi
+          grep -q "038 is still applied" "$err"
+          # a client that does NOT stop on errors (psql without ON_ERROR_STOP, a script runner) gets no further
+          # either: the failed guard leaves the transaction aborted, every later statement is refused and
+          # COMMIT rolls back. This is why each guard has to sit inside the transaction.
+          for rb in $scripts; do
+            psql -X -f "$rb" > /dev/null 2>&1 || true
+          done
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_after_refusals.txt"
+          diff -u "$RUNNER_TEMP/fp_forward_1.txt" "$RUNNER_TEMP/fp_after_refusals.txt"
+
+      - name: Roll back newest to oldest (rollback cycle)
+        run: |
+          set -euo pipefail
+          for rb in $(ls supabase/rollbacks/[0-9][0-9][0-9]_*.rollback.sql | sort -r); do
+            num="$(basename "$rb" | cut -d'_' -f1)"
+            if [ "$((10#$num))" -ge 28 ]; then
+              echo "Rolling back $rb"
+              psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb"
+            fi
+          done
+
+      # `set -euo pipefail` and `diff -u`: a difference exits non-zero, so the step is red and the
+      # difference is in the log. Nothing here can fail silently.
+      - name: Rolled-back catalog must equal the baseline, xp_drift must be empty
+        run: |
+          set -euo pipefail
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_rolled_back.txt"
+          diff -u "$RUNNER_TEMP/fp_baseline.txt" "$RUNNER_TEMP/fp_rolled_back.txt"
+          drift="$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')"
+          echo "xp_drift rows after rollback: ${drift}"
+          test "${drift}" = "0"
+
+      # A second pass: every script converges to the same state, except 036, which refuses on
+      # purpose once the ledger is gone (its TO PUBLIC grants must never run on a database where
+      # 036 is not applied).
+      - name: Second rollback pass changes nothing (036 refuses once it is gone)
+        run: |
+          set -euo pipefail
+          err="$RUNNER_TEMP/rollback_second.err"
+          for rb in $(ls supabase/rollbacks/[0-9][0-9][0-9]_*.rollback.sql | sort -r); do
+            num="$(basename "$rb" | cut -d'_' -f1)"
+            if [ "${num}" = "036" ]; then
+              if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb" 2>"$err"; then
+                echo "036 rollback ran a second time" >&2; exit 1
+              fi
+              grep -q "036 is not applied" "$err"
+            else
+              psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb"
+            fi
+          done
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_rolled_back_2.txt"
+          diff -u "$RUNNER_TEMP/fp_baseline.txt" "$RUNNER_TEMP/fp_rolled_back_2.txt"
+
+      # The rows the rollback removed (habit_pauses fixture and the like) do not come back; the
+      # tables do, empty. The behavioural tests build their own fixtures.
+      - name: Re-apply forward migrations (apply, roll back, apply again)
+        run: |
+          set -euo pipefail
+          for mig in $(ls supabase/migrations/[0-9][0-9][0-9]_*.sql | sort); do
+            num="$(basename "$mig" | cut -d'_' -f1)"
+            if [ "$((10#$num))" -ge 28 ]; then
+              echo "Re-applying $mig"
+              psql -X -v ON_ERROR_STOP=1 -f "$mig"
+            fi
+          done
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_forward_2.txt"
+          diff -u "$RUNNER_TEMP/fp_forward_1.txt" "$RUNNER_TEMP/fp_forward_2.txt"
+          bash supabase/tests/run.sh
+
+      # DB2-07 on real rows. The plain cycle above carries no XP, so it cannot tell whether the 036
+      # rollback keeps xp_drift() empty. Here a user deletes one done day and rewrites another with a
+      # lower award: the ledger keeps each day's highest award, total_xp was raised by it once, habit_logs
+      # no longer carries it, and xp_drift() reports the user. The rollback must move that XP into
+      # purged_xp, and must refuse (changing nothing) when that would leave a user out of balance.
+      # The fixture relies on the trigger chain of 036 alone: when 038 (F03) lands, this step has to roll
+      # 038 back first (the 036 script refuses while fn_habit_log_guard exists) and apply it again after.
+      - name: Rollback 036 keeps the XP books straight when the ledger holds more than habit_logs (DB2-07)
+        run: |
+          set -euo pipefail
+          err="$RUNNER_TEMP/rollback_036_drift.err"
+          uid='f2000000-0000-4000-8000-000000000001'
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO auth.users (id, email) VALUES ('f2000000-0000-4000-8000-000000000001', 'f02@aderyth.test');
+          BEGIN;
+          -- the dormant pet trigger would trip over the unseeded pet_stages table: only this insert runs without triggers
+          SET LOCAL session_replication_role = replica;
+          INSERT INTO public.profiles (id, email, username) VALUES ('f2000000-0000-4000-8000-000000000001', 'f02@aderyth.test', 'f02');
+          SET LOCAL session_replication_role = origin;
+          SET LOCAL ROLE authenticated;
+          SELECT set_config('request.jwt.claim.sub', 'f2000000-0000-4000-8000-000000000001', true);
+          SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+          INSERT INTO public.habits (id, user_id, name, tracking_type, status)
+          VALUES ('f2aaaaaa-0000-4000-8000-000000000001', 'f2000000-0000-4000-8000-000000000001', 'DB2-07', 'boolean', 'active');
+          INSERT INTO public.habit_logs (habit_id, user_id, completed_at, state, is_completed)
+          VALUES ('f2aaaaaa-0000-4000-8000-000000000001', 'f2000000-0000-4000-8000-000000000001', CURRENT_DATE, 'done', true),
+                 ('f2aaaaaa-0000-4000-8000-000000000001', 'f2000000-0000-4000-8000-000000000001', CURRENT_DATE - 1, 'done', true);
+          -- both days are paid and in the ledger; now one is deleted and the other written again with less
+          DELETE FROM public.habit_logs WHERE habit_id = 'f2aaaaaa-0000-4000-8000-000000000001';
+          -- value 0 makes the partial award lower than the done award (the default value 1 of a goal-1 habit would pay the same)
+          INSERT INTO public.habit_logs (habit_id, user_id, completed_at, state, is_completed, value)
+          VALUES ('f2aaaaaa-0000-4000-8000-000000000001', 'f2000000-0000-4000-8000-000000000001', CURRENT_DATE - 1, 'partial', false, 0);
+          COMMIT;
+          SQL
+          # the fixture is not vacuous: the books really are out of balance before the rollback, and the
+          # rewritten day is paid LESS than the ledger holds for it (lower, not zero)
+          drift="$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT drift FROM public.xp_drift() WHERE user_id = '${uid}'")"
+          echo "xp_drift before the rollback: ${drift}"
+          test -n "${drift}"
+          test "${drift}" -gt 0
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.habit_xp_awards a JOIN public.habit_logs l ON l.habit_id = a.habit_id AND l.completed_at = a.day WHERE a.user_id = '${uid}' AND l.xp > 0 AND l.xp < a.xp_awarded")" = "1"
+          # (a) the books were already corrected by hand: moving the same XP again would put the user out of balance
+          psql -X -v ON_ERROR_STOP=1 -c "UPDATE public.profiles SET purged_xp = purged_xp + ${drift} WHERE id = '${uid}'"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+          if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '036'" -f supabase/rollbacks/036_live_audit_hardening.rollback.sql 2>"$err"; then
+            echo "036 rollback ran although it would have put a user out of balance" >&2; exit 1
+          fi
+          grep -q "would add xp_drift rows" "$err"
+          # ... and the refusal rolled the whole transaction back: ledger kept, grants still closed, no XP moved
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.habit_xp_awards') IS NOT NULL AND NOT has_function_privilege('anon', 'public.get_weekly_leaderboard(integer)', 'EXECUTE')")" = "t"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT purged_xp FROM public.profiles WHERE id = '${uid}'")" = "${drift}"
+          # (b) the real case: undo the manual correction, roll back, and the XP moves into purged_xp
+          psql -X -v ON_ERROR_STOP=1 -c "UPDATE public.profiles SET purged_xp = purged_xp - ${drift} WHERE id = '${uid}'"
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '036'" -f supabase/rollbacks/036_live_audit_hardening.rollback.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT purged_xp FROM public.profiles WHERE id = '${uid}'")" = "${drift}"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regclass('public.habit_xp_awards') IS NULL")" = "t"
+          # (c) forward again: the ledger is rebuilt from habit_logs and the books stay straight
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/036_live_audit_hardening.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+
+      # The no-data-loss contract of the coach CHECK rollbacks (032, 034, 035), on a real row. A row of
+      # the newest type exists: each rollback must still succeed, keep the row, leave the constraint
+      # NOT VALID (it then guards new writes only) and refuse a new write of the removed type.
+      - name: Coach CHECK rollbacks keep rows of a newer type (NOT VALID, nothing deleted)
+        run: |
+          set -euo pipefail
+          err="$RUNNER_TEMP/rollback_coach_check.err"
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO auth.users (id, email) VALUES ('f2000000-0000-4000-8000-000000000002', 'f02b@aderyth.test');
+          INSERT INTO public.ai_conversations (id, user_id, title)
+          VALUES ('f2cccccc-0000-4000-8000-000000000002', 'f2000000-0000-4000-8000-000000000002', 'F02');
+          INSERT INTO public.ai_conversation_actions (id, conversation_id, user_id, action_type, payload)
+          VALUES ('f2dddddd-0000-4000-8000-000000000002', 'f2cccccc-0000-4000-8000-000000000002', 'f2000000-0000-4000-8000-000000000002', 'lighten_week', '{}'::jsonb);
+          SQL
+          for num in 035 034 032; do
+            rb="$(ls supabase/rollbacks/${num}_*.rollback.sql)"
+            psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb" 2>"$err"
+            grep -q "left NOT VALID" "$err"
+          done
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.ai_conversation_actions WHERE action_type = 'lighten_week'")" = "1"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT convalidated FROM pg_constraint WHERE conname = 'ai_actions_type_check'")" = "f"
+          if psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO public.ai_conversation_actions (conversation_id, user_id, action_type, payload) VALUES ('f2cccccc-0000-4000-8000-000000000002', 'f2000000-0000-4000-8000-000000000002', 'lighten_week', '{}'::jsonb)" 2>"$err"; then
+            echo "a new write of the removed type was accepted" >&2; exit 1
+          fi
+          grep -q "ai_actions_type_check" "$err"
+          psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO public.ai_conversation_actions (conversation_id, user_id, action_type, payload) VALUES ('f2cccccc-0000-4000-8000-000000000002', 'f2000000-0000-4000-8000-000000000002', 'log_habit', '{}'::jsonb)"
+
+      # The fingerprint must not tell "never touched" (a NULL ACL) from "revoked and granted back" (the
+      # explicit default ACL): a rollback that REVOKEs and GRANTs an object back would otherwise show a
+      # difference that is not one. The cycle above cannot show this property: every object of
+      # live_schema.sql is owned by postgres, and ALTER DEFAULT PRIVILEGES gives all of them an explicit
+      # ACL, so none has a NULL one. Objects of a role without default privileges do; a scratch role owns a
+      # table and a function here, and everything is dropped again. This is the last step, so no
+      # comparison above can see the scratch objects.
+      - name: Fingerprint prints a NULL ACL and the explicit default ACL alike (self-test)
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE zz_fp_probe_owner NOLOGIN" \
+            -c "GRANT USAGE, CREATE ON SCHEMA public TO zz_fp_probe_owner" \
+            -c "SET ROLE zz_fp_probe_owner" \
+            -c "CREATE TABLE public.zz_fingerprint_probe (id integer)" \
+            -c "CREATE FUNCTION public.zz_fingerprint_probe() RETURNS integer LANGUAGE sql AS 'SELECT 1'"
+          # the probe is not vacuous: both objects really carry a NULL ACL now
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT (SELECT relacl IS NULL FROM pg_class WHERE oid = 'public.zz_fingerprint_probe'::regclass) AND (SELECT proacl IS NULL FROM pg_proc WHERE oid = 'public.zz_fingerprint_probe()'::regprocedure)")" = "t"
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql | grep 'zz_fingerprint_probe' > "$RUNNER_TEMP/fp_probe_before.txt"
+          psql -X -v ON_ERROR_STOP=1 \
+            -c "REVOKE ALL ON FUNCTION public.zz_fingerprint_probe() FROM PUBLIC" \
+            -c "GRANT EXECUTE ON FUNCTION public.zz_fingerprint_probe() TO PUBLIC" \
+            -c "REVOKE INSERT ON public.zz_fingerprint_probe FROM zz_fp_probe_owner" \
+            -c "GRANT INSERT ON public.zz_fingerprint_probe TO zz_fp_probe_owner"
+          # ... and the round trip stored the default ACL explicitly, which is the difference the fingerprint must not show
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT (SELECT relacl IS NOT NULL FROM pg_class WHERE oid = 'public.zz_fingerprint_probe'::regclass) AND (SELECT proacl IS NOT NULL FROM pg_proc WHERE oid = 'public.zz_fingerprint_probe()'::regprocedure)")" = "t"
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql | grep 'zz_fingerprint_probe' > "$RUNNER_TEMP/fp_probe_after.txt"
+          test "$(wc -l < "$RUNNER_TEMP/fp_probe_before.txt")" -ge 3
+          diff -u "$RUNNER_TEMP/fp_probe_before.txt" "$RUNNER_TEMP/fp_probe_after.txt"
+          psql -X -v ON_ERROR_STOP=1 \
+            -c "DROP FUNCTION public.zz_fingerprint_probe()" \
+            -c "DROP TABLE public.zz_fingerprint_probe" \
+            -c "REVOKE USAGE, CREATE ON SCHEMA public FROM zz_fp_probe_owner" \
+            -c "DROP ROLE zz_fp_probe_owner"
