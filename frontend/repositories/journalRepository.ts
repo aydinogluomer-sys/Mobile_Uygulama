@@ -83,7 +83,7 @@ export async function fetchJournalEntry(date: string): Promise<RepoResult<Journa
     .eq('date', date)
     .maybeSingle();
   // R02.03 — status/code travel so the outbox can tell offline from refused.
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: (data ?? null) as JournalEntryRow | null };
 }
 
@@ -116,6 +116,6 @@ export async function upsertJournalEntry(input: {
     .upsert(row, { onConflict: 'user_id,date' })
     .select(COLS)
     .single();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: data as unknown as JournalEntryRow };
 }

@@ -35,7 +35,7 @@ export async function fetchPauses(): Promise<RepoResult<Optional<PauseInterval>>
     .order('start_date', { ascending: true })
     .limit(1000);
   if (isMissingTable(error)) return { ok: true, data: { available: false, rows: [] } };
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
   return { ok: true, data: { available: true, rows: (data ?? []) as unknown as PauseInterval[] } };
 }
 
@@ -49,7 +49,7 @@ export async function fetchGoalVersions(): Promise<RepoResult<Optional<GoalVersi
     .order('effective_from', { ascending: true })
     .limit(5000);
   if (isMissingTable(error)) return { ok: true, data: { available: false, rows: [] } };
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
   return { ok: true, data: { available: true, rows: (data ?? []) as unknown as GoalVersion[] } };
 }
 
@@ -62,7 +62,7 @@ export async function insertPause(habitId: string | null, draft: PauseDraft): Pr
     .insert({ user_id: u.userId, habit_id: habitId, kind: draft.kind, start_date: draft.start_date, end_date: draft.end_date })
     .select(PAUSE_COLS)
     .single();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
   return { ok: true, data: data as unknown as PauseInterval };
 }
 
@@ -87,6 +87,6 @@ export async function upsertGoalVersions(rows: GoalVersion[]): Promise<RepoResul
     .from('habit_goal_versions')
     .upsert(rows.map((r) => ({ ...r, user_id: u.userId })), { onConflict: 'habit_id,effective_from' })
     .select(VERSION_COLS);
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
   return { ok: true, data: (data ?? []) as unknown as GoalVersion[] };
 }

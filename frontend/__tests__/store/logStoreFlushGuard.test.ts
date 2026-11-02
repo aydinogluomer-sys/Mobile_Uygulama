@@ -218,3 +218,16 @@ describe('AC-G04 — a failing pass releases the guard too', () => {
     expect(useLogStore.getState().pendingSyncCount).toBe(0);
   });
 });
+
+describe('F05 -- an owner change does not break the guard', () => {
+  it('a flush started after a rebind is a new pass, and the old pass cannot clear it', async () => {
+    await queueOne('guard-f05', DATE_STR);
+    const first = useLogStore.getState().flushPendingSync();
+    // the same account signs in again (a token refresh): a no-op that must not disturb the pass
+    await useLogStore.getState().rebindSyncQueue('u1');
+    expect(useLogStore.getState().flushPendingSync()).toBe(first);
+    await first;
+    expect(writeCalls()).toEqual(['insert']);
+    expect(useLogStore.getState().pendingSyncCount).toBe(0);
+  });
+});

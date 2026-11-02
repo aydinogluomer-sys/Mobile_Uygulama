@@ -20,7 +20,7 @@ export async function fetchRecentLifeAreaLogs(limit = 8): Promise<RepoResult<Lif
     .eq('user_id', u.userId)
     .order('date', { ascending: false })
     .limit(Math.max(1, Math.min(limit, 200)));
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: (data ?? []) as unknown as LifeAreaLogRow[] };
 }
 
@@ -40,6 +40,6 @@ export async function upsertLifeAreaLogs(
   const { error, status } = await supabase
     .from('life_area_logs')
     .upsert(rows, { onConflict: 'user_id,date,area' });
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: true };
 }

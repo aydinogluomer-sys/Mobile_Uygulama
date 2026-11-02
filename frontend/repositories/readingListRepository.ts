@@ -69,7 +69,7 @@ export async function fetchReadingCounts(): Promise<
       .select('id', { count: 'exact', head: true })
       .eq('user_id', u.userId)
       .eq('status', status);
-    if (error) return { ok: false, error: error.message, offline: isTransportFailure(httpStatus), status: httpStatus, code: error.code };
+    if (error) return { ok: false, error: error.message, offline: isTransportFailure(httpStatus, error), status: httpStatus, code: error.code };
     out[status] = count ?? 0;
   }
   return { ok: true, data: out };
@@ -95,7 +95,7 @@ export async function insertReadingItem(input: {
     })
     .select(COLS)
     .single();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: data as unknown as ReadingItemRow };
 }
 

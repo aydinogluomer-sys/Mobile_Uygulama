@@ -39,6 +39,7 @@ const KNOWN_UNSCOPED_KEYS: Record<string, string> = {
   'reminders.settings.v1': 'device reminder preference',
   'reminders.handled.v1': 'device notification bookkeeping',
   atlas_sync_queue_v1: 'legacy unscoped queue, read once to migrate (lib/syncQueue.ts)',
+  atlas_sync_quarantine_v1: 'F05: ops of other accounts held aside, each stamped with its userId and adopted only by it; swept on account deletion (lib/syncQueue.ts)',
   atlas_notion_login_session: 'legacy unscoped session, read once to migrate',
   'aderyth.rcache.v1': 'prefix: the uid follows (lib/localReadCache.ts)',
   'focus.settings.v1': 'prefix: the uid follows (F04)',

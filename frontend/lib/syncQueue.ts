@@ -100,6 +100,16 @@ export type SyncOp = {
    * the adopting account.
    */
   userId?: string;
+  /**
+   * F05 (DOM-21, SYN-26): the day's state BEFORE the first queued tap. A replay of a write
+   * whose day was already `done` must not announce the completion again. `undefined` on ops
+   * from older builds (they keep the old behaviour); `null` when the day had no log.
+   */
+  priorState?: HabitLogState | null;
+  /** F05 (SYN-03): transient server failures (408/425/429/5xx) so far. They never spend `attempts`. */
+  retryableCount?: number;
+  /** F05: when the first transient failure of this op happened (ms epoch); the 72-hour give-up counts from here. */
+  firstRetryableAt?: number;
 };
 
 export type SyncQueueState = {
@@ -145,7 +155,7 @@ export function enqueue(
   habitId: string,
   date: Ymd,
   intent: HabitLogIntent,
-  opts: { id?: string; now?: number } = {},
+  opts: { id?: string; now?: number; userId?: string; priorState?: SyncOp['priorState'] } = {},
 ): { state: SyncQueueState; op: SyncOp } {
   const now = opts.now ?? Date.now();
   const idx = state.ops.findIndex((o) => o.habitId === habitId && o.date === date);
@@ -159,7 +169,12 @@ export function enqueue(
       status: 'pending',
       lastError: undefined,
       readyAt: undefined,
+      retryableCount: undefined,
+      firstRetryableAt: undefined,
       updatedAt: now,
+      // F05: the owner and the state before the FIRST queued tap are kept (the base of the day)
+      ...(prior.userId ? {} : opts.userId ? { userId: opts.userId } : {}),
+      ...('priorState' in prior ? {} : 'priorState' in opts ? { priorState: opts.priorState } : {}),
     };
     const ops = state.ops.slice();
     ops[idx] = revived;
@@ -176,6 +191,8 @@ export function enqueue(
     seq: state.nextSeq,
     createdAt: now,
     updatedAt: now,
+    ...(opts.userId ? { userId: opts.userId } : {}),
+    ...('priorState' in opts ? { priorState: opts.priorState } : {}),
   };
   return { state: { ...state, ops: [...state.ops, op], nextSeq: state.nextSeq + 1 }, op };
 }
@@ -230,10 +247,24 @@ export function nextRetryDelayMs(attempts: number): number {
   return Math.min(BASE_DELAY_MS * 2 ** n, MAX_DELAY_MS);
 }
 
+/**
+ * F05 (SYN-03): a transient server failure (408/425/429/5xx) never spends an attempt. It waits
+ * longer each time (5 s, 10 s, 20 s ... at most 15 min) and is handed to the user (`dead`) only
+ * after 72 hours of nothing but transient failures. The same numbers live in `lib/outbox.ts`
+ * (the two modules do not import each other; a test keeps them equal).
+ */
+export const RETRYABLE_GIVE_UP_MS = 72 * 3600_000;
+const RETRYABLE_BASE_MS = 5_000;
+const RETRYABLE_MAX_MS = 15 * 60_000;
+
+export function retryableDelayMs(n: number): number {
+  return Math.min(RETRYABLE_MAX_MS, RETRYABLE_BASE_MS * 2 ** (Math.max(1, n) - 1));
+}
+
 export function markFailed(
   state: SyncQueueState,
   id: string,
-  kind: 'network' | 'rejected',
+  kind: 'network' | 'rejected' | 'retryable',
   opts: { error?: string; now?: number } = {},
 ): SyncQueueState {
   const now = opts.now ?? Date.now();
@@ -243,6 +274,20 @@ export function markFailed(
       if (o.id !== id) return o;
       if (kind === 'network') {
         return { ...o, updatedAt: now };
+      }
+      if (kind === 'retryable') {
+        const retryableCount = (o.retryableCount ?? 0) + 1;
+        const firstRetryableAt = o.firstRetryableAt ?? now;
+        const giveUp = now - firstRetryableAt >= RETRYABLE_GIVE_UP_MS;
+        return {
+          ...o,
+          retryableCount,
+          firstRetryableAt,
+          status: giveUp ? 'dead' : 'pending',
+          lastError: opts.error ?? o.lastError,
+          updatedAt: now,
+          readyAt: giveUp ? undefined : now + retryableDelayMs(retryableCount),
+        };
       }
       const attempts = o.attempts + 1;
       const dead = attempts >= MAX_ATTEMPTS;
@@ -363,7 +408,25 @@ export async function loadSyncQueue(userId: string): Promise<SyncQueueState> {
     const raw = await AsyncStorage.getItem(storageKeyFor(userId));
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
-      return isValidQueueState(parsed) ? stampOwner(parsed, userId) : emptyQueueState();
+      if (!isValidQueueState(parsed)) return emptyQueueState();
+      // F05 (SYN-V01): an op stamped with ANOTHER account never joins this queue. It moves to the
+      // quarantine key, and the quarantine gives back what belongs to the loading account.
+      const { own, foreign } = partitionByOwner(parsed, userId);
+      const quarantined = await readQuarantine();
+      const mine = quarantined.filter((o) => o.userId === userId);
+      const merged = mine.length > 0 ? mergeOps(own, mine, userId) : own;
+      if (foreign.length > 0 || mine.length > 0) {
+        await writeQuarantine([...quarantined.filter((o) => o.userId !== userId), ...foreign]);
+        await saveSyncQueue(merged, userId);
+      }
+      return merged;
+    }
+    const quarantinedOnly = (await readQuarantine()).filter((o) => o.userId === userId);
+    if (quarantinedOnly.length > 0) {
+      const back = mergeOps(emptyQueueState(), quarantinedOnly, userId);
+      await writeQuarantine((await readQuarantine()).filter((o) => o.userId !== userId));
+      await saveSyncQueue(back, userId);
+      return back;
     }
 
     // ── One-time migration off the unscoped key ────────────────────────────
@@ -397,13 +460,107 @@ function stampOwner(state: SyncQueueState, userId: string): SyncQueueState {
   return { ...state, ops: state.ops.map((o) => (o.userId ? o : { ...o, userId })) };
 }
 
-export async function saveSyncQueue(state: SyncQueueState, userId: string): Promise<void> {
-  if (!userId) return;
+/**
+ * Best-effort, and now honest about it (F05, STO-02): `false` when there is no owner to save
+ * under or the write failed. It never throws: the in-memory queue stays correct for this session
+ * and the next successful save catches the disk up. The caller decides whether to report it.
+ */
+export async function saveSyncQueue(state: SyncQueueState, userId: string): Promise<boolean> {
+  if (!userId) return false;
   try {
     await AsyncStorage.setItem(storageKeyFor(userId), JSON.stringify(state));
+    return true;
   } catch {
-    // Best-effort, same posture as themeStore's persistence calls -- the
-    // in-memory queue remains correct for this session even if the disk
-    // write failed; the next successful save will catch it up.
+    return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// F05 (SYN-V01, SYN-03) — ownership and recovery, pure helpers (no I/O)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ops of foreign accounts, held aside. Its content is user-stamped ops; an account deletion sweeps
+ * it with the rest of AsyncStorage. Bounded: the oldest are dropped past `QUARANTINE_MAX`.
+ */
+export const QUARANTINE_KEY = 'atlas_sync_quarantine_v1';
+export const QUARANTINE_MAX = 200;
+
+async function readQuarantine(): Promise<SyncOp[]> {
+  try {
+    const raw = await AsyncStorage.getItem(QUARANTINE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((o): o is SyncOp => isValidOp(o) && typeof (o as SyncOp).userId === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeQuarantine(ops: readonly SyncOp[]): Promise<void> {
+  try {
+    if (ops.length === 0) { await AsyncStorage.removeItem(QUARANTINE_KEY); return; }
+    const kept = [...ops].sort((a, b) => a.updatedAt - b.updatedAt).slice(-QUARANTINE_MAX);
+    await AsyncStorage.setItem(QUARANTINE_KEY, JSON.stringify(kept));
+  } catch {
+    // best effort: the ops stay where they were read from
+  }
+}
+
+/** Splits a loaded queue: this account's ops (unstamped ones adopted and stamped) and everyone else's. */
+export function partitionByOwner(state: SyncQueueState, userId: string): { own: SyncQueueState; foreign: SyncOp[] } {
+  const own: SyncOp[] = [];
+  const foreign: SyncOp[] = [];
+  for (const o of state.ops) {
+    if (!o.userId) own.push({ ...o, userId });
+    else if (o.userId === userId) own.push(o);
+    else foreign.push(o);
+  }
+  return { own: { ...state, ops: own }, foreign };
+}
+
+/**
+ * `extra` joins `base` for `userId`: on the same (habit, day) key `extra` wins (it is the newer
+ * intent); unstamped ops are stamped; `seq` is renumbered so the replay order stays base, then extra.
+ */
+export function mergeOps(base: SyncQueueState, extra: readonly SyncOp[], userId: string): SyncQueueState {
+  const key = (o: SyncOp) => `${o.habitId}|${o.date}`;
+  const extraKeys = new Set(extra.map(key));
+  const ordered = [
+    ...base.ops.filter((o) => !extraKeys.has(key(o))).sort((a, b) => a.seq - b.seq),
+    ...[...extra].sort((a, b) => a.seq - b.seq),
+  ];
+  const ops = ordered.map((o, i) => ({ ...o, userId: o.userId ?? userId, seq: i + 1 }));
+  return { ops, nextSeq: ops.length + 1 };
+}
+
+/** A `dead` op the user chose to try again: a fresh start, nothing of its failure history kept. */
+export function revive(state: SyncQueueState, id: string, now: number = Date.now()): SyncQueueState {
+  return {
+    ...state,
+    ops: state.ops.map((o) => (o.id !== id ? o : {
+      ...o,
+      status: 'pending',
+      attempts: 0,
+      readyAt: undefined,
+      lastError: undefined,
+      retryableCount: undefined,
+      firstRetryableAt: undefined,
+      updatedAt: now,
+    })),
+  };
+}
+
+export function deadOps(state: SyncQueueState): SyncOp[] {
+  return state.ops.filter((o) => o.status === 'dead');
+}
+
+/** The soonest explicit `readyAt` still in the future among pending ops, or null (everything ready now, or nothing pending). */
+export function nextReadyAt(state: SyncQueueState, now: number = Date.now()): number | null {
+  let soonest: number | null = null;
+  for (const o of state.ops) {
+    if (o.status !== 'pending' || !o.readyAt || o.readyAt <= now) continue;
+    if (soonest === null || o.readyAt < soonest) soonest = o.readyAt;
+  }
+  return soonest;
 }

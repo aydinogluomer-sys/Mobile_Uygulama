@@ -1,14 +1,50 @@
-import { useState, useEffect } from 'react';
+/**
+ * The offline sync sheet.
+ *
+ * F05 (SYN-16): the message after "Şimdi Senkronize Et" is made from what is left in the queues
+ * (`describeFlushOutcome`), never from the fact that the call returned: offline with 7 waiting it
+ * used to say everything had been delivered. The success colour and icon appear only when the
+ * queues are really empty.
+ *
+ * F05 (SYN-03): "Gönderilemeyenler" lists every change that will not go by itself, with a way out:
+ * "Yeniden dene", and "Bu değişikliği bırak" behind an inline two-step confirmation (no
+ * `Alert.alert`: it does nothing on the web). A conflict is resolved on its own screen, where both
+ * versions can be seen, so its row only says so.
+ */
+import { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, alphaHex, radius, space, font } from '../lib/tokens';
-import { flushAllOutboxes, getUnifiedOutboxSummary, subscribeUnifiedOutbox } from '../services/unifiedOutbox';
+import {
+  describeFlushOutcome,
+  discardOutboxIssue,
+  flushAllOutboxes,
+  getUnifiedOutboxSummary,
+  listOutboxIssues,
+  retryOutboxIssue,
+  subscribeUnifiedOutbox,
+  type FlushOutcome,
+  type OutboxIssue,
+} from '../services/unifiedOutbox';
 import { haptic } from '../lib/haptics';
 import type { OutboxSummary } from '../lib/outbox';
 import { EmblemMedallion, TexturedSurface } from './ui';
 import { EMPTY_VIGNETTES, TEXTURES } from '../lib/visualAssets';
+import { useReducedMotion } from './seasonalMotion/useReducedMotion';
+
+/** How long the "Emin misin?" state of "Bu değişikliği bırak" waits for the second tap. */
+export const DISCARD_CONFIRM_MS = 4_000;
+const DISCARD_LABEL = 'Bu değişikliği bırak';
+const DISCARD_CONFIRM_LABEL = 'Emin misin? Dokun ve bırak';
+
+const TONE_COLOR: Record<FlushOutcome['tone'], string> = {
+  success: colors.success,
+  waiting: colors.info,
+  attention: colors.warning,
+  auth: colors.warning,
+};
 
 interface OutboxStatusModalProps {
   visible: boolean;
@@ -16,31 +52,93 @@ interface OutboxStatusModalProps {
 }
 
 export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModalProps) {
+  const reduceMotion = useReducedMotion();
   const [summary, setSummary] = useState<OutboxSummary>(() => getUnifiedOutboxSummary());
+  const [issues, setIssues] = useState<OutboxIssue[]>(() => listOutboxIssues());
   const [isFlushing, setIsFlushing] = useState(false);
-  const [flushMessage, setFlushMessage] = useState<string | null>(null);
+  const [flushOutcome, setFlushOutcome] = useState<FlushOutcome | null>(null);
+  const [busyIssue, setBusyIssue] = useState<string | null>(null);
+  const [confirmingDiscard, setConfirmingDiscard] = useState<string | null>(null);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     setSummary(getUnifiedOutboxSummary());
+    setIssues(listOutboxIssues());
     const unsub = subscribeUnifiedOutbox(() => {
       setSummary(getUnifiedOutboxSummary());
+      setIssues(listOutboxIssues());
     });
     return unsub;
+  }, [visible]);
+
+  // the pending "Emin misin?" never outlives the sheet
+  useEffect(() => () => {
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+  }, []);
+  useEffect(() => {
+    if (visible) return;
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    confirmTimer.current = null;
+    setConfirmingDiscard(null);
+    setFlushOutcome(null);
   }, [visible]);
 
   async function handleFlush() {
     haptic.medium();
     setIsFlushing(true);
-    setFlushMessage(null);
+    setFlushOutcome(null);
     try {
-      await flushAllOutboxes();
-      setSummary(getUnifiedOutboxSummary());
-      setFlushMessage('Tüm bekleyen işlemler sunucuya iletildi.');
+      const after = await flushAllOutboxes();
+      setSummary(after);
+      setIssues(listOutboxIssues());
+      setFlushOutcome(describeFlushOutcome(after));
     } catch {
-      setFlushMessage('Senkronizasyon sırasında bir sorun oluştu.');
+      setFlushOutcome({ tone: 'attention', message: 'Senkronizasyon sırasında bir sorun oluştu.' });
     } finally {
       setIsFlushing(false);
+    }
+  }
+
+  async function handleRetry(issue: OutboxIssue) {
+    if (busyIssue) return;
+    haptic.light();
+    setBusyIssue(issue.id);
+    setFlushOutcome(null);
+    try {
+      await retryOutboxIssue(issue);
+    } finally {
+      setBusyIssue(null);
+      setSummary(getUnifiedOutboxSummary());
+      setIssues(listOutboxIssues());
+    }
+  }
+
+  async function handleDiscard(issue: OutboxIssue) {
+    if (busyIssue) return;
+    if (confirmingDiscard !== issue.id) {
+      // first tap: ask in place; the question goes away by itself
+      haptic.light();
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+      setConfirmingDiscard(issue.id);
+      confirmTimer.current = setTimeout(() => {
+        confirmTimer.current = null;
+        setConfirmingDiscard(null);
+      }, DISCARD_CONFIRM_MS);
+      return;
+    }
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    confirmTimer.current = null;
+    setConfirmingDiscard(null);
+    haptic.medium();
+    setBusyIssue(issue.id);
+    setFlushOutcome(null);
+    try {
+      await discardOutboxIssue(issue);
+    } finally {
+      setBusyIssue(null);
+      setSummary(getUnifiedOutboxSummary());
+      setIssues(listOutboxIssues());
     }
   }
 
@@ -50,7 +148,7 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType={reduceMotion ? 'none' : 'slide'}
       onRequestClose={onClose}
     >
       <View style={s.backdrop}>
@@ -107,8 +205,71 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
             </Text>
           </View>
 
-          {flushMessage && (
-            <Text style={s.msgText}>{flushMessage}</Text>
+          {flushOutcome && (
+            <Text
+              style={[s.msgText, { color: TONE_COLOR[flushOutcome.tone] }]}
+              accessibilityLiveRegion="polite"
+            >
+              {flushOutcome.message}
+            </Text>
+          )}
+
+          {issues.length > 0 && (
+            <View style={s.issuesBox}>
+              <Text style={s.issuesHead} accessibilityRole="header">Gönderilemeyenler · {issues.length}</Text>
+              <ScrollView style={s.issuesScroll} nestedScrollEnabled>
+                {issues.map((issue) => {
+                  const busy = busyIssue === issue.id;
+                  const confirming = confirmingDiscard === issue.id;
+                  return (
+                    <View key={`${issue.channel}:${issue.id}`} style={s.issueRow}>
+                      <View
+                        style={s.issueText}
+                        accessible
+                        accessibilityLabel={`${issue.label}. ${issue.reason}`}
+                      >
+                        <Text style={s.issueLabel} numberOfLines={1}>{issue.label}</Text>
+                        <Text style={s.issueReason} numberOfLines={2}>{issue.reason}</Text>
+                      </View>
+                      {issue.status === 'conflict' ? (
+                        <Text style={s.issueNote}>İlgili ekranda çözülür</Text>
+                      ) : (
+                        <View style={s.issueActions}>
+                          <TouchableOpacity
+                            style={s.issueBtn}
+                            onPress={() => { void handleRetry(issue); }}
+                            disabled={busy}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${issue.label}: yeniden dene`}
+                            accessibilityState={{ disabled: busy, busy }}
+                          >
+                            {busy ? (
+                              <ActivityIndicator size="small" color={colors.accent} />
+                            ) : (
+                              <Text style={s.retryText}>Yeniden dene</Text>
+                            )}
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={s.issueBtn}
+                            onPress={() => { void handleDiscard(issue); }}
+                            disabled={busy}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`${issue.label}: ${confirming ? DISCARD_CONFIRM_LABEL : 'bu değişikliği bırak'}`}
+                            accessibilityState={{ disabled: busy }}
+                          >
+                            <Text style={[s.discardText, confirming && { color: colors.error }]}>
+                              {confirming ? DISCARD_CONFIRM_LABEL : DISCARD_LABEL}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
           )}
 
           {/* Alt Aksiyon Butonları */}
@@ -228,8 +389,66 @@ const s = StyleSheet.create({
   },
   msgText: {
     fontSize: 12,
-    color: colors.primary,
     textAlign: 'center',
+    fontWeight: '600',
+  },
+
+  issuesBox: {
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    borderRadius: radius.md,
+    padding: space.sm,
+    gap: space.xs,
+  },
+  issuesHead: {
+    fontSize: 11,
+    letterSpacing: 0.5,
+    fontWeight: '700',
+    color: colors.warning,
+  },
+  issuesScroll: {
+    maxHeight: 240,
+  },
+  issueRow: {
+    paddingVertical: space.xs,
+    gap: 2,
+  },
+  issueText: {
+    gap: 2,
+  },
+  issueLabel: {
+    fontSize: 13,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  issueReason: {
+    fontSize: 12,
+    color: colors.textFaint,
+  },
+  issueNote: {
+    fontSize: 12,
+    color: colors.textDim,
+    fontStyle: 'italic',
+    paddingVertical: space.xs,
+  },
+  issueActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.md,
+  },
+  issueBtn: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+  },
+  retryText: {
+    fontSize: 13,
+    color: colors.accent,
+    fontWeight: '700',
+  },
+  discardText: {
+    fontSize: 13,
+    color: colors.textDim,
     fontWeight: '600',
   },
 

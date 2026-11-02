@@ -1,5 +1,8 @@
 import { resetWebhookCache } from '../services/webhookService';
 import { coreOutbox } from '../services/coreOutbox';
+// F05 (SYN-15) — the coordinator flushes waiting work while the app is open (one timer, no polling library).
+import { syncFlushers } from '../services/unifiedOutbox';
+import { startSyncCoordinator } from '../lib/syncCoordinator';
 import PrivacyCover from '../components/PrivacyCover';
 import { maybeRunDailyLocalBackup } from '../services/localBackupService';
 import { useEffect, useRef, useState } from 'react';
@@ -64,6 +67,8 @@ export default function RootLayout() {
   // tetiklenmeye yol açmazlar.
   const hydrateSyncQueue = useLogStore((s) => s.hydrateSyncQueue);
   const flushPendingSync = useLogStore((s) => s.flushPendingSync);
+  // F05 (SYN-01): the habit-log queue follows the signed-in account on every auth event.
+  const rebindSyncQueue = useLogStore((s) => s.rebindSyncQueue);
   const hydrateOnboarding = useOnboardingStore((s) => s.hydrate);
   const onboardingHydration = useOnboardingStore((s) => s.hydrationState);
   const onboardingStatus = useOnboardingStore((s) => s.status);
@@ -117,8 +122,21 @@ export default function RootLayout() {
       const nextUid = session?.user?.id ?? null;
       const prevUid = lastUidRef.current;
       if (event === 'SIGNED_OUT') { void endAccountScope('signed_out', prevUid); }
-      else if (prevUid && nextUid && prevUid !== nextUid) { void endAccountScope('user_changed', prevUid); void hydrateSyncQueue(); }
+      else if (prevUid && nextUid && prevUid !== nextUid) {
+        void endAccountScope('user_changed', prevUid);
+        // F05 (F04 finding a): the new account's own task and core outboxes are loaded and sent now,
+        // not at the next foreground (endAccountScope cleared the old ones synchronously above)
+        void useTaskStore.getState().authRefreshed();
+        void coreOutbox.authRefreshed();
+      }
       else if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') { void useTaskStore.getState().authRefreshed(); void coreOutbox.authRefreshed(); }
+      // F05 (SYN-01, STO-02): the habit-log queue is bound to whoever is signed in now: the previous
+      // owner's work is saved under ITS key, the new owner's is loaded and flushed. The same user
+      // again is a no-op. (This replaces F04's interim `hydrateSyncQueue()` on a user change.)
+      if (event === 'SIGNED_OUT') { void rebindSyncQueue(null); }
+      else if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        void rebindSyncQueue(nextUid);
+      }
       lastUidRef.current = nextUid;
       // Webhook kayıtları oturum boyunca bellekte tutuluyor (tamamlama yolu
       // her tik'te PostgREST'e gitmesin diye). Hesap değişince o liste artık
@@ -131,7 +149,7 @@ export default function RootLayout() {
       alive = false;
       subscription.unsubscribe();
     };
-  }, [hydrateNotionSession, hydrateSyncQueue, flushPendingSync, loadTheme]);
+  }, [hydrateNotionSession, hydrateSyncQueue, flushPendingSync, rebindSyncQueue, loadTheme]);
 
   /**
    * Onboarding durumu HESABA bağlıdır, cihaza değil.
@@ -170,6 +188,12 @@ export default function RootLayout() {
    *  - ağ-durumu kütüphanesi (netinfo): yeni bir native bağımlılık, aynı
    *    kazanım için.
    *
+   * F05 (SYN-15): ikisi hâlâ yok. Ama uygulama açıkken sinyalin geri gelmesi
+   * de bir an: aşağıdaki koordinatör, YALNIZCA bekleyen iş varken tek bir
+   * zamanlayıcı (aralıklı değil, geri çekilen) ve başarılı ağ yanıtı
+   * sinyaliyle bunu yakalar. Bu dinleyici ön plan flush'ını yapmaya devam
+   * eder; koordinatör ön plana dönüşte yalnızca zamanlayıcısını yeniden kurar.
+   *
    * `loading` bitmeden dinleyici kurulmaz: hidrasyon henüz kuyruğu diskten
    * yüklememişken tetiklenen bir flush boş kuyruk üzerinde çalışırdı --
    * zararsız ama anlamsız. Boot'un kendi flush'ı zaten hemen ardından geliyor.
@@ -193,6 +217,22 @@ export default function RootLayout() {
     });
     return () => sub.remove();
   }, [loading, flushPendingSync]);
+
+  /**
+   * F05 (SYN-15): the sync coordinator, beside (not instead of) the foreground
+   * flush above. Boot and foreground were the only moments a queued write was
+   * retried; a phone that regained signal in the user's hand sent nothing until
+   * the app was reopened. The coordinator owns ONE timer, armed only while work
+   * is waiting and the app is in the foreground (it backs off while nothing
+   * moves), and it flushes shortly after a successful network answer. Signed
+   * out there is nothing of anyone's to send, so it does not run.
+   */
+  const sessionUid = session?.user?.id ?? null;
+  useEffect(() => {
+    if (loading || !sessionUid) return;
+    const coordinator = startSyncCoordinator(syncFlushers());
+    return () => coordinator.stop();
+  }, [loading, sessionUid]);
 
   /**
    * R04 — reminders. Signed in: the reconciler is registered (every store

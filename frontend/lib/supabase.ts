@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { authStorage } from './authStorage';
 import type { Database } from './database.types';
 import { Platform } from 'react-native';
+import { signalOnSuccess } from './networkSignal';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
@@ -14,6 +15,10 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: Platform.OS === 'web',
   },
+  // F05 (SYN-15): every successful answer tells lib/syncCoordinator the connection is there, so waiting
+  // offline work goes out without the app being reopened. The answer is passed on untouched; a failed
+  // request fails exactly as before (no signal). `fetch` is read at call time, not at module load.
+  global: { fetch: signalOnSuccess(() => fetch) },
 });
 
 // Mevcut DB şemasına göre tipler

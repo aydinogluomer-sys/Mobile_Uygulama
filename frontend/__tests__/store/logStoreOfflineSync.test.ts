@@ -73,6 +73,8 @@ const mockDb = {
   /** injects a non-uniqueness rejection, e.g. RLS/validation. */
   insertError: null as PgError | null,
   updateError: null as PgError | null,
+  /** F05: the HTTP status that comes with `insertError` (e.g. 503); 0 = none, as before. */
+  insertStatus: 0,
 };
 
 /** What a failed transport looks like coming back from supabase-js. */
@@ -130,7 +132,7 @@ jest.mock('../../lib/supabase', () => {
                 mockDb.calls.push('insert');
                 if (mockDb.insertError) {
                   const e = mockDb.insertError;
-                  return { data: null, error: e };
+                  return { data: null, error: e, ...(mockDb.insertStatus ? { status: mockDb.insertStatus } : {}) };
                 }
                 // Mirrors the real UNIQUE (habit_id, completed_at) constraint
                 // (supabase/migrations/001_initial_schema.sql:34) -- this is
@@ -208,6 +210,7 @@ beforeEach(async () => {
   mockDb.networkThrows = false;
   mockDb.insertError = null;
   mockDb.updateError = null;
+  mockDb.insertStatus = 0;
   await AsyncStorage.clear();
   useLogStore.setState({ logs: [], loading: false, pendingSyncCount: 0, deadSyncCount: 0 });
   await useLogStore.getState().hydrateSyncQueue();
@@ -400,5 +403,48 @@ describe('F04 (STO-01) -- the queue in memory goes with the account', () => {
     expect(useLogStore.getState().pendingSyncCount).toBe(1);
     await useLogStore.getState().flushPendingSync();
     expect(mockDb.calls.filter((c) => c === 'insert')).toHaveLength(1);
+  });
+});
+
+describe('F05 (SYN-03) -- what each failure class costs', () => {
+  const opOnDisk = async () => {
+    const raw = await AsyncStorage.getItem('atlas_sync_queue_v1:u1');
+    return raw ? JSON.parse(raw).ops[0] : undefined;
+  };
+
+  it('a lost connection costs nothing, however often it happens', async () => {
+    mockDb.networkDown = true;
+    await useLogStore.getState().logHabit({ habitId: 'f05-net', date: DAY, state: 'done' });
+    for (let i = 0; i < 8; i++) await useLogStore.getState().flushPendingSync();
+    expect(await opOnDisk()).toMatchObject({ attempts: 0, status: 'pending' });
+    expect(useLogStore.getState().deadSyncCount).toBe(0);
+  });
+
+  it('a transient server answer (503) keeps the tap, costs nothing and backs off', async () => {
+    mockDb.insertError = { message: 'Service Unavailable' };
+    mockDb.insertStatus = 503;
+    const res = await useLogStore.getState().logHabit({ habitId: 'f05-503', date: DAY, state: 'done' });
+    expect(res.ok).toBe(true); // queued, not refused
+    expect(useLogStore.getState().getLogForHabit('f05-503', DATE_STR)?.state).toBe('done'); // not rolled back
+    let now = Date.now();
+    for (let i = 0; i < 10; i++) {
+      now += 16 * 60_000; // past any backoff (15 min cap)
+      await useLogStore.getState().flushPendingSync(now);
+    }
+    expect(await opOnDisk()).toMatchObject({ attempts: 0, status: 'pending', retryableCount: 11 });
+    expect(useLogStore.getState().deadSyncCount).toBe(0);
+  });
+
+  it('a refusal on its merits (403) still dies after MAX_ATTEMPTS', async () => {
+    mockDb.insertError = { message: 'permission denied' };
+    mockDb.insertStatus = 403;
+    await useLogStore.getState().logHabit({ habitId: 'f05-403', date: DAY, state: 'done' });
+    let now = Date.now();
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      now += 24 * 3600_000;
+      await useLogStore.getState().flushPendingSync(now);
+    }
+    expect(await opOnDisk()).toMatchObject({ status: 'dead' });
+    expect(useLogStore.getState().deadSyncCount).toBe(1);
   });
 });

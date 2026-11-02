@@ -4,6 +4,7 @@
 import {
   emptyOutbox, enqueue, ready, settle, retry, discard, summary, overlay, hasPending, clearAuthBlock,
   stableJson, newOperationId, MAX_ATTEMPTS, MAX_TOMBSTONES, nextRetryDelayMs,
+  nextReadyAt, retryableDelayMs, RETRYABLE_GIVE_UP_MS, markSending,
   type OutboxState, type EnqueueInput,
 } from '../../lib/outbox';
 
@@ -191,5 +192,34 @@ describe('ids', () => {
     const a = newOperationId(), b = newOperationId();
     expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(a).not.toBe(b);
+  });
+});
+
+describe('F05 -- retryable and nextReadyAt', () => {
+  it('retryable spends no attempt and defers by the retryable backoff', () => {
+    let s = q(emptyOutbox(U), op({ operationId: 'r' }));
+    s = settle(s, 'r', { kind: 'retryable', error: 'HTTP 503' }, T0);
+    expect(s.commands[0]).toMatchObject({ attempts: 0, status: 'pending', retryableCount: 1, firstRetryableAt: T0, readyAt: T0 + retryableDelayMs(1) });
+    expect(ready(s, T0)).toEqual([]);
+    expect(ready(s, T0 + retryableDelayMs(1))).toHaveLength(1);
+  });
+
+  it('retryable becomes dead only after RETRYABLE_GIVE_UP_MS', () => {
+    let s = q(emptyOutbox(U), op({ operationId: 'r' }));
+    s = settle(s, 'r', { kind: 'retryable' }, T0);
+    s = settle(s, 'r', { kind: 'retryable' }, T0 + RETRYABLE_GIVE_UP_MS);
+    expect(s.commands[0].status).toBe('dead');
+    expect(summary(s)).toMatchObject({ dead: 1, pending: 0 });
+  });
+
+  it('nextReadyAt: null when nothing is deferred, when paused, or while sending', () => {
+    let s = q(emptyOutbox(U), op({ operationId: 'a' }));
+    s = q(s, op({ operationId: 'b', entityId: 't2' }));
+    expect(nextReadyAt(s)).toBeNull();
+    s = settle(s, 'a', { kind: 'retryable' }, T0);
+    s = settle(s, 'b', { kind: 'rejected', error: 'x' }, T0);
+    expect(nextReadyAt(s)).toBe(Math.min(T0 + retryableDelayMs(1), T0 + nextRetryDelayMs(1)));
+    expect(nextReadyAt({ ...s, authBlocked: true })).toBeNull();
+    expect(nextReadyAt(markSending(markSending(s, 'a'), 'b'))).toBeNull();
   });
 });

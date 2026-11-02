@@ -65,7 +65,7 @@ export async function fetchOkrs(opts?: { quarters?: number }): Promise<
     return {
       ok: false,
       error: okrRes.error.message,
-      offline: isTransportFailure(okrRes.status),
+      offline: isTransportFailure(okrRes.status, okrRes.error),
       status: okrRes.status,
       code: okrRes.error.code,
     };
@@ -86,7 +86,7 @@ export async function fetchOkrs(opts?: { quarters?: number }): Promise<
     return {
       ok: false,
       error: krRes.error.message,
-      offline: isTransportFailure(krRes.status),
+      offline: isTransportFailure(krRes.status, krRes.error),
       status: krRes.status,
       code: krRes.error.code,
     };
@@ -110,7 +110,7 @@ export async function insertObjective(input: {
     .insert({ user_id: u.userId, objective: input.objective, year: input.year, quarter: input.quarter })
     .select(OKR_COLS)
     .single();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: data as unknown as OkrRow };
 }
 
@@ -138,7 +138,7 @@ export async function insertKeyResult(input: {
     })
     .select(KR_COLS)
     .single();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: data as unknown as KeyResultRow };
 }
 

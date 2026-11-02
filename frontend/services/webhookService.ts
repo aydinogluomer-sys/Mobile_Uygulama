@@ -35,12 +35,16 @@ import { fetchWebhooks, type WebhookEvent, type WebhookRow } from '../repositori
 import {
   insertWebhook,
   deleteWebhook,
-  setWebhookEnabled,
 } from '../repositories/webhookRepository';
+import { Platform } from 'react-native';
 
 export type { WebhookEvent, WebhookRow };
 
 const TIMEOUT_MS = 5_000;
+/** F05 (REP-14): at most three attempts per target, waiting 1 s then 4 s, within 15 s in all. */
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAYS_MS = [1_000, 4_000];
+const TOTAL_BUDGET_MS = 15_000;
 
 export type DeliveryReport = {
   attempted: number;
@@ -71,9 +75,25 @@ export function targetsFor(webhooks: WebhookRow[], event: WebhookEvent): Webhook
   return webhooks.filter((w) => w.enabled && w.event_types.includes(event));
 }
 
-export function payloadFor(event: WebhookEvent, data: Record<string, unknown>, now: Date = new Date()) {
-  return { event, timestamp: now.toISOString(), data };
+/**
+ * The envelope `{ event, timestamp, data }` is unchanged (existing n8n flows parse it). F05: when the
+ * write has a delivery id, `delivery_id` is added beside it, the same for every attempt and target,
+ * so a receiver can drop a repeat.
+ */
+export function payloadFor(event: WebhookEvent, data: Record<string, unknown>, now: Date = new Date(), deliveryId?: string) {
+  return deliveryId
+    ? { event, timestamp: now.toISOString(), data, delivery_id: deliveryId }
+    : { event, timestamp: now.toISOString(), data };
 }
+
+function newDeliveryId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+const isTransientHttp = (status: number) => status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599);
+const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+type AttemptResult = { ok: true } | { ok: false; error: string; retry: boolean };
 
 /**
  * POSTs one payload, with a hard timeout and no throw.
@@ -88,21 +108,57 @@ export async function deliver(
   webhook: Pick<WebhookRow, 'url' | 'headers'>,
   body: ReturnType<typeof payloadFor>,
   fetchImpl: typeof fetch = fetch,
+  opts: { attempts?: number; sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const attempts = opts.attempts ?? MAX_ATTEMPTS;
+  const sleep = opts.sleep ?? realSleep;
+  const now = opts.now ?? Date.now;
+  const started = now();
+  let last: AttemptResult = { ok: false, error: 'gönderilmedi', retry: false };
+  for (let i = 0; i < attempts; i++) {
+    last = await deliverOnce(webhook, body, fetchImpl);
+    if (last.ok) return last;
+    // only a lost connection, a timeout, 408/425/429 or a 5xx is worth another try; any other answer is final
+    if (!last.retry || i === attempts - 1) break;
+    const wait = RETRY_DELAYS_MS[i] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
+    if (now() - started + wait > TOTAL_BUDGET_MS) break;
+    await sleep(wait);
+  }
+  return { ok: false, error: last.ok ? '' : last.error };
+}
+
+async function deliverOnce(
+  webhook: Pick<WebhookRow, 'url' | 'headers'>,
+  body: ReturnType<typeof payloadFor>,
+  fetchImpl: typeof fetch,
+): Promise<AttemptResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const deliveryId = 'delivery_id' in body ? body.delivery_id : undefined;
   try {
     const res = await fetchImpl(webhook.url, {
       method: 'POST',
-      headers: { ...(webhook.headers ?? {}), 'Content-Type': 'application/json' },
+      headers: {
+        ...(webhook.headers ?? {}),
+        'Content-Type': 'application/json',
+        // a custom header widens the CORS preflight on the web and would break existing receivers;
+        // there the id travels in the body only
+        ...(deliveryId && Platform.OS !== 'web' ? { 'X-Aderyth-Delivery': deliveryId } : {}),
+      },
       body: JSON.stringify(body),
       signal: controller.signal,
+      // REP-14: an https endpoint that redirects (perhaps to http://) is NOT followed: the body
+      // would leave in clear text and `validateWebhookUrl` would mean nothing
+      redirect: 'manual',
     });
-    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
+      return { ok: false, error: 'yönlendirme reddedildi', retry: false };
+    }
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, retry: isTransientHttp(res.status) };
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: msg === 'Aborted' || msg.includes('abort') ? 'zaman aşımı' : msg };
+    return { ok: false, error: msg === 'Aborted' || msg.includes('abort') ? 'zaman aşımı' : msg, retry: true };
   } finally {
     clearTimeout(timer);
   }
@@ -119,14 +175,15 @@ export async function deliver(
 export async function dispatch(
   event: WebhookEvent,
   data: Record<string, unknown>,
-  deps: { fetchImpl?: typeof fetch; now?: Date } = {},
+  deps: { fetchImpl?: typeof fetch; now?: Date; deliveryId?: string; sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<DeliveryReport> {
   const targets = targetsFor(await registrations(), event);
   if (targets.length === 0) return { attempted: 0, delivered: 0, failed: [] };
 
-  const body = payloadFor(event, data, deps.now);
+  // one id for this event: every target and every attempt carry the same one (F05)
+  const body = payloadFor(event, data, deps.now, deps.deliveryId ?? newDeliveryId());
   const results = await Promise.all(
-    targets.map((w) => deliver(w, body, deps.fetchImpl ?? fetch).then((r) => ({ w, r }))),
+    targets.map((w) => deliver(w, body, deps.fetchImpl ?? fetch, { sleep: deps.sleep }).then((r) => ({ w, r }))),
   );
 
   const failed = results.filter((x) => !x.r.ok).map((x) => ({
@@ -174,12 +231,6 @@ export async function removeWebhook(id: string) {
   return res;
 }
 
-export async function toggleWebhook(id: string, enabled: boolean) {
-  const res = await setWebhookEnabled(id, enabled);
-  resetWebhookCache();
-  return res;
-}
-
 /** Registration, refusing locally what the database would refuse anyway. */
 export async function registerWebhook(input: { url: string; eventTypes?: WebhookEvent[] }) {
   const checked = validateWebhookUrl(input.url);
@@ -197,6 +248,6 @@ export async function registerWebhook(input: { url: string; eventTypes?: Webhook
  * by the completion path — the `catch` is the contract, not defensive
  * decoration.
  */
-export function notify(event: WebhookEvent, data: Record<string, unknown>): void {
-  void dispatch(event, data).catch(() => undefined);
+export function notify(event: WebhookEvent, data: Record<string, unknown>, opts?: { deliveryId?: string }): void {
+  void dispatch(event, data, { deliveryId: opts?.deliveryId }).catch(() => undefined);
 }

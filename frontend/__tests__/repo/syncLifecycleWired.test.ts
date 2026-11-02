@@ -35,6 +35,10 @@
  *         in particular NOT from the replay path, which would double-count
  * AC-W08  `SyncStatusBadge` is exported from the ui barrel and MOUNTED in the
  *         screen where habit completion happens
+ * AC-W09  (F05, SYN-15) the sync coordinator is started from the root layout
+ *         and owns the only timer: the flush triggers are now boot, foreground
+ *         and the coordinator timer (plus its network-success signal), still
+ *         without an interval and without a network-state library
  */
 import { execSync } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
@@ -161,7 +165,7 @@ describe('AC-W02 — nothing renders while the boot sequence is still running', 
   });
 });
 
-describe('AC-W03 / AC-W04 — the flush has two triggers and only two', () => {
+describe('AC-W03 / AC-W04 — boot and foreground flush (the coordinator timer is AC-W09)', () => {
   it('boot flushes after hydration', () => {
     const boot = bootSequence();
     expect(at(boot, 'flushPendingSync(')).toBeGreaterThan(at(boot, 'hydrateSyncQueue()'));
@@ -310,5 +314,60 @@ describe('AC-W08 — the sync badge exists, is exported, and is mounted', () => 
     // what matters here is that the component actually renders what it derives.
     expect(badge).toContain('syncBadgeParts(');
     expect(badge).toMatch(/parts\.map\(/);
+  });
+});
+
+describe('AC-W09 — the coordinator is started, and it owns the only timer', () => {
+  const coordinator = read('lib/syncCoordinator.ts');
+
+  it('the root layout starts the coordinator', () => {
+    expect(layout).toContain('startSyncCoordinator(');
+  });
+
+  it('it is started with the live channel adapters and stopped on cleanup', () => {
+    const startAt = at(layout, 'startSyncCoordinator(');
+    const effect = layout.slice(layout.lastIndexOf('useEffect(', startAt), layout.indexOf('}, [', startAt));
+    expect(effect).toMatch(/startSyncCoordinator\(syncFlushers\(\)\)/);
+    expect(effect).toMatch(/coordinator\.stop\(\)/);
+    // signed out there is nothing of anyone's to send
+    expect(effect).toMatch(/if \(loading \|\| !session\w*\) return;/);
+  });
+
+  it('the coordinator uses no interval, only a single timeout', () => {
+    expect(coordinator).not.toMatch(/setInterval\s*\(/);
+    expect(coordinator).toMatch(/setTimer/);
+    expect(coordinator).toMatch(/setTimeout\s*\(/);
+  });
+
+  it('the root layout still starts no interval of its own', () => {
+    expect(layout).not.toMatch(/setInterval\s*\(/);
+  });
+
+  it('no network-state library was added for it', () => {
+    const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    for (const name of Object.keys(deps)) {
+      expect(name).not.toMatch(/netinfo|network-info|expo-network/i);
+    }
+  });
+
+  it('the habit queue is re-bound on auth events, not re-hydrated', () => {
+    const subAt = at(layout, 'onAuthStateChange(');
+    const handler = layout.slice(subAt, layout.indexOf('resetWebhookCache()', subAt));
+    expect(handler).toMatch(/rebindSyncQueue\(null\)/);
+    expect(handler).toMatch(/rebindSyncQueue\(nextUid\)/);
+    expect(handler).not.toContain('hydrateSyncQueue(');
+  });
+
+  it('a direct switch to another account also loads and sends that account\'s task and core outboxes', () => {
+    const branchAt = at(layout, 'else if (prevUid && nextUid && prevUid !== nextUid) {');
+    const branch = layout.slice(branchAt, layout.indexOf('}', branchAt));
+    expect(branch).toContain("endAccountScope('user_changed', prevUid)");
+    expect(branch).toContain('useTaskStore.getState().authRefreshed()');
+    expect(branch).toContain('coreOutbox.authRefreshed()');
+  });
+
+  it('scanner sanity — an interval in the coordinator would be caught', () => {
+    expect('const t = setInterval(() => flush(), 1000);').toMatch(/setInterval\s*\(/);
   });
 });

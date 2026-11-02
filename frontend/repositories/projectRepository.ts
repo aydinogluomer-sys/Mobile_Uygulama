@@ -60,7 +60,7 @@ export async function insertProject(input: {
     })
     .select(COLS)
     .single();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: data as unknown as ProjectRow };
 }
 
@@ -99,7 +99,7 @@ export async function searchProjects(query: string, limit = 8): Promise<RepoResu
     .ilike('name', `%${safe}%`)
     .order('created_at', { ascending: false })
     .limit(Math.min(limit, 25));
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: (data ?? []) as unknown as ProjectRow[] };
 }
 

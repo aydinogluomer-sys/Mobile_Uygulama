@@ -195,7 +195,9 @@ export async function insertHabitLog(params: {
   if (error) {
     return {
       ok: false, error: error.message, code: error.code,
-      offline: isTransportFailure(status),
+      offline: isTransportFailure(status, error),
+      // F05 (SYN-03): the status lets the service tell a transient server failure from a refusal
+      status,
     };
   }
   return { ok: true, data: data as unknown as HabitLog };
@@ -215,7 +217,7 @@ export async function findHabitLog(params: {
     .eq('user_id', u.userId)
     .eq('completed_at', params.dateStr)
     .maybeSingle();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status };
   return { ok: true, data: (data ?? null) as HabitLog | null };
 }
 

@@ -27,6 +27,12 @@
  * `pending`'e döner). Bu yüzden rozet bilgilendirici kalıyor ve kurtarma
  * yolunu erişilebilirlik etiketinde söylüyor.
  *
+ * F05: rozet hâlâ dokunulamaz (gerekçe yukarıda aynen geçerli), ama artık
+ * ayrı bir kurtarma yolu daha var: Ayarlar > Çevrimdışı Senkronizasyon
+ * sayfasındaki "Gönderilemeyenler" listesi, her dead değişiklik için
+ * "Yeniden dene" ve "Bu değişikliği bırak" sunar (`reviveSyncOp` /
+ * `dropSyncOp`). Rozet metinleri ve `syncBadgeParts` değişmedi.
+ *
  * Sunum bileşeni: store'a bağlanmaz, sayıları prop olarak alır. Kararı veren
  * saf fonksiyon (`syncBadgeParts`) dışa açık, böylece "dead görsel olarak
  * ayırt edilebilir" iddiası bir renderer'a ihtiyaç duymadan test edilebilir.
