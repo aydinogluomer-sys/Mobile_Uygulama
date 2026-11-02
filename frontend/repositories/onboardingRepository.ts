@@ -23,7 +23,7 @@
  */
 import type { TableInsert } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
-import { currentUserId, type RepoResult } from './shared';
+import { currentUserId, isTransportFailure, type RepoResult } from './shared';
 import {
   ONBOARDING_VERSION,
   type OnboardingAnswers,
@@ -62,13 +62,17 @@ const COLS =
 /** The caller's row, or `null` when they have never answered anything. */
 export async function fetchOnboarding(): Promise<RepoResult<OnboardingRow | null>> {
   const u = await currentUserId();
-  if (!u.ok) return u;
-  const { data, error } = await supabase
+  if (!u.ok) return u; // carries `offline` (F06: an unreachable auth server is not "signed out")
+  const { data, error, status } = await supabase
     .from('user_onboarding')
     .select(COLS)
     .eq('user_id', u.userId)
     .maybeSingle();
-  if (error) return { ok: false, error: error.message };
+  // F06 (NAV-04): the store tells "the server could not be reached" (offline / 5xx: a cached
+  // terminal status may open Today) from "the server refused" (401, RLS: the gate).
+  if (error) {
+    return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
+  }
   return { ok: true, data: (data ?? null) as OnboardingRow | null };
 }
 

@@ -20,6 +20,7 @@
  * Commands carry the account that queued them; a transport refuses to run as
  * any other account (R02.06).
  */
+import { registerAccountScoped } from '../lib/accountScope';
 import { classifyFailure, type Transport } from './outboxRunner';
 import { createOutboxChannel } from './outboxChannel';
 import { asyncStorageOutboxNs } from '../lib/outboxStorage';
@@ -266,3 +267,6 @@ export const coreOutbox = {
     rawCoreOutbox.reset();
   },
 };
+
+// F04: the channel's memory belongs to the signed-in account; its saved, unsent work does not go (lib/accountScope.ts).
+registerAccountScoped({ name: 'coreOutbox', onReset: () => coreOutbox.reset() });

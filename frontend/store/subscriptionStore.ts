@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { getOrInitSubscription, mockActivateSubscription } from '../repositories/subscriptionRepository';
 import { create } from 'zustand';
 import type { Tier, BillingPeriod } from '../lib/subscription';
@@ -86,3 +87,6 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
     return true;
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'subscription', store: useSubscriptionStore });

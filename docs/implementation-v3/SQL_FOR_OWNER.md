@@ -21,21 +21,56 @@ order by ordinal_position;
 -- 0.3 033 öncesi: tz sütunu zaten var mı? (beklenen: 0 satır)
 select 1 from information_schema.columns
 where table_schema='public' and table_name='habit_logs' and column_name='tz';
+
+-- 0.4 038 öncesi (036'dan SONRA): XP defteri sağlıklı mı? (0 satır beklenir)
+-- 0 satır değilse 038 uygulanmaz. 036 tek başına silinmiş bir günün XP'sini purged_xp'ye taşımaz (DB2-07);
+-- önce rebuild_profile_xp(uuid) ile onarım gerekir ve bu ayrı bir sahip kararıdır.
+select * from public.xp_drift();
 ```
 
 ## 1. Uygulama sırası
 
-| # | Dosya | Açtığı şey | Sonra çevrilecek kapı | Doğrulama |
-|---|---|---|---|---|
-| 028 | `028_habit_pauses_and_goal_versions.sql` | tarihli duraklatma/tatil (`habit_pauses`), etkin tarihli hedef sürümleri (`habit_goal_versions`) — R01.05; yedek/geri yükleme bu tabloları kendiliğinden kapsar (R08.01) | yok (istemci fail-open okur; tablo gelince kendiliğinden açılır) | §2.1 |
-| 029 | `029_habit_checklists.sql` | alışkanlık checklist'i (`habit_checklist_items`, `habit_checklist_checks`) — R01.04; yedek/geri yükleme kendiliğinden kapsar (R08.01) | yok (fail-open) | §2.2 |
-| 030 | `030_routine_runner.sql` | rutin şablon/sürüm/oturum — R05.01/02/07 | yok (cihaz-yerel → sunucu) | §2.3 |
-| 031 | `031_moods_and_review_actions.sql` | adlı duygular, çoklu check-in, review sonraki eylemi — R07.02/06 | yok (cihaz-yerel → sunucu) | §2.4 |
-| 032 | `032_coach_actions_v2.sql` | koçun ikinci eylem seti için CHECK — R09.02 | `COACH_ACTIONS_V2_ENABLED` **ancak** `generate-routine` edge function deploy edildikten sonra (S3) | §2.5 |
-| 033 | `033_habit_log_timezone.sql` | `habit_logs.tz` (log'un yazıldığı IANA bölgesi) — R01.06 | `LOG_TIMEZONE_ENABLED` | §2.6 |
-| 034 | `034_coach_reminder_action.sql` | koçun hatırlatma saati eylemi `edit_reminder_time` — R09.02 (CHECK'i 9 türle baştan yazar; 032'den bağımsız doğru) | `COACH_ACTIONS_V2_ENABLED` — 032 + 034 uygulanıp `generate-routine` deploy edildikten SONRA (S3) | §2.7 |
-| 035 | `035_coach_lighten_week.sql` | koçun "bu hafta hafiflet" eylemi `lighten_week` — R09.04 (CHECK'i 10 türle baştan yazar; 032/034'ten bağımsız doğru) | `COACH_ACTIONS_V2_ENABLED` — 032 + 034 + 035 uygulanıp `generate-routine` deploy edildikten SONRA (S3) | §2.8 |
-| 036 | `036_live_audit_hardening.sql` | **canlı denetimden öneri** (`LIVE_SCHEMA_AUDIT.md`): XP/seri (alışkanlık, gün) defteri — S11 çiftliğini kapatır; `weekly_xp` istemci yazımı kapanır; kullanılmayan/tetikleyici SECURITY DEFINER fonksiyonlarda EXECUTE alınır; grant hijyeni. 028–035'ten bağımsız. **Önce bir branch'te dene.** | yok (R01.03-b geri alma bundan sonra açılabilir) | §2.9 |
+| # | Dosya | Açtığı şey | Sonra çevrilecek kapı | Doğrulama | Geri alma |
+|---|---|---|---|---|---|
+| 028 | `028_habit_pauses_and_goal_versions.sql` | tarihli duraklatma/tatil (`habit_pauses`), etkin tarihli hedef sürümleri (`habit_goal_versions`) — R01.05; yedek/geri yükleme bu tabloları kendiliğinden kapsar (R08.01) | yok (istemci fail-open okur; tablo gelince kendiliğinden açılır) | §2.1 | `supabase/rollbacks/028_habit_pauses_and_goal_versions.rollback.sql` |
+| 029 | `029_habit_checklists.sql` | alışkanlık checklist'i (`habit_checklist_items`, `habit_checklist_checks`) — R01.04; yedek/geri yükleme kendiliğinden kapsar (R08.01) | yok (fail-open) | §2.2 | `supabase/rollbacks/029_habit_checklists.rollback.sql` |
+| 030 | `030_routine_runner.sql` | rutin şablon/sürüm/oturum — R05.01/02/07 | yok (cihaz-yerel → sunucu) | §2.3 | `supabase/rollbacks/030_routine_runner.rollback.sql` |
+| 031 | `031_moods_and_review_actions.sql` | adlı duygular, çoklu check-in, review sonraki eylemi — R07.02/06 | yok (cihaz-yerel → sunucu) | §2.4 | `supabase/rollbacks/031_moods_and_review_actions.rollback.sql` |
+| 032 | `032_coach_actions_v2.sql` | koçun ikinci eylem seti için CHECK — R09.02 | `COACH_ACTIONS_V2_ENABLED` **ancak** `generate-routine` edge function deploy edildikten sonra (S3) | §2.5 | `supabase/rollbacks/032_coach_actions_v2.rollback.sql` |
+| 033 | `033_habit_log_timezone.sql` | `habit_logs.tz` (log'un yazıldığı IANA bölgesi) — R01.06 | `LOG_TIMEZONE_ENABLED` | §2.6 | `supabase/rollbacks/033_habit_log_timezone.rollback.sql` |
+| 034 | `034_coach_reminder_action.sql` | koçun hatırlatma saati eylemi `edit_reminder_time` — R09.02 (CHECK'i 9 türle baştan yazar; 032'den bağımsız doğru) | `COACH_ACTIONS_V2_ENABLED` — 032 + 034 uygulanıp `generate-routine` deploy edildikten SONRA (S3) | §2.7 | `supabase/rollbacks/034_coach_reminder_action.rollback.sql` |
+| 035 | `035_coach_lighten_week.sql` | koçun "bu hafta hafiflet" eylemi `lighten_week` — R09.04 (CHECK'i 10 türle baştan yazar; 032/034'ten bağımsız doğru) | `COACH_ACTIONS_V2_ENABLED` — 032 + 034 + 035 uygulanıp `generate-routine` deploy edildikten SONRA (S3) | §2.8 | `supabase/rollbacks/035_coach_lighten_week.rollback.sql` |
+| 036 | `036_live_audit_hardening.sql` | **canlı denetimden öneri** (`LIVE_SCHEMA_AUDIT.md`): XP/seri (alışkanlık, gün) defteri — S11 çiftliğini kapatır; `weekly_xp` istemci yazımı kapanır; kullanılmayan/tetikleyici SECURITY DEFINER fonksiyonlarda EXECUTE alınır; grant hijyeni. 028–035'ten bağımsız. **Önce bir branch'te dene.** | yok (R01.03-b geri alma bundan sonra açılabilir); **038 ile birlikte** uygulanır: 036 tek başına silinen bir logun XP'sini `purged_xp`'ye taşımaz (DB2-06/07) | §2.9 | `supabase/rollbacks/036_live_audit_hardening.rollback.sql` — önce 038 geri alınır (varsa); **geri alma açıkları yeniden açar** (weekly_xp yazımı, istemci EXECUTE hakları), yalnız 036 branch denemesinde sorun çıkarsa kullanılır ve ardından F03 (038) uygulanamaz |
+| 037 | `037_today_bootstrap_rpc.sql` | tek gidiş-dönüşlü Bugün önyüklemesi `get_today_bootstrap(date)` (çağıranın kendi RLS bağlamında, SECURITY INVOKER; 028/029 tabloları yoksa `to_regclass` ile atlar) | yok (istemci RPC yoksa tablo okumalarına düşer: `todayBootstrapRepository.ts`, `isMissingRpcError`) | `ci.yml` bootstrap adımı (`get_today_bootstrap`) | `supabase/rollbacks/037_today_bootstrap_rpc.rollback.sql` |
+| 038 | `038_xp_streak_integrity.sql` | XP/seri bütünlüğü (F03): gün penceresi (sunucu `CURRENT_DATE - 15`..`+ 1`, istemci bugün ve önceki 14 gün), XP'yi yalnız sunucu hesaplar, günlük XP tavanı (2000), defter alışkanlığı silinse de kalır (sil-yeniden-yaz ve aynı adla yeniden oluşturma ikinci kez ödenmez), seri defterdeki ardışık günlerden, `streak_current`/`streak_best` istemciden yazılamaz, log silinince XP `purged_xp`'ye geçer, boss tetikleyicisi kapanır. **036 önkoşul** (betik kendisi denetler). Sıra 036 → 037 → 038; §0.4 `xp_drift()` boş değilse uygulanmaz. Pencere/tavan/çarpan değerleri OD-04 önerisidir. | yok | §2.11 | `supabase/rollbacks/038_xp_streak_integrity.rollback.sql` — 036'nınkinden ÖNCE; **XP sahteciliğini yeniden açar** (pencere, tavan, seri sütunları) |
+
+### Geri alma nasıl çalıştırılır
+
+Her migration'ın geri alma betiği `supabase/rollbacks/` altındadır (ayrıntı: `supabase/rollbacks/README.md`). Betikler CI'da
+tek kullanımlık Postgres 17'de sınanır: ileri uygula, sondan başa geri al, katalog parmak izini baştakiyle karşılaştır,
+yeniden ileri uygula. **Canlıda hiçbiri çalıştırılmadı; yalnız sahip çalıştırır (OD-02).**
+
+1. Önce yedek (S1), sonra `select * from public.xp_drift();` (0 satır beklenir).
+2. Sıra **büyükten küçüğe**: 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 036'dan önce 038 geri alınır
+   (036 betiği, `fn_habit_log_guard` varken reddeder).
+3. Her betik için **aynı oturumda** önce onay, sonra dosya. Onay değeri betiğin kendi numarası değilse betik `P0001` ile durur
+   ve hiçbir şey değiştirmez:
+
+```sql
+-- SQL editöründe: SET satırı ve betiğin tamamı AYNI çalıştırmada (tek "Run")
+SET aderyth.rollback_confirm = 'NNN';
+-- ardından supabase/rollbacks/NNN_<ad>.rollback.sql dosyasının tamamı
+```
+
+   `psql` ile: `psql <bağlantı> -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = 'NNN'" -f supabase/rollbacks/NNN_<ad>.rollback.sql`.
+4. Her geri almadan sonra `select * from public.xp_drift();` (0 satır) ve §2.10 sorguları.
+5. Yıkıcı betikler yedek ister: 028, 029, 030, 031 ve 033 satır/sütun siler; yeniden ileri uygulama o veriyi geri getirmez.
+   032/034/035 satır silmez (yeni türde satır varsa kısıt `NOT VALID` kalır). 036 `weekly_xp` yazımını ve istemci
+   EXECUTE haklarını yeniden açar; yalnız 036 branch denemesinde sorun çıkarsa kullanılır. 038 gün penceresini, günlük
+   tavanı ve seri sütunu korumasını yeniden açar; defteri `habit_logs`'un taşıdığı değere indirir (038 döneminde silinen
+   günün XP'si zaten `purged_xp`'dedir; indirilmese 036 geri alması onu ikinci kez taşırdı). 038'in ikinci çalıştırması
+   `038 is not applied` ile reddeder.
+6. Bir hata alırsanız hiçbir değişiklik uygulanmamıştır (tek transaction); oturumda açık kalmış transaction varsa `ROLLBACK;`.
 
 ## 2. Doğrulama sorguları (her migration'dan sonra, salt-okunur)
 
@@ -80,6 +115,34 @@ select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public' and p.prosecdef and has_function_privilege('anon', p.oid, 'execute');            -- 0 satır
 select proname, has_function_privilege('authenticated', oid, 'execute') as auth
 from pg_proc where proname in ('get_user_rank','get_weekly_leaderboard','get_global_leaderboard','get_or_init_subscription'); -- hepsi true
+
+-- 2.10 geri alma öncesi/sonrası: XP defteri sağlıklı mı (0 satır beklenir)
+select * from public.xp_drift();
+-- hangi migration'ların etkisi var (rollback'ten sonra ilgili satırlar yok olmalı)
+select to_regclass('public.habit_pauses') as m028, to_regclass('public.habit_checklist_items') as m029,
+       to_regclass('public.routine_templates') as m030, to_regclass('public.mood_checkins') as m031,
+       to_regclass('public.habit_xp_awards') as m036, to_regprocedure('public.get_today_bootstrap(date)') as m037;
+select exists (select 1 from information_schema.columns
+               where table_schema='public' and table_name='habit_logs' and column_name='tz') as m033;
+select pg_get_constraintdef(oid) from pg_constraint where conname = 'ai_actions_type_check';
+select to_regprocedure('public.fn_habit_log_guard()') as m038;
+
+-- 2.11 (038) ÖNCE: sağlıklı başlangıç (0 satır beklenir; §0.4 ile aynı)
+select * from public.xp_drift();
+-- 2.11 (038) SONRA: tetikleyiciler (ilk üçü var, boss tetikleyicisi yok)
+select tgname from pg_trigger
+where tgname in ('trg_habit_log_00_guard','trg_habit_log_purge_on_delete','trg_habits_protect_streak','on_habit_completed_damage_boss')
+  and not tgisinternal;
+-- defter: öksüz olmayan satırların hepsinde parmak izi dolu (0 beklenir)
+select count(*) from public.habit_xp_awards a
+where a.habit_fp is null and exists (select 1 from public.habits h where h.id = a.habit_id);
+-- hiçbir istemci rolü yeni fonksiyonları çağıramaz (hepsi false)
+select p.proname, has_function_privilege('authenticated', p.oid, 'execute') as auth
+from pg_proc p where p.proname in ('fn_habit_log_guard','fn_habit_log_set_xp','fn_habit_log_award','fn_habit_log_purge_on_delete','fn_habits_protect_streak');
+-- weekly_xp makullük kısıtı var (NOT VALID: yalnız yeni yazımları denetler)
+select conname, convalidated from pg_constraint where conname = 'weekly_xp_xp_earned_sane';
+-- drift yine boş
+select * from public.xp_drift();
 ```
 
 ## 3. BLOCKED — tanımı repoda olmayan nesneler (yalnız okuma sorguları)
@@ -164,3 +227,52 @@ gerçek `tasks` tanımı gelince bir FK + sahiplik kontrolü ayrı migration'la 
   yeniden yazımda tekrar veriliyor. Düzeltme 036-A.
 - **§4 KD-10/KD-11:** `kd10_targetless = 0`, `kd10_empty_part_of_day = 0`, `kd11_suspect = 0` → backfill gerekmiyor.
 - Canlıda son migration `account_deletion_cascade` (027 karşılığı); §0.1 beklentisi doğru.
+
+## 8. CI davranış testleri (sahip eylemi gerektirmez)
+
+F01 ile `db-migrations-verify` işi (Postgres 17, `ci.yml`) son adım olarak `bash supabase/tests/run.sh`
+koşar. Bu bölüm yalnız o testleri anlatır; **burada çalıştırılacak bir sorgu yoktur ve canlıya hiçbir
+şey yazılmaz.** Testler geçici Postgres'te `live_schema.sql` + 028–038 üzerinde koşar (bugünkü canlı
+değil: canlıda 028–038 uygulanmamıştır). Canlıdaki açıklar (örneğin `weekly_xp`, TST-V01) 036 sizin
+tarafınızdan uygulanana kadar canlıda açık kalır; test CI'da 036 uygulanmış halin kapalı olduğunu kanıtlar,
+canlıyı denetlemez. Canlı doğrulama §2'dir.
+
+| Dosya | Ne denetler | Bugünkü beklenti |
+|---|---|---|
+| `01_client_cannot_write_server_tables.sql` | `authenticated` / `anon` rolü `weekly_xp`, `profiles.total_xp·level·coins`, `user_subscriptions`, `credit_transactions` tablolarına yazamaz (SQLSTATE 42501); sahibin kendi `user_subscriptions` satırını silememesi ile `credit_transactions` ve `ai_requests` satırlarını değiştirememesi (tablo yetkisi açıktır, satırı RLS korur: hiçbir satır değişmez); bu "satır değişmedi" denemelerinin boş geçmediğini gösteren pozitif kontroller | 22 sonuç, hepsi PASS |
+| `02_security_definer_hygiene.sql` | anon'un `public` SECURITY DEFINER fonksiyonunda EXECUTE hakkı yok (`T02a`); hepsinde `search_path` sabit (`T02b`); yalnız-servis fonksiyonlar istemciye kapalı (`T02c`–`T02e`) | `T02a` PASS; `T02b` 20 FAIL (listede) |
+| `03_xp_drift_zero.sql` | gerçek `habit_logs` yazma / güncelleme / silme sonrası `xp_drift()` boş (tetikleyici zinciri olduğu gibi) | 4 PASS |
+| `04_today_bootstrap_isolation.sql` | `get_today_bootstrap` iki kullanıcı izolasyonu, doğrudan tablo izolasyonu, JWT'siz çağrının fonksiyonun KENDİ `authentication required` hatasıyla reddi (bekçi satırı kalkarsa başka bir 42501 gelir ve test kırmızı olur), anon çağrı reddi | 6 PASS |
+| `05_concurrency_spend.sh` | 8 eşzamanlı oturumla `spend_focus_points_v2` (tek kazanan, bakiye eksiye düşmez, aynı `request_id` tek borç) ve `ai_request_begin` (tek `claimed`) yarışı | 5 PASS + 1 INFO |
+| `06_xp_integrity_038.sql` | 038 (F03): `authenticated` rolüyle `weekly_xp` yazımı, gün penceresi (−16/+2 red, −15/+1 kabul), istemci `xp` değerinin yok sayılması, sil-yeniden-yaz ve aynı adla yeniden oluşturmanın ikinci kez ödenmemesi, günlük tavan (25 x 100 -> 2000), seri sütunlarının istemciden yazılamaması, done/miss/partial gidip gelmenin seriyi bir kez artırması, boşluğun seriyi sıfırlaması ve x1,2 basamağı, silmelerin XP'yi bir kez `purged_xp`'ye taşıması, boss tetikleyicisinin kalkması, tetikleyici fonksiyonlarının istemciye kapalı ve `search_path`'inin sabit olması, `weekly_xp` makullük kısıtı, log anahtarının taşınamaması, eski günde not düzenlemenin serbest ama durum değişikliğinin reddi, notla yeniden puanlama olmaması; her senaryodan sonra `xp_drift()` boş | 24 PASS |
+
+**`supabase/tests/expected_failures.txt` ne demek.** Bilinen açıkların test adı listesidir; her satır bulgu
+kimliğini taşır ve başlıkta kapatan faz yazar. Koşucu iki yönlü karşılaştırır: listede olmayan bir test kırmızıysa
+`UNEXPECTED FAILURES`, listede olup yeşile dönmüş bir satır kalmışsa `STALE` ile CI kırmızı olur. Yani liste yalnız
+küçülebilir; bir açığı kapatan migration aynı commit'te kendi satırlarını siler. Bugün listede 20 satır vardır
+(`T02b_search_path.*`: `search_path` sabitlenmemiş 20 SECURITY DEFINER fonksiyon); hepsini F09 kapatır. Sizin
+canlıya uyguladığınız bir migration bu listeyi değiştirmez: liste canlıyı değil CI'daki şemayı anlatır.
+
+**Yerel koşum (yalnız geçici veritabanı).** Koşucu `PGHOST` yerel değilse (`127.0.0.1`, `localhost`, `::1`),
+`PGHOSTADDR` yerel değilse ya da `PGSERVICE` tanımlıysa hiçbir şey yazmadan `REFUSED` ile 2 koduyla çıkar. Yerel bir
+adres tek başına güvence değildir (bir SSH ya da havuz tüneli canlı bir veritabanına çıkabilir), bu yüzden koşucu ikinci
+bir salt-okunur katalog denetimi daha yapar: hedef CI'daki geçici veritabanına benzemiyorsa (GoTrue'nun `auth.users`
+tablosunda olan `encrypted_password` sütunu varsa ya da bağlanan kullanıcı superuser değilse) yine `REFUSED` ile çıkar ve
+hiçbir şey yazmaz. Bu bir güvence katmanıdır, mutlak değildir: testler şema ve satır oluşturur, bu yüzden hedef her
+zaman tek kullanımlık, CI'daki gibi hazırlanmış bir veritabanı olmalıdır. **`supabase test db` komutunu (özellikle
+`--linked` ile) bu dizine yöneltmeyin:** Supabase CLI'nin pgTAP koşucusu testleri geleneksel olarak `supabase/tests/`
+altında arar; buradaki dosyalar pgTAP değildir ve `01` ile `05` kalıcı satır yazar. Bunlar yalnız `bash supabase/tests/run.sh`
+ile koşar.
+
+```bash
+docker run --rm -d --name aderyth-pg17 -e POSTGRES_PASSWORD=ci_ephemeral_pg_password -e POSTGRES_DB=aderyth_ci -p 127.0.0.1:55432:5432 postgres:17
+export PGHOST=127.0.0.1 PGPORT=55432 PGUSER=postgres PGPASSWORD=ci_ephemeral_pg_password PGDATABASE=aderyth_ci
+# ci.yml db-migrations-verify adımlarını aynı sırayla uygula: bootstrap, live_schema.sql, 037 ön kontrolü, 028+ döngüsü; sonra:
+bash supabase/tests/run.sh; echo exit=$?
+docker rm -f aderyth-pg17
+```
+
+Çıkış kodları: `0` başarılı; `1` beklenmeyen kırmızı ya da bayat liste satırı; `2` `REFUSED` (yerel olmayan ya da
+CI'daki geçici veritabanına benzemeyen hedef); `3` bir test dosyası fixture / tetikleyici / sözdizimi hatasıyla düştü ya da
+veritabanına ulaşılamadı (bulgudur, fixture gevşetilmez); `4` sonuç akışı kullanılamaz (30'dan az, ayrıştırılamayan,
+tekrarlanan ya da hiç rapor vermeyen test ya da `T02a` / `T02b` sonuç ailesi).

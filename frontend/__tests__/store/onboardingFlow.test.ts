@@ -350,4 +350,50 @@ describe('AC-OF08 the router rules', () => {
     // error, and can open A's plan.
     expect(layout).toContain('useOnboardingStore.getState().resetForAccount()');
   });
+
+  it('F06 (SYN-02): the boot decides the session through resolveBootSession, with the stored session as the offline fallback', () => {
+    expect(layout).toContain('resolveBootSession(');
+    expect(layout).toContain('readStored: readStoredSession');
+  });
+
+  it('F06 (SYN-02): a null INITIAL_SESSION does not sign the user out; only SIGNED_OUT does', () => {
+    expect(layout).toMatch(/if \(!session && event !== 'SIGNED_OUT'\) return;/);
+    // ... and it is the first thing the auth handler does, before setSession
+    const handler = layout.slice(layout.indexOf('onAuthStateChange('));
+    expect(handler.indexOf("event !== 'SIGNED_OUT'")).toBeLessThan(handler.indexOf('setSession('));
+  });
+
+  it('F06 (NAV-04): the boot cannot hang the app: try/finally opens the gate, a 12 s watchdog offers "Tekrar dene"', () => {
+    expect(layout).toMatch(/setTimeout\(\(\) => \{ if \(alive\) setBootStalled\(true\); \}, BOOT_WATCHDOG_MS\)/);
+    expect(layout).toMatch(/finally \{\s*clearTimeout\(watchdog\);\s*if \(alive\) \{ setBootStalled\(false\); setLoading\(false\); \}/);
+    expect(layout).toContain('Promise.allSettled([hydrateNotionSession(), hydrateSyncQueue()])');
+    expect(layout).toContain('bootAttempt]);'); // "Tekrar dene" restarts the boot effect
+  });
+
+  it('F06: the render order is config -> stalled boot -> onboarding gate (with its escape) -> spinner', () => {
+    const config = layout.indexOf('if (SUPABASE_CONFIG_ERROR) return <BootGate variant="config"');
+    const stalled = layout.indexOf('if (loading && bootStalled) return <BootGate variant="stalled"');
+    const gate = layout.indexOf('<OnboardingGate');
+    const spinner = layout.search(/if \(loading \|\| \(!!session && onboardingHydration !== 'ready'\)\)/);
+    expect([config, stalled, gate, spinner].every((i) => i > -1)).toBe(true);
+    expect(config).toBeLessThan(stalled);
+    expect(stalled).toBeLessThan(gate);
+    expect(gate).toBeLessThan(spinner);
+    const gateJsx = layout.slice(gate, layout.indexOf('/>', gate));
+    expect(gateJsx).toMatch(/onSignOut=\{/);
+    expect(gateJsx).toContain('signOutCurrentAccount()');
+    expect(gateJsx).toContain('signingOut={signingOut}');
+  });
+
+  it('F06 (STO-04): onboarding, reminders and routing follow the user id, not the Session object', () => {
+    expect(layout).toContain('}, [sessionUid, loading, hydrateOnboarding]);');
+    expect(layout).toContain('}, [loading, sessionUid, router]);');
+    expect(layout).toMatch(/\}, \[hasSupabaseSession, notionSession, loading,/);
+    expect(layout).not.toMatch(/\}, \[session, loading, hydrateOnboarding\]\);/);
+  });
+
+  it('F06 (NAV-04, SYN-23): a stale status is re-read in the foreground; the refresh ticker follows AppState (native)', () => {
+    expect(layout).toMatch(/if \(next === 'active'\) \{[\s\S]*?if \(useOnboardingStore\.getState\(\)\.staleStatus\) void hydrateOnboarding\(\);/);
+    expect(layout).toMatch(/if \(Platform\.OS === 'web'\) return;\s*return bindAuthAutoRefresh\(supabase, AppState, \(\) => \{ void flushPendingAuthStorage\(\); \}\);/);
+  });
 });

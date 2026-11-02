@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { registerAccountStorage } from '../lib/accountScope';
+import { currentUser } from '../lib/session';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
@@ -22,7 +24,14 @@ import type { BadHabitRow } from '../repositories/badHabitRepository';
 import { EmblemMedallion, TexturedSurface } from './ui';
 import { BAD_HABIT_SHIELD, TEXTURES } from '../lib/visualAssets';
 
-const URGE_STORAGE_KEY = 'aderyth.deflected_urges_count';
+/**
+ * F04: the deflected-urge counter is a motivation number of ONE person. It lives under the user's
+ * key; the old unscoped key is removed, never adopted (crediting it to whoever opens the app next
+ * would show them someone else's reward).
+ */
+const URGE_STORAGE_KEY_PREFIX = 'aderyth.deflected_urges_count';
+export const urgeStorageKey = (uid: string): string => `${URGE_STORAGE_KEY_PREFIX}:${uid}`;
+registerAccountStorage({ name: 'badHabits.urges', transient: false, keysFor: (uid) => [urgeStorageKey(uid)] });
 
 interface BadHabitsTrackerProps {
   visible: boolean;
@@ -61,9 +70,13 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
   useEffect(() => {
     if (visible) {
       loadBadHabits();
-      AsyncStorage.getItem(URGE_STORAGE_KEY).then((v) => {
-        if (v) setDeflectedUrges(parseInt(v, 10) || 0);
-      }).catch(() => undefined);
+      void (async () => {
+        await AsyncStorage.removeItem(URGE_STORAGE_KEY_PREFIX);
+        const uid = (await currentUser())?.id;
+        if (!uid) { setDeflectedUrges(0); return; }
+        const v = await AsyncStorage.getItem(urgeStorageKey(uid));
+        setDeflectedUrges(v ? parseInt(v, 10) || 0 : 0);
+      })().catch(() => undefined);
     }
   }, [visible]);
 
@@ -73,7 +86,11 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
       haptic.success();
       const nextCount = deflectedUrges + 1;
       setDeflectedUrges(nextCount);
-      AsyncStorage.setItem(URGE_STORAGE_KEY, String(nextCount)).catch(() => undefined);
+      void (async () => {
+        const uid = (await currentUser())?.id;
+        if (!uid) return;
+        await AsyncStorage.setItem(urgeStorageKey(uid), String(nextCount));
+      })().catch(() => undefined);
       return;
     }
     const timer = setTimeout(() => setUrgeSecondsLeft((s) => s - 1), 1000);

@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { withEdgeDeadline } from '../lib/edgeCall';
 import { SPOTIFY_OAUTH_ENABLED, SPOTIFY_OAUTH_DISABLED_REASON } from '../lib/featureGates';
 import { create } from 'zustand';
@@ -189,3 +190,6 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
     }
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'spotify', store: useSpotifyStore });

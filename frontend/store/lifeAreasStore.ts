@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import {
   fetchRecentLifeAreaLogs,
@@ -160,3 +161,6 @@ export const useLifeAreasStore = create<LifeAreasStore>((set, get) => ({
     set({ saving: false });
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'lifeAreas', store: useLifeAreasStore });

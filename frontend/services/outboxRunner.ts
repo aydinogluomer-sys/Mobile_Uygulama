@@ -19,6 +19,7 @@
  * No I/O of its own beyond the transports and the `io` it is handed.
  */
 import { markSending, ready, settle, type DeliveryOutcome, type OutboxCommand, type OutboxState } from '../lib/outbox';
+import { isTransientStatus } from '../repositories/shared';
 
 export type Transport = (cmd: OutboxCommand) => Promise<DeliveryOutcome>;
 
@@ -33,7 +34,7 @@ export type OutboxIO = {
   set: (next: OutboxState) => void | Promise<void>;
 };
 
-export type FlushResult = { sent: number; stoppedBy: 'done' | 'offline' | 'auth' | 'account' | 'limit' };
+export type FlushResult = { sent: number; stoppedBy: 'done' | 'offline' | 'auth' | 'account' | 'limit' | 'retryable' };
 
 export async function flushOutbox(
   io: OutboxIO,
@@ -74,16 +75,23 @@ export async function flushOutbox(
     sent += 1;
     if (outcome.kind === 'offline') return { sent, stoppedBy: 'offline' };
     if (outcome.kind === 'auth') return { sent, stoppedBy: 'auth' };
+    // F05: the server is struggling (503, 429 ...): the rest of the queue waits instead of hammering it
+    if (outcome.kind === 'retryable') return { sent, stoppedBy: 'retryable' };
   }
 }
 
 /**
  * Turn a repository failure into an outcome. Only an explicit transport
- * failure is `offline` (see repositories/shared.isTransportFailure); a 401 or
- * an expired JWT is `auth`; anything else the server said is `rejected`.
+ * failure is `offline` (see repositories/shared.isTransportFailure); a 401, an
+ * expired JWT or a missing session is `auth`; F05 (SYN-03): a transient server
+ * answer (408, 425, 429, 5xx) is `retryable` and costs no attempt; only what
+ * the server refused on its merits (400, 403, 404, 409, 422, Postgres errors)
+ * is `rejected`. A result without a status stays `rejected` on purpose (the
+ * cautious reading; repositories fill `status` in F18/F22).
  */
 export function classifyFailure(err: { error: string; offline?: boolean; status?: number; code?: string }): DeliveryOutcome {
   if (err.offline) return { kind: 'offline' };
-  if (err.status === 401 || err.code === 'PGRST301' || /jwt/i.test(err.error)) return { kind: 'auth' };
+  if (err.status === 401 || err.code === 'PGRST301' || /jwt/i.test(err.error) || err.error === 'Oturum bulunamadı.') return { kind: 'auth' };
+  if (isTransientStatus(err.status)) return { kind: 'retryable', error: err.error };
   return { kind: 'rejected', error: err.error };
 }

@@ -42,6 +42,11 @@ function plusDays(base: Date, days: number): Date {
  * that always fails -- DEMO-001B. The source guard below is the one that
  * actually holds; the UI check is only there so nothing is offered that cannot
  * work.
+ *
+ * F06 (PRF-03): Bu modülün TEK yükleme yolu `lib/demoSeedGate.ts`tir ve
+ * yalnızca `__DEV__` altında çalışır; başka bir dosya onu statik `import` ile
+ * alırsa release paketine girer ve
+ * `__tests__/repo/loginNoBypassInRelease.test.ts` kırmızıya döner.
  */
 export function isSeedingAllowed(): boolean {
   return typeof __DEV__ !== 'undefined' && __DEV__ === true;

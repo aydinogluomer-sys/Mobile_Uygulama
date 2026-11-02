@@ -1,0 +1,19 @@
+# F00 / BLD-24: one line-ending contract for every checkout (Windows autocrlf=true included).
+* text=auto eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.jks binary
+*.keystore binary
+*.pdf binary

@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import {
   fetchJournalInsight,
@@ -43,3 +44,6 @@ export const useInsightsStore = create<InsightsStore>((set, get) => ({
     set((s) => ({ cache: { ...s.cache, [ck(period, key)]: res.data } }));
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'insights', store: useInsightsStore });

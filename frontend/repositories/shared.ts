@@ -14,8 +14,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PublicTableName } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
+// F06: the bounded read lives in a dependency-free module (many tests mock lib/session with only `currentUser`)
+import { boundSession, isRetryableAuthError, LOCAL_USER_TIMEOUT_MS } from '../lib/bootSession';
 
-const dynamicClient = () => supabase as unknown as SupabaseClient;
+// CONTRACT (F00, BLD-01/SYN-12/TST-21): the client is resolved on EVERY call,
+// never captured at module load. Tests swap `lib/supabase` through a getter
+// (`get supabase() { return mock; }`) AFTER this module has been required, so a
+// module-level capture would freeze `undefined`. Do not "simplify" this to an
+// eager constant. Do not add a test-only setter here.
+const dynamicClient = (): SupabaseClient => supabase as unknown as SupabaseClient;
 
 export type RepoResult<T> =
   | { ok: true; data: T }
@@ -31,7 +38,11 @@ export type RepoResult<T> =
 
 export type ScopedUser =
   | { ok: true; userId: string }
-  | { ok: false; error: string };
+  /**
+   * F05 (SYN-03) / F06 (SYN-02): `offline` when the session could not be read or refreshed for lack
+   * of a connection (or the read took longer than LOCAL_USER_TIMEOUT_MS). Assignable to `RepoResult`.
+   */
+  | { ok: false; error: string; offline?: boolean };
 
 /**
  * Did this response come back without ever reaching PostgREST?
@@ -64,8 +75,36 @@ export type ScopedUser =
  * error-swallowing this layer exists to prevent. Only an explicit `0` — the
  * value the client actually sets when the request never completed — counts.
  */
-export function isTransportFailure(status: number | null | undefined): boolean {
-  return status === 0;
+export function isTransportFailure(status: number | null | undefined, error?: unknown): boolean {
+  // a real HTTP status means the server answered, whatever the error object says
+  if (typeof status === 'number' && status > 0) return false;
+  if (status === 0) return true;
+  // F05 (REP-13): no status at all (a thrown fetch, a refresh that never reached the auth server).
+  // Only a recognised transport failure counts; anything else stays a rejection (see above).
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { name?: unknown; message?: unknown };
+  if (typeof e.name === 'string' && TRANSPORT_ERROR_NAMES.has(e.name)) return true;
+  return typeof e.message === 'string' && TRANSPORT_MESSAGE.test(e.message);
+}
+
+/**
+ * F05: error names a transport failure carries. `AuthRetryableFetchError` is what supabase-js returns
+ * when a session refresh could not reach the auth server.
+ */
+const TRANSPORT_ERROR_NAMES = new Set(['TypeError', 'AbortError', 'TimeoutError', 'AuthRetryableFetchError']);
+/**
+ * Messages of a request that never completed. A bare "timeout" is deliberately NOT here: Postgres
+ * `statement timeout` (57014) reached the server and arrives with a real status.
+ */
+const TRANSPORT_MESSAGE = /network request failed|failed to fetch|load failed|network error|request timed out|aborted/i;
+
+/**
+ * F05 (SYN-03): the server answered, but only for now: 408, 425, 429 and 5xx. Worth trying again
+ * later without spending a retry. `0` is not here: that is `offline`.
+ */
+export function isTransientStatus(status: number | null | undefined): boolean {
+  if (typeof status !== 'number') return false;
+  return status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599);
 }
 
 /**
@@ -97,11 +136,31 @@ export async function currentUserId(): Promise<ScopedUser> {
   // server verifies, not from anything this function returns. A client that
   // lied here would produce a query that RLS rejects. An expired session
   // likewise fails at the request, which is the correct outcome.
-  const { data: { session }, error } = await supabase.auth.getSession();
-  if (error) return { ok: false, error: error.message };
-  const userId = session?.user?.id;
-  if (!userId) return { ok: false, error: 'Oturum bulunamadı.' };
-  return { ok: true, userId };
+  //
+  // F06 (SYN-02): bounded. Near expiry `getSession()` refreshes, and offline auth-js retries that
+  // refresh for ~25 s before answering; every repository call waited for it. After 2 s, or when
+  // the refresh could not reach the auth server, the answer is `offline` (the caller keeps the work
+  // and tries later), never "Oturum bulunamadı." (which reads as signed out). A rejected read is a
+  // failure value, not a throw into the repository.
+  const b = await boundSession(() => supabase.auth.getSession(), LOCAL_USER_TIMEOUT_MS);
+  const userId = b.session?.user?.id;
+  if (userId) return { ok: true, userId };
+  // F05: a refresh that failed for lack of a connection is `offline`, not a rejection (the queue keeps the tap)
+  if (b.timedOut || isRetryableAuthError(b.error) || isTransportFailure(null, b.error)) {
+    return { ok: false, error: OFFLINE_SESSION_ERROR, offline: true };
+  }
+  if (b.error) return { ok: false, error: errorMessage(b.error) };
+  return { ok: false, error: 'Oturum bulunamadı.' };
+}
+
+/** F06: what a repository says when the session could not be refreshed for lack of a connection. */
+export const OFFLINE_SESSION_ERROR = 'Çevrimdışısın; oturum bağlantı gelince yenilenecek.';
+
+function errorMessage(e: unknown): string {
+  if (e && typeof e === 'object' && typeof (e as { message?: unknown }).message === 'string') {
+    return (e as { message: string }).message;
+  }
+  return String(e);
 }
 
 // ---------------------------------------------------------------------------
@@ -189,7 +248,7 @@ export async function fetchPage<T extends { id: string }>(params: {
     .order('id', { ascending: false })
     .limit(limit + 1);
 
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
 
   const all = (data ?? []) as unknown as T[];
   const hasMore = all.length > limit;
@@ -224,7 +283,7 @@ export async function updateOwned<T>(params: {
     .eq('user_id', params.userId)
     .select(params.columns ?? '*')
     .maybeSingle();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   if (!data) return { ok: false, error: 'Kayıt bulunamadı ya da erişim yok.' };
   return { ok: true, data: data as T };
 }
@@ -240,7 +299,7 @@ export async function deleteOwned(params: {
     .eq('id', params.id)
     .eq('user_id', params.userId)
     .select('id');
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   // A delete that matched nothing is reported, not treated as success -- the
   // stores previously removed the row from local state either way.
   if (!data || data.length === 0) return { ok: false, error: 'Kayıt bulunamadı ya da erişim yok.' };
@@ -268,7 +327,7 @@ export async function insertOwnedWithId<T>(params: {
   if (wrong) return wrong;
   const { data, error, status } = await dynamicClient().from(params.table)
     .insert({ ...params.row, user_id: u.userId }).select(params.columns).single();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: data as T };
 }
 
@@ -285,10 +344,10 @@ export async function updateOwnedVersioned<T>(params: {
   let q = dynamicClient().from(params.table).update(params.patch).eq('id', params.id).eq('user_id', u.userId);
   if (params.baseVersion !== null) q = q.eq(col, params.baseVersion);
   const { data, error, status } = await q.select(params.columns).maybeSingle();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   if (data) return { ok: true, data: { row: data as T, exists: true } };
   const probe = await dynamicClient().from(params.table).select('id').eq('id', params.id).eq('user_id', u.userId).maybeSingle();
-  if (probe.error) return { ok: false, error: probe.error.message, offline: isTransportFailure(probe.status), status: probe.status, code: probe.error.code };
+  if (probe.error) return { ok: false, error: probe.error.message, offline: isTransportFailure(probe.status, probe.error), status: probe.status, code: probe.error.code };
   return { ok: true, data: { row: null, exists: !!probe.data } };
 }
 
@@ -298,7 +357,7 @@ export async function fetchOwnedRow<T>(params: { table: PublicTableName; id: str
   if (!u.ok) return u;
   const { data, error, status } = await dynamicClient().from(params.table).select(params.columns)
     .eq('id', params.id).eq('user_id', u.userId).maybeSingle();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: (data ?? null) as T | null };
 }
 
@@ -310,6 +369,6 @@ export async function deleteOwnedIfPresent(params: { table: PublicTableName; id:
   if (wrong) return wrong;
   const { data, error, status } = await dynamicClient().from(params.table).delete()
     .eq('id', params.id).eq('user_id', u.userId).select('id');
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: { deleted: !!data && data.length > 0 } };
 }

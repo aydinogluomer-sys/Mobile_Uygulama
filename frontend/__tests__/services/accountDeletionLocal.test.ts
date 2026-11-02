@@ -19,6 +19,13 @@ jest.mock('../../lib/notifications', () => ({
   cancelScheduled: async (ids: readonly string[]) => { mockScheduled.ids = mockScheduled.ids.filter((i) => !ids.includes(i)); },
   scheduleRecoveryReminder: jest.fn(), cancelRecoveryReminder: jest.fn(),
 }));
+// F04: the read cache is wiped through the account registry; these spies say whether it was.
+const mockReadCache = { userCleared: [] as string[], allCleared: 0 };
+jest.mock('../../lib/localReadCache', () => ({
+  ...jest.requireActual('../../lib/localReadCache'),
+  clearUserReadCache: async (uid: string) => { mockReadCache.userCleared.push(uid); },
+  clearAllReadCache: async () => { mockReadCache.allCleared += 1; },
+}));
 jest.mock('../../lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
@@ -45,6 +52,8 @@ beforeEach(async () => {
   coreOutbox.reset();
   await AsyncStorage.clear();
   Object.assign(mockAuth, { deleted: false, signedOut: false, invokeOk: true });
+  mockReadCache.userCleared = [];
+  mockReadCache.allCleared = 0;
   useNoteStore.setState({ notes: [] });
   useJournalStore.setState({ entries: [] });
 });
@@ -141,4 +150,26 @@ it('a delivery still running when the account is reset never writes the old outb
   const saved = storage.raw.get(outboxKey('u1'));
   expect(saved === undefined || JSON.parse(saved).state.commands.length === 0).toBe(true);
   expect(ch.state()?.commands ?? []).toEqual([]);
+});
+
+describe('F04 (SYN-07, SYN-08): deletion goes through the account registry', () => {
+  it("after the server confirms: this user's read cache and every user's are wiped; other stores are empty too", async () => {
+    const { useHabitStore } = jest.requireActual('../../store/habitStore');
+    const { useGoalStore } = jest.requireActual('../../store/goalStore');
+    useHabitStore.setState({ habits: [{ id: 'h-A', name: 'A habit' }] });
+    useGoalStore.setState({ goals: [{ id: 'g-A', title: 'A goal' }] });
+
+    expect((await deleteAccount()).ok).toBe(true);
+    expect(mockReadCache.userCleared).toEqual(['u1']);
+    expect(mockReadCache.allCleared).toBe(1);
+    expect(useHabitStore.getState().habits).toEqual([]);
+    expect(useGoalStore.getState().goals).toEqual([]);
+  });
+
+  it('a refused deletion wipes no cache', async () => {
+    mockAuth.invokeOk = false;
+    expect((await deleteAccount()).ok).toBe(false);
+    expect(mockReadCache.userCleared).toEqual([]);
+    expect(mockReadCache.allCleared).toBe(0);
+  });
 });

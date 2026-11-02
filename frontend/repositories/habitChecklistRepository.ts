@@ -24,7 +24,7 @@ export async function fetchChecklistItems(): Promise<RepoResult<Optional<Checkli
     .order('position', { ascending: true })
     .limit(2000);
   if (isMissingTable(error)) return { ok: true, data: { available: false, rows: [] } };
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
   return { ok: true, data: { available: true, rows: (data ?? []) as unknown as ChecklistItem[] } };
 }
 
@@ -39,7 +39,7 @@ export async function fetchChecklistChecks(sinceDay: string): Promise<RepoResult
     .gte('day', sinceDay)
     .limit(5000);
   if (isMissingTable(error)) return { ok: true, data: { available: false, rows: [] } };
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
   return { ok: true, data: { available: true, rows: (data ?? []) as unknown as ChecklistCheck[] } };
 }
 
@@ -51,7 +51,7 @@ export async function insertChecklistItem(input: { habit_id: string; title: stri
     .insert({ ...input, user_id: u.userId })
     .select(ITEM_COLS)
     .single();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
   return { ok: true, data: data as unknown as ChecklistItem };
 }
 
@@ -68,7 +68,7 @@ export async function insertCheck(check: ChecklistCheck): Promise<RepoResult<tru
   const { error, status } = await supabase
     .from('habit_checklist_checks')
     .upsert({ ...check, user_id: u.userId }, { onConflict: 'item_id,day', ignoreDuplicates: true });
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
   return { ok: true, data: true };
 }
 
@@ -82,6 +82,6 @@ export async function deleteCheck(check: ChecklistCheck): Promise<RepoResult<tru
     .eq('user_id', u.userId)
     .eq('item_id', check.item_id)
     .eq('day', check.day);
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status) };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
   return { ok: true, data: true };
 }

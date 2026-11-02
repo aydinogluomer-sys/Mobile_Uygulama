@@ -70,6 +70,10 @@ export type OutboxCommand = {
    * apply, so later edits queue behind it instead of changing it.
    */
   sending?: boolean;
+  /** F05 (SYN-03): transient server failures (408/425/429/5xx) so far; they never spend `attempts`. */
+  retryableCount?: number;
+  /** F05: when the first transient failure happened (ms epoch); the 72-hour give-up counts from here. */
+  firstRetryableAt?: number;
 };
 
 export type OutboxState = {
@@ -83,6 +87,19 @@ export type OutboxState = {
 };
 
 export const MAX_ATTEMPTS = 6;
+
+/**
+ * F05 (SYN-03): a transient server failure waits longer each time (5 s, 10 s, 20 s ... at most
+ * 15 min) and becomes `dead` only after 72 hours of nothing but transient failures. The same
+ * numbers live in `lib/syncQueue.ts` (no import between the two; a test keeps them equal).
+ */
+export const RETRYABLE_GIVE_UP_MS = 72 * 3600_000;
+const RETRYABLE_BASE_MS = 5_000;
+const RETRYABLE_MAX_MS = 15 * 60_000;
+
+export function retryableDelayMs(n: number): number {
+  return Math.min(RETRYABLE_MAX_MS, RETRYABLE_BASE_MS * 2 ** (Math.max(1, n) - 1));
+}
 
 export function emptyOutbox(userId: string): OutboxState {
   return { userId, commands: [], nextSeq: 1, tombstones: {}, authBlocked: false };
@@ -222,7 +239,9 @@ export type DeliveryOutcome =
   | { kind: 'auth' }
   | { kind: 'rejected'; error: string }
   | { kind: 'conflict'; error: string }
-  | { kind: 'gone' };
+  | { kind: 'gone' }
+  /** F05: the server answered with a transient failure (408/425/429/5xx); try again later, free of charge. */
+  | { kind: 'retryable'; error?: string; retryAfterMs?: number };
 
 export function nextRetryDelayMs(attempts: number): number {
   return Math.min(60 * 60_000, 2_000 * 2 ** Math.max(0, attempts - 1));
@@ -256,6 +275,19 @@ export function settle(state: OutboxState, operationId: string, outcome: Deliver
       return { ...state, commands: rest };
     case 'conflict':
       return replace({ status: 'conflict', lastError: outcome.error });
+    case 'retryable': {
+      const retryableCount = (cmd.retryableCount ?? 0) + 1;
+      const firstRetryableAt = cmd.firstRetryableAt ?? now;
+      if (now - firstRetryableAt >= RETRYABLE_GIVE_UP_MS) {
+        return replace({ retryableCount, firstRetryableAt, status: 'dead', lastError: outcome.error ?? cmd.lastError });
+      }
+      return replace({
+        retryableCount,
+        firstRetryableAt,
+        readyAt: now + (outcome.retryAfterMs ?? retryableDelayMs(retryableCount)),
+        lastError: outcome.error ?? cmd.lastError,
+      });
+    }
     case 'rejected': {
       const attempts = cmd.attempts + 1;
       if (attempts >= MAX_ATTEMPTS) return replace({ attempts, status: 'dead', lastError: outcome.error });
@@ -274,7 +306,7 @@ export function retry(state: OutboxState, operationId: string, baseVersion?: str
   return {
     ...state,
     commands: state.commands.map((c) => (c.operationId === operationId
-      ? { ...c, status: 'pending', attempts: 0, readyAt: 0, lastError: undefined, ...(baseVersion !== undefined ? { baseVersion } : {}) }
+      ? { ...c, status: 'pending', attempts: 0, readyAt: 0, lastError: undefined, retryableCount: undefined, firstRetryableAt: undefined, ...(baseVersion !== undefined ? { baseVersion } : {}) }
       : c)),
   };
 }
@@ -282,6 +314,21 @@ export function retry(state: OutboxState, operationId: string, baseVersion?: str
 /** The user chose to discard a command (their local change is given up). */
 export function discard(state: OutboxState, operationId: string): OutboxState {
   return { ...state, commands: state.commands.filter((c) => c.operationId !== operationId) };
+}
+
+/**
+ * F05 (SYN-15): the soonest explicit `readyAt` of a pending command not in flight, or null (nothing
+ * pending with a later time, or the outbox waits for credentials). The sync coordinator sleeps
+ * until then instead of polling.
+ */
+export function nextReadyAt(state: OutboxState): number | null {
+  if (state.authBlocked) return null;
+  let soonest: number | null = null;
+  for (const c of state.commands) {
+    if (c.status !== 'pending' || c.sending || !(c.readyAt > 0)) continue;
+    if (soonest === null || c.readyAt < soonest) soonest = c.readyAt;
+  }
+  return soonest;
 }
 
 export type OutboxSummary = { pending: number; dead: number; conflict: number; authBlocked: boolean };

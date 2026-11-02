@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ComponentType } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, useWindowDimensions,
@@ -20,7 +20,16 @@ import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAsset
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
 import { useNotionSessionStore } from '../../store/notionSessionStore';
 import { NOTION_INTEGRATION_ENABLED } from '../../lib/featureGates';
-import { seedDemoData } from '../../lib/demoSeed';
+
+/**
+ * F06 (NAV-01, PRF-03): the demo sign-in exists only in a development build. Metro folds
+ * `__DEV__` to `false` in a release transform before it collects dependencies, so neither the
+ * button nor the demo seeder it loads enters a release bundle (loginNoBypassInRelease.test.ts).
+ */
+const DevDemoLoginButton: ComponentType<{ onDone: () => void }> | null = __DEV__
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  ? require('../../components/auth/DevDemoLoginButton').default
+  : null;
 
 const decorativeA11y =
   Platform.OS === 'web'
@@ -45,26 +54,6 @@ export default function LoginScreen() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  async function handleBypassLogin() {
-    setError('');
-    setLoading(true);
-    try {
-      await seedDemoData();
-    } catch {
-      /* demo seed optional in dev */
-    }
-    useNotionSessionStore.setState({
-      session: {
-        workspaceName: 'Aderyth Demo',
-        workspaceIcon: '⚡',
-        workspaceId: 'demo-local',
-        connectedAt: new Date().toISOString(),
-      },
-    });
-    router.replace('/tabs/today');
-    setLoading(false);
-  }
 
   async function handleLogin() {
     if (!email || !password) {
@@ -185,13 +174,7 @@ export default function LoginScreen() {
           </View>
         )}
 
-        <Button
-          label="🚀 Girişi Geç (Demo Modu)"
-          onPress={handleBypassLogin}
-          loading={loading}
-          size="lg"
-          style={{ marginTop: space.sm, backgroundColor: colors.accent }}
-        />
+        {DevDemoLoginButton ? <DevDemoLoginButton onDone={() => router.replace('/tabs/today')} /> : null}
 
         <Button label="Giriş Yap" onPress={handleLogin} loading={loading} size="lg" variant="secondary" style={{ marginTop: space.xs }} />
 

@@ -1,7 +1,9 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { currentUser } from '../lib/session';
 import { create } from 'zustand';
 import type { HabitLog } from '../lib/supabase';
-import { ymd, deviceTimeZone } from '../lib/date';
+import { ymd, deviceTimeZone, isLoggableDay } from '../lib/date';
+import { LOGGABLE_DAY_MESSAGE } from '../lib/pgErrors';
 import {
   emptyQueueState,
   enqueue as enqueueOp,
@@ -13,10 +15,16 @@ import {
   orderedPending,
   loadSyncQueue,
   saveSyncQueue,
+  dequeue,
+  mergeOps,
+  revive,
+  deadOps,
+  nextReadyAt,
   type SyncQueueState,
   type SyncOp,
   type HabitLogIntent,
 } from '../lib/syncQueue';
+import { reportError } from '../lib/crashReporting';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 import {
   loadDay,
@@ -38,7 +46,10 @@ export type LogResult =
    * and until this flag existed it could not tell them apart — see
    * `isTransportFailure` in `repositories/shared.ts`.
    */
-  | { ok: false; error: string; offline?: boolean };
+  | { ok: false; error: string; offline?: boolean; retryable?: boolean };
+
+/** F05: what a write that nobody owns returns: no queue to keep it in, no false success. */
+export const NO_SESSION_ERROR = 'Oturum bulunamadı. Giriş yapıp tekrar dene.';
 
 /** UI-facing sync status for one (habit, day) key -- see `getSyncStatusFor`. */
 export type HabitSyncStatus = 'synced' | 'pending' | 'dead';
@@ -91,6 +102,20 @@ type LogStore = {
    * omits it and gets the actual clock.
    */
   flushPendingSync: (now?: number) => Promise<LogResult[]>;
+  /**
+   * F05 (SYN-01, STO-02, SYN-V01): binds the queue to the signed-in account. The previous owner's
+   * remaining work is saved under ITS key, the new owner's queue is loaded from disk, taps made while
+   * nobody owned the queue are stamped and merged, and a flush follows. Calls are serialised and the
+   * last one wins. The same user again is a no-op (an in-memory tap is never overwritten).
+   */
+  rebindSyncQueue: (userId: string | null) => Promise<void>;
+  /** F05 (SYN-03): a `dead` op the user asked to try again. */
+  reviveSyncOp: (opId: string) => Promise<void>;
+  /** F05 (SYN-03): a `dead` op the user gave up; the day's row is reconciled with the server. */
+  dropSyncOp: (opId: string) => Promise<void>;
+  deadSyncOps: () => SyncOp[];
+  /** F05 (SYN-15): the soonest explicit retry time of a pending op (for the sync coordinator). */
+  nextSyncReadyAt: () => number | null;
 };
 
 /**
@@ -332,6 +357,7 @@ async function attemptWrite(
   habitId: string,
   dateStr: string,
   patch: Patch,
+  ctx: { priorState?: SyncOp['priorState']; deliveryKey?: string } = {},
 ): Promise<LogResult> {
   // An optimistic placeholder is a guess, not a confirmed row to update.
   const existing = get().getLogForHabit(habitId, dateStr);
@@ -339,12 +365,22 @@ async function attemptWrite(
 
   const res = await persistCompletion({
     habitId, dateStr, patch, confirmedId: confirmed?.id,
+    // F05 (DOM-21, SYN-26): the webhook announces only a real transition into `done`, once per queued write
+    priorState: ctx.priorState, deliveryKey: ctx.deliveryKey,
   });
-  if (!res.ok) return { ok: false, error: res.error, offline: res.offline };
+  // `retryable` only when it is true: every other failure keeps exactly the shape it had before F05
+  if (!res.ok) return { ok: false, error: res.error, offline: res.offline, ...(res.retryable ? { retryable: true } : {}) };
 
   set((s) => replaceLogForKey(s, res.log.habit_id, res.log.completed_at, res.log));
   return { ok: true, log: res.log };
 }
+
+/**
+ * F04 (STO-01): the queue state lives inside the `create` closure, so the account registry cannot reach
+ * it directly. The closure assigns this function; the registry calls it. Memory only: the queue on disk
+ * (`atlas_sync_queue_v1:<uid>`) is saved after every mutation and stays for the same account.
+ */
+let resetQueueMemory: (keepOnDisk: boolean) => void = () => undefined;
 
 export const useLogStore = create<LogStore>((set, get) => {
   // In-memory mirror of the persisted queue. Replaced wholesale by
@@ -391,6 +427,56 @@ export const useLogStore = create<LogStore>((set, get) => {
    * they drive the backoff clock sequentially, awaiting each pass.
    */
   let flushInFlight: Promise<LogResult[]> | null = null;
+  /**
+   * F05: +1 on every change of owner. A write in flight across that change finds a different epoch
+   * when it returns and leaves the (new owner's) queue alone; its op is still pending under its own
+   * account's key and is replayed when that account returns (idempotent through the 23505 path).
+   */
+  let queueEpoch = 0;
+  /** F05: owner changes run one after another; the last call wins. */
+  let rebindChain: Promise<void> = Promise.resolve();
+  resetQueueMemory = (keepOnDisk) => {
+    // F05: what the leaving account still owes is written under ITS key before memory is cleared;
+    // a deleted account's queue is not (the device sweep removes its key right after)
+    if (keepOnDisk && queueOwnerId) void saveSyncQueue(queueState, queueOwnerId);
+    queueEpoch += 1;
+    queueOwnerId = null;
+    queueState = emptyQueueState();
+    flushInFlight = null;
+  };
+
+  /** One owner change (see `rebindSyncQueue`). `force` reloads the same owner from disk (boot hydration). */
+  async function applyOwner(userId: string | null, force: boolean): Promise<void> {
+    if (userId === queueOwnerId && !force) return;
+    queueEpoch += 1;
+    const epoch = queueEpoch;
+    const oldOwner = queueOwnerId;
+    const oldState = queueState;
+    if (oldOwner && oldOwner !== userId) await saveSyncQueue(oldState, oldOwner);
+    // taps made while nobody owned the queue: they belong to whoever signs in now
+    const ownerless = oldOwner === null ? oldState.ops.filter((o) => !o.userId) : [];
+    queueOwnerId = userId;
+    queueState = emptyQueueState();
+    flushInFlight = null;
+    publishSyncCounts();
+    if (!userId) return;
+    const loaded = await loadSyncQueue(userId);
+    if (epoch !== queueEpoch) return; // a newer owner change has started
+    // taps made while the queue was loading are already stamped with this owner and win their key
+    queueState = mergeOps(loaded, [...ownerless, ...queueState.ops], userId);
+    if (queueState.ops.length !== loaded.ops.length || ownerless.length > 0) await saveSyncQueue(queueState, userId);
+    publishSyncCounts();
+    // A real owner change sends the new owner's waiting work at once. The boot load (`force`) does
+    // not: the boot sequence flushes explicitly right after hydration (app/_layout.tsx, AC-W03),
+    // and `hydrateSyncQueue` stays a pure "load what is on disk".
+    if (!force) void get().flushPendingSync();
+  }
+
+  function enqueueOwnerChange(userId: string | null, force: boolean): Promise<void> {
+    const run = rebindChain.then(() => applyOwner(userId, force), () => applyOwner(userId, force));
+    rebindChain = run.catch(() => undefined);
+    return run;
+  }
 
   function publishSyncCounts() {
     set(() => ({
@@ -438,8 +524,11 @@ export const useLogStore = create<LogStore>((set, get) => {
     patch: Patch,
     now?: number,
   ): Promise<LogResult> {
+    const epoch = queueEpoch;
     try {
-      const result = await attemptWrite(set, get, habitId, dateStr, patch);
+      const result = await attemptWrite(set, get, habitId, dateStr, patch, { priorState: op.priorState, deliveryKey: op.id });
+      // F05: the owner changed while this was in flight: the queue in memory is someone else's now
+      if (epoch !== queueEpoch) return result;
 
       // A lost connection arrives here as an ordinary `{ ok: false }`, NOT as
       // a throw — supabase-js catches the transport error itself. Treating it
@@ -448,6 +537,15 @@ export const useLogStore = create<LogStore>((set, get) => {
       // pending, and the caller keeps its optimistic row.
       if (!result.ok && result.offline) {
         queueState = markOpFailed(queueState, op.id, 'network', { now });
+        await saveSyncQueue(queueState, queueOwnerId ?? '');
+        publishSyncCounts();
+        throw new Error('__offline__');
+      }
+
+      // F05 (SYN-03): a transient server failure (408/425/429/5xx) keeps the tap like a lost
+      // connection does, and waits for its backoff without spending an attempt
+      if (!result.ok && result.retryable) {
+        queueState = markOpFailed(queueState, op.id, 'retryable', { error: result.error, now });
         await saveSyncQueue(queueState, queueOwnerId ?? '');
         publishSyncCounts();
         throw new Error('__offline__');
@@ -462,6 +560,7 @@ export const useLogStore = create<LogStore>((set, get) => {
     } catch (e) {
       // Re-thrown from the offline branch above; the queue is already updated.
       if (e instanceof Error && e.message === '__offline__') throw e;
+      if (epoch !== queueEpoch) throw new Error('__offline__'); // F05: not this owner's queue any more
       queueState = markOpFailed(queueState, op.id, 'network', { now });
       await saveSyncQueue(queueState, queueOwnerId ?? '');
       publishSyncCounts();
@@ -481,8 +580,10 @@ export const useLogStore = create<LogStore>((set, get) => {
     // names a different owner is never replayed, whatever is in memory. The
     // write path resolves the user at flush time, so replaying a foreign op
     // would attribute one account's offline work to another.
+    // F05 (SYN-V01): stamped ops only. An unstamped op is stamped when an owner adopts it
+    // (`rebindSyncQueue`); it is never replayed on the way.
     const ready = queueOwnerId
-      ? all.filter((op) => !op.userId || op.userId === queueOwnerId)
+      ? all.filter((op) => op.userId === queueOwnerId)
       : [];
     const results: LogResult[] = [];
     for (const op of ready) {
@@ -525,6 +626,12 @@ export const useLogStore = create<LogStore>((set, get) => {
 
     logHabit: ({ habitId, date, state, value, targetValue, baseXp = 30, targetDirection }) => {
       const dateStr = ymd(date);
+      // F03 — a day outside the loggable window (today and the previous 14 days)
+      // is refused HERE, before the optimistic row and before the queue: the
+      // server (migration 038) would refuse it on every replay until the op went
+      // `dead`, while the user believed it saved. Local clock only, so it works
+      // offline too.
+      if (!isLoggableDay(dateStr)) return Promise.resolve({ ok: false, error: LOGGABLE_DAY_MESSAGE });
       const key = `${habitId}|${dateStr}`;
       // R01.06 — the zone is captured now, at the tap, and queued with the intent.
       const tz = deviceTimeZone();
@@ -543,16 +650,38 @@ export const useLogStore = create<LogStore>((set, get) => {
       //    see lib/syncQueue.ts's `enqueue` doc) and persist BEFORE
       //    attempting the network call, so the intent is durable even if the
       //    app is killed the instant after this tap.
-      const enq = enqueueOp(queueState, habitId, dateStr, intent);
+      const enq = enqueueOp(queueState, habitId, dateStr, intent, {
+        userId: queueOwnerId ?? undefined,
+        priorState: priorLocal?.state ?? null,
+      });
       queueState = enq.state;
       publishSyncCounts();
-      const persisted = saveSyncQueue(queueState, queueOwnerId ?? '');
+      // F05 (SYN-01): no owner yet (the app booted signed out): bind to the session first, then save
+      // under that account. An owner change in progress finishes before this save.
+      const persisted = (async (): Promise<boolean> => {
+        await rebindChain;
+        if (queueOwnerId === null) {
+          const u = await currentUser();
+          if (u) await get().rebindSyncQueue(u.id);
+        }
+        if (!queueOwnerId) return false;
+        const saved = await saveSyncQueue(queueState, queueOwnerId);
+        // the tap stays in memory and is tried now; only the disk copy failed, which the user cannot fix
+        if (!saved) reportError(new Error('habit log queue could not be saved'), 'manual', 'queue-save');
+        return saved;
+      })();
 
       // 3) Attempt to sync now, through the EXISTING serialise() chain,
       //    unchanged -- this is what still gives a same-session double-tap
       //    exactly one insert.
       return serialise(key, async (): Promise<LogResult> => {
         await persisted;
+        if (queueOwnerId === null) {
+          // really no session: nothing can keep this tap, so it is not pretended to be saved (SYN-01)
+          queueState = dequeue(queueState, enq.op.id);
+          publishSyncCounts();
+          return { ok: false, error: NO_SESSION_ERROR };
+        }
         try {
           return await runAttempt(habitId, dateStr, enq.op, patch);
         } catch {
@@ -605,29 +734,66 @@ export const useLogStore = create<LogStore>((set, get) => {
     },
 
     hydrateSyncQueue: async () => {
-      const user = await currentUser();
       // No session means no account to load a queue for. Loading the previous
       // account's queue here is exactly the cross-account bug this guards.
-      if (!user) {
-        queueOwnerId = null;
-        queueState = emptyQueueState();
-        publishSyncCounts();
-        return;
-      }
-      queueOwnerId = user.id;
-      queueState = await loadSyncQueue(user.id);
-      publishSyncCounts();
+      // F05: the boot load goes through the same serialised owner change as a
+      // rebind; it keeps its contract of replacing memory with what is on disk
+      // for the current account (`force`), which a plain rebind does not.
+      const user = await currentUser();
+      await enqueueOwnerChange(user?.id ?? null, true);
     },
+
+    rebindSyncQueue: (userId) => enqueueOwnerChange(userId, false),
+
+    reviveSyncOp: async (opId) => {
+      queueState = revive(queueState, opId);
+      if (queueOwnerId) await saveSyncQueue(queueState, queueOwnerId);
+      publishSyncCounts();
+      void get().flushPendingSync();
+    },
+
+    dropSyncOp: async (opId) => {
+      const op = queueState.ops.find((o) => o.id === opId);
+      if (!op) return;
+      queueState = dequeue(queueState, opId);
+      if (queueOwnerId) await saveSyncQueue(queueState, queueOwnerId);
+      publishSyncCounts();
+      // the optimistic row of the given-up change goes; the server's row for
+      // that day (if there is one) comes back in its place
+      const res = await loadDay(op.date);
+      if (!res.ok) return;
+      const serverRow = res.logs.find((l) => l.habit_id === op.habitId);
+      set((s) => (serverRow
+        ? replaceLogForKey(s, op.habitId, op.date, serverRow)
+        : rollbackTo(s, op.habitId, op.date, undefined)));
+    },
+
+    deadSyncOps: () => deadOps(queueState),
+
+    nextSyncReadyAt: () => nextReadyAt(queueState),
 
     flushPendingSync: (now) => {
       // See `flushInFlight`'s doc above for why this guard is here and not in
-      // the caller. The `finally` cannot clear a LATER pass by mistake: while
-      // `flushInFlight` is set, every caller is handed that same promise, so
-      // no second pass can exist to overwrite.
+      // the caller. F05: an owner change clears `flushInFlight` while a pass
+      // may still be running, so the `finally` clears it only if it is still
+      // this pass (it never clears a LATER pass).
       if (flushInFlight) return flushInFlight;
-      const pass = runFlushPass(now).finally(() => { flushInFlight = null; });
+      const pass: Promise<LogResult[]> = runFlushPass(now).finally(() => {
+        if (flushInFlight === pass) flushInFlight = null;
+      });
       flushInFlight = pass;
       return pass;
     },
   };
+});
+
+// F04 (STO-20): the store, the per-key write chains, the optimistic generations and the queue in memory.
+registerAccountScoped({
+  name: 'log',
+  store: useLogStore,
+  onReset: (reason) => {
+    chains.clear();
+    optimisticGen.clear();
+    resetQueueMemory(reason !== 'account_deleted');
+  },
 });

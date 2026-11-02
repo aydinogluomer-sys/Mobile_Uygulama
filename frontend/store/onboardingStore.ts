@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import { Platform } from 'react-native';
 import {
@@ -26,6 +27,8 @@ import { ensurePermission } from '../lib/notifications';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 import { useHabitStore } from './habitStore';
 import type { HabitLoadInput } from '../lib/capacity';
+import { currentUser } from '../lib/session';
+import { readCachedOnboardingStatus, writeCachedOnboardingStatus } from '../lib/onboardingCache';
 
 /**
  * First-run onboarding state.
@@ -73,6 +76,14 @@ type OnboardingStore = {
   loadError: string | null;
   status: OnboardingStatus | 'unknown';
   answers: OnboardingAnswers;
+  /** F06: whose row `status` came from; a hydrate for anyone else resets the store first. */
+  ownerId: string | null;
+  /**
+   * F06: `status` is the last known one, not just read: it came from the device cache (offline
+   * start) or a silent refresh failed. The root layout re-reads it when the app returns to the
+   * foreground.
+   */
+  staleStatus: boolean;
 
   plan: StarterPlan | null;
   planReasons: string[];
@@ -214,11 +225,20 @@ let installInFlight: Promise<boolean> | null = null;
  */
 let startedEmitted = false;
 
+/**
+ * F06 (STO-04): +1 on every hydrate and every account reset. A hydrate drops its answer when the
+ * epoch moved while it was waiting: A's late row must not land in B's state. Module scope for the
+ * same reason as `installInFlight`.
+ */
+let hydrateEpoch = 0;
+
 export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
   hydrationState: 'idle',
   loadError: null,
   status: 'unknown',
   answers: EMPTY_ANSWERS,
+  ownerId: null,
+  staleStatus: false,
 
   plan: null,
   planReasons: [],
@@ -245,10 +265,51 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
   beginPersonalization: () => set({ personalizing: true, plan: null, planReasons: [], installError: null, saveError: null }),
   endPersonalization: () => set({ personalizing: false }),
 
+  /**
+   * F06 (STO-04, NAV-04, PRF-06). Four rules on top of the read itself:
+   *
+   *  - `ready` is never lowered to `loading`. The root layout replaces the whole navigator with a
+   *    spinner on `loading`, and it hydrated again on every TOKEN_REFRESHED: the journal entry being
+   *    typed, an open sheet and the scroll position were thrown away about once an hour.
+   *  - A refresh that fails on a `ready` store keeps it `ready` and marks `staleStatus`; the screen
+   *    is not torn down for a read that worked a moment ago.
+   *  - On a first load that cannot reach the server (offline, or 5xx), the last known TERMINAL
+   *    status of THIS user (lib/onboardingCache.ts) opens the app. Anything else is still the gate:
+   *    no cache, a refusal (401, RLS), "Oturum bulunamadı.".
+   *  - An epoch: an answer that arrives after an account reset (or a newer hydrate) is dropped, and
+   *    a store that last served another user is reset before it serves this one.
+   */
   hydrate: async () => {
-    set({ hydrationState: 'loading', loadError: null });
+    // who this is, read locally (an unreachable auth server still answers from the stored session)
+    const who = await currentUser();
+    const uid = who?.id ?? null;
+    const prevOwner = get().ownerId;
+    if (uid && prevOwner && prevOwner !== uid) get().resetForAccount();
+    const epoch = ++hydrateEpoch;
+
+    const before = get();
+    // the user is in the middle of the flow: a silent refresh must not write over it
+    if (before.hydrationState === 'ready' && (before.saving || before.installing)) return;
+    if (before.hydrationState !== 'ready') set({ hydrationState: 'loading', loadError: null });
+
     const res = await fetchOnboarding();
+    if (epoch !== hydrateEpoch) return;
     if (!res.ok) {
+      if (get().hydrationState === 'ready') { set({ staleStatus: true }); return; }
+      const unreachable = res.offline === true || (res.status ?? 0) >= 500;
+      if (unreachable && uid) {
+        const cached = await readCachedOnboardingStatus(uid);
+        if (epoch !== hydrateEpoch) return;
+        if (cached) {
+          set({
+            hydrationState: 'ready', loadError: null, status: cached.status,
+            ownerId: uid, staleStatus: true,
+            installPhase: 'idle', installedHabitCount: 0, installExpectedHabits: 0,
+            installId: null, installReturnStatus: null,
+          });
+          return;
+        }
+      }
       // NOT 'ready'. The router blocks on this and shows a retry, because
       // "we could not find out whether you need onboarding" is not the same
       // fact as "you do not", and only one of them may lead to Today.
@@ -300,12 +361,17 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
           installPhase: 'partial', installedHabitCount: 0,
           installExpectedHabits: expected, installId: null,
           installReturnStatus: returnStatus,
+          ownerId: uid, staleStatus: false,
         });
+        if (uid) await writeCachedOnboardingStatus(uid, status); // `installing`: removes an older terminal copy
         return;
       }
 
       const counted = await countHabitsForInstall(claimedId);
+      if (epoch !== hydrateEpoch) return;
       if (!counted.ok) {
+        // F06: a screen that is already up stays up; the status is only marked stale.
+        if (get().hydrationState === 'ready') { set({ staleStatus: true }); return; }
         // Cannot tell whether the install landed: the same class of failure
         // as a failed row read, and it takes the same gate rather than a
         // guess in either direction.
@@ -329,7 +395,10 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
         installExpectedHabits: expected,
         installId: claimedId,
         installReturnStatus: returnStatus,
+        ownerId: uid,
+        staleStatus: false,
       });
+      if (uid) await writeCachedOnboardingStatus(uid, status); // `installing`: removes an older terminal copy
       return;
     }
 
@@ -346,7 +415,11 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
       // column holds is a leftover, and reading it as live state would let a
       // later failure restore a status this account left long ago.
       installReturnStatus: null,
+      ownerId: uid,
+      staleStatus: false,
     });
+    // F06: completed / legacy / skipped are cached for an offline start; pending removes an older copy
+    if (uid) await writeCachedOnboardingStatus(uid, status);
   },
 
   /**
@@ -397,11 +470,14 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
    */
   resetForAccount: () => {
     startedEmitted = false;
+    hydrateEpoch += 1; // F06: a read still on the wire belongs to the previous account
     set({
       hydrationState: 'idle',
       loadError: null,
       status: 'unknown',
       answers: EMPTY_ANSWERS,
+      ownerId: null,
+      staleStatus: false,
       plan: null,
       planReasons: [],
       saving: false,
@@ -794,3 +870,14 @@ export function onboardingRoute(status: OnboardingStatus | 'unknown'): Onboardin
   if (status === 'pending') return '/onboarding/needs';
   return null;
 }
+
+// F04: the store, the install in flight and the once-per-session `onboarding_started` flag belong to the account.
+registerAccountScoped({
+  name: 'onboarding',
+  store: useOnboardingStore,
+  onReset: () => {
+    installInFlight = null;
+    startedEmitted = false;
+    hydrateEpoch += 1; // F06: as in resetForAccount
+  },
+});

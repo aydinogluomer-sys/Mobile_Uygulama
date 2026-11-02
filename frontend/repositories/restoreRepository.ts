@@ -44,7 +44,7 @@ export async function fetchOwnedTable(table: ExportTable, max = MAX_EXISTING, pa
     let q = supabase.from(table).select('*').eq('user_id', u.userId).order('id', { ascending: true }).limit(page);
     if (after !== null) q = q.gt('id', after);
     const { data, error, status } = await q;
-    if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+    if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
     const got = (data ?? []) as Record<string, unknown>[];
     rows.push(...got);
     // Truncated only when a row BEYOND the ceiling exists (exactly `max` rows is complete).
@@ -80,6 +80,6 @@ export async function insertRestoredRows(table: RestoreTable, rows: readonly Rec
     .from(table)
     .insert(rows.map((r) => ({ ...r, user_id: u.userId })))
     .select('id');
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: (data ?? []).length };
 }

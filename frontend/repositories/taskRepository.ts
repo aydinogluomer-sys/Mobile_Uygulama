@@ -154,7 +154,7 @@ export async function insertTaskRow(row: Partial<Task> & { id: string }, expecte
     .insert({ ...row, title: row.title ?? '', user_id: u.userId } as TableInsert<'tasks'>)
     .select(TASK_COLS)
     .single();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: data as unknown as Task };
 }
 
@@ -169,10 +169,10 @@ export async function updateTaskVersioned(
   let q = supabase.from('tasks').update(patch as TableUpdate<'tasks'>).eq('id', id).eq('user_id', u.userId);
   if (baseVersion !== null) q = q.eq('updated_at', baseVersion);
   const { data, error, status } = await q.select(TASK_COLS).maybeSingle();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   if (data) return { ok: true, data: { row: data as unknown as Task, exists: true } };
   const probe = await supabase.from('tasks').select('id').eq('id', id).eq('user_id', u.userId).maybeSingle();
-  if (probe.error) return { ok: false, error: probe.error.message, offline: isTransportFailure(probe.status), status: probe.status, code: probe.error.code };
+  if (probe.error) return { ok: false, error: probe.error.message, offline: isTransportFailure(probe.status, probe.error), status: probe.status, code: probe.error.code };
   return { ok: true, data: { row: null, exists: !!probe.data } };
 }
 
@@ -181,7 +181,7 @@ export async function fetchTaskRow(id: string): Promise<RepoResult<Task | null>>
   const u = await currentUserId();
   if (!u.ok) return u;
   const { data, error, status } = await supabase.from('tasks').select(TASK_COLS).eq('id', id).eq('user_id', u.userId).maybeSingle();
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: (data ?? null) as unknown as Task | null };
 }
 
@@ -192,6 +192,6 @@ export async function deleteTaskIfPresent(id: string, expectedUserId?: string): 
   if (wrong) return wrong;
   const { data, error, status } = await supabase
     .from('tasks').delete().eq('id', id).eq('user_id', u.userId).select('id');
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status), status, code: error.code };
+  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: { deleted: !!data && data.length > 0 } };
 }

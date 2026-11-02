@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -23,12 +23,15 @@ import {
   type WebhookRow,
 } from '../../services/webhookService';
 import { buildBackup, renderBackup, MAX_ROWS, type ExportFormat } from '../../services/exportService';
-import { deleteAccount, unsentChangeCount } from '../../services/accountService';
+import { deleteAccount, signOutCurrentAccount, unsentChangeCount } from '../../services/accountService';
+import { flushAllOutboxes } from '../../services/unifiedOutbox';
+import SignOutConfirmModal from '../../components/SignOutConfirmModal';
 import { PUBLIC_SITE_URLS_LIVE, PUBLIC_SITE_URLS } from '../../lib/featureGates';
 import { useRouter } from 'expo-router';
 import BadHabitsTracker from '../../components/BadHabitsTracker';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import { seedDemoData, isSeedingAllowed } from '../../lib/demoSeed';
+// F06 (PRF-03): the seeder is loaded through its __DEV__-only gate, never imported statically
+import { loadDemoSeed } from '../../lib/demoSeedGate';
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 // R08 — check an export and merge what is missing; never a full restore.
 import RestorePanel from '../../components/RestorePanel';
@@ -87,6 +90,17 @@ export default function SettingsScreen() {
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
   const [seedingDemo, setSeedingDemo] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  // F04 (NAV-02) — a user-facing sign-out, confirmed in a modal that also works on the web.
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [signOutUnsent, setSignOutUnsent] = useState(0);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    currentUser().then((u) => { if (alive) setAccountEmail(u?.email ?? null); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
 
   const loadWebhooks = async () => {
     const res = await listWebhooks();
@@ -218,9 +232,11 @@ export default function SettingsScreen() {
   };
 
   const handleSeedDemoData = async () => {
+    const demo = loadDemoSeed();
+    if (!demo) return;
     try {
       setSeedingDemo(true);
-      const result = await seedDemoData();
+      const result = await demo.seedDemoData();
       Alert.alert(
         'Demo veri hazir',
         `Projeler: +${result.projects}\nGorevler: +${result.tasks}\nAliskanliklar: +${result.habits}\nLoglar: +${result.logs}\nOdak gorevleri: +${result.focusTasks}\nTelafi planlari: +${result.recoveryPlans}\nGunluk girdileri: +${result.journalEntries}`
@@ -248,6 +264,30 @@ export default function SettingsScreen() {
       </View>
     </View>
   );
+
+  const openSignOut = () => {
+    if (deletingAccount || signingOut) return;
+    setSignOutError(null);
+    setSignOutUnsent(unsentChangeCount());
+    setSignOutOpen(true);
+  };
+
+  /** Success needs no navigation: the root layout sees no session and routes to sign-in, as after a deletion. */
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    setSignOutError(null);
+    const res = await signOutCurrentAccount();
+    setSigningOut(false);
+    if (!res.ok) { setSignOutError(res.error); return; }
+    setSignOutOpen(false);
+  };
+
+  const handleSyncFirst = async () => {
+    setSigningOut(true);
+    try { await flushAllOutboxes(); } catch { /* the count below says what is still waiting */ }
+    setSignOutUnsent(unsentChangeCount());
+    setSigningOut(false);
+  };
 
   const renderSettingItem = (
     icon: string,
@@ -473,7 +513,7 @@ export default function SettingsScreen() {
             {/* DEMO-001B - sadece gelistirme derlemesinde. Kaynak koruma
                 lib/demoSeed.ts icindedir; bu yalnizca calismayacak bir
                 kontrolu kullaniciya gostermemek icin. */}
-            {isSeedingAllowed() && (
+            {__DEV__ && loadDemoSeed()?.isSeedingAllowed() === true && (
               <TouchableOpacity
                 style={[styles.settingItem, seedingDemo && styles.seedBtnDisabled]}
                 onPress={handleSeedDemoData}
@@ -521,6 +561,28 @@ export default function SettingsScreen() {
               () => { Linking.openURL(PUBLIC_SITE_URLS.support).catch(() => {}); },
               colors.teal
             )}
+
+            {/* F04 (NAV-02): signing out of THIS device, above the permanent deletion */}
+            <TouchableOpacity
+              style={[styles.settingItem, (deletingAccount || signingOut) && styles.seedBtnDisabled]}
+              onPress={openSignOut}
+              disabled={deletingAccount || signingOut}
+              accessibilityRole="button"
+              accessibilityLabel="Oturumu kapat"
+              accessibilityHint="Hesabını bu cihazdan çıkarır"
+              accessibilityState={{ disabled: deletingAccount || signingOut, busy: signingOut }}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: alphaHex(colors.info, '20') }]}>
+                  <Ionicons name="log-out-outline" size={24} color={colors.info} />
+                </View>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingTitle}>Oturumu Kapat</Text>
+                  <Text style={styles.settingSubtitle}>{accountEmail ?? 'Bu cihazdan çık'}</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.settingItem, deletingAccount && styles.seedBtnDisabled]}
@@ -788,6 +850,16 @@ export default function SettingsScreen() {
       <OutboxStatusModal
         visible={showOutboxModal}
         onClose={() => setShowOutboxModal(false)}
+      />
+
+      <SignOutConfirmModal
+        visible={signOutOpen}
+        unsent={signOutUnsent}
+        busy={signingOut}
+        error={signOutError}
+        onSyncFirst={() => { void handleSyncFirst(); }}
+        onConfirm={() => { void handleSignOut(); }}
+        onCancel={() => { if (!signingOut) setSignOutOpen(false); }}
       />
     </SafeAreaView>
   );

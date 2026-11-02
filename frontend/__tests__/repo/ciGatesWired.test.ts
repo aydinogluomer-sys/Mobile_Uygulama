@@ -42,6 +42,15 @@ describe('Item #7 — CI/CD Deno 2, Postgres 17 Migration & Release Parity Gates
     expect(existsSync(DENO_TEST)).toBe(true);
   });
 
+  it('the Edge check does not inherit the repo-root package.json (Deno would demand npm: packages in node_modules)', () => {
+    const lf = ci.replace(/\r\n?/g, '\n'); // a Windows checkout may carry CRLF
+    const job = lf.slice(lf.indexOf('edge-deno-verify:'), lf.indexOf('db-migrations-verify:'));
+    expect(job).toMatch(/\n {4}env:\n {6}DENO_NO_PACKAGE_JSON: '1'\n/);
+    const command = job.search(/run: \|\n\s+deno check/);
+    expect(command).toBeGreaterThan(-1);
+    expect(job.indexOf("DENO_NO_PACKAGE_JSON: '1'")).toBeLessThan(command);
+  });
+
   it('ships manual workflow_dispatch release parity guard without live DB push commands', () => {
     expect(existsSync(RELEASE_YML)).toBe(true);
     const rel = readFileSync(RELEASE_YML, 'utf8');

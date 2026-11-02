@@ -39,7 +39,7 @@
 import { isV2Type, readActionV2, type CoachActionV2 } from './coachActionsV2';
 import { COACH_ACTIONS_V2_ENABLED } from './featureGates';
 import type { Habit, FrequencyConfig } from './supabase';
-import { todayLocal, ymd, addDaysLocal, parseLocalDate } from './date';
+import { todayLocal, ymd, addDaysLocal, parseLocalDate, isLoggableDay } from './date';
 import {
   validateFrequencyConfig,
   TARGET_DIRECTIONS,
@@ -342,6 +342,9 @@ function readAction(raw: unknown, v2: boolean): CoachAction | string {
   if (!query) return 'invalid habit_query';
   const date = resolveCoachDate(raw.date);
   if (!date) return 'invalid date';
+  // INT-24 / F03: a day the server would refuse (migration 038) never becomes a card the
+  // user approves only to see it fail; today and the previous 14 days pass.
+  if (!isLoggableDay(date)) return 'date out of range';
   const completion = readCompletion(raw.completion);
   if (!completion) return 'invalid completion';
   return { type: t, habit_query: query, date, completion };

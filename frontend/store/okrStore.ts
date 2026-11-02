@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import {
   deleteKeyResult,
@@ -317,3 +318,6 @@ export function objectiveProgress(okr: OKR): number {
   const sum = okr.key_results.reduce((a, k) => a + krProgress(k), 0);
   return Math.round(sum / okr.key_results.length);
 }
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'okr', store: useOKRStore });

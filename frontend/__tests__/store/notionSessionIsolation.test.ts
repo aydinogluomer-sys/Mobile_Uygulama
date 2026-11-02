@@ -27,6 +27,7 @@ jest.mock('expo-web-browser', () => ({ openAuthSessionAsync: jest.fn() }));
 jest.mock('expo-linking', () => ({ createURL: (p: string) => `atlas://${p}`, parse: () => ({ queryParams: {} }) }));
 
 import { useNotionSessionStore } from '../../store/notionSessionStore';
+import { resetAccountMemory } from '../../lib/accountScope';
 
 const SESSION_A = {
   workspaceName: "A's private workspace",
@@ -93,5 +94,27 @@ describe('migration off the unscoped key loses nothing', () => {
     mockUserId = null;
     await useNotionSessionStore.getState().hydrate();
     expect(await AsyncStorage.getItem('atlas_notion_login_session')).not.toBeNull();
+  });
+});
+
+describe('F04 (STO-21): the account boundary clears the connection from memory, not from disk', () => {
+  it('after resetAccountMemory the session is gone, the key stays, and the same account gets it back', async () => {
+    await AsyncStorage.setItem(`atlas_notion_login_session:userA`, JSON.stringify(SESSION_A));
+    await useNotionSessionStore.getState().hydrate();
+    expect(useNotionSessionStore.getState().session).toEqual(SESSION_A);
+
+    resetAccountMemory('signed_out');
+    expect(useNotionSessionStore.getState().session).toBeNull();
+    expect(await AsyncStorage.getItem(`atlas_notion_login_session:userA`)).not.toBeNull();
+
+    await useNotionSessionStore.getState().hydrate();
+    expect(useNotionSessionStore.getState().session).toEqual(SESSION_A);
+  });
+
+  it('without an account boundary the connection stays in memory', async () => {
+    await AsyncStorage.setItem(`atlas_notion_login_session:userA`, JSON.stringify(SESSION_A));
+    await useNotionSessionStore.getState().hydrate();
+    await useNotionSessionStore.getState().hydrate();
+    expect(useNotionSessionStore.getState().session).toEqual(SESSION_A);
   });
 });

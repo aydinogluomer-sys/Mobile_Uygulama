@@ -199,7 +199,7 @@ tablosu ve "db push çalıştırma" kuralı; dosya adını okuyan testler — `r
 (032/034/035 yolları), `repo/migrationRlsGuard.test.ts` (`^0(2[89]|[3-9]\d)_` deseni),
 `repo/liveSchemaAudit.test.ts` (036 yolu), `SQL_FOR_OWNER.md` dosya adları.
 
-### 028..036 için önerilen yeni adlar
+### 028..038 için önerilen yeni adlar
 
 Defterin son sürümü `20260908133800`; aşağıdakilerin hepsi ondan sonra ve uygulama sırasıyla artan:
 
@@ -215,6 +215,7 @@ Defterin son sürümü `20260908133800`; aşağıdakilerin hepsi ondan sonra ve 
 | `035_coach_lighten_week.sql` | `20261010000800_coach_lighten_week.sql` |
 | `036_live_audit_hardening.sql` | `20261010000900_live_audit_hardening.sql` |
 | `037_today_bootstrap_rpc.sql` | `20261010001000_today_bootstrap_rpc.sql` |
+| `038_xp_streak_integrity.sql` | `20261010001100_xp_streak_integrity.sql` |
 
 ## 6. Kullanılan sorgular (hepsi salt-okunur)
 

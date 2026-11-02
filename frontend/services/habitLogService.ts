@@ -36,6 +36,8 @@ import {
   insertHabitLog as repoInsertHabitLog,
   updateHabitLog as repoUpdateHabitLog,
 } from '../repositories/habitLogRepository';
+import { describeHabitLogError } from '../lib/pgErrors';
+import { isTransientStatus } from '../repositories/shared';
 
 export type LogState = HabitLog['state'];
 
@@ -179,8 +181,12 @@ export function measuredEntryFor(
 
 export type PersistResult =
   | { ok: true; log: HabitLog }
-  /** `offline` = the request never reached the server. See `isTransportFailure`. */
-  | { ok: false; error: string; offline?: boolean };
+  /**
+   * `offline` = the request never reached the server. See `isTransportFailure`.
+   * `retryable` (F05, SYN-03) = the server answered with a transient failure
+   * (408/425/429/5xx): the queue keeps the tap and tries later without spending an attempt.
+   */
+  | { ok: false; error: string; offline?: boolean; retryable?: boolean };
 
 /**
  * Writes one completion, resolving insert vs update against what is already
@@ -205,14 +211,34 @@ export type PersistResult =
  * service fired on the same condition, so an existing n8n flow keeps its
  * meaning. Never awaited -- see `notify` in webhookService.
  */
-function announce(habitId: string, dateStr: string, log: HabitLog): void {
+/**
+ * F05 (SYN-03): `retryable: true` on a transient server answer (408/425/429/5xx). Carried only when
+ * true, so every other failure keeps exactly the shape it had before (F03's tests pin it).
+ */
+function transient(status: number | null | undefined): { retryable?: true } {
+  return isTransientStatus(status) ? { retryable: true } : {};
+}
+
+type AnnounceCtx = {
+  /**
+   * F05 (DOM-21, SYN-26): the day's state before this write. `done` -> `done` is not a new
+   * completion (a measurable habit past its target, a replayed write): nothing is announced.
+   * `undefined` (an op queued by an older build) keeps the old behaviour.
+   */
+  priorState?: HabitLog['state'] | null;
+  /** The same id for every attempt of one queued write, so the receiver can de-duplicate. */
+  deliveryKey?: string;
+};
+
+function announce(habitId: string, dateStr: string, log: HabitLog, ctx: AnnounceCtx = {}): void {
   if (log.state !== 'done') return;
+  if (ctx.priorState === 'done') return;
   notify('habit_completed', {
     habit_id: habitId,
     date: dateStr,
     state: log.state,
     value: log.value ?? null,
-  });
+  }, ctx.deliveryKey ? { deliveryId: ctx.deliveryKey } : undefined);
 }
 
 /**
@@ -226,17 +252,36 @@ function wirePatch(patch: LogPatch): Record<string, unknown> {
   return rest as Record<string, unknown>;
 }
 
-export async function persistCompletion(params: {
+type PersistParams = {
   habitId: string;
   dateStr: string;
   patch: LogPatch;
   confirmedId?: string;
-}): Promise<PersistResult> {
+  /** F05: the day's state before this write (see `AnnounceCtx`). */
+  priorState?: HabitLog['state'] | null;
+  /** F05: a stable id of the queued write (its op id). */
+  deliveryKey?: string;
+};
+
+/**
+ * F03 — every failure of a write leaves through this one door, so a server refusal
+ * of migration 038 (`habit_log_day_out_of_range`, `habit_log_key_immutable`) reaches
+ * the user as calm Turkish copy whichever branch produced it (update, insert, or the
+ * 23505 recovery). One wrapper rather than one call per `return`: a fourth failure
+ * branch added later cannot forget it. `offline` and every other field are kept.
+ */
+export async function persistCompletion(params: PersistParams): Promise<PersistResult> {
+  const res = await persistCompletionRaw(params);
+  if (res.ok) return res;
+  return { ...res, error: describeHabitLogError(res.error) };
+}
+
+async function persistCompletionRaw(params: PersistParams): Promise<PersistResult> {
   params = { ...params, patch: wirePatch(params.patch) as LogPatch };
   if (params.confirmedId) {
     const updated = await repoUpdateHabitLog(params.confirmedId, params.patch as Record<string, unknown>);
-    if (!updated.ok) return { ok: false, error: updated.error, offline: updated.offline };
-    announce(params.habitId, params.dateStr, updated.data);
+    if (!updated.ok) return { ok: false, error: updated.error, offline: updated.offline, ...transient(updated.status) };
+    announce(params.habitId, params.dateStr, updated.data, { priorState: params.priorState, deliveryKey: params.deliveryKey });
     return { ok: true, log: updated.data };
   }
 
@@ -246,7 +291,8 @@ export async function persistCompletion(params: {
     patch: params.patch as Record<string, unknown>,
   });
   if (inserted.ok) {
-    announce(params.habitId, params.dateStr, inserted.data);
+    // there was no row for the day: a completion is new whatever the caller remembered
+    announce(params.habitId, params.dateStr, inserted.data, { priorState: null, deliveryKey: params.deliveryKey });
     return { ok: true, log: inserted.data };
   }
 
@@ -254,13 +300,14 @@ export async function persistCompletion(params: {
     const found = await repoFindHabitLog({ habitId: params.habitId, dateStr: params.dateStr });
     if (found.ok && found.data) {
       const updated = await repoUpdateHabitLog(found.data.id, params.patch as Record<string, unknown>);
-      if (!updated.ok) return { ok: false, error: updated.error, offline: updated.offline };
-      announce(params.habitId, params.dateStr, updated.data);
+      if (!updated.ok) return { ok: false, error: updated.error, offline: updated.offline, ...transient(updated.status) };
+      // the real previous state comes from the server: a replay that finds `done` announces nothing
+      announce(params.habitId, params.dateStr, updated.data, { priorState: found.data.state, deliveryKey: params.deliveryKey });
       return { ok: true, log: updated.data };
     }
   }
 
-  return { ok: false, error: inserted.error, offline: inserted.offline };
+  return { ok: false, error: inserted.error, offline: inserted.offline, ...transient(inserted.status) };
 }
 
 /** Every log for one local day, for the signed-in user. */

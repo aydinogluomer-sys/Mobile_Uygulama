@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import { AppState } from 'react-native';
 import type { WillpowerState } from '../lib/supabase';
@@ -184,3 +185,6 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
     set({ state: res.data as unknown as WillpowerState });
   },
 }));
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'willpower', store: useWillpowerStore });

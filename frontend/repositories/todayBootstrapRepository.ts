@@ -62,7 +62,7 @@ export async function fetchTodayBootstrap(today: string): Promise<TodayBootstrap
     return { ok: false, error: error?.message ?? 'RPC bulunamadı.', missingRpc: true };
   }
   if (error) {
-    return { ok: false, error: error.message, offline: isTransportFailure(status) };
+    return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
   }
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     return { ok: false, error: 'Geçersiz bootstrap yanıtı.', missingRpc: true };

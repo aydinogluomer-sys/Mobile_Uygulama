@@ -25,6 +25,7 @@ import {
 } from '../../lib/coachActions';
 import { validateRoutineProposal } from '../../lib/routineProposal';
 import type { Habit } from '../../lib/supabase';
+import { pinToday } from '../helpers/pinnedClock';
 
 const habit = (name: string, over: Partial<Habit> = {}): Habit =>
   ({ id: name, name, status: 'active', tracking_type: 'numeric', unit: 'dakika', daily_goal: 20, ...over } as unknown as Habit);
@@ -169,6 +170,29 @@ describe('resolveCoachDate — local calendar, never UTC', () => {
     for (const s of ['last tuesday', 'geçen hafta', '07/09/2026', '', 42, {}]) {
       expect(resolveCoachDate(s, lateEvening)).toBeNull();
     }
+  });
+});
+
+describe('INT-24 / F03 — a log_habit day the server would refuse never becomes a card', () => {
+  // 7 Sep 2026: today and the previous 14 days (24 Aug .. 7 Sep) are loggable; migration 038
+  // refuses anything else, so the card would fail only after the user approved it.
+  pinToday(new Date(2026, 8, 7, 12, 0, 0));
+  const log = (date: string) => ({ type: 'log_habit', habit_query: 'kitap', date, completion: { kind: 'state', state: 'done' } });
+
+  it.each(['2099-01-01', '2026-08-23', '2026-09-08'])('rejects %s as out of range', (date) => {
+    const r = validateCoachActions([log(date)]);
+    expect(r.actions).toEqual([]);
+    expect(r.rejected).toEqual([{ index: 0, reason: 'date out of range' }]);
+  });
+
+  it.each(['today', 'bugün', 'yesterday', 'dün', '2026-08-24', '2026-09-07'])('accepts %s', (date) => {
+    const r = validateCoachActions([log(date)]);
+    expect(r.rejected).toEqual([]);
+    expect(r.actions).toHaveLength(1);
+  });
+
+  it('a date that does not exist stays "invalid date", not "out of range"', () => {
+    expect(validateCoachActions([log('2026-02-31')]).rejected).toEqual([{ index: 0, reason: 'invalid date' }]);
   });
 });
 

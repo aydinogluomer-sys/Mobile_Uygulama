@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 import {
+  clearAllReadCache,
   clearReadCacheMemory,
   clearUserReadCache,
   getCachedSnapshot,
@@ -77,6 +78,32 @@ describe('localReadCache (SQLite + Web KV read-through cache)', () => {
 
     await invalidateCachedSnapshot('user-web', 'reading:counts');
     expect(await getCachedSnapshot('user-web', 'reading:counts')).toBeNull();
+  });
+
+  it('F04 (SYN-07): clearAllReadCache removes every user, on native and in the web store', async () => {
+    await setCachedSnapshot('user-a', 'notes:p1', [{ id: 'a' }]);
+    await setCachedSnapshot('user-b', 'notes:p1', [{ id: 'b' }]);
+    await AsyncStorage.setItem('aderyth.rcache.v1:user-c:tasks:p1', '{"data":[],"updatedAt":1}');
+    await AsyncStorage.setItem('app_theme_dark', '1');
+
+    await clearAllReadCache();
+    clearReadCacheMemory();
+
+    expect(await getCachedSnapshot('user-a', 'notes:p1')).toBeNull();
+    expect(await getCachedSnapshot('user-b', 'notes:p1')).toBeNull();
+    expect(await AsyncStorage.getAllKeys()).toEqual(['app_theme_dark']); // only the cache prefix goes
+  });
+
+  it('F04: clearAllReadCache never throws during web SSR (no window)', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    const g = globalThis as { window?: unknown };
+    const saved = g.window;
+    delete g.window;
+    try {
+      await expect(clearAllReadCache()).resolves.toBeUndefined();
+    } finally {
+      g.window = saved;
+    }
   });
 });
 

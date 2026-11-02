@@ -38,8 +38,16 @@ jobs:
         with:
           deno-version: v2.x
 
+      # Two checks, deliberately. The job-level SUPABASE_PROJECT_REF above is the project the
+      # parity step queries with SUPABASE_ACCESS_TOKEN (tools/verify-edge-deployment.mjs has no
+      # canonical check of its own), so the guard must keep checking that very value: the first
+      # command is the check this step has always made and is never loosened. The second command
+      # removes the variable so the guard resolves the pin in supabase/config.toml instead: a
+      # constant compared with itself cannot notice that file drifting to another project (BLD-14).
       - name: Enforce canonical project ref guard
-        run: bash supabase/predeploy_guard.sh
+        run: |
+          bash supabase/predeploy_guard.sh
+          env -u SUPABASE_PROJECT_REF bash supabase/predeploy_guard.sh
 
       - name: Typecheck & test Edge Functions before checking live parity
         run: |

@@ -27,6 +27,35 @@ jest.mock('@react-native-async-storage/async-storage', () =>
  */
 jest.mock('expo-secure-store', () => {
   const store = new Map();
+  // F06 (TST-08): failures can be injected, and the platform's 2048-byte value ceiling is enforced.
+  //   __failWhen({ op: 'set'|'get'|'delete'|'any', match?: (key) => boolean, from?: n, until?: n })
+  //     arms a rule and restarts the call counter; calls number from 1, `from`/`until` are inclusive.
+  //   __clearFailures()  drops the rule and the counter;  __callCount()  calls so far;
+  //   __snapshot()       a plain copy of everything stored.
+  let calls = 0;
+  let failRule = null;
+  const maybeFail = (op, key) => {
+    calls += 1;
+    if (!failRule) return;
+    const opOk = failRule.op === 'any' || failRule.op === op;
+    const keyOk = !failRule.match || failRule.match(key);
+    const from = failRule.from === undefined ? 1 : failRule.from;
+    const until = failRule.until === undefined ? Number.MAX_SAFE_INTEGER : failRule.until;
+    if (opOk && keyOk && calls >= from && calls <= until) {
+      throw new Error('SecureStore sahte hata: ' + op + ' ' + key);
+    }
+  };
+  const utf8Bytes = (s) => {
+    let n = 0;
+    for (let i = 0; i < s.length; i += 1) {
+      const c = s.charCodeAt(i);
+      if (c < 0x80) n += 1;
+      else if (c < 0x800) n += 2;
+      else if (c >= 0xd800 && c <= 0xdbff) { n += 4; i += 1; }
+      else n += 3;
+    }
+    return n;
+  };
   return {
     WHEN_UNLOCKED: 1,
     WHEN_UNLOCKED_THIS_DEVICE_ONLY: 2,
@@ -36,17 +65,29 @@ jest.mock('expo-secure-store', () => {
     WHEN_PASSCODE_SET_THIS_DEVICE_ONLY: 6,
     ALWAYS_THIS_DEVICE_ONLY: 7,
     isAvailableAsync: jest.fn(async () => true),
-    getItemAsync: jest.fn(async (key) => (store.has(key) ? store.get(key) : null)),
+    getItemAsync: jest.fn(async (key) => {
+      maybeFail('get', key);
+      return store.has(key) ? store.get(key) : null;
+    }),
     setItemAsync: jest.fn(async (key, value) => {
+      maybeFail('set', key);
       if (!/^[A-Za-z0-9._-]+$/.test(key)) {
         throw new Error(`Invalid SecureStore key: ${key}`);
+      }
+      if (utf8Bytes(String(value)) > 2048) {
+        throw new Error('Value being stored in SecureStore is larger than 2048 bytes');
       }
       store.set(key, String(value));
     }),
     deleteItemAsync: jest.fn(async (key) => {
+      maybeFail('delete', key);
       store.delete(key);
     }),
-    __resetForTests: () => store.clear(),
+    __resetForTests: () => { store.clear(); calls = 0; failRule = null; },
+    __failWhen: (rule) => { failRule = rule; calls = 0; },
+    __clearFailures: () => { failRule = null; calls = 0; },
+    __callCount: () => calls,
+    __snapshot: () => Object.fromEntries(store),
   };
 });
 

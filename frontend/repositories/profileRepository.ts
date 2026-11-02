@@ -86,6 +86,10 @@ export type LeaderboardScope = 'global' | 'weekly';
  *
  * BOUNDED_DOMAIN_WINDOW: the board is a top-N by definition, and `limit_val`
  * is that N rather than a page size — there is no "next page" of a top 50.
+ *
+ * DB1-V01 (F03): `weekly_xp` is never read as a table; only through the
+ * `get_weekly_leaderboard` RPC. So a later narrowing of the table's SELECT
+ * policy (F09, migration 040) cannot break the board.
  */
 export async function fetchLeaderboard<T>(
   scope: LeaderboardScope,

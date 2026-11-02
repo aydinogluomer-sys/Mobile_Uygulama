@@ -1,3 +1,4 @@
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import type { OutboxCommand } from '../lib/outbox';
 import { coreOutbox } from '../services/coreOutbox';
@@ -140,3 +141,6 @@ function mergeEntry(entries: JournalEntry[], row: JournalEntryRow): { entries: J
   next[idx] = row as JournalEntry;
   return { entries: next };
 }
+
+// F04 (STO-20): the store and the server copies its conflict check compares against belong to the account.
+registerAccountScoped({ name: 'journal', store: useJournalStore, onReset: () => serverContent.clear() });

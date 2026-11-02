@@ -33,6 +33,13 @@ import {
   MAX_ATTEMPTS,
   loadSyncQueue,
   saveSyncQueue,
+  partitionByOwner,
+  mergeOps,
+  revive,
+  deadOps,
+  nextReadyAt,
+  QUARANTINE_KEY,
+  QUARANTINE_MAX,
   type SyncQueueState,
 } from '../../lib/syncQueue';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -268,5 +275,100 @@ describe('AC-Q07 -- persistence round-trips and survives corruption', () => {
     await AsyncStorage.setItem('atlas_sync_queue_v1:u1', JSON.stringify(corrupt));
     const s = await loadSyncQueue('u1');
     expect(s).toEqual(emptyQueueState());
+  });
+});
+
+describe('F05 -- ownership, recovery and timing helpers', () => {
+  const T = 5_000_000;
+
+  it('enqueue stamps the owner and the state before the tap; a collapse keeps the FIRST base', () => {
+    let s = enqueue(emptyQueueState(), 'h', '2026-08-04', DONE, { userId: 'A', priorState: 'miss', now: T }).state;
+    expect(s.ops[0]).toMatchObject({ userId: 'A', priorState: 'miss' });
+    s = enqueue(s, 'h', '2026-08-04', { state: 'skip' }, { userId: 'A', priorState: 'done', now: T + 1 }).state;
+    expect(s.ops).toHaveLength(1);
+    expect(s.ops[0]).toMatchObject({ userId: 'A', priorState: 'miss', intent: { state: 'skip' } });
+  });
+
+  it('a collapse clears the transient counters and stamps an unstamped op', () => {
+    let s = enqueue(emptyQueueState(), 'h', '2026-08-04', DONE, { id: 'x', now: T }).state;
+    s = markFailed(s, 'x', 'retryable', { now: T });
+    expect(s.ops[0].retryableCount).toBe(1);
+    s = enqueue(s, 'h', '2026-08-04', DONE, { userId: 'B', now: T + 1 }).state;
+    expect(s.ops[0]).toMatchObject({ userId: 'B' });
+    expect(s.ops[0].retryableCount).toBeUndefined();
+    expect(s.ops[0].firstRetryableAt).toBeUndefined();
+  });
+
+  it('partitionByOwner: own (unstamped adopted) vs foreign', () => {
+    let s = enqueue(emptyQueueState(), 'a', '2026-08-04', DONE, { id: 'mine', userId: 'A' }).state;
+    s = enqueue(s, 'b', '2026-08-04', DONE, { id: 'legacy' }).state;
+    s = enqueue(s, 'c', '2026-08-04', DONE, { id: 'theirs', userId: 'B' }).state;
+    const { own, foreign } = partitionByOwner(s, 'A');
+    expect(own.ops.map((o) => [o.id, o.userId])).toEqual([['mine', 'A'], ['legacy', 'A']]);
+    expect(foreign.map((o) => o.id)).toEqual(['theirs']);
+  });
+
+  it('mergeOps: the newer op wins its key, seq is renumbered base-then-extra, nextSeq follows', () => {
+    let base = enqueue(emptyQueueState(), 'a', '2026-08-04', DONE, { id: 'base-a', userId: 'A' }).state;
+    base = enqueue(base, 'b', '2026-08-04', DONE, { id: 'base-b', userId: 'A' }).state;
+    const extra = enqueue(emptyQueueState(), 'a', '2026-08-04', { state: 'skip' }, { id: 'new-a' }).state.ops;
+    const m = mergeOps(base, extra, 'A');
+    expect(m.ops.map((o) => [o.id, o.seq, o.userId])).toEqual([['base-b', 1, 'A'], ['new-a', 2, 'A']]);
+    expect(m.nextSeq).toBe(3);
+  });
+
+  it('revive gives a dead op a clean slate; deadOps lists only dead ones', () => {
+    let s = enqueue(emptyQueueState(), 'h', '2026-08-04', DONE, { id: 'd', now: T }).state;
+    for (let i = 0; i < MAX_ATTEMPTS; i++) s = markFailed(s, 'd', 'rejected', { error: 'no', now: T });
+    expect(deadOps(s).map((o) => o.id)).toEqual(['d']);
+    s = revive(s, 'd', T + 10);
+    expect(s.ops[0]).toMatchObject({ status: 'pending', attempts: 0, updatedAt: T + 10 });
+    expect(s.ops[0].lastError).toBeUndefined();
+    expect(s.ops[0].readyAt).toBeUndefined();
+    expect(deadOps(s)).toEqual([]);
+  });
+
+  it('nextReadyAt: the soonest FUTURE readyAt of a pending op, else null', () => {
+    let s = enqueue(emptyQueueState(), 'a', '2026-08-04', DONE, { id: 'a', now: T }).state;
+    s = enqueue(s, 'b', '2026-08-04', DONE, { id: 'b', now: T }).state;
+    expect(nextReadyAt(s, T)).toBeNull();
+    s = markFailed(s, 'a', 'retryable', { now: T }); // T + 5 s
+    s = markFailed(s, 'b', 'rejected', { now: T }); // T + nextRetryDelayMs(1)
+    const times = [T + 5_000, T + nextRetryDelayMs(1)].sort((x, y) => x - y);
+    expect(times[0]).not.toBe(times[1]);
+    expect(nextReadyAt(s, T)).toBe(times[0]);
+    expect(nextReadyAt(s, times[0])).toBe(times[1]); // a due time is not "deferred"
+    expect(nextReadyAt(s, times[1])).toBeNull();
+  });
+
+  it('loadSyncQueue moves a foreign op to the quarantine and gives the quarantine back to its owner', async () => {
+    let s = enqueue(emptyQueueState(), 'a', '2026-08-04', DONE, { id: 'mine', userId: 'A' }).state;
+    s = enqueue(s, 'b', '2026-08-04', DONE, { id: 'stray', userId: 'B' }).state;
+    await AsyncStorage.setItem('atlas_sync_queue_v1:A', JSON.stringify(s));
+    const a = await loadSyncQueue('A');
+    expect(a.ops.map((o) => o.id)).toEqual(['mine']);
+    expect(JSON.parse((await AsyncStorage.getItem(QUARANTINE_KEY))!).map((o: { id: string }) => o.id)).toEqual(['stray']);
+    expect(JSON.parse((await AsyncStorage.getItem('atlas_sync_queue_v1:A'))!).ops.map((o: { id: string }) => o.id)).toEqual(['mine']);
+
+    const b = await loadSyncQueue('B'); // B has no key of its own yet
+    expect(b.ops.map((o) => [o.id, o.userId])).toEqual([['stray', 'B']]);
+    expect(await AsyncStorage.getItem(QUARANTINE_KEY)).toBeNull();
+  });
+
+  it('the quarantine keeps at most QUARANTINE_MAX ops, newest kept', async () => {
+    let s = emptyQueueState();
+    for (let i = 0; i < QUARANTINE_MAX + 5; i++) {
+      s = enqueue(s, `h${i}`, '2026-08-04', DONE, { id: `q${i}`, userId: 'B', now: T + i }).state;
+    }
+    await AsyncStorage.setItem('atlas_sync_queue_v1:A', JSON.stringify(s));
+    await loadSyncQueue('A');
+    const q = JSON.parse((await AsyncStorage.getItem(QUARANTINE_KEY))!) as { id: string }[];
+    expect(q).toHaveLength(QUARANTINE_MAX);
+    expect(q[0].id).toBe('q5');
+  });
+
+  it('saveSyncQueue answers honestly', async () => {
+    await expect(saveSyncQueue(emptyQueueState(), 'A')).resolves.toBe(true);
+    await expect(saveSyncQueue(emptyQueueState(), '')).resolves.toBe(false);
   });
 });

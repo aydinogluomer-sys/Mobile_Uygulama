@@ -97,6 +97,9 @@ const onboardingStore = read('./store/onboardingStore.ts');
 test('Auth redirect /tabs/today', () =>
   onboardingStore.includes("to: '/tabs/today'") && rootLayout.includes('router.replace(decision.to)'));
 test('Supabase auth dinleniyor', () => rootLayout.includes('onAuthStateChange'));
+// F06 (NAV-01, PRF-03): no demo bypass on the login screen; the seeder only through its __DEV__ gate.
+test('Login ekranında demo bypass dizgesi yok', () => !read('./app/(auth)/login.tsx').includes('Demo Modu') && !read('./app/(auth)/login.tsx').includes('handleBypassLogin'));
+test('demoSeed yalnızca demoSeedGate üzerinden yüklenir', () => read('./lib/demoSeedGate.ts').includes('if (!__DEV__) return null;'));
 
 // 4. Drawer
 console.log('\n🗂️  4. Drawer');

@@ -46,7 +46,8 @@ export async function setCompleted(id: string, completed: boolean) {
   // Only for a write the database accepted, and only in the completing
   // direction -- un-ticking a task is not a completion event.
   if (res.ok && completed) {
-    notify('task_completed', { task_id: id, title: res.data?.title ?? null });
+    // F05 (REP-14): the title is the user's free text and does not leave for a third party; the id does
+    notify('task_completed', { task_id: id });
   }
   return res;
 }
@@ -131,7 +132,7 @@ export async function deliverTaskCommand(cmd: OutboxCommand): Promise<DeliveryOu
       return { kind: 'conflict', error: 'Bu görev başka bir yerde değiştirilmiş.' };
     }
     if ((cmd.payload as Partial<Task>).completed === true) {
-      notify('task_completed', { task_id: cmd.entityId, title: res.data.row.title ?? null });
+      notify('task_completed', { task_id: cmd.entityId });
     }
     return { kind: 'applied', version: res.data.row.updated_at ?? null };
   }

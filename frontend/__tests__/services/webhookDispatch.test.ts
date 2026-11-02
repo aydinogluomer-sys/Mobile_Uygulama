@@ -17,6 +17,9 @@ import {
   type WebhookRow,
 } from '../../services/webhookService';
 
+/** F05: `deliver` retries with real 1 s / 4 s waits; these tests skip the waits, not the retries. */
+const noSleep = () => Promise.resolve();
+
 const listed: { value: { ok: boolean; data?: WebhookRow[]; error?: string } } = {
   value: { ok: true, data: [] },
 };
@@ -90,12 +93,13 @@ describe('delivery cannot break the completion that triggered it', () => {
 
   it('a rejected fetch is a value, not a throw', async () => {
     const fetchImpl = jest.fn(async () => { throw new Error('Network request failed'); }) as unknown as typeof fetch;
-    await expect(deliver(hook(), body, fetchImpl)).resolves.toEqual({ ok: false, error: 'Network request failed' });
+    // F05: a lost connection is retried (1 s, then 4 s); the waits are skipped here, the outcome is the same
+    await expect(deliver(hook(), body, fetchImpl, { sleep: noSleep })).resolves.toEqual({ ok: false, error: 'Network request failed' });
   });
 
   it('a non-2xx response is reported, not treated as delivered', async () => {
     const fetchImpl = jest.fn(async () => ({ ok: false, status: 500 })) as unknown as typeof fetch;
-    await expect(deliver(hook(), body, fetchImpl)).resolves.toEqual({ ok: false, error: 'HTTP 500' });
+    await expect(deliver(hook(), body, fetchImpl, { sleep: noSleep })).resolves.toEqual({ ok: false, error: 'HTTP 500' });
   });
 
   it('sends the configured headers, and always Content-Type', async () => {
@@ -113,7 +117,7 @@ describe('delivery cannot break the completion that triggered it', () => {
       return { ok: true, status: 200 };
     }) as unknown as typeof fetch;
 
-    const report = await dispatch('habit_completed', { habit_id: 'h1' }, { fetchImpl });
+    const report = await dispatch('habit_completed', { habit_id: 'h1' }, { fetchImpl, sleep: noSleep });
     expect(report.attempted).toBe(2);
     expect(report.delivered).toBe(1);
     expect(report.failed).toEqual([{ url: 'https://a.example/h', reason: 'down' }]);

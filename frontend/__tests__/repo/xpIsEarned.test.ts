@@ -150,3 +150,30 @@ describe('the canonical XP path is documented where it is enforced', () => {
     expect(mig).toContain('grant update (username) on public.profiles to authenticated');
   });
 });
+
+describe('038 keeps the single XP path', () => {
+  // F03: 038 rewrites the award triggers; the reconstruction rule of 012 must still hold
+  // (total_xp = sum(habit_logs.xp) + purged_xp), with one writer of total_xp.
+  const mig038 = readFileSync(
+    join(ROOT, '..', 'supabase', 'migrations', '038_xp_streak_integrity.sql'),
+    'utf8',
+  ).replace(/\r\n?/g, '\n');
+  const sql = mig038.replace(/--[^\n]*/g, '');
+
+  it('names purged_xp and xp_drift, the two halves of the rule', () => {
+    expect(mig038).toContain('purged_xp');
+    expect(mig038).toContain('xp_drift');
+  });
+
+  it('calls add_xp( exactly once, inside fn_habit_log_award', () => {
+    expect((sql.match(/\badd_xp\(/g) ?? []).length).toBe(1);
+    const award = /CREATE OR REPLACE FUNCTION public\.fn_habit_log_award\(\)[\s\S]*?\$function\$;/.exec(sql)?.[0] ?? '';
+    expect(award).toContain('perform public.add_xp(NEW.user_id, v_delta);');
+  });
+
+  it('never assigns total_xp; its only profiles write is purged_xp', () => {
+    expect(sql).not.toMatch(/\btotal_xp\s*=/);
+    const writes = [...sql.matchAll(/update public\.profiles\s+set\s+(\w+)/gi)].map((m) => m[1]);
+    expect(writes).toEqual(['purged_xp']);
+  });
+});

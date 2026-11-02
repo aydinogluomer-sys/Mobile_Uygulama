@@ -41,7 +41,7 @@ export type MockDb = {
    * different tests, and letting one queue serve both meant a test arming a
    * write failure would have it consumed by whatever read happened first.
    */
-  failNextRead: { error: string } | null;
+  failNextRead: { error: string; status?: number; code?: string } | null;
   /**
    * Fails every write to ONE table, until cleared.
    *
@@ -120,7 +120,10 @@ export function makeSupabaseMock(db: MockDb, opts?: { userId?: string | null }) 
     if (!db.failNextRead) return null;
     const e = db.failNextRead;
     db.failNextRead = null;
-    return { data: null, error: { message: e.error } };
+    // F06: `status` (0 = the request never completed, 5xx = the server is down) and `code` only when armed
+    const error: { message: string; code?: string } = { message: e.error };
+    if (e.code !== undefined) error.code = e.code;
+    return e.status === undefined ? { data: null, error } : { data: null, error, status: e.status };
   };
 
   const table = (t: string) => {

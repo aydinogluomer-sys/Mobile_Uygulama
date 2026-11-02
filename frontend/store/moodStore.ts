@@ -3,6 +3,7 @@
  * account until migration 031 (written, NOT applied) gives them a server
  * home. The journal's daily mood keeps working exactly as before.
  */
+import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { currentUser } from '../lib/session';
@@ -94,3 +95,6 @@ export const useMoodStore = create<MoodStore>((set, get) => {
     today: () => get().checkins.filter((c) => c.day === todayLocal()),
   };
 });
+
+// F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
+registerAccountScoped({ name: 'mood', store: useMoodStore });
