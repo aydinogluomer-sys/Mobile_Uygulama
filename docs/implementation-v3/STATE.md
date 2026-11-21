@@ -1795,3 +1795,50 @@ owner_decision: OD-07 2026-11-21 Kırılgan metin guard'larının davranış tes
 - **Kırmızı taban:** Üretim kodundan önce 3 suite / 6 yeni iddia kırmızı doğrulandı (`CASE K` 3 vaka, `aiAttempt` 2 vaka, `focusPointAtomicity` 1 vaka).
 - **Mutasyon kanıtı (`sha256` bayt bayt geri yükleme doğrulamalı):** `M1` (`spend.unavailable` -> `release`), `M2` (`failAndRefund` `expireLease` korumasız), `M3` (`AttemptKeeper` `accountEpoch` yok sayar), `M4` (`generate-routine` `expireLease` `try` eksik) -> **4/4 KILLED**.
 - **Kapılar:** `typecheck:ci` çıkış 0; `lint:ci` çıkış 0 (0 uyarı); `jest` **289/289 suite · 4235/4235 test** yeşil (ilk soğuk Babel önbelleğinde zaman aşımına takılan 4 UI suite ve `PATH` üzerinde Git Bash araçlarıyla 2 repo suite izole koşuda 6/6 yeşil, Anayasa 0.C); `node run-tests.js` **147/147**; Deno 2 (`DENO_NO_PACKAGE_JSON=1`) 11 hedef `deno check` çıkış 0 ve `deno test` **10/10**; `git diff --check` çıkış 0.
+
+
+### F08 (2026-11-21) — `922a291b..620895f5` (`faz/F08-tedarik-ci-hijyen`)
+
+- **Durum:** DONE. **Kapsanan bulgular:** BLD-02, BLD-03, BLD-04, BLD-05, BLD-07, BLD-08, BLD-09, BLD-10, BLD-12, BLD-13, BLD-22, BLD-23, BLD-25, PRF-22, GAP2-04.
+- **Özet değişiklikler:**
+  - Örtük araç/tip bağımlılıkları beyan edildi (`declaredDependencies.test.ts`); `postinstall`, `expo-module-scripts`, `fix-expo-tsconfig.js` ve `reset-project.js` kaldırıldı (`noInstallTimePatching.test.ts`).
+  - Güvenlik açığı bütçesi (`frontend/audit-budget.json`, `lockfileAdvisoryBudget.test.ts`) ve `.github/dependabot.yml` kuruldu; toplam `npm audit` açığı 48'den (1 kritik, 10 yüksek) prod ağacında 6'ya (0 kritik, 3 yüksek — `decode-uri-component` ESM uyumsuzluğu nedeniyle `2027-01-31` vadeli triage) indirildi.
+  - `.nvmrc` (`22.13.0`), `frontend/.npmrc` (`engine-strict=true`), `frontend/package.json#engines`, `frontend/eas.json` ve CI iş akışları tek Node sözleşmesinde birleştirildi (`nodeContract.test.ts`).
+  - `.github/workflows/ci.yml` ve `supabase-release-verify.yml` `permissions: contents: read`, `concurrency`, `timeout-minutes`, 40-hex aksiyon SHA sabitlemeleri ve Android/iOS/Web export + `expo install --check` + `expo prebuild --no-install` + `expo-doctor` + `npm audit` adımlarıyla sertleştirildi (`ciGatesWired.test.ts`).
+  - `configure-supabase-recovery-template.mjs` için kanonik proje bekçisi (`canonicalProjectRef.mjs`, `recoveryTemplateGuard.test.ts`), genel `linked-project.json` taraması (`supabase/predeploy_guard.sh`) ve canlıya yazan betiklerin kaldırılması (`noLiveScriptsTracked.test.ts`) tamamlandı.
+  - Genel ortam değişkeni doğrulaması (`lib/env.ts`, `env.test.ts`), sakin `ConfigErrorScreen` (`ConfigErrorScreen.test.tsx`), `frontend/.env.example` ve `run-tests.js` taşıması tamamlandı.
+  - 7 ölü bağımlılık ve `SpaceMono-Regular.ttf` kaldırıldı; toast animasyonları `FadeInUpView` bileşenine taşındı (`FadeInUpView.test.tsx`, `noDeadDependencies.test.ts`).
+  - 70+ kök artık (`awwwards-loop/`, `frontend/awwwards-loop/`, `ss_*.png`, `.gitconfig`, `model.patch`, kök `package*.json` vb.) temizlendi ve kök izin listesi kapısı (`repoRootAllowlist.test.ts`) eklendi.
+- **Mutasyon kanıtı:** M1–M6 (`env.ts`, `ConfigErrorScreen.tsx`, `canonicalProjectRef.mjs`, `ci.yml` SHA, `package.json#engines`, `FadeInUpView.tsx` unmount stop) -> **6/6 KILLED** (`sha256` geri yükleme doğrulandı).
+- **Açık sahip adımları:** EAS `production` ortam değişkenleri kontrolü, GitHub Actions izin/`SUPABASE_ACCESS_TOKEN` onaylayıcısı kontrolü, `SQL_FOR_OWNER.md` §3'teki eski test hesapları salt-okunur sorgusu.
+
+### F09 + F07-R3 (2026-11-21) — `596d733d` (`faz/F09-040-ayricalik-hijyeni`)
+
+- **Durum:** DONE (CI `db-migrations-verify` kanıtı ve görsel QA sahipte). **Kapsanan bulgular:** DB2-13, DB1-07, DB1-08, DB2-18, DB1-06, DB1-04, DB2-05, REP-03, DB1-12, DB2-16, DB1-11, GEM-02, EDG-08, DB1-09, DB2-15, DB2-08, DB2-12, DB1-10, DB1-20, DB1-13, F07-R3. `OWNER DECISION OD-05 (2026-11-21)` onaylı.
+- **Özet değişiklikler:**
+  - Yeni: `supabase/migrations/040_privilege_hygiene.sql` (20 SECURITY DEFINER `search_path` sabitlemesi; 12 iptal edilmiş F13 fonksiyonunda istemci EXECUTE iptali; anon yazma/`MAINTAIN` ve küresel `PUBLIC EXECUTE` kapatılması; liderlik RPC'lerinde oturum zorunluluğu + `1..100` sınırı + yalnız çağıranın sırası; `profiles` `(id, email, username)` dar INSERT + `archive_040.profiles_username_backup` yedeğiyle kullanıcı adı onarımı + `profiles_username_shape` `NOT VALID` + `handle_new_user` temizliği; `028..031` 10 tablosuna dar CRUD yetkisi; OAuth tablolarında gizli sütun yalıtımı; `add_xp`, `get_or_init_subscription`, `get_or_init_subscription_for` `FOR UPDATE` satır kilidi; **F07-R3** `ai_request_reconcile_stale` mod-duyarlı Türkçe ileti + `SET search_path TO ''` + `service_role`-only; zombi tetikleyicilerin düşürülmesi, 17 F13 tablosunda yazma iptali ve 6 tablonun `archive_f13`'e taşınması; `archive_040.acl_snapshot` ve bölüm 9 öz-denetimi), `supabase/rollbacks/040_privilege_hygiene.rollback.sql`, `supabase/tests/08_privilege_hygiene_040.sql` (37 sonuç), `privilegeHygiene040.test.ts`, `profileRepository.test.ts`.
+  - Güncellenen: `037_today_bootstrap_rpc.sql` (DB1-20 salt-okunur `STABLE`), `profileRepository.ts` (`updateUsername` sanitizasyon + `<3`/`>24` sınırı), `migrationRlsGuard.test.ts` (OD-05 + negatif kontroller), `expected_failures.txt` (0 beklenen kırmızı), `run.sh` (`MIN_RESULTS=80`), `ci.yml` (`040` önkoşul, ikinci geri alma turu ve kullanıcı adı onarım/geri alma adımları), `README.md`, `MIGRATION_MAPPING.md` (`20261010001300`), `SQL_FOR_OWNER.md`.
+- **Mutasyon kanıtı:** M01–M11 (`profileRepository` 4, `040` 5 [F07-R3 dahil], `040.rollback` 1, `037` 1) -> **11/11 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F13 (2026-11-21) — `68904d7b` (`faz/F13-aliskanlik-motoru`)
+
+- **Durum:** DONE (görsel QA sahipte). **Kapsanan bulgular:** INT-01, INT-06, DOM-20, INT-07, DOM-06, DOM-07, DOM-09, DOM-17, DOM-08, DOM-10, DOM-13, DOM-16, STO-14, DOM-22, GEM-10, DOM-23.
+- **Özet değişiklikler:**
+  - Tek tamamlanma sözleşmesi (`frontend/lib/completionMetric.ts`: `judgeDay`, `weighted` vs `strict_done`, `asOf` `pending`, `skip` `excused`, olumsuz kayıtsız `unknown`, veri yokluğunda uydurma `0` yerine `null`) ve sakin Türkçe metinler (`frontend/lib/metricCopy.ts`).
+  - Takvim-farkında alışkanlık gücü (`habitStrengthFor`) ve `habit-detail.tsx` memo + ekran okuyucu etiketleri; takvim-farkında seriler (`behaviorIntelligence.ts`) ve `streakSingleSource.test.ts` bekçisi; 56 günlük içgörü geçerlilik kapıları (`insightDigest.ts`, `insights.tsx`, `DIGEST_PREAMBLE`).
+  - Telafi ve değerlendirme ekranları (`recovery.ts`, `recoveryBacklog.ts`, `recoveryStore.ts`, `recovery.tsx`, `weekly-review.tsx`, `monthly-review.tsx`): `skippedSet` dışlaması, `BACKLOG_PAGE_SIZE = 7` + 44pt `"Daha fazla göster"`, yön duyarlı `deficitFor`, `completePlan` hata koruması (`Promise<boolean>`), utandırıcı dilden arındırılmış dönüş metinleri.
+- **Kırmızı taban ve mutasyon kanıtı:** 9 yeni test paketi `bc4e82cb`'ye karşı `9/9 FAIL`; M1–M6 (`judgeDay` `pending`, `currentStreak` `asOf`, `recoveryBacklog` `skippedSet`, `completePlan` `return false`, `habitStrengthFor` `isDueOn`, `BACKLOG_PAGE_SIZE` 7->112) -> **6/6 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F22 (2026-11-21) — `ba71ff09` (`faz/F22-kimlik-akislari`)
+
+- **Durum:** DONE (canlı Redirect URL izin listesi OD-19 ve görsel/derin bağlantı QA sahipte). **Kapsanan bulgular:** NAV-05, NAV-06, NAV-07, GAP2-08, GAP2-09, DSA-03.
+- **Özet değişiklikler:**
+  - Yeni: `frontend/lib/authErrors.ts`, `frontend/lib/authDeepLink.ts` (Hermes-güvenli ayrıştırıcı + 4 kayıtlık de-dup tek tüketici), `frontend/hooks/useResendCooldown.ts`, `frontend/components/auth/PasswordToggle.tsx` (44x44 pt), `frontend/vercel.json` (`/(.*)` -> `/index.html` SPA rewrite) ve 8 yeni test paketi.
+  - Güncellenen: `lib/supabase.ts` (`detectSessionInUrl: false`), `login.tsx` (`SignupPending variant="unconfirmed"` + yeniden gönderme + `type=signup` başarı şeridi + `PasswordToggle`), `register.tsx`, `forgot-password.tsx`, `reset-password.tsx` (`newPassword` + 2x `PasswordToggle`), `SignupPending.tsx`, `onboardingStore.ts` (`inPasswordRecovery -> stay`), `_layout.tsx` (`loading || !inPasswordRecovery` spinner muafiyeti), `SUPABASE_PASSWORD_RECOVERY_SETUP.md`.
+- **Mutasyon kanıtı:** M1–M13 -> **13/13 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### Wave 1 Seri Birleştirme Kapısı (2026-11-21)
+
+- **Birleştirilen dallar:** `faz/F08-tedarik-ci-hijyen` (`620895f5`), `faz/F09-040-ayricalik-hijyeni` (`596d733d`), `faz/F13-aliskanlik-motoru` (`68904d7b`), `faz/F22-kimlik-akislari` (`ba71ff09`) — `0` birleştirme çakışması.
+- **Birleştirme kapısında yakalanıp düzeltilen 4 çapraz-faz etkileşimi:** `reportMetrics.test.ts` (`habitAveragePercent` `number | null` tip daraltması), `profileRepository.ts` (`xpIsEarned` bekçisiyle `trimmed` değişken adı uyumu), `noRawConsole.test.ts` (`ConfigErrorScreen` ön-açılış yalnız-isim logu izin listesi + tek-çağrı kilidi), `accountScopeRegistry.test.ts` (`lib/env.ts` depolama olmayan sabit izin listesi).
+- **Nihai seri kapılar:** `npm ci` `exit=0`; `typecheck:ci` `exit=0`; `lint:ci` `exit=0` (0 uyarı); `node run-tests.js` **147/147** `exit=0`; `npm audit --omit=dev --audit-level=critical` `exit=0` (0 kritik); `npx expo install --check` `exit=0`; `npx expo-doctor` **21/21** `exit=0`; tam `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB` **319/319 suite · 4514/4514 test** yeşil (Wave 0B'deki 289/4235'ten +30 suite, +279 test); Wave 1 toplam mutasyon **36/36 KILLED**; `git diff --check` `exit=0`.

@@ -80,11 +80,15 @@ describe('AC-H05 / AC-H06 — at_most is scored in the right direction', () => {
   // the commitment, and grading between them would be false precision the
   // product does not use anywhere.
   it('AC-H05 — staying under the limit beats exceeding it', () => {
-    const score = (v: number) => habitAveragePercent({
-      habits: [smoking],
-      logs: [log({ completed_at: WEEK_START, state: 'done', value: v })],
-      start: WEEK_START, end: WEEK_START,
-    });
+    const score = (v: number): number => {
+      const res = habitAveragePercent({
+        habits: [smoking],
+        logs: [log({ completed_at: WEEK_START, state: 'done', value: v })],
+        start: WEEK_START, end: WEEK_START,
+      });
+      if (res === null) throw new Error('expected numeric score');
+      return res;
+    };
     expect(score(1)).toBeGreaterThan(score(20));
     expect(score(4)).toBeGreaterThan(score(20));
     // and crucially, more is never rewarded
@@ -130,11 +134,15 @@ describe('AC-H05 / AC-H06 — at_most is scored in the right direction', () => {
     const water = {
       ...h(), tracking_type: 'numeric', daily_goal: 8, target_direction: 'at_least',
     } as Habit;
-    const score = (v: number) => habitAveragePercent({
-      habits: [water],
-      logs: [log({ completed_at: WEEK_START, state: 'done', value: v })],
-      start: WEEK_START, end: WEEK_START,
-    });
+    const score = (v: number): number => {
+      const res = habitAveragePercent({
+        habits: [water],
+        logs: [log({ completed_at: WEEK_START, state: 'done', value: v })],
+        start: WEEK_START, end: WEEK_START,
+      });
+      if (res === null) throw new Error('expected numeric score');
+      return res;
+    };
     expect(score(8)).toBe(100);
     expect(score(4)).toBe(50);
     expect(score(8)).toBeGreaterThan(score(4));

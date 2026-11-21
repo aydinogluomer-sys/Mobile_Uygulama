@@ -219,6 +219,24 @@ union all select 'user_challenges', count(*) from public.user_challenges;
 
 Birinci `DB1-13` sorgusu boş dönerse `auth.users` üzerinde profil tetikleyicisi YOKTUR; bu durumda yeni kayıtlar profil satırı almaz (istemci `fetchOrCreateProfile` ile yaratır, `add_xp` 040'tan sonra profil yoksa satırı kendisi oluşturur). Tetikleyici ancak sahip onayıyla ayrı bir migrasyonla eklenir. `notion-sync`, 040'tan sonra `access_token` okuyamaz; Notion yeniden açılmadan önce service-role'e taşınmalıdır (F45).
 
+```sql
+-- F08 (BLD-12): geçmişte izlenen test betiklerindeki hesapların canlı auth.users üzerinde salt-okunur kontrolü
+select id, email, created_at, last_sign_in_at
+from auth.users
+where email in (
+  'demo@aderyth.app',
+  'testci@habitapp.dev',
+  'testci@gmail.com',
+  'testci@supatest.com'
+)
+or email like 'dev_%@aderyth.app'
+or email like 'aitest%@gmail.com';
+```
+
+Satır dönerse ilgili test hesaplarının parolalarını sıfırlayın ya da Supabase Auth panelinden silin.
+
+**F22 (OD-19) — Supabase Auth Redirect URL İzin Listesi (SQL yok, Dashboard ayarı):** Kayıt onayı (`signUp` / `resend`) ve parola kurtarma (`resetPasswordForEmail`) bağlantılarının uygulamaya dönebilmesi için **Supabase Dashboard → Authentication → URL Configuration → Redirect URLs** izin listesine `atlas://**` (üretim native), **yalnızca** geliştirme projesinde `exp://**`, ve OD-12 sonrası `https://<web-sitesi>/reset-password` ile `https://<web-sitesi>/login` adreslerini ekleyin (`frontend/vercel.json` SPA rewrite karşılığı aktif olmalı; Site URL çalışan bir web adresi olmalı).
+
 ## 4. KD-10 / KD-11 — salt-okunur sayımlar (S4; backfill ayrı karar)
 
 ```sql

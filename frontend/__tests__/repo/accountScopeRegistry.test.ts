@@ -55,6 +55,8 @@ const KNOWN_UNSCOPED_KEYS: Record<string, string> = {
   'pending-': 'not a storage key: a local id prefix',
   key_result: 'not a storage key: an outbox entity name',
   habit_log_key_immutable: 'not a storage key: a server error token',
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: 'not a storage key: build-time public env variable name (lib/env.ts)',
+  'config-missing': 'not a storage key: placeholder anon key when public env is missing (lib/env.ts)',
 };
 
 // ---------------------------------------------------------------------------------------

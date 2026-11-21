@@ -60,14 +60,14 @@ function cleanUsername(name: string): string {
 export async function updateUsername<T>(name: string): Promise<RepoResult<T>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const cleaned = cleanUsername(name);
+  const trimmed = cleanUsername(name);
   // An empty name removes it (allowed); 1-2 characters would be refused by the server.
-  if (cleaned !== '' && Array.from(cleaned).length < USERNAME_MIN_CHARS) {
+  if (trimmed !== '' && Array.from(trimmed).length < USERNAME_MIN_CHARS) {
     return { ok: false, error: 'Kullanıcı adı en az 3 karakter olmalı.' };
   }
   const { data, error } = await supabase
     .from('profiles')
-    .update({ username: cleaned || null })
+    .update({ username: trimmed || null })
     .eq('id', u.userId)
     .select('*')
     .maybeSingle();
