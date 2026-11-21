@@ -1,4 +1,5 @@
 import { registerAccountScoped } from '../lib/accountScope';
+import { createLatest } from '../lib/latestOnly';
 import { withEdgeDeadline } from '../lib/edgeCall';
 import { newRequestId } from '../services/focusPointService';
 import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE, IN_PROGRESS_NOTE, retryWhileInProgress } from '../lib/aiAttempt';
@@ -154,6 +155,7 @@ function activeHabitLoadInputs(): HabitLoadInput[] {
 
 // R09.06 -- one open (unanswered) generation attempt at a time.
 const routineAttempt = createAttemptKeeper(newRequestId);
+const generateLatest = createLatest();
 
 export const useRoutineStore = create<RoutineStore>((set, get) => ({
   routines: [],
@@ -178,14 +180,9 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
   installed: false,
 
   generateRoutine: async (prompt) => {
-    // R09.06 -- a resend of the same prompt after a lost answer reuses the id (one charge).
-    // Oturum kontrolü
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      set({ generateError: 'Bu özelliği kullanmak için giriş yapman gerekiyor.', generating: false });
-      return;
-    }
-
+    // Çift dokunuş: ikinci çağrı ağ çağrısı yapmaz (farklı metinle iki ücretli çağrı olurdu).
+    if (get().generating) return;
+    const run = generateLatest.begin();
     set({
       generating: true,
       generateError: null,
@@ -198,8 +195,17 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       installed: false,
       installError: null,
     });
-    const requestId = routineAttempt.begin(prompt);
     try {
+      // R09.06 -- a resend of the same prompt after a lost answer reuses the id (one charge).
+      // Oturum kontrolü
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!run.isCurrent()) return;
+      if (!session) {
+        set({ generateError: 'Bu özelliği kullanmak için giriş yapman gerekiyor.', generating: false });
+        return;
+      }
+
+      const requestId = routineAttempt.begin(prompt);
       const outcome = await retryWhileInProgress(
         () => withEdgeDeadline('AI rutin', (signal) =>
           supabase.functions.invoke('generate-routine', {
@@ -207,6 +213,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
             body: { prompt, request_id: requestId },
           })),
       );
+      if (!run.isCurrent()) return;
       const { data, error } = outcome;
 
       if (error && isNoAnswer(error)) {
@@ -289,7 +296,10 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
         pendingProposal: null,
       });
     } catch (err) {
+      if (!run.isCurrent()) return;
       set({ generateError: isNoAnswer(err) ? NO_ANSWER_NOTE : err instanceof Error ? err.message : 'Sunucu hatası.', generating: false });
+    } finally {
+      run.done();
     }
   },
 
@@ -425,7 +435,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
 
       // Reflect the new habits immediately -- same pattern habitStore.addHabit
       // uses (prepend to local state rather than forcing a refetch).
-      useHabitStore.setState((s) => ({ habits: [...result.habits, ...s.habits] }));
+      useHabitStore.getState().addInstalledHabits(result.habits);
 
       set({
         installing: false,

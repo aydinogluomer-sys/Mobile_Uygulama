@@ -724,7 +724,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
           return false;
         }
 
-        useHabitStore.setState((st) => ({ habits: [...result.habits, ...st.habits] }));
+        useHabitStore.getState().addInstalledHabits(result.habits);
 
         // From here the habits EXIST. Recorded before the confirm is
         // attempted, so a failure below lands in a state that knows it.

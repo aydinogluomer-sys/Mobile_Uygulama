@@ -32,7 +32,8 @@ import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from 
 import { syncAllReminders } from '../../lib/notifications';
 import { colors, radius, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree, WillpowerBand, SectionHeader, EmptyState, ProgressBar } from '../../components/ui';
+import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree, WillpowerBand, SectionHeader, EmptyState, FormError, ProgressBar } from '../../components/ui';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { CANVASES, DECOR, RITUAL_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { isMeasurableTracking } from '../../lib/habitEngine';
 // R01.03-a: a measurable entry's total and state come from the service, not this screen.
@@ -59,6 +60,7 @@ export default function TimelineScreen() {
   const [showAIRoutine, setShowAIRoutine] = useState(false);
   const [showBadHabits, setShowBadHabits] = useState(false);
   const [viewMode, setViewMode] = useState<'flow' | 'matrix'>('flow');
+  const [actionError, setActionError] = useState<string | null>(null);
 
   /**
    * The command palette cannot open this modal itself — it is mounted in the
@@ -99,8 +101,8 @@ export default function TimelineScreen() {
   // yükü OLDUĞUNDAN AZ gösterip aktivasyona yanlışlıkla izin verebilirdi.
   const activeHabits = habits.filter((h) => h.status === 'active');
 
-  const loadData = useCallback(async () => {
-    await Promise.all([fetchHabits(), fetchLogsForDate(selectedDate), fetchToday()]);
+  const loadData = useCallback(async (opts?: { force?: boolean }) => {
+    await Promise.all([fetchHabits(opts), fetchLogsForDate(selectedDate), fetchToday()]);
     // Bildirim hatırlatıcılarını mevcut alışkanlıklarla senkronla
     syncAllReminders(useHabitStore.getState().habits);
   }, [selectedDate, fetchHabits, fetchLogsForDate, fetchToday]);
@@ -113,9 +115,11 @@ export default function TimelineScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData({ force: true });
     setRefreshing(false);
   };
+
+  useRefreshOnFocus(() => loadData());
 
   // ── Günlük takip ──
   const handleYesNoTap = async (habit: Habit) => {
@@ -203,10 +207,20 @@ export default function TimelineScreen() {
       Alert.alert('Kapasite Dolu', `${habit.willpower_cost} irade gerekiyor; bütçen yetmiyor veya slot dolu.`, [{ text: 'Tamam' }]);
       return;
     }
-    haptic.success();
-    await activateHabit(habit.id, habit.willpower_cost);
+    const r = await activateHabit(habit.id, habit.willpower_cost);
+    if (r.ok) {
+      haptic.success();
+      setActionError(null);
+    } else {
+      haptic.warning();
+      setActionError(r.error);
+    }
   };
-  const handlePause = async (habit: Habit) => { haptic.light(); await pauseHabit(habit.id, habit.willpower_cost); };
+  const handlePause = async (habit: Habit) => {
+    haptic.light();
+    const r = await pauseHabit(habit.id, habit.willpower_cost);
+    setActionError(r.ok ? null : r.error);
+  };
   const handleMoveToWaiting = async (habit: Habit) => { haptic.light(); await updateHabit(habit.id, { status: 'waiting' }); };
   const handleComplete = async (habit: Habit) => {
     haptic.success();
@@ -513,6 +527,9 @@ export default function TimelineScreen() {
             contentContainerStyle={{ paddingBottom: 100 }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           >
+            <View style={{ paddingHorizontal: 12 }}>
+              <FormError message={actionError} />
+            </View>
             {(() => {
               const hr = new Date().getHours();
               const slot =

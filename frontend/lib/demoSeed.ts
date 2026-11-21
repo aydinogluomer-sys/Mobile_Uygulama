@@ -401,7 +401,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
   await Promise.all([
     projectStore.fetchProjects(),
     taskStore.fetchTasks(),
-    habitStore.fetchHabits(),
+    habitStore.fetchHabits({ force: true }),
     logStore.fetchLogsForDate(today),
     willpowerStore.fetchToday(),
     focusStore.fetchFocusTasks(),
@@ -502,7 +502,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
     }
   }
 
-  await useHabitStore.getState().fetchHabits();
+  await useHabitStore.getState().fetchHabits({ force: true });
   const habits = useHabitStore.getState().habits;
 
   const walkHabit = habits.find((h) => h.name === 'Demo: 30 dk yuruyus');
@@ -655,7 +655,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
 
   await Promise.all([
     useTaskStore.getState().fetchTasks(),
-    useHabitStore.getState().fetchHabits(),
+    useHabitStore.getState().fetchHabits({ force: true }),
     useLogStore.getState().fetchLogsForDate(today),
     useProjectStore.getState().fetchProjects(),
     useFocusStore.getState().fetchFocusTasks(),

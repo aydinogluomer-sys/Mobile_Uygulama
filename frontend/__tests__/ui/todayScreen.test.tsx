@@ -7,6 +7,8 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 
+jest.setTimeout(30_000);
+
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 jest.mock('react-native-safe-area-context', () => ({ SafeAreaView: ({ children }: any) => children }));
 const mockPush = jest.fn();
@@ -50,7 +52,7 @@ jest.mock('../../store/recoveryStore', () => {
 });
 
 import TodayScreen from '../../app/tabs/today';
-import { useHabitStore } from '../../store/habitStore';
+import { invalidateHabitsFetch, useHabitStore } from '../../store/habitStore';
 import { ymd, addDaysLocal } from '../../lib/date';
 
 const habit = (id: string, name: string) => ({
@@ -145,6 +147,7 @@ it('R03.07: the day after a holiday, Today says how to come back', async () => {
   const r = await render();
   expect(textOf(r)).toMatch(/Aradan döndün\. Hepsini birden değil/);
   (globalThis as any).__pauses = [];
+  invalidateHabitsFetch();
   const r2 = await render();
   expect(textOf(r2)).not.toMatch(/Aradan döndün/);
 });

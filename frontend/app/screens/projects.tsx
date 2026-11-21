@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useProjectStore, type Project } from '../../store/projectStore';
 import { useTaskStore } from '../../store/taskStore';
 import InlineComposer from '../../components/InlineComposer';
-import { AtmosphericScreenCanvas, EmptyState, LoadErrorState, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmptyState, FormError, LoadErrorState, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import { colors, hexA } from '../../lib/tokens';
@@ -26,6 +26,8 @@ export default function ProjectsScreen() {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const [color, setColor] = useState(PRESET_COLORS[0]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const detailProject = projects.find((p) => p.id === detailId) ?? null;
@@ -37,15 +39,27 @@ export default function ProjectsScreen() {
 
   async function handleAdd() {
     if (!name.trim()) return;
-    await addProject({ name: name.trim(), color, description: desc.trim() || undefined });
+    const created = await addProject({ name: name.trim(), color, description: desc.trim() || undefined });
+    if (!created) {
+      setSaveError(useProjectStore.getState().error ?? 'Proje oluşturulamadı. Yazdıkların burada duruyor, tekrar dene.');
+      return;
+    }
+    setSaveError(null);
     setName(''); setDesc(''); setColor(PRESET_COLORS[0]);
     setShowAdd(false);
   }
 
-  function confirmDelete(p: Project) {
-    Alert.alert('Projeyi Sil', `"${p.name}" silinsin mi?`, [
+  function confirmArchive(p: Project) {
+    Alert.alert('Projeyi Arşivle', `"${p.name}" arşivlensin mi? Proje listeden kalkar; görevlerin silinmez.`, [
       { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => removeProject(p.id) },
+      {
+        text: 'Arşivle',
+        style: 'default',
+        onPress: async () => {
+          const ok = await removeProject(p.id);
+          setActionError(ok ? null : (useProjectStore.getState().error ?? 'Proje arşivlenemedi.'));
+        },
+      },
     ]);
   }
 
@@ -65,16 +79,19 @@ export default function ProjectsScreen() {
         style={s.list}
         contentContainerStyle={s.listContent}
         ListHeaderComponent={
-          <EditorialBanner
-            source={SCREEN_BANNERS.projectsWorkshop}
-            textureSource={TEXTURES.sacredGrid}
-            eyebrow="PROJE ATÖLYESİ"
-            title="Projeler"
-            subtitle="Görevlerini anlamlı çıktılar etrafında grupla."
-            accentColor={colors.primary}
-            minHeight={90}
-            style={{ marginBottom: 12 }}
-          />
+          <View>
+            <FormError message={actionError} />
+            <EditorialBanner
+              source={SCREEN_BANNERS.projectsWorkshop}
+              textureSource={TEXTURES.sacredGrid}
+              eyebrow="PROJE ATÖLYESİ"
+              title="Projeler"
+              subtitle="Görevlerini anlamlı çıktılar etrafında grupla."
+              accentColor={colors.primary}
+              minHeight={90}
+              style={{ marginBottom: 12 }}
+            />
+          </View>
         }
         ListEmptyComponent={loadError ? (
           // R06.06 — not reached is not the same as empty
@@ -85,17 +102,17 @@ export default function ProjectsScreen() {
             title="Henüz proje yok"
             hint="Görevlerini bir projede toplamak için ilk projeni oluştur."
             ctaLabel="Yeni Proje"
-            onCta={() => setShowAdd(true)}
+            onCta={() => { setSaveError(null); setShowAdd(true); }}
           />
         )}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={s.row}
             onPress={() => setDetailId(item.id)}
-            onLongPress={() => confirmDelete(item)}
+            onLongPress={() => confirmArchive(item)}
             accessibilityRole="button"
             accessibilityLabel={`${item.name}, ${taskCount(item.id)} açık görev, ${progressOf(item.id).label}`}
-            accessibilityHint="Açmak için dokun, silmek için uzun bas"
+            accessibilityHint="Açmak için dokun, arşivlemek için uzun bas"
           >
             <EmbeddedFiligree source={DECOR.cornerBlueprint} size={92} opacity={0.14} />
             <View style={[s.colorDot, { backgroundColor: item.color ?? colors.primary }]} />
@@ -114,7 +131,7 @@ export default function ProjectsScreen() {
 
       <TouchableOpacity
         style={s.fab}
-        onPress={() => setShowAdd(true)}
+        onPress={() => { setSaveError(null); setShowAdd(true); }}
         accessibilityRole="button"
         accessibilityLabel="Yeni proje ekle"
       >
@@ -157,6 +174,8 @@ export default function ProjectsScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            <FormError message={saveError} />
 
             <View style={s.actions}>
               <TouchableOpacity

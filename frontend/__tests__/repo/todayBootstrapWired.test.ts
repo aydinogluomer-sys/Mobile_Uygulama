@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SQLite from 'expo-sqlite';
+import { resetAccountMemory } from '../../lib/accountScope';
 import { clearReadCacheMemory } from '../../lib/localReadCache';
 import { coreOutbox } from '../../services/coreOutbox';
 import { bootstrapTodayScreen } from '../../services/todayBootstrapService';
@@ -48,6 +49,7 @@ describe('Item #5 — Atomic Single-RTT Today Bootstrap RPC (get_today_bootstrap
   beforeEach(async () => {
     mockRpcState.calls.length = 0;
     mockFromCalls.length = 0;
+    resetAccountMemory('user_changed');
     coreOutbox.reset();
     clearReadCacheMemory();
     await AsyncStorage.clear();

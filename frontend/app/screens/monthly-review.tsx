@@ -7,8 +7,9 @@ import {
   type ReviewLogRow,
 } from '../../services/reviewService';
 import { currentUser } from '../../lib/session';
+import { createLatest } from '../../lib/latestOnly';
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,7 +37,7 @@ import {
 } from '../../lib/behaviorIntelligence';
 import { planFromRow } from '../../lib/recovery';
 import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
-import { ChapterDivider, EmptyState, EmbeddedFiligree, EmblemMedallion } from '../../components/ui';
+import { ChapterDivider, EmptyState, EmbeddedFiligree, EmblemMedallion, FormError } from '../../components/ui';
 import { DECOR, SCREEN_BANNERS } from '../../lib/visualAssets';
 
 const MONTHS_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -159,6 +160,9 @@ export default function MonthlyReviewScreen() {
   // Ekranda gorunen metin buluta HENUZ yazilmadi: kaydedilmemis taslak ya
   // da tasima oncesi kalmis yerel kayit.
   const [unsavedDraft, setUnsavedDraft] = useState(false);
+  const [cloudError, setCloudError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const reflectionLatest = useRef(createLatest()).current;
 
   // Defter sayfası animasyonu: girişte "açılma", ay değişiminde yön bazlı "sayfa çevirme" (bkz. calendar.tsx).
   const reduceMotion = useReducedMotion();
@@ -228,10 +232,18 @@ export default function MonthlyReviewScreen() {
   // Bulut kaynak, AsyncStorage yalnizca taslak. Sira ve gerekcesi
   // services/reviewService.loadMonthlyReflection icinde.
   async function loadReflection() {
-    const r = await loadMonthlyReflection(monthKey);
-    setAnswers(r.answers);
-    setSavedAt(r.savedAt ? format(new Date(r.savedAt), 'dd.MM.yyyy') : null);
-    setUnsavedDraft(r.source === 'draft' || r.source === 'legacy');
+    const run = reflectionLatest.begin();
+    try {
+      const r = await loadMonthlyReflection(monthKey);
+      if (!run.isCurrent()) return;
+      setAnswers(r.answers);
+      setSavedAt(r.savedAt ? format(new Date(r.savedAt), 'dd.MM.yyyy') : null);
+      setUnsavedDraft(r.source === 'draft' || r.source === 'legacy');
+      setCloudError(r.cloudError ?? null);
+      setSaveError(null);
+    } finally {
+      run.done();
+    }
   }
 
   async function loadMonthMetrics() {
@@ -317,7 +329,9 @@ export default function MonthlyReviewScreen() {
   }
 
   async function handleSave() {
+    if (cloudError) return;
     setSaving(true);
+    setSaveError(null);
     try {
       // Once cloud write, sonra arsiv kopyasi. Sira onemli: arsiv kaydi
       // render edilmis bir OZET, cevaplarin kendisi degil -- once o yazilip
@@ -344,7 +358,7 @@ export default function MonthlyReviewScreen() {
       );
       setSavedAt(stamp);
     } catch (error) {
-      Alert.alert('Hata', error instanceof Error ? error.message : 'Kayıt başarısız');
+      setSaveError(error instanceof Error ? error.message : 'Kayıt başarısız');
     } finally {
       setSaving(false);
     }
@@ -588,19 +602,37 @@ export default function MonthlyReviewScreen() {
             ))}
           </View>
 
+          {cloudError !== null && (
+            <View style={s.cloudErrorBanner} accessibilityRole="alert">
+              <Text style={s.cloudErrorText}>
+                Bu ayın kaydı yüklenemedi. Yazdıkların cihazda taslak olarak saklanıyor; bağlantı gelince tekrar dene.
+              </Text>
+              <TouchableOpacity
+                style={s.cloudRetryBtn}
+                onPress={() => { void loadReflection(); }}
+                accessibilityRole="button"
+                accessibilityLabel="Aylık kaydı yeniden yükle"
+              >
+                <Text style={s.cloudRetryText}>Yeniden dene</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          <FormError message={saveError} />
+
           {/* Kaydederken içerik yalnızca spinner'a düşüyor — etiketi durumdan üretiyoruz */}
           <TouchableOpacity
-            style={[s.saveBtn, saving && s.saveBtnLoading]}
+            style={[s.saveBtn, (saving || cloudError !== null) && s.saveBtnLoading]}
             onPress={handleSave}
-            disabled={saving}
+            disabled={saving || cloudError !== null}
             accessibilityRole="button"
             accessibilityLabel={
               saving ? 'Aylık rapor kaydediliyor'
+              : cloudError !== null ? 'Bulut kaydı yüklenemediği için kaydetme devre dışı'
               : unsavedDraft ? 'Kaydedilmemiş değişiklikler var, aylık raporu kaydet'
               : savedAt ? `Kaydedildi, ${savedAt}`
               : 'Aylık raporu kaydet'
             }
-            accessibilityState={{ disabled: saving, busy: saving }}
+            accessibilityState={{ disabled: saving || cloudError !== null, busy: saving }}
           >
             {saving ? (
               <ActivityIndicator color={colors.white} size="small" />
@@ -679,6 +711,18 @@ const s = StyleSheet.create({
   questionCard: { marginBottom: 14 },
   questionLabel: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 8 },
   questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },
+  cloudErrorBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: hexA(colors.error, 0.45),
+    paddingVertical: 10, paddingHorizontal: 14, marginBottom: 10, flexWrap: 'wrap',
+  },
+  cloudErrorText: { flex: 1, minWidth: 180, fontSize: 13, lineHeight: 19, color: colors.textDim },
+  cloudRetryBtn: {
+    minHeight: 44, minWidth: 44, paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  cloudRetryText: { fontSize: 13, fontWeight: '700', color: colors.accent },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 15, marginTop: 4 },
   saveBtnLoading: { opacity: 0.7 },
   saveBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },

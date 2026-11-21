@@ -14,6 +14,7 @@ import {
   EditorialBanner,
   EmbeddedFiligree,
   EmptyState,
+  FormError,
   LoadErrorState,
   Skeleton,
 } from '../../components/ui';
@@ -73,6 +74,8 @@ export default function ReadingListScreen() {
   const [author, setAuthor] = useState('');
   const [url, setUrl] = useState('');
   const [type, setType] = useState<ReadingType>('book');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Load the tab the user is actually looking at, and re-load when it
   // changes -- filtering happens server-side, so switching tabs is a fetch.
@@ -84,7 +87,12 @@ export default function ReadingListScreen() {
 
   async function handleAdd() {
     if (!title.trim()) return;
-    await addItem({ title, author, type, url });
+    const ok = await addItem({ title, author, type, url });
+    if (!ok) {
+      setSaveError(useReadingListStore.getState().error ?? 'Listeye eklenemedi. Yazdıkların burada duruyor, tekrar dene.');
+      return;
+    }
+    setSaveError(null);
     setTitle(''); setAuthor(''); setUrl(''); setType('book');
     setShowAdd(false);
   }
@@ -92,7 +100,14 @@ export default function ReadingListScreen() {
   function handleDelete(item: ReadingItem) {
     Alert.alert('Sil', `"${item.title}" listeden kaldırılsın mı?`, [
       { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => removeItem(item.id) },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: async () => {
+          const ok = await removeItem(item.id);
+          setActionError(ok ? null : (useReadingListStore.getState().error ?? 'Kayıt listeden kaldırılamadı.'));
+        },
+      },
     ]);
   }
 
@@ -135,6 +150,7 @@ export default function ReadingListScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.content}>
+        <FormError message={actionError} />
         <EditorialBanner
           source={SCREEN_BANNERS.readingLibrary}
           textureSource={TEXTURES.archivalPaper}
@@ -172,7 +188,7 @@ export default function ReadingListScreen() {
             }
             hint="Kitap, makale, video ya da podcast ekleyip buradan takip et."
             ctaLabel="Listeye ekle"
-            onCta={() => setShowAdd(true)}
+            onCta={() => { setSaveError(null); setShowAdd(true); }}
             color={STATUS_TABS.find((t) => t.key === activeTab)?.color}
           />
         ) : (
@@ -244,7 +260,7 @@ export default function ReadingListScreen() {
       {/* FAB */}
       <TouchableOpacity
         style={s.fab}
-        onPress={() => setShowAdd(true)}
+        onPress={() => { setSaveError(null); setShowAdd(true); }}
         accessibilityRole="button"
         accessibilityLabel="Okuma listesine yeni kayıt ekle"
       >
@@ -299,6 +315,8 @@ export default function ReadingListScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            <FormError message={saveError} />
 
             <View style={s.sheetActions}>
               <TouchableOpacity

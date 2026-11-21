@@ -1,4 +1,5 @@
 import { registerAccountScoped } from '../lib/accountScope';
+import { createLatest } from '../lib/latestOnly';
 import { create } from 'zustand';
 import {
   listTasks as fetchTasksPage,
@@ -78,6 +79,8 @@ type TaskStore = {
 let storage: OutboxStorage = asyncStorageOutbox;
 /** The flush in progress, if any. A second call waits for it, then runs again. */
 let inFlight: Promise<void> | null = null;
+const listLatest = createLatest();
+let appliedCount = 0;
 /** Tests and fixtures swap the persistence underneath; the app never does. */
 export function setTaskOutboxStorage(next: OutboxStorage): void { storage = next; }
 
@@ -126,6 +129,7 @@ export const useTaskStore = create<TaskStore>((set, get) => {
     }, {
       task: async (cmd) => {
         const o = await deliverTaskCommand(cmd);
+        if (o.kind === 'applied') appliedCount += 1;
         // The version our own delivery produced becomes the row's, so the
         // next local edit is not reported as a conflict with ourselves.
         if (o.kind === 'applied' && o.version) {
@@ -162,36 +166,57 @@ export const useTaskStore = create<TaskStore>((set, get) => {
   cursor: null,
 
   fetchTasks: async () => {
-    set({ loading: true, error: null });
-    const box = await ensureOutbox();
-    const res = await fetchTasksPage(null);
-    if (!res.ok) return set({ loading: false, error: res.error });
-    set({
-      // Unsent changes stay visible over a refetch until they are delivered.
-      tasks: box ? overlay(box, 'task', res.data.rows) : res.data.rows,
-      cursor: res.data.nextCursor,
-      hasMore: res.data.hasMore,
-      loading: false,
-    });
-    void get().flush();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const run = listLatest.begin();
+      const appliedAtStart = appliedCount;
+      set({ loading: true, error: null });
+      try {
+        const box = await ensureOutbox();
+        if (!run.isCurrent()) return;
+        const res = await fetchTasksPage(null);
+        if (!run.isCurrent()) return;
+        if (!res.ok) { set({ loading: false, error: res.error }); return; }
+        if (attempt === 0 && appliedCount !== appliedAtStart) continue;
+        const live = get().outbox ?? box;
+        set({
+          // Unsent changes stay visible over a refetch until they are delivered, over the LIVE outbox.
+          tasks: live ? overlay(live, 'task', res.data.rows) : res.data.rows,
+          cursor: res.data.nextCursor,
+          hasMore: res.data.hasMore,
+          loading: false,
+          loadingMore: false,
+        });
+        void get().flush();
+        return;
+      } finally {
+        run.done();
+        if (listLatest.pending() === 0 && get().loading) set({ loading: false });
+      }
+    }
   },
 
   loadMore: async () => {
     const { cursor, hasMore, loadingMore, loading } = get();
     if (!hasMore || !cursor || loadingMore || loading) return;
+    const run = listLatest.begin();
     set({ loadingMore: true });
-    const res = await fetchTasksPage(cursor);
-    if (!res.ok) return set({ loadingMore: false, error: res.error });
-    set((s) => {
-      const seen = new Set(s.tasks.map((t) => t.id));
-      const fresh = res.data.rows.filter((t) => !seen.has(t.id));
-      return {
-        tasks: [...s.tasks, ...fresh],
-        cursor: res.data.nextCursor,
-        hasMore: res.data.hasMore,
-        loadingMore: false,
-      };
-    });
+    try {
+      const res = await fetchTasksPage(cursor);
+      if (!run.isCurrent()) return;
+      if (!res.ok) { set({ loadingMore: false, error: res.error }); return; }
+      set((s) => {
+        const seen = new Set(s.tasks.map((t) => t.id));
+        const fresh = res.data.rows.filter((t) => !seen.has(t.id));
+        return {
+          tasks: [...s.tasks, ...fresh],
+          cursor: res.data.nextCursor,
+          hasMore: res.data.hasMore,
+          loadingMore: false,
+        };
+      });
+    } finally {
+      run.done();
+    }
   },
 
   flush: async () => {

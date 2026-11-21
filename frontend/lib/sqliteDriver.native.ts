@@ -5,12 +5,18 @@
  * allowed to import expo-sqlite at runtime, so the web bundle never pulls in
  * the wasm worker (`__tests__/repo/sqliteWebBoundary.test.ts`).
  */
-import * as ExpoSqlite from 'expo-sqlite';
+import type * as ExpoSqlite from 'expo-sqlite';
 
 export type SqliteModule = typeof ExpoSqlite;
 export type SQLiteDatabase = ExpoSqlite.SQLiteDatabase;
 
+let cached: SqliteModule | null = null;
+
 /** The expo-sqlite module where SQLite is available; `null` on web. */
 export function loadSqlite(): SqliteModule | null {
-  return ExpoSqlite;
+  if (!cached) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    cached = require('expo-sqlite') as SqliteModule;
+  }
+  return cached;
 }

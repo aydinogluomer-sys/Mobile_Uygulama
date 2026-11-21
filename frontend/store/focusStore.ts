@@ -183,6 +183,8 @@ export type FocusTask = {
   created_at: string;
 };
 
+export type FocusTaskResult = { ok: true } | { ok: false; error: string };
+
 type FocusStore = {
   // Timer state
   phase: Phase;
@@ -225,10 +227,10 @@ type FocusStore = {
   setPhase: (phase: Phase) => void;
 
   // Task actions
-  fetchFocusTasks: () => Promise<void>;
-  addFocusTask: (title: string, estimatedPomodoros?: number) => Promise<void>;
-  removeFocusTask: (id: string) => Promise<void>;
-  completeFocusTask: (id: string) => Promise<void>;
+  fetchFocusTasks: () => Promise<FocusTaskResult>;
+  addFocusTask: (title: string, estimatedPomodoros?: number) => Promise<FocusTaskResult>;
+  removeFocusTask: (id: string) => Promise<FocusTaskResult>;
+  completeFocusTask: (id: string) => Promise<FocusTaskResult>;
   selectTask: (id: string | null) => void;
 };
 
@@ -452,36 +454,43 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   fetchFocusTasks: async () => {
     set({ loadingTasks: true });
     const res = await fetchOpenFocusTasks();
-    if (!res.ok) { set({ loadingTasks: false }); return; }
+    if (!res.ok) {
+      set({ loadingTasks: false });
+      return { ok: false, error: res.error };
+    }
     set({ focusTasks: res.data as FocusTask[], loadingTasks: false });
+    return { ok: true };
   },
 
   addFocusTask: async (title, estimatedPomodoros = 1) => {
     const trimmed = title.trim();
-    if (!trimmed) return;
+    if (!trimmed) return { ok: false, error: 'Başlık boş olamaz.' };
     const res = await repoInsertFocusTask(trimmed, estimatedPomodoros);
-    if (!res.ok) return;
+    if (!res.ok) return { ok: false, error: res.error };
     set((s) => ({ focusTasks: [...s.focusTasks, res.data as FocusTask] }));
+    return { ok: true };
   },
 
   removeFocusTask: async (id) => {
     const res = await repoDeleteFocusTask(id);
-    if (!res.ok) return;
+    if (!res.ok) return { ok: false, error: res.error };
     set((s) => ({
       focusTasks: s.focusTasks.filter((t) => t.id !== id),
       selectedTaskId: s.selectedTaskId === id ? null : s.selectedTaskId,
     }));
+    return { ok: true };
   },
 
   completeFocusTask: async (id) => {
     const res = await repoCompleteFocusTask(id);
     // A failed write leaves the task in the list instead of removing it for a
     // completion the server never accepted.
-    if (!res.ok) return;
+    if (!res.ok) return { ok: false, error: res.error };
     set((s) => ({
       focusTasks: s.focusTasks.filter((t) => t.id !== id),
       selectedTaskId: s.selectedTaskId === id ? null : s.selectedTaskId,
     }));
+    return { ok: true };
   },
 
   selectTask: (id) => set({ selectedTaskId: id }),

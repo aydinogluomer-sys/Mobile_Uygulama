@@ -14,6 +14,7 @@ import {
   ChapterDivider,
   EditorialBanner,
   EmbeddedFiligree,
+  FormError,
   Skeleton,
 } from '../../components/ui';
 import {
@@ -188,7 +189,7 @@ function AreaTarotCard({
 }
 
 export default function LifeAreasScreen() {
-  const { values, lastSavedDate, loading, saving, loadLatest, setValue, save } = useLifeAreasStore();
+  const { values, lastSavedDate, loading, saving, error, loadLatest, setValue, save } = useLifeAreasStore();
   const { width } = useWindowDimensions();
   const cols = width >= 980 ? 4 : width >= 460 ? 2 : 1;
   const cardWidthStyle =
@@ -311,6 +312,7 @@ export default function LifeAreasScreen() {
             </>
           )}
         </TouchableOpacity>
+        <FormError message={error} />
 
       </ScrollView>
     </SafeAreaView>

@@ -28,7 +28,8 @@ describe('R02 — task writes are local-first', () => {
   });
 
   it('a refetch overlays unsent changes', () => {
-    expect(store).toMatch(/tasks: box \? overlay\(box, 'task', res\.data\.rows\) : res\.data\.rows/);
+    expect(store).toMatch(/const live = get\(\)\.outbox \?\? box;[\s\S]*tasks: live \? overlay\(live, 'task', res\.data\.rows\) : res\.data\.rows/);
+    expect(store).not.toMatch(/tasks: box \? overlay\(box,/);
   });
 
   it('the signed-in account is asked before every command', () => {

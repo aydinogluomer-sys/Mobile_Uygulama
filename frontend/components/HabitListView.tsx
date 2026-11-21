@@ -15,7 +15,7 @@ import type { Habit } from '../lib/supabase';
 import { colors, space, radius, font, hexA, shadow, fontFamily } from '../lib/tokens';
 import { useReducedMotion } from './seasonalMotion/useReducedMotion';
 import { haptic } from '../lib/haptics';
-import { Chip, Badge, IconCircle, EmptyState } from './ui';
+import { Chip, Badge, IconCircle, EmptyState, LoadErrorState } from './ui';
 import { isMeasurableTracking } from '../lib/habitEngine';
 
 type StatusKey = 'active' | 'waiting' | 'idea' | 'completed';
@@ -51,7 +51,7 @@ function areaMeta(key: string | null | undefined) {
 // Durum bazlı gruplama + filtre + sıralama: bir kontrol merkezi.
 export default function HabitListView() {
   const router = useRouter();
-  const { habits, loading, fetchHabits } = useHabitStore();
+  const { habits, loading, error, fetchHabits } = useHabitStore();
   const [statusFilter, setStatusFilter] = useState<Set<StatusKey>>(new Set());
   const [impactFilter, setImpactFilter] = useState<Set<ImpactLevel>>(new Set());
   const [search, setSearch] = useState('');
@@ -256,13 +256,17 @@ export default function HabitListView() {
       {loading && habits.length === 0 ? (
         <View style={s.center}><ActivityIndicator size="large" color={colors.primary} /></View>
       ) : noneAtAll ? (
-        <EmptyState
-          icon="albums-outline"
-          title="Henüz alışkanlık yok"
-          hint="İlk alışkanlığını ekleyerek sistemini kurmaya başla."
-          ctaLabel="Alışkanlık Ekle"
-          onCta={() => router.push('/tabs/habits')}
-        />
+        error ? (
+          <LoadErrorState what="Alışkanlıklar" onRetry={() => { void fetchHabits({ force: true }); }} />
+        ) : (
+          <EmptyState
+            icon="albums-outline"
+            title="Henüz alışkanlık yok"
+            hint="İlk alışkanlığını ekleyerek sistemini kurmaya başla."
+            ctaLabel="Alışkanlık Ekle"
+            onCta={() => router.push('/tabs/habits')}
+          />
+        )
       ) : totalShown === 0 ? (
         <EmptyState
           icon="funnel-outline"

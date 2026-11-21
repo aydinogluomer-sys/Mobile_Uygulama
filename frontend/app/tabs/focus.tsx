@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusStore } from '../../store/focusStore';
-import { EmbeddedFiligree, ProgressRing } from '../../components/ui';
+import { EmbeddedFiligree, FormError, ProgressRing } from '../../components/ui';
 import { haptic } from '../../lib/haptics';
 import { colors, fontFamily, alphaHex, hexA } from '../../lib/tokens';
 import { DECOR, getFocusBackdrop } from '../../lib/visualAssets';
@@ -74,6 +74,8 @@ export default function FocusScreen() {
   const [showTheme, setShowTheme] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskPomodoros, setNewTaskPomodoros] = useState(1);
+  const [addTaskError, setAddTaskError] = useState<string | null>(null);
+  const [taskActionError, setTaskActionError] = useState<string | null>(null);
   const [startHint, setStartHint] = useState('');
   const [focusMode, setFocusMode] = useState<'timer' | 'deep_work'>('timer');
 
@@ -120,7 +122,12 @@ export default function FocusScreen() {
 
   async function handleAddTask() {
     if (!newTaskTitle.trim()) return;
-    await addFocusTask(newTaskTitle.trim(), newTaskPomodoros);
+    const r = await addFocusTask(newTaskTitle.trim(), newTaskPomodoros);
+    if (!r.ok) {
+      setAddTaskError(r.error);
+      return;
+    }
+    setAddTaskError(null);
     setNewTaskTitle('');
     setNewTaskPomodoros(1);
     setShowAddTask(false);
@@ -137,6 +144,7 @@ export default function FocusScreen() {
       haptic.light();
       if (focusTasks.length === 0) {
         setStartHint('Önce ne üzerine odaklanacağını ekle, sonra başlat.');
+        setAddTaskError(null);
         setShowAddTask(true);
       } else {
         setStartHint('Listeden bir odak konusu seç, sonra başlat.');
@@ -317,11 +325,12 @@ export default function FocusScreen() {
         <View style={s.taskSection}>
           <View style={s.taskSectionHeader}>
             <Text style={s.sectionTitle}>ODAK KONUSU</Text>
-            <TouchableOpacity style={s.addTaskBtn} onPress={() => setShowAddTask(true)}>
+            <TouchableOpacity style={s.addTaskBtn} onPress={() => { setAddTaskError(null); setShowAddTask(true); }}>
               <Ionicons name="add" size={16} color={phaseColor} />
               <Text style={[s.addTaskText, { color: phaseColor }]}>Ekle</Text>
             </TouchableOpacity>
           </View>
+          <FormError message={taskActionError} />
 
           {focusTasks.length === 0 ? (
             <View style={s.emptyTasks}>
@@ -332,7 +341,18 @@ export default function FocusScreen() {
               const isSelected = selectedTaskId === task.id;
               return (
                 <View key={task.id} style={[s.taskRow, { backgroundColor: activePreset.cardBg }, isSelected && { borderColor: phaseColor + '60' }]}>
-                  <TouchableOpacity style={s.taskCheck} onPress={() => { haptic.success(); completeFocusTask(task.id); }}>
+                  <TouchableOpacity
+                    style={s.taskCheck}
+                    onPress={async () => {
+                      const r = await completeFocusTask(task.id);
+                      if (r.ok) {
+                        haptic.success();
+                        setTaskActionError(null);
+                      } else {
+                        setTaskActionError(r.error);
+                      }
+                    }}
+                  >
                     <View style={[s.checkBox, { borderColor: phaseColor }]} />
                   </TouchableOpacity>
 
@@ -347,7 +367,13 @@ export default function FocusScreen() {
                     </View>
                   </TouchableOpacity>
 
-                  <TouchableOpacity onPress={() => removeFocusTask(task.id)} style={s.taskDelete}>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      const r = await removeFocusTask(task.id);
+                      setTaskActionError(r.ok ? null : r.error);
+                    }}
+                    style={s.taskDelete}
+                  >
                     <Ionicons name="close" size={16} color={colors.textGhost} />
                   </TouchableOpacity>
                 </View>
@@ -383,6 +409,7 @@ export default function FocusScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            <FormError message={addTaskError} />
             <View style={s.sheetActions}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setShowAddTask(false)}>
                 <Text style={s.cancelText}>İptal</Text>

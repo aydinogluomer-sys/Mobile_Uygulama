@@ -1,5 +1,5 @@
 import { colors, alphaHex, radius } from '../lib/tokens';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -48,12 +48,20 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
   const [urgeShieldActive, setUrgeShieldActive] = useState(false);
   const [urgeSecondsLeft, setUrgeSecondsLeft] = useState(60);
   const [deflectedUrges, setDeflectedUrges] = useState(0);
+  const urgeCountedRef = useRef(false);
+  const deflectedRef = useRef(0);
   const [newHabit, setNewHabit] = useState({
     name: '',
     description: '',
     cost_per_day: '',
     time_wasted_per_day: '',
   });
+
+  const persistUrgeCount = useCallback(async (count: number) => {
+    const uid = (await currentUser())?.id;
+    if (!uid) return;
+    await AsyncStorage.setItem(urgeStorageKey(uid), String(count));
+  }, []);
 
   const loadBadHabits = async () => {
     setLoading(true);
@@ -73,9 +81,15 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
       void (async () => {
         await AsyncStorage.removeItem(URGE_STORAGE_KEY_PREFIX);
         const uid = (await currentUser())?.id;
-        if (!uid) { setDeflectedUrges(0); return; }
+        if (!uid) {
+          deflectedRef.current = 0;
+          setDeflectedUrges(0);
+          return;
+        }
         const v = await AsyncStorage.getItem(urgeStorageKey(uid));
-        setDeflectedUrges(v ? parseInt(v, 10) || 0 : 0);
+        const n = v ? parseInt(v, 10) || 0 : 0;
+        deflectedRef.current = n;
+        setDeflectedUrges(n);
       })().catch(() => undefined);
     }
   }, [visible]);
@@ -83,22 +97,23 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
   useEffect(() => {
     if (!urgeShieldActive) return;
     if (urgeSecondsLeft <= 0) {
-      haptic.success();
-      const nextCount = deflectedUrges + 1;
-      setDeflectedUrges(nextCount);
-      void (async () => {
-        const uid = (await currentUser())?.id;
-        if (!uid) return;
-        await AsyncStorage.setItem(urgeStorageKey(uid), String(nextCount));
-      })().catch(() => undefined);
+      if (!urgeCountedRef.current) {
+        urgeCountedRef.current = true; // bu kalkan oturumunda tek sayım
+        haptic.success();
+        const next = deflectedRef.current + 1;
+        deflectedRef.current = next;
+        setDeflectedUrges(next);
+        void persistUrgeCount(next).catch(() => undefined);
+      }
       return;
     }
     const timer = setTimeout(() => setUrgeSecondsLeft((s) => s - 1), 1000);
     return () => clearTimeout(timer);
-  }, [urgeShieldActive, urgeSecondsLeft, deflectedUrges]);
+  }, [urgeShieldActive, urgeSecondsLeft, persistUrgeCount]);
 
   const startUrgeShield = () => {
     haptic.medium();
+    urgeCountedRef.current = false; // yeni oturum yeni sayım
     setUrgeSecondsLeft(60);
     setUrgeShieldActive(true);
   };

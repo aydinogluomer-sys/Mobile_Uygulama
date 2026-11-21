@@ -1,4 +1,5 @@
 import { registerAccountScoped } from '../lib/accountScope';
+import { createLatest } from '../lib/latestOnly';
 import { create } from 'zustand';
 import type { NoteRow } from '../repositories/noteRepository';
 import type { Cursor, Page } from '../repositories/shared';
@@ -15,6 +16,7 @@ import {
 export type Note = NoteRow;
 
 const NOTES_CACHE_KEY = 'notes:p1';
+const loadLatest = createLatest();
 
 async function safeUserId(): Promise<string | null> {
   try {
@@ -84,69 +86,86 @@ export const useNoteStore = create<NoteStore>((set, get) => ({
   cursor: null,
 
   fetchNotes: async () => {
-    await coreOutbox.ensure();
-    const uid = await safeUserId();
-    const cached = uid ? await readCachedSnapshot<Page<Note>>(uid, NOTES_CACHE_KEY) : null;
-    if (cached) {
-      remember(cached.data.rows);
+    const run = loadLatest.begin();
+    try {
+      await coreOutbox.ensure();
+      if (!run.isCurrent()) return;
+      const uid = await safeUserId();
+      if (!run.isCurrent()) return;
+      const cached = uid ? await readCachedSnapshot<Page<Note>>(uid, NOTES_CACHE_KEY) : null;
+      if (!run.isCurrent()) return;
+      if (cached) {
+        remember(cached.data.rows);
+        set({
+          notes: withPending(cached.data.rows),
+          cursor: cached.data.nextCursor,
+          hasMore: cached.data.hasMore,
+          loading: false,
+          error: null,
+        });
+      } else {
+        set({ loading: true, error: null });
+      }
+
+      const res = await fetchNotesPage(null);
+      if (!run.isCurrent()) return;
+      if (!res.ok) {
+        if (cached) {
+          set({ loading: false, error: res.offline ? null : res.error });
+        } else {
+          set({ loading: false, error: res.error });
+        }
+        return;
+      }
+      remember(res.data.rows);
+      if (uid) {
+        void setCachedSnapshot(uid, NOTES_CACHE_KEY, res.data);
+      }
+      // A refresh resets the cursor: continuing from a stale one would skip
+      // whatever was inserted since.
       set({
-        notes: withPending(cached.data.rows),
-        cursor: cached.data.nextCursor,
-        hasMore: cached.data.hasMore,
+        // Unsent changes stay visible over a refetch until they are delivered.
+        notes: withPending(res.data.rows),
+        cursor: res.data.nextCursor,
+        hasMore: res.data.hasMore,
         loading: false,
+        loadingMore: false,
         error: null,
       });
-    } else {
-      set({ loading: true, error: null });
+    } finally {
+      run.done();
+      if (loadLatest.pending() === 0 && get().loading) set({ loading: false });
     }
-
-    const res = await fetchNotesPage(null);
-    if (!res.ok) {
-      if (cached) {
-        set({ loading: false, error: res.offline ? null : res.error });
-      } else {
-        set({ loading: false, error: res.error });
-      }
-      return;
-    }
-    remember(res.data.rows);
-    if (uid) {
-      void setCachedSnapshot(uid, NOTES_CACHE_KEY, res.data);
-    }
-    // A refresh resets the cursor: continuing from a stale one would skip
-    // whatever was inserted since.
-    set({
-      // Unsent changes stay visible over a refetch until they are delivered.
-      notes: withPending(res.data.rows),
-      cursor: res.data.nextCursor,
-      hasMore: res.data.hasMore,
-      loading: false,
-      error: null,
-    });
   },
 
   loadMore: async () => {
     const { cursor, hasMore, loadingMore, loading } = get();
     if (!hasMore || !cursor || loadingMore || loading) return;
+    const run = loadLatest.begin();
     set({ loadingMore: true });
-    const res = await fetchNotesPage(cursor);
-    if (!res.ok) {
-      set({ loadingMore: false, error: res.error });
-      return;
+    try {
+      const res = await fetchNotesPage(cursor);
+      if (!run.isCurrent()) return;
+      if (!res.ok) {
+        set({ loadingMore: false, error: res.error });
+        return;
+      }
+      set((s) => {
+        // Defensive de-dupe. Keyset paging should not repeat a row, but an
+        // append that silently doubled an entry would be hard to notice.
+        remember(res.data.rows);
+        const seen = new Set(s.notes.map((n) => n.id));
+        const fresh = res.data.rows.filter((n) => !seen.has(n.id));
+        return {
+          notes: [...s.notes, ...fresh],
+          cursor: res.data.nextCursor,
+          hasMore: res.data.hasMore,
+          loadingMore: false,
+        };
+      });
+    } finally {
+      run.done();
     }
-    set((s) => {
-      // Defensive de-dupe. Keyset paging should not repeat a row, but an
-      // append that silently doubled an entry would be hard to notice.
-      remember(res.data.rows);
-      const seen = new Set(s.notes.map((n) => n.id));
-      const fresh = res.data.rows.filter((n) => !seen.has(n.id));
-      return {
-        notes: [...s.notes, ...fresh],
-        cursor: res.data.nextCursor,
-        hasMore: res.data.hasMore,
-        loadingMore: false,
-      };
-    });
   },
 
   addNote: async (title, content) => {

@@ -432,7 +432,7 @@ export default function HubScreen() {
     if (installing) return;
     haptic.medium();
     await confirmInstall();
-    await fetchHabits();
+    await fetchHabits({ force: true });
   }
 
   const isSearching = search.trim().length > 0;

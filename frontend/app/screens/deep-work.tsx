@@ -12,6 +12,9 @@ import {
   ChapterDivider,
   EditorialBanner,
   EmbeddedFiligree,
+  FormError,
+  LoadErrorState,
+  listState,
   Skeleton,
 } from '../../components/ui';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
@@ -25,11 +28,12 @@ const QUICK_DURATIONS = [25, 45, 60, 90];
 export default function DeepWorkScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 920;
-  const { sessions, loading, loadSessions, addSession, removeSession, todayMinutes, weekMinutes } = useDeepWorkStore();
+  const { sessions, loading, error: loadError, loadSessions, addSession, removeSession, todayMinutes, weekMinutes } = useDeepWorkStore();
   const [modal, setModal] = useState(false);
   const [subject, setSubject] = useState('');
   const [minutes, setMinutes] = useState('60');
   const [entryError, setEntryError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
@@ -120,6 +124,8 @@ export default function DeepWorkScreen() {
               </TouchableOpacity>
             </View>
 
+            <FormError message={actionError} />
+
             {loading ? (
               Array.from({ length: 3 }, (_, i) => (
                 <View key={i} style={s.sessionRow}>
@@ -128,6 +134,8 @@ export default function DeepWorkScreen() {
                   <Skeleton width={44} height={12} />
                 </View>
               ))
+            ) : listState({ loading, error: loadError, count: sessions.length }) === 'error' ? (
+              <LoadErrorState what="Seanslar" onRetry={() => { void loadSessions(); }} />
             ) : todaySessions.length === 0 ? (
               <View style={s.emptyCard}>
                 <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={120} opacity={0.14} />
@@ -147,7 +155,14 @@ export default function DeepWorkScreen() {
                     style={s.deleteBtn}
                     onPress={() => Alert.alert('Sil', 'Bu seans silinsin mi?', [
                       { text: 'İptal' },
-                      { text: 'Sil', style: 'destructive', onPress: () => removeSession(sess.id) },
+                      {
+                        text: 'Sil',
+                        style: 'destructive',
+                        onPress: async () => {
+                          const ok = await removeSession(sess.id);
+                          setActionError(ok ? null : (useDeepWorkStore.getState().error ?? 'Seans silinemedi.'));
+                        },
+                      },
                     ])}
                     accessibilityRole="button"
                     accessibilityLabel={`${sess.subject} seansını sil`}

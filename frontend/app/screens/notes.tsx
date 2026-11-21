@@ -15,6 +15,7 @@ import {
   EditorialBanner,
   EmbeddedFiligree,
   EmptyState,
+  FormError,
   LoadErrorState,
   Skeleton,
   TexturedSurface,
@@ -45,6 +46,8 @@ export default function NotesScreen() {
   const [editing, setEditing] = useState<Note | null>(null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'notes' | 'reading_list'>('notes');
 
   useEffect(() => { fetchNotes(); }, [fetchNotes]);
@@ -74,6 +77,7 @@ export default function NotesScreen() {
     setEditing(null);
     setTitle('');
     setContent('');
+    setSaveError(null);
     setShowEdit(true);
   }
 
@@ -81,23 +85,34 @@ export default function NotesScreen() {
     setEditing(n);
     setTitle(n.title);
     setContent(n.content);
+    setSaveError(null);
     setShowEdit(true);
   }
 
   async function handleSave() {
     if (!title.trim() && !content.trim()) return;
-    if (editing) {
-      await updateNote(editing.id, { title, content });
-    } else {
-      await addNote(title, content);
+    const ok = editing ? await updateNote(editing.id, { title, content }) : (await addNote(title, content)) !== null;
+    if (!ok) {
+      setSaveError(useNoteStore.getState().error ?? 'Not kaydedilemedi. Yazdıkların burada duruyor, tekrar dene.');
+      return;
     }
+    setSaveError(null);
     setShowEdit(false);
+    // Not satırı eklendi ama yalnız bellekte kaldıysa (cihaza yazılamadı) uyarı liste başında kalır.
+    setActionError(useNoteStore.getState().error);
   }
 
   function confirmDelete(n: Note) {
     Alert.alert('Notu Sil', `"${n.title || 'Not'}" silinsin mi?`, [
       { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => removeNote(n.id) },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: async () => {
+          const ok = await removeNote(n.id);
+          setActionError(ok ? null : (useNoteStore.getState().error ?? 'Not silinemedi.'));
+        },
+      },
     ]);
   }
 
@@ -178,6 +193,9 @@ export default function NotesScreen() {
             data={visible}
             ListHeaderComponent={
               <View>
+                <View style={{ paddingHorizontal: 10 }}>
+                  <FormError message={actionError} />
+                </View>
                 <EditorialBanner
                   source={SCREEN_BANNERS.notesAtelier}
                   textureSource={TEXTURES.archivalPaper}
@@ -317,6 +335,8 @@ export default function NotesScreen() {
               onChangeText={setContent}
               autoFocus={!editing}
             />
+
+            <FormError message={saveError} />
 
             <TouchableOpacity
               style={[s.saveBtn, (!title.trim() && !content.trim()) && s.saveBtnDisabled]}

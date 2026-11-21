@@ -27,12 +27,12 @@ import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from 
 import { isMeasurableTracking } from '../../lib/habitEngine';
 import { explainActivation } from '../../services/capacityService';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
-import { AtmosphericScreenCanvas, EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, EditorialBanner, FormError, LoadErrorState } from '../../components/ui';
 import { CANVASES, RITUAL_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 export default function HabitsScreen() {
   const reduceMotion = useReducedMotion(); // R06.04 — toasts appear without the slide
-  const { habits, loading, fetchHabits, addHabit, activateHabit, pauseHabit, updateHabit, removeHabit, restoreHabit, purgeHabit } = useHabitStore();
+  const { habits, loading, error, fetchHabits, addHabit, activateHabit, pauseHabit, updateHabit, removeHabit, restoreHabit, purgeHabit } = useHabitStore();
   const { state: wp, fetchToday, canActivate, spend, refund, isStale } = useWillpowerStore();
   // R03.04 — the same rule activation uses, in words: why it waits, how to start it.
   const explain = (h: Habit) => explainActivation({
@@ -40,6 +40,7 @@ export default function HabitsScreen() {
     capacityInput: loading ? undefined : { habit: h, activeHabits: habits.filter((x) => x.status === 'active') },
   });
   const [refreshing, setRefreshing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAIRoutine, setShowAIRoutine] = useState(false);
 
@@ -86,7 +87,7 @@ export default function HabitsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchHabits(), fetchToday()]);
+    await Promise.all([fetchHabits({ force: true }), fetchToday()]);
     setRefreshing(false);
   };
 
@@ -209,16 +210,28 @@ export default function HabitsScreen() {
 
 ${e.how}`,
         e.canOverride
-          ? [{ text: 'Vazgeç', style: 'cancel' }, { text: 'Yine de etkinleştir', onPress: () => { void activateHabit(habit.id, habit.willpower_cost, { override: true }); } }]
+          ? [
+              { text: 'Vazgeç', style: 'cancel' },
+              {
+                text: 'Yine de etkinleştir',
+                onPress: () => {
+                  void activateHabit(habit.id, habit.willpower_cost, { override: true }).then((r) =>
+                    setActionError(r.ok ? null : r.error),
+                  );
+                },
+              },
+            ]
           : [{ text: 'Tamam' }],
       );
       return;
     }
-    await activateHabit(habit.id, habit.willpower_cost);
+    const r = await activateHabit(habit.id, habit.willpower_cost);
+    setActionError(r.ok ? null : r.error);
   };
 
   const handlePause = async (habit: Habit) => {
-    await pauseHabit(habit.id, habit.willpower_cost);
+    const r = await pauseHabit(habit.id, habit.willpower_cost);
+    setActionError(r.ok ? null : r.error);
   };
 
   const handleComplete = async (habit: Habit) => {
@@ -347,6 +360,14 @@ ${e.how}`,
     );
   }
 
+  if (error && habits.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <LoadErrorState what="Alışkanlıklar" onRetry={() => { void fetchHabits({ force: true }); }} />
+      </SafeAreaView>
+    );
+  }
+
   const waitingHabits = habits.filter((h) => h.status === 'waiting');
   const ideaHabits = habits.filter((h) => h.status === 'idea');
   const completedHabits = habits.filter((h) => h.status === 'completed');
@@ -381,6 +402,9 @@ ${e.how}`,
         style={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
+        <View style={{ paddingHorizontal: 16 }}>
+          <FormError message={actionError} />
+        </View>
         <EditorialBanner
           source={RITUAL_BANNERS.anytime}
           textureSource={TEXTURES.botanical}
