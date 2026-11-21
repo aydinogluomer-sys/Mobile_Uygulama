@@ -4,7 +4,7 @@ import {
   deleteReadingItem,
   fetchReadingCounts,
   fetchReadingListPage,
-  insertReadingItem,
+  insertReadingItemWithId,
   updateReadingNotes,
   updateReadingRating,
   updateReadingStatus,
@@ -255,7 +255,17 @@ export const useReadingListStore = create<ReadingListStore>((set, get) => ({
   },
 
   addItem: async ({ title, author, type, url }) => {
-    const res = await insertReadingItem({ title, author, type, url });
+    const id = newOperationId();
+    const payload = {
+      title,
+      author: author ?? null,
+      type,
+      status: 'want_to_read' as ReadingStatus,
+      url: url ?? null,
+      notes: null,
+      rating: null,
+    };
+    const res = await insertReadingItemWithId({ id, ...payload });
     if (res.ok) {
       // A new item is always `want_to_read`, so it belongs to that tab only.
       commit(set, get, (s) => ({
@@ -269,18 +279,8 @@ export const useReadingListStore = create<ReadingListStore>((set, get) => ({
       return true;
     }
     if (res.offline) {
-      const id = newOperationId();
       const uid = (await safeUserId()) ?? '';
       const now = new Date().toISOString();
-      const payload = {
-        title,
-        author: author ?? null,
-        type,
-        status: 'want_to_read' as ReadingStatus,
-        url: url ?? null,
-        notes: null,
-        rating: null,
-      };
       const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'create', payload });
       if (queued.ok) {
         const optimistic: ReadingItem = {

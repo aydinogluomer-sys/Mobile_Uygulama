@@ -241,6 +241,34 @@ describe('R02.06 / R02 — accounts and tombstones', () => {
     expect(mockServer.notes.has('nd')).toBe(false);
     expect(ch.state()!.commands).toHaveLength(0);
   });
+
+  it('F19 (SYN-05): clearTombstones releases confirmed tombstones and unsent deletes so restored rows appear and accept edits', async () => {
+    await ch.write({ entity: 'note', entityId: 'n-res', kind: 'create', payload: { title: 'Eski', content: 'v1', tags: [] } });
+    await ch.flush();
+    await ch.write({ entity: 'note', entityId: 'n-res', kind: 'delete' });
+    await ch.flush();
+    expect(ch.state()!.tombstones['note|n-res']).toBeDefined();
+    expect(ch.state()!.confirmedDeletes?.['note|n-res']).toBeDefined();
+
+    // Also queue an unsent delete on another note (let the initial offline flush finish so it is not mid-flight)
+    mockServer.online = false;
+    await ch.write({ entity: 'note', entityId: 'n-unsent', kind: 'delete' });
+    await ch.flush();
+    expect(ch.sync().pending).toBe(1);
+
+    await ch.clearTombstones('note', ['n-res', 'n-unsent']);
+    expect(ch.state()!.tombstones['note|n-res']).toBeUndefined();
+    expect(ch.state()!.confirmedDeletes?.['note|n-res']).toBeUndefined();
+    expect(ch.state()!.tombstones['note|n-unsent']).toBeUndefined();
+    expect(ch.sync().pending).toBe(0);
+
+    // Server row restored directly (e.g. backup restore) now accepts updates again
+    mockServer.online = true;
+    mockServer.notes.set('n-res', { id: 'n-res', user_id: 'u1', title: 'Eski', content: 'v1', tags: [], created_at: stamp(), updated_at: 'v-restored' });
+    await ch.write({ entity: 'note', entityId: 'n-res', kind: 'update', payload: { content: 'düzenlendi' }, baseVersion: 'v-restored' });
+    await ch.flush();
+    expect(mockServer.notes.get('n-res')?.content).toBe('düzenlendi');
+  });
 });
 
 describe('the onApplied hook reports what the server accepted, and only that', () => {

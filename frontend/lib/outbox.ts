@@ -82,6 +82,8 @@ export type OutboxState = {
   nextSeq: number;
   /** entity|id -> seq of the delete that tombstoned it. */
   tombstones: Record<string, number>;
+  /** entity|id -> ms epoch when the server confirmed the delete. Optional; absent on older blobs. */
+  confirmedDeletes?: Record<string, number>;
   /** Set by an `auth` failure; cleared when credentials are refreshed. */
   authBlocked: boolean;
 };
@@ -129,8 +131,9 @@ export type EnqueueResult =
   | { ok: true; state: OutboxState; effect: 'queued' | 'merged' | 'duplicate' | 'cancelled' | 'dropped_tombstoned' }
   | { ok: false; reason: 'id_reused' | 'wrong_account' };
 
-export function enqueue(state: OutboxState, input: EnqueueInput, userId: string, now: number): EnqueueResult {
-  if (userId !== state.userId) return { ok: false, reason: 'wrong_account' };
+export function enqueue(state0: OutboxState, input: EnqueueInput, userId: string, now: number): EnqueueResult {
+  if (userId !== state0.userId) return { ok: false, reason: 'wrong_account' };
+  const state = pruneConfirmedTombstones(state0, now);
   const payload = input.payload ?? {};
 
   const same = state.commands.find((c) => c.operationId === input.operationId);
@@ -142,10 +145,14 @@ export function enqueue(state: OutboxState, input: EnqueueInput, userId: string,
 
   const k = key(input.entity, input.entityId);
   if (state.tombstones[k] !== undefined && input.kind !== 'delete') {
+    if (input.kind === 'create' && state.confirmedDeletes?.[k] !== undefined) {
+      // Server CONFIRMED the delete; recreating the same id (undo, restore) is legitimate.
+      return enqueue(clearTombstones(state, input.entity, [input.entityId]), input, userId, now);
+    }
     return { ok: true, state, effect: 'dropped_tombstoned' };
   }
 
-  // Pending and NOT in flight: only these can still be changed.
+  // Pending and NOT in flight: only these can still be merged into.
   const forEntity = state.commands.filter((c) => c.entity === input.entity && c.entityId === input.entityId && c.status === 'pending' && !c.sending);
 
   if (input.kind === 'update') {
@@ -158,15 +165,43 @@ export function enqueue(state: OutboxState, input: EnqueueInput, userId: string,
   }
 
   if (input.kind === 'delete') {
-    const pendingCreate = forEntity.find((c) => c.kind === 'create');
-    const others = state.commands.filter((c) => !forEntity.includes(c));
-    const tombstones = pruneTombstones({ ...state.tombstones, [k]: state.nextSeq });
+    // User's delete intent supersedes ALL non-sending predecessors (pending, dead, conflict).
+    const superseded = state.commands.filter((c) => c.entity === input.entity && c.entityId === input.entityId && !c.sending);
+    const pendingCreate = superseded.find((c) => c.kind === 'create');
+    const dropped = new Set(superseded.map((c) => c.operationId));
     if (pendingCreate) {
-      // Never reached the server: nothing to delete there.
-      return { ok: true, effect: 'cancelled', state: { ...state, commands: others, tombstones, nextSeq: state.nextSeq + 1 } };
+      // Server NEVER saw this entity: cascade-drop dependent commands (e.g. objective create -> key result).
+      for (let grew = true; grew;) {
+        grew = false;
+        for (const c of state.commands) {
+          if (!dropped.has(c.operationId) && !c.sending && c.dependsOn.some((d) => dropped.has(d))) {
+            dropped.add(c.operationId);
+            grew = true;
+          }
+        }
+      }
     }
+    const others = state.commands.filter((c) => !dropped.has(c.operationId));
+    if (pendingCreate) {
+      // Never reached the server: do NOT add a tombstone (there is no server row to hide).
+      return { ok: true, effect: 'cancelled', state: { ...state, commands: others, nextSeq: state.nextSeq + 1 } };
+    }
+    const tombstones = pruneTombstones({ ...state.tombstones, [k]: state.nextSeq });
+    const confirmedDeletes = state.confirmedDeletes?.[k] !== undefined
+      ? Object.fromEntries(Object.entries(state.confirmedDeletes).filter(([ck]) => ck !== k))
+      : state.confirmedDeletes;
     const del = makeCommand(state, input, payload, userId, now);
-    return { ok: true, effect: 'queued', state: { ...state, commands: [...others, del], tombstones, nextSeq: state.nextSeq + 1 } };
+    return {
+      ok: true,
+      effect: 'queued',
+      state: {
+        ...state,
+        commands: [...others, del],
+        tombstones,
+        ...(confirmedDeletes !== undefined ? { confirmedDeletes } : {}),
+        nextSeq: state.nextSeq + 1,
+      },
+    };
   }
 
   const cmd = makeCommand(state, input, payload, userId, now);
@@ -175,6 +210,38 @@ export function enqueue(state: OutboxState, input: EnqueueInput, userId: string,
 
 /** Tombstones are kept for the most recent deletes only -- enough to stop late local edits. */
 export const MAX_TOMBSTONES = 200;
+export const CONFIRMED_TOMBSTONE_GRACE_MS = 5 * 60_000;
+
+export function pruneConfirmedTombstones(state: OutboxState, now: number): OutboxState {
+  const confirmed = state.confirmedDeletes;
+  if (!confirmed) return state;
+  const expired = Object.keys(confirmed).filter((k) => now - confirmed[k] >= CONFIRMED_TOMBSTONE_GRACE_MS);
+  if (expired.length === 0) return state;
+  const tombstones = { ...state.tombstones };
+  const rest = { ...confirmed };
+  for (const k of expired) {
+    delete tombstones[k];
+    delete rest[k];
+  }
+  return { ...state, tombstones, confirmedDeletes: rest };
+}
+
+/** User deliberately brought rows back (backup restore): drop tombstones and unsent deletes for them. */
+export function clearTombstones(state: OutboxState, entity: string, ids: readonly string[]): OutboxState {
+  const wanted = new Set(ids);
+  const keys = ids.map((id) => key(entity, id)).filter((k) => state.tombstones[k] !== undefined || state.confirmedDeletes?.[k] !== undefined);
+  const dropDeletes = state.commands.filter((c) => c.entity === entity && c.kind === 'delete' && wanted.has(c.entityId) && !c.sending);
+  if (keys.length === 0 && dropDeletes.length === 0) return state;
+  const tombstones = { ...state.tombstones };
+  const confirmed = { ...(state.confirmedDeletes ?? {}) };
+  for (const k of keys) {
+    delete tombstones[k];
+    delete confirmed[k];
+  }
+  const gone = new Set(dropDeletes.map((c) => c.operationId));
+  return { ...state, tombstones, confirmedDeletes: confirmed, commands: state.commands.filter((c) => !gone.has(c.operationId)) };
+}
+
 function pruneTombstones(t: Record<string, number>): Record<string, number> {
   const entries = Object.entries(t);
   if (entries.length <= MAX_TOMBSTONES) return t;
@@ -253,6 +320,13 @@ export function nextRetryDelayMs(attempts: number): number {
  * later commands for the same entity, so a follow-up edit is checked against
  * the version this one produced.
  */
+function confirmDelete(next: OutboxState, cmd: OutboxCommand, now: number): OutboxState {
+  if (cmd.kind !== 'delete') return next;
+  const k = key(cmd.entity, cmd.entityId);
+  if (next.tombstones[k] === undefined) return next;
+  return { ...next, confirmedDeletes: { ...(next.confirmedDeletes ?? {}), [k]: now } };
+}
+
 export function settle(state: OutboxState, operationId: string, outcome: DeliveryOutcome, now: number): OutboxState {
   const cmd = state.commands.find((c) => c.operationId === operationId);
   if (!cmd) return state;
@@ -263,7 +337,7 @@ export function settle(state: OutboxState, operationId: string, outcome: Deliver
     case 'applied': {
       const v = outcome.version ?? null;
       const commands = v === null ? rest : rest.map((c) => (c.entity === cmd.entity && c.entityId === cmd.entityId && c.kind !== 'create' ? { ...c, baseVersion: v } : c));
-      return { ...state, commands };
+      return pruneConfirmedTombstones(confirmDelete({ ...state, commands }, cmd, now), now);
     }
     case 'offline':
       return replace({}); // costs nothing; tried again on the next flush
@@ -272,7 +346,7 @@ export function settle(state: OutboxState, operationId: string, outcome: Deliver
     case 'gone':
       // The entity is not on the server: an update has nothing to land on, a
       // delete is already true. Either way the command is finished.
-      return { ...state, commands: rest };
+      return pruneConfirmedTombstones(confirmDelete({ ...state, commands: rest }, cmd, now), now);
     case 'conflict':
       return replace({ status: 'conflict', lastError: outcome.error });
     case 'retryable': {

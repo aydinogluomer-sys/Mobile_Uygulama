@@ -30,6 +30,8 @@ import {
 } from '../services/unifiedOutbox';
 import { haptic } from '../lib/haptics';
 import type { OutboxSummary } from '../lib/outbox';
+import { countQuarantined } from '../lib/outboxStorage';
+import { currentUser } from '../lib/session';
 import { EmblemMedallion, TexturedSurface } from './ui';
 import { EMPTY_VIGNETTES, TEXTURES } from '../lib/visualAssets';
 import { useReducedMotion } from './seasonalMotion/useReducedMotion';
@@ -59,17 +61,27 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
   const [flushOutcome, setFlushOutcome] = useState<FlushOutcome | null>(null);
   const [busyIssue, setBusyIssue] = useState<string | null>(null);
   const [confirmingDiscard, setConfirmingDiscard] = useState<string | null>(null);
+  const [quarantined, setQuarantined] = useState(0);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!visible) return;
+    let cancelled = false;
     setSummary(getUnifiedOutboxSummary());
     setIssues(listOutboxIssues());
+    void currentUser()
+      .then((u) => (u ? countQuarantined(u.id) : 0))
+      .then((n) => {
+        if (!cancelled) setQuarantined(n);
+      });
     const unsub = subscribeUnifiedOutbox(() => {
       setSummary(getUnifiedOutboxSummary());
       setIssues(listOutboxIssues());
     });
-    return unsub;
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, [visible]);
 
   // the pending "Emin misin?" never outlives the sheet
@@ -92,7 +104,11 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
       const after = await flushAllOutboxes();
       setSummary(after);
       setIssues(listOutboxIssues());
-      setFlushOutcome(describeFlushOutcome(after));
+      setFlushOutcome(
+        after.errors && Object.keys(after.errors).length > 0
+          ? { tone: 'attention', message: 'Bazı değişiklikler gönderilemedi; kalanlar sonra tekrar denenecek.' }
+          : describeFlushOutcome(after),
+      );
     } catch {
       setFlushOutcome({ tone: 'attention', message: 'Senkronizasyon sırasında bir sorun oluştu.' });
     } finally {
@@ -164,11 +180,16 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
                   color={isClean ? colors.success : colors.warning}
                 />
               </View>
-              <View>
+              <View style={s.headerText}>
                 <Text style={s.title}>Çevrimdışı Senkronizasyon</Text>
                 <Text style={s.sub}>
                   {isClean ? 'Tüm verileriniz güncel ve eşleşti.' : 'Bekleyen çevrimdışı işlemler var.'}
                 </Text>
+                {quarantined > 0 && (
+                  <Text style={s.quarantineNote} accessibilityLiveRegion="polite">
+                    {`Okunamayan ${quarantined} kayıt güvenli yerde saklandı.`}
+                  </Text>
+                )}
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={s.closeBtn} accessibilityRole="button" accessibilityLabel="Kapat">
@@ -333,6 +354,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerText: {
+    flex: 1,
+  },
   title: {
     ...font.title,
     fontSize: 16,
@@ -343,6 +367,11 @@ const s = StyleSheet.create({
     ...font.caption,
     color: colors.textDim,
     marginTop: 1,
+  },
+  quarantineNote: {
+    ...font.caption,
+    color: colors.textDim,
+    marginTop: 2,
   },
   closeBtn: {
     padding: 6,

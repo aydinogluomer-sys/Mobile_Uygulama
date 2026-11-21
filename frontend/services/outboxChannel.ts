@@ -21,7 +21,7 @@
  * could overwrite (see services/outboxRunner).
  */
 import {
-  emptyOutbox, enqueue, summary, newOperationId, retry as retryCommand, discard as discardCommand, clearAuthBlock,
+  emptyOutbox, enqueue, summary, newOperationId, retry as retryCommand, discard as discardCommand, clearAuthBlock, clearTombstones as clearTombstonesIn,
   type EnqueueInput, type OutboxCommand, type OutboxState, type OutboxSummary,
 } from '../lib/outbox';
 import type { OutboxStorage } from '../lib/outboxStorage';
@@ -46,6 +46,7 @@ export type OutboxChannel = {
   onApplied(fn: (cmd: OutboxCommand, version: string | null) => void): () => void;
   retry(operationId: string, baseVersion: string | null): Promise<void>;
   discard(operationId: string): Promise<void>;
+  clearTombstones(entity: string, ids: readonly string[]): Promise<void>;
   authRefreshed(): Promise<void>;
   /** Signed out / switched account: forget the in-memory copy (the saved one stays). */
   reset(): void;
@@ -147,6 +148,14 @@ export function createOutboxChannel(opts: {
     async discard(operationId) {
       if (!box) return;
       publish(discardCommand(box, operationId));
+      await save();
+    },
+    async clearTombstones(entity, ids) {
+      const live = await ensure();
+      if (!live || !box) return;
+      const next = clearTombstonesIn(box, entity, ids);
+      if (next === box) return;
+      publish(next);
       await save();
     },
     async authRefreshed() {

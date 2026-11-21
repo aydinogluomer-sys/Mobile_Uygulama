@@ -27,8 +27,8 @@ export function pendingNoteCommands(): OutboxCommand[] {
   return (coreOutbox.state()?.commands ?? []).filter((c) => c.entity === NOTE_ENTITY);
 }
 
-export async function createNote(input: { title: string; content: string; tags?: string[] }): Promise<Result & { id?: string }> {
-  const id = newOperationId();
+export async function createNote(input: { id?: string; title: string; content: string; tags?: string[] }): Promise<Result & { id?: string }> {
+  const id = input.id ?? newOperationId();
   const w = await coreOutbox.write({ entity: NOTE_ENTITY, entityId: id, kind: 'create', payload: { title: input.title, content: input.content, tags: input.tags ?? [] } });
   if (!w.ok) return w;
   await coreOutbox.flush();
@@ -52,6 +52,21 @@ export async function removeNote(id: string): Promise<Result> {
 
 export type ConflictChoice = 'mine' | 'theirs' | 'both';
 
+/** Deterministic v4-shaped UUID derived from a conflict command's operationId so retries do not duplicate the copy. */
+function conflictCopyId(operationId: string): string {
+  const chunks = [0, 1, 2, 3].map((seed) => {
+    let h = (0x811c9dc5 ^ seed) >>> 0;
+    const s = `conflict-copy:${seed}:${operationId}`;
+    for (let i = 0; i < s.length; i += 1) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, '0');
+  });
+  const hex = chunks.join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 /**
  * `mine`: this device's edit over the server's current version. `theirs`:
  * drop this device's edit. `both`: keep the server's note AND this device's
@@ -69,11 +84,15 @@ export async function resolveNoteConflict(id: string, choice: ConflictChoice, lo
     return { ok: true };
   }
   const p = cmd.payload as { title?: string; content?: string; tags?: string[] };
-  await coreOutbox.discard(cmd.operationId);
   const copy = await createNote({
+    id: conflictCopyId(cmd.operationId),
     title: `${p.title ?? localTitle} (çakışan sürüm)`,
     content: p.content ?? cur.data?.content ?? '',
     tags: p.tags ?? cur.data?.tags ?? [],
   });
-  return copy.ok ? { ok: true, copyId: copy.id } : { ok: false, error: copy.error };
+  if (!copy.ok) return { ok: false, error: copy.error };
+  // If the copy could not be saved on device, the conflict command holds the only durable local copy: keep it.
+  if (!copy.savedOnDevice) return { ok: false, error: 'Kopya cihaza kaydedilemedi; çakışma korunuyor, tekrar dene.' };
+  await coreOutbox.discard(cmd.operationId);
+  return { ok: true, copyId: copy.id };
 }

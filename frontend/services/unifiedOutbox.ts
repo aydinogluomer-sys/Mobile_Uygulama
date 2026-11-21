@@ -17,12 +17,15 @@ import { coreOutbox } from './coreOutbox';
  *                       goals, projects, reading list, OKRs, life area check-ins
  */
 
+export type UnifiedFlushChannel = 'habitLogs' | 'tasks' | 'core';
+
 export type UnifiedOutboxSummary = OutboxSummary & {
   channels: {
     habitLogs: { pending: number; dead: number };
     tasks: OutboxSummary;
     core: OutboxSummary;
   };
+  errors?: Partial<Record<UnifiedFlushChannel, string>>;
 };
 
 export function getUnifiedOutboxSummary(): UnifiedOutboxSummary {
@@ -69,14 +72,20 @@ export function subscribeUnifiedOutbox(listener: () => void): () => void {
 export async function flushAllOutboxes(): Promise<UnifiedOutboxSummary> {
   const logFlush = useLogStore.getState()?.flushPendingSync;
   const taskFlush = useTaskStore.getState()?.flush;
-
-  await Promise.all([
-    typeof logFlush === 'function' ? logFlush() : Promise.resolve(),
-    typeof taskFlush === 'function' ? taskFlush() : Promise.resolve(),
-    coreOutbox.flush(),
-  ]);
-
-  return getUnifiedOutboxSummary();
+  const jobs: [UnifiedFlushChannel, Promise<unknown>][] = [
+    ['habitLogs', Promise.resolve().then(() => (typeof logFlush === 'function' ? logFlush() : undefined))],
+    ['tasks', Promise.resolve().then(() => (typeof taskFlush === 'function' ? taskFlush() : undefined))],
+    ['core', Promise.resolve().then(() => coreOutbox.flush())],
+  ];
+  const settled = await Promise.allSettled(jobs.map(([, job]) => job));
+  const errors: Partial<Record<UnifiedFlushChannel, string>> = {};
+  settled.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      errors[jobs[i][0]] = r.reason instanceof Error ? r.reason.message : 'Bilinmeyen hata';
+    }
+  });
+  const summary = getUnifiedOutboxSummary();
+  return Object.keys(errors).length > 0 ? { ...summary, errors } : summary;
 }
 
 export function useUnifiedOutboxSync(): UnifiedOutboxSummary {

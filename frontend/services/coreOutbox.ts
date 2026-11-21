@@ -27,7 +27,7 @@ import { asyncStorageOutboxNs } from '../lib/outboxStorage';
 import type { DeliveryOutcome, OutboxCommand } from '../lib/outbox';
 import { clearReadCacheMemory } from '../lib/localReadCache';
 import { currentUser } from '../lib/session';
-import { fetchJournalEntry, upsertJournalEntry } from '../repositories/journalRepository';
+import { fetchJournalEntry, JOURNAL_CAS_MISMATCH, upsertJournalEntry } from '../repositories/journalRepository';
 import { insertNoteWithId, updateNoteVersioned, fetchNoteRow, deleteNoteIfPresent, type NoteRow } from '../repositories/noteRepository';
 import { insertRecoveryPlanRow, updateRecoveryPlanRow, deleteRecoveryPlanIfPresent } from '../repositories/recoveryRepository';
 import { insertFocusSessionRow } from '../repositories/focusSessionRepository';
@@ -56,19 +56,30 @@ export function contentVersion(text: string | null | undefined): string {
 
 const applied = (version?: string | null): DeliveryOutcome => ({ kind: 'applied', version: version ?? null });
 
+const JOURNAL_CAS_ROUNDS = 3;
+
 export const journalTransport: Transport = async (cmd) => {
   const p = cmd.payload as { content: string; mood?: number | null; ai_summary?: boolean };
-  const cur = await fetchJournalEntry(cmd.entityId);
-  if (!cur.ok) return classifyFailure(cur);
-  const server = cur.data?.content ?? '';
-  // Someone else wrote this day since the edit began (or wrote it while we
-  // thought it was empty): keep both sides, let the user choose.
-  if (server.trim() !== '' && server !== p.content && contentVersion(server) !== (cmd.baseVersion ?? contentVersion(''))) {
-    return { kind: 'conflict', error: 'Bu günün kaydı başka bir yerde değiştirilmiş.' };
+  for (let round = 0; round < JOURNAL_CAS_ROUNDS; round += 1) {
+    const cur = await fetchJournalEntry(cmd.entityId);
+    if (!cur.ok) return classifyFailure(cur);
+    const server = cur.data?.content ?? '';
+    // Someone else wrote this day since the edit began (or wrote it while we
+    // thought it was empty): keep both sides, let the user choose (R02.05, T08).
+    if (server.trim() !== '' && server !== p.content && contentVersion(server) !== (cmd.baseVersion ?? contentVersion(''))) {
+      return { kind: 'conflict', error: 'Bu günün kaydı başka bir yerde değiştirilmiş.' };
+    }
+    const res = await upsertJournalEntry(
+      { date: cmd.entityId, content: p.content, mood: p.mood ?? null, aiSummary: p.ai_summary },
+      cmd.userId,
+      { baseContent: cur.data ? cur.data.content : null },
+    );
+    if (res.ok) return applied(contentVersion(res.data.content));
+    // Another writer raced between fetchJournalEntry and upsertJournalEntry: re-evaluate.
+    if (res.code === JOURNAL_CAS_MISMATCH || res.code === '23505') continue;
+    return classifyFailure(res);
   }
-  const res = await upsertJournalEntry({ date: cmd.entityId, content: p.content, mood: p.mood ?? null, aiSummary: p.ai_summary }, cmd.userId);
-  if (!res.ok) return classifyFailure(res);
-  return applied(contentVersion(res.data.content));
+  return { kind: 'conflict', error: 'Bu günün kaydı sürekli değişiyor; iki sürüm korunuyor.' };
 };
 
 const holds = (row: NoteRow, payload: Record<string, unknown>) =>
@@ -126,6 +137,10 @@ export const focusSessionTransport: Transport = async (cmd: OutboxCommand) => {
   return classifyFailure(res);
 };
 
+// F19 (SYN-17): scalar entities below (`goals`, `projects`, `reading_list`, `key_results`,
+// `recovery_plans`, `life_area_logs`) have no `updated_at` + `set_updated_at` trigger in the
+// live schema, and outbox updates carry only the changed fields, so field-level last-write-wins
+// is intentional (Calm-Tech: scalar progress/status/rating never prompts a conflict modal).
 export const goalTransport: Transport = async (cmd) => {
   if (cmd.kind === 'create') {
     const p = cmd.payload as {

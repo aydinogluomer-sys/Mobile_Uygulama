@@ -5,6 +5,7 @@ import {
   emptyOutbox, enqueue, ready, settle, retry, discard, summary, overlay, hasPending, clearAuthBlock,
   stableJson, newOperationId, MAX_ATTEMPTS, MAX_TOMBSTONES, nextRetryDelayMs,
   nextReadyAt, retryableDelayMs, RETRYABLE_GIVE_UP_MS, markSending,
+  CONFIRMED_TOMBSTONE_GRACE_MS, clearTombstones, pruneConfirmedTombstones,
   type OutboxState, type EnqueueInput,
 } from '../../lib/outbox';
 
@@ -88,6 +89,120 @@ describe('delete and tombstones', () => {
     for (let i = 0; i < MAX_TOMBSTONES + 30; i++) s = q(s, op({ entityId: `d${i}`, kind: 'delete' }));
     expect(Object.keys(s.tombstones)).toHaveLength(MAX_TOMBSTONES);
     expect(s.tombstones[`task|d${MAX_TOMBSTONES + 29}`]).toBeDefined();
+  });
+
+  it('F19 (SYN-05): confirmed delete keeps tombstone during grace window, then expires it', () => {
+    let s = q(emptyOutbox(U), op({ operationId: 'del-1', entityId: 't-del', kind: 'delete' }));
+    expect(s.confirmedDeletes).toBeUndefined();
+
+    // Unconfirmed delete also drops a create of the same id
+    expect(enqueue(s, op({ entityId: 't-del', kind: 'create', payload: { title: 'premature' } }), U, T0)).toMatchObject({
+      ok: true,
+      effect: 'dropped_tombstoned',
+    });
+
+    s = settle(s, 'del-1', { kind: 'applied' }, T0);
+    expect(s.confirmedDeletes?.['task|t-del']).toBe(T0);
+
+    // Within grace window: late update is still dropped
+    const beforeGrace = enqueue(s, op({ entityId: 't-del', kind: 'update', payload: { title: 'echo' } }), U, T0 + CONFIRMED_TOMBSTONE_GRACE_MS - 1);
+    expect(beforeGrace.ok && beforeGrace.effect).toBe('dropped_tombstoned');
+
+    // After grace window: tombstone is pruned so the id is no longer haunted
+    const pruned = pruneConfirmedTombstones(s, T0 + CONFIRMED_TOMBSTONE_GRACE_MS);
+    expect(pruned.tombstones['task|t-del']).toBeUndefined();
+    expect(pruned.confirmedDeletes?.['task|t-del']).toBeUndefined();
+
+    // Enqueueing after grace window also prunes expired confirmed tombstones
+    const afterGrace = enqueue(s, op({ entityId: 't-del', kind: 'update', payload: { title: 'fresh' } }), U, T0 + CONFIRMED_TOMBSTONE_GRACE_MS);
+    expect(afterGrace.ok && afterGrace.effect).toBe('queued');
+  });
+
+  it('F19 (SYN-05): gone outcome on delete also records confirmedDeletes; create on confirmed tombstone re-queues immediately', () => {
+    let s = q(emptyOutbox(U), op({ operationId: 'del-g', entityId: 't-restore', kind: 'delete' }));
+    s = settle(s, 'del-g', { kind: 'gone' }, T0);
+    expect(s.confirmedDeletes?.['task|t-restore']).toBe(T0);
+
+    // Restoring/recreating with the same id during grace clears tombstone and queues create
+    const restored = enqueue(s, op({ entityId: 't-restore', kind: 'create', payload: { title: 'restored' } }), U, T0 + 1_000);
+    expect(restored.ok && restored.effect).toBe('queued');
+    if (restored.ok) {
+      expect(restored.state.tombstones['task|t-restore']).toBeUndefined();
+      expect(restored.state.confirmedDeletes?.['task|t-restore']).toBeUndefined();
+      expect(overlay(restored.state, 'task', [])).toEqual([{ id: 't-restore', title: 'restored' }]);
+    }
+  });
+
+  it('F19 (SYN-05): clearTombstones removes tombstones and unsent deletes, but leaves sending deletes untouched', () => {
+    let s = q(emptyOutbox(U), op({ operationId: 'd-wait', entityId: 't-1', kind: 'delete' }));
+    s = q(s, op({ operationId: 'd-fly', entityId: 't-2', kind: 'delete' }));
+    s = markSending(s, 'd-fly');
+    s = q(s, op({ operationId: 'd-done', entityId: 't-3', kind: 'delete' }));
+    s = settle(s, 'd-done', { kind: 'applied' }, T0);
+
+    const cleared = clearTombstones(s, 'task', ['t-1', 't-2', 't-3']);
+    expect(cleared.tombstones['task|t-1']).toBeUndefined();
+    expect(cleared.tombstones['task|t-3']).toBeUndefined();
+    expect(cleared.confirmedDeletes?.['task|t-3']).toBeUndefined();
+    expect(cleared.commands.map((c) => c.operationId)).toEqual(['d-fly']);
+    // No-op returns exact same reference
+    expect(clearTombstones(cleared, 'task', ['non-existent'])).toBe(cleared);
+  });
+
+  it('F19 (SYN-05 / SYN-17): cancelled unsent create leaves NO tombstone; sending create is NOT cancelled', () => {
+    const created = q(emptyOutbox(U), op({ operationId: 'c-1', entityId: 'never-sent', kind: 'create' }));
+    const cancelled = enqueue(created, op({ entityId: 'never-sent', kind: 'delete' }), U, T0);
+    expect(cancelled.ok && cancelled.effect).toBe('cancelled');
+    if (cancelled.ok) {
+      expect(cancelled.state.commands).toHaveLength(0);
+      expect(cancelled.state.tombstones['task|never-sent']).toBeUndefined();
+    }
+
+    // In-flight create cannot be cancelled: delete queues behind it
+    const flying = markSending(created, 'c-1');
+    const queuedBehind = enqueue(flying, op({ operationId: 'd-behind', entityId: 'never-sent', kind: 'delete' }), U, T0);
+    expect(queuedBehind.ok && queuedBehind.effect).toBe('queued');
+    if (queuedBehind.ok) {
+      expect(queuedBehind.state.commands.map((c) => c.operationId)).toEqual(['c-1', 'd-behind']);
+    }
+  });
+
+  it('F19 (SYN-17): delete supersedes dead create and cascades its dependants without touching unrelated commands', () => {
+    let s = q(emptyOutbox(U), op({ operationId: 'obj-c', entity: 'okr_objective', entityId: 'o1', kind: 'create' }));
+    s = q(s, op({ operationId: 'kr-c', entity: 'key_result', entityId: 'kr1', kind: 'create', dependsOn: ['obj-c'] }));
+    s = q(s, op({ operationId: 'kr-upd', entity: 'key_result', entityId: 'kr2', kind: 'create', dependsOn: ['kr-c'] }));
+    s = q(s, op({ operationId: 'other', entity: 'goal', entityId: 'g1', kind: 'create' }));
+    for (let i = 0; i < MAX_ATTEMPTS; i++) s = settle(s, 'obj-c', { kind: 'rejected', error: '422' }, T0);
+    expect(s.commands.find((c) => c.operationId === 'obj-c')?.status).toBe('dead');
+
+    const r = enqueue(s, op({ entity: 'okr_objective', entityId: 'o1', kind: 'delete' }), U, T0);
+    expect(r.ok && r.effect).toBe('cancelled');
+    if (r.ok) {
+      expect(r.state.commands.map((c) => c.operationId)).toEqual(['other']);
+      expect(r.state.tombstones['okr_objective|o1']).toBeUndefined();
+    }
+  });
+
+  it('F19 (SYN-17): delete supersedes conflicted or dead updates so the delete is immediately ready()', () => {
+    // Conflict predecessor
+    let sc = q(emptyOutbox(U), op({ operationId: 'u-conf', entityId: 'n1', kind: 'update', payload: { title: 'local' } }));
+    sc = settle(sc, 'u-conf', { kind: 'conflict', error: 'moved' }, T0);
+    const afterConfDel = q(sc, op({ operationId: 'd-conf', entityId: 'n1', kind: 'delete' }));
+    expect(afterConfDel.commands.map((c) => c.operationId)).toEqual(['d-conf']);
+    expect(ready(afterConfDel, T0).map((c) => c.operationId)).toEqual(['d-conf']);
+
+    // Dead update predecessor
+    let sd = q(emptyOutbox(U), op({ operationId: 'u-dead', entityId: 'n2', kind: 'update', payload: { title: 'bad' } }));
+    for (let i = 0; i < MAX_ATTEMPTS; i++) sd = settle(sd, 'u-dead', { kind: 'rejected', error: 'bad' }, T0);
+    expect(sd.commands[0].status).toBe('dead');
+    const afterDeadDel = q(sd, op({ operationId: 'd-dead', entityId: 'n2', kind: 'delete' }));
+    expect(afterDeadDel.commands.map((c) => c.operationId)).toEqual(['d-dead']);
+    expect(ready(afterDeadDel, T0).map((c) => c.operationId)).toEqual(['d-dead']);
+
+    // Legacy persisted blob without confirmedDeletes still works
+    const legacy: OutboxState = { userId: U, commands: [], nextSeq: 5, tombstones: { 'task|old': 2 }, authBlocked: false };
+    expect(pruneConfirmedTombstones(legacy, T0)).toBe(legacy);
+    expect(enqueue(legacy, op({ entityId: 'old', kind: 'update' }), U, T0)).toMatchObject({ ok: true, effect: 'dropped_tombstoned' });
   });
 });
 

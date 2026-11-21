@@ -63,8 +63,11 @@ export async function resolveJournalConflict(date: string, choice: ConflictChoic
   const mine = String((cmd.payload as { content?: string }).content ?? '');
   if (choice === 'theirs') { await coreOutbox.discard(cmd.operationId); return { ok: true }; }
   if (choice === 'mine') { await coreOutbox.retry(cmd.operationId, contentVersion(theirs)); await coreOutbox.flush(); return { ok: true }; }
-  await coreOutbox.discard(cmd.operationId);
   const both = `${theirs.trim()}\n\n— Bu cihazdaki sürüm —\n${mine.trim()}`;
   const r = await saveJournalEntry({ date, content: both, mood: server.data?.mood ?? null, baseContent: theirs });
-  return r.ok ? { ok: true } : { ok: false, error: r.error };
+  if (!r.ok) return { ok: false, error: r.error };
+  if (!r.savedOnDevice) return { ok: false, error: 'Birleşik metin cihaza kaydedilemedi; çakışma korunuyor, tekrar dene.' };
+  await coreOutbox.discard(cmd.operationId);
+  await coreOutbox.flush(); // merged command waited behind the conflicted predecessor (outbox.ts ready())
+  return { ok: true };
 }

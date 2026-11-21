@@ -11,7 +11,7 @@ import type { Cursor } from '../repositories/shared';
 import { todayLocal } from '../lib/date';
 // R02 — local-first writes through the durable, per-account outbox.
 import {
-  emptyOutbox, enqueue, overlay, summary, newOperationId, retry as retryCommand, discard as discardCommand, clearAuthBlock,
+  emptyOutbox, enqueue, overlay, summary, newOperationId, retry as retryCommand, discard as discardCommand, clearAuthBlock, clearTombstones as clearTombstonesIn,
   type EnqueueInput, type OutboxState, type OutboxSummary,
 } from '../lib/outbox';
 import { asyncStorageOutbox, type OutboxStorage } from '../lib/outboxStorage';
@@ -52,6 +52,7 @@ type TaskStore = {
   /** A conflicted/dead change: try again over the server's current version, or give it up. */
   retryChange: (operationId: string) => Promise<void>;
   discardChange: (operationId: string) => Promise<void>;
+  clearTombstones: (ids: readonly string[]) => Promise<void>;
   /** Credentials were refreshed: an outbox paused on `auth` may run again. */
   authRefreshed: () => Promise<void>;
   /** Signed out / switched account: drop this account's tasks from memory (its outbox stays saved under its key). */
@@ -247,6 +248,16 @@ export const useTaskStore = create<TaskStore>((set, get) => {
     await storage.save(next);
     set({ outbox: next, sync: summary(next) });
     await get().fetchTasks();
+  },
+
+  clearTombstones: async (ids) => {
+    const box = await ensureOutbox();
+    if (!box) return;
+    const live = get().outbox ?? box;
+    const next = clearTombstonesIn(live, 'task', ids);
+    if (next === live) return;
+    set({ outbox: next, sync: summary(next) });
+    try { await storage.save(next); } catch { /* in memory is enough; written by the next save */ }
   },
 
   authRefreshed: async () => {
