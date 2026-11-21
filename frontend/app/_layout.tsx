@@ -10,7 +10,8 @@ import { ActivityIndicator, AppState, Platform, View, type AppStateStatus } from
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
-import { supabase, SUPABASE_CONFIG_ERROR } from '../lib/supabase';
+import { publicEnvStatus, supabase, SUPABASE_CONFIG_ERROR } from '../lib/supabase';
+import ConfigErrorScreen from '../components/ConfigErrorScreen';
 // F06 (SYN-02, SYN-23, NAV-04) — a boot that survives an offline start, a hang and a missing config.
 import { resolveBootSession, BOOT_WATCHDOG_MS } from '../lib/bootSession';
 import { readStoredSession } from '../lib/session';
@@ -60,7 +61,18 @@ installGlobalErrorHandlers();
 // davranır (geliştirmede console sink, üretimde sessizlik).
 initCrashReporting();
 
+/**
+ * F08 (BLD-02): a build without its public Supabase configuration shows a calm, static
+ * "Yapılandırma eksik" screen instead of booting. The check sits OUTSIDE the component that holds
+ * the hooks (Rules of Hooks: an early return before them would change the hook order), and
+ * ConfigErrorScreen needs nothing that could itself fail (react-native and tokens only).
+ */
 export default function RootLayout() {
+  if (!publicEnvStatus.ok) return <ConfigErrorScreen missing={publicEnvStatus.missing} />;
+  return <RootLayoutInner />;
+}
+
+function RootLayoutInner() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();

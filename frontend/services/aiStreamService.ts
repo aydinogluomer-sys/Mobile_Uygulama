@@ -15,6 +15,7 @@
  *    streaming is disabled.
  */
 import { withEdgeDeadline } from '../lib/edgeCall';
+import { readPublicEnvLoose } from '../lib/env';
 import { supabase } from '../lib/supabase';
 
 export type SseFrame = {
@@ -98,8 +99,8 @@ function isJestMockedInvoke(): boolean {
 
 export async function invokeAiWithStream(opts: InvokeStreamOptions): Promise<InvokeStreamResult> {
   const label = opts.label ?? 'AI Koç';
-  const envUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
-  const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+  // F08 (BLD-02): the one env reader (lib/env.ts); empty when missing, read at call time, never throws
+  const { url: envUrl, anon: anonKey } = readPublicEnvLoose();
   const SUPABASE_FUNCTIONS_URL =
     opts.forceStreamFetchUrl ??
     (envUrl ? `${envUrl.replace(/\/$/, '')}/functions/v1` : '');

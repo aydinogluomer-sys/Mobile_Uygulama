@@ -240,9 +240,10 @@ test('taskStore Task tipi kullanılıyor', () => adhd.includes('taskStore'));
 // uygulamanın çalışma anında yüzeye çıkardığı bir şeydir, yapısal bir geçidin
 // iddia edebileceği bir şey değil.
 console.log('\n🔌 11. Supabase & Env');
+const envSrc = read('./lib/env.ts');
 const sl = read('./lib/supabase.ts');
-test('SUPABASE_URL ortam değişkeninden okunuyor', () => sl.includes('EXPO_PUBLIC_SUPABASE_URL'));
-test('ANON_KEY ortam değişkeninden okunuyor', () => sl.includes('EXPO_PUBLIC_SUPABASE_ANON_KEY'));
+test('SUPABASE_URL ortam değişkeninden okunuyor', () => envSrc.includes('EXPO_PUBLIC_SUPABASE_URL'));
+test('ANON_KEY ortam değişkeninden okunuyor', () => envSrc.includes('EXPO_PUBLIC_SUPABASE_ANON_KEY'));
 test('createClient çağrısı', () => sl.includes('createClient'));
 
 // 12. CommandPalette

@@ -4,10 +4,21 @@ import { authStorage } from './authStorage';
 import type { Database } from './database.types';
 import { Platform } from 'react-native';
 import { signalOnSuccess } from './networkSignal';
-import { AUTH_STORAGE_KEY, CONFIG_MISSING_URL } from './authStorageKey';
+import { AUTH_STORAGE_KEY } from './authStorageKey';
+import {
+  inspectPublicEnv,
+  PLACEHOLDER_SUPABASE_KEY,
+  PLACEHOLDER_SUPABASE_URL,
+  rawPublicEnv,
+  type PublicEnvStatus,
+} from './env';
 
-const rawUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const rawAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+/**
+ * F08 (BLD-02): the environment is validated in lib/env.ts (names only, never values). The root
+ * layout shows ConfigErrorScreen when this is not ok; this module itself never throws on a missing
+ * configuration.
+ */
+export const publicEnvStatus: PublicEnvStatus = inspectPublicEnv(rawPublicEnv());
 
 /**
  * F06 (SYN-23): non-null when the build has no Supabase configuration; the root layout then shows
@@ -15,11 +26,11 @@ const rawAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
  * loading, which took the whole app down before any screen (or error reporter) could render.
  */
 export const SUPABASE_CONFIG_ERROR: string | null =
-  rawUrl && rawAnonKey ? null : 'EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_ANON_KEY tanımlı değil.';
+  publicEnvStatus.ok ? null : 'EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_ANON_KEY tanımlı değil.';
 
 // placeholders only when the configuration is missing: no request to them ever succeeds
-const supabaseUrl = rawUrl || CONFIG_MISSING_URL;
-const supabaseAnonKey = rawAnonKey || 'config-missing';
+const supabaseUrl = publicEnvStatus.ok ? publicEnvStatus.env.supabaseUrl : PLACEHOLDER_SUPABASE_URL;
+const supabaseAnonKey = publicEnvStatus.ok ? publicEnvStatus.env.supabaseAnonKey : PLACEHOLDER_SUPABASE_KEY;
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
