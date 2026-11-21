@@ -172,4 +172,14 @@ describe('F04 (SYN-07, SYN-08): deletion goes through the account registry', () 
     expect(mockReadCache.userCleared).toEqual([]);
     expect(mockReadCache.allCleared).toBe(0);
   });
+
+  it('F19 (SYN-04): sweeps both outbox and habit syncQueue quarantine keys on confirmed account deletion', async () => {
+    await AsyncStorage.setItem('outbox.v1.u1.quarantine.1', '{"corrupt":true}');
+    await AsyncStorage.setItem('atlas_sync_queue_v1:u1.quarantine.2', '{"corrupt":true}');
+    await AsyncStorage.setItem('app_theme_dark', '1');
+
+    expect((await deleteAccount()).ok).toBe(true);
+    const remaining = await AsyncStorage.getAllKeys();
+    expect(remaining).toEqual(['app_theme_dark']);
+  });
 });

@@ -11,9 +11,13 @@
  * explicit filter matters here more than anywhere: a policy change that
  * loosened `journal_entries` would have leaked through this query silently.
  */
-import type { TableInsert } from '../lib/database.types';
+import type { TableInsert, TableUpdate } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
 import { currentUserId, isTransportFailure, wrongAccountFor, type RepoResult } from './shared';
+
+export const JOURNAL_CAS_MISMATCH = 'CAS_MISMATCH';
+/** `baseContent: null` means the row did not exist when read. */
+export type JournalWriteGuard = { baseContent: string | null };
 
 export type JournalEntryRow = {
   id: string;
@@ -93,12 +97,16 @@ export async function fetchJournalEntry(date: string): Promise<RepoResult<Journa
  * `user_id` is supplied here, never by the caller, so the conflict target
  * cannot be satisfied against another account's row.
  */
-export async function upsertJournalEntry(input: {
-  date: string;
-  content: string;
-  mood?: number | null;
-  aiSummary?: boolean;
-}, expectedUserId?: string): Promise<RepoResult<JournalEntryRow>> {
+export async function upsertJournalEntry(
+  input: {
+    date: string;
+    content: string;
+    mood?: number | null;
+    aiSummary?: boolean;
+  },
+  expectedUserId?: string,
+  guard?: JournalWriteGuard,
+): Promise<RepoResult<JournalEntryRow>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   // R02.06 — a queued entry is only ever written as the account that queued it.
@@ -111,6 +119,34 @@ export async function upsertJournalEntry(input: {
     mood: input.mood ?? null,
   };
   if (input.aiSummary !== undefined) row.ai_summary = input.aiSummary;
+
+  if (guard !== undefined && guard.baseContent === null) {
+    // Row did not exist on read: insert only. A concurrent writer triggers UNIQUE(user_id, date) -> 23505.
+    const { data, error, status } = await supabase
+      .from('journal_entries')
+      .insert(row)
+      .select(COLS)
+      .single();
+    if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
+    return { ok: true, data: data as unknown as JournalEntryRow };
+  }
+  if (guard !== undefined) {
+    // Row existed on read: compare-and-swap against the exact content we read.
+    const patch: TableUpdate<'journal_entries'> = { content: input.content, mood: input.mood ?? null };
+    if (input.aiSummary !== undefined) patch.ai_summary = input.aiSummary;
+    const { data, error, status } = await supabase
+      .from('journal_entries')
+      .update(patch)
+      .eq('user_id', u.userId)
+      .eq('date', input.date)
+      .eq('content', guard.baseContent)
+      .select(COLS)
+      .maybeSingle();
+    if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
+    if (!data) return { ok: false, error: 'Bu günün kaydı başka bir yerde değişti.', status: 409, code: JOURNAL_CAS_MISMATCH };
+    return { ok: true, data: data as unknown as JournalEntryRow };
+  }
+
   const { data, error, status } = await supabase
     .from('journal_entries')
     .upsert(row, { onConflict: 'user_id,date' })

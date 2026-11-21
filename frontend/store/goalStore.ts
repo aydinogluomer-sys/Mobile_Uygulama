@@ -6,7 +6,7 @@ import {
   archiveGoal as repoArchive,
   deleteGoal as repoDelete,
   fetchGoalsPage,
-  insertGoal,
+  insertGoalWithId,
   updateGoalProgress,
   type GoalKind,
   type GoalRow,
@@ -141,7 +141,19 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
 
   addGoal: async (g) => {
     const clampedProgress = Math.max(0, Math.min(100, Math.round(g.progress ?? 0)));
-    const res = await insertGoal(g);
+    // F19 (STO-11): mint id BEFORE the first attempt so a lost response (status 0 after commit)
+    // queues the outbox create with the same id and settles via 23505 on replay.
+    const id = newOperationId();
+    const payload = {
+      kind: g.kind,
+      title: g.title,
+      progress: clampedProgress,
+      year: g.year ?? null,
+      quarter: g.quarter ?? null,
+      month: g.month ?? null,
+      archived: false,
+    };
+    const res = await insertGoalWithId({ id, ...payload });
     if (res.ok) {
       set((s) => {
         const nextGoals = [res.data, ...s.goals];
@@ -153,17 +165,7 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
       return true;
     }
     if (res.offline) {
-      const id = newOperationId();
       const uid = (await safeUserId()) ?? '';
-      const payload = {
-        kind: g.kind,
-        title: g.title,
-        progress: clampedProgress,
-        year: g.year ?? null,
-        quarter: g.quarter ?? null,
-        month: g.month ?? null,
-        archived: false,
-      };
       const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'create', payload });
       if (queued.ok) {
         const optimistic: Goal = {

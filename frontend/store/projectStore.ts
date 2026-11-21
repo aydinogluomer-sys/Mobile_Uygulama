@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import {
   archiveProject,
   fetchProjectsPage,
-  insertProject,
+  insertProjectWithId,
   updateProject as repoUpdate,
   type ProjectRow,
 } from '../repositories/projectRepository';
@@ -147,7 +147,14 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   addProject: async ({ name, color, description }) => {
-    const res = await insertProject({ name, color, description });
+    const id = newOperationId();
+    const payload = {
+      name,
+      color,
+      description: description ?? null,
+      status: 'active' as const,
+    };
+    const res = await insertProjectWithId({ id, ...payload });
     if (res.ok) {
       const row = res.data as Project;
       set((s) => {
@@ -160,14 +167,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       return row;
     }
     if (res.offline) {
-      const id = newOperationId();
       const uid = (await safeUserId()) ?? '';
-      const payload = {
-        name,
-        color,
-        description: description ?? null,
-        status: 'active' as const,
-      };
       const queued = await coreOutbox.write({ entity: PROJECT_ENTITY, entityId: id, kind: 'create', payload });
       if (queued.ok) {
         const optimistic: Project = {

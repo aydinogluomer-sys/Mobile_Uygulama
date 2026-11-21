@@ -4,8 +4,8 @@ import {
   deleteKeyResult,
   deleteObjective,
   fetchOkrs,
-  insertKeyResult,
-  insertObjective,
+  insertKeyResultWithId,
+  insertObjectiveWithId,
   updateKeyResultValue,
   type KeyResultRow,
   type OkrRow,
@@ -152,15 +152,15 @@ export const useOKRStore = create<OKRStore>((set, get) => ({
   addObjective: async (objective, year, quarter) => {
     const text = objective.trim();
     if (!text) return false;
-    const res = await insertObjective({ objective: text, year, quarter });
+    const id = newOperationId();
+    const payload = { objective: text, year, quarter };
+    const res = await insertObjectiveWithId({ id, ...payload });
     if (res.ok) {
       commit(set, get, (s) => ({ okrs: [{ ...res.data, key_results: [] }, ...s.okrs], error: null }));
       return true;
     }
     if (res.offline) {
-      const id = newOperationId();
       const uid = (await safeUserId()) ?? '';
-      const payload = { objective: text, year, quarter };
       const queued = await coreOutbox.write({ entity: OKR_OBJECTIVE_ENTITY, entityId: id, kind: 'create', payload });
       if (queued.ok) {
         const optimistic: OKR = {
@@ -182,6 +182,8 @@ export const useOKRStore = create<OKRStore>((set, get) => ({
     const text = title.trim();
     if (!text || !(target > 0)) return false;
     const cleanUnit = unit?.trim() || null;
+    const id = newOperationId();
+    const payload = { okr_id: okrId, title: text, current_value: 0, target_value: target, unit: cleanUnit };
 
     await coreOutbox.ensure();
     const box = coreOutbox.state();
@@ -189,9 +191,7 @@ export const useOKRStore = create<OKRStore>((set, get) => ({
       (c) => c.entity === OKR_OBJECTIVE_ENTITY && c.entityId === okrId && c.kind === 'create',
     );
     if (pendingObjCmd) {
-      const id = newOperationId();
       const uid = (await safeUserId()) ?? '';
-      const payload = { okr_id: okrId, title: text, current_value: 0, target_value: target, unit: cleanUnit };
       const queued = await coreOutbox.write({
         entity: KEY_RESULT_ENTITY,
         entityId: id,
@@ -209,7 +209,7 @@ export const useOKRStore = create<OKRStore>((set, get) => ({
       return true;
     }
 
-    const res = await insertKeyResult({ okrId, title: text, targetValue: target, unit: cleanUnit });
+    const res = await insertKeyResultWithId({ id, ...payload });
     if (res.ok) {
       commit(set, get, (s) => ({
         okrs: s.okrs.map((o) => (o.id === okrId ? { ...o, key_results: [...o.key_results, res.data] } : o)),
@@ -218,9 +218,7 @@ export const useOKRStore = create<OKRStore>((set, get) => ({
       return true;
     }
     if (res.offline) {
-      const id = newOperationId();
       const uid = (await safeUserId()) ?? '';
-      const payload = { okr_id: okrId, title: text, current_value: 0, target_value: target, unit: cleanUnit };
       const queued = await coreOutbox.write({ entity: KEY_RESULT_ENTITY, entityId: id, kind: 'create', payload });
       if (queued.ok) {
         const optimistic: KeyResult = { id, user_id: uid, ...payload, created_at: new Date().toISOString() };
