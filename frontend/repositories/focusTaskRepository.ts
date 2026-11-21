@@ -1,19 +1,22 @@
 /**
  * `focus_tasks` reads.  (Phase 1 repository layer, plan §5 Rule 4)
  */
+import type { TableRow } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
 import { currentUserId, deleteOwned, updateOwned, type RepoResult } from './shared';
 
-export type FocusTaskRow = {
-  id: string;
-  user_id: string;
-  title: string | null;
-  completed: boolean | null;
-  estimated_pomodoros: number | null;
-  completed_pomodoros: number | null;
-  total_focus_seconds: number | null;
-  created_at: string;
-};
+/** The focus_tasks columns the focus service reads (the full Row also has selected, color, updated_at). */
+export type FocusTaskRow = Pick<
+  TableRow<'focus_tasks'>,
+  | 'id'
+  | 'user_id'
+  | 'title'
+  | 'completed'
+  | 'estimated_pomodoros'
+  | 'completed_pomodoros'
+  | 'total_focus_seconds'
+  | 'created_at'
+>;
 
 /**
  * Every column, oldest task first -- source for `FocusSettingsModal`'s full
@@ -56,7 +59,7 @@ export async function insertFocusTask(input: {
     .select('*')
     .single();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data as unknown as FocusTaskRow };
+  return { ok: true, data };
 }
 
 export async function completeFocusTask(id: string): Promise<RepoResult<FocusTaskRow>> {

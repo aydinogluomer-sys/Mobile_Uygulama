@@ -1,24 +1,18 @@
 import { registerAccountScoped } from '../lib/accountScope';
-import { getOrInitSubscription, mockActivateSubscription } from '../repositories/subscriptionRepository';
-import { create } from 'zustand';
+import {
+  getOrInitSubscription,
+  mockActivateSubscription,
+  type SubscriptionRow,
+} from '../repositories/subscriptionRepository';
+import { create, type StoreApi } from 'zustand';
 import type { Tier, BillingPeriod } from '../lib/subscription';
-
-type SubRow = {
-  tier: Tier;
-  billing_period: BillingPeriod | null;
-  status: 'active' | 'expired' | 'cancelled';
-  focus_points: number;
-  monthly_grant: number;
-  credits_period_end: string | null;
-  sub_period_end: string | null;
-};
 
 type SubscriptionStore = {
   tier: Tier;
   focusPoints: number;
   monthlyGrant: number;
   billingPeriod: BillingPeriod | null;
-  status: SubRow['status'];
+  status: SubscriptionRow['status'];
   creditsPeriodEnd: string | null;
   subPeriodEnd: string | null;
   loading: boolean;
@@ -31,7 +25,7 @@ type SubscriptionStore = {
   activateMock: (tier: Exclude<Tier, 'free'>, period: BillingPeriod) => Promise<boolean>;
 };
 
-function apply(set: any, row: SubRow) {
+function apply(set: StoreApi<SubscriptionStore>['setState'], row: SubscriptionRow) {
   set({
     tier: row.tier,
     focusPoints: row.focus_points,
@@ -57,13 +51,13 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
   fetch: async () => {
     set({ loading: true });
     const res = await getOrInitSubscription();
-    if (res.ok) apply(set, res.data as unknown as SubRow);
+    if (res.ok) apply(set, res.data);
     set({ loading: false, loaded: true });
   },
 
   refresh: async () => {
     const res = await getOrInitSubscription();
-    if (res.ok) apply(set, res.data as unknown as SubRow);
+    if (res.ok) apply(set, res.data);
   },
 
   // AI çağrısı bakiyeyi döndürünce anlık güncelle (ekstra RPC'siz)
@@ -83,7 +77,7 @@ export const useSubscriptionStore = create<SubscriptionStore>((set, get) => ({
     if (!__DEV__) return false;
     const res = await mockActivateSubscription(tier, period);
     if (!res.ok) return false;
-    apply(set, res.data as unknown as SubRow);
+    apply(set, res.data);
     return true;
   },
 }));

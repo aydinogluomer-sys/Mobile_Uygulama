@@ -10,17 +10,11 @@
  * and discarded the result, so a rejected write left the UI showing willpower
  * the server had not recorded as spent.
  */
+import type { TableRow } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
 import { currentUserId, type RepoResult } from './shared';
 
-export type WillpowerStateRow = {
-  user_id: string;
-  state_date: string;
-  daily_budget: number;
-  used: number;
-  focus_capacity: number;
-  active_count: number;
-};
+export type WillpowerStateRow = TableRow<'willpower_state'>;
 
 const DEFAULTS = { daily_budget: 15, used: 0, focus_capacity: 3, active_count: 0 };
 
@@ -38,7 +32,7 @@ export async function fetchOrCreateWillpowerState(
     .eq('state_date', date)
     .maybeSingle();
   if (existing.error) return { ok: false, error: existing.error.message };
-  if (existing.data) return { ok: true, data: existing.data as unknown as WillpowerStateRow };
+  if (existing.data) return { ok: true, data: existing.data };
 
   const created = await supabase
     .from('willpower_state')
@@ -46,7 +40,7 @@ export async function fetchOrCreateWillpowerState(
     .select('*')
     .single();
   if (created.error) return { ok: false, error: created.error.message };
-  return { ok: true, data: created.data as unknown as WillpowerStateRow };
+  return { ok: true, data: created.data };
 }
 
 export async function updateWillpowerState(
@@ -64,5 +58,5 @@ export async function updateWillpowerState(
     .maybeSingle();
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: 'İrade durumu bulunamadı.' };
-  return { ok: true, data: data as unknown as WillpowerStateRow };
+  return { ok: true, data };
 }

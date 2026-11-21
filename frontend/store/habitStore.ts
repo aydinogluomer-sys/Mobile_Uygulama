@@ -381,7 +381,7 @@ export const useHabitStore = create<HabitStore>((rawSet, get) => {
     const res = await activateHabitOp({
       habit: target,
       cost: willpowerCost,
-      willpower: { state: wp.state as never, stale: wp.isStale() },
+      willpower: { state: wp.state, stale: wp.isStale() },
       activeHabits: habits.filter((h) => h.status === 'active'),
       // A half-loaded habit list under-reports load, so the strict rule is
       // only used once the set is known to be complete.
@@ -405,7 +405,7 @@ export const useHabitStore = create<HabitStore>((rawSet, get) => {
   pauseHabit: async (id, willpowerCost) => {
     const wp = useWillpowerStore.getState();
     const res = await pauseHabitOp({
-      habitId: id, cost: willpowerCost, willpower: { state: wp.state as never },
+      habitId: id, cost: willpowerCost, willpower: { state: wp.state },
     });
     if (!res.ok) return { ok: false, error: res.error };
     touchHabits();

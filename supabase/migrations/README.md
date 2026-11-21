@@ -76,6 +76,21 @@ created later, by `006`). That gap is pre-existing and documented in
 `docs/audit/07_ARCHITECTURE_AND_DATA_MODEL_REVIEW.md`; renumbering neither
 created nor closed it.
 
+### Source of truth for the live schema
+
+`supabase/live_schema.sql` is the owner's `pg_dump` of the canonical project and the only complete
+description of the live schema (58 tables, 51 functions). `001` and `002` cannot rebuild it on
+their own: they are deltas on top of a base that was created by hand in the Supabase SQL editor
+(see the note above), which is why CI builds its test database by applying `live_schema.sql` first
+and `028+` after it. The migrations marked **NOT APPLIED** in the table above are NOT in
+`live_schema.sql` until the owner applies them and dumps again.
+
+`frontend/lib/database.types.ts` tags every table, RPC and late column `live` or
+`migration:<NNN>`, and `frontend/__tests__/repo/databaseTypesDrift.test.ts` checks it against
+these files in both directions. After every owner apply: refresh `live_schema.sql`, run the
+frontend tests, and change the tags the drift test lists from `migration:<NNN>` to `live`. Never
+edit an applied migration to silence a drift: add a new one.
+
 ## Rollbacks
 
 Every `NNN_*.sql` from `028` on has a rollback script, `supabase/rollbacks/NNN_<name>.rollback.sql`

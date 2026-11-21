@@ -1,7 +1,7 @@
 import type { PauseInterval, GoalVersion } from './habitPauses';
 import { createClient } from '@supabase/supabase-js';
 import { authStorage } from './authStorage';
-import type { Database } from './database.types';
+import type { Database, TableRow } from './database.types';
 import { signalOnSuccess } from './networkSignal';
 import { AUTH_STORAGE_KEY } from './authStorageKey';
 import {
@@ -216,14 +216,8 @@ export type LeaderboardRow = {
   rank: number;
 };
 
-export type WillpowerState = {
-  user_id: string;
-  state_date: string;     // date string
-  daily_budget: number;
-  used: number;
-  focus_capacity: number;
-  active_count: number;
-};
+/** The willpower_state row: ONE definition (the generated Row), so a column change is a compile error here. */
+export type WillpowerState = TableRow<'willpower_state'>;
 
 export type Routine = {
   id: string;

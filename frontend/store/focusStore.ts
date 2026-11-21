@@ -552,7 +552,7 @@ async function advancePhase(): Promise<void> {
   if (phase === 'work') {
     const selectedTask = focusTasks.find((t) => t.id === selectedTaskId);
     const outcome = await completeWorkPhase({
-      task: selectedTask as never,
+      task: selectedTask,
       plannedSeconds,
       completedSeconds,
       autoCheckTasks: settings.autoCheckTasks,

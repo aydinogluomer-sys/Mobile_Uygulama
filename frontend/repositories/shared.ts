@@ -12,7 +12,7 @@
  * under `repositories/`.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { PublicTableName } from '../lib/database.types';
+import type { PublicTableName, TableRow } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
 // F06: the bounded read lives in a dependency-free module (many tests mock lib/session with only `currentUser`)
 import { boundSession, isRetryableAuthError, LOCAL_USER_TIMEOUT_MS } from '../lib/bootSession';
@@ -22,7 +22,91 @@ import { boundSession, isRetryableAuthError, LOCAL_USER_TIMEOUT_MS } from '../li
 // (`get supabase() { return mock; }`) AFTER this module has been required, so a
 // module-level capture would freeze `undefined`. Do not "simplify" this to an
 // eager constant. Do not add a test-only setter here.
+// F11 (BLD-11): the ONE place the schema-typed client is widened inside this file,
+// because supabase-js cannot express `.from(<runtime union table>).eq(<column>)`.
+// Every exported helper below constrains table and column names against `Database`.
 const dynamicClient = (): SupabaseClient => supabase as unknown as SupabaseClient;
+
+/** Tables whose generated Row has `user_id: string`: the only tables the owned-row helpers accept. */
+export type OwnedTableName = {
+  [K in PublicTableName]: TableRow<K> extends { user_id: string } ? K : never;
+}[PublicTableName];
+
+/** Column names of table K: a typo in `orderBy`, `match`, `not` or `versionColumn` fails to compile. */
+export type ColumnOf<K extends PublicTableName> = Extract<keyof TableRow<K>, string>;
+type Scalar = string | number | boolean;
+
+export type FetchPageParams = {
+  [K in OwnedTableName]: {
+    table: K;
+    /** Columns to select. Explicit lists beat `*` — see each repository. */
+    columns: string;
+    /** The ordering column. Must be monotonic-ish and present in `columns`. */
+    orderBy: ColumnOf<K>;
+    userId: string;
+    cursor?: Cursor | null;
+    limit?: number;
+    /** Extra equality filters, e.g. `{ status: 'active' }`. */
+    match?: Partial<Record<ColumnOf<K>, Scalar | null>>;
+    /** Extra inequality filters, e.g. `{ status: 'archived' }` to exclude it. */
+    not?: Partial<Record<ColumnOf<K>, Scalar>>;
+  };
+}[OwnedTableName];
+
+export type UpdateOwnedParams = {
+  [K in OwnedTableName]: {
+    table: K;
+    id: string;
+    userId: string;
+    patch: Record<string, unknown>;
+    columns?: string;
+  };
+}[OwnedTableName];
+
+export type DeleteOwnedParams = {
+  [K in OwnedTableName]: {
+    table: K;
+    id: string;
+    userId: string;
+  };
+}[OwnedTableName];
+
+export type InsertOwnedWithIdParams = {
+  [K in OwnedTableName]: {
+    table: K;
+    row: Record<string, unknown> & { id: string };
+    columns: string;
+    expectedUserId?: string;
+  };
+}[OwnedTableName];
+
+export type UpdateOwnedVersionedParams = {
+  [K in OwnedTableName]: {
+    table: K;
+    id: string;
+    patch: Record<string, unknown>;
+    baseVersion: string | null;
+    columns: string;
+    versionColumn?: ColumnOf<K>;
+    expectedUserId?: string;
+  };
+}[OwnedTableName];
+
+export type FetchOwnedRowParams = {
+  [K in OwnedTableName]: {
+    table: K;
+    id: string;
+    columns: string;
+  };
+}[OwnedTableName];
+
+export type DeleteOwnedIfPresentParams = {
+  [K in OwnedTableName]: {
+    table: K;
+    id: string;
+    expectedUserId?: string;
+  };
+}[OwnedTableName];
 
 export type RepoResult<T> =
   | { ok: true; data: T }
@@ -209,20 +293,7 @@ export const DEFAULT_PAGE_SIZE = 30;
  * discarding it, which distinguishes "exactly a full page" from "a full page
  * and then some" without a second count query.
  */
-export async function fetchPage<T extends { id: string }>(params: {
-  table: PublicTableName;
-  /** Columns to select. Explicit lists beat `*` — see each repository. */
-  columns: string;
-  /** The ordering column. Must be monotonic-ish and present in `columns`. */
-  orderBy: string;
-  userId: string;
-  cursor?: Cursor | null;
-  limit?: number;
-  /** Extra equality filters, e.g. `{ status: 'active' }`. */
-  match?: Record<string, string | number | boolean | null>;
-  /** Extra inequality filters, e.g. `{ status: 'archived' }` to exclude it. */
-  not?: Record<string, string | number | boolean>;
-}): Promise<RepoResult<Page<T>>> {
+export async function fetchPage<T extends { id: string }>(params: FetchPageParams): Promise<RepoResult<Page<T>>> {
   const limit = Math.max(1, Math.min(params.limit ?? DEFAULT_PAGE_SIZE, 200));
 
   let q = dynamicClient()
@@ -250,6 +321,7 @@ export async function fetchPage<T extends { id: string }>(params: {
 
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
 
+  // PostgREST types `.select(string)` (non-literal) as `GenericStringError[]`, so `as unknown as T[]` is required here.
   const all = (data ?? []) as unknown as T[];
   const hasMore = all.length > limit;
   const rows = hasMore ? all.slice(0, limit) : all;
@@ -269,13 +341,7 @@ export async function fetchPage<T extends { id: string }>(params: {
  * discarded their result, so a rejected write left the UI showing the change
  * as applied. Both are fixed here rather than in eleven places.
  */
-export async function updateOwned<T>(params: {
-  table: PublicTableName;
-  id: string;
-  userId: string;
-  patch: Record<string, unknown>;
-  columns?: string;
-}): Promise<RepoResult<T>> {
+export async function updateOwned<T>(params: UpdateOwnedParams): Promise<RepoResult<T>> {
   const { data, error, status } = await dynamicClient()
     .from(params.table)
     .update(params.patch)
@@ -288,11 +354,7 @@ export async function updateOwned<T>(params: {
   return { ok: true, data: data as T };
 }
 
-export async function deleteOwned(params: {
-  table: PublicTableName;
-  id: string;
-  userId: string;
-}): Promise<RepoResult<true>> {
+export async function deleteOwned(params: DeleteOwnedParams): Promise<RepoResult<true>> {
   const { data, error, status } = await dynamicClient()
     .from(params.table)
     .delete()
@@ -318,9 +380,7 @@ export function wrongAccountFor(expected: string | undefined, actual: string): R
 }
 
 /** Insert a row with a CLIENT-made id, so a re-delivery hits 23505 instead of a duplicate. */
-export async function insertOwnedWithId<T>(params: {
-  table: PublicTableName; row: Record<string, unknown> & { id: string }; columns: string; expectedUserId?: string;
-}): Promise<RepoResult<T>> {
+export async function insertOwnedWithId<T>(params: InsertOwnedWithIdParams): Promise<RepoResult<T>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   const wrong = wrongAccountFor(params.expectedUserId, u.userId);
@@ -332,10 +392,9 @@ export async function insertOwnedWithId<T>(params: {
 }
 
 /** Update only if the row is still at `baseVersion` (`row` null + `exists` = the version moved). */
-export async function updateOwnedVersioned<T>(params: {
-  table: PublicTableName; id: string; patch: Record<string, unknown>; baseVersion: string | null;
-  columns: string; versionColumn?: string; expectedUserId?: string;
-}): Promise<RepoResult<{ row: T | null; exists: boolean }>> {
+export async function updateOwnedVersioned<T>(
+  params: UpdateOwnedVersionedParams,
+): Promise<RepoResult<{ row: T | null; exists: boolean }>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   const wrong = wrongAccountFor(params.expectedUserId, u.userId);
@@ -352,7 +411,7 @@ export async function updateOwnedVersioned<T>(params: {
 }
 
 /** The row as the server has it now, or null if it is gone. */
-export async function fetchOwnedRow<T>(params: { table: PublicTableName; id: string; columns: string }): Promise<RepoResult<T | null>> {
+export async function fetchOwnedRow<T>(params: FetchOwnedRowParams): Promise<RepoResult<T | null>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   const { data, error, status } = await dynamicClient().from(params.table).select(params.columns)
@@ -362,7 +421,7 @@ export async function fetchOwnedRow<T>(params: { table: PublicTableName; id: str
 }
 
 /** Delete if present; a row already gone is not an error (a re-delivered delete is one effect). */
-export async function deleteOwnedIfPresent(params: { table: PublicTableName; id: string; expectedUserId?: string }): Promise<RepoResult<{ deleted: boolean }>> {
+export async function deleteOwnedIfPresent(params: DeleteOwnedIfPresentParams): Promise<RepoResult<{ deleted: boolean }>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   const wrong = wrongAccountFor(params.expectedUserId, u.userId);

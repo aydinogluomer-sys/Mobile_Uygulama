@@ -12,18 +12,24 @@
  * table, deliberately: `user_subscriptions` and `credit_transactions` are the
  * money-adjacent tables, and the client is not trusted to compute a balance.
  */
+import type { TableRow } from '../lib/database.types';
+import type { BillingPeriod, Tier } from '../lib/subscription';
 import { supabase } from '../lib/supabase';
 import type { RepoResult } from './shared';
 
-export type SubscriptionRow = {
-  tier: string;
-  status: string;
-  billing_period: string | null;
-  focus_points: number;
-  credits_period_end: string | null;
-  current_period_end?: string | null;
-  sub_period_end?: string | null;
+/**
+ * The user_subscriptions row as the app uses it. The database narrows three text columns with CHECK
+ * constraints (live_schema.sql: user_subscriptions_tier_check, _billing_period_check, _status_check),
+ * so the generated `string` is narrowed here, in one place, with one assertion. `current_period_end`
+ * is not a live column and is gone.
+ */
+export type SubscriptionRow = Omit<TableRow<'user_subscriptions'>, 'tier' | 'billing_period' | 'status'> & {
+  tier: Tier;
+  billing_period: BillingPeriod | null;
+  status: 'active' | 'expired' | 'cancelled';
 };
+
+const narrow = (row: TableRow<'user_subscriptions'>): SubscriptionRow => row as SubscriptionRow;
 
 /**
  * The caller's subscription, creating the free-tier row on first read.
@@ -41,7 +47,7 @@ export async function getOrInitSubscription(): Promise<RepoResult<SubscriptionRo
   const { data, error } = await supabase.rpc('get_or_init_subscription');
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: 'Abonelik bilgisi alınamadı.' };
-  return { ok: true, data: data as SubscriptionRow };
+  return { ok: true, data: narrow(data) };
 }
 
 /**
@@ -68,5 +74,5 @@ export async function mockActivateSubscription(
   });
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: 'Abonelik güncellenemedi.' };
-  return { ok: true, data: data as SubscriptionRow };
+  return { ok: true, data: narrow(data) };
 }
