@@ -3,7 +3,11 @@
 **Denetim Tarihi:** 1 Kasım 2026  
 **İncelenen Kod Tabanı:** `c:\Users\Trade Bilisim\Mobile_Uygulama` (`frontend/`, `supabase/`, `.github/workflows/`, `docs/`, `tools/`)  
 **Niceliksel Denetim Hacmi:**
-- **Frontend Uygulama Kodu (`__tests__` hariç):** 320 kaynak dosya · **71.765 satır TypeScript/TSX** · ~3,24 MB kaynak kod
+
+- **Frontend Uygulama Kodu
+
+(`__tests__` hariç):** 320 kaynak dosya · **71.765 satır TypeScript/TSX** · ~3,24 MB kaynak kod
+
 - **Test Paketi (`frontend/__tests__/`):** 275 dosya (**264 Jest suite**, **3.449 çalışma zamanı testi**) · **40.328 satır**
 - **Görsel Sanat Varlıkları (`frontend/assets/`):** 164 dosya (**158 WebP**, 5 PNG, 1 TTF) · **5,85 MB disk** / **401,17 MB açılmış RGBA8888 bitmap doku eşdeğeri**
 - **Backend & Veritabanı (`supabase/`):** PostgreSQL 17 canlı şema (**69 tablo**, `live_schema.sql` 3.100+ satır), **37 SQL migrasyon dosyası** (`001..037`), Deno 2 tabanlı Edge Functions (`generate-routine`, `notion-auth`, `notion-sync`, `google-auth`, `spotify-auth`, `dispatch-webhooks`, `delete-account` vb.)
@@ -15,11 +19,12 @@
 
 > [!CAUTION]
 > **Üretim (Production) Lansmanını Doğrudan Bloke Eden 4 Acil Kusur:**
-> 1. **Giriş Ekranının Birincil Butonu "🚀 Girişi Geç (Demo Modu)" ([login.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/(auth)/login.tsx#L49-L67), [L188-L196](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/(auth)/login.tsx#L188-L196)):** `__DEV__` veya `isSeedingAllowed()` koruması olmadan ekranın en parlak birincil CTA'sı (`size="lg"`, `colors.accent`) gerçek kimlik doğrulamayı ve Onboarding'i tamamen bypass edip sahte Notion oturumu + demo veri tohumluyor; gerçek `"Giriş Yap"` butonu `variant="secondary"` olarak ikinci plana itilmiş durumda.
+> 1.**Giriş Ekranının Birincil Butonu "🚀 Girişi Geç (Demo Modu)" ([login.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/(auth)/login.tsx#L49-L67), [L188-L196](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/(auth)/login.tsx#L188-L196)):**
+
+`__DEV__` veya `isSeedingAllowed()` koruması olmadan ekranın en parlak birincil CTA'sı (`size="lg"`, `colors.accent`) gerçek kimlik doğrulamayı ve Onboarding'i tamamen bypass edip sahte Notion oturumu + demo veri tohumluyor; gerçek `"Giriş Yap"` butonu `variant="secondary"` olarak ikinci plana itilmiş durumda.
 > 2. **Uygulamada Normal Bir "Çıkış Yap" (`signOut`) Butonu Yok & Hesaplar Arası RAM/AsyncStorage Sızıntısı ([_layout.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/_layout.tsx#L105-L117), [settings.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/settings.tsx#L500-L549)):** `supabase.auth.signOut` yalnızca şifre sıfırlama kurtarma akışında ([reset-password.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/(auth)/reset-password.tsx#L123)) ve hesabı kalıcı silmede ([accountService.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/services/accountService.ts#L141)) çağrılıyor. Oturum kapandığında 29 Zustand store'un **24'ü RAM'deki verisini temizlemiyor** ve `focus.session.v1` ([focusStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/focusStore.ts#L50-L52)) gibi 5 `AsyncStorage` anahtarı `userId` kapsamı olmadığı için kullanıcıların görev başlıklarını aynı cihazdaki diğer hesaba sızdırıyor.
 > 3. **Tamamen Sahte (Placebo) Açık/Koyu Tema Anahtarı ([_layout.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/_layout.tsx#L40-L42), [settings.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/settings.tsx#L311-L331), [themeStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/themeStore.ts#L31-L35)):** Üst barda ve Ayarlar'da görünen tema değiştirici `themeStore.isDark` değerini güncelliyor; ancak kod tabanındaki **259 UI dosyasının sıfırı (`0`)** `themeStore.theme` nesnesini okuyor. Tüm ekranlar [tokens.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/tokens.ts#L41-L125) sabitlerini statik import ettiği için butona basıldığında **tek bir piksel bile renk değiştirmiyor**.
 > 4. **Alışkanlık Gücü ve Seri (Streak) Motorlarında Sessiz Matematiksel Hatalar ([habitStrength.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/habitStrength.ts#L154-L197), [behaviorIntelligence.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/behaviorIntelligence.ts#L457-L468), [recovery.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/recovery.tsx#L184-L215)):** `habitStrength()` fonksiyonu `habit` takvimini parametre olarak bile almıyor ("takvim-körü"); haftada 3 gün (`Pzt/Çar/Cum`) planlanıp 90 gün %100 eksiksiz yapılan bir alışkanlığı diğer 4 günde log olmadığı için **`~%43` güçte kilitliyor** ve tatil/mola (`habit_pauses`) günlerini kaçırılmış (`miss`) sayıyor! Ayrıca `currentStreak()` sabah henüz işaretleme yapılmamışken aktif 30 günlük seriyi **`0`** gösteriyor ve kullanıcı Kintsugi telafi planını (`recovery_plans`) tamamlasa bile kaçan `source_date` köprülenmediği için serisi kırık kalıyor!
-
 > [!IMPORTANT]
 > **Stratejik Ürün & Mimari Sürprizler (Gizli Hazineler ve Yarım Kalan Köprüler):**
 > 5. **Canlı Veritabanında Rakiplerin Ücretli Sattığı Oyunlaştırma Motorunun %80'i Zaten Kurulu ve Arka Planda Sessizce Çalışıyor ([live_schema.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/live_schema.sql)):** `user_pets` (her yeni kayıtta otomatik "Egg" pet üreten trigger aktif!), `pet_stages`, `global_bosses` + `boss_contributors` (**şu anda bile her `habit_logs` kaydında aktif boss'a 10 HP hasar vuran trigger canlıda çalışıyor!**), `quests` + `user_quests`, `shop_items` + `user_inventory`, `skills` + `user_skills`, `challenges` + `user_challenges`, `calendars` + `events` + `event_templates` + `reminders` tabloları ve RPC fonksiyonları canlı Postgres'te hazır; fakat **frontend'de %0 piksel bağlantısı var!**
@@ -128,6 +133,7 @@ Proje yakın zamanda SDK 54 -> 56 -> **Expo SDK 57** (`react-native: 0.86.3`, `r
 ### 1.3 Ölü/Yanlış Konumlandırılmış Bağımlılıklar vs Eksik Kritik Kütüphaneler
 
 #### A. APK/IPA Boyutunu Şişiren Ölü veya Miras Paketler ([package.json](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/package.json))
+
 1. **`react-native-reanimated` (`4.5.1`) & `react-native-worklets` (`0.10.1`):** Kod tabanındaki **259 dosyanın sıfırında (`0`)** import edilmektedir! Şu haliyle sıfır fayda karşılığında ağır C++ JSI native kütüphaneleri uygulamaya derlenmektedir *(Çözüm: Paketi silmek değil, Bölüm 5'te detaylandırıldığı üzere eski JS-thread `Animated` kodlarını Reanimated worklet'lerine taşımaktır!)*.
 2. **`react-native-gesture-handler` (`~2.32.0`):** Uygulama kodunda **0 doğrudan import** vardır; hiçbir listede swipe veya drag-and-drop yapılmamaktadır.
 3. **`react-native-animatable` (`^1.4.0`):** Yıllardır bakımı yapılmayan eski JS tabanlı animasyon kütüphanesi; yalnızca [timeline.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/timeline.tsx#L17) ve [habits.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/habits.tsx#L18) içinde `fadeInUp` için tutulmaktadır. Tamamen kaldırılıp `Reanimated` `FadeInDown` ile değiştirilmelidir.
@@ -135,6 +141,7 @@ Proje yakın zamanda SDK 54 -> 56 -> **Expo SDK 57** (`react-native: 0.86.3`, `r
 5. **`@expo/ngrok` (`^4.1.3`):** Geliştirme tüneli CLI paketi yanlışlıkla üretim `dependencies` (`L19`) altına eklenmiştir (**0 import**; `devDependencies`'e taşınmalı veya kaldırılmalıdır).
 
 #### B. Üretim Kalitesi İçin Eksik Olan Kritik Kütüphaneler
+
 1. **`zod`:** Çalışma zamanı şema doğrulaması için `zod` bulunmadığından [routineProposal.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/routineProposal.ts) (**1.209 satır!**), [taskDecomposition.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/taskDecomposition.ts) (406 satır), [coachActions.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/coachActions.ts) (373 satır) ve [backupFormat.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/backupFormat.ts) içinde **2.300+ satır elle yazılmış `typeof` doğrulayıcısı** bakım yükü yaratmaktadır.
 2. **`@shopify/flash-list` (`2.0.2`):** Expo SDK 57 ile yerleşik uyumlu olmasına rağmen kurulu değildir; 57 ekranda sanallaştırılmamış `ScrollView + .map()` kullanılmaktadır.
 3. **`@gorhom/bottom-sheet`:** Reanimated + Gesture Handler zaten kuruluyken eksik olan tek halkadır; 35 dosyadaki ham `<Modal>` yorgunluğunu bitirecek temel bileşendir.
@@ -147,7 +154,9 @@ Proje yakın zamanda SDK 54 -> 56 -> **Expo SDK 57** (`react-native: 0.86.3`, `r
 ### 1.4 Backend Dil & Runtime Değerlendirmesi (PostgreSQL 17 / PLpgSQL + Deno 2 TypeScript vs Go/Node)
 
 Önceki mimari temizlikte eski Python/FastAPI (`backend/server.py`) katmanı kaldırılarak **%100 Supabase Native (PostgreSQL 17 RLS + PLpgSQL RPC + Deno 2 TypeScript Edge Functions)** mimarisine geçilmiştir.
+
 - **Neden Mevcut Dil Yığını Doğru?**
+
   - İstemci ile Edge Functions arasında sıfır kod tekrarıyla ortak sözleşme paylaşımı ([coachContractSchema.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/functions/_shared/coachContractSchema.ts)) yapılabilmektedir.
   - Aderyth'in iş yükünün %90'ı kullanıcıya özel CRUD, çevrimdışı senkronizasyon, atomik kredi/XP muhasebesi (`deduct_focus_points`, `012_xp_integrity`) ve LLM SSE akışıdır (`generate-routine`). Bunlar I/O-bağımlı (I/O-bound) işlemlerdir; Go'ya tam göç yapmak RLS güvenlik sınırını ve ortak TS şemalarını kaybedip çift kod tabanı maliyeti doğuracaktır.
 - **Ne Zaman Ek Bir Go / Worker Servisi Düşünülmeli?**
@@ -183,6 +192,7 @@ Aderyth'te tek bir birleşik senkronizasyon motoru yerine tarihsel olarak üst �
    - **Sahte Outbox-First (Aslında Network-First!) Çalışan 5 Store (6 Varlık):** [goalStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/goalStore.ts#L123-L134), [projectStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/projectStore.ts#L129-L141), [readingListStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/readingListStore.ts#L183-L196), [okrStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/okrStore.ts#L117-L122) ve [lifeAreasStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/lifeAreasStore.ts#L126-L139) önce `await insert*(...)` ile ağ yanıtını bekler ve **yalnızca `res.offline === true` (`HTTP status === 0`) dönerse** `coreOutbox.enqueue(...)` çağırır! Metro tünelinde veya zayıf hücresel veride kullanıcı 15–30 sn TCP zaman aşımı boyunca bekler; sunucu HTTP `502/503/504` veya rate-limit döndürdüğünde ise `offline` `false` olduğu için veri kuyruğa bile alınmadan kaybolur!
 
 #### Üç Outbox Motorunu da Tamamen Atlayan (Offline Desteği %0) 14 Mutasyon Alanı
+
 - **Tüm Alışkanlık Yaşam Döngüsü ([habitStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/habitStore.ts)):** Alışkanlık ekleme (`L211`), düzenleme + hedef versiyonlama (`L243`), silme/geri yükleme (`L260-L279`), etkinleştirme/duraklatma (`L284-L303`), tatil/mola aralıkları (`habit_pauses`, `L160-L182`) ve kontrol listesi adımları/işaretleri (`habit_checklist_*`, `L336-L382`).
 - **Diğer Çevrimiçi-Zorunlu Yazımlar:** `willpowerStore` (`spend`/`refund`), `focusStore` (`focus_tasks` CRUD), `deepWorkStore`, `BadHabitsTracker` (`bad_habits`), `reviewService` (`weekly_reviews`, `monthly_reviews`), `webhookService`, `profileStore` (`setUsername`), `onboardingStore`, `routineStore` (`confirmInstall`), `insightsStore` (`journal_insights`).
 - **Buluta Hiç Yazmayan (Yalnız Cihazda Kalan) 2 Store:** [moodStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/moodStore.ts#L1-L55) ve [routineRunnerStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/store/routineRunnerStore.ts#L1-L178) — kullanıcı uygulamayı silip yüklediğinde veya telefon değiştirdiğinde tüm duygu geçmişi ve özel rutin şablonları kalıcı olarak yok olur!
@@ -282,7 +292,9 @@ Aderyth'te tek bir birleşik senkronizasyon motoru yerine tarihsel olarak üst �
 ### 3.4 Test Mimarisi Kırılganlığı: Kaynak Kodu `fs.readFileSync` İle Dilimleyen 112 Test
 
 264 Jest suite (**3.449 test**) ilk bakışta yüksek güven verse de denetim kritik bir yapısal zafiyet ortaya koymuştur:
+
 1. **Testlerin %42,4'ü (264 suite'in 112'si) Kodu Çalıştırmıyor, Metin Dosyası Olarak Okuyor!**
+
    - 112 test dosyası `.ts/.tsx/.sql` kaynak dosyalarını `fs.readFileSync(..., 'utf8')` ile düz metin olarak okuyup regex araması yapmakta; **45 test dosyası** `.indexOf(...)` ile kaynak kodu string olarak dilimlemektedir (ör. [generateRoutineToolContract.test.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/__tests__/edge/generateRoutineToolContract.test.ts#L125-L126): `call.slice(0, call.indexOf('});'))`).
    - Bu yaklaşım en ufak kod formatlama/refactor işleminde yanlış-negatif (false-negative) kırılmalara, çalışma zamanı hatası olan kodlarda ise aranan kelime geçtiği sürece yanlış-pozitif (false-positive) yeşil testlere yol açmaktadır.
 2. **Görsel Katmanın Testlerde Tamamen Atlanması (`NODE_ENV === 'test'` Bypass):**
@@ -336,12 +348,13 @@ Aderyth'te tek bir birleşik senkronizasyon motoru yerine tarihsel olarak üst �
 
 > [!CAUTION]
 > **Canlıda Aktif Olan ve `036` Sonrasında Bile Kısmen Açık Kalan P0 Güvenlik & Ölçek Bulguları:**
-> 1. **`weekly_xp` Liderlik Tablosu Sabotajı ([live_schema.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/live_schema.sql#L3892)):** `"System can manage weekly xp"` RLS politikası tüm giriş yapmış kullanıcılara kendi `weekly_xp` satırlarında doğrudan `INSERT/UPDATE` izni vermektedir; tek bir PostgREST çağrısıyla `xp_earned = 9999999` yazılıp liderlik tablosu ele geçirilebilir (`036` bunu kapatıyor, acilen uygulanmalı).
-> 2. **Canlı `S11` XP Farming & `036` Sonrası Kalan `purged_xp` Sonsuz XP Açığı ([live_schema.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/live_schema.sql#L573-L665), [036_live_audit_hardening.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/migrations/036_live_audit_hardening.sql#L32)):**
->    - Canlıda `habit_logs` silip eklemek veya `done -> partial -> done` güncellemek sınırsız XP ve `1.5x` çarpan üretmektedir.
->    - **`036`'nın Kaçırdığı Açık:** `habit_logs.completed_at` üzerinde tarih aralığı `CHECK` kısıtı yoktur. Kullanıcı yeni bir alışkanlığa `1990..1995` yılları arasında 1.800 farklı gün insert edip (her `(habit_id, day)` ilk kez olduğu için `036` tümüne XP verir!) ardından alışkanlığı sildiğinde `trg_habits_record_purged_xp` bu XP'yi `profiles.purged_xp`'ye kalıcı yazar ve `habit_xp_awards` `ON DELETE CASCADE` ile silindiğinden döngü sonsuz kez tekrarlanabilir! **Çözüm:** Canlı `habit_logs` insert'lerinde `completed_at BETWEEN CURRENT_DATE - 30 AND CURRENT_DATE + 1` sınırı konmalı; eski tarihli veri göçleri `xp = 0` yazan ayrı RPC'den geçmeli ve `habit_xp_awards` `(user_id, habit_id, day)` üzerinde `ON DELETE CASCADE` yerine kalıcı muhasebe tutmalıdır.
-> 3. **100.000 Kullanıcıda Tek Satır Kilidi (`global_bosses` Contention — [live_schema.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/live_schema.sql#L513-L552)):** `on_habit_completed_damage_boss` trigger'ı her kullanıcının her alışkanlık tamamlamasında **aynı tekil aktif `global_bosses` satırına `UPDATE` atarak** tüm veritabanı yazımlarını tek bir row-lock üzerinde seri kuyruğa sokar! Ayrıca boss öldüğünde `profiles.total_xp`'yi doğrudan artırarak `xp_drift()` denetimini bozar. **Çözüm:** Senkron `UPDATE global_bosses` trigger'ı derhal kaldırılmalı (`DROP TRIGGER`); Co-op Boss özelliği UI'a açılacağında hasar `boss_damage_events` append-only tablosundan veya `boss_contributors` toplamından periyodik okunmalıdır.
-> 4. **`notion_integrations` OAuth Token Sızıntısı ([live_schema.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/live_schema.sql#L4084)):** `"Users manage own notion integration"` `FOR ALL` politikası kalıcı Notion OAuth `access_token` kolonunu istemci JWT'sine açık tutmaktadır (`google_calendar_integrations` gibi yalnız `service_role` erişimine kapatılmalıdır).
+> 1.**`weekly_xp` Liderlik Tablosu Sabotajı ([live_schema.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/live_schema.sql#L3892)):** `"System can manage weekly xp"` RLS politikası tüm giriş yapmış kullanıcılara kendi `weekly_xp` satırlarında doğrudan `INSERT/UPDATE` izni vermektedir; tek bir PostgREST çağrısıyla `xp_earned = 9999999` yazılıp liderlik tablosu ele geçirilebilir (`036` bunu kapatıyor, acilen uygulanmalı).
+> 2.**Canlı `S11` XP Farming & `036` Sonrası Kalan `purged_xp` Sonsuz XP Açığı ([live_schema.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/live_schema.sql#L573-L665), [036_live_audit_hardening.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/migrations/036_live_audit_hardening.sql#L32)):**
+>-Canlıda `habit_logs` silip eklemek veya `done -> partial -> done` güncellemek sınırsız XP ve `1.5x` çarpan üretmektedir.
+>-**`036`'nın Kaçırdığı Açık:** `habit_logs.completed_at` üzerinde tarih aralığı `CHECK` kısıtı yoktur. Kullanıcı yeni bir alışkanlığa `1990..1995` yılları arasında 1.800 farklı gün insert edip (her `(habit_id, day)` ilk kez olduğu için `036` tümüne XP verir!) ardından alışkanlığı sildiğinde `trg_habits_record_purged_xp` bu XP'yi `profiles.purged_xp`'ye kalıcı yazar ve `habit_xp_awards` `ON DELETE CASCADE` ile silindiğinden döngü sonsuz kez tekrarlanabilir!
+**Çözüm:** Canlı `habit_logs` insert'lerinde `completed_at BETWEEN CURRENT_DATE - 30 AND CURRENT_DATE + 1` sınırı konmalı; eski tarihli veri göçleri `xp = 0` yazan ayrı RPC'den geçmeli ve `habit_xp_awards` `(user_id, habit_id, day)` üzerinde `ON DELETE CASCADE` yerine kalıcı muhasebe tutmalıdır.
+> 3.**100.000 Kullanıcıda Tek Satır Kilidi (`global_bosses` Contention — [live_schema.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/live_schema.sql#L513-L552)):** `on_habit_completed_damage_boss` trigger'ı her kullanıcının her alışkanlık tamamlamasında **aynı tekil aktif `global_bosses` satırına `UPDATE` atarak** tüm veritabanı yazımlarını tek bir row-lock üzerinde seri kuyruğa sokar! Ayrıca boss öldüğünde `profiles.total_xp`'yi doğrudan artırarak `xp_drift()` denetimini bozar. **Çözüm:** Senkron `UPDATE global_bosses` trigger'ı derhal kaldırılmalı (`DROP TRIGGER`); Co-op Boss özelliği UI'a açılacağında hasar `boss_damage_events` append-only tablosundan veya `boss_contributors` toplamından periyodik okunmalıdır.
+> 4.**`notion_integrations` OAuth Token Sızıntısı ([live_schema.sql](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/supabase/live_schema.sql#L4084)):** `"Users manage own notion integration"` `FOR ALL` politikası kalıcı Notion OAuth `access_token` kolonunu istemci JWT'sine açık tutmaktadır (`google_calendar_integrations` gibi yalnız `service_role` erişimine kapatılmalıdır).
 
 - **Eksik Kritik SQL İndeksleri (100K Ölçekte Sequential Scan Yaratan Tablolar):**
   - **`user_id` İndeksi Hiç Olmayan 8 Canlı + 4 Bekleyen Tablo:** `projects`, `goals`, `okrs`, `focus_tasks`, `deep_work_sessions`, `habit_deletions`, `routines`, `key_results` + (`029..031`: `habit_checklist_items`, `routine_templates`, `routine_template_versions`, `mood_definitions`).
@@ -455,7 +468,6 @@ flowchart TD
 | **5. `pg_cron` Arka Plan İşleri & Felaket Kurtarma (DR)** | Canlı DB'de **0 `pg_cron` işi** var (`ai_requests` sınırsız şişiyor, süresi biten abonelikler düşürülmüyor). Ayrı bir `staging` projesi ve sunucu PITR geri dönüş tatbikatı yok. | Günlük `pg_cron`: (1) `ai_requests` 7 günlük TTL temizliği, (2) `user_subscriptions` süre sonu uzlaştırması (`sub_period_end < now()`). Supabase PITR aktifliği + Staging Branch kurulumu. |
 | **6. KVKK / GDPR / App Store / Play Store Hukuki Uyumluluk** | `https://aderyth.com/{privacy,support,delete-account}` adresleri **HTTP 404** dönüyor (`docs/store/web/` altında HTML hazır ama yayınlanmamış). `delete-account` 3. parti OAuth token'larını sağlayıcıda revoke etmiyor ve aktif mağaza aboneliği uyarısı vermiyor. Auth CAPTCHA kapalı (`config.toml:201`). | `aderyth.com` yasal ve web hesap silme sayfalarının yayına alınması + `register.tsx` tıklanabilir gizlilik/koşul linkleri + `delete-account` içinde Google/Notion/Spotify token revocation + aktif IAP abonelik kontrolü + Cloudflare Turnstile Auth CAPTCHA. |
 
-
 ---
 
 ## Bölüm 7 — 28 Rakip Uygulama Agresif Teardown & Aderyth Mimarisine Eşlenmiş Özellik Boşluğu Analizi
@@ -479,9 +491,9 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
 
 > [!CAUTION]
 > **Mimari Uzlaştırma Kuralı (`DB-03` vs Oyunlaştırma Aktivasyonu):** Bölüm 4'te kanıtlandığı üzere canlı veritabanındaki `on_habit_completed_damage_boss` tetikleyicisi her `habit_logs` kaydında tek bir `global_bosses` satırını senkron kilitler ve `profiles.total_xp` kolonunu kanonik XP defteri (`xp_drift()`) dışında günceller. Bu nedenle:
-> 1. **Dalga 0'da** `on_habit_completed_damage_boss` senkron tetikleyicisi derhal kaldırılacaktır.
-> 2. **Dalga 2'de** topluluk hedefi (*Co-op Raid / Ortak Kintsugi Anıtı*) arayüze açılırken hasar kaydı kilitsiz, yalnızca-eklenir (`append-only`) `boss_contributors` üzerinden toplanacak; XP ödülleri ise kanonik `quest_xp_awards` defterinden geçirilecektir.
-> 3. **Calm-Tech Sınır Kuralı:** Hiçbir oyunlaştırma öğesi (`pet`, `coins`, `quests`, `boss`) [today.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/today.tsx) ekranına sokulmayacak; tümü [hub.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/hub.tsx) (**"Kintsugi Sığınağı"**) sekmesinde izole edilecektir.
+> 1.**Dalga 0'da** `on_habit_completed_damage_boss` senkron tetikleyicisi derhal kaldırılacaktır.
+> 2.**Dalga 2'de** topluluk hedefi (*Co-op Raid / Ortak Kintsugi Anıtı*) arayüze açılırken hasar kaydı kilitsiz, yalnızca-eklenir (`append-only`) `boss_contributors` üzerinden toplanacak; XP ödülleri ise kanonik `quest_xp_awards` defterinden geçirilecektir.
+> 3.**Calm-Tech Sınır Kuralı:** Hiçbir oyunlaştırma öğesi (`pet`, `coins`, `quests`, `boss`) [today.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/today.tsx) ekranına sokulmayacak; tümü [hub.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/hub.tsx) (**"Kintsugi Sığınağı"**) sekmesinde izole edilecektir.
 
 ---
 
@@ -523,8 +535,13 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
 ### 7.2 Küme A Detaylı Teardown — DEHB (ADHD), BDT (CBT), Rutin Yürütücüler, Sakin Oyunlaştırma & Öz-Şefkat
 
 #### 1. Inflow (ADHD BDT & Yürütücü İşlev Desteği)
-- **Rakipte Nasıl Çalışıyor?** DEHB'li yetişkinler için 5 dakikalık sesli BDT mikro-dersleri, günlük enerji iskelesi, **Canlı Sessiz Body Doubling (Ortak Odak) Odaları** (kamera/sohbet olmadan *"Şu an 142 kişi seninle odaklanıyor"* sosyal çapası), **Görev Felci SOS + Quinn AI Görev Parçalama** ve önceden doldurulmuş etkileşimli **Dopamin Menüsü** (*Appetizers 2–5dk, Mains 30+dk, Sides, Desserts* — mola anında TikTok batağına düşmemek için).
+
+- **Rakipte Nasıl Çalışıyor?**
+
+DEHB'li yetişkinler için 5 dakikalık sesli BDT mikro-dersleri, günlük enerji iskelesi, **Canlı Sessiz Body Doubling (Ortak Odak) Odaları** (kamera/sohbet olmadan *"Şu an 142 kişi seninle odaklanıyor"* sosyal çapası), **Görev Felci SOS + Quinn AI Görev Parçalama** ve önceden doldurulmuş etkileşimli **Dopamin Menüsü** (*Appetizers 2–5dk, Mains 30+dk, Sides, Desserts* — mola anında TikTok batağına düşmemek için).
+
 - **Aderyth'te Şu An Ne Var / Ne Eksik?**
+
   - [focusFlowCatalog.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/focusFlowCatalog.ts#L1-L260) içinde 5 adet statik `inflow_interactive` slaytı (`expo-speech` TTS'li), [SmallStartSheet.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/SmallStartSheet.tsx), [today.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/today.tsx#L632) `lowEnergyFilter` ve [BadHabitsTracker.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/BadHabitsTracker.tsx#L567) içinde gömülü 60 sn `Urge Shield` mevcut.
   - **Eksikler:** (1) [FocusFlowView.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/FocusFlowView.tsx#L200) akış seçicisine `lowEnergy: false` sabit kodla geçiyor! (2) Dopamin Menüsü sadece okunup geçilen statik bir metin slaytı; kullanıcının kaydedip mola anında açabildiği bir araç değil. (3) [focus.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/focus.tsx) %100 solo. (4) [ADHDTaskSplitter.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/ADHDTaskSplitter.tsx#L85) gerçek AI çağırmıyor (`buildLocalSplitProposal` ile sabit metin şablonu üretiyor), alt görevleri `parent_task_id` olmadan düz görev diye basıyor ve `today.tsx` üzerinde anlık bir **"⚡ Başlayamıyor musun? (SOS)"** tetikleyicisi yok.
 - **Aderyth Mimarisine Entegrasyon Planı:**
@@ -533,16 +550,26 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
   - **`[P1]` Kişisel `DopamineMenuSheet`:** `profiles.dopamine_menu` JSONB alanına kaydedilen 4 kategorili menü, `focus.tsx` mola ekranına ve `today.tsx` SOS çekmecesine bağlanacak.
 
 #### 2. MindShift CBT (Bilişsel Davranışçı Terapi & Kaygı/Erteleme Araçları)
+
 - **Rakipte Nasıl Çalışıyor?** 4 adımlı **Düşünce Günlüğü + Bilişsel Çarpıtma ("Düşünce Tuzakları": Ya Hep Ya Hiç, Felaketleştirme, Zihin Okuma, -meli/-malı İfadeleri)** etiketleyici, **İnanç Deneyleri** (başlamadan önce beklenen zorluk/kaygı `1-10` vs bitince gerçekleşen zorluk), **Korku/Kaçınma Merdiveni** ve tek dokunuşluk **Chill Zone** (nefes + topraklama + Başa Çıkma Kartları).
-- **Aderyth'te Şu An Ne Var / Ne Eksik?** [journal.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/journal.tsx) sadece serbest metin ve `#etiket` destekliyor; 60 sn nefes sayacı ise `BadHabitsTracker` içine kilitlenmiş durumda.
+
+- **Aderyth'te Şu An Ne Var / Ne Eksik?**
+
+[journal.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/journal.tsx) sadece serbest metin ve `#etiket` destekliyor; 60 sn nefes sayacı ise `BadHabitsTracker` içine kilitlenmiş durumda.
+
 - **Aderyth Mimarisine Entegrasyon Planı:**
   - **`[P1]` `journal.tsx` "🧠 Düşünce Tuzağı Çözücü" Modu:** Serbest yazının yanına 60 saniyelik 4 adımlı yapılandırılmış BDT kartı (*Tetikleyici -> Otomatik Düşünce -> 10 Bilişsel Çarpıtma Çipi -> Dengeli Yeniden Çerçeveleme* + isteğe bağlı AI Koç sokratik sorusu) eklenecek (`cbt_thought_records` tablosu).
   - **`[P1]` Paylaşımlı `ChillZoneModal.tsx`:** `BadHabitsTracker` içindeki nefes kalkanı bağımsız bileşene çıkarılarak *Fizyolojik İç Çekme (2 nefes al + uzun ver)*, *Kutu Nefesi (4-4-4-4)*, *5-4-3-2-1 Duyusal Topraklama* ve *Kişisel Başa Çıkma Kartları* ile hem `today.tsx` SOS menüsünden hem `focus.tsx`'ten açılabilir olacak.
   - **`[P2]` `SmallStartSheet` İnanç Deneyi:** 5 dakikalık küçük başlangıç öncesi tek kaydırıcı (*"Tahmini zorluk: 9/10"*) -> 5 dk sonra (*"Gerçekte nasıldı: 4/10"*), erteleme kaygısını kanıtla kıran içgörü verisi üretecek.
 
 #### 3. RoutineDay & 4. Routinery (Adım Adım Sesli Zamanlayıcılı Rutin Yürütücüler)
-- **Rakipte Nasıl Çalışıyor?** Başlamadan önce rutin kartı üzerinde **canlı bitiş saati projeksiyonu** (*"5 adım · 22 dk · Şimdi başlarsan 08:47'de biter"*), telefon ekranına bakmadan banyoda/mutfakta yönlendiren **TTS Sesli Koç** (*"Sıradaki adım: Su iç, 2 dakika"*, *"Son 1 dakika"*), süre bitince cezalandırmayan **pozitif aşım sayacı (`+01:24 overtime`)**, `+1 / +5 dk uzat`, adım içinde ölçülebilir değer girişi (`500 ml`) ve çapa alışkanlık tetikleyicisi.
+
+- **Rakipte Nasıl Çalışıyor?**
+
+Başlamadan önce rutin kartı üzerinde **canlı bitiş saati projeksiyonu** (*"5 adım · 22 dk · Şimdi başlarsan 08:47'de biter"*), telefon ekranına bakmadan banyoda/mutfakta yönlendiren **TTS Sesli Koç** (*"Sıradaki adım: Su iç, 2 dakika"*, *"Son 1 dakika"*), süre bitince cezalandırmayan **pozitif aşım sayacı (`+01:24 overtime`)**, `+1 / +5 dk uzat`, adım içinde ölçülebilir değer girişi (`500 ml`) ve çapa alışkanlık tetikleyicisi.
+
 - **Aderyth'te Şu An Ne Var / Ne Eksik?**
+
   - [routine-runner.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/routine-runner.tsx#L200-L231) rutin **başladıktan sonra** `projectedEndClock` ve `+2 dk` butonunu gösteriyor; ancak **Act 1 şablon seçim kartlarında (`L108-L131`) toplam dakika ve bitiş saati hiç yazmıyor (yalnızca `"3 adım"`)!**
   - `expo-speech` kurulu olmasına rağmen `routine-runner.tsx:75` yalnızca sessiz `Haptics.notificationAsync` ateşliyor; sesli anons yok.
   - [routineRunner.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/routineRunner.ts#L275) ölçülebilir (`numeric`/`duration`) alışkanlıkları rutin tamamlanırken sessizce atlıyor ve `030_routine_runner.sql` uygulanmadığı için tüm rutinler yalnızca yerel `AsyncStorage`'da duruyor!
@@ -551,6 +578,7 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
   - **`[P1]` `030` Bulut Senkronu + Ölçülebilir Adım Çipi:** `routineRunnerRepository.ts` yazılarak rutinler buluta bağlanacak; ölçülebilir adımlarda rutin ekranından çıkmadan `[+250 ml]` / `[Hedefi Tamamla]` hızlı çipi sunulacak.
 
 #### 5. Forest, 6. WaterDo, 7. Rabit, 8. Fun Habit, 9. Roubit & 10. Hizo (Sakin Oyunlaştırma & Editoryal Dinginlik)
+
 - **Rakiplerde Nasıl Çalışıyor?**
   - **Forest:** Odak sayacı çalışırken uygulamadan çıkarsan fidanın kurur (*Strict Focus*), her odak seansı aylık izometrik bahçene gerçek bir ağaç/taş ekler ve toplulukla ortak orman büyütülür.
   - **WaterDo:** Günün en önemli görevini dev bir "Günün Odak Balonu" yapar; akşam değerlendirmesinde tamamlanan balonları parmakla patlatmak tatmin edici bir kapanış ritüeli yaratır.
@@ -567,6 +595,7 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
   - **`[P2]` WaterDo Tarzı Akşam Hasat Ritüeli:** `today.tsx` Akşam Kapanışı modalında (`shutdownOpen`, `L1183`) tamamlanan maddeleri 10 saniyelik `Reanimated` + Haptic dokunuşla hasat etme mikro-etkileşimi sunulacak.
 
 #### 11. Dear Me & 12. Wipepp (Öz-Şefkat, Zaman Kapsülü Mektupları & Kırılgan Olmayan 21 Gün Yolculukları)
+
 - **Rakipte Nasıl Çalışıyor?** **Dear Me**, sert öz-eleştiriyi Kristin Neff'in 3 adımlı öz-şefkat çerçevesiyle yumuşatır ve gelecekteki kendine mühürlü **Zaman Kapsülü Mektupları** yazdırmayı sağlar. **Wipepp**, tek gün kaçırınca yanmayan 21 günlük rehberli alışkanlık yolculukları sunar.
 - **Aderyth'te Şu An Ne Var / Ne Eksik?**
   - [recovery.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/recovery.tsx#L548-L555) Kintsugi felsefesine rağmen hala **parlak hata kırmızısı (`colors.error`)** kenarlıkla *"İki kez kaçırma!"* uyarısı basıyor!
@@ -581,7 +610,11 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
 ### 7.3 Küme B Detaylı Teardown — Güçlü Alışkanlık, Görsel Izgara & Bırakma/Abstinans Takipçileri
 
 #### 13. Habitify (Biyometrik Oto-Tamamlama, Habit Stacking, Mikro-Not & Sosyal Meydan Okuma)
-- **Rakipte Nasıl Çalışıyor?** Apple Health / Google Health Connect verisinden (adım, uyku, su, antrenman, farkındalık dakikası) alışkanlıkları el sürmeden otomatik tamamlar; bir alışkanlığı diğerinin arkasına zincirler (*Habit Stacking*); her check-in'e duygu ikonu ve sesli/yazılı mikro-not ekler; konum geofence tetikleyicisi ve arkadaş meydan okumaları sunar.
+
+- **Rakipte Nasıl Çalışıyor?**
+
+Apple Health / Google Health Connect verisinden (adım, uyku, su, antrenman, farkındalık dakikası) alışkanlıkları el sürmeden otomatik tamamlar; bir alışkanlığı diğerinin arkasına zincirler (*Habit Stacking*); her check-in'e duygu ikonu ve sesli/yazılı mikro-not ekler; konum geofence tetikleyicisi ve arkadaş meydan okumaları sunar.
+
 - **Aderyth'te Şu An Ne Var / Ne Eksik?**
   - [integrations.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/integrations.ts#L79-L91) içinde Apple Health & Google Fit `'comingSoon'`. Oysa [habitEngine.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/habitEngine.ts#L69-L91) (`measuredEntryFor`) ve [habitLogService.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/services/habitLogService.ts#L220-L310) (`persistCompletion`) dışarıdan sayısal toplam almaya **%100 hazır!**
   - `habits.cue_habit_id` kolonu şemada ve [HabitOnboarding.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/HabitOnboarding.tsx#L498) içinde zaten var ama yalnızca pasif `"İpucu: X"` yazısı basıyor; ne zincir sırası ne de tamamlama tetikleyicisi var!
@@ -593,6 +626,7 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
   - **`[P2]` Konum Geofence (`expo-location` + `expo-task-manager`, `<= 20` bölge) & `leaderboard.tsx` Ortak Meydan Okuma Sekmesi.**
 
 #### 14. HabitKit (Çoklu-Alışkanlık GitHub Katkı Izgarası & Viral Paylaşım Kartları)
+
 - **Rakipte Nasıl Çalışıyor?** Ana ekranda her alışkanlığı kendi renginde **16–20 haftalık mini GitHub katkı ızgarası (tile heatmap)** ve sağ üstte tek dokunuşluk check-in butonuyla gösterir; kısmi tamamlama opaklıkla ayrışır ve Instagram/X için şık ızgara kartı paylaşılır.
 - **Aderyth'te Şu An Ne Var / Ne Eksik?**
   - [YearlyHeatmap.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/YearlyHeatmap.tsx) yalnızca `stats.tsx`'te tüm alışkanlıkların toplamını tek haritada gösteriyor.
@@ -602,7 +636,10 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
   - **`[P1]` Viral Kintsugi Paylaşım Kartları:** `react-native-view-shot` + `expo-sharing` ile `9:16` Story ve `1:1` Post boyutunda, *"Alışkanlık adını gizle"* gizlilik anahtarlı Kintsugi dokulu ızgara paylaşım kartı üretilecek.
 
 #### 15. Loop Habit Tracker (`uhabits` — Bilimsel EMA Alışkanlık Gücü, Saat Histogramı & Açık CSV Göçü)
-- **Rakipte Nasıl Çalışıyor?** Kırılgan seri sayısına mahkum etmeyen sıklık-ölçekli üstel hareketli ortalama (**EMA Habit Strength `0–100%`**), haftanın günü ve günün saati başarı histogramları, esnek *"10 günde 3 kez"* sıklığı ve tek tıkla tam CSV pivot / SQLite veri taşınabilirliği sunar.
+
+- **Rakipte Nasıl Çalışıyor?**
+Kırılgan seri sayısına mahkum etmeyen sıklık-ölçekli üstel hareketli ortalama (**EMA Habit Strength `0–100%`**), haftanın günü ve günün saati başarı histogramları, esnek *"10 günde 3 kez"* sıklığı ve tek tıkla tam CSV pivot / SQLite veri taşınabilirliği sunar.
+
 - **Aderyth'te Şu An Ne Var / Ne Eksik?**
   - Bölüm 3'te kanıtlandığı üzere [habitStrength.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/habitStrength.ts#L42-L90) takvim sıklığına kördür (`Haftada 2` alışkanlığı dinlenme günlerinde cezalandırır) ve arayüzde serinin yanında görünmez.
   - [behaviorIntelligence.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/behaviorIntelligence.ts#L793-L796) `morningEveningDifference` her zaman `'unsupported'` döner; çünkü `habit_logs` gerçek yapılma saatini (`performed_at`) geçmiş gün telafisinden (`is_backfill`) ayırmaz.
@@ -614,6 +651,7 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
   - **`[P1]` Loop / Habitify / HabitKit CSV Göç Sihirbazı (`lib/importers/habitCsvImporter.ts`):** `012_xp_integrity` liderlik tablosu kurallarını delmeden tarihsel logları `xp = 0, source = 'import'` ile yazan `import_historical_habit_logs` RPC'siyle rakip kullanıcıları 30 saniyede Aderyth'e taşıyacak.
 
 #### 16. HabitNow, 17. Habit360, 18. Habit It, 19. HabitGenius, 20. HelloHabit, 21. Disciplined, 22. Alışkanlık Takip & 23. Hedef ve Alışkanlık Takibi
+
 - **Süreli (`duration`) Alışkanlık Satırına Gömülü Canlı Sayaç (*HabitNow, HelloHabit*):**
   - *Eksik:* `"20 dk Kitap Oku"` alışkanlığında kullanıcı ayrı odak sekmesine gitmek veya elle `"20"` yazmak zorunda.
   - *Çözüm **`[P0]`** (Sıfır Native Paket):* `activeHabitTimerStore.ts` (`startedAtEpochMs` tabanlı, arka planda kaymayan sayaç) ile `duration` alışkanlık satırına doğrudan `[▶ 20:00]` butonu eklenecek; süre dolunca otomatik `persistCompletion` çağrılacak.
@@ -634,7 +672,15 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
 ### 7.4 Küme C Detaylı Teardown — Planlayıcılar, Görsel Zaman Bloklama, Israrcı Hatırlatıcılar & Daylio Korelasyonu
 
 #### 24. Todoist (TR/EN Doğal Dil Hızlı Ekleme, Çift Modlu Görev Tekrarı, Gerçek Alt Görevler, Kanban & Ramble)
-- **Rakipte Nasıl Çalışıyor?** Yazarken anında ayrıştıran doğal dil motoru (*`"Yarın 14:30 Raporu gönder #İş p1 @derin-odak ~45dk her! 3 gün"`*), sabit takvim tekrarı (`her pazartesi`) ile DEHB-dostu **tamamlama-bazlı kayan tekrar (`her! 3 gün` — görev gecikse bile birikme yapmaz, tamamlandığı günden 3 gün sonrasına kurulur)** ayrımı, iç içe alt görev ağacı, Proje Kanban panosu ve mikrofonla dağınık konuşmadan çoklu görev çıkaran **Ramble**.
+
+- **Rakipte Nasıl Çalışıyor?**
+
+Yazarken anında ayrıştıran doğal dil motoru (*`"Yarın 14:30 Raporu gönder #İş p1 @derin-odak ~45dk her! 3 gün"`*), sabit takvim tekrarı (`her pazartesi`) ile DEHB-dostu **tamamlama-bazlı kayan tekrar (`her! 3 gün` — görev gecikse bile birikme yapmaz, tamamlandığı günden 3 gün sonrasına kurulur)**
+
+ayrımı, iç içe alt görev ağacı, Proje Kanban panosu ve mikrofonla dağınık konuşmadan çoklu görev çıkaran
+
+**Ramble**.
+
 - **Aderyth'te Şu An Ne Var / Ne Eksik?**
   - [InlineComposer.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/components/InlineComposer.tsx#L39-L119) sıfır NLP ayrıştırma yapıyor.
   - **Kritik UX Kırığı:** [tasks.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/tabs/tasks.tsx#L698-L779) içindeki "Yeni Görev" modalında **`due_date` (tarih) ve `project_id` (proje) seçicisi bile yok** (`due_date: null, project_id: null` sabit kodlu)!
@@ -645,7 +691,9 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
   - **`[P1]` [projects.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/projects.tsx) `Liste | Kanban` Görünümü + Sesli "Ramble" Çoklu Görev Çıkarıcı** (kurulu `expo-speech-recognition` -> `ai-coach` -> Gate-D önizleme kartı ile onaylı toplu görev oluşturma).
 
 #### 25. TimeTune & 26. Super Planner (Birleşik 24s Gün Şeridi, Boşluk Avcısı, "Öğleden Sonrayı Yeniden Planla" & Gün Şablonları)
-- **Rakipte Nasıl Çalışıyor?** **Super Planner**, takvim etkinliklerini, zaman bloklu görevleri ve saate bağlı alışkanlıkları **tek bir 24 saatlik dikey gün şeridinde** birleştirir ve plan sarktığında tek tuşla kalan görevleri akşamki boşluklara yeniden yerleştirir. **TimeTune**, tekrarlayan günler için **Gün Blok Şablonları** (*Ofis Günü, Evden Derin Çalışma, Düşük Enerji Günü*) uygular ve takvimdeki boşlukları (*Gaps*) görünür kılar.
+
+- **Rakipte Nasıl Çalışıyor?**
+ **Super Planner**, takvim etkinliklerini, zaman bloklu görevleri ve saate bağlı alışkanlıkları **tek bir 24 saatlik dikey gün şeridinde** birleştirir ve plan sarktığında tek tuşla kalan görevleri akşamki boşluklara yeniden yerleştirir. **TimeTune**, tekrarlayan günler için **Gün Blok Şablonları** (*Ofis Günü, Evden Derin Çalışma, Düşük Enerji Günü*) uygular ve takvimdeki boşlukları (*Gaps*) görünür kılar.
 - **Aderyth'te Şu An Ne Var / Ne Eksik?**
   - Canlı DB'de `tasks.time_block_start`, `tasks.time_block_end`, `calendars`, `events` ve `event_templates` tabloları **hazır ama %100 atıl!** [calendar.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/calendar.tsx) yalnızca aylık nokta takvimi çiziyor.
   - **Kritik Kapasite Körlüğü:** [capacity.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/capacity.ts#L50-L157) `computeDailyLoad` fonksiyonu kullanıcının takviminde o gün 6 saatlik toplantı olup olmadığını hiç bilmediği için imkansız bir günlük yükü `"Normal"` sanıyor!
@@ -654,6 +702,7 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
   - **`[P1]` Atıl `event_templates` Tablosunun "Gün Şablonları" Olarak Canlandırılması:** *Ofis Günü / Evden Çalışma / Düşük Enerji Kurtarma Günü* şablonları tek dokunuşla seçilen güne uygulanabilecek.
 
 #### 27. Apple Reminders & Due (Görev Hatırlatıcıları & DEHB "Israrcı Takip Kaskadı / Auto-Snooze Nagging")
+
 - **Rakipte Nasıl Çalışıyor?** **Due**, DEHB bildirim körlüğünü ("bildirimi gördüm, 10 saniye sonra unuttum") çözmek için kritik görev tamamlanana veya ertelenene kadar `T+0, T+10dk, T+20dk, T+30dk` otomatik ısrarcı takip hatırlatıcısı ateşler ve kilit ekranından `+15 dk / +1 saat / Bu Akşam / Yarın Sabah` tek-tık erteleme sunar.
 - **Aderyth'te Şu An Ne Var / Ne Eksik?**
   - [notifications.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/notifications.ts#L1-L398) **yalnızca alışkanlıkları** zamanlıyor; **görevler (`tasks`) için bildirim oranı %0!** Üstelik `L26`'da `shouldPlaySound: false` sabit kodlandığı için tüm bildirimler sessiz düşüyor!
@@ -661,7 +710,11 @@ Rakiplerde olup Aderyth arayüzünde bulunmayan özelliklerin **%60'ından fazla
   - **`[P0]` Sunucusuz Görev Hatırlatıcıları + Opsiyonel "Israrcı Takip (`Nagging Cascade`)" (`lib/taskNotifications.ts`):** iOS'un 64 bekleyen bildirim tavanı içinde `44 Alışkanlık + 20 Görev/Nag` bütçesi ayrılacak. `tasks` tablosuna `reminder_at` ve `nag_interval_minutes` (`null | 5 | 10 | 15 | 30`) eklenecek. Israrcı takip açık görevlerde yerel olarak `[T, T+Δ, T+2Δ, T+3Δ]` 4'lü kaskad zamanlanacak (`toggleDone` çağrıldığı an kalan kaskad iptal edilecek); iOS `interruptionLevel: 'timeSensitive'` ve Android `AndroidImportance.MAX` sesli kanalına bağlanacak; bildirim aksiyonlarına `+15 dk`, `5 dk Küçük Başlangıç`, `Bu Akşam (20:00)` ve `Yarın (09:00)` eklenecek.
 
 #### 28. Daylio (5 Saniyelik Klavyesiz Bağlam Check-in, Sıfır-Token 4-Kaynak Korelasyon Motoru & Year in Pixels)
-- **Rakipte Nasıl Çalışıyor?** Tek harf bile yazmadan 5 saniyede **5'li Mod + Bağlam/Aktivite İkonları** (*İyi Uyku, Kafein, Egzersiz, Sosyal, Geç Ekran*) seçtirir; istatistik ekranında *"Egzersiz yaptığın günlerde modun ortalama +0.9 puan daha yüksek"* gibi somut korelasyon kartları ve 365 günlük renkli **Year in Pixels** tablosu üretir.
+
+- **Rakipte Nasıl Çalışıyor?**
+
+Tek harf bile yazmadan 5 saniyede **5'li Mod + Bağlam/Aktivite İkonları** (*İyi Uyku, Kafein, Egzersiz, Sosyal, Geç Ekran*) seçtirir; istatistik ekranında *"Egzersiz yaptığın günlerde modun ortalama +0.9 puan daha yüksek"* gibi somut korelasyon kartları ve 365 günlük renkli **Year in Pixels** tablosu üretir.
+
 - **Aderyth'te Şu An Ne Var / Ne Eksik?**
   - [moodStore.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/stores/moodStore.ts#L1-L157) yalnızca yerel `AsyncStorage`'a yazıyor (`031` bulut tablosuna hiç bağlı değil!) ve bağlam etiketleri (`context_tags`) tutmuyor.
   - [moodHabitRelation.ts](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/lib/moodHabitRelation.ts#L1-L263) yazılmış olmasına rağmen ana `stats.tsx` veya `insights.tsx` yerine gizli alt rota [journal-archive.tsx](file:///c:/Users/Trade%20Bilisim/Mobile_Uygulama/frontend/app/screens/journal-archive.tsx#L160) içine saklanmış; üstelik `focus_sessions`, `tasks` ve **ertesi gün (Lag-1) etkisini** hiç hesaplamıyor!
@@ -684,6 +737,7 @@ flowchart LR
 ```
 
 ### Dalga 0 — `P0 BLOCKER` (1. Hafta: Acil Lansman, Güvenlik & Veri Bütünlüğü Kapısı)
+
 *Bu dalga tamamlanmadan App Store / Google Play üretimine çıkılması veri sızıntısı, sahte abonelik ve yedekleme çökmesine yol açar.*
 
 1. **Auth, Oturum & Üretim Kilidi:**
@@ -701,6 +755,7 @@ flowchart LR
 ---
 
 ### Dalga 1 — `P0 CORE` (2–3. Hafta: Çekirdek Motor Onarımları, IA Sadeleştirmesi & Sıfır-Paket Rakip Özellikleri)
+
 *Hiçbir yeni native modül derlemesi gerektirmeden uygulamanın çekirdek doğruluğunu, hızını ve günlük tutundurma (retention) gücünü katlayan dalga.*
 
 1. **Çekirdek Davranış Motoru Onarımları:**

@@ -1762,3 +1762,26 @@ iOS paketi dışa aktarılmadı (Android ile aynı Metro/Hermes dönüşümü; p
 **Bulundu, düzeltilmedi:** (a) Harcama sunucuda yazılıp yanıtı Edge'e ulaşmazsa (`spend` `unavailable` -> `release`) ve sağlayıcı da başarısız olursa ücret iade edilmez; 039'un iyileştirmesi de `created_at` koşuluyla onu almaz (F21 ya da sahip kararı). (b) `ai_request_reconcile_stale` iletisi koç için de "Kurulum yarida kaldi" der (SQL fonksiyonu değişikliği, OD-05). (c) Deneme saklayıcıları hesap değişiminde kapanmaz (plan F04'e yazar; ücret/veri sızıntısı yok). (d) 039 istemci güncellenmeden uygulanırsa eski sürüm yeniden gönderimde ham 23505 iletisini gösterir (sıra §5'te). (e) Planın `expireLease` kodu fırlatabilir (try yok; tip yorumu "Fırlatmaz" der); fırlatırsa istisna `runIdempotentAiRequest`'ten çıkar, yanıt `REFUND_PENDING` yerine handler'ın genel 500 iletisi olur; talep yine `in_progress` kalır (kira 5 dk'da biter, para kaybı yok). (f) Edge içe aktarımları sürüm sabitlemiyor. (g) 039'un veri onarımının CI'da otomatik kanıtı yok (sapma 2).
 
 **Açık:** (1) 039'un uygulanması ve `generate-routine` deploy'u sahipte; sıra: istemci sürümü -> 039; Edge deploy'u bağımsız. (2) Görsel QA sahipte. (3) İlk gerçek CI koşusu (push sahipte). (4) Commit özeti bu başlıkta yok ("bu commit").
+
+### F07 commit: `7dd028f0`
+
+### Wave 0A — Sahip Grup Onayları, OD Kararları ve Çalışma Ağacı Hijyeni (2026-11-21)
+
+```yaml
+final_plan_approval: G1 2026-11-21 owner
+final_plan_approval: G2 2026-11-21 owner
+final_plan_approval: G3 (F36, F37; OD-02/08/09/10 kapılı fazlar kapalı kalır) 2026-11-21 owner
+final_plan_approval: G4 (F44, F46, F48, F49; OD-11/12/13 kapılı fazlar kapalı kalır) 2026-11-21 owner
+owner_decision: F07.1 2026-11-21 Wave 0A (çalışma ağacı + QUERY_BOUNDING_MATRIX.md 99 sorgu) ve Wave 0B (spend.unavailable -> expireLease, expireLease try/catch, AttemptKeeper accountEpoch sıfırlaması, ci.yml 039 dedupe+heal testi) onaylandı
+owner_decision: OD-05 2026-11-21 migrationRlsGuard.test.ts daraltıcı REVOKE+GRANT, sabit search_path'li argümanlı SECURITY DEFINER, sütun düzeyi SELECT grant ve var olan tabloda owner-only politika biçimleri onaylandı
+owner_decision: OD-06 2026-11-21 Keşfet "finance" kategorisi ve onboarding hedefi etiketi "Ev & Evrak Düzeni" olarak belirlendi
+owner_decision: OD-07 2026-11-21 Kırılgan metin guard'larının davranış testleri ve Türkçe i18n katalog anahtarlarıyla değiştirilmesi onaylandı (F44 ve F48 tam kapsam)
+```
+
+- **Alıntılanan sahip onay yanıtları (2026-11-21):**
+  - `A1: (Recommended) Doğrudan burada (Antigravity paralel subagent dalgaları ile uygula)`
+  - `A2: (Recommended) Evet — Wave 0A (çalışma ağacı + sorgu matrisi) ve Wave 0B (F07.1 kredi/istisna/hesap-sınırı + 039 CI testi) uygulansın`
+  - `A3: (Recommended) G1 (F08–F22) + OD-05 VE G2 (F23–F34) + OD-06 ("Ev & Evrak Düzeni") onaylı`
+  - `A4: (Recommended) OD-07: Metin guard'larının dönüşümü ve Türkçe i18n altyapısı (F44 ve F48 tam kapsam)`
+- **Çalışma ağacı hijyeni:** `frontend/app/screens/monthly-review.tsx` CRLF -> LF normalleştirildi; `docs/QUERY_BOUNDING_MATRIX.md` (98 -> 99 sorgu, F07 `aiConversationRepository` ön okuması dahil), `docs/ADERYTH_360_AUDIT_AND_COMPETITOR_REPORT.md` ve `implementation.md` (0.1 ve Ek C onay kayıtlarıyla) bu `docs:` commit'ine alındı.
+

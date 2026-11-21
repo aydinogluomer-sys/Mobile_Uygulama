@@ -14,6 +14,7 @@ query is unbounded; this does not.
 | `aiConversationRepository.ts` | `fetchMessagesPage` | `ai_messages` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `aiConversationRepository.ts` | `fetchPendingAction` | `ai_conversation_actions` | no | SINGLE_ROW | yes |
 | `aiConversationRepository.ts` | `insertAction` | `ai_conversation_actions` | no | WRITE | — |
+| `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | SINGLE_ROW | yes |
 | `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | WRITE | — |
 | `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | SINGLE_ROW | — |
 | `aiConversationRepository.ts` | `resolveAction` | `ai_conversation_actions` | no | WRITE | yes |
@@ -109,12 +110,12 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **98**
+- queries: **99**
 - collection SELECTs: **42**
 - KEYSET_PAGE: **7**
 - DATE_WINDOW: **10**
 - BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **2**
 - BOUNDED_DOMAIN_WINDOW: **19**
-- SINGLE_ROW: **14**
+- SINGLE_ROW: **15**
 - **UNCLASSIFIED: 0**
