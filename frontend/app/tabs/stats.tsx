@@ -89,6 +89,7 @@ export default function StatsScreen() {
   const [totalCompletions, setTotalCompletions] = useState(0);
   const [todayCompletions, setTodayCompletions] = useState(0);
   const [monthCompletions, setMonthCompletions] = useState(0);
+  const [partialData, setPartialData] = useState(false);
 
   const { habits, fetchHabits, updateHabit } = useHabitStore();
   const { fetchTasks } = useTaskStore();
@@ -182,6 +183,7 @@ export default function StatsScreen() {
       ]);
 
       if (heatmapRes.ok) {
+        setPartialData(false);
         const data = heatmapRes.data;
         const map: HeatmapData = {};
         let total = 0;
@@ -206,6 +208,8 @@ export default function StatsScreen() {
           return map[d] ?? 0;
         });
         setTrend14(arr);
+      } else {
+        setPartialData(heatmapRes.code === 'TOO_LARGE');
       }
 
       // Son 30 gün — alan performansı için habit_id bazlı tamamlamalar
@@ -433,6 +437,11 @@ export default function StatsScreen() {
           <StatTile value={totalCompletions} label="Toplam Tamamlama" accent={colors.success} />
           <StatTile value={avgPerDay} label="Günlük Ort." accent={colors.warning} />
         </View>
+        {partialData && (
+          <Text style={s.partialNote} accessibilityLiveRegion="polite">
+            Kayıt sayın çok büyük; gösterilen değerler eksik olabilir.
+          </Text>
+        )}
 
         {/* 14-Günlük Trend */}
         <View style={s.trendCard}>
@@ -596,6 +605,7 @@ const s = StyleSheet.create({
   pipeCount: { fontSize: 14, fontWeight: '800', color: colors.text, marginRight: space.md },
 
   statRow: { flexDirection: 'row', gap: space.md, marginBottom: space.lg },
+  partialNote: { fontSize: 12, color: colors.textFaint, lineHeight: 17, textAlign: 'center', marginBottom: space.md },
 
   monthCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
   monthHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },

@@ -21,6 +21,7 @@
 import { stripTimeOff } from '../lib/habitPauses';
 import { supabase } from '../lib/supabase';
 import type { Habit, FrequencyConfig } from '../lib/supabase';
+import { SERVER_MAX_ROWS } from './pagedSelect';
 import { currentUserId, deleteOwned, updateOwned, type RepoResult } from './shared';
 
 /** Column list mirrors `store/habitStore.ts`'s `addHabit`/`fetchHabits` --
@@ -159,7 +160,7 @@ export async function fetchHabits(limit = 500): Promise<RepoResult<Habit[]>> {
     .eq('user_id', u.userId)
     .not('status', 'eq', 'archived')
     .order('created_at', { ascending: false })
-    .limit(Math.max(1, Math.min(limit, 2000)));
+    .limit(Math.max(1, Math.min(limit, SERVER_MAX_ROWS)));
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as unknown as Habit[] };
 }

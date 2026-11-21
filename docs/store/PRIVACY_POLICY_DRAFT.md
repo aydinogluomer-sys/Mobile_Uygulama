@@ -127,7 +127,7 @@ arasındaki tüm trafik HTTPS/TLS ile şifrelenir. Cihazında ayrıca oturum bil
 ## Verilerini dışa aktarma
 
 Ayarlar → Veri ve Gizlilik bölümünden JSON, CSV veya Excel olarak dışa
-aktarabilirsin. Bu dosya bir yedek değildir; geri yükleme yoktur.
+aktarabilirsin. Bu tam bir yedek değildir: JSON dosyasını doğrulayıp eksik kayıtlarını hesabına ekleyebilirsin; alışkanlık kayıtların (tarihçe), odak oturumların ve webhook'ların geri yüklenemez.
 
 ## Hesabını silme
 

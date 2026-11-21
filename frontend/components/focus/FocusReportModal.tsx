@@ -9,6 +9,7 @@ import { colors, fontFamily } from '../../lib/tokens';
 import { useFocusStore } from '../../store/focusStore';
 import { todayLocal } from '../../lib/date';
 import { seriesText, redactSessionsForShare } from '../../lib/chartText';
+import { reportError } from '../../lib/crashReporting';
 import {
   FocusSessionRow, ReportRange, inRange, summary, byTask, buckets, ranking,
   fmtDuration, fmtHours, toCSV, toExcelXML, sessionsSheet, EXPORT_META, webDownload,
@@ -37,6 +38,7 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
   const [tab, setTab] = useState<Tab>('summary');
   const [rows, setRows] = useState<FocusSessionRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   // Sıralama gizliyse ve o sekmedeysek özete dön
   useEffect(() => {
@@ -52,6 +54,7 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
     if (!visible) return;
     setRange(settings.defaultReportRange);
     setTab('summary');
+    setExportNote(null);
     let active = true;
     (async () => {
       setLoading(true);
@@ -65,11 +68,12 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
     return () => { active = false; };
   }, [visible, settings.defaultReportRange]);
 
+  const workSessions = useMemo(() => rows.filter((r) => r.mode === 'work'), [rows]);
   const sessions = useMemo(() => inRange(rows, range), [rows, range]);
   const sum = useMemo(() => summary(sessions), [sessions]);
   const tasks = useMemo(() => byTask(sessions), [sessions]);
   const chart = useMemo(() => buckets(sessions, range), [sessions, range]);
-  const rank = useMemo(() => ranking(sessions), [sessions]);
+  const rank = useMemo(() => ranking(sessions, { streakSessions: workSessions }), [sessions, workSessions]);
   const maxBar = Math.max(1, ...chart.map((b) => b.seconds));
   const chartH = 120;
 
@@ -77,6 +81,7 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
   const [shareTitles, setShareTitles] = useState(false);
   async function exportData(fmt: 'csv' | 'json' | 'excel') {
     if (sessions.length === 0) return;
+    setExportNote(null);
     const out = redactSessionsForShare(sessions, shareTitles);
     const content =
       fmt === 'csv' ? toCSV(out)
@@ -86,15 +91,30 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
     const filename = `odak-raporu-${todayLocal()}.${ext}`;
 
     // Web: gerçek dosya indir (Share masaüstü tarayıcılarda yok/no-op).
-    if (Platform.OS === 'web') { webDownload(filename, mime, content); return; }
+    if (Platform.OS === 'web') {
+      const ok = webDownload(filename, mime, content);
+      if (!ok) setExportNote('Tarayıcın dosya indirmeyi engelledi.');
+      return;
+    }
     // iOS: paylaşım sayfası Modal üstünde açılamaz → önce kapat, sonra paylaş.
     if (Platform.OS === 'ios') {
       onClose();
-      setTimeout(() => { Share.share({ message: content, title: `Odak raporu (${fmt.toUpperCase()})` }).catch(() => {}); }, 350);
+      setTimeout(() => {
+        Share.share({ message: content, title: `Odak raporu (${fmt.toUpperCase()})` }).catch((e) => {
+          reportError(e, 'manual', 'focus-report-share');
+        });
+      }, 350);
       return;
     }
     // Android: doğrudan paylaş.
-    try { await Share.share({ message: content, title: `Odak raporu (${fmt.toUpperCase()})` }); } catch { /* iptal/yoksay */ }
+    try {
+      await Share.share({ message: content, title: `Odak raporu (${fmt.toUpperCase()})` });
+    } catch (e) {
+      if ((e as { name?: string })?.name !== 'AbortError') {
+        setExportNote('Rapor paylaşılamadı; tekrar dene.');
+        reportError(e, 'manual', 'focus-report-share');
+      }
+    }
   }
 
   return (
@@ -155,7 +175,7 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
                       {chart.map((b, i) => (
                         <View key={i} style={s.chartCol}>
                           <View style={[s.chartBar, { height: Math.max(2, Math.round((b.seconds / maxBar) * (chartH - 22))), backgroundColor: accent }]} />
-                          <Text style={s.chartLabel} numberOfLines={1}>{b.label}</Text>
+                          <Text style={s.chartLabel} numberOfLines={1}>{chart.length > 20 ? (i % 3 === 0 ? b.label : '') : b.label}</Text>
                         </View>
                       ))}
                     </View>
@@ -211,6 +231,11 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
         )}
 
         {/* Dışa aktarma footer */}
+        {exportNote ? (
+          <Text style={[s.footerText, { paddingHorizontal: 18, paddingTop: 6, color: colors.error }]} accessibilityLiveRegion="polite">
+            {exportNote}
+          </Text>
+        ) : null}
         <View style={s.footer}>
           <TouchableOpacity onPress={() => setShareTitles((v) => !v)} accessibilityRole="switch"
             accessibilityState={{ checked: shareTitles }} accessibilityLabel="Paylaşılan rapora görev adlarını ekle">
@@ -306,6 +331,6 @@ const s = StyleSheet.create({
   },
   footerText: { fontSize: 11, color: colors.textFaint },
   footerBtns: { flexDirection: 'row', gap: 8 },
-  exportBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  exportBtn: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   exportText: { fontSize: 12, fontWeight: '700', color: colors.textDim },
 });

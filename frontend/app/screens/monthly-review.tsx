@@ -39,6 +39,7 @@ import { planFromRow } from '../../lib/recovery';
 import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
 import { ChapterDivider, EmptyState, EmbeddedFiligree, EmblemMedallion, FormError } from '../../components/ui';
 import { DECOR, SCREEN_BANNERS } from '../../lib/visualAssets';
+import { reportError } from '../../lib/crashReporting';
 
 const MONTHS_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
@@ -358,7 +359,8 @@ export default function MonthlyReviewScreen() {
       );
       setSavedAt(stamp);
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Kayıt başarısız');
+      setSaveError('Değerlendirmen kaydedilemedi. Bağlantını kontrol edip tekrar dene; yazdıkların ekranda duruyor.');
+      reportError(error, 'manual', 'monthly-review-save');
     } finally {
       setSaving(false);
     }

@@ -17,6 +17,11 @@ export const LOCAL_BACKUP_KEEP = 3;
 export const LOCAL_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** After a failed attempt, wait this long before trying again on the next open. */
 export const LOCAL_BACKUP_RETRY_MS = 60 * 60 * 1000;
+export const LOCAL_BACKUP_MAX_BYTES = 1_000_000;
+export const LOCAL_BACKUP_TOTAL_BYTES = 2_400_000;
+
+/** UTF-8 bayt sayısı (`text.length` karakter sayar, Türkçe ve emoji için yanlıştır). */
+export const utf8Bytes = (text: string): number => new TextEncoder().encode(text).length;
 
 export type BackupSlot = { key: string; created_at: string; complete: boolean; bytes: number };
 
@@ -49,6 +54,28 @@ export function rotate(slots: readonly BackupSlot[], added: BackupSlot, keep = L
   if (lastComplete && !kept.includes(lastComplete)) { kept.pop(); kept.push(lastComplete); }
   const keptKeys = new Set(kept.map((s) => s.key));
   return { slots: kept, drop: all.filter((s) => !keptKeys.has(s.key)).map((s) => s.key) };
+}
+
+/**
+ * Yeni kopya yazılmadan ÖNCE hangi eski kopyalar silinmeli. En yeni TAM kopya korunur (yeni kopya doğrulanana
+ * dek tek geçerli yedek odur). Bütçeye sığmak mümkün değilse `fits: false` (yazma yapılmaz).
+ */
+export function planEviction(
+  slots: readonly BackupSlot[],
+  incomingBytes: number,
+  totalBudget = LOCAL_BACKUP_TOTAL_BYTES,
+): { drop: string[]; fits: boolean } {
+  const ordered = [...slots].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const protectedKey = ordered.find((s) => s.complete)?.key;
+  let total = incomingBytes + ordered.reduce((n, s) => n + s.bytes, 0);
+  const drop: string[] = [];
+  for (const s of [...ordered].reverse()) {
+    if (total <= totalBudget) break;
+    if (s.key === protectedKey) continue;
+    drop.push(s.key);
+    total -= s.bytes;
+  }
+  return { drop, fits: total <= totalBudget };
 }
 
 const ago = (ms: number) => {

@@ -27,16 +27,21 @@ const mockPage = (name: string) => async (cursor?: { id: string } | null, limit 
 
 jest.mock('../../lib/supabase', () => ({ supabase: {} }));
 jest.mock('../../lib/session', () => ({ currentUser: jest.fn(async () => ({ id: mockServer.user, email: null })) }));
-jest.mock('../../repositories/habitRepository', () => ({ fetchHabits: jest.fn(async () => ({ ok: true, data: mockMine('habits') })) }));
+jest.mock('../../repositories/exportRepository', () => ({
+  MAX_EXPORT_ROWS: 20_000,
+  EXPORT_FULL_TABLES: ['habits', 'habit_logs', 'journal_entries', 'focus_sessions', 'webhooks'],
+  fetchFullTable: jest.fn(async (t: string, max = 20_000) => {
+    const rows = mockMine(t);
+    return { ok: true, data: { rows: rows.slice(0, max), truncated: rows.length > max } };
+  }),
+  fetchOwnProfileForExport: jest.fn(async () => ({ ok: true, data: mockMine('profiles') })),
+  fetchOwnOnboardingForExport: jest.fn(async () => ({ ok: true, data: mockMine('user_onboarding') })),
+}));
 jest.mock('../../repositories/taskRepository', () => ({ fetchTasksPage: jest.fn((c?: { id: string } | null, l?: number) => mockPage('tasks')(c, l)) }));
 jest.mock('../../repositories/noteRepository', () => ({ fetchNotesPage: jest.fn((c?: { id: string } | null, l?: number) => mockPage('notes')(c, l)) }));
 jest.mock('../../repositories/projectRepository', () => ({ fetchProjectsPage: jest.fn((c?: { id: string } | null, l?: number) => mockPage('projects')(c, l)) }));
 jest.mock('../../repositories/goalRepository', () => ({ fetchGoalsPage: jest.fn((c?: { id: string } | null, l?: number) => mockPage('goals')(c, l)) }));
 jest.mock('../../repositories/badHabitRepository', () => ({ fetchBadHabitsPage: jest.fn((c?: { id: string } | null, l?: number) => mockPage('bad_habits')(c, l)) }));
-jest.mock('../../repositories/journalRepository', () => ({ fetchJournalEntries: jest.fn(async () => ({ ok: true, data: mockMine('journal_entries') })) }));
-jest.mock('../../repositories/focusSessionRepository', () => ({ fetchAllFocusSessions: jest.fn(async () => ({ ok: true, data: mockMine('focus_sessions') })) }));
-jest.mock('../../repositories/webhookRepository', () => ({ fetchWebhooks: jest.fn(async () => ({ ok: true, data: [] })) }));
-jest.mock('../../repositories/habitLogRepository', () => ({ fetchHabitLogsForHabitsSince: jest.fn(async () => ({ ok: true, data: mockMine('habit_logs') })) }));
 jest.mock('../../repositories/restoreRepository', () => {
   const actual = jest.requireActual('../../repositories/restoreRepository');
   const owned = async (t: string, max = actual.MAX_EXISTING) => {

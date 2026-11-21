@@ -13,7 +13,7 @@ jest.mock('../../services/localBackupService', () => ({
 }));
 jest.mock('../../services/restoreService', () => ({
   loadRestoreJob: jest.fn(async () => ({ id: 'restore-x', fileCreatedAt: '2026-10-01T10:00:00Z', startedAt: '', updatedAt: '', status: 'running', inserted: { notes: 50 }, planned: 120 })),
-  dryRunRestore: jest.fn(async () => ({ ok: true, plan: { collections: [], inserts: 70, blockedRows: 0 }, summary: ['notes: 70 eklenecek'], job: { id: 'restore-x', fileCreatedAt: '2026-10-01T10:00:00Z', resumes: true } })),
+  dryRunRestore: jest.fn(async () => ({ ok: true, plan: { userId: 'u1', collections: [], inserts: 70, blockedRows: 0 }, summary: ['notes: 70 eklenecek'], notices: [], job: { id: 'restore-x', fileCreatedAt: '2026-10-01T10:00:00Z', resumes: true } })),
   executeRestore: jest.fn(),
 }));
 

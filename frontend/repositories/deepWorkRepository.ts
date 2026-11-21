@@ -11,6 +11,7 @@
  * inside the store.
  */
 import { supabase } from '../lib/supabase';
+import { requireComplete, selectAllPages } from './pagedSelect';
 import { currentUserId, deleteOwned, type RepoResult } from './shared';
 import { ymd } from '../lib/date';
 import { parseManualMinutes } from '../lib/focusDuration';
@@ -31,15 +32,18 @@ export async function fetchDeepWorkSince(days = 30): Promise<RepoResult<DeepWork
   if (!u.ok) return u;
   const since = new Date();
   since.setDate(since.getDate() - Math.max(1, Math.min(days, 365)));
-  const { data, error } = await supabase
-    .from('deep_work_sessions')
-    .select(COLS)
-    .eq('user_id', u.userId)
-    .gte('date', ymd(since))
-    .order('date', { ascending: false })
-    .order('created_at', { ascending: false });
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as DeepWorkRow[] };
+  const r = await selectAllPages<DeepWorkRow>((from, to) =>
+    supabase
+      .from('deep_work_sessions')
+      .select(COLS)
+      .eq('user_id', u.userId)
+      .gte('date', ymd(since))
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  return requireComplete(r, 'Derin çalışma seansları');
 }
 
 export async function insertDeepWorkSession(input: {

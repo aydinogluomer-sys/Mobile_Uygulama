@@ -5,6 +5,7 @@
  * account's, never the file's.
  */
 import { supabase } from '../lib/supabase';
+import { keysetAll } from './pagedSelect';
 import { currentUserId, isTransportFailure, type RepoResult } from './shared';
 
 export type RestoreTable =
@@ -21,6 +22,7 @@ export const RESTORE_TABLES: readonly RestoreTable[] = [
 /** R08.01 — tables the export reads in full through `fetchOwnedTable` (bounded, keyset-paged). */
 export type ExportTable = RestoreTable | 'life_area_logs' | 'deep_work_sessions' | 'ai_conversations' | 'ai_messages'
   | 'ai_conversation_actions' | 'journal_insights' | 'routines' | 'habit_deletions';
+// Bu listeye `id` sütunu olmayan tablo eklenemez; `exportCompleteness.test.ts` canlı şemadan doğrular.
 export const EXPORT_EXTRA_TABLES: readonly ExportTable[] = [
   'okrs', 'key_results', 'reading_list', 'focus_tasks', 'recovery_plans', 'weekly_reviews', 'monthly_reviews',
   'life_area_logs', 'deep_work_sessions', 'ai_conversations', 'ai_messages',
@@ -31,32 +33,26 @@ export const EXPORT_EXTRA_TABLES: readonly ExportTable[] = [
 /** A table that does not exist yet (its migration has not run): skipped, not failed. */
 export { isMissingTable } from '../lib/pgErrors';
 
+/** Upper bound on rows read per collection for the dry run; matches the export's MAX_ROWS. */
+export const MAX_EXISTING = 20_000;
+
 /**
  * R08.01 — every row of one owned table, keyset-paged by id so nothing is
  * skipped or repeated, up to `max` (the export's per-collection ceiling).
  */
-export async function fetchOwnedTable(table: ExportTable, max = MAX_EXISTING, page = 500): Promise<RepoResult<{ rows: Record<string, unknown>[]; truncated: boolean }>> {
+export async function fetchOwnedTable(
+  table: ExportTable,
+  max = MAX_EXISTING,
+  page = 500,
+): Promise<RepoResult<{ rows: Record<string, unknown>[]; truncated: boolean }>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const rows: Record<string, unknown>[] = [];
-  let after: string | null = null;
-  for (let guard = 0; guard < 1000; guard++) {
-    let q = supabase.from(table).select('*').eq('user_id', u.userId).order('id', { ascending: true }).limit(page);
+  return keysetAll<Record<string, unknown>>((after, limit) => {
+    let q = supabase.from(table).select('*').eq('user_id', u.userId).order('id', { ascending: true }).limit(limit);
     if (after !== null) q = q.gt('id', after);
-    const { data, error, status } = await q;
-    if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-    const got = (data ?? []) as Record<string, unknown>[];
-    rows.push(...got);
-    // Truncated only when a row BEYOND the ceiling exists (exactly `max` rows is complete).
-    if (rows.length > max) return { ok: true, data: { rows: rows.slice(0, max), truncated: true } };
-    if (got.length < page) return { ok: true, data: { rows, truncated: false } };
-    after = String(got[got.length - 1].id);
-  }
-  return { ok: true, data: { rows, truncated: true } };
+    return q;
+  }, { maxRows: max, pageSize: page });
 }
-
-/** Upper bound on rows read per collection for the dry run; matches the export's MAX_ROWS. */
-export const MAX_EXISTING = 20_000;
 
 /**
  * The account's current rows of one table, for the dry run's comparison --
@@ -71,15 +67,71 @@ export async function fetchExistingRows(table: RestoreTable): Promise<RepoResult
   return { ok: true, data: r.data.rows };
 }
 
-/** Insert rows with their own ids, owned by the signed-in account. */
-export async function insertRestoredRows(table: RestoreTable, rows: readonly Record<string, unknown>[]): Promise<RepoResult<number>> {
-  const u = await currentUserId();
-  if (!u.ok) return u;
-  if (rows.length === 0) return { ok: true, data: 0 };
+type ResilientResult =
+  | { ok: true; inserted: number; skipped: number }
+  | { ok: false; error: string; code?: string; status?: number; offline?: boolean; inserted: number };
+
+async function insertResilient(
+  table: RestoreTable,
+  rows: readonly Record<string, unknown>[],
+  uid: string,
+): Promise<ResilientResult> {
   const { data, error, status } = await supabase
     .from(table)
-    .insert(rows.map((r) => ({ ...r, user_id: u.userId })))
+    .insert(rows.map((r) => ({ ...r, user_id: uid })))
     .select('id');
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-  return { ok: true, data: (data ?? []).length };
+  if (!error) return { ok: true, inserted: (data ?? []).length, skipped: 0 };
+  if (error.code !== '23505') {
+    return {
+      ok: false,
+      error: error.message,
+      code: error.code,
+      status,
+      offline: isTransportFailure(status, error),
+      inserted: 0,
+    };
+  }
+  // Başka bir cihaz veya önceki parça bu kimliği/anahtarı zaten eklemiş: tek satırda atlanır.
+  if (rows.length === 1) return { ok: true, inserted: 0, skipped: 1 };
+  const mid = Math.ceil(rows.length / 2);
+  const left = await insertResilient(table, rows.slice(0, mid), uid);
+  if (!left.ok) return left;
+  const right = await insertResilient(table, rows.slice(mid), uid);
+  return right.ok
+    ? { ok: true, inserted: left.inserted + right.inserted, skipped: left.skipped + right.skipped }
+    : { ...right, inserted: left.inserted + right.inserted };
+}
+
+/** Insert rows with their own ids, owned by the signed-in account, verified against `expectedUserId`. */
+export async function insertRestoredRows(
+  table: RestoreTable,
+  rows: readonly Record<string, unknown>[],
+  expectedUserId: string,
+): Promise<RepoResult<number> & { skipped?: number; partial?: number }> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  if (u.userId !== expectedUserId) {
+    return {
+      ok: false,
+      error: 'Oturum değişti; bu işlem başka bir hesap için hazırlanmıştı.',
+      code: 'WRONG_ACCOUNT',
+    };
+  }
+  if (rows.length === 0) return { ok: true, data: 0 };
+  const res = await insertResilient(table, rows, u.userId);
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: res.error,
+      offline: res.offline,
+      status: res.status,
+      code: res.code,
+      ...(res.inserted > 0 ? { partial: res.inserted } : {}),
+    };
+  }
+  return {
+    ok: true,
+    data: res.inserted,
+    ...(res.skipped > 0 ? { skipped: res.skipped } : {}),
+  };
 }
