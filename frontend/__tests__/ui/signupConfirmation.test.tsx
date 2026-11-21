@@ -55,6 +55,11 @@ jest.mock('expo-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+jest.mock('expo-linking', () => ({
+  createURL: (p: string) => `atlas:///${p}`,
+  useURL: () => null,
+}));
+
 const mockSignUp = jest.fn();
 const mockResend = jest.fn();
 jest.mock('../../lib/supabase', () => ({
@@ -63,6 +68,7 @@ jest.mock('../../lib/supabase', () => ({
 
 import RegisterScreen, { signupErrorMessage } from '../../app/(auth)/register';
 import SignupPending from '../../components/auth/SignupPending';
+import { resetResendCooldowns } from '../../hooks/useResendCooldown';
 
 type Json = TestRenderer.ReactTestRendererJSON;
 
@@ -136,6 +142,9 @@ const PENDING_REPEAT = { data: { user: { id: 'u-old', identities: [] }, session:
 beforeEach(() => {
   mockSignUp.mockReset();
   mockResend.mockReset();
+  // The wait is shared per address at module level (hooks/useResendCooldown.ts); a wait
+  // left over from the previous test must not lock this one's button.
+  resetResendCooldowns();
 });
 
 describe('AC-S00 ağaç gerçekten içerik görüyor', () => {
@@ -169,7 +178,12 @@ describe('AC-S01 başarılı kayıt formu kaldırır', () => {
     const tree = await render(<RegisterScreen />);
     await fillAndSubmit(tree, '  yeni@ornek.com  ', 'sifre123');
     expect(mockSignUp).toHaveBeenCalledTimes(1);
-    expect(mockSignUp).toHaveBeenCalledWith({ email: 'yeni@ornek.com', password: 'sifre123' });
+    // F22 (NAV-07): the confirmation link is sent back to this app's sign-in screen.
+    expect(mockSignUp).toHaveBeenCalledWith({
+      email: 'yeni@ornek.com',
+      password: 'sifre123',
+      options: { emailRedirectTo: 'atlas:///login' },
+    });
   });
 });
 
@@ -269,5 +283,56 @@ describe('AC-S06 hata çevirisi', () => {
     // Yutulursa geriye hiçbir ipucu kalmaz; bu yüzden passthrough.
     const odd = 'Some brand new GoTrue failure nobody mapped yet';
     expect(signupErrorMessage(odd)).toBe(odd);
+  });
+});
+
+describe('F22 onay bağlantısı hedefi ve unconfirmed varyantı (NAV-05, NAV-07)', () => {
+  it('(+) bekleme ekranındaki yeniden gönderme emailRedirectTo taşır ve bekleme başlar', async () => {
+    mockSignUp.mockResolvedValue(PENDING_NEW);
+    mockResend.mockResolvedValue({ error: null });
+    const tree = await render(<RegisterScreen />);
+    await fillAndSubmit(tree, 'yeni@ornek.com', 'sifre123');
+
+    // Kayıt postası az önce gitti: bekleme hemen başlar.
+    expect(pressable(tree, 'Tekrar gönder (60)').props.accessibilityState.disabled).toBe(true);
+
+    await act(async () => { jest.advanceTimersByTime(60_000); });
+    await act(async () => { pressable(tree, 'Doğrulama postasını tekrar gönder').props.onPress(); });
+    expect(mockResend).toHaveBeenCalledTimes(1);
+    expect(mockResend).toHaveBeenCalledWith({
+      type: 'signup',
+      email: 'yeni@ornek.com',
+      options: { emailRedirectTo: 'atlas:///login' },
+    });
+    expect(pressable(tree, 'Tekrar gönder (60)').props.accessibilityState.disabled).toBe(true);
+  });
+
+  it('(+) unconfirmed varyantı kendi başlığını gösterir, "zaten kayıtlıysa" cümlesini göstermez', async () => {
+    const tree = await render(
+      <SignupPending variant="unconfirmed" email="a@b.com" onResend={jest.fn()} onChangeEmail={jest.fn()} resendCooldown={0} />,
+    );
+    const shown = textOf(tree);
+    expect(shown).toContain('E-POSTA DOĞRULANMADI');
+    expect(shown).toContain('E-postanı doğrula');
+    expect(shown).toContain('Spam');
+    expect(shown).not.toContain('zaten kayıtlıysa');
+    expect(shown).not.toContain('KAYIT ALINDI');
+  });
+
+  it('(-) varsayılan varyant metinleri değişmez ve Düzelt bağlantısı 44 pt yüksekliktedir', async () => {
+    const tree = await render(
+      <SignupPending email="a@b.com" onResend={jest.fn()} onChangeEmail={jest.fn()} resendCooldown={0} />,
+    );
+    const shown = textOf(tree);
+    expect(shown).toContain('KAYIT ALINDI');
+    expect(shown).toContain('Şimdi e-postanı doğrula');
+    expect(shown).toContain('zaten kayıtlıysa yeni bir posta gelmez');
+    expect(shown).not.toContain('E-POSTA DOĞRULANMADI');
+
+    const change = tree.root.findAll(
+      (n) => typeof n.props?.onPress === 'function' && n.findAll((c) => c.children?.includes?.('Düzelt')).length > 0,
+    )[0];
+    const style = Object.assign({}, ...[change.props.style].flat(3).filter(Boolean));
+    expect(style.minHeight).toBeGreaterThanOrEqual(44);
   });
 });

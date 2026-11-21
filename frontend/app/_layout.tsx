@@ -321,29 +321,34 @@ export default function RootLayout() {
     return () => { unsubLogs(); unsubHabits(); respSub.remove(); registerReminderReconciler(null); };
   }, [loading, sessionUid, router]);
 
+  // CI PARİTESİ (davranış değişikliği DEĞİL, yalnızca tipleme).
+  //
+  // `tsconfig.json` `.expo/types/**/*.ts`'i include ediyor ve orada duran
+  // `router.d.ts` expo-router'ın ÜRETİLMİŞ typed-routes bildirimi. O dosya
+  // `.gitignore`'da (frontend/.gitignore:7) ve yalnızca dev sunucusu
+  // tarafından üretiliyor -- `npx expo export` bile yeniden yazmıyor.
+  // Dolayısıyla temiz bir CI klonunda mevcut değil ve `useSegments()`
+  // 1-elemanlı `[string]` tuple'ına düşüyor; `segments[1]` o durumda
+  // TS2493 "tuple has no element at index 1" veriyor. Yerelde geçen,
+  // CI'da kırmızı olan hata tam olarak buydu.
+  //
+  // Okumayı bir kez düz `string[]` üzerinden yapmak, üretilmiş bildirim
+  // olsun olmasın aynı sonucu veriyor: dizi sınırının dışındaki bir okuma
+  // JS'te zaten `undefined`, karşılaştırma da `false` -- yani parola
+  // kurtarma muafiyeti bugünküyle birebir aynı çalışıyor.
+  //
+  // F22 (NAV-06): computed in the component body (not inside the effect) because the
+  // spinner below needs it too: recovery screens keep the navigator mounted while the
+  // onboarding row is read.
+  const segmentPath = segments as unknown as string[];
+  const inAuthGroup = segmentPath[0] === '(auth)';
+  const inPasswordRecovery = inAuthGroup && (
+    segmentPath[1] === 'forgot-password' || segmentPath[1] === 'reset-password'
+  );
+
   useEffect(() => {
     if (loading) return;
 
-    // CI PARİTESİ (davranış değişikliği DEĞİL, yalnızca tipleme).
-    //
-    // `tsconfig.json` `.expo/types/**/*.ts`'i include ediyor ve orada duran
-    // `router.d.ts` expo-router'ın ÜRETİLMİŞ typed-routes bildirimi. O dosya
-    // `.gitignore`'da (frontend/.gitignore:7) ve yalnızca dev sunucusu
-    // tarafından üretiliyor -- `npx expo export` bile yeniden yazmıyor.
-    // Dolayısıyla temiz bir CI klonunda mevcut değil ve `useSegments()`
-    // 1-elemanlı `[string]` tuple'ına düşüyor; `segments[1]` o durumda
-    // TS2493 "tuple has no element at index 1" veriyor. Yerelde geçen,
-    // CI'da kırmızı olan hata tam olarak buydu.
-    //
-    // Okumayı bir kez düz `string[]` üzerinden yapmak, üretilmiş bildirim
-    // olsun olmasın aynı sonucu veriyor: dizi sınırının dışındaki bir okuma
-    // JS'te zaten `undefined`, karşılaştırma da `false` -- yani parola
-    // kurtarma muafiyeti bugünküyle birebir aynı çalışıyor.
-    const segmentPath = segments as unknown as string[];
-    const inAuthGroup = segmentPath[0] === '(auth)';
-    const inPasswordRecovery = inAuthGroup && (
-      segmentPath[1] === 'forgot-password' || segmentPath[1] === 'reset-password'
-    );
     // The decision itself is a pure function in `store/onboardingStore.ts`,
     // so every combination of session / hydration / status can be asserted
     // directly instead of by mounting a navigator and reading the source.
@@ -360,7 +365,7 @@ export default function RootLayout() {
 
     if (decision.kind === 'redirect') router.replace(decision.to);
     // 'wait' and 'gate' are handled by the render below; 'stay' does nothing.
-  }, [hasSupabaseSession, notionSession, loading, segments, router, onboardingHydration, onboardingStatus, personalizing]);
+  }, [hasSupabaseSession, notionSession, loading, segmentPath, inAuthGroup, inPasswordRecovery, router, onboardingHydration, onboardingStatus, personalizing]);
 
   // §18: boot zinciri çözülene kadar HİÇBİR ekran render edilmez. Bu kozmetik
   // bir splash değil; "ilk dokunuştan önce hidrasyon" garantisini yapısal
@@ -404,11 +409,15 @@ export default function RootLayout() {
   // oturumu varken onboarding satırı okunana kadar bekleniyor; aksi halde
   // yeni kullanıcı önce boş bir Today görür, sonra onboarding'e atılırdı.
   if (loading || (!!session && onboardingHydration !== 'ready')) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
+    // F22 (NAV-06): a recovery screen stays mounted while the onboarding row is read;
+    // unmounting it would drop the user out of the new-password form.
+    if (loading || !inPasswordRecovery) {
+      return (
+        <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      );
+    }
   }
 
   // §24 "crash reporting": navigator'ı saran sınır. Buradaki bir render

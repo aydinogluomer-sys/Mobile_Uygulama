@@ -345,6 +345,15 @@ describe('AC-OF08 the router rules', () => {
     expect(layout).toContain("segmentPath[1] === 'reset-password'");
   });
 
+  it('F22 (NAV-06): the hydration spinner skips password recovery routes without loosening the boot gate', () => {
+    const outerGate = layout.search(/if \(loading \|\| \(!!session && onboardingHydration !== 'ready'\)\)/);
+    const innerRecoveryGuard = layout.indexOf('if (loading || !inPasswordRecovery)');
+    const stackAt = layout.indexOf('<Stack');
+    expect(outerGate).toBeGreaterThan(-1);
+    expect(innerRecoveryGuard).toBeGreaterThan(outerGate);
+    expect(stackAt).toBeGreaterThan(innerRecoveryGuard);
+  });
+
   it('signing out clears every account-scoped value', () => {
     // Otherwise account B is routed by account A's answer — and sees A's
     // error, and can open A's plan.

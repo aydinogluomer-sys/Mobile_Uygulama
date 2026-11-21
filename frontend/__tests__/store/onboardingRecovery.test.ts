@@ -369,6 +369,27 @@ describe('AC-R04 the routing decision, for every hydration outcome', () => {
     })).toEqual({ kind: 'stay' });
   });
 
+  it('NAV-06: password recovery stays on the recovery route even when onboarding is pending/installing or hydration is idle/error', () => {
+    for (const status of ['pending', 'installing', 'unknown'] as const) {
+      for (const hydrationState of ['ready', 'idle', 'loading', 'error'] as const) {
+        expect(resolveOnboardingRouting({
+          ...base, status, hydrationState, inAuthGroup: true, inPasswordRecovery: true,
+        })).toEqual({ kind: 'stay' });
+      }
+    }
+
+    // Negative: outside password recovery, pending still redirects to onboarding/needs
+    expect(resolveOnboardingRouting({
+      ...base, status: 'pending', hydrationState: 'ready', inAuthGroup: false, inPasswordRecovery: false,
+    })).toEqual({ kind: 'redirect', to: '/onboarding/needs' });
+
+    // Signed-out user on password recovery route also stays
+    expect(resolveOnboardingRouting({
+      ...base, hasSupabaseSession: false, hasAnySession: false,
+      status: 'pending', hydrationState: 'ready', inAuthGroup: true, inPasswordRecovery: true,
+    })).toEqual({ kind: 'stay' });
+  });
+
   it('a Notion-only session is never routed into onboarding', () => {
     // No Supabase session, so no onboarding row exists to read; hydration
     // stays idle and must not become a gate or a redirect into the flow.

@@ -2,7 +2,6 @@ import type { PauseInterval, GoalVersion } from './habitPauses';
 import { createClient } from '@supabase/supabase-js';
 import { authStorage } from './authStorage';
 import type { Database } from './database.types';
-import { Platform } from 'react-native';
 import { signalOnSuccess } from './networkSignal';
 import { AUTH_STORAGE_KEY, CONFIG_MISSING_URL } from './authStorageKey';
 
@@ -28,7 +27,8 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     storageKey: AUTH_STORAGE_KEY,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: Platform.OS === 'web',
+    // URL'deki oturum malzemesini tüm platformlarda yalnız lib/authDeepLink.ts tüketir (GAP2-08)
+    detectSessionInUrl: false,
   },
   // F05 (SYN-15): every successful answer tells lib/syncCoordinator the connection is there, so waiting
   // offline work goes out without the app being reopened. The answer is passed on untouched; a failed

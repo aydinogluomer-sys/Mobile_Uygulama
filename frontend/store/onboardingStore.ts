@@ -806,6 +806,12 @@ export function resolveOnboardingRouting(input: RoutingInput): RoutingDecision {
     return input.inAuthGroup ? { kind: 'stay' } : { kind: 'redirect', to: '/(auth)/login' };
   }
 
+  // F22: kurtarma ekranları, yeni parola kaydedilene kadar oturumun sahibidir (NAV-06).
+  // The 6-digit code creates a session before the new password exists; routing that
+  // session by its onboarding row would send an unfinished account to /onboarding/needs
+  // and leave the password unknown.
+  if (input.inPasswordRecovery) return { kind: 'stay' };
+
   // A Supabase-authenticated user is routed by their onboarding row, and only
   // once that row has been read SUCCESSFULLY. `ready` is the whole condition:
   // `error` is a separate outcome with a screen of its own, and anything else

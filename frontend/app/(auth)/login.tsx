@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, useWindowDimensions,
@@ -18,8 +18,19 @@ import {
 } from '../../components/ui';
 import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
+import PasswordToggle from '../../components/auth/PasswordToggle';
+import SignupPending from '../../components/auth/SignupPending';
 import { useNotionSessionStore } from '../../store/notionSessionStore';
 import { NOTION_INTEGRATION_ENABLED } from '../../lib/featureGates';
+import { loginErrorMessage, signupErrorMessage, type AuthErrorAction } from '../../lib/authErrors';
+import {
+  authLinkErrorMessage,
+  confirmationRedirectUrl,
+  parseAuthUrl,
+  stripAuthParamsFromWebUrl,
+  useAuthLinkUrl,
+} from '../../lib/authDeepLink';
+import { useResendCooldown } from '../../hooks/useResendCooldown';
 
 /**
  * F06 (NAV-01, PRF-03): the demo sign-in exists only in a development build. Metro folds
@@ -54,17 +65,85 @@ export default function LoginScreen() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // F22 (NAV-05): an unconfirmed account gets a way out instead of a raw English line.
+  const [phase, setPhase] = useState<'form' | 'unconfirmed'>('form');
+  const [submittedEmail, setSubmittedEmail] = useState('');
+  const [errorAction, setErrorAction] = useState<AuthErrorAction | undefined>(undefined);
+  const [resendNotice, setResendNotice] = useState('');
+  const [resendError, setResendError] = useState('');
+  const [resending, setResending] = useState(false);
+  // Not started on arrival: no mail was just sent, so the first resend is available at once.
+  // Keyed by the address on screen (the submitted one while unconfirmed), shared with the
+  // sign-up screen for the same address.
+  const cooldown = useResendCooldown(email.trim() || null);
+
+  // F22 (NAV-07): the sign-up confirmation link lands here. Its tokens are NOT turned into a
+  // session -- the user is told the address is confirmed and signs in.
+  const linkUrl = useAuthLinkUrl();
+  const linkNotice = useMemo(() => {
+    const parsed = parseAuthUrl(linkUrl);
+    if (parsed.ok && parsed.kind === 'signup') {
+      return { tone: 'success' as const, text: 'E-postan doğrulandı. Şimdi giriş yapabilirsin.' };
+    }
+    if (!parsed.ok && parsed.reason === 'link_error') {
+      return { tone: 'error' as const, text: authLinkErrorMessage(parsed.description) };
+    }
+    return null;
+  }, [linkUrl]);
+  useEffect(() => {
+    if (linkUrl) stripAuthParamsFromWebUrl();
+  }, [linkUrl]);
 
   async function handleLogin() {
-    if (!email || !password) {
+    const address = email.trim();
+    if (!address || !password) {
       setError('E-posta ve şifre giriniz.');
+      setErrorAction(undefined);
       return;
     }
     setError('');
+    setErrorAction(undefined);
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email: address, password });
     setLoading(false);
-    if (error) setError(error.message);
+    if (!error) return;
+    const mapped = loginErrorMessage(error.message);
+    if (mapped.action === 'resend_confirmation') {
+      setSubmittedEmail(address);
+      setResendNotice('');
+      setResendError('');
+      setPhase('unconfirmed');
+      return;
+    }
+    setError(mapped.message);
+    setErrorAction(mapped.action);
+  }
+
+  async function handleResend() {
+    if (cooldown.active || resending) return;
+    setResendNotice('');
+    setResendError('');
+    setResending(true);
+    const { error: resendErr } = await supabase.auth.resend({
+      type: 'signup',
+      email: submittedEmail,
+      options: { emailRedirectTo: confirmationRedirectUrl() },
+    });
+    setResending(false);
+    if (resendErr) {
+      setResendError(signupErrorMessage(resendErr.message));
+      return;
+    }
+    cooldown.start();
+    setResendNotice('Doğrulama postası yeniden gönderildi.');
+  }
+
+  function handleChangeEmail() {
+    setPhase('form');
+    setError('');
+    setErrorAction(undefined);
+    setResendNotice('');
+    setResendError('');
   }
 
   async function handleNotionLogin() {
@@ -81,7 +160,18 @@ export default function LoginScreen() {
     }
   }
 
-  const formContent = (
+  const formContent = phase === 'unconfirmed' ? (
+    <SignupPending
+      variant="unconfirmed"
+      email={submittedEmail}
+      onResend={handleResend}
+      onChangeEmail={handleChangeEmail}
+      resendCooldown={cooldown.remaining}
+      resending={resending}
+      notice={resendNotice}
+      error={resendError}
+    />
+  ) : (
     <>
       {!isSplit ? (
         <EditorialBanner
@@ -109,6 +199,16 @@ export default function LoginScreen() {
       {/* Form */}
       <View style={s.formCard}>
         <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" opacity={0.14} size={112} />
+        {!!linkNotice && (
+          <View style={s.errorRow} accessibilityRole={linkNotice.tone === 'error' ? 'alert' : undefined}>
+            <Ionicons
+              name={linkNotice.tone === 'error' ? 'alert-circle' : 'checkmark-circle'}
+              size={15}
+              color={linkNotice.tone === 'error' ? colors.error : colors.success}
+            />
+            <Text style={linkNotice.tone === 'error' ? s.errorText : s.successText}>{linkNotice.text}</Text>
+          </View>
+        )}
         {/* Signing in with Notion goes through the same `notion-auth` edge
             function as the Notion integration, and that function is not
             deployed in this release (see lib/featureGates.ts). Leaving the
@@ -149,16 +249,7 @@ export default function LoginScreen() {
           value={password}
           onChangeText={(t) => { setPassword(t); setError(''); }}
           onSubmitEditing={handleLogin}
-          rightElement={(
-            <TouchableOpacity
-              onPress={() => setShowPw((v) => !v)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={showPw ? 'Şifreyi gizle' : 'Şifreyi göster'}
-            >
-              <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textFaint} />
-            </TouchableOpacity>
-          )}
+          rightElement={<PasswordToggle visible={showPw} onToggle={() => setShowPw((v) => !v)} />}
         />
 
         <Link href="/(auth)/forgot-password" asChild>
@@ -168,9 +259,21 @@ export default function LoginScreen() {
         </Link>
 
         {!!error && (
-          <View style={s.errorRow}>
-            <Ionicons name="alert-circle" size={15} color={colors.error} />
-            <Text style={s.errorText}>{error}</Text>
+          <View style={s.errorBlock} accessibilityRole="alert">
+            <View style={s.errorRow}>
+              <Ionicons name="alert-circle" size={15} color={colors.error} />
+              <Text style={s.errorText}>{error}</Text>
+            </View>
+            {errorAction === 'forgot_password' && (
+              <TouchableOpacity
+                onPress={() => router.push('/(auth)/forgot-password')}
+                style={s.inlineAction}
+                accessibilityRole="link"
+                accessibilityLabel="Şifremi unuttum"
+              >
+                <Text style={s.forgotText}>Şifremi unuttum</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -385,6 +488,9 @@ const s = StyleSheet.create({
   forgotText: { color: colors.primaryBright, fontSize: 13, fontWeight: '600' },
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
   errorText: { color: colors.error, fontSize: 13, flex: 1 },
+  successText: { color: colors.success, fontSize: 13, flex: 1 },
+  errorBlock: { gap: 2 },
+  inlineAction: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
 
   linkBtn: { marginTop: space.md, alignItems: 'center' },
   linkText: { color: colors.textDim, fontSize: 14 },
