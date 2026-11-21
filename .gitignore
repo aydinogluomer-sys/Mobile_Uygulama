@@ -85,11 +85,16 @@ android-sdk/
 
 # Supabase CLI scratch state (generated - never commit)
 supabase/.temp/
-backend/supabase/.temp/
 
 # Environment files
 *.env
 *.env.*
+!.env.example
+!frontend/.env.example
+
+# Debug screenshots and stray patches
+ss_*.png
+*.patch
 
 # Secrets / credential handoff files (asla commit'lenmemeli)
 Client ID.txt
