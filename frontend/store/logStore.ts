@@ -1,8 +1,9 @@
 import { registerAccountScoped } from '../lib/accountScope';
+import { createLatestByKey } from '../lib/latestOnly';
 import { currentUser } from '../lib/session';
 import { create } from 'zustand';
 import type { HabitLog } from '../lib/supabase';
-import { ymd, deviceTimeZone, isLoggableDay } from '../lib/date';
+import { ymd, todayLocal, deviceTimeZone, isLoggableDay } from '../lib/date';
 import { LOGGABLE_DAY_MESSAGE } from '../lib/pgErrors';
 import {
   emptyQueueState,
@@ -58,11 +59,14 @@ export type HabitSyncStatus = 'synced' | 'pending' | 'dead';
 type LogStore = {
   logs: HabitLog[];
   loading: boolean;
+  logsError: string | null;
   /** Ops with status 'pending' across ALL habits/days -- drives a global "syncing" indicator. */
   pendingSyncCount: number;
   /** Ops that exhausted their retry budget (plan §18's terminal state) -- surfaced, not hidden. */
   deadSyncCount: number;
+  /** Yalnız kendi gününü değiştirir; başka günlerin satırlarını ve uçuştaki/bekleyen yerel dokunuşları korur. */
   fetchLogsForDate: (date: Date | string) => Promise<void>;
+  applyFetchedDay: (dateStr: string, rows: readonly HabitLog[]) => void;
   logHabit: (params: {
     habitId: string;
     date: Date;
@@ -233,6 +237,7 @@ function emitHabitLogEvent(
  * live tap does, which is what makes replay safe with no chain protecting it.
  */
 const chains = new Map<string, Promise<unknown>>();
+const dayLatest = createLatestByKey();
 
 function serialise<T>(key: string, run: () => Promise<T>): Promise<T> {
   const prev = chains.get(key) ?? Promise.resolve();
@@ -324,6 +329,40 @@ function rollbackTo(
 ): { logs: HabitLog[] } {
   const others = s.logs.filter((l) => !(l.habit_id === habitId && l.completed_at === dateStr));
   return { logs: priorLocal ? [...others, priorLocal] : others };
+}
+
+export const MAX_LOG_DAYS = 120;
+
+function capDays(rows: HabitLog[], max: number): HabitLog[] {
+  const days = [...new Set(rows.map((r) => r.completed_at))];
+  if (days.length <= max) return rows;
+  const keep = new Set(days.sort().slice(-max));
+  return rows.filter((r) => keep.has(r.completed_at) || isLocalPlaceholder(r));
+}
+
+export function mergeDayLogs(
+  current: readonly HabitLog[],
+  dateStr: string,
+  server: readonly HabitLog[],
+  isProtected: (habitId: string) => boolean,
+): HabitLog[] {
+  const others = current.filter((l) => l.completed_at !== dateStr);
+  const localByHabit = new Map<string, HabitLog>();
+  for (const l of current) {
+    if (l.completed_at === dateStr) localByHabit.set(l.habit_id, l);
+  }
+
+  const day: HabitLog[] = [];
+  const seen = new Set<string>();
+  for (const row of server) {
+    seen.add(row.habit_id);
+    const local = localByHabit.get(row.habit_id);
+    day.push(local && isProtected(row.habit_id) ? local : row);
+  }
+  for (const [habitId, local] of localByHabit) {
+    if (!seen.has(habitId) && isProtected(habitId)) day.push(local);
+  }
+  return capDays([...others, ...day], MAX_LOG_DAYS);
 }
 
 /**
@@ -613,15 +652,33 @@ export const useLogStore = create<LogStore>((set, get) => {
   return {
     logs: [],
     loading: false,
+    logsError: null,
     pendingSyncCount: 0,
     deadSyncCount: 0,
 
     fetchLogsForDate: async (date) => {
-      set({ loading: true });
       const dateStr = typeof date === 'string' ? date : ymd(date);
-      const res = await loadDay(dateStr);
-      if (res.ok) set({ logs: res.logs });
-      set({ loading: false });
+      const run = dayLatest.begin(dateStr);
+      set({ loading: true });
+      try {
+        const res = await loadDay(dateStr);
+        if (!run.isCurrent()) return;
+        if (res.ok) {
+          get().applyFetchedDay(dateStr, res.logs);
+          set({ logsError: null });
+        } else {
+          set({ logsError: res.error });
+        }
+      } finally {
+        run.done();
+        if (dayLatest.pending() === 0) set({ loading: false });
+      }
+    },
+
+    applyFetchedDay: (dateStr, rows) => {
+      const isProtected = (habitId: string) =>
+        chains.has(`${habitId}|${dateStr}`) || queueStatusFor(queueState, habitId, dateStr) === 'pending';
+      set((s) => ({ logs: mergeDayLogs(s.logs, dateStr, rows, isProtected) }));
     },
 
     logHabit: ({ habitId, date, state, value, targetValue, baseXp = 30, targetDirection }) => {
@@ -711,10 +768,7 @@ export const useLogStore = create<LogStore>((set, get) => {
     },
 
     getLogForHabit: (habitId, date) => {
-      if (!date) {
-        return get().logs.find((l) => l.habit_id === habitId);
-      }
-      const dateStr = typeof date === 'string' ? date : ymd(date);
+      const dateStr = date === undefined ? todayLocal() : typeof date === 'string' ? date : ymd(date);
       return get().logs.find((l) => l.habit_id === habitId && l.completed_at === dateStr);
     },
 
@@ -793,6 +847,7 @@ registerAccountScoped({
   store: useLogStore,
   onReset: (reason) => {
     chains.clear();
+    dayLatest.invalidate();
     optimisticGen.clear();
     resetQueueMemory(reason !== 'account_deleted');
   },

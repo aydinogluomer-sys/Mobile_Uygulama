@@ -60,6 +60,7 @@ const mockId = (p: string) => `${p}-${++mockDb.seq}`;
 /** F04: how often a thread was looked up, and a gate that can hold the list request at the "network". */
 const mockRepoCalls = { findThread: 0 };
 const mockGate = { listThreads: null as Promise<void> | null };
+const mockFail = { resolveAction: null as string | null };
 /** Monotonic, so ordering by `created_at` is deterministic under a fast clock. */
 const mockNow = () => new Date(Date.UTC(2026, 0, 1) + mockDb.seq * 1000).toISOString();
 /** The user's own projects. A project id outside this set is another user's. */
@@ -188,6 +189,7 @@ jest.mock('../../repositories/aiConversationRepository', () => ({
   },
 
   resolveAction: async (id: string, status: 'confirmed' | 'cancelled') => {
+    if (mockFail.resolveAction) return { ok: false, error: mockFail.resolveAction };
     const row = mockDb.actions.find((a) => a.id === id && a.user_id === mockDb.user && a.status === 'pending');
     if (!row) return { ok: true, data: null };
     row.status = status;
@@ -248,6 +250,7 @@ beforeEach(() => {
   mockDb.seq = 0;
   mockKv.clear();
   mockGate.listThreads = null;
+  mockFail.resolveAction = null;
   requestSeq = 0;
   store().reset();
 });
@@ -746,5 +749,48 @@ describe('F04 — account boundary', () => {
     await stale;                                         // A's answer arrives late
     expect(store().conversations).toEqual([]);           // and is not written into B's list
     expect(store().loadingConversations).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F18 (STO-06) — resolvePending return value & card restoration rules
+// ---------------------------------------------------------------------------
+
+describe('F18 — resolvePending outcome and card restoration', () => {
+  it('restores the card on failed cancel, suppresses it on failed confirm, and returns boolean outcome', async () => {
+    expect(await store().resolvePending('cancelled')).toBe(true);
+
+    await send('Konu', 'Öneri.', [
+      { type: 'propose_habit', habit: { name: 'Yürüyüş', tracking_type: 'binary', difficulty: 1, estimated_minutes: 10 } },
+    ]);
+    const convId = store().activeId!;
+    const firstId = store().pendingAction!.row.id;
+
+    // Failed cancel: returns false, surfaces error, restores pendingAction card so user can retry
+    mockFail.resolveAction = 'İptal kaydedilemedi';
+    expect(await store().resolvePending('cancelled')).toBe(false);
+    expect(store().error).toBe('İptal kaydedilemedi');
+    expect(store().pendingAction?.row.id).toBe(firstId);
+
+    // Subsequent successful cancel: returns true, clears pendingAction
+    mockFail.resolveAction = null;
+    expect(await store().resolvePending('cancelled')).toBe(true);
+    expect(store().pendingAction).toBeNull();
+
+    // Stage a second proposal and fail 'confirmed': card MUST NOT come back (habit already installed)
+    await send('Yeni öneri', 'İşte.', [
+      { type: 'propose_habit', habit: { name: 'Su iç', tracking_type: 'binary', difficulty: 1, estimated_minutes: 2 } },
+    ]);
+    const secondId = store().pendingAction!.row.id;
+
+    mockFail.resolveAction = 'Onay sunucuya yazılamadı';
+    expect(await store().resolvePending('confirmed')).toBe(false);
+    expect(store().error).toContain('sunucuda kapatılamadı');
+    expect(store().pendingAction).toBeNull();
+
+    // Reopening the conversation within the same session must not re-offer the already-confirmed card
+    await store().openConversation(convId);
+    expect(store().pendingAction).toBeNull();
+    expect(mockDb.actions.find((a) => a.id === secondId)?.status).toBe('pending');
   });
 });

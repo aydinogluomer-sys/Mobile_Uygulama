@@ -151,3 +151,21 @@ describe('Monthly Review -- Rule 8 seasonal treatment untouched by this task\'s 
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// F18 (REP-05) -- cloud error guard and reflection latestOnly race guard
+// ---------------------------------------------------------------------------
+
+describe('Monthly Review -- F18 cloudError save gate and reflectionLatest guard', () => {
+  const screen = read(SCREEN_PATH);
+
+  it('tracks cloudError state and disables the Save button while cloudError !== null', () => {
+    expect(screen).toContain('cloudError');
+    expect(screen).toContain('disabled={saving || cloudError !== null}');
+  });
+
+  it('guards loadReflection against overlapping month switches with reflectionLatest', () => {
+    expect(screen).toContain('reflectionLatest.begin()');
+    expect(screen).toContain('run.isCurrent()');
+  });
+});

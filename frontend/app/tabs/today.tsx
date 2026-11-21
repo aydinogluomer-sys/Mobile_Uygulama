@@ -316,20 +316,20 @@ export default function TodayScreen() {
     setPeriodLogs(res.ok ? res.data : null);
   }, [today]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { force?: boolean }) => {
     const boot = await bootstrapTodayScreen(today);
     if (boot.ok) {
       setPeriodLogs(boot.periodLogs);
       return;
     }
-    await Promise.all([fetchHabits(), fetchLogsForDate(today), fetchTasks(), fetchToday(), fetchPlans(), loadPeriodLogs()]);
+    await Promise.all([fetchHabits(opts), fetchLogsForDate(today), fetchTasks(), fetchToday(), fetchPlans(), loadPeriodLogs()]);
   }, [fetchHabits, fetchLogsForDate, fetchPlans, fetchTasks, fetchToday, loadPeriodLogs, today]);
 
   useEffect(() => { load(); }, [load]);
 
   async function onRefresh() {
     setRefreshing(true);
-    await load();
+    await load({ force: true });
     setRefreshing(false);
   }
 

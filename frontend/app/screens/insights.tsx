@@ -28,8 +28,10 @@
  * repository functions -- no new repository code needed for this screen.
  */
 import { withEdgeDeadline } from '../../lib/edgeCall';
+import { createLatest } from '../../lib/latestOnly';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { newRequestId } from '../../services/focusPointService';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -286,24 +288,35 @@ export default function InsightsScreen() {
     fetchTasks();
   }, [fetchHabits, fetchTasks]);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    Promise.all([
-      loadReviewData({ start: since, end: todayYmd }),
-      fetchFocusSessionsSince({ sinceIso: since }),
-    ]).then(([reviewRes, sessionsRes]) => {
-      if (cancelled) return;
+  const insightsLatest = useRef(createLatest()).current;
+
+  const loadInsights = useCallback(async (opts: { silent: boolean }) => {
+    const run = insightsLatest.begin();
+    if (!opts.silent) setLoading(true);
+    try {
+      const [reviewRes, sessionsRes] = await Promise.all([
+        loadReviewData({ start: since, end: todayYmd }),
+        fetchFocusSessionsSince({ sinceIso: since }),
+      ]);
+      if (!run.isCurrent()) return;
       // Habit logs and recovery come from ONE service call: a review
       // built from logs plus an empty recovery list (because that query
       // failed) understates how much the user caught up.
       setLogs(reviewRes.ok ? reviewRes.data.logs : []);
       setRecoveryPlans(reviewRes.ok ? (reviewRes.data.recoveryPlans as never) : []);
       setFocusSessions(sessionsRes.ok ? sessionsRes.data.filter((sess: { started_at: string }) => sess.started_at <= `${todayYmd}T23:59:59`) : []);
-      setLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [since, todayYmd]);
+    } finally {
+      run.done();
+      if (!opts.silent) setLoading(false);
+    }
+  }, [since, todayYmd, insightsLatest]);
+
+  useEffect(() => { void loadInsights({ silent: false }); }, [loadInsights]);
+  useRefreshOnFocus(() => {
+    void fetchHabits();
+    void fetchTasks();
+    return loadInsights({ silent: true });
+  });
 
   const activeHabits = habits.filter((h) => h.status === 'active');
   const weekRange = getWeekBounds(today);

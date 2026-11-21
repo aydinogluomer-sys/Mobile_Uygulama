@@ -1,4 +1,4 @@
-import { registerAccountScoped } from '../lib/accountScope';
+import { accountEpoch, registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import {
   deleteReadingItem,
@@ -13,6 +13,8 @@ import {
   type ReadingType,
 } from '../repositories/readingListRepository';
 import type { Cursor, Page } from '../repositories/shared';
+import { createLatestByKey } from '../lib/latestOnly';
+import { serialByKey } from '../lib/serialByKey';
 import { hasPending, newOperationId, overlay } from '../lib/outbox';
 import { readCachedSnapshot, setCachedSnapshot } from '../lib/localReadCache';
 import { currentUser } from '../lib/session';
@@ -26,6 +28,7 @@ const STATUSES: ReadingStatus[] = ['want_to_read', 'reading', 'completed'];
 
 const tabCacheKey = (status: ReadingStatus) => `reading:${status}:p1`;
 const COUNTS_CACHE_KEY = 'reading:counts';
+const tabLatest = createLatestByKey();
 
 async function safeUserId(): Promise<string | null> {
   try {
@@ -41,17 +44,48 @@ const withPendingTab = (status: ReadingStatus, rows: ReadingItem[]): ReadingItem
   return overlay(box, READING_ENTITY, rows).filter((i) => (i.status ?? 'want_to_read') === status);
 };
 
+function hasPendingReading(): boolean {
+  return Boolean(coreOutbox.state()?.commands.some((c) => c.entity === READING_ENTITY));
+}
+
 type TabState = {
   items: ReadingItem[];
   cursor: Cursor | null;
   hasMore: boolean;
   loading: boolean;
   loadingMore: boolean;
+  loaded?: boolean;
 };
 
 const emptyTab = (): TabState => ({
   items: [], cursor: null, hasMore: false, loading: false, loadingMore: false,
 });
+
+function shiftCounts(
+  counts: Record<ReadingStatus, number>,
+  from: ReadingStatus | null,
+  to: ReadingStatus | null,
+): Record<ReadingStatus, number> {
+  const next = { ...counts };
+  if (from) next[from] = Math.max(0, next[from] - 1);
+  if (to) next[to] = next[to] + 1;
+  return next;
+}
+
+async function persistReadingSnapshot(state: Pick<ReadingListStore, 'tabs' | 'counts'>): Promise<void> {
+  const uid = await safeUserId();
+  if (!uid) return;
+  for (const st of STATUSES) {
+    const tab = state.tabs[st];
+    if (!tab.loaded) continue; // hiç yüklenmemiş sekme boş sayfa diye yazılmaz
+    await setCachedSnapshot<Page<ReadingItem>>(uid, tabCacheKey(st), {
+      rows: tab.items,
+      nextCursor: tab.cursor,
+      hasMore: tab.hasMore,
+    });
+  }
+  await setCachedSnapshot(uid, COUNTS_CACHE_KEY, state.counts);
+}
 
 /**
  * Reading list.
@@ -84,18 +118,37 @@ type ReadingListStore = {
   byStatus: (status: ReadingStatus) => ReadingItem[];
 };
 
+type ReadingSet = (partial: Partial<ReadingListStore> | ((s: ReadingListStore) => Partial<ReadingListStore>)) => void;
+function commit(
+  set: ReadingSet,
+  get: () => ReadingListStore,
+  updater: (s: ReadingListStore) => Partial<ReadingListStore>,
+): void {
+  set(updater);
+  void persistReadingSnapshot(get());
+}
+
 export const useReadingListStore = create<ReadingListStore>((set, get) => ({
   tabs: { want_to_read: emptyTab(), reading: emptyTab(), completed: emptyTab() },
   counts: { want_to_read: 0, reading: 0, completed: 0 },
   error: null,
 
   refreshCounts: async () => {
+    const epoch = accountEpoch();
+    await coreOutbox.ensure();
+    if (epoch !== accountEpoch()) return;
     const uid = await safeUserId();
-    const cached = uid ? await readCachedSnapshot<Record<ReadingStatus, number>>(uid, COUNTS_CACHE_KEY) : null;
-    if (cached) {
-      set({ counts: cached.data });
+    if (epoch !== accountEpoch()) return;
+    if (!hasPendingReading()) {
+      const cached = uid ? await readCachedSnapshot<Record<ReadingStatus, number>>(uid, COUNTS_CACHE_KEY) : null;
+      if (epoch !== accountEpoch()) return;
+      if (cached && !hasPendingReading()) {
+        set({ counts: cached.data });
+      }
     }
+    if (hasPendingReading()) return;
     const res = await fetchReadingCounts();
+    if (epoch !== accountEpoch() || hasPendingReading()) return;
     if (res.ok) {
       if (uid) void setCachedSnapshot(uid, COUNTS_CACHE_KEY, res.data);
       set({ counts: res.data });
@@ -103,88 +156,109 @@ export const useReadingListStore = create<ReadingListStore>((set, get) => ({
   },
 
   fetchItems: async (status) => {
-    await coreOutbox.ensure();
-    const uid = await safeUserId();
-    const cached = uid ? await readCachedSnapshot<Page<ReadingItem>>(uid, tabCacheKey(status)) : null;
-    if (cached) {
+    const run = tabLatest.begin(status);
+    try {
+      await coreOutbox.ensure();
+      if (!run.isCurrent()) return;
+      const uid = await safeUserId();
+      if (!run.isCurrent()) return;
+      const cached = uid ? await readCachedSnapshot<Page<ReadingItem>>(uid, tabCacheKey(status)) : null;
+      if (!run.isCurrent()) return;
+      if (cached) {
+        set((s) => ({
+          tabs: {
+            ...s.tabs,
+            [status]: {
+              items: withPendingTab(status, cached.data.rows),
+              cursor: cached.data.nextCursor,
+              hasMore: cached.data.hasMore,
+              loading: false,
+              loadingMore: false,
+              loaded: true,
+            },
+          },
+          error: null,
+        }));
+      } else {
+        set((s) => ({ tabs: { ...s.tabs, [status]: { ...s.tabs[status], loading: true } }, error: null }));
+      }
+
+      const res = await fetchReadingListPage(null, undefined, { status });
+      if (!run.isCurrent()) return;
+      if (!res.ok) {
+        if (cached) {
+          set((s) => ({
+            tabs: { ...s.tabs, [status]: { ...s.tabs[status], loading: false } },
+            error: res.offline ? null : res.error,
+          }));
+        } else {
+          set((s) => ({ tabs: { ...s.tabs, [status]: { ...s.tabs[status], loading: false } }, error: res.error }));
+        }
+        return;
+      }
+      if (uid) {
+        void setCachedSnapshot(uid, tabCacheKey(status), res.data);
+      }
       set((s) => ({
         tabs: {
           ...s.tabs,
           [status]: {
-            items: withPendingTab(status, cached.data.rows),
-            cursor: cached.data.nextCursor,
-            hasMore: cached.data.hasMore,
+            items: withPendingTab(status, res.data.rows),
+            cursor: res.data.nextCursor,
+            hasMore: res.data.hasMore,
             loading: false,
             loadingMore: false,
+            loaded: true,
           },
         },
         error: null,
       }));
-    } else {
-      set((s) => ({ tabs: { ...s.tabs, [status]: { ...s.tabs[status], loading: true } }, error: null }));
+      await get().refreshCounts();
+    } finally {
+      run.done();
     }
-
-    const res = await fetchReadingListPage(null, undefined, { status });
-    if (!res.ok) {
-      if (cached) {
-        set((s) => ({
-          tabs: { ...s.tabs, [status]: { ...s.tabs[status], loading: false } },
-          error: res.offline ? null : res.error,
-        }));
-      } else {
-        set((s) => ({ tabs: { ...s.tabs, [status]: { ...s.tabs[status], loading: false } }, error: res.error }));
-      }
-      return;
-    }
-    if (uid) {
-      void setCachedSnapshot(uid, tabCacheKey(status), res.data);
-    }
-    set((s) => ({
-      tabs: {
-        ...s.tabs,
-        [status]: {
-          items: withPendingTab(status, res.data.rows),
-          cursor: res.data.nextCursor,
-          hasMore: res.data.hasMore,
-          loading: false,
-          loadingMore: false,
-        },
-      },
-      error: null,
-    }));
-    await get().refreshCounts();
   },
 
   loadMore: async (status) => {
     const tab = get().tabs[status];
     if (!tab.hasMore || !tab.cursor || tab.loading || tab.loadingMore) return;
+    const run = tabLatest.begin(status);
     set((s) => ({ tabs: { ...s.tabs, [status]: { ...s.tabs[status], loadingMore: true } } }));
-    const res = await fetchReadingListPage(tab.cursor, undefined, { status });
-    if (!res.ok) {
-      set((s) => ({ tabs: { ...s.tabs, [status]: { ...s.tabs[status], loadingMore: false } }, error: res.error }));
-      return;
-    }
-    set((s) => {
-      const cur = s.tabs[status];
-      const seen = new Set(cur.items.map((i) => i.id));
-      const fresh = res.data.rows.filter((i) => !seen.has(i.id));
-      return {
-        tabs: {
-          ...s.tabs,
-          [status]: {
-            items: [...cur.items, ...fresh], cursor: res.data.nextCursor,
-            hasMore: res.data.hasMore, loading: false, loadingMore: false,
+    try {
+      const res = await fetchReadingListPage(tab.cursor, undefined, { status });
+      if (!run.isCurrent()) return;
+      if (!res.ok) {
+        set((s) => ({ tabs: { ...s.tabs, [status]: { ...s.tabs[status], loadingMore: false } }, error: res.error }));
+        return;
+      }
+      set((s) => {
+        const cur = s.tabs[status];
+        const seen = new Set(cur.items.map((i) => i.id));
+        const fresh = res.data.rows.filter((i) => !seen.has(i.id));
+        return {
+          tabs: {
+            ...s.tabs,
+            [status]: {
+              ...cur,
+              items: [...cur.items, ...fresh],
+              cursor: res.data.nextCursor,
+              hasMore: res.data.hasMore,
+              loading: false,
+              loadingMore: false,
+            },
           },
-        },
-      };
-    });
+        };
+      });
+    } finally {
+      run.done();
+    }
   },
 
   addItem: async ({ title, author, type, url }) => {
     const res = await insertReadingItem({ title, author, type, url });
     if (res.ok) {
       // A new item is always `want_to_read`, so it belongs to that tab only.
-      set((s) => ({
+      commit(set, get, (s) => ({
         tabs: {
           ...s.tabs,
           want_to_read: { ...s.tabs.want_to_read, items: [res.data, ...s.tabs.want_to_read.items] },
@@ -216,7 +290,7 @@ export const useReadingListStore = create<ReadingListStore>((set, get) => ({
           created_at: now,
           updated_at: now,
         };
-        set((s) => ({
+        commit(set, get, (s) => ({
           tabs: {
             ...s.tabs,
             want_to_read: { ...s.tabs.want_to_read, items: [optimistic, ...s.tabs.want_to_read.items] },
@@ -231,118 +305,127 @@ export const useReadingListStore = create<ReadingListStore>((set, get) => ({
     return false;
   },
 
-  updateStatus: async (id, status) => {
-    const findExisting = (): ReadingItem | null => {
-      const tabs = get().tabs;
-      for (const st of STATUSES) {
-        const found = tabs[st].items.find((i) => i.id === id);
-        if (found) return found;
-      }
-      return null;
-    };
-
-    const moveLocally = (row: ReadingItem) => {
-      set((s) => {
-        const tabs = { ...s.tabs };
+  updateStatus: (id, status) =>
+    serialByKey(`reading:${id}`, async () => {
+      const findExisting = (): ReadingItem | null => {
+        const tabs = get().tabs;
         for (const st of STATUSES) {
-          tabs[st] = { ...tabs[st], items: tabs[st].items.filter((i) => i.id !== id) };
+          const found = tabs[st].items.find((i) => i.id === id);
+          if (found) return found;
         }
-        tabs[status] = { ...tabs[status], items: [row, ...tabs[status].items] };
-        return { tabs, error: null };
-      });
-    };
+        return null;
+      };
 
-    await coreOutbox.ensure();
-    const box = coreOutbox.state();
-    if (box && hasPending(box, READING_ENTITY, id)) {
-      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { status } });
-      if (!queued.ok) { set({ error: 'Çevrimdışı okuma durumu güncellenemedi.' }); return false; }
-      void coreOutbox.flush();
-      const cur = findExisting();
-      if (cur) moveLocally({ ...cur, status, updated_at: new Date().toISOString() });
-      return true;
-    }
+      const moveLocally = (row: ReadingItem) => {
+        const from = findExisting()?.status ?? null;
+        commit(set, get, (s) => {
+          const tabs = { ...s.tabs };
+          for (const st of STATUSES) {
+            tabs[st] = { ...tabs[st], items: tabs[st].items.filter((i) => i.id !== id) };
+          }
+          tabs[status] = { ...tabs[status], items: [row, ...tabs[status].items] };
+          return {
+            tabs,
+            counts: from && from !== status ? shiftCounts(s.counts, from, status) : s.counts,
+            error: null,
+          };
+        });
+      };
 
-    const res = await updateReadingStatus(id, status);
-    if (res.ok) {
-      moveLocally(res.data);
-      await get().refreshCounts();
-      return true;
-    }
-    if (res.offline) {
-      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { status } });
-      if (queued.ok) {
+      await coreOutbox.ensure();
+      const box = coreOutbox.state();
+      if (box && hasPending(box, READING_ENTITY, id)) {
+        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { status } });
+        if (!queued.ok) { set({ error: 'Çevrimdışı okuma durumu güncellenemedi.' }); return false; }
+        void coreOutbox.flush();
         const cur = findExisting();
         if (cur) moveLocally({ ...cur, status, updated_at: new Date().toISOString() });
         return true;
       }
-    }
-    set({ error: res.error });
-    return false;
-  },
 
-  updateRating: async (id, rating) => {
-    await coreOutbox.ensure();
-    const box = coreOutbox.state();
-    if (box && hasPending(box, READING_ENTITY, id)) {
-      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { rating } });
-      if (!queued.ok) { set({ error: 'Çevrimdışı puan güncellenemedi.' }); return false; }
-      void coreOutbox.flush();
-      set((s) => ({ tabs: patchInTabs(s.tabs, id, { rating }), error: null }));
-      return true;
-    }
-
-    const res = await updateReadingRating(id, rating);
-    if (res.ok) {
-      set((s) => ({ tabs: replaceInTabs(s.tabs, res.data), error: null }));
-      return true;
-    }
-    if (res.offline) {
-      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { rating } });
-      if (queued.ok) {
-        set((s) => ({ tabs: patchInTabs(s.tabs, id, { rating }), error: null }));
+      const res = await updateReadingStatus(id, status);
+      if (res.ok) {
+        moveLocally(res.data);
+        await get().refreshCounts();
         return true;
       }
-    }
-    set({ error: res.error });
-    return false;
-  },
+      if (res.offline) {
+        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { status } });
+        if (queued.ok) {
+          const cur = findExisting();
+          if (cur) moveLocally({ ...cur, status, updated_at: new Date().toISOString() });
+          return true;
+        }
+      }
+      set({ error: res.error });
+      return false;
+    }),
 
-  updateNotes: async (id, notes) => {
-    await coreOutbox.ensure();
-    const box = coreOutbox.state();
-    if (box && hasPending(box, READING_ENTITY, id)) {
-      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { notes } });
-      if (!queued.ok) { set({ error: 'Çevrimdışı not güncellenemedi.' }); return false; }
-      void coreOutbox.flush();
-      set((s) => ({ tabs: patchInTabs(s.tabs, id, { notes }), error: null }));
-      return true;
-    }
-
-    const res = await updateReadingNotes(id, notes);
-    if (res.ok) {
-      set((s) => ({ tabs: replaceInTabs(s.tabs, res.data), error: null }));
-      return true;
-    }
-    if (res.offline) {
-      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { notes } });
-      if (queued.ok) {
-        set((s) => ({ tabs: patchInTabs(s.tabs, id, { notes }), error: null }));
+  updateRating: (id, rating) =>
+    serialByKey(`reading:${id}`, async () => {
+      await coreOutbox.ensure();
+      const box = coreOutbox.state();
+      if (box && hasPending(box, READING_ENTITY, id)) {
+        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { rating } });
+        if (!queued.ok) { set({ error: 'Çevrimdışı puan güncellenemedi.' }); return false; }
+        void coreOutbox.flush();
+        commit(set, get, (s) => ({ tabs: patchInTabs(s.tabs, id, { rating }), error: null }));
         return true;
       }
-    }
-    set({ error: res.error });
-    return false;
-  },
+
+      const res = await updateReadingRating(id, rating);
+      if (res.ok) {
+        commit(set, get, (s) => ({ tabs: replaceInTabs(s.tabs, res.data), error: null }));
+        return true;
+      }
+      if (res.offline) {
+        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { rating } });
+        if (queued.ok) {
+          commit(set, get, (s) => ({ tabs: patchInTabs(s.tabs, id, { rating }), error: null }));
+          return true;
+        }
+      }
+      set({ error: res.error });
+      return false;
+    }),
+
+  updateNotes: (id, notes) =>
+    serialByKey(`reading:${id}`, async () => {
+      await coreOutbox.ensure();
+      const box = coreOutbox.state();
+      if (box && hasPending(box, READING_ENTITY, id)) {
+        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { notes } });
+        if (!queued.ok) { set({ error: 'Çevrimdışı not güncellenemedi.' }); return false; }
+        void coreOutbox.flush();
+        commit(set, get, (s) => ({ tabs: patchInTabs(s.tabs, id, { notes }), error: null }));
+        return true;
+      }
+
+      const res = await updateReadingNotes(id, notes);
+      if (res.ok) {
+        commit(set, get, (s) => ({ tabs: replaceInTabs(s.tabs, res.data), error: null }));
+        return true;
+      }
+      if (res.offline) {
+        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { notes } });
+        if (queued.ok) {
+          commit(set, get, (s) => ({ tabs: patchInTabs(s.tabs, id, { notes }), error: null }));
+          return true;
+        }
+      }
+      set({ error: res.error });
+      return false;
+    }),
 
   removeItem: async (id) => {
     const removeFromTabs = () => {
-      set((s) => {
+      const was = STATUSES.find((st) => get().tabs[st].items.some((i) => i.id === id)) ?? null;
+      commit(set, get, (s) => {
         const tabs = { ...s.tabs };
         for (const st of STATUSES) {
           tabs[st] = { ...tabs[st], items: tabs[st].items.filter((i) => i.id !== id) };
         }
-        return { tabs, error: null };
+        return { tabs, counts: shiftCounts(s.counts, was, null), error: null };
       });
     };
 

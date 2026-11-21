@@ -111,7 +111,9 @@ export type MonthlyReflection = {
   answers: Record<string, string>;
   savedAt: string | null;
   /** Where the answers on screen came from — the screen labels the state. */
-  source: 'cloud' | 'draft' | 'legacy' | 'empty';
+  source: 'cloud' | 'draft' | 'legacy' | 'empty' | 'error';
+  /** Set when the cloud read failed; the screen keeps draft editing open and disables overwrite saves. */
+  cloudError?: string;
 };
 
 function asStringMap(value: unknown): Record<string, string> {
@@ -146,6 +148,8 @@ function asStringMap(value: unknown): Record<string, string> {
 export async function loadMonthlyReflection(monthKey: string): Promise<MonthlyReflection> {
   const cloud = await fetchMonthlyReview(monthKey);
   const user = await currentUser();
+  const cloudError = cloud.ok ? undefined : cloud.error;
+  const withCloudError = cloudError ? { cloudError } : {};
 
   const cloudAnswers = cloud.ok && cloud.data ? asStringMap(cloud.data.answers) : null;
   const cloudSavedAt = cloud.ok && cloud.data ? cloud.data.updated_at : null;
@@ -156,10 +160,15 @@ export async function loadMonthlyReflection(monthKey: string): Promise<MonthlyRe
       try {
         const parsed = JSON.parse(rawDraft) as { answers?: unknown; savedAt?: string | null };
         const draftAt = parsed.savedAt ?? null;
-        const newerThanCloud =
-          !cloudSavedAt || (draftAt !== null && draftAt > cloudSavedAt);
+        const newerThanCloud = !cloud.ok || !cloudSavedAt || (draftAt !== null && draftAt > cloudSavedAt);
         if (newerThanCloud) {
-          return { answers: asStringMap(parsed.answers), savedAt: draftAt, source: 'draft' };
+          // Bulut cevapları varsa taslağın altında kalır: taslakta olmayan anahtarlar kaybolmaz.
+          return {
+            answers: { ...(cloudAnswers ?? {}), ...asStringMap(parsed.answers) },
+            savedAt: draftAt,
+            source: 'draft',
+            ...withCloudError,
+          };
         }
       } catch {
         // A corrupt draft is not a reason to show nothing; fall through.
@@ -178,14 +187,19 @@ export async function loadMonthlyReflection(monthKey: string): Promise<MonthlyRe
       const parsed = JSON.parse(legacy) as { answers?: unknown; savedAt?: string | null };
       const answers = asStringMap(parsed.answers);
       if (Object.keys(answers).length > 0) {
-        return { answers, savedAt: parsed.savedAt ?? null, source: 'legacy' };
+        return { answers, savedAt: parsed.savedAt ?? null, source: 'legacy', ...withCloudError };
       }
     } catch {
       // ignore
     }
   }
 
-  return { answers: {}, savedAt: cloudSavedAt, source: cloudAnswers ? 'cloud' : 'empty' };
+  return {
+    answers: {},
+    savedAt: cloudSavedAt,
+    source: cloudAnswers ? 'cloud' : cloud.ok ? 'empty' : 'error',
+    ...withCloudError,
+  };
 }
 
 /** Keeps the in-progress text on the device without touching the cloud. */
@@ -210,7 +224,14 @@ export async function saveMonthlyReflection(
   monthKey: string,
   answers: Record<string, string>,
 ): Promise<{ ok: true; savedAt: string } | { ok: false; error: string }> {
-  const res = await upsertMonthlyReview({ monthKey, answers: asStringMap(answers) });
+  // Körlemesine yazmak, bu cihazın görmediği cevapları siler: önce bulut satırını oku.
+  const current = await fetchMonthlyReview(monthKey);
+  if (!current.ok) {
+    return { ok: false, error: 'Bulut okunamadı; kaydedilmedi. Yazdıkların cihazda taslak olarak duruyor.' };
+  }
+  // Yerel `answers` içinde HİÇ bulunmayan bulut anahtarları korunur; bulunanlar (boş dize dahil) bulutun üstüne yazar.
+  const merged = { ...asStringMap(current.data?.answers), ...asStringMap(answers) };
+  const res = await upsertMonthlyReview({ monthKey, answers: merged });
   if (!res.ok) return { ok: false, error: res.error };
 
   const user = await currentUser();
