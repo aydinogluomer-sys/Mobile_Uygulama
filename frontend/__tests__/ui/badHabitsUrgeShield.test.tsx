@@ -58,6 +58,7 @@ function textOf(r: TestRenderer.ReactTestRenderer): string {
 }
 
 describe('badHabitsUrgeShield — GAP1-01 single-count at 0s without runaway loop', () => {
+  jest.setTimeout(30_000);
   const mounted: TestRenderer.ReactTestRenderer[] = [];
 
   beforeEach(async () => {

@@ -52,7 +52,13 @@ jest.mock('../../repositories/restoreRepository', () => {
 });
 jest.mock('../../lib/session', () => ({ currentUser: jest.fn(async () => ({ id: mockCurrentUserId, email: null })) }));
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dryRunRestore, executeRestore, prepareRow } from '../../services/restoreService';
+import { coreOutbox } from '../../services/coreOutbox';
+import { overlay } from '../../lib/outbox';
+import { memoryOutboxStorage } from '../../lib/outboxStorage';
+import * as habitStoreMod from '../../store/habitStore';
+import { setTaskOutboxStorage, useTaskStore } from '../../store/taskStore';
 import * as restoreRepo from '../../repositories/restoreRepository';
 import { buildManifest } from '../../lib/backupFormat';
 
@@ -155,4 +161,57 @@ it('a single 23505 duplicate inside a 50-row chunk is bisected and skipped while
     cancelled: false,
   });
   expect(mockDb.tasks.size).toBe(120);
+});
+
+describe('F19 (SYN-05) — restore releases tombstones and invalidates habit TTL', () => {
+  it('clears coreOutbox and taskStore tombstones on restored chunks, keeps them when chunk fails, and skips non-outbox tables', async () => {
+    await AsyncStorage.clear();
+    coreOutbox.reset();
+    const taskMem = memoryOutboxStorage();
+    setTaskOutboxStorage(taskMem);
+    useTaskStore.getState().resetForAccount();
+
+    await coreOutbox.write({ entity: 'note', entityId: 'n-del', kind: 'delete' });
+    await useTaskStore.getState().removeTask('t-del');
+    expect(coreOutbox.state()?.tombstones['note|n-del']).toBeDefined();
+    expect(useTaskStore.getState().outbox?.tombstones['task|t-del']).toBeDefined();
+
+    const invSpy = jest.spyOn(habitStoreMod, 'invalidateHabitsFetch');
+    const clearCoreSpy = jest.spyOn(coreOutbox, 'clearTombstones');
+
+    const backupPayload = {
+      notes: [{ id: 'n-del', user_id: U, title: 'Geri Dönen Not', content: 'x', tags: [] }],
+      tasks: [{ id: 't-del', user_id: U, title: 'Geri Dönen Görev' }],
+      habits: [{ id: 'h-res', user_id: U, name: 'Koşu', status: 'active' }],
+      bad_habits: [{ id: 'bh-1', user_id: U, name: 'Sigara' }],
+    };
+    const backupJson = JSON.stringify({
+      format_version: 3,
+      truncated: [],
+      manifest: buildManifest(U, 'x', backupPayload),
+      ...backupPayload,
+    });
+
+    mockFailTable = 'notes';
+    const dFail = await dryRunRestore(backupJson);
+    if (!dFail.ok) throw new Error(dFail.reason);
+    await executeRestore(dFail.plan);
+    expect(coreOutbox.state()?.tombstones['note|n-del']).toBeDefined();
+    expect(useTaskStore.getState().outbox?.tombstones['task|t-del']).toBeUndefined();
+    expect(invSpy).toHaveBeenCalled();
+    expect(clearCoreSpy.mock.calls.some((args) => args[0] === 'bad_habits')).toBe(false);
+
+    for (const k of Object.keys(mockDb)) delete mockDb[k];
+    mockFailTable = null;
+    const dOk = await dryRunRestore(backupJson);
+    if (!dOk.ok) throw new Error(dOk.reason);
+    await executeRestore(dOk.plan);
+    expect(coreOutbox.state()?.tombstones['note|n-del']).toBeUndefined();
+    expect(overlay(coreOutbox.state()!, 'note', [{ id: 'n-del', title: 'Geri Dönen Not' }])).toEqual([
+      { id: 'n-del', title: 'Geri Dönen Not' },
+    ]);
+
+    invSpy.mockRestore();
+    clearCoreSpy.mockRestore();
+  });
 });

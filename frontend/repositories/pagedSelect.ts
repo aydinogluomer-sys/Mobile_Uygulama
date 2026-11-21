@@ -26,7 +26,7 @@ export type PageOptions = { pageSize?: number; maxRows?: number };
 
 /** Aralık (offset) tabanlı: sıralama KESİN olmalı (son anahtar `id`). Boş sayfada biter. */
 export async function selectAllPages<T>(
-  build: (from: number, to: number) => PromiseLike<PageResponse<T>>,
+  build: (from: number, to: number) => PromiseLike<PageResponse<unknown>>,
   opts: PageOptions = {},
 ): Promise<RepoResult<PagedRows<T>>> {
   const pageSize = Math.max(1, Math.min(opts.pageSize ?? PAGE_ROWS, SERVER_MAX_ROWS));
@@ -46,7 +46,7 @@ export async function selectAllPages<T>(
         offline: isTransportFailure(status, error),
       };
     }
-    const got = data ?? [];
+    const got = (data ?? []) as T[];
     if (got.length === 0) {
       return { ok: true, data: { rows, truncated: false } };
     }

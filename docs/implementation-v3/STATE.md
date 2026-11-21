@@ -1865,3 +1865,34 @@ owner_decision: OD-07 2026-11-21 Kırılgan metin guard'larının davranış tes
 - **Birleştirilen dallar:** `faz/F10-041-rls-ve-indeksler` (`e42b9ed3`), `faz/F18-store-tutarliligi` (`3c4c0e92`) — `0` birleştirme çakışması.
 - **Birleştirme kapısında yakalanıp düzeltilen 5 tip daraltması:** `store/habitStore.ts` (`ActivationVerdict` `allowed: false` daraltması), `lifeAreasStore.test.ts` (`WriteResult` `error` alanı), `serialisedPatches.test.ts` (`number | null`), `staleResponseGuards.test.ts` (`StagedAction`, `LeaderboardRow` ve `SubscriptionStore.focusPoints` alanları), `badHabitsUrgeShield.test.tsx` (`jest.fn<void, []>`).
 - **Nihai seri kapılar:** `typecheck:ci` `exit=0`; `lint:ci` `exit=0` (0 uyarı); `node run-tests.js` **147/147** `exit=0`; tam `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB` **333/333 suite · 4594/4594 test** yeşil (Wave 1'deki 319/4514'ten +14 suite, +80 test); Wave 2 toplam mutasyon **20/20 KILLED** (kümülatif **60/60**); `git diff --check` `exit=0`.
+
+### F11 (2026-11-22) — `8dd2c8b4` (`faz/F11-canli-tipler-ve-drift`)
+
+- **Durum:** DONE (arayüz değişikliği yok). **Kapsanan bulgular:** REP-06, DB1-17, TST-16, DB2-14, BLD-11, STO-23.
+- **Özet değişiklikler:**
+  - `frontend/__tests__/helpers/sqlSchemaParser.ts`, iki yönlü `databaseTypesDrift.test.ts` (33 test: P1–P15, D1–D10, N1–N8; `daily_capacity` -> `INTENTIONAL_TYPE_OMISSIONS`) ve `typeEscapeRatchet.test.ts` (R1–R7) eklendi.
+  - `frontend/lib/database.types.ts`: `040` ile `archive_f13` şemasına taşınan 6 F13 tablosu düşürüldü; 62 tablo + 15 RPC = 77 üye `@source` etiketi ve `habit_logs.tz` (`migration:033`), `habit_xp_awards.habit_fp` (`migration:038`) sütun etiketleri eklendi; `global_bosses.id`, `pet_stages.id`, `skills.id` Insert tipleri `id?: number` olarak düzeltildi.
+  - `repositories/shared.ts` Aşama 1 (`OwnedTableName`, `ColumnOf<K>`, 7 yardımcı parametre ayırt edici birleşimi) ve `lib/supabase.ts`, `willpowerRepository`, `focusTaskRepository`, `subscriptionRepository`, `habitStore`, `focusStore`, `willpowerStore`, `subscriptionStore` tek-kaynak satır tipleri bağlandı (16 tip kaçışı temizlendi).
+- **Mutasyon kanıtı:** M1–M9 -> **9/9 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F19 (2026-11-22) — `afcd6339` (`faz/F19-outbox-dogrulugu`)
+
+- **Durum:** DONE (görsel QA sahipte). **Kapsanan bulgular:** TST-12, TST-03, TST-15, REP-12, INT-17, SYN-04, SYN-05, SYN-17, STO-11.
+- **Özet değişiklikler:**
+  - `supabaseMock.ts` gerçek `in`/`gt`/`gte`/`lt`/`lte`/`range` yüklemleri ve atomik `23505` (`supabaseMock.test.ts`), `fakeCoreServer.ts` 6 yeni tablo + `commitThenLoseResponse` ve `coreOutboxReplay.test.ts` (48 test), `unifiedOutbox.ts` `Promise.allSettled` + `errors`.
+  - `lib/outbox.ts` onaylı silme koruma penceresi (`CONFIRMED_TOMBSTONE_GRACE_MS`), `clearTombstones` (`outboxChannel`, `taskStore`, `restoreService`), tüm öncülleri devralan `delete` ve `dependsOn` çağlayan düşürmesi; `outboxStorage.ts` ve `syncQueue.ts` karantina koruması (`outboxQuarantine.test.ts`, `OutboxStatusModal`); `noteService`/`journalService` `"both"` çakışma sırası (`conflictKeepsLocalUntilPersisted.test.ts`); `journalRepository` CAS (`journalCas.test.ts`); 5 create akışında kimlik koruma (`createKeepsOperationId.test.ts`).
+- **Mutasyon kanıtı:** M01–M18 -> **18/18 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F20 (2026-11-22) — `1e14458a` (`faz/F20-disa-aktarim-ve-yedek`)
+
+- **Durum:** DONE (görsel QA sahipte; Anayasa `0.H` bağlayıcı düzeltmesi uygulandı). **Kapsanan bulgular:** SYN-06, REP-04, SYN-19, SYN-20, SYN-18, SYN-25, INT-21, GAP1-12, GAP2-05, GAP1-02, GAP1-06, GAP1-09, GAP1-16, GAP2-06, SYN-11.
+- **Özet değişiklikler:**
+  - Yeni modüller: `repositories/pagedSelect.ts` (`selectAllPages`, `keysetAll`, `requireComplete`), `repositories/exportRepository.ts` (`EXPORT_FULL_TABLES`, `fetchOwnProfileForExport`, `fetchOwnOnboardingForExport`), `lib/shareFile.ts` (`browserDownload`, `shareOrDownload`, `copyTextWithWipe`), `lib/obsidianMarkdown.ts` ve 6 yeni test paketi (`pagedSelect`, `exportCompleteness`, `csvFormulaEscape`, `obsidianMarkdown`, `shareFile`, `obsidianExportLoads`).
+  - 9 repository'de `.limit(2000|5000)` ve sayfalamasız okumalar sayfalı okumaya taşındı (`UNPAGED_WINDOW: 0`); `backupFormat.ts` 69 şema tablosunun tamamını sınıflandırdı (31 `SERVER_COLLECTIONS`, 38 `NOT_BACKED_UP`), `MAX_BACKUP_TEXT_CHARS=25_000_000` ve `AUTHORITY_FIELDS` genişletildi; `restoreRepository`/`restoreService` hesap bağı + `23505` parça ikiye-bölme (`bisect`) + `notices`; `csvImport` formül enjeksiyon koruması (`FORMULA_PREFIX`); `focusReport` 24 saatlik dilim + aralıktan bağımsız seri; `ObsidianExportModal` yükleme kilidi, pano uyarısı ve 60 sn temizleme.
+- **Mutasyon kanıtı:** M01–M12 -> **12/12 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### Wave 3 Seri Birleştirme Kapısı (2026-11-22)
+
+- **Birleştirilen dallar:** `faz/F11-canli-tipler-ve-drift` (`8dd2c8b4`), `faz/F19-outbox-dogrulugu` (`afcd6339`), `faz/F20-disa-aktarim-ve-yedek` (`1e14458a`) — `0` birleştirme çakışması.
+- **Birleştirme kapısı entegrasyonları:** `restoreService.ts` içine F19 `RESTORE_OUTBOX_ENTITY` + `releaseRestored` tombstone temizliği ve `restoreService.test.ts` testi bağlandı; `typeEscapeRatchet.test.ts` tavanı F20'nin temizlediği 3 `as any` sonrası `138 -> 135` olarak düşürüldü (`exportService.collectAllNotes` kaçışsız tiplendi); `pagedSelect.selectAllPages` jenerik dönüş uyumu, `capacitySingleSourceOfTruth.test.ts` (`backupFormat` `NOT_BACKED_UP` tekil dışlama kilidi) ve `QUERY_BOUNDING_MATRIX.md` senkronizasyonu tamamlandı.
+- **Nihai seri kapılar:** `typecheck:ci` `exit=0`; `lint:ci` `exit=0` (0 uyarı); `node run-tests.js` **147/147** `exit=0`; tam `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB` **347/347 suite · 4773/4773 test** yeşil (Wave 2'deki 333/4594'ten +14 suite, +179 test); Wave 3 toplam mutasyon **39/39 KILLED** (kümülatif **99/99**); `git diff --check` `exit=0`.

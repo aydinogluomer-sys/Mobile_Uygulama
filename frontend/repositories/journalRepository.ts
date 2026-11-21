@@ -120,17 +120,17 @@ export async function upsertJournalEntry(
   };
   if (input.aiSummary !== undefined) row.ai_summary = input.aiSummary;
 
-  if (guard !== undefined && guard.baseContent === null) {
-    // Row did not exist on read: insert only. A concurrent writer triggers UNIQUE(user_id, date) -> 23505.
-    const { data, error, status } = await supabase
-      .from('journal_entries')
-      .insert(row)
-      .select(COLS)
-      .single();
-    if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-    return { ok: true, data: data as unknown as JournalEntryRow };
-  }
   if (guard !== undefined) {
+    if (guard.baseContent === null) {
+      // Row did not exist on read: insert only. A concurrent writer triggers UNIQUE(user_id, date) -> 23505.
+      const { data, error, status } = await supabase
+        .from('journal_entries')
+        .insert(row)
+        .select(COLS)
+        .single();
+      if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
+      return { ok: true, data: data as unknown as JournalEntryRow };
+    }
     // Row existed on read: compare-and-swap against the exact content we read.
     const patch: TableUpdate<'journal_entries'> = { content: input.content, mood: input.mood ?? null };
     if (input.aiSummary !== undefined) patch.ai_summary = input.aiSummary;

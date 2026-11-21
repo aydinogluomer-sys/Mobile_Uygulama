@@ -18,6 +18,40 @@ import {
   isMissingTable,
   type RestoreTable,
 } from '../repositories/restoreRepository';
+import { invalidateHabitsFetch } from '../store/habitStore';
+import { useTaskStore } from '../store/taskStore';
+import { coreOutbox } from './coreOutbox';
+
+export const RESTORE_OUTBOX_ENTITY: Partial<Record<RestoreTable, { channel: 'task' | 'core'; entity: string }>> = {
+  tasks: { channel: 'task', entity: 'task' },
+  notes: { channel: 'core', entity: 'note' },
+  goals: { channel: 'core', entity: 'goal' },
+  projects: { channel: 'core', entity: 'project' },
+  reading_list: { channel: 'core', entity: 'reading_item' },
+  okrs: { channel: 'core', entity: 'okr_objective' },
+  key_results: { channel: 'core', entity: 'key_result' },
+  recovery_plans: { channel: 'core', entity: 'recovery_plan' },
+};
+
+const HABIT_FAMILY: readonly RestoreTable[] = [
+  'habits',
+  'habit_pauses',
+  'habit_goal_versions',
+  'habit_checklist_items',
+  'habit_checklist_checks',
+];
+
+async function releaseRestored(table: RestoreTable, ids: string[]): Promise<void> {
+  if (HABIT_FAMILY.includes(table)) invalidateHabitsFetch();
+  const target = RESTORE_OUTBOX_ENTITY[table];
+  if (!target) return;
+  try {
+    if (target.channel === 'task') await useTaskStore.getState().clearTombstones(ids);
+    else await coreOutbox.clearTombstones(target.entity, ids);
+  } catch {
+    // Tombstone bırakma yardımcıdır; geri yüklemenin yazım başarısını bozmaz.
+  }
+}
 
 /** R08.04 — one job record per account: the last restore and how it ended. */
 export const restoreJobKey = (uid: string) => `restore.job.v1.${uid}`;
@@ -173,6 +207,7 @@ export async function executeRestore(
       report.inserted[table] = (report.inserted[table] ?? 0) + res.data;
       if (res.skipped) report.skipped[table] = (report.skipped[table] ?? 0) + res.skipped;
       if (job) await persist({ inserted: { ...job.inserted, [table]: (job.inserted[table] ?? 0) + res.data } });
+      await releaseRestored(table, chunk.map((r) => String(r.id)));
     }
   }
   await persist(

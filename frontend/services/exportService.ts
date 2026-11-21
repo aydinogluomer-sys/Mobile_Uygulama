@@ -183,7 +183,7 @@ export async function collectAllNotes(
 ): Promise<RepoResult<{ rows: NoteRecord[]; truncated: boolean }>> {
   const r = await drain((c) => fetchNotesPage(c, 200), opts.max ?? MAX_ROWS);
   if (r.error) return { ok: false, error: r.error };
-  return { ok: true, data: { rows: r.rows as unknown as NoteRecord[], truncated: r.truncated } };
+  return { ok: true, data: { rows: r.rows, truncated: r.truncated } };
 }
 
 /** Everything the signed-in user owns, as one object. */
