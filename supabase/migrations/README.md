@@ -58,6 +58,7 @@ old filenames.
 | 037 | `037_today_bootstrap_rpc.sql` | **NOT APPLIED** (DB frozen, S1/S2 — single-RTT Today bootstrap RPC) | — |
 | 038 | `038_xp_streak_integrity.sql` | **NOT APPLIED** (P0 XP/seri bütünlüğü; 036 önkoşul) | — |
 | 039 | `039_focus_point_hardening.sql` | **NOT APPLIED** (DB frozen, S1/S2 — Focus Point credit integrity) | — |
+| 040 | `040_privilege_hygiene.sql` | **NOT APPLIED** (DB frozen, S1/S2 — privilege, search_path & sensitive-column hygiene + F07-R3; 028–039 prerequisite) | — |
 
 Keep this table when adding a migration: the old names are cited throughout
 `docs/audit/`, `docs/plan/`, `PROGRESS.md` and the audit reports, which are
@@ -105,6 +106,16 @@ all twenty-seven. This mismatch predates the renumbering (`20260825_phase1…` w
 recorded as `20260830051844`) and renumbering does not change it. Migrations are
 applied through the Supabase MCP `apply_migration` tool or the dashboard, and
 the ledger version is recorded in the table above.
+
+**Explicit function and table grants (after `040`).** Migration `040_privilege_hygiene.sql` closes
+the global `PUBLIC EXECUTE` default on functions and removes `anon` write/`MAINTAIN` rights on
+tables. Every new `SECURITY DEFINER` function must pin `search_path` (`''`, `'public'`, or
+`'public', 'pg_temp'`), write an explicit `REVOKE EXECUTE ON FUNCTION <sig> FROM PUBLIC, anon;`,
+and — only when clients call it directly and the body checks `(SELECT auth.uid())` — follow with
+`GRANT EXECUTE ON FUNCTION <sig> TO authenticated;`. Every new `public` table must write an
+explicit `REVOKE ALL ON public.<t> FROM anon, PUBLIC;` immediately followed by
+`GRANT SELECT, INSERT, UPDATE, DELETE ON public.<t> TO authenticated;` (enforced by
+`migrationRlsGuard.test.ts`, OD-05).
 
 **`supabase functions deploy` has renamed files in this directory** as a side
 effect — it rewrote fourteen of them in one run during Step 11B. Check

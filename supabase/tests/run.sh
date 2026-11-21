@@ -59,7 +59,7 @@ if [ "$fingerprint" != "t" ]; then
   exit 2
 fi
 
-MIN_RESULTS=30   # sanity floor: a run that emits almost nothing is a broken harness, not a pass
+MIN_RESULTS=80   # sanity floor: a run that emits almost nothing is a broken harness, not a pass (01..08 emit 112)
 
 work="$(mktemp -d)"
 results="$work/results"; : >"$results"

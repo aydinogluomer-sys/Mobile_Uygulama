@@ -7,7 +7,7 @@ Postgres 17 hizmetinde sınanmak üzere bağlanmıştır; ilk gerçek CI koşusu
 
 ## Amaç
 
-`supabase/migrations/028` ile `039` arasındaki on iki migration ileri yönde yazılmıştır ve canlıda
+`supabase/migrations/028` ile `040` arasındaki on üç migration ileri yönde yazılmıştır ve canlıda
 uygulanmamıştır. Sahip birini bir Supabase branch'inde ya da canlıda uygulayıp bir sorun görürse,
 elinde sınanmış bir geri dönüş yolu olmalıdır. Her migration için bir geri alma betiği, CI'da
 "ileri uygula, sondan başa geri al, kataloğu baştakiyle karşılaştır, yeniden ileri uygula" döngüsüyle
@@ -71,16 +71,17 @@ Hiçbir betikte `DROP ... CASCADE` biçimi, `DROP SCHEMA` ya da `auth.` şeması
 select * from public.xp_drift();   -- 0 satır beklenir
 ```
 
-Yıkıcı betikler (028, 029, 030, 031, 033 veri siler; 036 güvenlik açıklarını, 038 XP pencere, tavan ve
+Yıkıcı betikler (028, 029, 030, 031, 033 veri siler; 036 ve 040 güvenlik açıklarını, 038 XP pencere, tavan ve
 seri açıklarını yeniden açar) yedek ister
 (S1). Ayrıntılı salt-okunur sorgular `docs/implementation-v3/SQL_FOR_OWNER.md` §2.10'dadır.
 
 ## Betikler ve sıra
 
-Sıra **büyükten küçüğe**: 039, 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
+Sıra **büyükten küçüğe**: 040, 039, 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
 
 | Betik | Geri aldığı migration | Etkisi | Veri kaybı |
 | --- | --- | --- | --- |
+| `040_privilege_hygiene.rollback.sql` | `040_privilege_hygiene.sql` | 6 F13 tablosu `archive_f13`'ten `public`'e döner, düşürülen zombi tetikleyiciler (`archive_040.dropped_triggers`), 8 fonksiyon gövdesi (F07-R3 dahil), onarılmış kullanıcı adları (`archive_040.profiles_username_backup`), 20 `search_path` sabitlemesi ve tüm `public` tablo/sütun/fonksiyon/varsayılan ACL'leri `archive_040.acl_snapshot`'tan 039 sonrası duruma döner | yok; boş `archive_040` ve `archive_f13` şemaları yerinde kalır; **güvenlik açıklarını yeniden açar** |
 | `039_focus_point_hardening.rollback.sql` | `039_focus_point_hardening.sql` | `ai_messages_user_request_uniq` düşer | yok; 039'un sildiği yinelenen kullanıcı mesajları ve yazdığı iadeler geri alınmaz, `spend_focus_points(integer, text)` REVOKE'u 036'ya da aittir (gerekçe betiğin başında) |
 | `038_xp_streak_integrity.rollback.sql` | `038_xp_streak_integrity.sql` | gün penceresi, günlük XP tavanı, seri sütunu koruması ve silmede `purged_xp` aktarımı düşer; `fn_habit_log_set_xp` canlı, `fn_habit_log_award` 036 gövdesine döner; boss tetikleyicisi geri gelir | ad parmak izleri, silinmiş alışkanlıkların defter satırları, 038 döneminde silinip yeniden yazılmış günlerin en yüksek ödül işareti; **XP sahteciliğini yeniden açar** |
 | `037_today_bootstrap_rpc.rollback.sql` | `037_today_bootstrap_rpc.sql` | `get_today_bootstrap(date)` düşer; istemci tablo okumalarına düşer | yok |
@@ -94,8 +95,9 @@ Sıra **büyükten küçüğe**: 039, 038, 037, 036, 035, 034, 033, 032, 031, 03
 | `029_habit_checklists.rollback.sql` | `029_habit_checklists.sql` | `habit_checklist_checks`, `habit_checklist_items` düşer | checklist maddeleri ve günlük işaretler |
 | `028_habit_pauses_and_goal_versions.rollback.sql` | `028_habit_pauses_and_goal_versions.sql` | `habit_goal_versions`, `habit_pauses` düşer | duraklatma, tatil ve hedef sürümü satırları |
 
-Zorunlu sıra kısıtları yalnız ikisidir:
+Zorunlu sıra kısıtları şunlardır:
 
+- **040 en başta geri alınır.** 040 ACL anlık görüntüsünü (`archive_040.acl_snapshot`) 039 sonrasında alır; 039, 038 ya da 036'dan önce geri alınmalıdır.
 - **036'dan önce 038 geri alınır.** 038 defteri kullanır; `fn_habit_log_guard` varken 036 betiği
   reddeder (`038 is still applied`).
 - **035, sonra 034, sonra 032.** CHECK listesi her adımda küçülür; sıra bozulursa son çalışan
@@ -105,12 +107,13 @@ Zorunlu sıra kısıtları yalnız ikisidir:
 
 ## Güvenli yeniden çalıştırma
 
-028, 029, 030, 031, 033 ve 037 `IF EXISTS` kullanır: ikinci çalıştırma no-op'tur. 032, 034 ve 035
+028, 029, 030, 031, 033, 037 ve 039 `IF EXISTS` kullanır: ikinci çalıştırma no-op'tur. 032, 034 ve 035
 aynı kısıtı yeniden kurar. **036 ikinci çalıştırmada reddeder** (`036 is not applied`): defter yoksa 036
 uygulanmamış sayılır ve böyle bir veritabanına `TO PUBLIC` hakları vermemek bilinçli bir güvencedir.
 **038 de ikinci çalıştırmada reddeder** (`038 is not applied`, `fn_habit_log_guard` yoksa): 038'in
 geri alması ödül tetikleyicisine 036'nın defter yazan gövdesini verir; 036 da geri alınmışsa bu gövde
-her log yazımını kırardı.
+her log yazımını kırardı. **040 da ikinci çalıştırmada reddeder** (`040 is not applied`,
+`archive_040.acl_snapshot` yoksa): anlık görüntü olmadan ACL tahmini yapmaz.
 
 ## Neyi geri almaz
 
@@ -144,9 +147,9 @@ sıralı satırlar olarak yazar. CI sırayla:
    kontroller). Hatada durmayan bir istemci de (`ON_ERROR_STOP` yok) denenir: başarısız onay bloğu
    transaction'ı iptal durumunda bırakır, sonraki ifadeler reddedilir, `COMMIT` geri sarar. Reddedilen
    denemeler katalogu değiştirmez.
-4. 038'den 028'e, her betik kendi `SET aderyth.rollback_confirm` değeriyle geri alınır.
+4. 040'tan 028'e, her betik kendi `SET aderyth.rollback_confirm` değeriyle geri alınır.
 5. Geri alınmış katalog tabanla `diff -u` ile karşılaştırılır, `xp_drift()` 0 satır olmalıdır.
-6. İkinci geri alma turu hiçbir şeyi değiştirmez (036 ve 038 reddeder).
+6. İkinci geri alma turu hiçbir şeyi değiştirmez (036, 038 ve 040 reddeder).
 7. Yeniden ileri uygulama; ikinci ileri parmak izi ilkine eşit olmalı, `run.sh` yeniden yeşil olmalıdır.
 8. Gerçek XP satırlarıyla 036 geri alması (DB2-07): önce 038 geri alınır; defterde `habit_logs`'tan
    fazla XP varken `xp_drift()` geri almadan sonra 0 satırdır; aynı XP zaten elle düzeltilmişse betik
