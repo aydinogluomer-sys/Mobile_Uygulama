@@ -5,6 +5,12 @@
  * That is only acceptable if nothing without a range moves. `EXPECTED_AT_3524E26`
  * is NOT hand-written: it is `rangelessOutputs(RL_HABITS, RL_LOGS)` serialised by
  * running it against HEAD 3524e26, before any edit to lib/, and pasted verbatim.
+ * F13'te dört anahtar grubu bilinçli olarak yeniden kaydedildi:
+ * `habitAveragePercent` (skip dışlama), `per.mwf.habitCompletionRate` ve
+ * `per.neg.habitCompletionRate` (kısmi 0,5 kredi, kayıtsız olumsuz gün
+ * paydadan düşer), `weekdayBreakdown[*].completed` ve `rate` (+ `scheduled`
+ * kayıtsız olumsuz gün dışlaması ve yeni `distinctDates`), `per.neg.currentStreak`
+ * ve `longestStreak`.
  *
  * 8 habits -- daily, weekly_days, weekly_count, monthly_count, every_n_days, a
  * malformed weekly row, a dated end, a negative habit born mid-window -- through
@@ -16,7 +22,7 @@
 import { RL_HABITS, RL_LOGS, rangelessOutputs } from '../helpers/rangelessFixture';
 
 const EXPECTED_AT_3524E26 = {
-  "habitAveragePercent": 80,
+  "habitAveragePercent": 81,
   "summarizeHabitProgress": [
     {
       "id": "m10",
@@ -71,43 +77,50 @@ const EXPECTED_AT_3524E26 = {
     {
       "weekday": 0,
       "scheduled": 18,
-      "completed": 15,
-      "rate": 0.8333333333333334
+      "completed": 14.5,
+      "distinctDates": 6,
+      "rate": 0.8055555555555556
     },
     {
       "weekday": 1,
-      "scheduled": 16,
+      "scheduled": 15,
       "completed": 13,
-      "rate": 0.8125
+      "distinctDates": 6,
+      "rate": 0.8666666666666667
     },
     {
       "weekday": 2,
-      "scheduled": 18,
-      "completed": 16,
-      "rate": 0.8888888888888888
+      "scheduled": 17,
+      "completed": 15.5,
+      "distinctDates": 6,
+      "rate": 0.9117647058823529
     },
     {
       "weekday": 3,
-      "scheduled": 16,
+      "scheduled": 15,
       "completed": 11,
-      "rate": 0.6875
+      "distinctDates": 6,
+      "rate": 0.7333333333333333
     },
     {
       "weekday": 4,
-      "scheduled": 19,
-      "completed": 14,
-      "rate": 0.7368421052631579
+      "scheduled": 18,
+      "completed": 13.5,
+      "distinctDates": 6,
+      "rate": 0.75
     },
     {
       "weekday": 5,
-      "scheduled": 13,
+      "scheduled": 12,
       "completed": 11,
-      "rate": 0.8461538461538461
+      "distinctDates": 6,
+      "rate": 0.9166666666666666
     },
     {
       "weekday": 6,
       "scheduled": 13,
       "completed": 10,
+      "distinctDates": 6,
       "rate": 0.7692307692307693
     }
   ],
@@ -241,7 +254,7 @@ const EXPECTED_AT_3524E26 = {
       },
       "habitCompletionRate": {
         "ok": true,
-        "value": 0.8235294117647058
+        "value": 0.7352941176470589
       },
       "currentStreak": 6,
       "longestStreak": 9
@@ -643,10 +656,10 @@ const EXPECTED_AT_3524E26 = {
       },
       "habitCompletionRate": {
         "ok": true,
-        "value": 0.8181818181818182
+        "value": 0.9642857142857143
       },
-      "currentStreak": 0,
-      "longestStreak": 5
+      "currentStreak": 14,
+      "longestStreak": 24
     }
   }
 };

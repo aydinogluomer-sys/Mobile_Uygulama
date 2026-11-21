@@ -25,7 +25,7 @@
  * fit). Every tab/range below derives its view from that same in-memory log
  * array; switching ranges or tabs never re-fetches.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -53,7 +53,8 @@ import { hasPermission } from '../../lib/notifications';
 import { reminderTimes } from '../../lib/reminderPlan';
 import { activePauseOn } from '../../lib/habitPauses';
 import { completionPercent, isMeasurableTracking } from '../../lib/habitEngine';
-import { habitStrength, type StrengthLog } from '../../lib/habitStrength';
+import { habitStrengthFor } from '../../lib/habitStrength';
+import { insufficientText, type InsufficientKind } from '../../lib/metricCopy';
 import {
   habitCompletionRate,
   weekdayBreakdown,
@@ -252,12 +253,15 @@ function InfoRow({ icon, label, value, onEdit, editLabel, editIcon = 'create-out
  * Renders one İÇGÖRÜ metric. On `{ ok: false }` it renders `result.reason`
  * -- never a substituted number -- which is the single choke point that
  * keeps every İÇGÖRÜ metric on this screen honest about insufficient data.
+ * F13 (INT-07): with `kind`, the reason is shown as the calm Turkish sentence
+ * from `metricCopy.ts` (`insufficientText`), not the developer string.
  */
-function InsightRow<T>({ icon, label, result, formatOk }: {
+function InsightRow<T>({ icon, label, result, formatOk, kind }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   result: Result<T>;
   formatOk: (value: T) => string;
+  kind?: InsufficientKind;
 }) {
   return (
     <Card padding="md" style={s.insightCard}>
@@ -268,7 +272,7 @@ function InsightRow<T>({ icon, label, result, formatOk }: {
       {result.ok ? (
         <Text style={s.insightValue}>{formatOk(result.value)}</Text>
       ) : (
-        <Text style={s.insightReason}>{result.reason}</Text>
+        <Text style={s.insightReason}>{insufficientText(kind, result.reason)}</Text>
       )}
     </Card>
   );
@@ -324,6 +328,20 @@ export default function HabitDetailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [habit?.id, sinceYmd, todayYmd]);
 
+  // GEM-10 — strength and streaks walk up to 90 days / the whole history, so
+  // they are memoised on the habit, its logs and the local DAY (`todayYmd`,
+  // not the per-render `today` object). Declared before the early return
+  // below so the hook order never changes; `null` until a habit exists.
+  const engine = useMemo(() => {
+    if (!habit) return null;
+    const asOf = parseLocalDate(todayYmd) ?? new Date();
+    return {
+      strength: habitStrengthFor(habit, logs, { asOf }),
+      curStreak: currentStreak(habit, logs, asOf),
+      bestStreak: longestStreak(habit, logs, { asOf }),
+    };
+  }, [habit, logs, todayYmd]);
+
   if (!habit) {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -366,25 +384,25 @@ export default function HabitDetailScreen() {
   const logIndex = new Map<Ymd, HabitDetailLogRow>();
   for (const l of logs) logIndex.set(l.completed_at.slice(0, 10), l); // last wins, same tie-break as behaviorIntelligence.buildLogIndex
 
-  const strengthLogs: StrengthLog[] = logs.map((l) => ({ completed_at: l.completed_at, state: l.state }));
-  const createdDate = habit.created_at ? parseLocalDate(ymdFromIso(habit.created_at)) : null;
-  const strength = habitStrength(strengthLogs, { asOf: today, since: createdDate ?? undefined });
-  const curStreak = currentStreak(habit, logs, today);
-  const bestStreak = longestStreak(habit, logs, { asOf: today });
-  const overallCompletion: Result<number> = habitCompletionRate(habit, logs, { start: sinceYmd, end: todayYmd });
+  // F13 (DOM-06, DOM-07): schedule-aware strength (null = no data yet) and
+  // streaks where an unlogged today is pending, from the memo above.
+  const strength = engine?.strength ?? null;
+  const curStreak = engine?.curStreak ?? 0;
+  const bestStreak = engine?.bestStreak ?? 0;
+  const overallCompletion: Result<number> = habitCompletionRate(habit, logs, { start: sinceYmd, end: todayYmd }, { asOf: today });
 
   const area = LIFE_AREAS.find((a) => a.key === habit.life_area) ?? null;
 
   const selectedRange = RANGE_OPTIONS.find((r) => r.key === rangeKey) ?? RANGE_OPTIONS[1];
   const rangeStart = rangeStartFor(selectedRange.days, sinceYmd, today);
-  const rangeCompletion: Result<number> = habitCompletionRate(habit, logs, { start: rangeStart, end: todayYmd });
+  const rangeCompletion: Result<number> = habitCompletionRate(habit, logs, { start: rangeStart, end: todayYmd }, { asOf: today });
   const stripDays = daysInRangeCapped(rangeStart, todayYmd, MAX_STRIP_DAYS);
   const isNumeric = isMeasurableTracking(habit.tracking_type);
 
-  const weekdayStats = weekdayBreakdown([habit], logs, { start: sinceYmd, end: todayYmd });
+  const weekdayStats = weekdayBreakdown([habit], logs, { start: sinceYmd, end: todayYmd }, { asOf: today });
   const bestDay = bestWeekday(weekdayStats);
   const worstDay = worstWeekday(weekdayStats);
-  const fragility = habitFragility(habit, logs);
+  const fragility = habitFragility(habit, logs, { asOf: today });
   const trend4 = completionTrend([habit], logs, { weeks: 4, asOf: today });
   const trend12 = completionTrend([habit], logs, { weeks: 12, asOf: today });
   const stability = streakStability(habit, logs, { asOf: today });
@@ -468,10 +486,10 @@ export default function HabitDetailScreen() {
         <View style={s.header}>
           <Text style={s.habitName} accessibilityRole="header">{habit.name}</Text>
           <Text style={s.headerMetrics}>
-            Strength {strength} · Current {curStreak} gün · Best {bestStreak} gün · Completion{' '}
+            Strength {strength ?? '—'} · Current {curStreak} gün · Best {bestStreak} gün · Completion{' '}
             {overallCompletion.ok ? `%${completionPercent(overallCompletion.value)}` : '—'}
           </Text>
-          {!overallCompletion.ok && <Text style={s.headerReason}>{overallCompletion.reason}</Text>}
+          {!overallCompletion.ok && <Text style={s.headerReason}>{insufficientText('rate', overallCompletion.reason)}</Text>}
         </View>
 
         <View style={s.tabRow}>
@@ -495,7 +513,12 @@ export default function HabitDetailScreen() {
         {tab === 'genel' && (
           <View style={s.tabBody}>
             <View style={s.statGrid}>
-              <StatTile label="STRENGTH" value={strength} accent={colors.primary} />
+              <StatTile
+                label="STRENGTH"
+                value={strength ?? '—'}
+                accent={colors.primary}
+                accessibilityLabel={strength === null ? 'Strength: veri yok' : `Strength: ${strength}`}
+              />
               <StatTile label="MEVCUT STREAK" value={`${curStreak} gün`} accent={colors.success} />
             </View>
             <View style={s.statGrid}>
@@ -504,9 +527,10 @@ export default function HabitDetailScreen() {
                 label="TAMAMLAMA"
                 value={overallCompletion.ok ? `%${completionPercent(overallCompletion.value)}` : '—'}
                 accent={colors.info}
+                accessibilityLabel={overallCompletion.ok ? `Tamamlama: yüzde ${completionPercent(overallCompletion.value)}` : 'Tamamlama: veri yok'}
               />
             </View>
-            {!overallCompletion.ok && <Text style={s.reasonHint}>{overallCompletion.reason}</Text>}
+            {!overallCompletion.ok && <Text style={s.reasonHint}>{insufficientText('rate', overallCompletion.reason)}</Text>}
 
             <SectionHeader title="Alışkanlık Bilgisi" variant="title" style={{ marginTop: space.lg }} />
             <Card padding="md">
@@ -572,7 +596,7 @@ export default function HabitDetailScreen() {
             </ScrollView>
 
             <Text style={s.rangeSummary}>
-              {rangeCompletion.ok ? `%${completionPercent(rangeCompletion.value)} tamamlama` : rangeCompletion.reason}
+              {rangeCompletion.ok ? `%${completionPercent(rangeCompletion.value)} tamamlama` : insufficientText('rate', rangeCompletion.reason)}
             </Text>
 
             {loadingLogs ? (
@@ -663,30 +687,35 @@ export default function HabitDetailScreen() {
               icon="trending-up-outline"
               label="En başarılı gün"
               result={bestDay}
+              kind="weekday"
               formatOk={(v) => `${DOW_TR[v.weekday]} · %${Math.round(v.rate * 100)}`}
             />
             <InsightRow
               icon="trending-down-outline"
               label="En zayıf gün"
               result={worstDay}
+              kind="weekday"
               formatOk={(v) => `${DOW_TR[v.weekday]} · %${Math.round(v.rate * 100)}`}
             />
             <InsightRow
               icon="pulse-outline"
               label="Kırılganlık (son 8 hafta)"
               result={fragility}
+              kind="fragility"
               formatOk={(v) => `%${Math.round(v.volatility * 100)} oynaklık · ${v.weeksUsed} hafta veri`}
             />
             <InsightRow
               icon={trendIcon(trend4.ok ? trend4.value.direction : 'flat')}
               label="4 haftalık trend"
               result={trend4}
+              kind="trend"
               formatOk={(v) => `${trendLabel(v.direction)} · ${v.magnitude >= 0 ? '+' : ''}${Math.round(v.magnitude * 100)} puan${v.partialWindow ? ` (${v.weeksUsed}/${v.weeksRequested} hafta)` : ''}`}
             />
             <InsightRow
               icon={trendIcon(trend12.ok ? trend12.value.direction : 'flat')}
               label="12 haftalık trend"
               result={trend12}
+              kind="trend"
               formatOk={(v) => `${trendLabel(v.direction)} · ${v.magnitude >= 0 ? '+' : ''}${Math.round(v.magnitude * 100)} puan${v.partialWindow ? ` (${v.weeksUsed}/${v.weeksRequested} hafta)` : ''}`}
             />
             <InsightRow

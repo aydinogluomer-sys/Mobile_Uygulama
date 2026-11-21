@@ -1,5 +1,5 @@
 /**
- * Habit Strength Engine V2.  (task 1-W2, IMPLEMENTATION_V2.md §10)
+ * Habit Strength Engine V2.  (task 1-W2, IMPLEMENTATION_V2.md §10; F13 DOM-06)
  *
  * Pure domain logic. No I/O, no `supabase` import, no network.
  *
@@ -14,8 +14,17 @@
  * Only `lib/date.ts`'s local-day helpers are used to walk the calendar, so
  * this module inherits the repo's local-day guarantee and never derives a
  * day key from a UTC instant (see `__tests__/repo/noUtcDayKeys.test.ts`).
+ *
+ * F13 (DOM-06): `habitStrengthFor(habit, logs, { asOf })` is the schedule-aware
+ * entry point production callers use (habit detail, `strongestHabit`). It
+ * imports `habitSchedule` (`isEligibleOn`, `periodStatus`) and
+ * `completionMetric` (`dayCredit`, `periodVerdict`); neither of those imports
+ * this file, so there is no cycle.
  */
-import { addDaysLocal, ymd } from './date';
+import type { Habit, HabitLog } from './supabase';
+import { addDaysLocal, daysBetweenLocal, parseLocalDate, ymd, ymdFromIso } from './date';
+import { dayCredit, periodVerdict } from './completionMetric';
+import { isEligibleOn, periodStatus, scheduleKind } from './habitSchedule';
 
 export type HabitLogState = 'done' | 'partial' | 'miss' | 'skip';
 
@@ -23,12 +32,12 @@ export type HabitLogState = 'done' | 'partial' | 'miss' | 'skip';
  * The minimal shape `habitStrength` needs from a log.
  *
  * `ratio` is optional: if the caller already resolved a precise fractional
- * ratio for this log (e.g. via `habitEngine.completionRatio`, which knows
+ * ratio for this log (e.g. via `completionMetric.dayCredit`, which knows
  * the habit's `trackingType` and `target` — neither of which is available
  * here, since this function only ever receives logs, not the parent habit),
  * pass it and it is used as-is. When omitted, this module falls back to a
  * coarser state-only credit (`done` = 1, `partial` = 0.5, `miss` = 0) — see
- * `dayCredit`. This keeps the common case (caller only has `state`) simple
+ * `coarseCredit`. This keeps the common case (caller only has `state`) simple
  * while still letting a caller with richer data get an exact score.
  */
 export type StrengthLog = {
@@ -48,7 +57,28 @@ export type HabitStrengthOptions = {
    * happens without it.
    */
   since?: Date;
+  /**
+   * F13 (DOM-06) — calendar mode. When given, a day for which `isDueOn(day)`
+   * is `false` (not planned, or inside a dated pause / holiday) is in NEITHER
+   * the numerator nor the denominator of its bucket. Production passes
+   * `(d) => isEligibleOn(habit, d)` (see `habitStrengthFor`). Omitted: every
+   * day on/after `since` is expected, exactly as before F13.
+   */
+  isDueOn?: (day: Date) => boolean;
+  /**
+   * F13 (DOM-07 analogue) — when `true`, an unlogged `asOf` day is pending
+   * ("today is not over yet") and is not counted. Omitted/`false`: the
+   * pre-F13 behaviour (an unlogged `asOf` day is a 0-credit expected day).
+   */
+  pendingToday?: boolean;
 };
+
+/** Log shape `habitStrengthFor` reads (`value` lets `dayCredit` score a measured partial day). */
+export type StrengthSource = Pick<HabitLog, 'completed_at' | 'state'> & { value?: number | null };
+
+/** Habit shape `habitStrengthFor` reads: schedule fields plus optional measure fields. */
+export type StrengthHabit = Pick<Habit, 'id' | 'behavior_type' | 'frequency_config' | 'created_at' | 'end_condition'>
+  & Partial<Pick<Habit, 'status' | 'tracking_type' | 'daily_goal' | 'target_direction'>>;
 
 const BUCKETS = [
   { key: 'recent', fromDay: 0, toDay: 6, weight: 0.50 },  // last 7 days
@@ -56,8 +86,12 @@ const BUCKETS = [
   { key: 'long', fromDay: 30, toDay: 89, weight: 0.15 },  // 31-90 days back
 ] as const;
 
+/** Count lane: at most this many periods are walked back (weekly: ~13 fit in 90 days, monthly: ~3). */
+const MAX_STRENGTH_PERIODS = 40;
+
 /**
- * Per-day credit toward a bucket's rate.
+ * Per-day credit toward a bucket's rate. (F13: renamed from `dayCredit` so it
+ * is never confused with `completionMetric.dayCredit`; behaviour unchanged.)
  *
  * `skip` is handled by the caller (the day is excluded from the bucket
  * entirely, both numerator and denominator — see the loop below) so it never
@@ -69,17 +103,87 @@ const BUCKETS = [
  * credit applies: `done` = full credit, `partial` = half credit, `miss` = 0.
  * Half credit for an unqualified `partial` is a deliberate simplification —
  * without the habit's `trackingType`/`target` this module cannot compute the
- * exact §8.6 ratio, and 0.5 is the same fallback `reportMetrics.ts` already
- * uses for a state with no numeric goal attached (see `habitLogPercent`'s
- * `partial` branch there), so this stays consistent with the rest of the
- * codebase rather than inventing a new convention.
+ * exact §8.6 ratio, and 0.5 is the same fallback `completionMetric.dayCredit`
+ * uses for a state with no numeric goal attached, so this stays consistent
+ * with the rest of the codebase rather than inventing a new convention.
  */
-function dayCredit(log: Pick<StrengthLog, 'state' | 'ratio'>): number {
+function coarseCredit(log: Pick<StrengthLog, 'state' | 'ratio'>): number {
   if (log.state === 'skip') return 0;
   if (typeof log.ratio === 'number') return Math.max(0, Math.min(1, log.ratio));
   if (log.state === 'done') return 1;
   if (log.state === 'partial') return 0.5;
   return 0; // miss
+}
+
+/** Re-normalised weighted score over the buckets that had expected days, or `null` when none had any. */
+function weightedScore(buckets: readonly { weight: number; expected: number; credit: number }[]): number | null {
+  let weightSum = 0;
+  let scoreSum = 0;
+  for (const b of buckets) {
+    if (b.expected === 0) continue; // bkz. re-normalisation notu — bu bucket ağırlığa katılmaz.
+    weightSum += b.weight;
+    scoreSum += b.weight * (b.credit / b.expected);
+  }
+  if (weightSum === 0) return null; // hiçbir bucket'ta beklenen gün yoktu (örn. `since` gelecekte).
+  return Math.max(0, Math.min(100, Math.round((scoreSum / weightSum) * 100)));
+}
+
+/** The day-bucket walk shared by `habitStrength` (0 on no data) and `habitStrengthFor` (null on no data). */
+function dayBucketStrength(logs: StrengthLog[], options: HabitStrengthOptions): number | null {
+  const asOf = options.asOf ?? new Date();
+
+  const sinceYmd = options.since
+    ? ymd(options.since)
+    : logs.reduce<string | null>((min, l) => {
+      const d = l.completed_at.slice(0, 10); // 'completed_at' zaten yerel 'date' kolonu — burada UTC dönüşümü yok.
+      return min == null || d < min ? d : min;
+    }, null);
+
+  if (sinceYmd == null) return null; // ne `since` verildi ne de hiç log var — dayanacak hiçbir şey yok.
+
+  // FINDING A-02: two logs for the same calendar day are a store-level
+  // invariant violation -- "one log per habit per day" is enforced above
+  // this module (the log store), not here; `habitStrength` only ever
+  // receives whatever it is handed. This function's defence against that
+  // case is intentionally simple: `Map#set` overwrites, so the LAST entry
+  // for a given day in `logs`' array order wins outright -- no merge, no
+  // "best state wins", no "latest `created_at` wins". Array order is the
+  // tiebreak, full stop.
+  //
+  // Deliberately not "improved" to a smarter rule: `StrengthLog` does not
+  // carry a `created_at`/timestamp, only the local day (`completed_at`) the
+  // log is FOR -- so there is no reliable signal here for which of two same-
+  // day entries actually happened later in real time, and inventing a
+  // "best state wins" rule (e.g. done > partial > miss) is not obviously
+  // correct either: a user who corrects a mistaken `'done'` down to `'miss'`
+  // would have that correction silently discarded by a best-wins rule. With
+  // no trustworthy signal to prefer one entry, last-in-array-wins is at
+  // least simple, deterministic, and honest about being an ordering
+  // artifact rather than a guessed-at "smarter" rule.
+  const logByDate = new Map<string, StrengthLog>();
+  for (const l of logs) {
+    logByDate.set(l.completed_at.slice(0, 10), l); // last entry for a given day overwrites -- see note above
+  }
+
+  const totals = BUCKETS.map((b) => ({ weight: b.weight, expected: 0, credit: 0 }));
+
+  BUCKETS.forEach((bucket, i) => {
+    for (let dayOffset = bucket.fromDay; dayOffset <= bucket.toDay; dayOffset++) {
+      const date = addDaysLocal(asOf, -dayOffset);
+      const d = ymd(date);
+      if (d < sinceYmd) continue; // habit bu gün henüz yoktu — bu gün hiçbir bucket'ta beklenmez.
+      if (options.isDueOn && !options.isDueOn(date)) continue; // planlı değil / duraklatılmış: pay VE paydadan dışlanır.
+
+      const log = logByDate.get(d);
+      if (log && log.state === 'skip') continue; // skip: pay VE paydan tamamen dışlanır.
+      if (options.pendingToday && dayOffset === 0 && !log) continue; // kayıtsız bugün henüz bitmedi: sayılmaz.
+
+      totals[i].expected += 1;
+      totals[i].credit += log ? coarseCredit(log) : 0; // log yoksa (hiç dokunulmamış gün) = gerçek bir kaçırma, 0 kredi ama sayılır.
+    }
+  });
+
+  return weightedScore(totals);
 }
 
 /**
@@ -131,6 +235,17 @@ function dayCredit(log: Pick<StrengthLog, 'state' | 'ratio'>): number {
  * degrades sensibly when it is not. With no `since` and no logs at all,
  * there is nothing to infer from and the function returns `0`.
  *
+ * ## Calendar mode (F13, DOM-06)
+ *
+ * Without `isDueOn` this function is schedule-blind: EVERY calendar day on or
+ * after `since` is expected, so a Mon/Wed/Fri habit kept perfectly scores
+ * 3/7 ≈ 43. That mode is kept verbatim for existing callers and tests. With
+ * `isDueOn`, a day the habit was not planned for (or a dated pause / holiday
+ * day) is excluded from both sides, so the same habit scores 100; with
+ * `pendingToday`, an unlogged `asOf` day is not yet a miss. Production code
+ * with a habit row should call `habitStrengthFor`, which supplies both and
+ * also handles count schedules (`weekly_count`, `monthly_count`) by period.
+ *
  * ## `skip`
  *
  * A day whose log has `state: 'skip'` is excluded from BOTH the numerator
@@ -142,67 +257,85 @@ function dayCredit(log: Pick<StrengthLog, 'state' | 'ratio'>): number {
  * a skip — only an explicit skip action removes a day from consideration.
  */
 export function habitStrength(logs: StrengthLog[], options: HabitStrengthOptions = {}): number {
-  const asOf = options.asOf ?? new Date();
+  return dayBucketStrength(logs, options) ?? 0;
+}
 
-  const sinceYmd = options.since
-    ? ymd(options.since)
-    : logs.reduce<string | null>((min, l) => {
-      const d = l.completed_at.slice(0, 10); // 'completed_at' zaten yerel 'date' kolonu — burada UTC dönüşümü yok.
-      return min == null || d < min ? d : min;
-    }, null);
+/**
+ * Schedule-aware habit strength (F13, DOM-06): 0-100, or `null` when no bucket
+ * holds an expected / evaluable day or period (`null` = no data yet, NOT 0).
+ *
+ * - Day lane (daily, weekly days, every_n_days, monthly days, yearly date):
+ *   `habitStrength(logs, { asOf, since: created_at, isDueOn: (d) =>
+ *   isEligibleOn(habit, d), pendingToday: true })`, each log scored with
+ *   `completionMetric.dayCredit(habit, log)` (a measured partial day gets its
+ *   real ratio). An unlogged day of a NEGATIVE habit is unknown, not a miss
+ *   (`judgeDay` → `unknown`), so it is not expected either.
+ * - Count lane (`weekly_count`, `monthly_count`): periods are walked back from
+ *   `asOf` with `periodStatus` (logs stamped with `habit_id: habit.id`); each
+ *   period's `periodVerdict` credit is written into the bucket (0-6, 7-29,
+ *   30-89 days back) that holds the period's END day (clamped to `asOf` for
+ *   the open period). The open period counts only once satisfied (otherwise
+ *   it is `pending`); a period that starts before `created_at` counts only if
+ *   fully satisfied (the first week is not a burden); offset > 89 stops; at
+ *   most `MAX_STRENGTH_PERIODS` periods are walked. Buckets re-normalise with
+ *   the same 0.50 / 0.35 / 0.15 weights.
+ */
+export function habitStrengthFor(
+  habit: StrengthHabit,
+  logs: readonly (StrengthSource & { habit_id?: string })[],
+  opts?: { asOf?: Date },
+): number | null {
+  const asOf = opts?.asOf ?? new Date();
+  const asOfYmd = ymd(asOf);
+  const createdYmd = ymdFromIso(habit.created_at) || null;
+  if (createdYmd && createdYmd > asOfYmd) return null;
 
-  if (sinceYmd == null) return 0; // ne `since` verildi ne de hiç log var — dayanacak hiçbir şey yok.
+  const fullHabit = habit as Habit;
+  const own = logs.filter((l) => l.habit_id === undefined || l.habit_id === habit.id);
+  const kind = scheduleKind(fullHabit).kind;
 
-  // FINDING A-02: two logs for the same calendar day are a store-level
-  // invariant violation -- "one log per habit per day" is enforced above
-  // this module (the log store), not here; `habitStrength` only ever
-  // receives whatever it is handed. This function's defence against that
-  // case is intentionally simple: `Map#set` overwrites, so the LAST entry
-  // for a given day in `logs`' array order wins outright -- no merge, no
-  // "best state wins", no "latest `created_at` wins". Array order is the
-  // tiebreak, full stop.
-  //
-  // Deliberately not "improved" to a smarter rule: `StrengthLog` does not
-  // carry a `created_at`/timestamp, only the local day (`completed_at`) the
-  // log is FOR -- so there is no reliable signal here for which of two same-
-  // day entries actually happened later in real time, and inventing a
-  // "best state wins" rule (e.g. done > partial > miss) is not obviously
-  // correct either: a user who corrects a mistaken `'done'` down to `'miss'`
-  // would have that correction silently discarded by a best-wins rule. With
-  // no trustworthy signal to prefer one entry, last-in-array-wins is at
-  // least simple, deterministic, and honest about being an ordering
-  // artifact rather than a guessed-at "smarter" rule.
-  const logByDate = new Map<string, StrengthLog>();
-  for (const l of logs) {
-    logByDate.set(l.completed_at.slice(0, 10), l); // last entry for a given day overwrites -- see note above
-  }
-
-  let weightSum = 0;
-  let scoreSum = 0;
-
-  for (const bucket of BUCKETS) {
-    let expected = 0;
-    let credit = 0;
-
-    for (let dayOffset = bucket.fromDay; dayOffset <= bucket.toDay; dayOffset++) {
-      const d = ymd(addDaysLocal(asOf, -dayOffset));
-      if (d < sinceYmd) continue; // habit bu gün henüz yoktu — bu gün hiçbir bucket'ta beklenmez.
-
-      const log = logByDate.get(d);
-      if (log && log.state === 'skip') continue; // skip: pay VE paydan tamamen dışlanır.
-
-      expected += 1;
-      credit += log ? dayCredit(log) : 0; // log yoksa (hiç dokunulmamış gün) = gerçek bir kaçırma, 0 kredi ama sayılır.
+  if (kind === 'weekly_count' || kind === 'monthly_count') {
+    // `oneLogPerDay` inside the period evaluator filters by `habit_id`.
+    const stamped = own.map((l) => ({ habit_id: habit.id, completed_at: l.completed_at, state: l.state, value: l.value ?? null }));
+    const totals = BUCKETS.map((b) => ({ ...b, expected: 0, credit: 0 }));
+    let cursor = asOf;
+    for (let step = 0; step < MAX_STRENGTH_PERIODS; step++) {
+      const st = periodStatus(fullHabit, stamped, cursor, { asOf });
+      const startYmd = ymd(st.periodStart);
+      const endYmd = ymd(st.periodEnd);
+      if (createdYmd && endYmd < createdYmd) break;
+      const dayOffset = daysBetweenLocal(endYmd > asOfYmd ? asOf : st.periodEnd, asOf);
+      if (dayOffset > 89) break;
+      const straddlesCreation = createdYmd !== null && startYmd < createdYmd;
+      if (!straddlesCreation || st.status === 'satisfied') {
+        const v = periodVerdict(st);
+        if (v.kind === 'credit') {
+          const bucket = totals.find((b) => dayOffset >= b.fromDay && dayOffset <= b.toDay);
+          if (bucket) {
+            bucket.expected += 1;
+            bucket.credit += v.credit;
+          }
+        }
+      }
+      if (straddlesCreation) break; // reached the habit's first period
+      cursor = addDaysLocal(st.periodStart, -1);
     }
-
-    if (expected === 0) continue; // bkz. yukarıdaki re-normalisation notu — bu bucket ağırlığa katılmaz.
-
-    const rate = credit / expected;
-    weightSum += bucket.weight;
-    scoreSum += bucket.weight * rate;
+    return weightedScore(totals);
   }
 
-  if (weightSum === 0) return 0; // hiçbir bucket'ta beklenen gün yoktu (örn. `since` gelecekte).
+  const strengthLogs: StrengthLog[] = own.map((l) => ({
+    completed_at: l.completed_at,
+    state: l.state,
+    ratio: dayCredit(habit, { state: l.state, value: l.value ?? null }),
+  }));
+  const loggedDays = new Set(strengthLogs.map((l) => l.completed_at.slice(0, 10)));
+  const negative = habit.behavior_type === 'negative';
+  const since = createdYmd ? parseLocalDate(createdYmd) ?? undefined : undefined;
 
-  return Math.max(0, Math.min(100, Math.round((scoreSum / weightSum) * 100)));
+  return dayBucketStrength(strengthLogs, {
+    asOf,
+    since,
+    isDueOn: (d) => isEligibleOn(fullHabit, d) && (!negative || loggedDays.has(ymd(d))),
+    pendingToday: true,
+  });
 }

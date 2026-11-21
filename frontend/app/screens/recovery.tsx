@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
   Modal, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
@@ -15,7 +15,16 @@ import { useRecoveryStore } from '../../store/recoveryStore';
 import { deficitFor, type TrackingTypeV2 } from '../../lib/recovery';
 // R03.05 — what moving the make-up does to that day's load.
 import { makeupLoadPreview, LOAD_BANDS, type LoadBandKey } from '../../lib/capacity';
-import { recoveryBacklog, consecutiveMissedDue as consecutiveMissedDueOf } from '../../lib/recoveryBacklog';
+import { BACKLOG_PAGE_SIZE, capBacklog, recoveryBacklog, consecutiveMissedDue as consecutiveMissedDueOf } from '../../lib/recoveryBacklog';
+import { currentStreak } from '../../lib/behaviorIntelligence';
+import {
+  BACKLOG_BADGE_PARTIAL,
+  BACKLOG_BADGE_PENDING,
+  RETURN_NUDGE_TITLE,
+  backlogMoreLabel,
+  returnNudgeMany,
+  returnNudgeOne,
+} from '../../lib/metricCopy';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { Image } from 'expo-image';
@@ -57,7 +66,7 @@ export const STRATEGY_META: Record<RecoveryStrategy, { label: string; desc: stri
   complete_today: { label: 'Bugün Tamamla', desc: 'Tamamını bugün yap', icon: 'refresh', color: colors.success },
   push_tomorrow: { label: 'Yarına Aktar', desc: 'İleri bir güne taşı', icon: 'calendar-outline', color: colors.primaryBright },
   split_two_days: { label: 'İkiye Böl', desc: 'İki güne dağıt', icon: 'contrast-outline', color: colors.warning },
-  skip: { label: 'Telafi Etme', desc: 'Bu sefer geç, zinciri kırma', icon: 'flash-outline', color: colors.info },
+  skip: { label: 'Telafi Etme', desc: 'Bu sefer geç, yarına odaklan', icon: 'flash-outline', color: colors.info },
 };
 
 export default function RecoveryScreen() {
@@ -68,11 +77,13 @@ export default function RecoveryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [streaks, setStreaks] = useState<StreakMap>({});
-  // Geçmiş günlerde tamamlanmış/kısmi günler — "habitId|yyyy-mm-dd" anahtarlı
+  // Geçmiş günlerde tamamlanmış/kısmi/atlanan günler — "habitId|yyyy-mm-dd" anahtarlı
   const [doneSet, setDoneSet] = useState<Set<string>>(new Set());
   const [partialSet, setPartialSet] = useState<Set<string>>(new Set());
   /** Days the user explicitly logged as missed — distinct from never logged. */
   const [missedSet, setMissedSet] = useState<Set<string>>(new Set());
+  const [skippedSet, setSkippedSet] = useState<Set<string>>(new Set());
+  const [backlogVisible, setBacklogVisible] = useState(BACKLOG_PAGE_SIZE);
   // Kısmi günün GERÇEK değeri — "habitId|yyyy-mm-dd" -> value. Plan §9'un
   // başlığı (10.000 hedef / 8.000 fiili -> 2.000 eksik) bu olmadan çalışmaz.
   const [valueMap, setValueMap] = useState<Record<string, number>>({});
@@ -112,8 +123,9 @@ export default function RecoveryScreen() {
   // same date fixtures pin it as pin Today, reports, capacity and reminders.
   const plannedKeys = new Set(plans.map((p) => `${p.habit_id}|${p.source_date}`));
   const backlogNow = new Date();
-  const backlogEntries = recoveryBacklog({ habits: activeHabits, today: backlogNow, doneSet, partialSet, missedSet, plannedKeys });
-  const consecutiveMissedDue = (h: Habit) => consecutiveMissedDueOf(h, { today: backlogNow, doneSet, partialSet });
+  const backlogEntries = recoveryBacklog({ habits: activeHabits, today: backlogNow, doneSet, partialSet, missedSet, skippedSet, plannedKeys });
+  const { shown: shownBacklog, hidden: hiddenBacklog } = capBacklog(backlogEntries, backlogVisible);
+  const consecutiveMissedDue = (h: Habit) => consecutiveMissedDueOf(h, { today: backlogNow, doneSet, partialSet, skippedSet });
 
   // Telafi günü (gelecek/bugün) insan etiketi
   function targetLabel(date: string): string {
@@ -138,50 +150,48 @@ export default function RecoveryScreen() {
     return format(new Date(y, mo - 1, d), 'd MMMM', { locale: tr });
   }
 
-  const computeStreaks = useCallback(async (habitIds: string[]) => {
-    if (habitIds.length === 0) return;
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const computeStreaks = useCallback(async (habitList: Habit[]) => {
+    if (habitList.length === 0) return;
+    const habitIds = habitList.map((h) => h.id);
     const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
     const user = await currentUser();
-    if (!user) return;
+    if (!user || !mountedRef.current) return;
     const res = await fetchHabitLogsForHabitsSince({ habitIds, since });
-    if (!res.ok) return;
+    if (!res.ok || !mountedRef.current) return;
     const data = res.data;
+    const now = new Date();
     const map: StreakMap = {};
-    for (const id of habitIds) {
-      const logs = data.filter((l) => l.habit_id === id);
-      let streak = 0;
-      let cur = new Date();
-      cur.setDate(cur.getDate() - 1);
-      for (let i = 0; i < 60; i++) {
-        const d = format(cur, 'yyyy-MM-dd');
-        if (logs.some((l) => l.completed_at === d)) { streak++; cur.setDate(cur.getDate() - 1); }
-        else break;
-      }
-      map[id] = streak;
+    for (const h of habitList) {
+      map[h.id] = currentStreak(h, data.filter((l) => l.habit_id === h.id), now);
     }
     setStreaks(map);
 
-    // Geçmiş gün set'leri — kaçırma/kısmi tespiti backlog için bunları kullanır
+    // Geçmiş gün set'leri — bekleyen/kısmi/atlanan tespiti backlog için bunları kullanır
     const done = new Set<string>();
     const partial = new Set<string>();
     const missed = new Set<string>();
+    const skipped = new Set<string>();
     const vals: Record<string, number> = {};
     for (const l of data) {
       const k = `${l.habit_id}|${l.completed_at}`;
-      // Split by STATE. This used to be `partial ? partial : done`, so an
-      // explicit `miss` — and a `skip` — landed in the done set and the
-      // backlog skipped the day entirely: a day the user recorded as failed
-      // could never be offered a make-up.
+      // Split by STATE. Explicitly skipped (`skip`) days are tracked separately
+      // (DOM-08) so recoveryBacklog excludes them and consecutiveMissedDue bridges them.
       if (l.state === 'partial') partial.add(k);
       else if (l.state === 'miss') missed.add(k);
       else if (l.state === 'done') done.add(k);
-      // `skip` is deliberately in none of them: it means "not today, on
-      // purpose", which is neither a completion nor a failure.
+      else if (l.state === 'skip') skipped.add(k);
       if (typeof l.value === 'number') vals[k] = l.value;
     }
     setDoneSet(done);
     setPartialSet(partial);
     setMissedSet(missed);
+    setSkippedSet(skipped);
     setValueMap(vals);
   }, []);
 
@@ -193,7 +203,7 @@ export default function RecoveryScreen() {
 
   useEffect(() => {
     const active = habits.filter((h) => h.status === 'active');
-    if (active.length > 0) computeStreaks(active.map((h) => h.id));
+    if (active.length > 0) computeStreaks(active);
   }, [habits, computeStreaks]);
 
   async function onRefresh() {
@@ -204,7 +214,7 @@ export default function RecoveryScreen() {
   }
 
   async function refreshSets() {
-    await computeStreaks(activeHabits.map((h) => h.id));
+    await computeStreaks(activeHabits);
   }
 
   // Geçmiş bir günü retroaktif "yaptım" olarak işaretle
@@ -276,8 +286,9 @@ export default function RecoveryScreen() {
     doneSet.has(planLogKey) ? 'done' : partialSet.has(planLogKey) ? 'partial' : 'miss';
   const planLoggedValue: number | null =
     planLogKey && Object.prototype.hasOwnProperty.call(valueMap, planLogKey) ? valueMap[planLogKey] : null;
+  const planDirection = planTarget?.target_direction ?? null;
   const planDeficit = planTarget
-    ? deficitFor({ trackingType: planTrackingType, target: planTarget.daily_goal, value: planLoggedValue, state: planState })
+    ? deficitFor({ trackingType: planTrackingType, target: planTarget.daily_goal, value: planLoggedValue, state: planState, direction: planDirection })
     : null;
   const planOptions = planTarget
     ? recoveryOptionsFor({
@@ -285,6 +296,7 @@ export default function RecoveryScreen() {
         target: planTarget.daily_goal,
         value: planLoggedValue,
         state: planState,
+        direction: planDirection,
         fromDate: planSource || today,
       })
     : [];
@@ -460,7 +472,7 @@ export default function RecoveryScreen() {
             textureSource={TEXTURES.kintsugi}
             eyebrow="ŞEFKATLİ ONARIM"
             title="Telafi"
-            subtitle="Bir kez kaçırmak olur — ikinci kez kaçırma. Toparlanma zamanı."
+            subtitle="Kaldığın yerden sakin bir adımla devam et. Toparlanma zamanı."
             accentColor={colors.warning}
             minHeight={112}
             style={{ alignSelf: 'stretch' }}
@@ -474,12 +486,12 @@ export default function RecoveryScreen() {
           <Card padding="md" style={s.stripCard}>
             <Ionicons name="pulse-outline" size={18} color={totalMissed > 0 ? colors.warning : colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={[s.stripNum, { color: totalMissed > 0 ? colors.warning : colors.success }]}>{totalMissed}</Text>
-            <Text style={s.stripLabel}>Kaçırılan</Text>
+            <Text style={s.stripLabel}>{BACKLOG_BADGE_PENDING}</Text>
           </Card>
           <Card padding="md" style={s.stripCard}>
             <Ionicons name="contrast-outline" size={18} color={totalPartial > 0 ? colors.info : colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <Text style={[s.stripNum, { color: totalPartial > 0 ? colors.info : colors.success }]}>{totalPartial}</Text>
-            <Text style={s.stripLabel}>Kısmi</Text>
+            <Text style={s.stripLabel}>{BACKLOG_BADGE_PARTIAL}</Text>
           </Card>
           <Card padding="md" style={s.stripCard}>
             <Ionicons name="time-outline" size={18} color={totalOverdue > 0 ? colors.error : colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
@@ -544,26 +556,26 @@ export default function RecoveryScreen() {
           </View>
         )}
 
-        {/* Never miss twice uyarısı */}
+        {/* Sakin dönüş hatırlatması (DOM-23: utandırmayan ton, alert rolü yok) */}
         {neverMissTwice.length > 0 && (
-          <View style={s.warnBanner} accessibilityRole="alert">
-            <Ionicons name="warning" size={18} color={colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+          <View style={s.warnBanner}>
+            <Ionicons name="leaf-outline" size={18} color={colors.textDim} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
             <View style={{ flex: 1 }}>
-              <Text style={s.warnTitle}>İki kez kaçırma!</Text>
+              <Text style={s.warnTitle}>{RETURN_NUDGE_TITLE}</Text>
               <Text style={s.warnText}>
                 {neverMissTwice.length === 1
-                  ? `"${neverMissTwice[0].name}" ${consecutiveMissedDue(neverMissTwice[0])} gün üst üste kaçtı. Küçük de olsa bir adım at — zinciri kurtar.`
-                  : `${neverMissTwice.length} alışkanlık üst üste kaçıyor. Bir mini adım bile zinciri korur.`}
+                  ? returnNudgeOne(neverMissTwice[0].name, consecutiveMissedDue(neverMissTwice[0]))
+                  : returnNudgeMany(neverMissTwice.length)}
               </Text>
             </View>
           </View>
         )}
 
-        {/* Telafi Bekleyen — geçmiş günlerde kaçırılan/kısmi (frekansa göre due) */}
+        {/* Telafi Bekleyen — geçmiş günlerde bekleyen/kısmi (frekansa göre due, 7'şer satır) */}
         {backlogEntries.length > 0 && (
           <View style={s.section}>
-            <SectionHeader title="Telafi Bekleyen" icon="alert-circle-outline" iconColor={colors.warning} count={backlogEntries.length} variant="serif" />
-            {backlogEntries.map((e) => {
+            <SectionHeader title="Telafi Bekleyen" icon="calendar-outline" iconColor={colors.textDim} count={shownBacklog.length} variant="serif" />
+            {shownBacklog.map((e) => {
               const h = e.habit;
               const key = `${h.id}|${e.date}`;
               const isLogging = loggingId === key;
@@ -578,9 +590,9 @@ export default function RecoveryScreen() {
                       <View style={s.habitMeta}>
                         <Badge label={pastLabel(e.date)} icon="calendar-outline" color={colors.textDim} />
                         {e.kind === 'partial'
-                          ? <Badge label="Kısmi" icon="contrast-outline" color={colors.info} />
-                          : <Badge label="Kaçırıldı" icon="close-circle-outline" color={colors.warning} />}
-                        {streak > 0 && <Badge label={`${streak}g seri`} icon="flame" color={colors.warning} />}
+                          ? <Badge label={BACKLOG_BADGE_PARTIAL} icon="contrast-outline" color={colors.info} />
+                          : <Badge label={BACKLOG_BADGE_PENDING} icon="calendar-outline" color={colors.textDim} />}
+                        {streak > 0 && <Badge label={streak >= 60 ? '60+g seri' : `${streak}g seri`} icon="flame" color={colors.warning} />}
                       </View>
                     </View>
                   </View>
@@ -593,6 +605,16 @@ export default function RecoveryScreen() {
                 </Card>
               );
             })}
+            {hiddenBacklog > 0 && (
+              <Button
+                label={backlogMoreLabel(hiddenBacklog)}
+                variant="ghost"
+                size="md"
+                color={colors.textDim}
+                onPress={() => setBacklogVisible((v) => v + BACKLOG_PAGE_SIZE)}
+                accessibilityLabel={`Daha fazla bekleyen günü göster, kalan ${hiddenBacklog}`}
+              />
+            )}
           </View>
         )}
 
@@ -626,7 +648,7 @@ export default function RecoveryScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={s.sheetTitle}>Telafi Planla</Text>
                 <Text style={s.sheetHabit} numberOfLines={1}>
-                  {planTarget?.name}{planSource ? ` · ${pastLabel(planSource)} kaçtı` : ''}
+                  {planTarget?.name}{planSource ? ` · ${pastLabel(planSource)} bekliyor` : ''}
                 </Text>
               </View>
               <TouchableOpacity
@@ -651,7 +673,7 @@ export default function RecoveryScreen() {
                     ? planDeficit.value > 0
                       ? `${planDeficit.value.toLocaleString('tr-TR')}${planTarget?.unit ? ` ${planTarget.unit}` : ''} kaldı`
                       : 'hedef tamamlandı'
-                    : planDeficit.value > 0 ? 'bu gün kaldı' : 'kaçırılan yok'}
+                    : planDeficit.value > 0 ? 'bu gün kaldı' : 'bekleyen yok'}
                 </Text>
                 {planOptions.length > 0 && (
                   <Text style={s.deficitHint}>
@@ -831,10 +853,10 @@ const s = StyleSheet.create({
 
   warnBanner: {
     flexDirection: 'row', alignItems: 'flex-start', gap: space.md,
-    backgroundColor: hexA(colors.error, 0.1), borderRadius: radius.md, padding: space.md,
-    borderWidth: 1, borderColor: hexA(colors.error, 0.3), marginBottom: space.lg,
+    backgroundColor: colors.surface, borderRadius: radius.md, padding: space.md,
+    borderWidth: 1, borderColor: colors.border, marginBottom: space.lg,
   },
-  warnTitle: { ...font.h3, fontSize: 14, color: colors.error, marginBottom: 2 },
+  warnTitle: { ...font.h3, fontSize: 14, color: colors.text, marginBottom: 2 },
   warnText: { ...font.bodySm, color: colors.textDim, lineHeight: 18 },
 
   progRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },

@@ -150,7 +150,7 @@ export default function WeeklyReviewScreen() {
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [habitCompletionRate, setHabitCompletionRate] = useState(0);
+  const [habitCompletionRate, setHabitCompletionRate] = useState<number | null>(null);
   const [focusMinutes, setFocusMinutes] = useState(0);
   const [badge, setBadge] = useState<ReportBadge | null>(null);
   const [autoMetrics, setAutoMetrics] = useState<AutoMetrics>(EMPTY_AUTO_METRICS);
@@ -226,9 +226,9 @@ export default function WeeklyReviewScreen() {
   async function loadWeekMetrics() {
     const user = await currentUser();
     if (!user) {
-      setHabitCompletionRate(0);
+      setHabitCompletionRate(null);
       setFocusMinutes(0);
-      setBadge(reportBadge({ habitRate: 0, focusMinutes: 0, completedTasks: completedTasks.length }));
+      setBadge(reportBadge({ habitRate: null, focusMinutes: 0, completedTasks: completedTasks.length }));
       setAutoMetrics(EMPTY_AUTO_METRICS);
       return;
     }
@@ -239,7 +239,7 @@ export default function WeeklyReviewScreen() {
       recoveryForPeriod({ start, end }),
     ]);
 
-    const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end) : 0;
+    const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end, { asOf: new Date() }) : null;
     // `fetchFocusSessionsSince` has no upper bound -- clip to this week's `end`
     // client-side, same window `fetchFocusSecondsForReview` used to filter server-side.
     const weekSessions = sessionsRes.ok
@@ -366,7 +366,12 @@ export default function WeeklyReviewScreen() {
             <Text style={s.metricLabel}>Görev{'\n'}Tamamlandı</Text>
           </View>
           <View style={s.metric}>
-            <Text style={[s.metricValue, { color: colors.success }]}>{habitCompletionRate}%</Text>
+            <Text
+              style={[s.metricValue, { color: habitCompletionRate === null ? colors.textDim : colors.success }]}
+              accessibilityLabel={habitCompletionRate === null ? 'Alışkanlık oranı: veri yok' : `Alışkanlık oranı: yüzde ${habitCompletionRate}`}
+            >
+              {habitCompletionRate === null ? '—' : `${habitCompletionRate}%`}
+            </Text>
             <Text style={s.metricLabel}>Alışkanlık{'\n'}Oran</Text>
           </View>
           <View style={s.metric}>
@@ -398,7 +403,7 @@ export default function WeeklyReviewScreen() {
               label="Toplam Tamamlama"
               value={autoMetrics.totalCompletions != null ? String(autoMetrics.totalCompletions) : 'Veri yok'}
             />
-            <AutoMetricTile label="Alışkanlık Tamamlama" value={`%${habitCompletionRate}`} />
+            <AutoMetricTile label="Alışkanlık Tamamlama" value={habitCompletionRate != null ? `%${habitCompletionRate}` : 'Veri yok'} />
             <AutoMetricTile
               label="Görev Tamamlama"
               value={autoMetrics.taskCompletionRate != null ? `%${autoMetrics.taskCompletionRate}` : 'Veri yok'}
