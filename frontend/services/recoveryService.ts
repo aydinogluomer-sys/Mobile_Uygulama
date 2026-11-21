@@ -93,10 +93,9 @@ async function queuePlanChange(id: string, kind: 'update' | 'delete', payload?: 
 /**
  * Marks a plan done.
  *
- * Returns the outcome rather than assuming it: the caller cancels the
- * reminder and drops the row from the list ONLY on success, because a plan
- * that is still `planned` on the server with no reminder scheduled is worse
- * than one the user has to complete twice.
+ * Returns the outcome rather than assuming it: the caller (`recoveryStore.completePlan`,
+ * enforced in F13 STO-14/DOM-22) cancels the reminder and drops the row from the
+ * list ONLY on success, returning `false` when the local outbox write fails.
  */
 // 'done' and 'skipped' were the LEGACY spellings. The table now accepts only
 // the v2 vocabulary, so these two calls would have been rejected at runtime —

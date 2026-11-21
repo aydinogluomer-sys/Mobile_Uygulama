@@ -82,17 +82,30 @@ describe('Gate C -- habitCompletionRate is exactly reproducible by hand', () => 
     const logs: BILog[] = [
       log('h1', '2026-08-03', 'done'),
       // 08-05: no log at all -> a real miss.
-      log('h1', '2026-08-07', 'partial'),
+      log('h1', '2026-08-07', 'done'),
     ];
-    // BY HAND: scheduled = 3 (08-03, 08-05, 08-07). completed (done|partial) =
-    // 2 (08-03 done, 08-07 partial); 08-05 has no log so it does not count.
-    // rate = 2 / 3.
+    // BY HAND: scheduled = 3 (08-03, 08-05, 08-07). completed = 2 (08-03 and
+    // 08-07 done); 08-05 has no log so it does not count. rate = 2 / 3.
+    // (F13: this fixture used a `partial` 08-07; a partial day is now credited
+    // by its ratio -- see the next test -- so "completed counts" uses `done`.)
     const result = habitCompletionRate(habit, logs, { start: '2026-08-03', end: '2026-08-09' });
     expect(result).toEqual({ ok: true, value: 2 / 3 });
     // Proves the denominator is SCHEDULED days, not the 7 calendar days in
     // range -- against 7 the same numerator would read 2/7 (~0.286), a
     // completely different (and wrong) number.
     expect(result.ok && result.value).not.toBeCloseTo(2 / 7, 2);
+  });
+
+  it('F13 INT-06 -- an unmeasured partial day is credited 0.5, the same as reportMetrics', () => {
+    const habit = weeklyDaysHabit('h1p', '2026-07-01', [0, 2, 4]);
+    const logs: BILog[] = [
+      log('h1p', '2026-08-03', 'done'),
+      // 08-05: no log -> 0 credit.
+      log('h1p', '2026-08-07', 'partial'),
+    ];
+    // BY HAND: credit = 1 + 0 + 0.5 = 1.5 over 3 scheduled days -> 0.5.
+    const result = habitCompletionRate(habit, logs, { start: '2026-08-03', end: '2026-08-09' });
+    expect(result).toEqual({ ok: true, value: 0.5 });
   });
 
   it('skip is excluded from BOTH numerator and denominator, not just the numerator', () => {
@@ -147,11 +160,13 @@ describe('Gate C -- currentStreak is exactly reproducible by hand', () => {
     expect(currentStreak(habit, logs, asOf)).toBe(4);
   });
 
-  it('a due, unmet day at asOf itself yields a streak of exactly 0 (no grace period)', () => {
+  it('F13 DOM-07 -- an unlogged asOf day does not break the streak (today is not over); an unlogged yesterday still does', () => {
     const asOf = new Date(2026, 7, 10);
     const habit = dailyHabit('h5', '2026-08-01');
-    const logs: BILog[] = [log('h5', '2026-08-09', 'done')]; // yesterday was fine, today has no log
-    expect(currentStreak(habit, logs, asOf)).toBe(0);
+    const logs: BILog[] = [log('h5', '2026-08-09', 'done')]; // yesterday was fine, today has no log yet
+    expect(currentStreak(habit, logs, asOf)).toBe(1);
+    // Without yesterday's log the streak is 0: no grace for a past due day (F38 decides tolerance).
+    expect(currentStreak(habit, [], asOf)).toBe(0);
   });
 
   it('longestStreak resets on a due miss and reports the peak run, not the final one', () => {
@@ -320,14 +335,13 @@ describe('strongestHabit', () => {
   const asOf = new Date(2026, 7, 25);
 
   it('picks the habit with the higher time-weighted habitStrength, excluding under-sampled habits', () => {
-    const weak = dailyHabit('sw', '2026-08-18');
-    const weakLogs: BILog[] = [
-      log('sw', '2026-08-23', 'miss'), log('sw', '2026-08-24', 'miss'), log('sw', '2026-08-25', 'miss'),
-    ];
-    const strong = dailyHabit('ss', '2026-08-18');
-    const strongLogs: BILog[] = [
-      log('ss', '2026-08-23', 'done'), log('ss', '2026-08-24', 'done'), log('ss', '2026-08-25', 'done'),
-    ];
+    // F13 (INT-07): candidates need >= 10 non-skip logs -> 10 days each, 08-16..08-25.
+    const days = ['2026-08-16', '2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20',
+      '2026-08-21', '2026-08-22', '2026-08-23', '2026-08-24', '2026-08-25'];
+    const weak = dailyHabit('sw', '2026-08-10');
+    const weakLogs: BILog[] = days.map((d) => log('sw', d, 'miss'));
+    const strong = dailyHabit('ss', '2026-08-10');
+    const strongLogs: BILog[] = days.map((d) => log('ss', d, 'done'));
     const result = strongestHabit([weak, strong], [...weakLogs, ...strongLogs], { asOf });
     expect(result.ok).toBe(true);
     expect(result.ok && result.value.habitId).toBe('ss');
@@ -360,18 +374,21 @@ describe('completionTrend', () => {
     ['2026-08-24', '2026-08-25', '2026-08-26', '2026-08-27', '2026-08-28', '2026-08-29']
       .forEach((d) => logs.push(log('t1', d, 'done')));
 
-    // BY HAND: weekly rates in chronological order = [1/7, 4/7, 6/7] (only 3
-    // weeks carry data -- the pre-creation week is skipped, not a 0). n=3,
-    // halfSize=floor(3/2)=1 -> firstHalf=[1/7] (oldest), secondHalf=[6/7]
+    // BY HAND: weekly rates in chronological order = [1/7, 4/7, 6/6] (only 3
+    // weeks carry data -- the pre-creation week is skipped, not a 0). F13
+    // (INT-01): asOf 08-30 has no log, so it is pending, not missed -- week C
+    // is 6 done of 6 lived days. Lived days 7 + 7 + 6 = 20 >= 14 and each week
+    // >= 3, so the validity gates pass. n=3,
+    // halfSize=floor(3/2)=1 -> firstHalf=[1/7] (oldest), secondHalf=[6/6]
     // (newest); the middle week (4/7) is dropped so both halves stay
-    // balanced. magnitude = 6/7 - 1/7 computed with the SAME floating-point
+    // balanced. magnitude = 1 - 1/7 computed with the SAME floating-point
     // division-then-subtraction order the implementation uses, so the
     // comparison is bit-exact even though 1/7 has no exact binary form.
     const result = completionTrend([habit], logs, { weeks: 4, asOf });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.direction).toBe('improving');
-      expect(result.value.magnitude).toBe(6 / 7 - 1 / 7);
+      expect(result.value.magnitude).toBe(1 - 1 / 7);
       expect(result.value.weeksUsed).toBe(3);
       expect(result.value.weeksRequested).toBe(4);
       expect(result.value.partialWindow).toBe(true);

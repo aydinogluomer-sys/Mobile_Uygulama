@@ -2,11 +2,13 @@ import { colors } from '../lib/tokens';
 import { eachDayOfInterval, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from 'date-fns';
 import { type Habit, type HabitLog } from './supabase';
 import { type FocusSessionRow } from './focusReport';
-import { countsTowardAverage, isEligibleOn, scheduleKind, scheduledCompletionRate } from './habitSchedule';
-import { isMeasurableTracking, completionRatio, type HabitLogState } from './habitEngine';
+import { isEligibleOn, scheduleKind, scheduledCompletionRate } from './habitSchedule';
+import { dayCredit, isCompletedState, judgeDay, type DayHabit, type DayLog } from './completionMetric';
 import { parseLocalDate, ymd } from './date';
 // R05.06 — the one seconds->minutes rule for focus time.
 import { secondsToMinutes } from './focusDuration';
+
+export { isCompletedState } from './completionMetric';
 
 export type ReportRange = 'week' | 'month';
 export type ReportBadge = {
@@ -25,58 +27,13 @@ export type HabitProgressRow = {
   possibleDays: number;
 };
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-
 function listDateStrings(start: string, end: string): string[] {
   const from = new Date(`${start}T00:00:00`);
   const to = new Date(`${end}T00:00:00`);
   return eachDayOfInterval({ start: from, end: to }).map((date) => ymd(date));
 }
 
-/** `done`/`partial` sayılır; `miss`/`skip` sayılmaz (AC-H07, AC-H08). */
-export function isCompletedState(state: HabitLog['state']): boolean {
-  return state === 'done' || state === 'partial';
-}
-
-function habitLogPercent(
-  habit: Pick<Habit, 'tracking_type' | 'daily_goal' | 'target_direction'>,
-  log: Pick<HabitLog, 'state' | 'value'>,
-): number {
-  // Kaçırılan/atlanan bir gün hiçbir zaman puan üretmez, sayısal olsa bile.
-  if (!isCompletedState(log.state)) return 0;
-
-  // Süreli alışkanlık da sayısal bir hedef taşır (dakika); burada 'numeric'
-  // ile birebir karşılaştırmak onun kaydedilmiş dakikalarını çöpe atardı.
-  if (isMeasurableTracking(habit.tracking_type)) {
-    // AC-H05 / AC-H06 — yön önemli. `at_most` bir ÜST SINIRDIR ("günde en
-    // fazla 5 sigara"); ham value/goal oranı ödülü TERSE çevirir.
-    //
-    // Bu mantık eskiden BURADA, elle yazılmıştı ve `lib/habitEngine.ts`'teki
-    // `completionRatio` yönü hiç bilmiyordu. Yani aynı gün iki farklı yerde
-    // iki farklı puan alıyordu: rapor doğru, motor (ve dolayısıyla XP ile
-    // durum türetme) yanlış. Tek kaynak artık motor.
-    if (typeof log.value === 'number' && habit.daily_goal != null && habit.daily_goal >= 0) {
-      const ratio = completionRatio({
-        trackingType: habit.tracking_type === 'duration' ? 'duration' : 'numeric',
-        state: log.state as HabitLogState,
-        value: log.value,
-        target: habit.daily_goal,
-        direction: habit.target_direction,
-      });
-      return clamp(ratio * 100, 0, 100);
-    }
-    if (log.state === 'done') return 100;
-    if (log.state === 'partial') return 50;
-    return 0;
-  }
-
-  if (log.state === 'done') return 100;
-  if (log.state === 'partial') return 50;
-  return 0;
-}
+const habitLogPercent = (habit: DayHabit, log: DayLog): number => dayCredit(habit, log) * 100;
 
 export function getWeekBounds(anchor: Date = new Date()): { start: string; end: string } {
   return {
@@ -99,15 +56,18 @@ export function habitAveragePercent(params: {
   logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>[];
   start: string;
   end: string;
-}): number {
+  asOf?: Date;
+}): number | null {
   // AC-H09 — `status` bugünkü durumdur, o dönemde geçerli olan değil.
   // Buradan filtrelemek, bugün bir alışkanlığı duraklatmanın GEÇEN AYIN
   // raporunu değiştirmesi demekti. Rapor edilmiş bir sayı sonradan değişmemeli.
   const habits = params.habits;
-  if (habits.length === 0) return 0;
+  if (habits.length === 0) return null;
 
   const days = listDateStrings(params.start, params.end);
-  if (days.length === 0) return 0;
+  if (days.length === 0) return null;
+
+  const asOfYmd = params.asOf ? ymd(params.asOf) : null;
 
   const logMap = new Map<string, Pick<HabitLog, 'state' | 'value'>>();
   for (const log of params.logs) {
@@ -115,8 +75,6 @@ export function habitAveragePercent(params: {
   }
 
   // AC-H04 — payda DUE günlerdir, takvim günleri değil.
-  // Pzt/Çar/Cum alışkanlığını 7'ye bölmek, üç günün üçünü de yapan birini
-  // %43'e mahkûm ediyordu: mükemmel uyum, başarısız görünen skor.
   let total = 0;
   let dueCount = 0;
   for (const habit of habits) {
@@ -126,8 +84,11 @@ export function habitAveragePercent(params: {
     // the unique done/partial days (AC-H07/H08), both from the canonical
     // evaluator via `scheduledCompletionRate`, at 100 per counted day.
     if (isCountBased(habit)) {
-      const r = countBasedProgress(habit, params.logs, params.start, params.end);
-      if (r) { dueCount += r.dueDays; total += r.doneDays * 100; }
+      const effectiveEnd = asOfYmd && params.end > asOfYmd ? asOfYmd : params.end;
+      if (effectiveEnd >= params.start) {
+        const r = countBasedProgress(habit, params.logs, params.start, effectiveEnd);
+        if (r) { dueCount += r.dueDays; total += r.doneDays * 100; }
+      }
       continue;
     }
     for (const day of days) {
@@ -135,17 +96,14 @@ export function habitAveragePercent(params: {
       if (!dateObj) continue;
       // R01.02-c — day lane: `isCountBased` returned above. `isEligibleOn` = `isDueOn` for daily/weekly_days; it adds the every_n_days interval. The date range is not a mode: it is the lifetime envelope (`withinLifetime`) both read.
       if (!isEligibleOn(habit as Habit, dateObj)) continue;
-      const log = logMap.get(`${habit.id}|${day}`);
-      // An unlogged day for a NEGATIVE habit is unknown, not a zero. Scoring
-      // it zero would claim the user failed on every day they did not open
-      // the app -- see `countsTowardAverage`.
-      if (!countsTowardAverage(habit, log)) continue;
+      const v = judgeDay({ habit, dayYmd: day, asOfYmd, log: logMap.get(`${habit.id}|${day}`) });
+      if (v.kind !== 'credit') continue;
       dueCount += 1;
-      total += log ? habitLogPercent(habit, log) : 0;
+      total += v.credit * 100;
     }
   }
 
-  if (dueCount === 0) return 0;
+  if (dueCount === 0) return null;
   return Math.round(total / dueCount);
 }
 
@@ -183,8 +141,9 @@ export function calculateHabitCompletionRate(
   logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>[],
   start: string,
   end: string,
-): number {
-  return habitAveragePercent({ habits, logs, start, end });
+  opts?: { asOf?: Date },
+): number | null {
+  return habitAveragePercent({ habits, logs, start, end, asOf: opts?.asOf });
 }
 
 export function summarizeHabitProgress(
@@ -192,10 +151,12 @@ export function summarizeHabitProgress(
   logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>[],
   start: string,
   end: string,
+  opts?: { asOf?: Date },
 ): HabitProgressRow[] {
   // AC-H09 — bugünkü `status`a göre filtrelemek geçmişi yeniden yazar.
   const activeHabits = habits;
   const days = listDateStrings(start, end);
+  const asOfYmd = opts?.asOf ? ymd(opts.asOf) : null;
   const logMap = new Map<string, Pick<HabitLog, 'state' | 'value'>>();
 
   for (const log of logs) {
@@ -204,16 +165,12 @@ export function summarizeHabitProgress(
 
   return activeHabits
     .map((habit) => {
-      // R01.02-b — `possibleDays` used to be the CALENDAR day count for every
-      // habit, so a Mon/Wed/Fri habit read "12/30" in the monthly review and
-      // a "3 a week" habit had no sensible denominator at all. It is now the
-      // same denominator the aggregate uses: due days for day-based schedules
-      // (skip and unlogged-negative days excluded, as in `habitAveragePercent`),
-      // the period target for count-based ones. `completedDays` is unchanged
-      // in meaning -- done/partial rows (AC-H07/H08) -- and for count modes it
-      // is the unique-day count from the canonical evaluator.
+      // R01.02-b — `possibleDays` is the same denominator the aggregate uses:
+      // due days for day-based schedules (skip, pending and unlogged-negative
+      // days excluded via `judgeDay`), the period target for count-based ones.
       if (isCountBased(habit)) {
-        const r = countBasedProgress(habit, logs, start, end);
+        const effectiveEnd = asOfYmd && end > asOfYmd ? asOfYmd : end;
+        const r = effectiveEnd >= start ? countBasedProgress(habit, logs, start, effectiveEnd) : null;
         const possible = r ? Math.round(r.dueDays) : 0;
         const completed = r ? Math.round(r.doneDays) : 0;
         return {
@@ -236,13 +193,10 @@ export function summarizeHabitProgress(
         // R01.02-c — day lane: `isCountBased` returned above. `isEligibleOn` = `isDueOn` for daily/weekly_days; it adds the every_n_days interval. The date range is not a mode: it is the lifetime envelope (`withinLifetime`) both read.
         if (!isEligibleOn(habit, dateObj)) continue;
         const log = logMap.get(`${habit.id}|${day}`);
-        if (log?.state === 'skip') continue;             // excused: out of both sides
-        if (!countsTowardAverage(habit, log)) continue;  // unlogged negative day: unknown
+        const v = judgeDay({ habit, dayYmd: day, asOfYmd, log });
+        if (v.kind !== 'credit') continue;
         possibleDays += 1;
         if (!log) continue;
-        // AC-H07 / AC-H08 — bir satırın VAR OLMASI tamamlandığı anlamına gelmez.
-        // `miss` ve `skip` de satır yazar; bunları saymak "kaçırdım" demeyi
-        // "yaptım" saymaktı.
         if (isCompletedState(log.state)) completedDays += 1;
         scoreTotal += habitLogPercent(habit, log);
       }
@@ -265,19 +219,20 @@ export function focusMinutesFromSessions(sessions: Pick<FocusSessionRow, 'comple
 }
 
 export function reportBadge(params: {
-  habitRate: number;
+  habitRate: number | null;
   focusMinutes: number;
   completedTasks: number;
 }): ReportBadge {
-  if (params.habitRate >= 85 && params.focusMinutes >= 180 && params.completedTasks >= 8) {
+  const rate = params.habitRate ?? 0;
+  if (rate >= 85 && params.focusMinutes >= 180 && params.completedTasks >= 8) {
     return { level: 'gold', label: 'Altın Rapor Rozeti', emoji: '🏆', color: colors.warning };
   }
 
-  if (params.habitRate >= 65 && params.focusMinutes >= 90 && params.completedTasks >= 4) {
+  if (rate >= 65 && params.focusMinutes >= 90 && params.completedTasks >= 4) {
     return { level: 'silver', label: 'Gümüş Rapor Rozeti', emoji: '🥈', color: colors.textDim };
   }
 
-  if (params.habitRate > 0 || params.focusMinutes > 0 || params.completedTasks > 0) {
+  if (rate > 0 || params.focusMinutes > 0 || params.completedTasks > 0) {
     return { level: 'bronze', label: 'Bronz Rapor Rozeti', emoji: '🥉', color: colors.error };
   }
 
@@ -292,17 +247,22 @@ export function buildArchiveReflection(params: {
   answers: Record<string, string>;
   metrics: {
     taskCount: number;
-    habitRate: number;
+    habitRate: number | null;
     focusMinutes: number;
     badge: ReportBadge;
   };
 }): string {
+  const habitRateLine =
+    params.metrics.habitRate === null
+      ? 'Alışkanlık ortalaması: veri yok'
+      : `Alışkanlık ortalaması: %${params.metrics.habitRate}`;
+
   return [
     `[${params.sourceLabel}]`,
     `Dönem: ${params.periodLabel}`,
     `Aralık: ${params.start} - ${params.end}`,
     `Görev tamamlandı: ${params.metrics.taskCount}`,
-    `Alışkanlık ortalaması: %${params.metrics.habitRate}`,
+    habitRateLine,
     `Toplam odak: ${params.metrics.focusMinutes} dk`,
     `Rozet: ${params.metrics.badge.emoji} ${params.metrics.badge.label}`,
     '',

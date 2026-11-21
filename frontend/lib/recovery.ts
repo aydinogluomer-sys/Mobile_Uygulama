@@ -63,21 +63,28 @@ export type Deficit = { type: DeficitType; value: number };
  *                              should be offered rather than silently
  *                              assumed complete).
  */
+const round3 = (n: number): number => Math.round(n * 1000) / 1000;
+
 export function deficitFor({
   trackingType,
   target,
   value,
   state,
+  direction,
 }: {
   trackingType: TrackingTypeV2;
   target?: number | null;
   value?: number | null;
   state?: HabitLog['state'] | null;
+  direction?: 'at_least' | 'at_most' | null;
 }): Deficit {
   if (trackingType === 'numeric' || trackingType === 'duration') {
+    if (direction === 'at_most') {
+      return { type: 'binary', value: state === 'done' ? 0 : 1 };
+    }
     const t = target ?? 0;
     const v = value ?? 0;
-    return { type: 'numeric', value: Math.max(0, t - v) };
+    return { type: 'numeric', value: round3(Math.max(0, t - v)) };
   }
   const succeeded = state === 'done';
   return { type: 'binary', value: succeeded ? 0 : 1 };
@@ -127,8 +134,8 @@ export type RecoveryOption = {
  * binary deficit HAS to "split over two days".
  */
 function splitAcrossDays(value: number, dates: [Ymd, Ymd]): DistributedDay[] {
-  const first = Math.ceil(value / 2);
-  const second = value - first;
+  const first = Number.isInteger(value) ? Math.ceil(value / 2) : round3(value / 2);
+  const second = round3(value - first);
   const days: DistributedDay[] = [];
   if (first > 0) days.push({ date: dates[0], value: first });
   if (second > 0) days.push({ date: dates[1], value: second });

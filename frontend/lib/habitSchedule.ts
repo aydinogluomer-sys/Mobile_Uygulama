@@ -545,6 +545,10 @@ export function streakBroken(
  * care about the difference between "never due" and "due and never done"
  * must read `dueDays` — the rate alone cannot carry it, and returning `1` for
  * an empty window would certify a habit that has done nothing.
+ *
+ * Politika: `strict_done`. Kısmi (`partial`) gün payda'ya girer, paya girmez;
+ * bilinçli: ustalık bir sertifikadır (`capacity.ts:618-624`). Rapor ve içgörü
+ * ağırlıklı politikayı kullanır (`completionMetric.ts`).
  */
 export type ScheduledCompletion = {
   /** doneDays / dueDays, or 0 when nothing was due. */
@@ -624,7 +628,7 @@ function scheduledCompletionRateFor(
     if (!countsTowardAverage(habit, log)) continue;
 
     dueDays += 1;
-    if (log?.state === 'done') doneDays += 1;
+    if (log?.state === 'done') doneDays += 1; // Politika: strict_done (ustalık sertifikası); ağırlıklı oran completionMetric.ts içindedir.
   }
 
   return { rate: dueDays === 0 ? 0 : doneDays / dueDays, dueDays, doneDays };

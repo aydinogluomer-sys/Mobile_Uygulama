@@ -149,7 +149,7 @@ export default function MonthlyReviewScreen() {
 
   const [monthOffset, setMonthOffset] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [habitCompletionRate, setHabitCompletionRate] = useState(0);
+  const [habitCompletionRate, setHabitCompletionRate] = useState<number | null>(null);
   const [focusMinutes, setFocusMinutes] = useState(0);
   const [habitStats, setHabitStats] = useState<{ id: string; name: string; color: string; percent: number; completedDays: number; possibleDays: number }[]>([]);
   const [badge, setBadge] = useState<ReportBadge | null>(null);
@@ -237,10 +237,10 @@ export default function MonthlyReviewScreen() {
   async function loadMonthMetrics() {
     const user = await currentUser();
     if (!user) {
-      setHabitCompletionRate(0);
+      setHabitCompletionRate(null);
       setFocusMinutes(0);
       setHabitStats([]);
-      setBadge(reportBadge({ habitRate: 0, focusMinutes: 0, completedTasks: completedTasks.length }));
+      setBadge(reportBadge({ habitRate: null, focusMinutes: 0, completedTasks: completedTasks.length }));
       setAnalysis(EMPTY_ANALYSIS);
       return;
     }
@@ -262,7 +262,7 @@ export default function MonthlyReviewScreen() {
 
     const logsForBI = logsRes.ok ? logsRes.data : [];
     setMeasured(logsRes.ok ? measuredRows(habits, logsRes.data, { start, end, asOf: new Date() }) : []);
-    const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end) : 0;
+    const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end, { asOf }) : null;
 
     // `fetchFocusSessionsSince` has no upper bound -- clip to `end` client-side.
     const allSessions = sessionsRes.ok ? sessionsRes.data.filter((sess: { started_at: string }) => sess.started_at <= `${end}T23:59:59`) : [];
@@ -275,7 +275,7 @@ export default function MonthlyReviewScreen() {
     setFocusMinutes(minutes);
     setBadge(nextBadge);
 
-    const stats = summarizeHabitProgress(habits, logsForBI, start, end).map((row) => ({
+    const stats = summarizeHabitProgress(habits, logsForBI, start, end, { asOf }).map((row) => ({
       id: row.id,
       name: row.name,
       color: row.color,
@@ -424,7 +424,12 @@ export default function MonthlyReviewScreen() {
               <Text style={s.metricLabel}>Görev{'\n'}Tamamlandı</Text>
             </View>
             <View style={s.metric}>
-              <Text style={[s.metricValue, { color: colors.success }]}>{habitCompletionRate}%</Text>
+              <Text
+                style={[s.metricValue, { color: habitCompletionRate === null ? colors.textDim : colors.success }]}
+                accessibilityLabel={habitCompletionRate === null ? 'Alışkanlık oranı: veri yok' : `Alışkanlık oranı: yüzde ${habitCompletionRate}`}
+              >
+                {habitCompletionRate === null ? '—' : `${habitCompletionRate}%`}
+              </Text>
               <Text style={s.metricLabel}>Alışkanlık{'\n'}Oran</Text>
             </View>
             <View style={s.metric}>

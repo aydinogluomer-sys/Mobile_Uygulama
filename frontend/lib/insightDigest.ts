@@ -44,12 +44,21 @@
  * always produce a real, evidenced value (including a real `0`, exactly
  * like `behaviorIntelligence.currentStreak`'s own "`0` is earned, not
  * guessed" rule), so there is no insufficient-data branch to model for
- * them. The one exception -- overall week/month completion rate -- CAN be a
- * fabricated `0` when there are no active habits at all (`reportMetrics.
- * habitAveragePercent` returns `0` for an empty habit list, which is "no
- * average exists" wearing a real number's clothes); both digest builders
- * below guard that specific case with `activeHabitCount` and omit the
- * metric instead of trusting the raw number.
+ * them. The one exception -- overall week/month completion rate -- is
+ * `number | null` since F13 (INT-06): `reportMetrics.habitAveragePercent`
+ * returns `null` (not a fabricated `0`) when there is no habit or no lived
+ * scheduled day in the range. Both digest builders omit the metric when the
+ * rate is `null` or there are no active habits, recording which of the two
+ * it was.
+ *
+ * ## Weekday keys are the last 8 weeks' pattern (F13, INT-07)
+ *
+ * `weekdayStats` is `weekdayBreakdown` over the trailing 8-week pattern
+ * window (`completionMetric.WEEKDAY_PATTERN_WINDOW_DAYS`), not this week
+ * alone (where every weekday has at most one date). A `<weekday>_completion`
+ * key is written only when that weekday has at least
+ * `MIN_WEEKDAY_DISTINCT_DATES` (3) DISTINCT calendar dates -- three habits on
+ * one Monday are one observation, not three.
  *
  * ## Where this is wired in -- and why
  *
@@ -65,7 +74,7 @@
  * computation pass elsewhere for the same numbers. See this task's report
  * for the full reasoning.
  */
-import { MIN_WEEKDAY_SAMPLES } from './behaviorIntelligence';
+import { MIN_WEEKDAY_DISTINCT_DATES } from './completionMetric';
 import type { Result, Trend, WeekdayStat } from './behaviorIntelligence';
 
 // ---------------------------------------------------------------------------
@@ -184,14 +193,14 @@ export type WeeklyDigestInput = {
   /** Guards `weekCompletionRate` -- see file doc's "no fabricated 0" note. */
   activeHabitCount: number;
   /** Already a 0-100 percent (`reportMetrics.calculateHabitCompletionRate`'s
-   *  own return shape) -- not a `Result`, because that function itself
-   *  never returns "insufficient", only sometimes a fabricated `0` this
-   *  digest guards against via `activeHabitCount` instead. */
-  weekCompletionRate: number;
+   *  own return shape), or `null` when the range has no lived scheduled day
+   *  (F13: "no data", never a fabricated `0`). */
+  weekCompletionRate: number | null;
   weekOverWeekTrend: Result<Trend>;
-  /** This week's per-weekday scheduled/completed/rate -- `weekday` 0=Pzt
-   *  (Monday) .. 6=Paz (Sunday), per `behaviorIntelligence.weekdayIndex`'s
-   *  own convention. An OUTPUT of `weekdayBreakdown`, not raw logs. */
+  /** Per-weekday scheduled/completed/distinctDates/rate over the last 8
+   *  weeks' pattern window -- `weekday` 0=Pzt (Monday) .. 6=Paz (Sunday),
+   *  per `behaviorIntelligence.weekdayIndex`'s own convention. An OUTPUT of
+   *  `weekdayBreakdown`, not raw logs. */
   weekdayStats: WeekdayStat[];
   strongestHabit: Result<{ habitName: string; strength: number }>;
   mostFragileHabit: Result<{ habitName: string; volatility: number }>;
@@ -205,10 +214,10 @@ export type WeeklyDigestInput = {
 
 /**
  * Plan §13's weekly digest: `week_completion_rate`, `week_over_week_trend`,
- * one `<weekday>_completion` entry per weekday that clears
- * `behaviorIntelligence.MIN_WEEKDAY_SAMPLES` (plus a combined
- * `weekend_completion`), `<habit>_strength`/`<habit>_volatility` for the
- * strongest/most fragile habit, `recovery_success`, one
+ * one `<weekday>_completion` entry per weekday with at least
+ * `completionMetric.MIN_WEEKDAY_DISTINCT_DATES` distinct dates (plus a
+ * combined `weekend_completion`), `<habit>_strength`/`<habit>_volatility` for
+ * the strongest/most fragile habit, `recovery_success`, one
  * `<habit>_completion_30d` per active habit (capped at
  * `MAX_HABIT_ENTRIES`), and the three always-real capacity/focus counts.
  * Every entry sourced from a `Result` is omitted, never zeroed, when its
@@ -218,20 +227,23 @@ export function weeklyDigest(input: WeeklyDigestInput): Digest {
   const entries: DigestEntries = {};
   const omitted: OmittedMetric[] = [];
 
-  if (input.activeHabitCount > 0) {
+  if (input.activeHabitCount > 0 && input.weekCompletionRate !== null) {
     entries.week_completion_rate = Math.round(input.weekCompletionRate);
   } else {
-    omitted.push({ key: 'week_completion_rate', reason: 'no active habits' });
+    omitted.push({
+      key: 'week_completion_rate',
+      reason: input.activeHabitCount === 0 ? 'no active habits' : 'no lived scheduled days in range',
+    });
   }
 
   recordResult(entries, omitted, 'week_over_week_trend', input.weekOverWeekTrend, (t) => pct(t.magnitude));
 
   for (const stat of input.weekdayStats) {
     const dayKey = `${WEEKDAY_KEYS[stat.weekday] ?? `weekday_${stat.weekday}`}_completion`;
-    if (stat.scheduled >= MIN_WEEKDAY_SAMPLES) {
+    if (stat.distinctDates >= MIN_WEEKDAY_DISTINCT_DATES) {
       entries[dayKey] = pct(stat.rate);
     } else {
-      omitted.push({ key: dayKey, reason: `insufficient sample size (${stat.scheduled} scheduled day(s), need >= ${MIN_WEEKDAY_SAMPLES})` });
+      omitted.push({ key: dayKey, reason: `insufficient sample (${stat.distinctDates} distinct date(s), need >= ${MIN_WEEKDAY_DISTINCT_DATES})` });
     }
   }
 
@@ -240,10 +252,11 @@ export function weeklyDigest(input: WeeklyDigestInput): Digest {
   if (saturday && sunday) {
     const scheduled = saturday.scheduled + sunday.scheduled;
     const completed = saturday.completed + sunday.completed;
-    if (scheduled >= MIN_WEEKDAY_SAMPLES) {
+    const weekendDates = Math.max(saturday.distinctDates, sunday.distinctDates);
+    if (weekendDates >= MIN_WEEKDAY_DISTINCT_DATES && scheduled > 0) {
       entries.weekend_completion = pct(completed / scheduled);
     } else {
-      omitted.push({ key: 'weekend_completion', reason: `insufficient sample size (${scheduled} scheduled day(s), need >= ${MIN_WEEKDAY_SAMPLES})` });
+      omitted.push({ key: 'weekend_completion', reason: `insufficient sample (${weekendDates} distinct date(s), need >= ${MIN_WEEKDAY_DISTINCT_DATES})` });
     }
   } else {
     omitted.push({ key: 'weekend_completion', reason: 'Saturday/Sunday weekday stats not provided' });
@@ -280,7 +293,7 @@ export function weeklyDigest(input: WeeklyDigestInput): Digest {
 export type MonthlyDigestInput = {
   /** Guards `monthCompletionRate` -- same reasoning as `WeeklyDigestInput`. */
   activeHabitCount: number;
-  monthCompletionRate: number;
+  monthCompletionRate: number | null;
   trend4w: Result<Trend>;
   trend12w: Result<Trend>;
   strongestHabit: Result<{ habitName: string; strength: number }>;
@@ -302,10 +315,13 @@ export function monthlyDigest(input: MonthlyDigestInput): Digest {
   const entries: DigestEntries = {};
   const omitted: OmittedMetric[] = [];
 
-  if (input.activeHabitCount > 0) {
+  if (input.activeHabitCount > 0 && input.monthCompletionRate !== null) {
     entries.month_completion_rate = Math.round(input.monthCompletionRate);
   } else {
-    omitted.push({ key: 'month_completion_rate', reason: 'no active habits' });
+    omitted.push({
+      key: 'month_completion_rate',
+      reason: input.activeHabitCount === 0 ? 'no active habits' : 'no lived scheduled days in range',
+    });
   }
 
   recordResult(entries, omitted, 'trend_4w', input.trend4w, (t) => pct(t.magnitude));

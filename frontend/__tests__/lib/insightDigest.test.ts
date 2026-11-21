@@ -18,8 +18,9 @@ import { MIN_WEEKDAY_SAMPLES, type Result, type Trend, type WeekdayStat } from '
 function ok<T>(value: T): Result<T> { return { ok: true, value }; }
 function insufficient(reason = 'not enough data'): Result<never> { return { ok: false, reason }; }
 
-function weekdayStat(weekday: number, scheduled: number, completed: number): WeekdayStat {
-  return { weekday, scheduled, completed, rate: scheduled > 0 ? completed / scheduled : 0 };
+/** F13 (INT-07): `distinctDates` defaults to `scheduled` (one habit, one date per habit-day). */
+function weekdayStat(weekday: number, scheduled: number, completed: number, distinctDates = scheduled): WeekdayStat {
+  return { weekday, scheduled, completed, distinctDates, rate: scheduled > 0 ? completed / scheduled : 0 };
 }
 
 /** Full 7-day weekday stat array, every day clearing MIN_WEEKDAY_SAMPLES,
@@ -126,12 +127,13 @@ describe('weeklyDigest -- an {ok:false} metric is omitted, never emitted as 0', 
     expect(digest.omittedMetrics.some((m) => m.key === 'week_completion_rate')).toBe(true);
   });
 
-  it('a weekday below MIN_WEEKDAY_SAMPLES is omitted, not rendered at a misleading rate', () => {
+  it('a weekday seen on fewer than 3 distinct dates is omitted, not rendered at a misleading rate', () => {
     const stats = fullWeekdayStats();
-    stats[0] = weekdayStat(0, 1, 1); // Monday: only 1 sample, below MIN_WEEKDAY_SAMPLES
+    // F13 (INT-07): 5 habit-days but ONE calendar date (five habits on a single Monday).
+    stats[0] = weekdayStat(0, 5, 5, 1);
     const digest = weeklyDigest(baseWeeklyInput({ weekdayStats: stats }));
     expect(digest.entries.monday_completion).toBeUndefined();
-    expect(digest.omittedMetrics.some((m) => m.key === 'monday_completion')).toBe(true);
+    expect(digest.omittedMetrics.find((m) => m.key === 'monday_completion')?.reason).toMatch(/distinct date/);
   });
 
   it('weekend_completion is omitted when the combined Sat+Sun sample is too small', () => {

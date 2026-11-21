@@ -45,12 +45,21 @@
  * `habitSchedule.isDueOn`, and every day-walking function below follows the
  * same precedent, for the same reason.
  *
+ * F13 (INT-01, INT-06): every eligible day is then judged by
+ * `completionMetric.judgeDay`, the same verdict `reportMetrics` uses. Only a
+ * `credit` day enters a denominator. Not counted: a future day or an unlogged
+ * `asOf` day when the caller passes `asOf` (`pending` -- not yet lived), and an
+ * unlogged day of a NEGATIVE habit (`unknown` -- neither success nor failure).
+ * A `partial` day is credited by its measured ratio (`dayCredit`, 0.5 when
+ * unmeasured), so `completed` is a credit SUM and may be fractional.
+ *
  * ## `skip` is excluded from both numerator and denominator, everywhere
  *
- * Consistent with `habitEngine.completionRatio` and `habitStrength.dayCredit`
- * -- a skipped day is neither a success nor a failure, so it must not lower
- * (nor raise) any rate it appears next to. Every day-walking loop below
- * checks `state === 'skip'` and `continue`s before touching either counter.
+ * Consistent with `habitEngine.completionRatio` and `habitStrength`'s bucket
+ * walk -- a skipped day is neither a success nor a failure, so it must not
+ * lower (nor raise) any rate it appears next to. `judgeDay` returns `excused`
+ * for it and every day-walking loop below `continue`s before touching either
+ * counter.
  *
  * ## Reuse, not duplication -- what this file calls vs. reimplements
  *
@@ -62,24 +71,22 @@
  *    schedule-aware analytics module, made the same choice (it also calls
  *    only `isDueOn`), and following that precedent keeps the two "what is a
  *    scheduled day" answers in this codebase from silently diverging.
- *  - `isCompletedState` (reportMetrics.ts) -- `done`/`partial` count,
- *    `miss`/`skip` do not. Reused verbatim rather than re-testing the same
- *    two-line rule under a new name.
- *  - `habitStrength` (habitStrength.ts) -- `strongestHabit` below feeds it
- *    logs and ranks by its existing time-weighted 0-100 score rather than
- *    inventing a second "how strong is this habit" number.
+ *  - `judgeDay` / `isCompletedState` / the sample thresholds
+ *    (completionMetric.ts) -- the one day verdict and credit both this file
+ *    and `reportMetrics.ts` use (F13: this file no longer imports
+ *    `reportMetrics`). `isCompletedState` (`done`/`partial`) stays the binary
+ *    rule for streaks.
+ *  - `habitStrengthFor` (habitStrength.ts) -- `strongestHabit` below ranks by
+ *    its schedule-aware time-weighted 0-100 score rather than inventing a
+ *    second "how strong is this habit" number.
  *  - `RecoveryPlanV2`'s status vocabulary (recovery.ts) -- `BIRecoveryPlan`
  *    below is a `Pick` of it, not a parallel type.
  *  - NOT reused: `reportMetrics.habitAveragePercent`/
- *    `calculateHabitCompletionRate`. Those answer a different question --
- *    a numeric-goal-scaled 0-100 PERCENT per due day (`habitLogPercent`,
- *    which reads `daily_goal`/`target_direction`) -- than what
- *    `habitCompletionRate` below needs: a plain "was this due day satisfied"
- *    ratio, usable identically for streak/weekday/trend/fragility
- *    denominators regardless of tracking type. Building `habitCompletionRate`
- *    from the same two primitives (`isDueOn` + `isCompletedState`) that
- *    `reportMetrics.ts` itself is built from keeps both answers consistent
- *    with each other without making one a special case of the other.
+ *    `calculateHabitCompletionRate`. Those return a rounded 0-100 aggregate
+ *    across habits; `habitCompletionRate` below needs an exact per-habit
+ *    ratio usable identically for weekday/trend/fragility denominators. Both
+ *    are built from the same two primitives (`isEligibleOn` + `judgeDay`), so
+ *    the two answers agree without one being a special case of the other.
  *  - NOT reused: `capacity.ts`'s private `weeklyStability` (not exported).
  *    `habitFragility` below is a fresh implementation that follows the SAME
  *    transform it documents (`1 - stdDev * 2`, clamped) for the same
@@ -92,10 +99,23 @@
  */
 import type { Habit, HabitLog } from './supabase';
 import { isEligibleOn, weekdayIndex, scheduleKind, scheduledCompletionRate, periodStatus } from './habitSchedule';
-import { isCompletedState } from './reportMetrics';
-import { habitStrength, type StrengthLog } from './habitStrength';
+import {
+  isCompletedState,
+  judgeDay,
+  MIN_LOGS_FOR_STRENGTH,
+  MIN_TREND_DAYS,
+  MIN_TREND_DELTA,
+  MIN_WEEK_LIVED_DAYS,
+  MIN_WEEKDAY_DISTINCT_DATES,
+  type DayLog,
+} from './completionMetric';
+import { habitStrengthFor } from './habitStrength';
 import type { RecoveryPlanV2 } from './recovery';
 import { addDaysLocal, parseLocalDate, startOfWeekLocal, ymd, ymdFromIso, type Ymd } from './date';
+
+// F13 (INT-07) — the sample thresholds live in `completionMetric.ts` (one
+// place for BI and the digest); re-exported here for existing importers.
+export { MIN_LOGS_FOR_STRENGTH, MIN_TREND_DAYS, MIN_TREND_DELTA, MIN_WEEK_LIVED_DAYS, MIN_WEEKDAY_DISTINCT_DATES };
 
 // ---------------------------------------------------------------------------
 // shared types
@@ -104,12 +124,15 @@ import { addDaysLocal, parseLocalDate, startOfWeekLocal, ymd, ymdFromIso, type Y
 /**
  * The subset of `Habit` every function here reads. A structural `Pick` (not
  * the full row) so fixtures stay small, matching `capacity.ts`'s
- * `HabitLoadInput` convention.
+ * `HabitLoadInput` convention. The measure fields are optional (F13): when
+ * present, a `partial` day is credited by its measured ratio; when absent it
+ * gets the standard 0.5 credit.
  */
-export type BIHabit = Pick<Habit, 'id' | 'name' | 'behavior_type' | 'created_at' | 'end_condition' | 'frequency_config'>;
+export type BIHabit = Pick<Habit, 'id' | 'name' | 'behavior_type' | 'created_at' | 'end_condition' | 'frequency_config'>
+  & Partial<Pick<Habit, 'status' | 'tracking_type' | 'daily_goal' | 'target_direction'>>;
 
-/** The subset of `HabitLog` every function here reads. */
-export type BILog = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>;
+/** The subset of `HabitLog` every function here reads (`value` optional, for measured partial credit). */
+export type BILog = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'> & { value?: number | null };
 
 /** The subset of `RecoveryPlanV2` the recovery metrics read. */
 export type BIRecoveryPlan = Pick<RecoveryPlanV2, 'habit_id' | 'status'>;
@@ -136,23 +159,23 @@ function insufficient(reason: string): Insufficient {
  * queried range before its rate is trusted for best/worst-day ranking. 3 is
  * the smallest count that stops a single unusually good or bad day from
  * deciding the answer outright (with 1 or 2 samples, one outlier IS the
- * average).
+ * average). F13 (INT-07): kept as an extra floor; the binding gate is now
+ * `MIN_WEEKDAY_DISTINCT_DATES` -- three habits on ONE Monday are three
+ * habit-days but a single observation of "Mondays".
  */
 export const MIN_WEEKDAY_SAMPLES = 3;
 
-/**
- * `strongestHabit` needs at least this many NON-SKIP logs for a habit before
- * ranking it. `habitStrength` itself returns a real (non-null) number for
- * zero logs (`0`, per its own doc) -- but that `0` is "no evidence", not "a
- * measured weak habit", and this file's rule is that a guess must never be
- * presented as a measurement (see the file doc). Filtering candidates here,
- * rather than trusting `habitStrength`'s own `0`, is what keeps a
- * never-logged habit from silently winning "most fragile" or losing
- * "strongest" by an unearned zero. 3 mirrors `MIN_WEEKDAY_SAMPLES`'s
- * reasoning: fewer than 3 data points cannot distinguish a real pattern from
- * a single lucky/unlucky day.
+/*
+ * `MIN_LOGS_FOR_STRENGTH` (defined in `completionMetric.ts`, re-exported
+ * above): `strongestHabit` needs at least this many NON-SKIP logs for a habit
+ * before ranking it. A barely-logged habit's strength is "no evidence", not
+ * "a measured weak habit", and this file's rule is that a guess must never be
+ * presented as a measurement (see the file doc). Filtering candidates here is
+ * what keeps a never-logged habit from silently winning "most fragile" or
+ * losing "strongest" by an unearned number. F13 (INT-07) raised it from 3 to
+ * 10: with one log per day that is at least ten days of life, so a 3-day-old
+ * habit with a perfect 3/3 no longer outranks a habit kept for months.
  */
-export const MIN_LOGS_FOR_STRENGTH = 3;
 
 /** Default trailing window `habitFragility` evaluates, in weeks. */
 export const FRAGILITY_WEEKS_DEFAULT = 8;
@@ -191,18 +214,21 @@ const MAX_STREAK_LOOKBACK_PERIODS = 520;
 // shared day-walking helpers (private)
 // ---------------------------------------------------------------------------
 
+/** `${habit_id}|${YYYY-MM-DD}` -> `{ state, value }` (F13: `value` feeds `dayCredit`). */
+type LogIndex = Map<string, DayLog>;
+
 /**
- * `${habit_id}|${YYYY-MM-DD}` -> state, last entry wins.
+ * `${habit_id}|${YYYY-MM-DD}` -> `{ state, value }`, last entry wins.
  *
  * Two logs for the same habit on the same day is a store-level invariant
  * violation (see `habitStrength.ts`'s FINDING A-02 note) -- this file
  * inherits that module's documented tie-break (array order, last wins)
  * rather than inventing a different one for the same underlying situation.
  */
-function buildLogIndex(logs: BILog[]): Map<string, BILog['state']> {
-  const map = new Map<string, BILog['state']>();
+function buildLogIndex(logs: BILog[]): LogIndex {
+  const map: LogIndex = new Map();
   for (const l of logs) {
-    map.set(`${l.habit_id}|${l.completed_at.slice(0, 10)}`, l.state);
+    map.set(`${l.habit_id}|${l.completed_at.slice(0, 10)}`, { state: l.state, value: l.value ?? null });
   }
   return map;
 }
@@ -217,11 +243,11 @@ function createdDate(habit: BIHabit): Date | null {
 }
 
 /** The index back into rows for one habit -- what the canonical evaluator consumes. */
-function logsFromIndex(habit: BIHabit, logIndex: Map<string, BILog['state']>): BILog[] {
+function logsFromIndex(habit: BIHabit, logIndex: LogIndex): BILog[] {
   const prefix = `${habit.id}|`;
   const out: BILog[] = [];
-  for (const [key, state] of logIndex) {
-    if (key.startsWith(prefix)) out.push({ habit_id: habit.id, completed_at: key.slice(prefix.length), state });
+  for (const [key, entry] of logIndex) {
+    if (key.startsWith(prefix)) out.push({ habit_id: habit.id, completed_at: key.slice(prefix.length), state: entry.state, value: entry.value });
   }
   return out;
 }
@@ -232,6 +258,13 @@ function logsFromIndex(habit: BIHabit, logIndex: Map<string, BILog['state']>): B
  * unless already satisfied: it has time left, so it neither counts nor
  * breaks -- the period analogue of "not due today". A `closed_unmet` period
  * ends the run. Unit is periods (weeks or months), stated in the callers' docs.
+ *
+ * F13 (DOM-09): a period fully inside a dated pause / holiday (`paused` while
+ * the habit itself is not legacy-paused) is transparent too -- the streak
+ * bridges a holiday, as `habitPauses.ts` promises. A legacy undated pause
+ * (`habit.status === 'paused'`) hides the history and still stops the walk;
+ * so does any other `unknown` (`not_scheduled`: walking back reached the
+ * start of the range; `no_target`, unsupported amounts).
  */
 function periodStreakBack(habit: BIHabit, logs: BILog[], asOf: Date): number {
   const created = createdDate(habit);
@@ -239,11 +272,12 @@ function periodStreakBack(habit: BIHabit, logs: BILog[], asOf: Date): number {
   let cursor = asOf;
   for (let i = 0; i < MAX_STREAK_LOOKBACK_PERIODS; i++) {
     const st = periodStatus(habit as Habit, logs, cursor, { asOf });
-    if (st.status === 'unknown' || st.status === 'paused') break;
+    const datedPause = st.status === 'paused' && habit.status !== 'paused';
+    if (!datedPause && (st.status === 'unknown' || st.status === 'paused')) break;
     if (created && ymd(st.periodEnd) < ymd(created)) break;
     if (st.status === 'satisfied') count += 1;
     else if (st.status === 'closed_unmet') break;
-    // not_started / in_progress: open period, transparent
+    // not_started / in_progress / dated pause: transparent
     cursor = addDaysLocal(st.periodStart, -1);
     if (created && ymd(cursor) < ymd(created) && ymd(st.periodStart) <= ymd(created)) break;
   }
@@ -253,6 +287,11 @@ function periodStreakBack(habit: BIHabit, logs: BILog[], asOf: Date): number {
 /**
  * Longest run of consecutive satisfied periods between `since` and `asOf`,
  * walked forward. Open periods are transparent, `closed_unmet` resets.
+ *
+ * F13 (DOM-09): dated pause / holiday periods are transparent, and so is a
+ * period before the schedule's range begins (`unknown` + `not_scheduled`):
+ * walking forward, the range has simply not started yet. Legacy undated
+ * pause and other `unknown` reasons still stop the walk.
  */
 function periodStreakLongest(habit: BIHabit, logs: BILog[], since: Date, asOf: Date): number {
   let running = 0;
@@ -260,7 +299,9 @@ function periodStreakLongest(habit: BIHabit, logs: BILog[], since: Date, asOf: D
   let cursor = since;
   for (let i = 0; i < MAX_STREAK_LOOKBACK_PERIODS && ymd(cursor) <= ymd(asOf); i++) {
     const st = periodStatus(habit as Habit, logs, cursor, { asOf });
-    if (st.status === 'unknown' || st.status === 'paused') break;
+    const datedPause = st.status === 'paused' && habit.status !== 'paused';
+    const beforeRange = st.status === 'unknown' && st.reason === 'not_scheduled';
+    if (!datedPause && !beforeRange && (st.status === 'unknown' || st.status === 'paused')) break;
     if (st.status === 'satisfied') { running += 1; if (running > max) max = running; }
     else if (st.status === 'closed_unmet') running = 0;
     cursor = addDaysLocal(st.periodEnd, 1);
@@ -283,40 +324,56 @@ function iterateYmd(start: Ymd, end: Ymd): Ymd[] {
 }
 
 /**
- * Scheduled/completed counts for one habit across `days`, with `skip`
- * excluded from both -- the shared core of `habitCompletionRate`,
+ * Scheduled count, credit total and lived scheduled dates for one habit
+ * across `days` -- the shared core of `habitCompletionRate`,
  * `weekdayBreakdown`, `weeklyRates` (fragility) and `completionTrend`.
+ *
+ * F13 (INT-01, INT-06, INT-07): each eligible day is judged by `judgeDay`;
+ * only a `credit` day is counted (`skip`, a `pending` day at/after
+ * `asOfYmd`, and an unlogged negative-habit day are not). `completed` is the
+ * credit SUM (fractional for partial days). `livedDates` lists the counted
+ * days -- the evidence the trend validity rules measure. `asOfYmd === null`
+ * means no clipping (pre-F13 behaviour for callers without a clock).
  */
 function dueDayStats(
   habit: BIHabit,
-  logIndex: Map<string, BILog['state']>,
+  logIndex: LogIndex,
   days: Ymd[],
-): { scheduled: number; completed: number } {
+  asOfYmd: string | null = null,
+): { scheduled: number; completed: number; livedDates: Ymd[] } {
   // R01.02-b — count-based schedules have no per-day obligation. `scheduled`
   // is the period target (edge-prorated over `days`) and `completed` the
   // unique done/partial days, both from the canonical evaluator. Fractional
   // `scheduled` is fine for every ratio built on this.
   if (isCountBased(habit) && days.length > 0) {
+    const last = days[days.length - 1];
+    const end = asOfYmd !== null && last > asOfYmd ? asOfYmd : last;
+    if (end < days[0]) return { scheduled: 0, completed: 0, livedDates: [] };
     const from = parseLocalDate(days[0]);
-    const to = parseLocalDate(days[days.length - 1]);
+    const to = parseLocalDate(end);
     if (from && to) {
-      const r = scheduledCompletionRate(habit as Habit, logsFromIndex(habit, logIndex), { from, to, since: createdDate(habit) });
-      return { scheduled: r.dueDays, completed: r.doneDays };
+      const since = createdDate(habit);
+      const r = scheduledCompletionRate(habit as Habit, logsFromIndex(habit, logIndex), { from, to, since });
+      const sinceYmd = since ? ymd(since) : null;
+      const livedDates = r.dueDays > 0 ? days.filter((d) => d <= end && (sinceYmd === null || d >= sinceYmd)) : [];
+      return { scheduled: r.dueDays, completed: r.doneDays, livedDates };
     }
   }
   let scheduled = 0;
   let completed = 0;
+  const livedDates: Ymd[] = [];
   for (const d of days) {
     const date = parseLocalDate(d);
     if (!date) continue;
     // R01.02-c — day lane: count schedules returned above (`isCountBased && days.length`; an empty `days` never enters this loop). `isEligibleOn` = `isDueOn` for daily/weekly_days; it adds the every_n_days interval. The date range is not a mode: it is the lifetime envelope (`withinLifetime`) both read.
     if (!isEligibleOn(habit as Habit, date)) continue; // `as Habit` -- same cast reportMetrics.ts already uses for this Pick.
-    const state = logIndex.get(`${habit.id}|${d}`);
-    if (state === 'skip') continue; // excluded from BOTH sides -- see file doc.
+    const v = judgeDay({ habit, dayYmd: d, asOfYmd, log: logIndex.get(`${habit.id}|${d}`) });
+    if (v.kind !== 'credit') continue; // skip / pending / unknown: excluded from BOTH sides -- see file doc.
     scheduled += 1;
-    if (state && isCompletedState(state)) completed += 1;
+    completed += v.credit;
+    livedDates.push(d);
   }
-  return { scheduled, completed };
+  return { scheduled, completed, livedDates };
 }
 
 // ---------------------------------------------------------------------------
@@ -324,20 +381,26 @@ function dueDayStats(
 // ---------------------------------------------------------------------------
 
 /**
- * `(done|partial) / scheduled` over `[range.start, range.end]` (inclusive),
- * for one habit. `scheduled` counts only days `isDueOn` says are due, minus
- * any that were explicitly `skip`ped (see file doc). This is Gate C's
- * "Completion rate exact" metric.
+ * `credit / scheduled` over `[range.start, range.end]` (inclusive), for one
+ * habit. `scheduled` counts only days `isDueOn` says are due and `judgeDay`
+ * credits (see file doc); a partial day adds its ratio. With `opts.asOf`,
+ * a future day or an unlogged `asOf` day is pending, not missed (INT-01).
+ * This is Gate C's "Completion rate exact" metric.
  *
  * Insufficient data: zero scheduled days in range (e.g. the habit was
  * created after `range.end`, or its schedule never lands inside the range).
  * A habit with zero opportunities to succeed or fail has no completion rate
  * to report -- `0` would misleadingly read as "always missed".
  */
-export function habitCompletionRate(habit: BIHabit, logs: BILog[], range: { start: Ymd; end: Ymd }): Result<number> {
+export function habitCompletionRate(
+  habit: BIHabit,
+  logs: BILog[],
+  range: { start: Ymd; end: Ymd },
+  opts?: { asOf?: Date },
+): Result<number> {
   const logIndex = buildLogIndex(logs.filter((l) => l.habit_id === habit.id));
   const days = iterateYmd(range.start, range.end);
-  const { scheduled, completed } = dueDayStats(habit, logIndex, days);
+  const { scheduled, completed } = dueDayStats(habit, logIndex, days, opts?.asOf ? ymd(opts.asOf) : null);
   if (scheduled === 0) return insufficient('no scheduled (due, non-skip) days for this habit in the given range');
   return ok(completed / scheduled);
 }
@@ -350,23 +413,33 @@ export type WeekdayStat = {
   /** 0=Pzt ... 6=Paz, per `habitSchedule.weekdayIndex`. */
   weekday: number;
   scheduled: number;
+  /** Credit sum (`completionMetric.dayCredit`; a partial day adds its ratio). */
   completed: number;
+  /** Distinct calendar dates on this weekday with at least one counted (planned, lived) habit-day (F13, INT-07). */
+  distinctDates: number;
   /** `completed / scheduled`, or `0` when `scheduled` is `0` (a real "no data" 0 in a STAT ROW is fine -- the insufficient-data gate lives in `bestWeekday`/`worstWeekday`, not here, since a caller may want the raw counts regardless.) */
   rate: number;
 };
 
 /**
- * Scheduled/completed/rate per weekday, aggregated across every habit in
- * `habits`, over `[range.start, range.end]`. Always returns exactly 7 rows
- * (`weekday` 0..6) even when a weekday has zero samples -- the min-sample
- * gate is applied by the two functions below, not here, so a caller that
- * wants the raw counts (e.g. to build its own chart) is not forced through
- * the `Result` wrapper.
+ * Scheduled/completed/distinctDates/rate per weekday, aggregated across every
+ * habit in `habits`, over `[range.start, range.end]` (clipped at `opts.asOf`
+ * when given). Always returns exactly 7 rows (`weekday` 0..6) even when a
+ * weekday has zero samples -- the min-sample gate is applied by the two
+ * functions below, not here, so a caller that wants the raw counts (e.g. to
+ * build its own chart) is not forced through the `Result` wrapper.
  */
-export function weekdayBreakdown(habits: BIHabit[], logs: BILog[], range: { start: Ymd; end: Ymd }): WeekdayStat[] {
+export function weekdayBreakdown(
+  habits: BIHabit[],
+  logs: BILog[],
+  range: { start: Ymd; end: Ymd },
+  opts?: { asOf?: Date },
+): WeekdayStat[] {
   const logIndex = buildLogIndex(logs);
   const days = iterateYmd(range.start, range.end);
+  const asOfYmd = opts?.asOf ? ymd(opts.asOf) : null;
   const totals = Array.from({ length: 7 }, (_, i) => ({ weekday: i, scheduled: 0, completed: 0 }));
+  const dates = Array.from({ length: 7 }, () => new Set<Ymd>());
 
   for (const habit of habits) {
     // R01.02-b — a count-based habit has no per-weekday obligation, so it has
@@ -381,32 +454,45 @@ export function weekdayBreakdown(habits: BIHabit[], logs: BILog[], range: { star
       if (!date) continue;
       // R01.02-c — day lane: `if (isCountBased(habit)) continue;` above. `isEligibleOn` = `isDueOn` for daily/weekly_days; it adds the every_n_days interval. The date range is not a mode: it is the lifetime envelope (`withinLifetime`) both read.
       if (!isEligibleOn(habit as Habit, date)) continue;
-      const state = logIndex.get(`${habit.id}|${d}`);
-      if (state === 'skip') continue;
+      const v = judgeDay({ habit, dayYmd: d, asOfYmd, log: logIndex.get(`${habit.id}|${d}`) });
+      if (v.kind !== 'credit') continue;
       const wd = weekdayIndex(date);
       totals[wd].scheduled += 1;
-      if (state && isCompletedState(state)) totals[wd].completed += 1;
+      totals[wd].completed += v.credit;
+      dates[wd].add(d);
     }
   }
 
-  return totals.map((t) => ({ ...t, rate: t.scheduled > 0 ? t.completed / t.scheduled : 0 }));
+  return totals.map((t, wd) => ({
+    ...t,
+    distinctDates: dates[wd].size,
+    rate: t.scheduled > 0 ? t.completed / t.scheduled : 0,
+  }));
 }
 
+/** F13 (INT-07): a weekday is rankable only with enough DISTINCT dates and habit-days. */
+function rankableWeekday(s: WeekdayStat): boolean {
+  return s.distinctDates >= MIN_WEEKDAY_DISTINCT_DATES && s.scheduled >= MIN_WEEKDAY_SAMPLES;
+}
+
+const WEEKDAY_INSUFFICIENT = `no weekday has data on at least ${MIN_WEEKDAY_DISTINCT_DATES} distinct dates`;
+
 /**
- * Highest-rate weekday among those with `scheduled >= MIN_WEEKDAY_SAMPLES`.
- * Ties broken by lowest weekday index (Monday-first), a fixed, deterministic
- * rule so the same input always yields the same answer.
+ * Highest-rate weekday among those with at least `MIN_WEEKDAY_DISTINCT_DATES`
+ * distinct dates and `MIN_WEEKDAY_SAMPLES` habit-days. Ties broken by lowest
+ * weekday index (Monday-first), a fixed, deterministic rule so the same input
+ * always yields the same answer.
  */
 export function bestWeekday(stats: WeekdayStat[]): Result<WeekdayStat> {
-  const eligible = stats.filter((s) => s.scheduled >= MIN_WEEKDAY_SAMPLES);
-  if (eligible.length === 0) return insufficient(`no weekday has reached the minimum sample size (${MIN_WEEKDAY_SAMPLES})`);
+  const eligible = stats.filter(rankableWeekday);
+  if (eligible.length === 0) return insufficient(WEEKDAY_INSUFFICIENT);
   return ok(eligible.reduce((best, s) => (s.rate > best.rate ? s : best)));
 }
 
 /** The mirror of `bestWeekday` -- lowest rate among eligible weekdays. */
 export function worstWeekday(stats: WeekdayStat[]): Result<WeekdayStat> {
-  const eligible = stats.filter((s) => s.scheduled >= MIN_WEEKDAY_SAMPLES);
-  if (eligible.length === 0) return insufficient(`no weekday has reached the minimum sample size (${MIN_WEEKDAY_SAMPLES})`);
+  const eligible = stats.filter(rankableWeekday);
+  if (eligible.length === 0) return insufficient(WEEKDAY_INSUFFICIENT);
   return ok(eligible.reduce((worst, s) => (s.rate < worst.rate ? s : worst)));
 }
 
@@ -424,13 +510,17 @@ export function worstWeekday(stats: WeekdayStat[]): Result<WeekdayStat> {
  *    nor breaks).
  *  - due, logged `skip` -> transparent, same as above (see file doc).
  *  - due, `done`/`partial` -> counts (+1), keep walking.
- *  - due, `miss` or no log at all -> STOP. This day is NOT counted.
+ *  - due, no log, and the day IS `asOf` -> transparent (F13, DOM-07): today
+ *    is not over yet, so an unlogged today neither counts nor breaks.
+ *  - due, no log, NEGATIVE habit -> transparent (F13, DOM-17): an unlogged
+ *    day of a quit habit is unknown, not a failure (`isMissedOn`).
+ *  - due, `miss` (any day, including `asOf`), or no log on a PAST day of a
+ *    positive habit -> STOP. This day is NOT counted.
  *
- * There is deliberately no "grace period" for `asOf` itself: if `asOf` is
- * due and has no qualifying log yet, the streak is `0` as of right now. This
- * mirrors `habitSchedule.streakBroken`'s own documented choice to have no
- * "still time left today" special case -- this file does not introduce a
- * new convention here, it inherits the existing one.
+ * There is still no tolerance for YESTERDAY: if yesterday was due, positive
+ * and unlogged, the streak is `0` right now. A "never miss twice" grace that
+ * bridges one isolated miss is a product decision deferred to F38 (OD-02),
+ * not something this function invents.
  *
  * Always returns a plain number, never a `Result` -- `0` is a real, earned
  * answer ("no streak right now"), not a fabricated placeholder, exactly like
@@ -454,7 +544,7 @@ export function currentStreak(habit: BIHabit, logs: BILog[], asOf: Date = new Da
       cursor = addDaysLocal(cursor, -1);
       continue;
     }
-    const state = logIndex.get(`${habit.id}|${d}`);
+    const state = logIndex.get(`${habit.id}|${d}`)?.state;
     if (state === 'skip') {
       cursor = addDaysLocal(cursor, -1);
       continue;
@@ -464,7 +554,15 @@ export function currentStreak(habit: BIHabit, logs: BILog[], asOf: Date = new Da
       cursor = addDaysLocal(cursor, -1);
       continue;
     }
-    break; // due, unmet (miss or no log) -> streak ends here, this day not counted.
+    if (!state && d === ymd(asOf)) { // today is not over yet (pending)
+      cursor = addDaysLocal(cursor, -1);
+      continue;
+    }
+    if (!state && habit.behavior_type === 'negative') { // unknown, not missed
+      cursor = addDaysLocal(cursor, -1);
+      continue;
+    }
+    break; // due, unmet (miss, or no log on a past day) -> streak ends here, this day not counted.
   }
   return count;
 }
@@ -473,8 +571,9 @@ export function currentStreak(habit: BIHabit, logs: BILog[], asOf: Date = new Da
  * The longest run of consecutive satisfied scheduled days anywhere between
  * `since` (default: the habit's `created_at`, falling back to `asOf` if
  * neither is available) and `asOf` (default: now). Same per-day rule as
- * `currentStreak` (skip transparent, not-due transparent, miss resets the
- * running count to `0`), walked FORWARD so every run in the window is seen.
+ * `currentStreak` (skip transparent, not-due transparent, an unlogged day of
+ * a negative habit transparent (F13, DOM-17), miss resets the running count
+ * to `0`), walked FORWARD so every run in the window is seen.
  *
  * Always a plain number -- `0` is real ("never once completed a scheduled
  * day in this window"), not a placeholder.
@@ -495,8 +594,9 @@ export function longestStreak(habit: BIHabit, logs: BILog[], opts: { since?: Dat
     if (!date) continue;
     // R01.02-c — day lane: `isCountBased` returned at the top of `longestStreak`. `isEligibleOn` = `isDueOn` for daily/weekly_days; it adds the every_n_days interval. The date range is not a mode: it is the lifetime envelope (`withinLifetime`) both read.
     if (!isEligibleOn(habit as Habit, date)) continue; // transparent
-    const state = logIndex.get(`${habit.id}|${d}`);
+    const state = logIndex.get(`${habit.id}|${d}`)?.state;
     if (state === 'skip') continue; // transparent
+    if (!state && habit.behavior_type === 'negative') continue; // unknown: neither extends nor resets
     if (state && isCompletedState(state)) {
       running += 1;
       if (running > max) max = running;
@@ -538,7 +638,8 @@ type WeeklyRate = { weekStart: Ymd; scheduled: number; completed: number; rate: 
  * `asOf`. A week with zero scheduled days (habit did not exist yet, or its
  * schedule never lands that week) is OMITTED, not recorded as a `0` rate --
  * exactly the same "absence of data is not a zero" reasoning `habitStrength`
- * uses for its bucket re-normalisation.
+ * uses for its bucket re-normalisation. F13: the week containing `asOf` is
+ * clipped at `asOf` (its future days are pending, not missed).
  */
 function weeklyRates(habit: BIHabit, logs: BILog[], weeks: number, asOf: Date): WeeklyRate[] {
   const logIndex = buildLogIndex(logs.filter((l) => l.habit_id === habit.id));
@@ -547,7 +648,7 @@ function weeklyRates(habit: BIHabit, logs: BILog[], weeks: number, asOf: Date): 
   for (let w = weeks - 1; w >= 0; w--) {
     const weekStart = addDaysLocal(lastWeekStart, -7 * w);
     const days = iterateYmd(ymd(weekStart), ymd(addDaysLocal(weekStart, 6)));
-    const { scheduled, completed } = dueDayStats(habit, logIndex, days);
+    const { scheduled, completed } = dueDayStats(habit, logIndex, days, ymd(asOf));
     if (scheduled === 0) continue;
     out.push({ weekStart: ymd(weekStart), scheduled, completed, rate: completed / scheduled });
   }
@@ -622,14 +723,16 @@ export function mostFragileHabit(
 }
 
 // ---------------------------------------------------------------------------
-// En güçlü habit -- reuses habitStrength, does not reimplement it
+// En güçlü habit -- reuses habitStrengthFor, does not reimplement it
 // ---------------------------------------------------------------------------
 
 /**
- * The habit with the highest time-weighted `habitStrength` (habitStrength.ts,
- * plan §10), restricted to habits with at least `MIN_LOGS_FOR_STRENGTH`
- * non-skip logs -- see that constant's doc for why a never/barely-logged
- * habit is excluded rather than trusted at `habitStrength`'s own `0`.
+ * The habit with the highest schedule-aware `habitStrengthFor`
+ * (habitStrength.ts, plan §10; F13 DOM-06 -- a Mon/Wed/Fri habit kept
+ * perfectly scores 100, not 43, so daily habits no longer win by default),
+ * restricted to habits with at least `MIN_LOGS_FOR_STRENGTH` non-skip logs --
+ * see that constant's note for why a barely-logged habit is excluded. A habit
+ * whose strength is `null` (no evaluable day yet) is not a candidate.
  *
  * Insufficient data: no habit in `habits` clears the minimum log count.
  */
@@ -646,9 +749,8 @@ export function strongestHabit(
     const nonSkipCount = hLogs.filter((l) => l.state !== 'skip').length;
     if (nonSkipCount < MIN_LOGS_FOR_STRENGTH) continue;
 
-    const strengthLogs: StrengthLog[] = hLogs.map((l) => ({ completed_at: l.completed_at, state: l.state }));
-    const createdDate = h.created_at ? parseLocalDate(ymdFromIso(h.created_at)) : null;
-    const strength = habitStrength(strengthLogs, { asOf, since: createdDate ?? undefined });
+    const strength = habitStrengthFor(h, hLogs, { asOf });
+    if (strength === null) continue;
     candidates.push({ habitId: h.id, strength });
   }
 
@@ -690,6 +792,19 @@ export type Trend = {
  * Insufficient data: fewer than 2 weeks carried any scheduled data -- a
  * trend needs at least one "before" and one "after" sample to have a
  * direction at all.
+ *
+ * F13 (INT-07) validity rules, on top of the above:
+ *  - the current week is clipped at `asOf` (future / unlogged-today days are
+ *    pending), and a week with fewer than `MIN_WEEK_LIVED_DAYS` (3) lived
+ *    scheduled DATES across all habits is omitted like an empty week -- a
+ *    Monday-Tuesday is not a week's evidence;
+ *  - for windows of 4+ weeks the kept weeks must hold at least
+ *    `MIN_TREND_DAYS` (14) lived scheduled dates in total. Two- and
+ *    three-week windows skip this total (a two-week window holds at most 14
+ *    lived days and reaches it only on Sunday -- the "vs last week" line
+ *    would vanish six days a week);
+ *  - `|magnitude| < MIN_TREND_DELTA` (0.05) is `flat`, not a direction:
+ *    0.80 -> 0.79 is noise. `magnitude` keeps the raw difference.
  */
 export function completionTrend(
   habits: BIHabit[],
@@ -697,23 +812,32 @@ export function completionTrend(
   opts: { weeks: number; asOf?: Date },
 ): Result<Trend> {
   const asOf = opts.asOf ?? new Date();
+  const asOfYmd = ymd(asOf);
   const weeks = opts.weeks;
   const logIndex = buildLogIndex(logs);
   const lastWeekStart = startOfWeekLocal(asOf);
 
   const rates: number[] = [];
+  const livedAll = new Set<Ymd>();
   for (let w = weeks - 1; w >= 0; w--) {
     const weekStart = addDaysLocal(lastWeekStart, -7 * w);
     const days = iterateYmd(ymd(weekStart), ymd(addDaysLocal(weekStart, 6)));
     let scheduled = 0;
     let completed = 0;
+    const livedWeek = new Set<Ymd>();
     for (const h of habits) {
-      const stats = dueDayStats(h, logIndex, days);
+      const stats = dueDayStats(h, logIndex, days, asOfYmd);
       scheduled += stats.scheduled;
       completed += stats.completed;
+      for (const d of stats.livedDates) livedWeek.add(d);
     }
-    if (scheduled === 0) continue;
+    if (scheduled === 0 || livedWeek.size < MIN_WEEK_LIVED_DAYS) continue;
+    for (const d of livedWeek) livedAll.add(d);
     rates.push(completed / scheduled);
+  }
+
+  if (weeks >= 4 && livedAll.size < MIN_TREND_DAYS) {
+    return insufficient(`trend needs >= ${MIN_TREND_DAYS} lived scheduled days`);
   }
 
   if (rates.length < 2) {
@@ -726,7 +850,8 @@ export function completionTrend(
   const secondHalf = rates.slice(n - halfSize);
   const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
   const magnitude = avg(secondHalf) - avg(firstHalf);
-  const direction: Trend['direction'] = magnitude > 0 ? 'improving' : magnitude < 0 ? 'declining' : 'flat';
+  const direction: Trend['direction'] =
+    Math.abs(magnitude) < MIN_TREND_DELTA ? 'flat' : magnitude > 0 ? 'improving' : 'declining';
 
   return ok({ direction, magnitude, weeksUsed: n, weeksRequested: weeks, partialWindow: n < weeks });
 }

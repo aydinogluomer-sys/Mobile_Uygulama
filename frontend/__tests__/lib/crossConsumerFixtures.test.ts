@@ -74,9 +74,9 @@ describe('R01.07 — every consumer agrees with the canonical day, at every hour
         const prev = addDaysLocal(parseLocalDate(ds)!, -1);
         const plan = planReminders({ habits: [h], logs: [], settings: DEFAULT_REMINDER_SETTINGS, now: new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), 20, 0), horizonDays: 3 });
         expect(plan.reminders.some((r) => r.day === ds)).toBe(canonical);
-        // reports: a done log counts on a due day and nowhere else
+        // reports: a done log counts on a due day and nowhere else (null = no due day in range, F13 INT-06)
         const pct = habitAveragePercent({ habits: [h], logs: [{ habit_id: h.id, completed_at: ds, state: 'done', value: null }], start: ds, end: ds });
-        expect(pct).toBe(canonical ? 100 : 0);
+        expect(pct).toBe(canonical ? 100 : null);
         // recovery: the next morning, an unlogged due day is in the backlog
         const next = at(ymd(addDaysLocal(parseLocalDate(ds)!, 1)), [0, 0, 30]);
         const backlog = recoveryBacklog({ habits: [h], today: next, doneSet: new Set(), partialSet: new Set(), missedSet: new Set(), lookback: 1 });
