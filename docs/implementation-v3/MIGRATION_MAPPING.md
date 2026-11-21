@@ -122,7 +122,7 @@ kaynak `supabase/live_schema.sql` (LIVE_SCHEMA_AUDIT.md: 58 canlı tablonun 42's
 
 ## 4. Yalnız repoda
 
-`028`…`040` — beklenen: yazıldı, uygulanmadı (`README.md` NOT APPLIED; `SQL_FOR_OWNER.md`).
+`028`…`041` — beklenen: yazıldı, uygulanmadı (`README.md` NOT APPLIED; `SQL_FOR_OWNER.md`).
 
 ## 5. Öneri — `db push`'un güvenle çalışması (yalnız belge, UYGULAMA YOK)
 
@@ -218,6 +218,7 @@ Defterin son sürümü `20260908133800`; aşağıdakilerin hepsi ondan sonra ve 
 | `038_xp_streak_integrity.sql` | `20261010001100_xp_streak_integrity.sql` |
 | `039_focus_point_hardening.sql` | `20261010001200_focus_point_hardening.sql` |
 | `040_privilege_hygiene.sql` | `20261010001300_privilege_hygiene.sql` |
+| `041_rls_initplan_and_indexes.sql` | `20261010001400_rls_initplan_and_indexes.sql` |
 
 ## 6. Kullanılan sorgular (hepsi salt-okunur)
 

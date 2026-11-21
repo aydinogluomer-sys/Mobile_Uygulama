@@ -757,6 +757,60 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/040_privilege_hygiene.sql
           test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
 
+      # F10: behavioural proof of migration 041's idempotent second apply, post-condition guard against
+      # bare per-row auth.uid()/auth.role() policies, and negative control proving EXPLAIN omits InitPlan
+      # on a bare policy (which 09_rls_initplan_041.sql cannot run directly because sqlBehaviorTestsWired
+      # forbids ALTER POLICY and \i meta-commands inside supabase/tests/).
+      - name: Migration 041 enforces InitPlan post-condition and re-applies idempotently (F10)
+        run: |
+          set -euo pipefail
+          err="$RUNNER_TEMP/m041_bare_policy.err"
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          BEGIN;
+          ALTER POLICY "Users can view own logs" ON public.habit_logs USING (user_id = auth.uid());
+          SET LOCAL ROLE authenticated;
+          SELECT set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+          SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+          DO $$
+          DECLARE
+            v_line text;
+            v_plan text := '';
+          BEGIN
+            FOR v_line IN EXECUTE 'EXPLAIN (COSTS OFF) SELECT * FROM public.habit_logs' LOOP
+              v_plan := v_plan || v_line || E'\n';
+            END LOOP;
+            IF v_plan ~ 'InitPlan' THEN
+              RAISE EXCEPTION 'Expected no InitPlan on bare habit_logs policy, got: %', v_plan;
+            END IF;
+          END $$;
+          ROLLBACK;
+          SQL
+          psql -X -v ON_ERROR_STOP=1 -c 'ALTER POLICY "Users can view own logs" ON public.habit_logs USING (user_id = auth.uid())'
+          if psql -X -v ON_ERROR_STOP=1 <<'SQL' 2>"$err"; then
+          DO $$
+          DECLARE v_bad text;
+          BEGIN
+            SELECT string_agg(p.schemaname || '.' || p.tablename || ' / ' || p.policyname, '; ')
+              INTO v_bad
+              FROM pg_policies p
+             WHERE p.schemaname IN ('public', 'archive_f13')
+               AND regexp_replace(coalesce(p.qual, '') || ' ' || coalesce(p.with_check, ''),
+                                  '\(\s*SELECT\s+auth\.(uid|role)\(\)\s+AS\s+(uid|role)\s*\)', '', 'gi')
+                   ~* 'auth\.(uid|role)\(\)';
+            IF v_bad IS NOT NULL THEN
+              RAISE EXCEPTION '041: policies still call auth.uid()/auth.role() per row: %', v_bad;
+            END IF;
+          END $$;
+          SQL
+            echo "041 post-condition accepted a bare policy" >&2; exit 1
+          fi
+          grep -q "public.habit_logs / Users can view own logs" "$err"
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/041_rls_initplan_and_indexes.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/041_rls_initplan_and_indexes.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'tasks'")" = "1"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT confdeltype FROM pg_constraint WHERE conname = 'tasks_parent_task_id_fkey'")" = "c"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+
       # The fingerprint must not tell "never touched" (a NULL ACL) from "revoked and granted back" (the
       # explicit default ACL): a rollback that REVOKEs and GRANTs an object back would otherwise show a
       # difference that is not one. The cycle above cannot show this property: every object of

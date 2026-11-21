@@ -59,6 +59,7 @@ old filenames.
 | 038 | `038_xp_streak_integrity.sql` | **NOT APPLIED** (P0 XP/seri bütünlüğü; 036 önkoşul) | — |
 | 039 | `039_focus_point_hardening.sql` | **NOT APPLIED** (DB frozen, S1/S2 — Focus Point credit integrity) | — |
 | 040 | `040_privilege_hygiene.sql` | **NOT APPLIED** (DB frozen, S1/S2 — privilege, search_path & sensitive-column hygiene + F07-R3; 028–039 prerequisite) | — |
+| 041 | `041_rls_initplan_and_indexes.sql` | **NOT APPLIED** (DB frozen, S1/S2 — RLS initplan wrapping, duplicate policies removed, FK indexes) | — |
 
 Keep this table when adding a migration: the old names are cited throughout
 `docs/audit/`, `docs/plan/`, `PROGRESS.md` and the audit reports, which are
@@ -106,6 +107,8 @@ all twenty-seven. This mismatch predates the renumbering (`20260825_phase1…` w
 recorded as `20260830051844`) and renumbering does not change it. Migrations are
 applied through the Supabase MCP `apply_migration` tool or the dashboard, and
 the ledger version is recorded in the table above.
+
+**Do not run `supabase config push` against the canonical project.** `supabase/config.toml` is local CLI configuration. Live Auth and API settings (email confirmation, password rules, captcha, exposed schemas) are changed in the dashboard, checked with the read-only list in `docs/implementation-v3/SQL_FOR_OWNER.md` section 9, and the local file is kept at least as strict as the live project so an accidental push can only tighten.
 
 **Explicit function and table grants (after `040`).** Migration `040_privilege_hygiene.sql` closes
 the global `PUBLIC EXECUTE` default on functions and removes `anon` write/`MAINTAIN` rights on

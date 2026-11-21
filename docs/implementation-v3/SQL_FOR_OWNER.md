@@ -61,6 +61,7 @@ WHERE a.status = 'failed'
 | 038 | `038_xp_streak_integrity.sql` | XP/seri bütünlüğü (F03): gün penceresi (sunucu `CURRENT_DATE - 15`..`+ 1`, istemci bugün ve önceki 14 gün), XP'yi yalnız sunucu hesaplar, günlük XP tavanı (2000), defter alışkanlığı silinse de kalır (sil-yeniden-yaz ve aynı adla yeniden oluşturma ikinci kez ödenmez), seri defterdeki ardışık günlerden, `streak_current`/`streak_best` istemciden yazılamaz, log silinince XP `purged_xp`'ye geçer, boss tetikleyicisi kapanır. **036 önkoşul** (betik kendisi denetler). Sıra 036 → 037 → 038; §0.4 `xp_drift()` boş değilse uygulanmaz. Pencere/tavan/çarpan değerleri OD-04 önerisidir. | yok | §2.11 | `supabase/rollbacks/038_xp_streak_integrity.rollback.sql` — 036'nınkinden ÖNCE; **XP sahteciliğini yeniden açar** (pencere, tavan, seri sütunları) |
 | 039 | `039_focus_point_hardening.sql` | Focus Point kredi bütünlüğü (F07): aynı (konuşma, `request_id`) için tek kullanıcı mesajı (`ai_messages_user_request_uniq`, önce yinelenen kopyalar silinir), iadesi yazılmamış başarısız AI isteklerine `refund_focus_points` ile tek seferlik iade, eski `spend_focus_points(integer, text)` istemcilere kapanır (036 ile aynı). İstemci sürümünden SONRA (§5). | yok | §2.12 | `supabase/rollbacks/039_focus_point_hardening.rollback.sql` |
 | 040 | `040_privilege_hygiene.sql` | Ayrıcalık, `search_path` ve hassas sütun hijyeni + F07-R3 (F09): 20 SECURITY DEFINER fonksiyonda `search_path` sabitlenir, anon yazma/`MAINTAIN` ve küresel `PUBLIC EXECUTE` kapanır, liderlik ve sıra RPC'leri oturum zorunlu ve 1..100 sınırlı olur, `profiles` kullanıcı adı şekil kısıtı (`NOT VALID`, bozuk adlar `archive_040` yedeğiyle onarılır), 028–031'in 10 tablosuna dar yetki, OAuth belirteç tablolarında istemci gizli sütun erişimi kapanır, `add_xp` ve abonelik yenilemesi satır kilidi alır, `ai_request_reconcile_stale` mod duyarlı ileti yazar, iptal edilen F13 tablolarında yazma kapanır ve 6 tablo `archive_f13` şemasına taşınır. Uygulamadan önce §3'teki üç ön sorguyu çalıştırın; 028–039 (özellikle 036, 038, 039) uygulanmış olmalı; sonra `select * from public.xp_drift();` 0 satır. | yok (Notion yeniden açılmadan önce `notion-sync` F45'te service-role'e taşınmalı) | §2.13 | `supabase/rollbacks/040_privilege_hygiene.rollback.sql` — en başta (039/038/036'dan önce) geri alınır; **güvenlik açıklarını yeniden açar** |
+| 041 | `041_rls_initplan_and_indexes.sql` | RLS performansı: 45 politika `(SELECT auth.uid())` biçimine geçer, 6 kopya politika düşer, `tasks` alt görev FK'si ON DELETE CASCADE olur, 26 yabancı anahtar indeksi eklenir, yinelenen `idx_habit_logs_habit_date` düşer; veri ve yetki değişmez | yok | §2.14 | `supabase/rollbacks/041_rls_initplan_and_indexes.rollback.sql` |
 
 ### Geri alma nasıl çalıştırılır
 
@@ -69,7 +70,7 @@ tek kullanımlık Postgres 17'de sınanır: ileri uygula, sondan başa geri al, 
 yeniden ileri uygula. **Canlıda hiçbiri çalıştırılmadı; yalnız sahip çalıştırır (OD-02).**
 
 1. Önce yedek (S1), sonra `select * from public.xp_drift();` (0 satır beklenir).
-2. Sıra **büyükten küçüğe**: 040 (F09), 039 (F07), 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 040 en başta,
+2. Sıra **büyükten küçüğe**: 041 (F10), 040 (F09), 039 (F07), 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 041 en başta, ardından 040,
    036'dan önce de 038 geri alınır (036 betiği, `fn_habit_log_guard` varken reddeder).
 3. Her betik için **aynı oturumda** önce onay, sonra dosya. Onay değeri betiğin kendi numarası değilse betik `P0001` ile durur
    ve hiçbir şey değiştirmez:
@@ -180,6 +181,39 @@ SELECT conname, convalidated FROM pg_constraint WHERE conname = 'profiles_userna
 -- ALTER TABLE public.profiles VALIDATE CONSTRAINT profiles_username_shape;
 SELECT count(*) FROM information_schema.tables WHERE table_schema = 'archive_f13';                             -- 6
 SELECT * FROM public.xp_drift();                                                                               -- 0 satır
+
+-- 2.14 (041) çıplak auth.uid()/auth.role() çağrısı kalan politika (beklenen: 0 satır)
+select schemaname, tablename, policyname
+from pg_policies
+where schemaname in ('public', 'archive_f13')
+  and regexp_replace(coalesce(qual, '') || ' ' || coalesce(with_check, ''),
+        '\(\s*SELECT\s+auth\.(uid|role)\(\)\s+AS\s+(uid|role)\s*\)', '', 'gi') ~* 'auth\.(uid|role)\(\)';
+
+-- 2.14-b kopya politika kalmadı (beklenen: tasks 1, challenges 1, habit_templates 1)
+select tablename, count(*) as politika
+from pg_policies
+where schemaname = 'public' and tablename in ('tasks', 'challenges', 'habit_templates')
+group by 1 order by 1;
+
+-- 2.14-c weekly_xp'te istemci yazma politikası yok (beklenen: 0 satır)
+select policyname from pg_policies
+where schemaname = 'public' and tablename = 'weekly_xp' and policyname = 'System can manage weekly xp';
+
+-- 2.14-d alt görev kuralı (beklenen: confdeltype = 'c')
+select conname, confdeltype from pg_constraint where conname = 'tasks_parent_task_id_fkey';
+
+-- 2.14-e yinelenen indeks yok (beklenen: 0 satır) ve 26 yeni indeksten canlıda var olanlar
+select indexname from pg_indexes where schemaname = 'public' and indexname = 'idx_habit_logs_habit_date';
+select count(*) as yeni_indeks from pg_indexes where schemaname = 'public' and indexname in (
+  'ai_conversation_actions_conversation_idx', 'ai_conversation_actions_assistant_message_idx',
+  'ai_conversations_project_idx', 'deep_work_sessions_user_idx', 'focus_sessions_task_idx',
+  'focus_tasks_user_idx', 'goals_user_idx', 'habit_deletions_user_idx', 'habit_reminders_habit_idx',
+  'habits_cue_habit_idx', 'key_results_user_idx', 'okrs_user_idx', 'projects_user_idx',
+  'recovery_plans_source_log_idx', 'routine_items_routine_idx', 'routines_user_idx',
+  'tasks_parent_task_idx', 'tasks_project_idx');   -- beklenen: 18; 028-037 uygulandıysa ayrıca 8 indeks
+
+-- 2.14-f xp_drift hâlâ boş (beklenen: 0 satır)
+select * from public.xp_drift();
 ```
 
 ## 3. BLOCKED / ÖN SORGU — tanımı repoda olmayan ya da 040 öncesi denetlenecek nesneler (yalnız okuma sorguları)
@@ -310,8 +344,8 @@ gerçek `tasks` tanımı gelince bir FK + sahiplik kontrolü ayrı migration'la 
 
 F01 ile `db-migrations-verify` işi (Postgres 17, `ci.yml`) son adım olarak `bash supabase/tests/run.sh`
 koşar. Bu bölüm yalnız o testleri anlatır; **burada çalıştırılacak bir sorgu yoktur ve canlıya hiçbir
-şey yazılmaz.** Testler geçici Postgres'te `live_schema.sql` + 028–040 üzerinde koşar (bugünkü canlı
-değil: canlıda 028–040 uygulanmamıştır). Canlıdaki açıklar (örneğin `weekly_xp`, TST-V01) 036/040 sizin
+şey yazılmaz.** Testler geçici Postgres'te `live_schema.sql` + 028–041 üzerinde koşar (bugünkü canlı
+değil: canlıda 028–041 uygulanmamıştır). Canlıdaki açıklar (örneğin `weekly_xp`, TST-V01) 036/040 sizin
 tarafınızdan uygulanana kadar canlıda açık kalır; test CI'da uygulanmış halin kapalı olduğunu kanıtlar,
 canlıyı denetlemez. Canlı doğrulama §2'dir.
 
@@ -325,6 +359,7 @@ canlıyı denetlemez. Canlı doğrulama §2'dir.
 | `06_xp_integrity_038.sql` | 038 (F03): `authenticated` rolüyle `weekly_xp` yazımı, gün penceresi (−16/+2 red, −15/+1 kabul), istemci `xp` değerinin yok sayılması, sil-yeniden-yaz ve aynı adla yeniden oluşturmanın ikinci kez ödenmemesi, günlük tavan (25 x 100 -> 2000), seri sütunlarının istemciden yazılamaması, done/miss/partial gidip gelmenin seriyi bir kez artırması, boşluğun seriyi sıfırlaması ve x1,2 basamağı, silmelerin XP'yi bir kez `purged_xp`'ye taşıması, boss tetikleyicisinin kalkması, tetikleyici fonksiyonlarının istemciye kapalı ve `search_path`'inin sabit olması, `weekly_xp` makullük kısıtı, log anahtarının taşınamaması, eski günde not düzenlemenin serbest ama durum değişikliğinin reddi, notla yeniden puanlama olmaması; her senaryodan sonra `xp_drift()` boş | 24 PASS |
 | `07_focus_point_039.sql` | 039 (F07): aynı `(conversation_id, request_id)` için ikinci kullanıcı mesajı reddedilir (`23505`), asistan yanıtı ve başka konuşma serbesttir, çapraz kiracı mesaj okuma/yazma ve eski/servis FP RPC'leri istemciye kapalıdır, `xp_drift()` boş | 8 PASS |
 | `08_privilege_hygiene_040.sql` | 040 (F09 + F07-R3): anon yazma/`MAINTAIN` ve `PUBLIC EXECUTE` kapalı, 20 `SECURITY DEFINER` `search_path` sabit, liderlik ve sıra RPC'leri oturum zorunlu + 1..100 sınırlı + yalnız kendi sırası, `profiles` dar sütun INSERT + kullanıcı adı şekil kısıtı + `handle_new_user` temizliği, 028–031'in 10 tablosu dar yetki ve RLS, OAuth belirteç tabloları gizli sütun yalıtımı, 17 F13 tablosu yazma yasağı ve 6 tablonun `archive_f13`'e taşınması, `add_xp` ve abonelik yenileme satır kilidi, `ai_request_reconcile_stale` mod duyarlı ileti (`routine` vs diğer modlar), `get_today_bootstrap` salt-okunur (`STABLE`), `xp_drift()` boş | 37 PASS |
+| `09_rls_initplan_041.sql` | 041 (F10): `public` ve `archive_f13` şemalarında çıplak `auth.uid()`/`auth.role()` politikası yok (`InitPlan` plan şekli ve negatif kontroller dahil), çakışan kopya politikalar (`tasks`, `challenges`, `habit_templates`, `weekly_xp`, `user_challenges`) kalktı, `anon` katalog okuması kapalı, 26 FK öncü indeksi var, yinelenen `idx_habit_logs_habit_date` düştü, `tasks_parent_task_id_fkey` `ON DELETE CASCADE` ve bölücü düz yükü çalışıyor, `xp_drift()` boş | ~69 PASS |
 
 **`supabase/tests/expected_failures.txt` ne demek.** Bilinen açıkların test adı listesidir; her satır bulgu
 kimliğini taşır ve başlıkta kapatan faz yazar. Koşucu iki yönlü karşılaştırır: listede olmayan bir test kırmızıysa
@@ -354,5 +389,19 @@ docker rm -f aderyth-pg17
 
 Çıkış kodları: `0` başarılı; `1` beklenmeyen kırmızı ya da bayat liste satırı; `2` `REFUSED` (yerel olmayan ya da
 CI'daki geçici veritabanına benzemeyen hedef); `3` bir test dosyası fixture / tetikleyici / sözdizimi hatasıyla düştü ya da
-veritabanına ulaşılamadı (bulgudur, fixture gevşetilmez); `4` sonuç akışı kullanılamaz (80'den az, ayrıştırılamayan,
+veritabanına ulaşılamadı (bulgudur, fixture gevşetilmez); `4` sonuç akışı kullanılamaz (140'tan az, ayrıştırılamayan,
 tekrarlanan ya da hiç rapor vermeyen test ya da `T02a` / `T02b` sonuç ailesi).
+
+## 9. Auth ve API ayarları — salt-okunur kontrol listesi
+
+Sahip dashboard'da bakar; ajan hiçbir canlı ayarı değiştirmez; sonuçlar OD-19'a girdi olur:
+
+| Ayar | `supabase/config.toml` (yerel, 041 sonrası) | Dashboard yolu | Beklenen canlı değer | Sahip bildirir |
+|---|---|---|---|---|
+| E-posta onayı | `enable_confirmations = true` (`[auth.email]`) | Authentication → Sign In / Providers → Email → "Confirm email" | açık | ☐ |
+| Parola değişiminde yeniden doğrulama | `secure_password_change = true` | Authentication → Sign In / Providers → Email | açık (kurtarma bağlantısı akışı etkilenmez) | ☐ |
+| Asgari parola uzunluğu | `minimum_password_length = 6` (istemci tabanı ile aynı; yükseltme OD-19) | Authentication → Sign In / Providers → Email → "Minimum password length" | 6 ya da OD-19 kararı | ☐ |
+| Parola gereksinimleri | `password_requirements = ""` | aynı sayfa | boş ya da OD-19 kararı | ☐ |
+| Bot koruması | yok (yorum satırı `[auth.captcha]`; F21 ekler) | Authentication → Attack Protection → CAPTCHA | OD-19 kararı | ☐ |
+| Kayıt oran sınırı | `sign_in_sign_ups = 30` (yerel) | Authentication → Rate Limits | OD-19 kararı | ☐ |
+| Açık şemalar | `schemas = ["public"]` | Project Settings → API → Exposed schemas | `graphql_public` kaldırılabilir (istemci GraphQL çağırmaz) | ☐ |
