@@ -24,6 +24,9 @@ describe('Item #7 — CI/CD Deno 2, Postgres 17 Migration & Release Parity Gates
     expect(ci).toContain('supabase/migrations/039_focus_point_hardening.sql');
     expect(ci).toContain('f07-heal-req:refund');
     expect(ci).toContain('f07-preclaim-req:refund');
+    expect(ci).toContain('supabase/migrations/040_privilege_hygiene.sql');
+    expect(ci).toContain('040 requires 036');
+    expect(ci).toContain('040 is not applied');
   });
 
   it('checks every active canonical Edge Function and _shared module with deno check', () => {

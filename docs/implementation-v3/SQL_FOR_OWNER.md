@@ -60,6 +60,7 @@ WHERE a.status = 'failed'
 | 037 | `037_today_bootstrap_rpc.sql` | tek gidiş-dönüşlü Bugün önyüklemesi `get_today_bootstrap(date)` (çağıranın kendi RLS bağlamında, SECURITY INVOKER; 028/029 tabloları yoksa `to_regclass` ile atlar) | yok (istemci RPC yoksa tablo okumalarına düşer: `todayBootstrapRepository.ts`, `isMissingRpcError`) | `ci.yml` bootstrap adımı (`get_today_bootstrap`) | `supabase/rollbacks/037_today_bootstrap_rpc.rollback.sql` |
 | 038 | `038_xp_streak_integrity.sql` | XP/seri bütünlüğü (F03): gün penceresi (sunucu `CURRENT_DATE - 15`..`+ 1`, istemci bugün ve önceki 14 gün), XP'yi yalnız sunucu hesaplar, günlük XP tavanı (2000), defter alışkanlığı silinse de kalır (sil-yeniden-yaz ve aynı adla yeniden oluşturma ikinci kez ödenmez), seri defterdeki ardışık günlerden, `streak_current`/`streak_best` istemciden yazılamaz, log silinince XP `purged_xp`'ye geçer, boss tetikleyicisi kapanır. **036 önkoşul** (betik kendisi denetler). Sıra 036 → 037 → 038; §0.4 `xp_drift()` boş değilse uygulanmaz. Pencere/tavan/çarpan değerleri OD-04 önerisidir. | yok | §2.11 | `supabase/rollbacks/038_xp_streak_integrity.rollback.sql` — 036'nınkinden ÖNCE; **XP sahteciliğini yeniden açar** (pencere, tavan, seri sütunları) |
 | 039 | `039_focus_point_hardening.sql` | Focus Point kredi bütünlüğü (F07): aynı (konuşma, `request_id`) için tek kullanıcı mesajı (`ai_messages_user_request_uniq`, önce yinelenen kopyalar silinir), iadesi yazılmamış başarısız AI isteklerine `refund_focus_points` ile tek seferlik iade, eski `spend_focus_points(integer, text)` istemcilere kapanır (036 ile aynı). İstemci sürümünden SONRA (§5). | yok | §2.12 | `supabase/rollbacks/039_focus_point_hardening.rollback.sql` |
+| 040 | `040_privilege_hygiene.sql` | Ayrıcalık, `search_path` ve hassas sütun hijyeni + F07-R3 (F09): 20 SECURITY DEFINER fonksiyonda `search_path` sabitlenir, anon yazma/`MAINTAIN` ve küresel `PUBLIC EXECUTE` kapanır, liderlik ve sıra RPC'leri oturum zorunlu ve 1..100 sınırlı olur, `profiles` kullanıcı adı şekil kısıtı (`NOT VALID`, bozuk adlar `archive_040` yedeğiyle onarılır), 028–031'in 10 tablosuna dar yetki, OAuth belirteç tablolarında istemci gizli sütun erişimi kapanır, `add_xp` ve abonelik yenilemesi satır kilidi alır, `ai_request_reconcile_stale` mod duyarlı ileti yazar, iptal edilen F13 tablolarında yazma kapanır ve 6 tablo `archive_f13` şemasına taşınır. Uygulamadan önce §3'teki üç ön sorguyu çalıştırın; 028–039 (özellikle 036, 038, 039) uygulanmış olmalı; sonra `select * from public.xp_drift();` 0 satır. | yok (Notion yeniden açılmadan önce `notion-sync` F45'te service-role'e taşınmalı) | §2.13 | `supabase/rollbacks/040_privilege_hygiene.rollback.sql` — en başta (039/038/036'dan önce) geri alınır; **güvenlik açıklarını yeniden açar** |
 
 ### Geri alma nasıl çalıştırılır
 
@@ -68,8 +69,8 @@ tek kullanımlık Postgres 17'de sınanır: ileri uygula, sondan başa geri al, 
 yeniden ileri uygula. **Canlıda hiçbiri çalıştırılmadı; yalnız sahip çalıştırır (OD-02).**
 
 1. Önce yedek (S1), sonra `select * from public.xp_drift();` (0 satır beklenir).
-2. Sıra **büyükten küçüğe**: 039 (F07), 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 036'dan önce 038 geri alınır
-   (036 betiği, `fn_habit_log_guard` varken reddeder).
+2. Sıra **büyükten küçüğe**: 040 (F09), 039 (F07), 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 040 en başta,
+   036'dan önce de 038 geri alınır (036 betiği, `fn_habit_log_guard` varken reddeder).
 3. Her betik için **aynı oturumda** önce onay, sonra dosya. Onay değeri betiğin kendi numarası değilse betik `P0001` ile durur
    ve hiçbir şey değiştirmez:
 
@@ -168,12 +169,22 @@ SELECT count(*) FROM (SELECT 1 FROM public.ai_messages WHERE role = 'user' AND r
 SELECT has_function_privilege('anon', 'public.spend_focus_points(integer, text)', 'EXECUTE') AS anon_exec,
        has_function_privilege('authenticated', 'public.spend_focus_points(integer, text)', 'EXECUTE') AS auth_exec;  -- f, f
 SELECT * FROM public.xp_drift();                                                                               -- 0 satır
+
+-- 2.13 (040) sonrası doğrulama + kullanıcı adı kısıtını geçerli işaretleme
+SELECT p.oid::regprocedure FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'public' AND p.prosecdef
+   AND (has_function_privilege('anon', p.oid, 'EXECUTE')
+        OR NOT EXISTS (SELECT 1 FROM unnest(coalesce(p.proconfig, ARRAY[]::text[])) c WHERE c LIKE 'search_path=%')); -- 0 satır
+SELECT conname, convalidated FROM pg_constraint WHERE conname = 'profiles_username_shape';                     -- 1 satır
+-- §3 ön sorgusu incelendikten sonra sahip tarafından çalıştırılır:
+-- ALTER TABLE public.profiles VALIDATE CONSTRAINT profiles_username_shape;
+SELECT count(*) FROM information_schema.tables WHERE table_schema = 'archive_f13';                             -- 6
+SELECT * FROM public.xp_drift();                                                                               -- 0 satır
 ```
 
-## 3. BLOCKED — tanımı repoda olmayan nesneler (yalnız okuma sorguları)
+## 3. BLOCKED / ÖN SORGU — tanımı repoda olmayan ya da 040 öncesi denetlenecek nesneler (yalnız okuma sorguları)
 
-Bu nesnelere dokunan SQL **yazılmadı**; gerçek tanımlar gelmeden yazılırsa körlemesine
-olur. Önce aşağıdakileri çalıştırıp çıktıyı paylaşın.
+Bu nesnelere dokunan körlemesine SQL **yazılmadı**; gerçek tanımlar/sayımlar görülmeden uygulama yapılmaz. Önce aşağıdakileri çalıştırıp çıktıyı kontrol edin.
 
 ```sql
 -- S11 (R01.03-b log geri alma): silmede XP geri alınıyor mu?
@@ -184,7 +195,29 @@ where n.nspname = 'public' and p.proname in ('fn_habit_log_award', 'fn_habit_log
 select tgname, pg_get_triggerdef(t.oid)
 from pg_trigger t join pg_class c on c.oid = t.tgrelid
 where c.relname = 'habit_logs' and not t.tgisinternal;
+
+-- DB1-13: auth.users üzerindeki profil tetikleyicisi canlıda var mı? (salt okunur)
+select t.tgname, pg_get_triggerdef(t.oid) as definition
+from pg_trigger t
+where t.tgrelid = 'auth.users'::regclass and not t.tgisinternal;
+
+-- DB1-11: 040'ın onaracağı kullanıcı adları (salt okunur; sayı ve uzunluklar)
+select count(*) filter (where username is not null) as with_name,
+       count(*) filter (where username <> btrim(username)
+                           or char_length(username) not between 3 and 32
+                           or username ~ '[[:cntrl:]<>]') as will_be_repaired
+from public.profiles;
+
+-- DB2-12: 040'ın archive_f13 şemasına taşıyacağı tabloların satır sayısı (salt okunur)
+select 'user_pets' as t, count(*) from public.user_pets
+union all select 'user_inventory', count(*) from public.user_inventory
+union all select 'user_quests', count(*) from public.user_quests
+union all select 'user_skills', count(*) from public.user_skills
+union all select 'boss_contributors', count(*) from public.boss_contributors
+union all select 'user_challenges', count(*) from public.user_challenges;
 ```
+
+Birinci `DB1-13` sorgusu boş dönerse `auth.users` üzerinde profil tetikleyicisi YOKTUR; bu durumda yeni kayıtlar profil satırı almaz (istemci `fetchOrCreateProfile` ile yaratır, `add_xp` 040'tan sonra profil yoksa satırı kendisi oluşturur). Tetikleyici ancak sahip onayıyla ayrı bir migrasyonla eklenir. `notion-sync`, 040'tan sonra `access_token` okuyamaz; Notion yeniden açılmadan önce service-role'e taşınmalıdır (F45).
 
 ## 4. KD-10 / KD-11 — salt-okunur sayımlar (S4; backfill ayrı karar)
 
@@ -259,25 +292,27 @@ gerçek `tasks` tanımı gelince bir FK + sahiplik kontrolü ayrı migration'la 
 
 F01 ile `db-migrations-verify` işi (Postgres 17, `ci.yml`) son adım olarak `bash supabase/tests/run.sh`
 koşar. Bu bölüm yalnız o testleri anlatır; **burada çalıştırılacak bir sorgu yoktur ve canlıya hiçbir
-şey yazılmaz.** Testler geçici Postgres'te `live_schema.sql` + 028–038 üzerinde koşar (bugünkü canlı
-değil: canlıda 028–038 uygulanmamıştır). Canlıdaki açıklar (örneğin `weekly_xp`, TST-V01) 036 sizin
-tarafınızdan uygulanana kadar canlıda açık kalır; test CI'da 036 uygulanmış halin kapalı olduğunu kanıtlar,
+şey yazılmaz.** Testler geçici Postgres'te `live_schema.sql` + 028–040 üzerinde koşar (bugünkü canlı
+değil: canlıda 028–040 uygulanmamıştır). Canlıdaki açıklar (örneğin `weekly_xp`, TST-V01) 036/040 sizin
+tarafınızdan uygulanana kadar canlıda açık kalır; test CI'da uygulanmış halin kapalı olduğunu kanıtlar,
 canlıyı denetlemez. Canlı doğrulama §2'dir.
 
 | Dosya | Ne denetler | Bugünkü beklenti |
 |---|---|---|
 | `01_client_cannot_write_server_tables.sql` | `authenticated` / `anon` rolü `weekly_xp`, `profiles.total_xp·level·coins`, `user_subscriptions`, `credit_transactions` tablolarına yazamaz (SQLSTATE 42501); sahibin kendi `user_subscriptions` satırını silememesi ile `credit_transactions` ve `ai_requests` satırlarını değiştirememesi (tablo yetkisi açıktır, satırı RLS korur: hiçbir satır değişmez); bu "satır değişmedi" denemelerinin boş geçmediğini gösteren pozitif kontroller | 22 sonuç, hepsi PASS |
-| `02_security_definer_hygiene.sql` | anon'un `public` SECURITY DEFINER fonksiyonunda EXECUTE hakkı yok (`T02a`); hepsinde `search_path` sabit (`T02b`); yalnız-servis fonksiyonlar istemciye kapalı (`T02c`–`T02e`) | `T02a` PASS; `T02b` 20 FAIL (listede) |
+| `02_security_definer_hygiene.sql` | anon'un `public` SECURITY DEFINER fonksiyonunda EXECUTE hakkı yok (`T02a`); hepsinde `search_path` sabit (`T02b`); yalnız-servis fonksiyonlar istemciye kapalı (`T02c`–`T02e`) | 5 PASS (`T02a.all` ve `T02b.all` dahil; F09 kapattı) |
 | `03_xp_drift_zero.sql` | gerçek `habit_logs` yazma / güncelleme / silme sonrası `xp_drift()` boş (tetikleyici zinciri olduğu gibi) | 4 PASS |
 | `04_today_bootstrap_isolation.sql` | `get_today_bootstrap` iki kullanıcı izolasyonu, doğrudan tablo izolasyonu, JWT'siz çağrının fonksiyonun KENDİ `authentication required` hatasıyla reddi (bekçi satırı kalkarsa başka bir 42501 gelir ve test kırmızı olur), anon çağrı reddi | 6 PASS |
 | `05_concurrency_spend.sh` | 8 eşzamanlı oturumla `spend_focus_points_v2` (tek kazanan, bakiye eksiye düşmez, aynı `request_id` tek borç) ve `ai_request_begin` (tek `claimed`) yarışı | 5 PASS + 1 INFO |
 | `06_xp_integrity_038.sql` | 038 (F03): `authenticated` rolüyle `weekly_xp` yazımı, gün penceresi (−16/+2 red, −15/+1 kabul), istemci `xp` değerinin yok sayılması, sil-yeniden-yaz ve aynı adla yeniden oluşturmanın ikinci kez ödenmemesi, günlük tavan (25 x 100 -> 2000), seri sütunlarının istemciden yazılamaması, done/miss/partial gidip gelmenin seriyi bir kez artırması, boşluğun seriyi sıfırlaması ve x1,2 basamağı, silmelerin XP'yi bir kez `purged_xp`'ye taşıması, boss tetikleyicisinin kalkması, tetikleyici fonksiyonlarının istemciye kapalı ve `search_path`'inin sabit olması, `weekly_xp` makullük kısıtı, log anahtarının taşınamaması, eski günde not düzenlemenin serbest ama durum değişikliğinin reddi, notla yeniden puanlama olmaması; her senaryodan sonra `xp_drift()` boş | 24 PASS |
+| `07_focus_point_039.sql` | 039 (F07): aynı `(conversation_id, request_id)` için ikinci kullanıcı mesajı reddedilir (`23505`), asistan yanıtı ve başka konuşma serbesttir, çapraz kiracı mesaj okuma/yazma ve eski/servis FP RPC'leri istemciye kapalıdır, `xp_drift()` boş | 8 PASS |
+| `08_privilege_hygiene_040.sql` | 040 (F09 + F07-R3): anon yazma/`MAINTAIN` ve `PUBLIC EXECUTE` kapalı, 20 `SECURITY DEFINER` `search_path` sabit, liderlik ve sıra RPC'leri oturum zorunlu + 1..100 sınırlı + yalnız kendi sırası, `profiles` dar sütun INSERT + kullanıcı adı şekil kısıtı + `handle_new_user` temizliği, 028–031'in 10 tablosu dar yetki ve RLS, OAuth belirteç tabloları gizli sütun yalıtımı, 17 F13 tablosu yazma yasağı ve 6 tablonun `archive_f13`'e taşınması, `add_xp` ve abonelik yenileme satır kilidi, `ai_request_reconcile_stale` mod duyarlı ileti (`routine` vs diğer modlar), `get_today_bootstrap` salt-okunur (`STABLE`), `xp_drift()` boş | 37 PASS |
 
 **`supabase/tests/expected_failures.txt` ne demek.** Bilinen açıkların test adı listesidir; her satır bulgu
 kimliğini taşır ve başlıkta kapatan faz yazar. Koşucu iki yönlü karşılaştırır: listede olmayan bir test kırmızıysa
 `UNEXPECTED FAILURES`, listede olup yeşile dönmüş bir satır kalmışsa `STALE` ile CI kırmızı olur. Yani liste yalnız
-küçülebilir; bir açığı kapatan migration aynı commit'te kendi satırlarını siler. Bugün listede 20 satır vardır
-(`T02b_search_path.*`: `search_path` sabitlenmemiş 20 SECURITY DEFINER fonksiyon); hepsini F09 kapatır. Sizin
+küçülebilir; bir açığı kapatan migration aynı commit'te kendi satırlarını siler. F09 (`040_privilege_hygiene.sql`)
+20 `T02b_search_path.*` satırının tamamını sabitleyip sildiği için liste artık boştur (`0` beklenen kırmızı). Sizin
 canlıya uyguladığınız bir migration bu listeyi değiştirmez: liste canlıyı değil CI'daki şemayı anlatır.
 
 **Yerel koşum (yalnız geçici veritabanı).** Koşucu `PGHOST` yerel değilse (`127.0.0.1`, `localhost`, `::1`),
@@ -301,5 +336,5 @@ docker rm -f aderyth-pg17
 
 Çıkış kodları: `0` başarılı; `1` beklenmeyen kırmızı ya da bayat liste satırı; `2` `REFUSED` (yerel olmayan ya da
 CI'daki geçici veritabanına benzemeyen hedef); `3` bir test dosyası fixture / tetikleyici / sözdizimi hatasıyla düştü ya da
-veritabanına ulaşılamadı (bulgudur, fixture gevşetilmez); `4` sonuç akışı kullanılamaz (30'dan az, ayrıştırılamayan,
+veritabanına ulaşılamadı (bulgudur, fixture gevşetilmez); `4` sonuç akışı kullanılamaz (80'den az, ayrıştırılamayan,
 tekrarlanan ya da hiç rapor vermeyen test ya da `T02a` / `T02b` sonuç ailesi).

@@ -298,6 +298,18 @@ jobs:
           psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_after_038_refusal.txt"
           diff -u "$RUNNER_TEMP/fp_before_038_refusal.txt" "$RUNNER_TEMP/fp_after_038_refusal.txt"
 
+      - name: 040 refuses to run before its prerequisites (precondition, negative control)
+        run: |
+          set -euo pipefail
+          err="$RUNNER_TEMP/m040_precondition.err"
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_before_040_refusal.txt"
+          if psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/040_privilege_hygiene.sql 2>"$err"; then
+            echo "040 ran although 036..039 and 028..031 are not applied" >&2; exit 1
+          fi
+          grep -q "040 requires 036" "$err"
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_after_040_refusal.txt"
+          diff -u "$RUNNER_TEMP/fp_before_040_refusal.txt" "$RUNNER_TEMP/fp_after_040_refusal.txt"
+
       - name: Apply forward migrations 028+ and verify RLS-isolated single-RTT bootstrap
         run: |
           for mig in $(ls supabase/migrations/[0-9][0-9][0-9]_*.sql | sort); do
@@ -453,6 +465,11 @@ jobs:
                 echo "038 rollback ran a second time" >&2; exit 1
               fi
               grep -q "038 is not applied" "$err"
+            elif [ "${num}" = "040" ]; then
+              if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb" 2>"$err"; then
+                echo "040 rollback ran a second time" >&2; exit 1
+              fi
+              grep -q "040 is not applied" "$err"
             else
               psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb"
             fi
@@ -673,6 +690,37 @@ jobs:
           # Idempotency: running 039 a second time returns 0 additional FP
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/039_focus_point_hardening.sql
           test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT focus_points FROM public.user_subscriptions WHERE user_id = '${uid}'")" = "45"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+
+      # F09: behavioural proof of migration 040's pre-existing username repair + backup table,
+      # VALIDATE CONSTRAINT compatibility, idempotent second apply, and lossless rollback restore.
+      - name: Migration 040 repairs invalid usernames with backup and restores them on rollback (F09)
+        run: |
+          set -euo pipefail
+          u_short='f9000000-0000-4000-8000-000000000001'
+          u_clean='f9000000-0000-4000-8000-000000000002'
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '040'" -f supabase/rollbacks/040_privilege_hygiene.rollback.sql
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO auth.users (id, email) VALUES
+            ('f9000000-0000-4000-8000-000000000001', 'f09short@aderyth.test'),
+            ('f9000000-0000-4000-8000-000000000002', 'f09clean@aderyth.test');
+          BEGIN;
+          SET LOCAL session_replication_role = replica;
+          INSERT INTO public.profiles (id, email, username) VALUES
+            ('f9000000-0000-4000-8000-000000000001', 'f09short@aderyth.test', '  <x>  '),
+            ('f9000000-0000-4000-8000-000000000002', 'f09clean@aderyth.test', '  <Ayşe_K>  ');
+          COMMIT;
+          SQL
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/040_privilege_hygiene.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT username IS NULL FROM public.profiles WHERE id = '${u_short}'")" = "t"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT username FROM public.profiles WHERE id = '${u_clean}'")" = "Ayşe_K"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM archive_040.profiles_username_backup WHERE id IN ('${u_short}', '${u_clean}')")" = "2"
+          psql -X -v ON_ERROR_STOP=1 -c "ALTER TABLE public.profiles VALIDATE CONSTRAINT profiles_username_shape"
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/040_privilege_hygiene.sql
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '040'" -f supabase/rollbacks/040_privilege_hygiene.rollback.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT username FROM public.profiles WHERE id = '${u_short}'")" = "  <x>  "
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT username FROM public.profiles WHERE id = '${u_clean}'")" = "  <Ayşe_K>  "
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/040_privilege_hygiene.sql
           test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
 
       # The fingerprint must not tell "never touched" (a NULL ACL) from "revoked and granted back" (the

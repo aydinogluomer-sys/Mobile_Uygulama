@@ -13,10 +13,14 @@
 --   `habit_pauses`, `habit_goal_versions`, `habit_checklist_items` and
 --   `habit_checklist_checks` are checked dynamically via `to_regclass(...)`
 --   so this function runs cleanly whether 028/029 have been applied or not.
+--
+-- Read-only: no row is written (DB1-20). STABLE; edited in place by F09 while
+-- 037 is still unapplied (STATE.md db_state FROZEN, README "NOT APPLIED").
 
 CREATE OR REPLACE FUNCTION public.get_today_bootstrap(p_today date DEFAULT CURRENT_DATE)
 RETURNS jsonb
 LANGUAGE plpgsql
+STABLE
 SECURITY INVOKER
 SET search_path TO 'public'
 AS $function$
@@ -102,11 +106,9 @@ BEGIN
        LIMIT 31
     ) t;
 
-  -- 5. Today's willpower_state (ensure row exists for today, matching fetchOrCreateWillpowerState)
-  INSERT INTO public.willpower_state (user_id, state_date, daily_budget, used, focus_capacity, active_count)
-  VALUES (v_uid, p_today, 15, 0, 3, 0)
-  ON CONFLICT (user_id, state_date) DO NOTHING;
-
+  -- 5. Today's willpower_state: READ ONLY. A missing row stays `null` in the
+  --    payload; the client (fetchOrCreateWillpowerState) creates it with its own
+  --    budget constants. No client-supplied date ever produces a row here (DB1-20).
   SELECT COALESCE(to_jsonb(w), 'null'::jsonb)
     INTO v_willpower
     FROM public.willpower_state w
