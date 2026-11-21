@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Animatable from 'react-native-animatable';
+import FadeInUpView from '../../components/motion/FadeInUpView';
 import { useHabitStore } from '../../store/habitStore';
 import { useWillpowerStore } from '../../store/willpowerStore';
 import HabitOnboarding from '../../components/HabitOnboarding';
@@ -483,14 +483,14 @@ ${e.how}`,
 
       {/* XP animasyonu */}
       {xpAnim !== null && (
-        <Animatable.View animation={reduceMotion ? undefined : 'fadeInUp'} style={styles.xpToast}>
+        <FadeInUpView disabled={reduceMotion} style={styles.xpToast}>
           <Text style={styles.xpToastText}>+{xpAnim} XP</Text>
-        </Animatable.View>
+        </FadeInUpView>
       )}
 
       {/* Geri Al toast */}
       {pendingDelete && (
-        <Animatable.View animation={reduceMotion ? undefined : 'fadeInUp'} duration={250} style={styles.undoToast}>
+        <FadeInUpView disabled={reduceMotion} duration={250} style={styles.undoToast}>
           <Ionicons name="trash" size={16} color={colors.error} />
           <Text style={styles.undoText} numberOfLines={1}>
             &quot;{pendingDelete.habit.name}&quot; silindi
@@ -499,7 +499,7 @@ ${e.how}`,
             <Ionicons name="arrow-undo" size={14} color={colors.accent} />
             <Text style={styles.undoBtnText}>Geri Al</Text>
           </TouchableOpacity>
-        </Animatable.View>
+        </FadeInUpView>
       )}
 
       <HabitOnboarding

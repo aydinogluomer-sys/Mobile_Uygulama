@@ -22,9 +22,20 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
     defaults:
       run:
         working-directory: frontend
@@ -37,26 +48,32 @@ jobs:
       # that declare `node24`, which is what actually clears it.
       #
       # This is about the ACTIONS' runtime. The version the app builds with is
-      # `node-version` below, and the two are unrelated.
+      # `.nvmrc` below, and the two are unrelated.
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      # Node 20 reached end of life in April 2026 — no more security patches —
-      # so a gate pinned to it verifies the app on a runtime nobody should be
-      # shipping from. 22 is the LTS Expo SDK 54 supports; 24 is deliberately
-      # NOT chosen here just because it is newer, since nothing in this repo
-      # has been run against it.
-      - name: Setup Node 22 (LTS)
-        uses: actions/setup-node@v6
+      # Single Node contract across `.nvmrc`, `frontend/package.json#engines`,
+      # `frontend/eas.json` and CI (BLD-07): react-native@0.86.3 and metro@0.84.5
+      # require `^20.19.4 || ^22.13.0 || ^24.3.0 || >=25.0.0`, pinned to 22.13.0 LTS.
+      - name: Setup Node (.nvmrc)
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .nvmrc
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      # `npm ci` runs the `postinstall` script (node ./scripts/fix-expo-tsconfig.js)
-      # by default — do not add --ignore-scripts here, Gate A depends on it running.
+      - name: Align npm with packageManager (npm@11.16.0)
+        run: npm install -g npm@11.16.0
+
+      # There is no `postinstall` any more (BLD-08): nothing rewrites files inside
+      # node_modules after install, so this step installs exactly what the lockfile
+      # names and the gates below check that tree, the same tree a clean clone gets.
+      # frontend/__tests__/repo/noInstallTimePatching.test.ts keeps it that way.
       - name: Install dependencies (npm ci)
         run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
 
       # Uses tsconfig.ci.json, NOT the default tsconfig.json. See that file's
       # header for the full reasoning; the short version is that
@@ -100,13 +117,29 @@ jobs:
         run: node run-tests.js
 
       - name: Export — Android
-        run: npx expo export --platform android
+        run: |
+          npx expo export --platform android
+          inlined="$(grep -rl "127.0.0.1:54321" dist | head -1)"
+          test -n "$inlined"
 
       - name: Export — iOS
         run: npx expo export --platform ios
 
+      - name: Export — Web
+        run: npx expo export --platform web
+
+      - name: Expo SDK alignment
+        run: npx expo install --check
+
+      - name: Config plugins resolve
+        run: npx expo prebuild --no-install --platform all
+
+      - name: Doctor
+        run: npx expo-doctor
+
   edge-deno-verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # The repo-root package.json (a tooling dependency, playwright) makes Deno 2 switch to "manual"
     # node_modules: every npm: package must already be installed there. jsr:@supabase/supabase-js
     # 2.118.0 pulls in npm:@supabase/realtime-js, which is not, so `deno check` failed before it
@@ -117,10 +150,10 @@ jobs:
       DENO_NO_PACKAGE_JSON: '1'
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Deno 2
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
         with:
           deno-version: v2.x
 
@@ -169,6 +202,7 @@ jobs:
 
   db-migrations-verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:17
@@ -191,7 +225,7 @@ jobs:
       PGDATABASE: aderyth_ci
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Bootstrap local Postgres 17 auth/extensions stubs
         run: |

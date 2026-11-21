@@ -1,0 +1,30 @@
+# F08 (BLD-03): opens pull requests only; nothing is merged automatically.
+# The Expo SDK 57 line is the ceiling: majors of expo, jest, eslint and typescript
+# and minors of react-native are SDK migrations, not dependency bumps.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      expo-sdk:
+        patterns: ['expo*', '@expo/*', 'react-native*', 'jest-expo']
+        update-types: ['patch']
+    ignore:
+      - dependency-name: 'expo'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'react-native'
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
+      - dependency-name: 'jest'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'eslint'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
+  # Keeps the 40-hex `uses:` pins in .github/workflows current together with their `# vN` comment.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

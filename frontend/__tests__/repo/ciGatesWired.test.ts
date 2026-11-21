@@ -6,13 +6,40 @@ const CI_YML = join(REPO, '.github', 'workflows', 'ci.yml');
 const RELEASE_YML = join(REPO, '.github', 'workflows', 'supabase-release-verify.yml');
 const DENO_TEST = join(REPO, 'supabase', 'functions', '_shared', 'aiIdempotency_test.ts');
 
-describe('Item #7 — CI/CD Deno 2, Postgres 17 Migration & Release Parity Gates', () => {
+const PINNED_USES_RE = /^[\w.-]+\/[\w.-]+@[0-9a-f]{40}\s+#\s*v\d+/;
+
+export function unpinnedUses(workflowYaml: string): string[] {
+  const bad: string[] = [];
+  for (const line of workflowYaml.replace(/\r\n?/g, '\n').split('\n')) {
+    const m = /^\s*(?:-\s*)?uses:\s*(.+?)\s*$/.exec(line);
+    if (!m) continue;
+    if (!PINNED_USES_RE.test(m[1])) bad.push(m[1]);
+  }
+  return bad;
+}
+
+const REQUIRED_VERIFY_STEPS: readonly string[] = [
+  'npm audit --omit=dev --audit-level=',
+  'npx expo export --platform android',
+  'npx expo export --platform ios',
+  'npx expo export --platform web',
+  'npx expo install --check',
+  'npx expo prebuild --no-install --platform all',
+  'npx expo-doctor',
+];
+
+export function missingVerifySteps(ciYaml: string): string[] {
+  return REQUIRED_VERIFY_STEPS.filter((step) => !ciYaml.includes(step));
+}
+
+describe('Item #7 & F08 (BLD-04, BLD-05, GAP2-04) — CI/CD Hardening, Surface Gates & Release Parity', () => {
   const ci = readFileSync(CI_YML, 'utf8');
+  const rel = readFileSync(RELEASE_YML, 'utf8');
 
   it('ci.yml runs frontend verify, edge-deno-verify (Deno 2), and db-migrations-verify (Postgres 17)', () => {
     expect(ci).toContain('verify:');
     expect(ci).toContain('edge-deno-verify:');
-    expect(ci).toContain('denoland/setup-deno@v2');
+    expect(ci).toMatch(/denoland\/setup-deno@[0-9a-f]{40} # v2/);
     expect(ci).toContain('deno check');
     expect(ci).toContain('deno test supabase/functions/_shared/aiIdempotency_test.ts');
 
@@ -54,13 +81,46 @@ describe('Item #7 — CI/CD Deno 2, Postgres 17 Migration & Release Parity Gates
     expect(job.indexOf("DENO_NO_PACKAGE_JSON: '1'")).toBeLessThan(command);
   });
 
-  it('ships manual workflow_dispatch release parity guard without live DB push commands', () => {
+  it('(+) hardens ci.yml with read-only permissions, cancel-in-progress concurrency, job timeouts and 40-hex SHA pins', () => {
+    const lf = ci.replace(/\r\n?/g, '\n');
+    expect(lf).toMatch(/\npermissions:\n {2}contents: read\n/);
+    expect(lf).toMatch(/\nconcurrency:\n {2}group: ci-\$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\n {2}cancel-in-progress: true\n/);
+
+    const verifyJob = lf.slice(lf.indexOf('  verify:'), lf.indexOf('  edge-deno-verify:'));
+    const edgeJob = lf.slice(lf.indexOf('  edge-deno-verify:'), lf.indexOf('  db-migrations-verify:'));
+    const dbJob = lf.slice(lf.indexOf('  db-migrations-verify:'));
+    expect(verifyJob).toMatch(/\n {4}timeout-minutes: 25\n/);
+    expect(edgeJob).toMatch(/\n {4}timeout-minutes: 10\n/);
+    expect(dbJob).toMatch(/\n {4}timeout-minutes: 15\n/);
+
+    const usesCount = (lf.match(/^\s*(?:-\s*)?uses:/gm) ?? []).length;
+    expect(usesCount).toBeGreaterThanOrEqual(5);
+    expect(unpinnedUses(lf)).toEqual([]);
+  });
+
+  it('(+) ci.yml verify job runs audit, web export, SDK alignment, prebuild plugin check, expo-doctor and bundle env inlining check', () => {
+    expect(missingVerifySteps(ci)).toEqual([]);
+    expect(ci).toContain('EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321');
+    expect(ci).toContain('grep -rl "127.0.0.1:54321" dist');
+  });
+
+  it('(+) ships hardened manual workflow_dispatch release parity guard without live DB push commands', () => {
     expect(existsSync(RELEASE_YML)).toBe(true);
-    const rel = readFileSync(RELEASE_YML, 'utf8');
-    expect(rel).toContain('workflow_dispatch:');
-    expect(rel).toContain('supabase/predeploy_guard.sh');
-    expect(rel).toContain('tools/verify-edge-deployment.mjs');
-    expect(rel).not.toMatch(/supabase\s+db\s+push/);
+    const lf = rel.replace(/\r\n?/g, '\n');
+    expect(lf).toContain('workflow_dispatch:');
+    expect(lf).toMatch(/\npermissions:\n {2}contents: read\n/);
+    expect(lf).toMatch(/\nconcurrency:\n {2}group: supabase-release-verify\n {2}cancel-in-progress: false\n/);
+    expect(lf).toMatch(/\n {4}timeout-minutes: 15\n/);
+    expect(lf).toContain('supabase/predeploy_guard.sh');
+    expect(lf).toContain('tools/verify-edge-deployment.mjs');
+    expect(lf).not.toMatch(/supabase\s+db\s+push/);
+    expect((lf.match(/^\s*(?:-\s*)?uses:/gm) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(unpinnedUses(lf)).toEqual([]);
+  });
+
+  it('(-) rejects unpinned mutable action tags and rejects a ci.yml missing --platform web', () => {
+    expect(unpinnedUses('      - uses: actions/checkout@v5\n')).toEqual(['actions/checkout@v5']);
+    const withoutWeb = ci.replace('npx expo export --platform web', 'echo skipped');
+    expect(missingVerifySteps(withoutWeb)).toEqual(['npx expo export --platform web']);
   });
 });
-
