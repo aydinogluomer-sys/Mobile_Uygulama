@@ -4,6 +4,7 @@
  * The attempt keeper: an unanswered request keeps its id for the resend.
  */
 import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE, IN_PROGRESS_NOTE, retryWhileInProgress } from '../../lib/aiAttempt';
+import { resetAccountMemory } from '../../lib/accountScope';
 import { EdgeTimeoutError } from '../../lib/edgeCall';
 
 const ids = () => { let n = 0; return () => `id-${++n}`; };
@@ -145,5 +146,22 @@ describe('retryWhileInProgress', () => {
 describe('IN_PROGRESS_NOTE', () => {
   it('tells the user a resend is free', () => {
     expect(IN_PROGRESS_NOTE).toMatch(/ikinci kez ücret alınmaz/);
+  });
+});
+
+describe('account boundary (F07.1)', () => {
+  it('(+) resetAccountMemory closes an open attempt so User B never inherits User A requestId', () => {
+    const k = createAttemptKeeper(ids());
+    expect(k.begin('|Merhaba')).toBe('id-1');
+    resetAccountMemory('user_changed');
+    expect(k.begin('|Merhaba')).toBe('id-2');
+  });
+
+  it('(-) rebind after an account boundary is ignored', () => {
+    const k = createAttemptKeeper(ids());
+    expect(k.begin('|Merhaba')).toBe('id-1');
+    resetAccountMemory('signed_out');
+    k.rebind('|Merhaba', 'conv-b|Merhaba');
+    expect(k.begin('conv-b|Merhaba')).toBe('id-2');
   });
 });

@@ -191,6 +191,38 @@ Deno.test('F07 (iv): charged === false (spend replayed) -> refund never called, 
   assertEquals(calls.fail, 1, 'fail called');
 });
 
+Deno.test('F07.1 (v): spend unavailable expires lease instead of releasing claim, and tolerates expireLease throwing', async () => {
+  let released = 0;
+  let expired = 0;
+  const res = await runIdempotentAiRequest(
+    { requestId: 'req-f071-1', mode: 'coach', fingerprint: 'fp', cost: 5 },
+    {
+      begin: async () => ({ kind: 'claimed' }),
+      complete: async () => {},
+      fail: async () => {},
+      release: async () => { released += 1; },
+      spend: async () => ({ kind: 'unavailable', error: 'socket hang up' }),
+      refund: async () => true,
+      expireLease: async () => { expired += 1; throw new Error('expire network error'); },
+      callProvider: async () => { throw new Error('must not reach provider'); },
+      readBalance: async () => 25,
+      describeError: (r) => r,
+    },
+  );
+  assertEquals(released, 0, 'release never called on spend unavailable');
+  assertEquals(expired, 1, 'expireLease called once');
+  assertEquals(res.status, 503, '503 status');
+  assertEquals(res.body.code, 'REFUND_PENDING', 'REFUND_PENDING code');
+
+  const { deps } = refundCase(async () => false);
+  const res2 = await runIdempotentAiRequest(
+    { requestId: 'req-f071-2', mode: 'coach', fingerprint: 'fp', cost: 5 },
+    { ...deps, expireLease: async () => { throw new Error('expireLease threw'); } },
+  );
+  assertEquals(res2.status, 500, 'failAndRefund catches expireLease throw');
+  assertEquals(res2.body.code, 'REFUND_PENDING', 'REFUND_PENDING still returned');
+});
+
 Deno.test('coachContractSchema validates canonical bounds and streams tool_use JSON deltas cleanly', async () => {
   assertCanonicalCoachHabitSchema(COACH_HABIT_SCHEMA);
 

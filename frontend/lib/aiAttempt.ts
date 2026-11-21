@@ -18,6 +18,7 @@
  *
  * Pure apart from the id factory it is given.
  */
+import { accountEpoch } from './accountScope';
 import { extractInvokeError } from './aiInvoke';
 import { EdgeTimeoutError, REQUEST_IN_PROGRESS_RETRY_DELAYS_MS } from './edgeCall';
 
@@ -51,15 +52,16 @@ export type AttemptKeeper = {
 };
 
 export function createAttemptKeeper(newId: () => string): AttemptKeeper {
-  let open: { keys: Set<string>; requestId: string } | null = null;
+  let open: { keys: Set<string>; requestId: string; epoch: number } | null = null;
   return {
     begin(key) {
-      if (open && open.keys.has(key)) return open.requestId;
-      open = { keys: new Set([key]), requestId: newId() };
+      const nowEpoch = accountEpoch();
+      if (open && open.epoch === nowEpoch && open.keys.has(key)) return open.requestId;
+      open = { keys: new Set([key]), requestId: newId(), epoch: nowEpoch };
       return open.requestId;
     },
     rebind(fromKey, toKey) {
-      if (open && open.keys.has(fromKey)) open.keys.add(toKey);
+      if (open && open.epoch === accountEpoch() && open.keys.has(fromKey)) open.keys.add(toKey);
     },
     answered() { open = null; },
   };

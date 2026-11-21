@@ -21,6 +21,9 @@ describe('Item #7 — CI/CD Deno 2, Postgres 17 Migration & Release Parity Gates
     expect(ci).toContain('supabase/live_schema.sql');
     expect(ci).toContain('supabase/migrations/037_today_bootstrap_rpc.sql');
     expect(ci).toContain('public.get_today_bootstrap(CURRENT_DATE)');
+    expect(ci).toContain('supabase/migrations/039_focus_point_hardening.sql');
+    expect(ci).toContain('f07-heal-req:refund');
+    expect(ci).toContain('f07-preclaim-req:refund');
   });
 
   it('checks every active canonical Edge Function and _shared module with deno check', () => {

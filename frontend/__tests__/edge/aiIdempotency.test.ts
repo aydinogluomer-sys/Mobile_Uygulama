@@ -559,6 +559,87 @@ describe('the claim is taken before anything can be spent or called', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('CASE K — F07.1: lost spend response and throwing expireLease never leak credit or crash', () => {
+  it('(+) spend commits on the server then loses its HTTP response (unavailable): claim stays in_progress, lease expires, next call refunds', async () => {
+    const h = makeHarness({ balance: 30 });
+    const realSpend = h.deps.spend;
+    const deps: IdempotencyDeps = {
+      ...h.deps,
+      spend: async (input) => {
+        await realSpend(input); // server committed -25 FP!
+        return { kind: 'unavailable', error: 'FunctionsFetchError: socket hang up' };
+      },
+    };
+
+    const first = await runIdempotentAiRequest(
+      { requestId: 'k-lost', mode: 'routine', fingerprint: await fingerprintInput('routine', [ROUTINE_PROMPT]), cost: 25 },
+      deps,
+    );
+    expect(first.status).toBe(503);
+    expect(first.body.code).toBe(REFUND_PENDING);
+    expect(h.providerCalls).toBe(0);
+    expect(h.released).toEqual([]);
+    expect(h.rows.get('k-lost')?.status).toBe('in_progress');
+    expect(h.leaseExpired).toContain('k-lost');
+
+    // Reconcile runs on next begin: user gets their 25 FP back instead of losing it forever.
+    const next = await run(h, { requestId: 'k-lost' });
+    expect(next.status).toBe(409);
+    expect(next.body.code).toBe(IDEMPOTENCY_CONSUMED);
+    expect(h.refunds()).toEqual([['k-lost:refund', 25]]);
+    expect(h.balance).toBe(30);
+  });
+
+  it('(+) spend fails before committing on the server (0 debit): lease expires, reconcile marks failed with 0 refund', async () => {
+    const h = makeHarness({ balance: 30 });
+    const deps: IdempotencyDeps = {
+      ...h.deps,
+      spend: async () => ({ kind: 'unavailable', error: 'connection refused' }),
+    };
+
+    const first = await runIdempotentAiRequest(
+      { requestId: 'k-uncommitted', mode: 'routine', fingerprint: await fingerprintInput('routine', [ROUTINE_PROMPT]), cost: 25 },
+      deps,
+    );
+    expect(first.status).toBe(503);
+    expect(first.body.code).toBe(REFUND_PENDING);
+    expect(h.released).toEqual([]);
+
+    const next = await run(h, { requestId: 'k-uncommitted' });
+    expect(next.body.code).toBe(IDEMPOTENCY_CONSUMED);
+    expect(h.debits()).toEqual([]);
+    expect(h.refunds()).toEqual([]);
+    expect(h.balance).toBe(30);
+  });
+
+  it('(+) expireLease throwing does not escape failAndRefund or spend.unavailable', async () => {
+    const h = makeHarness({
+      balance: 30,
+      provider: () => ({ ok: false, reason: 'ai_truncated', message: 'Yarım kaldı' }),
+      refundFails: true,
+    });
+    const throwingDeps: IdempotencyDeps = {
+      ...h.deps,
+      expireLease: async () => { throw new Error('network down during expireLease'); },
+    };
+
+    const res = await runIdempotentAiRequest(
+      { requestId: 'k-throw-1', mode: 'routine', fingerprint: 'fp-throw-1', cost: 25 },
+      throwingDeps,
+    );
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe(REFUND_PENDING);
+
+    const res2 = await runIdempotentAiRequest(
+      { requestId: 'k-throw-2', mode: 'routine', fingerprint: 'fp-throw-2', cost: 25 },
+      { ...throwingDeps, spend: async () => ({ kind: 'unavailable', error: 'timeout' }) },
+    );
+    expect(res2.status).toBe(503);
+    expect(res2.body.code).toBe(REFUND_PENDING);
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('the fingerprint identifies the input', () => {
   it('is stable for the same input and mode', async () => {
     expect(await fingerprintInput('routine', ['a'])).toBe(await fingerprintInput('routine', ['a']));

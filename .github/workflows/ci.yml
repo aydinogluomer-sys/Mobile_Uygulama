@@ -634,6 +634,47 @@ jobs:
           grep -q "ai_actions_type_check" "$err"
           psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO public.ai_conversation_actions (conversation_id, user_id, action_type, payload) VALUES ('f2cccccc-0000-4000-8000-000000000002', 'f2000000-0000-4000-8000-000000000002', 'log_habit', '{}'::jsonb)"
 
+      # F07.1: behavioural proof of migration 039's pre-existing data dedupe and unrefunded-failure heal
+      # (plan 07 cases 3-5, which cannot use \i inside supabase/tests/07_focus_point_039.sql).
+      - name: Migration 039 deduplicates resent user messages and refunds only post-claim failed charges (F07.1)
+        run: |
+          set -euo pipefail
+          uid='f7000000-0000-4000-8000-000000000001'
+          cid='f7cccccc-0000-4000-8000-000000000001'
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '039'" -f supabase/rollbacks/039_focus_point_hardening.rollback.sql
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO auth.users (id, email) VALUES ('f7000000-0000-4000-8000-000000000001', 'f07@aderyth.test');
+          SELECT public.get_or_init_subscription_for('f7000000-0000-4000-8000-000000000001');
+          UPDATE public.user_subscriptions SET focus_points = 50 WHERE user_id = 'f7000000-0000-4000-8000-000000000001';
+          INSERT INTO public.ai_conversations (id, user_id, title)
+          VALUES ('f7cccccc-0000-4000-8000-000000000001', 'f7000000-0000-4000-8000-000000000001', 'F07 dedupe');
+          -- Case 3: duplicate user messages before 039's unique index exists (earliest id must survive)
+          INSERT INTO public.ai_messages (id, conversation_id, user_id, role, content, request_id, created_at) VALUES
+            ('f7aaaaaa-0000-4000-8000-000000000001', 'f7cccccc-0000-4000-8000-000000000001', 'f7000000-0000-4000-8000-000000000001', 'user', 'Ayni soru', 'f07-dup-req', now() - interval '2 minutes'),
+            ('f7aaaaaa-0000-4000-8000-000000000002', 'f7cccccc-0000-4000-8000-000000000001', 'f7000000-0000-4000-8000-000000000001', 'user', 'Ayni soru', 'f07-dup-req', now() - interval '1 minute');
+          -- Case 4: failed claim whose charge (created_at >= claim.created_at) was never refunded -> 039 must refund +5
+          INSERT INTO public.ai_requests (user_id, request_id, mode, input_fingerprint, status, error, created_at)
+          VALUES ('f7000000-0000-4000-8000-000000000001', 'f07-heal-req', 'coach', 'fp-heal', 'failed', 'provider timeout', now() - interval '10 minutes');
+          UPDATE public.user_subscriptions SET focus_points = 45 WHERE user_id = 'f7000000-0000-4000-8000-000000000001';
+          INSERT INTO public.credit_transactions (user_id, delta, reason, balance_after, request_id, created_at)
+          VALUES ('f7000000-0000-4000-8000-000000000001', -5, 'ai_coach', 45, 'f07-heal-req', now() - interval '9 minutes');
+          -- Case 5: charge OLDER than the claim row (pre-023 key) -> 039 must NOT refund it
+          UPDATE public.user_subscriptions SET focus_points = 40 WHERE user_id = 'f7000000-0000-4000-8000-000000000001';
+          INSERT INTO public.credit_transactions (user_id, delta, reason, balance_after, request_id, created_at)
+          VALUES ('f7000000-0000-4000-8000-000000000001', -5, 'ai_coach', 40, 'f07-preclaim-req', now() - interval '20 minutes');
+          INSERT INTO public.ai_requests (user_id, request_id, mode, input_fingerprint, status, error, created_at)
+          VALUES ('f7000000-0000-4000-8000-000000000001', 'f07-preclaim-req', 'coach', 'fp-preclaim', 'failed', 'later fail', now() - interval '5 minutes');
+          SQL
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/039_focus_point_hardening.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT id FROM public.ai_messages WHERE conversation_id = '${cid}' AND request_id = 'f07-dup-req'")" = "f7aaaaaa-0000-4000-8000-000000000001"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT focus_points FROM public.user_subscriptions WHERE user_id = '${uid}'")" = "45"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.credit_transactions WHERE user_id = '${uid}' AND request_id = 'f07-heal-req:refund' AND delta = 5")" = "1"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.credit_transactions WHERE user_id = '${uid}' AND request_id = 'f07-preclaim-req:refund'")" = "0"
+          # Idempotency: running 039 a second time returns 0 additional FP
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/039_focus_point_hardening.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT focus_points FROM public.user_subscriptions WHERE user_id = '${uid}'")" = "45"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+
       # The fingerprint must not tell "never touched" (a NULL ACL) from "revoked and granted back" (the
       # explicit default ACL): a rollback that REVOKEs and GRANTs an object back would otherwise show a
       # difference that is not one. The cycle above cannot show this property: every object of

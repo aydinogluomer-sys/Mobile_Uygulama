@@ -222,8 +222,21 @@ export async function runIdempotentAiRequest(
   const spend = await deps.spend({ requestId, mode, cost });
 
   if (spend.kind === 'unavailable') {
-    await deps.release({ requestId });
-    return { status: 503, body: { error: 'Kredi islemi yapilamadi, lutfen tekrar deneyin.' } };
+    // Do NOT release the claim: the spend RPC may have committed on the server
+    // before its HTTP response dropped. Expiring the lease lets reconcile
+    // refund any committed debit (or mark an uncommitted claim failed at 0 FP).
+    try {
+      await deps.expireLease({ requestId });
+    } catch {
+      /* lease expires naturally in 5 min; reconcile refunds if spend committed */
+    }
+    return {
+      status: 503,
+      body: {
+        error: `Kredi işlemi doğrulanamadı, lütfen tekrar deneyin. ${REFUND_PENDING_NOTE}`,
+        code: REFUND_PENDING,
+      },
+    };
   }
 
   if (spend.kind === 'insufficient') {
@@ -256,7 +269,11 @@ export async function runIdempotentAiRequest(
       return { status: 500, body: { error: p.userMessage } };
     }
     // İade yazılamadı: satır in_progress KALIR (fail çağrılsaydı reconcile onu bir daha görmezdi).
-    await deps.expireLease({ requestId });
+    try {
+      await deps.expireLease({ requestId });
+    } catch {
+      /* kira 5 dk sonunda doğal olarak biter ve uzlaştırma iadeyi yazar */
+    }
     return { status: 500, body: { error: `${p.userMessage} ${REFUND_PENDING_NOTE}`, code: REFUND_PENDING } };
   };
 

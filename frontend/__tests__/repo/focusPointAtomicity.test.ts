@@ -180,11 +180,16 @@ describe('every path out after the charge settles it', () => {
     expect(refund).toContain('return false');
   });
 
-  it('expireLease updates ai_requests only while in_progress and calls ai_request_reconcile_stale', () => {
+  it('expireLease updates ai_requests only while in_progress, calls ai_request_reconcile_stale, and never throws (F07.1)', () => {
     const expire = src.slice(src.indexOf('expireLease: async'), src.indexOf('callProvider: callAi'));
     expect(expire).toMatch(/admin\s*\.from\('ai_requests'\)/);
     expect(expire).toContain(".eq('status', 'in_progress')");
     expect(expire).toContain("'ai_request_reconcile_stale'");
+    expect((expire.match(/\btry\s*\{/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    // spend.kind === 'unavailable' must expire the lease rather than delete the claim
+    const spendUnavail = orch.slice(orch.indexOf("spend.kind === 'unavailable'"), orch.indexOf("spend.kind === 'insufficient'"));
+    expect(spendUnavail).toContain('deps.expireLease(');
+    expect(spendUnavail).not.toContain('deps.release(');
   });
 
   it('the success path returns the database balance', () => {
