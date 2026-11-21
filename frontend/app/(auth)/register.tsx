@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, useWindowDimensions,
@@ -19,6 +19,10 @@ import {
 import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
 import SignupPending from '../../components/auth/SignupPending';
+import PasswordToggle from '../../components/auth/PasswordToggle';
+import { signupErrorMessage } from '../../lib/authErrors';
+import { confirmationRedirectUrl } from '../../lib/authDeepLink';
+import { useResendCooldown } from '../../hooks/useResendCooldown';
 
 const decorativeA11y =
   Platform.OS === 'web'
@@ -30,45 +34,11 @@ const decorativeA11y =
 
 type Phase = 'form' | 'pending';
 
-const RESEND_COOLDOWN_SECONDS = 60;
-
 /**
- * Supabase answers in English, and the two answers that matter most here are
- * the two a user can do nothing about unless they are told what they are.
- *
- * Anything unrecognised is passed through untouched rather than flattened into
- * "bir hata oluştu" — an unmapped message is still a real one, and hiding it
- * would cost the next person the only clue they had.
+ * F22: the mapping now lives in lib/authErrors.ts, shared with the sign-in screen (which
+ * resends the same confirmation mail). Re-exported so existing imports keep working.
  */
-export function signupErrorMessage(raw: string): string {
-  const m = raw.toLowerCase();
-
-  if (m.includes('error sending confirmation') || m.includes('error sending email')) {
-    return 'Doğrulama e-postası şu anda gönderilemiyor. Hesabın oluşturulmadı; birazdan tekrar dene.';
-  }
-  if (m.includes('email rate limit') || m.includes('over_email_send_rate_limit')) {
-    return 'Çok fazla e-posta gönderildi. Bir süre bekleyip tekrar dene.';
-  }
-  if (m.includes('for security purposes') || m.includes('rate limit') || m.includes('too many')) {
-    return 'Çok sık denendi. Kısa bir süre bekleyip tekrar dene.';
-  }
-  if (m.includes('already registered') || m.includes('already been registered')) {
-    return 'Bu e-posta zaten kayıtlı. Giriş yapmayı dene.';
-  }
-  if (m.includes('password') && (m.includes('at least') || m.includes('should be'))) {
-    return 'Şifre en az 6 karakter olmalıdır.';
-  }
-  if (m.includes('unable to validate email') || m.includes('invalid format') || m.includes('invalid email')) {
-    return 'E-posta adresi geçerli görünmüyor. Kontrol edip tekrar dene.';
-  }
-  if (m.includes('signups not allowed') || m.includes('signup is disabled')) {
-    return 'Yeni kayıtlar şu anda kapalı.';
-  }
-  if (m.includes('failed to fetch') || m.includes('network')) {
-    return 'Sunucuya ulaşılamadı. Bağlantını kontrol edip tekrar dene.';
-  }
-  return raw;
-}
+export { signupErrorMessage } from '../../lib/authErrors';
 
 export default function RegisterScreen() {
   const { width } = useWindowDimensions();
@@ -94,7 +64,6 @@ export default function RegisterScreen() {
   // Pending-state only.
   const [submittedEmail, setSubmittedEmail] = useState('');
   const [resending, setResending] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
   const [resendNotice, setResendNotice] = useState('');
   const [resendError, setResendError] = useState('');
 
@@ -104,11 +73,11 @@ export default function RegisterScreen() {
   // address back in a different case than it was typed reads like a typo.
   const address = email.trim();
 
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => setResendCooldown((v) => Math.max(0, v - 1)), 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
+  // F22: shared with the sign-in screen for the same address (hooks/useResendCooldown.ts).
+  // Keyed by the address on screen, which IS the submitted one while pending; reading the
+  // submitted value instead would start the wait under the previous key on the first
+  // submit, because the state update lands only on the next render.
+  const cooldown = useResendCooldown(address || null);
 
   async function handleRegister() {
     setEmailError('');
@@ -121,7 +90,13 @@ export default function RegisterScreen() {
     if (password.length < 6) { setPasswordError('Şifre en az 6 karakter olmalıdır.'); return; }
 
     setLoading(true);
-    const { data, error: signUpError } = await supabase.auth.signUp({ email: address, password });
+    // F22 (NAV-07): the confirmation link comes back to the sign-in screen of this app
+    // (native scheme or web origin) instead of the project's Site URL.
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: address,
+      password,
+      options: { emailRedirectTo: confirmationRedirectUrl() },
+    });
     setLoading(false);
 
     if (signUpError) {
@@ -140,26 +115,30 @@ export default function RegisterScreen() {
     // two apart and would equally tell an attacker which addresses have
     // accounts, so it is not read.
     setSubmittedEmail(address);
-    setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    cooldown.start();
     setResendNotice('');
     setResendError('');
     setPhase('pending');
   }
 
   async function handleResend() {
-    if (resendCooldown > 0 || resending) return;
+    if (cooldown.active || resending) return;
 
     setResendNotice('');
     setResendError('');
     setResending(true);
-    const { error: resendErr } = await supabase.auth.resend({ type: 'signup', email: submittedEmail });
+    const { error: resendErr } = await supabase.auth.resend({
+      type: 'signup',
+      email: submittedEmail,
+      options: { emailRedirectTo: confirmationRedirectUrl() },
+    });
     setResending(false);
 
     if (resendErr) {
       setResendError(signupErrorMessage(resendErr.message));
       return;
     }
-    setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    cooldown.start();
     setResendNotice('Doğrulama postası yeniden gönderildi.');
   }
 
@@ -178,7 +157,7 @@ export default function RegisterScreen() {
         email={submittedEmail}
         onResend={handleResend}
         onChangeEmail={handleChangeEmail}
-        resendCooldown={resendCooldown}
+        resendCooldown={cooldown.remaining}
         resending={resending}
         notice={resendNotice}
         error={resendError}
@@ -250,16 +229,7 @@ export default function RegisterScreen() {
           error={passwordError}
           onChangeText={(t) => { setPassword(t); setPasswordError(''); setError(''); }}
           onSubmitEditing={handleRegister}
-          rightElement={(
-            <TouchableOpacity
-              onPress={() => setShowPw((v) => !v)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={showPw ? 'Şifreyi gizle' : 'Şifreyi göster'}
-            >
-              <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textFaint} />
-            </TouchableOpacity>
-          )}
+          rightElement={<PasswordToggle visible={showPw} onToggle={() => setShowPw((v) => !v)} />}
         />
 
         {!!error && (

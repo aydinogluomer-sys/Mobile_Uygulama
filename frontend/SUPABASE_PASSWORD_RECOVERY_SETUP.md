@@ -40,10 +40,19 @@ Hem `Token` hem `ConfirmationURL` tutulduğu için kullanıcı kod veya bağlant
 
 ## Redirect URL
 
-Supabase Dashboard → Authentication → URL Configuration bölümüne web uygulamasının reset adresini ekleyin:
+Supabase Dashboard → Authentication → URL Configuration → Redirect URLs izin listesine şunları ekleyin (F22):
 
 ```text
-https://uygulama-domaininiz.com/reset-password
+atlas://**                      # üretim derlemesi (native): kurtarma ve kayıt onayı bağlantıları
+exp://**                        # YALNIZ geliştirme projesinde (Expo Go)
+https://<web-sitesi>/reset-password   # web barındırma kararından (OD-12 / D15) sonra
+https://<web-sitesi>/login            # web barındırma kararından (OD-12 / D15) sonra
 ```
+
+Uygulama hedefleri kendisi üretir (`frontend/lib/authDeepLink.ts`): kurtarma postası `reset-password`, kayıt onayı ve yeniden gönderme `login` rotasına döner (`emailRedirectTo`). Bir hedef izin listesinde yoksa Supabase hata vermez, "Site URL"e düşer; bu yüzden "Site URL" üretimde çalışan bir web adresi olmalıdır.
+
+Web için SPA yönlendirme kuralı `frontend/vercel.json` dosyasındadır (`/(.*)` → `/index.html`); dosya bir barındırma kararı değildir, başka bir sağlayıcı seçilirse eşdeğer kural (ör. `/* /index.html 200`) eklenir.
+
+Kalan risk: özel şema (`atlas://`) bağlantıları Android'de başka bir uygulama tarafından yakalanabilir. Belirteç kısa ömürlü ve tek kullanımlıktır; asıl yol 6 haneli koddur (`{{ .Token }}` şablonda önde kalır).
 
 Yerel geliştirme adresini de ayrıca ekleyin. Production gönderimleri için Supabase’in varsayılan e-posta hizmeti yerine doğrulanmış bir custom SMTP sağlayıcısı kullanın.

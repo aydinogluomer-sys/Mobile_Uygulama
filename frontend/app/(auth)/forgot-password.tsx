@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView,
@@ -6,7 +6,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
-import * as Linking from 'expo-linking';
 import { supabase } from '../../lib/supabase';
 import { colors, space, radius, font, shadow, fontFamily } from '../../lib/tokens';
 import {
@@ -17,26 +16,11 @@ import {
 } from '../../components/ui';
 import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
+import { recoveryErrorMessage } from '../../lib/authErrors';
+import { recoveryRedirectUrl } from '../../lib/authDeepLink';
+import { useResendCooldown } from '../../hooks/useResendCooldown';
 
 type Step = 'email' | 'code';
-
-function buildResetRedirectUrl() {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return `${window.location.origin}/reset-password`;
-  }
-  return Linking.createURL('reset-password');
-}
-
-function recoveryError(message: string) {
-  const lower = message.toLowerCase();
-  if (lower.includes('expired') || lower.includes('invalid') || lower.includes('token')) {
-    return 'Kod geçersiz veya süresi dolmuş. Yeni bir kod isteyip tekrar deneyin.';
-  }
-  if (lower.includes('security purposes') || lower.includes('rate limit') || lower.includes('too many')) {
-    return 'Çok sık kod istendi. Lütfen kısa bir süre bekleyip tekrar deneyin.';
-  }
-  return message;
-}
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -46,15 +30,11 @@ export default function ForgotPasswordScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
-  const [resendCooldown, setResendCooldown] = useState(0);
 
   const normalizedEmail = email.trim().toLowerCase();
-
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => setResendCooldown((value) => Math.max(0, value - 1)), 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
+  // F22: the shared, clock-based wait (hooks/useResendCooldown.ts).
+  const cooldown = useResendCooldown(normalizedEmail);
+  const resendCooldown = cooldown.remaining;
 
   async function handleSendCode() {
     if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
@@ -70,17 +50,17 @@ export default function ForgotPasswordScreen() {
     setInfo('');
     setLoading(true);
     const { error: sendError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-      redirectTo: buildResetRedirectUrl(),
+      redirectTo: recoveryRedirectUrl(),
     });
     setLoading(false);
 
     if (sendError) {
-      setError(recoveryError(sendError.message));
+      setError(recoveryErrorMessage(sendError.message));
       return;
     }
 
     setStep('code');
-    setResendCooldown(60);
+    cooldown.start();
     setInfo('Hesap bu adresle eşleşiyorsa 6 haneli doğrulama kodu gönderildi. Yeni mesajı ve Spam klasörünü kontrol et.');
   }
 
@@ -101,7 +81,7 @@ export default function ForgotPasswordScreen() {
     setLoading(false);
 
     if (verifyError || !data.session) {
-      setError(recoveryError(verifyError?.message ?? 'Doğrulama oturumu oluşturulamadı.'));
+      setError(recoveryErrorMessage(verifyError?.message ?? 'Doğrulama oturumu oluşturulamadı.'));
       return;
     }
 

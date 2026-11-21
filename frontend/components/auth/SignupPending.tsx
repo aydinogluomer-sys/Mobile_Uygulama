@@ -14,7 +14,31 @@ type Props = {
   resending?: boolean;
   notice?: string;
   error?: string;
+  /**
+   * F22 (NAV-05): `registered` (default) right after sign-up; `unconfirmed` when sign-in
+   * answered "Email not confirmed". Only the copy changes, the contract stays the same.
+   */
+  variant?: 'registered' | 'unconfirmed';
 };
+
+const COPY = {
+  registered: {
+    eyebrow: 'KAYIT ALINDI',
+    title: 'Şimdi e-postanı doğrula',
+    lede: 'Hesabını etkinleştirmek için bir doğrulama bağlantısı gönderdik.',
+    hint:
+      'Birkaç dakika içinde gelmezse Spam / Gereksiz klasörüne bak. Bu adres '
+      + 'zaten kayıtlıysa yeni bir posta gelmez — doğrudan giriş yapabilirsin.',
+  },
+  // The "already registered" sentence is left out here: this account IS registered, and
+  // telling its owner a new mail may not come would contradict the button below.
+  unconfirmed: {
+    eyebrow: 'E-POSTA DOĞRULANMADI',
+    title: 'E-postanı doğrula',
+    lede: 'Giriş yapabilmek için önce e-postandaki doğrulama bağlantısına dokunmalısın.',
+    hint: 'Birkaç dakika içinde gelmezse Spam / Gereksiz klasörüne bak.',
+  },
+} as const;
 
 /**
  * The state after a successful `signUp()` when the project requires email
@@ -52,9 +76,10 @@ type Props = {
  * close, so the copy covers both cases and the code never branches on it.
  */
 export default function SignupPending({
-  email, onResend, onChangeEmail, resendCooldown, resending, notice, error,
+  email, onResend, onChangeEmail, resendCooldown, resending, notice, error, variant = 'registered',
 }: Props) {
   const canResend = resendCooldown <= 0 && !resending;
+  const copy = COPY[variant];
 
   return (
     <View style={s.wrap} accessibilityRole="summary">
@@ -67,12 +92,10 @@ export default function SignupPending({
         />
       </View>
 
-      <Text style={s.eyebrow}>KAYIT ALINDI</Text>
-      <Text style={s.title}>Şimdi e-postanı doğrula</Text>
+      <Text style={s.eyebrow}>{copy.eyebrow}</Text>
+      <Text style={s.title}>{copy.title}</Text>
 
-      <Text style={s.lede}>
-        Hesabını etkinleştirmek için bir doğrulama bağlantısı gönderdik.
-      </Text>
+      <Text style={s.lede}>{copy.lede}</Text>
 
       <View style={s.addressChip}>
         <Ionicons name="at-outline" size={15} color={colors.textFaint} />
@@ -87,10 +110,7 @@ export default function SignupPending({
 
       <View style={s.hintRow}>
         <Ionicons name="information-circle-outline" size={15} color={colors.textFaint} />
-        <Text style={s.hint}>
-          Birkaç dakika içinde gelmezse Spam / Gereksiz klasörüne bak. Bu adres
-          zaten kayıtlıysa yeni bir posta gelmez — doğrudan giriş yapabilirsin.
-        </Text>
+        <Text style={s.hint}>{copy.hint}</Text>
       </View>
 
       {!!notice && (
@@ -184,7 +204,7 @@ const s = StyleSheet.create({
   noticeText: { flex: 1, color: colors.success, fontSize: 13, lineHeight: 18 },
   errorText: { flex: 1, color: colors.error, fontSize: 13, lineHeight: 18 },
 
-  linkBtn: { marginTop: space.lg, alignItems: 'center' },
+  linkBtn: { marginTop: space.lg, alignItems: 'center', justifyContent: 'center', minHeight: 44 },
   linkText: { color: colors.textDim, fontSize: 14 },
   linkHighlight: { color: colors.primaryBright, fontWeight: '700' },
 });
