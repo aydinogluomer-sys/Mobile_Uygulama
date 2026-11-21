@@ -22,6 +22,11 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
+import {
+  assertCanonicalProjectRef,
+  projectRefFromUrl,
+  readCanonicalProjectRef,
+} from './lib/canonicalProjectRef.mjs';
 
 const APPLY = process.argv.includes('--apply');
 
@@ -40,7 +45,20 @@ const env = Object.fromEntries(
 const supabaseUrl = env.EXPO_PUBLIC_SUPABASE_URL;
 if (!supabaseUrl) throw new Error('EXPO_PUBLIC_SUPABASE_URL .env içinde bulunamadı.');
 
-const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
+const projectRef = projectRefFromUrl(supabaseUrl);
+
+// F08 (BLD-13): before anything else -- dry run included, before any fetch -- the target must be the
+// canonical project pinned in supabase/config.toml (the script runs from frontend/). An unreadable
+// config.toml is a refusal too (fail-closed): a guard that cannot read its pin must not pass.
+let canonicalProjectRef = '';
+try {
+  canonicalProjectRef = readCanonicalProjectRef(resolve('..', 'supabase', 'config.toml'));
+} catch {
+  process.stderr.write('REDDEDİLDİ: supabase/config.toml project_id okunamadı; kanonik proje doğrulanamadı.\n');
+  process.exit(2);
+}
+assertCanonicalProjectRef(projectRef, canonicalProjectRef);
+
 const endpoint = `https://api.supabase.com/v1/projects/${projectRef}/config/auth`;
 
 /**

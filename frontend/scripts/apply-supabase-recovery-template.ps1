@@ -6,6 +6,7 @@ Set-Location -LiteralPath $projectRoot
 Write-Host ''
 Write-Host 'Aderyth Supabase auth e-posta şablonları' -ForegroundColor Cyan
 Write-Host 'Token ekranda gösterilmez, dosyaya yazılmaz ve işlem sonunda bellekten temizlenir.' -ForegroundColor DarkGray
+Write-Host 'Kanonik olmayan proje reddedilir: .env URL''si supabase/config.toml project_id ile eşleşmezse hiçbir istek gönderilmez.' -ForegroundColor DarkGray
 Write-Host ''
 
 $secureToken = Read-Host 'Supabase Personal Access Token' -AsSecureString
