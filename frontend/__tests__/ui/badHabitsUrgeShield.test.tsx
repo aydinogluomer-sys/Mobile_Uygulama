@@ -13,7 +13,7 @@ jest.mock('../../services/badHabitService', () => ({
 }));
 
 const mockHaptic = {
-  success: jest.fn(() => {
+  success: jest.fn<void, []>(() => {
     if (mockHaptic.success.mock.calls.length > 25) {
       throw new Error('GAP1-01 runaway urge counter loop (>25 ticks at 0s)');
     }
@@ -25,11 +25,11 @@ const mockHaptic = {
 };
 jest.mock('../../lib/haptics', () => ({
   haptic: {
-    success: (...args: unknown[]) => mockHaptic.success(...args),
-    medium: (...args: unknown[]) => mockHaptic.medium(...args),
-    light: (...args: unknown[]) => mockHaptic.light(...args),
-    select: (...args: unknown[]) => mockHaptic.select(...args),
-    warning: (...args: unknown[]) => mockHaptic.warning(...args),
+    success: () => mockHaptic.success(),
+    medium: () => mockHaptic.medium(),
+    light: () => mockHaptic.light(),
+    select: () => mockHaptic.select(),
+    warning: () => mockHaptic.warning(),
   },
 }));
 

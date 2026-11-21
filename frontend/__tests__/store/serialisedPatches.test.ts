@@ -172,7 +172,7 @@ describe('serialisedPatches — STO-19 sequential entity PATCHes', () => {
       status: 'reading' as const,
       url: null,
       notes: null,
-      rating: null,
+      rating: null as number | null,
       created_at: 'now',
       updated_at: 'now',
     };

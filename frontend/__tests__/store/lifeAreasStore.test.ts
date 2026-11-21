@@ -94,7 +94,7 @@ describe('lifeAreasStore — STO-18 empty server state, date-aware overlay, and 
 
     // Offline + outbox write fails
     mockUpsert.mockResolvedValueOnce({ ok: false, error: 'offline', offline: true });
-    const writeSpy = jest.spyOn(coreOutbox, 'write').mockResolvedValueOnce({ ok: false });
+    const writeSpy = jest.spyOn(coreOutbox, 'write').mockResolvedValueOnce({ ok: false, error: 'disk_full' });
     expect(await useLifeAreasStore.getState().save()).toBe(false);
     expect(useLifeAreasStore.getState().error).toBeTruthy();
     writeSpy.mockRestore();

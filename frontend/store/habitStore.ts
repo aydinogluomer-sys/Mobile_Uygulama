@@ -389,10 +389,11 @@ export const useHabitStore = create<HabitStore>((rawSet, get) => {
       override: opts?.override === true,
     });
     if (!res.ok) {
+      const reason = res.verdict.allowed ? undefined : res.verdict.reason;
       return {
         ok: false,
-        reason: res.verdict.reason,
-        error: ACTIVATION_MESSAGES[res.verdict.reason] ?? 'Alışkanlık etkinleştirilemedi.',
+        reason,
+        error: (reason ? ACTIVATION_MESSAGES[reason] : undefined) ?? 'Alışkanlık etkinleştirilemedi.',
       };
     }
     touchHabits();

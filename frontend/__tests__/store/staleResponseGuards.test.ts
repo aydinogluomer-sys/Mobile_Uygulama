@@ -346,7 +346,7 @@ describe('staleResponseGuards — F18 store consistency', () => {
           conversation_id: 'conv-a',
           assistant_message_id: null,
           user_id: 'u1',
-          action_type: 'propose_habit',
+          action_type: 'propose_habit' as const,
           payload: {},
           status: 'pending' as const,
           created_at: '2026-11-21T10:00:00Z',
@@ -528,26 +528,45 @@ describe('staleResponseGuards — F18 store consistency', () => {
 
       weeklyGate.resolve({
         ok: true,
-        data: [{ id: 'u-weekly', username: 'haftalik', xp: 120, level: 2 } as LeaderboardRow],
+        data: [
+          {
+            user_id: 'u-weekly',
+            username: 'haftalik',
+            total_xp: 120,
+            weekly_xp: 120,
+            level: 2,
+            willpower_rank: 'Çırak',
+            rank: 1,
+          },
+        ],
       });
       await pWeekly;
       expect(useProfileStore.getState().lbLoading).toBe(true); // global still pending
 
       globalGate.resolve({
         ok: true,
-        data: [{ id: 'u-global', username: 'genel', xp: 9999, level: 20 } as LeaderboardRow],
+        data: [
+          {
+            user_id: 'u-global',
+            username: 'genel',
+            total_xp: 9999,
+            level: 20,
+            willpower_rank: 'Usta',
+            rank: 1,
+          },
+        ],
       });
       await pGlobal;
 
       expect(useProfileStore.getState().scope).toBe('weekly');
-      expect(useProfileStore.getState().leaderboard.map((r) => r.id)).toEqual(['u-weekly']);
+      expect(useProfileStore.getState().leaderboard.map((r) => r.user_id)).toEqual(['u-weekly']);
       expect(useProfileStore.getState().lbLoading).toBe(false);
     });
   });
 
   describe('routineStore & habit deduplication (STO-16)', () => {
     it('blocks re-entrant generateRoutine, drops cross-account balance/proposal writes, and deduplicates addInstalledHabits', async () => {
-      useSubscriptionStore.setState({ balance: 10 });
+      useSubscriptionStore.getState().setBalance(10);
       const invokeGate = deferred<{ data: Record<string, unknown>; error: null }>();
       mockInvoke.mockImplementationOnce(() => invokeGate.promise);
 
@@ -561,7 +580,7 @@ describe('staleResponseGuards — F18 store consistency', () => {
 
       // Account switches while generation is in flight: User A's balance & proposal must NOT land in User B
       resetAccountMemory('user_changed');
-      useSubscriptionStore.setState({ balance: 50 });
+      useSubscriptionStore.getState().setBalance(50);
 
       invokeGate.resolve({
         data: {
@@ -574,7 +593,7 @@ describe('staleResponseGuards — F18 store consistency', () => {
       });
       await first;
 
-      expect(useSubscriptionStore.getState().balance).toBe(50);
+      expect(useSubscriptionStore.getState().focusPoints).toBe(50);
       expect(useRoutineStore.getState().proposal).toBeNull();
       expect(useRoutineStore.getState().pendingProposal).toBeNull();
 
