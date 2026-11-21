@@ -3,6 +3,7 @@
  */
 import { supabase } from '../lib/supabase';
 import type { FocusSessionRow } from '../lib/focusReport';
+import { requireComplete, selectAllPages } from './pagedSelect';
 import { currentUserId, RepoResult, insertOwnedWithId } from './shared';
 
 export type ReviewFocusSecondsRow = { completed_seconds: number };
@@ -20,14 +21,18 @@ export async function fetchFocusSecondsForReview(params: {
 }): Promise<RepoResult<ReviewFocusSecondsRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
-    .from('focus_sessions')
-    .select('completed_seconds')
-    .eq('user_id', u.userId)
-    .gte('started_at', params.start)
-    .lte('started_at', `${params.end}T23:59:59`);
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as ReviewFocusSecondsRow[] };
+  const r = await selectAllPages<ReviewFocusSecondsRow>((from, to) =>
+    supabase
+      .from('focus_sessions')
+      .select('completed_seconds')
+      .eq('user_id', u.userId)
+      .gte('started_at', params.start)
+      .lte('started_at', `${params.end}T23:59:59`)
+      .order('started_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  return requireComplete(r, 'Odak özeti');
 }
 
 /**
@@ -39,14 +44,17 @@ export async function fetchFocusSessionsSince(params: {
 }): Promise<RepoResult<FocusSessionRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
-    .from('focus_sessions')
-    .select(REPORT_COLS)
-    .eq('user_id', u.userId)
-    .gte('started_at', params.sinceIso)
-    .order('started_at', { ascending: false });
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as FocusSessionRow[] };
+  const r = await selectAllPages<FocusSessionRow>((from, to) =>
+    supabase
+      .from('focus_sessions')
+      .select(REPORT_COLS)
+      .eq('user_id', u.userId)
+      .gte('started_at', params.sinceIso)
+      .order('started_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  return requireComplete(r, 'Odak seansları');
 }
 
 /**
@@ -56,17 +64,18 @@ export async function fetchFocusSessionsSince(params: {
 export async function fetchAllFocusSessions(): Promise<RepoResult<FocusSessionFullRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
-    .from('focus_sessions')
-    .select('*')
-    .eq('user_id', u.userId)
-    .order('started_at', { ascending: false })
-    // Export reads the whole collection by design; the cap keeps "whole"
-    // finite. 5000 sessions is far beyond any real account, and an export
-    // that can grow without limit is a memory failure waiting for one user.
-    .limit(5000);
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as FocusSessionFullRow[] };
+  const r = await selectAllPages<FocusSessionFullRow>(
+    (from, to) =>
+      supabase
+        .from('focus_sessions')
+        .select('*')
+        .eq('user_id', u.userId)
+        .order('started_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(from, to),
+    { maxRows: 20_000 },
+  );
+  return requireComplete(r, 'Odak seansları');
 }
 
 /**

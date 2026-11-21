@@ -15,7 +15,9 @@
 
 export type BoundKind =
   | 'KEYSET_PAGE'
+  | 'RANGE_PAGED'
   | 'DATE_WINDOW'
+  | 'UNPAGED_WINDOW'
   | 'BOUNDED_SEARCH'
   | 'SINGLE_ROW'
   | 'EXACT_COUNT'
@@ -85,8 +87,11 @@ export function extractChains(src: string): QueryChain[] {
     else if (single) bound = 'SINGLE_ROW';
     else if (/count:\s*['"]exact['"]/.test(chain)) bound = 'EXACT_COUNT';
     else if (/\.\s*ilike\s*\(/.test(chain) && /\.\s*limit\s*\(/.test(chain)) bound = 'BOUNDED_SEARCH';
-    else if (/\.\s*gte\s*\(/.test(chain) && /\.\s*limit\s*\(/.test(chain)) bound = 'DATE_WINDOW';
-    else if (/\.\s*gte\s*\(/.test(chain)) bound = 'DATE_WINDOW';
+    else if (/\.\s*range\s*\(/.test(chain)) bound = 'RANGE_PAGED';
+    else if (/\.\s*gte\s*\(/.test(chain)) {
+      const lim = /\.\s*limit\s*\(\s*(\d+)\s*\)/.exec(chain);
+      bound = lim && Number(lim[1]) <= 1000 ? 'DATE_WINDOW' : 'UNPAGED_WINDOW';
+    }
     else if (/\.\s*in\s*\(/.test(chain)) bound = 'BOUNDED_DOMAIN_WINDOW';
     else if (/\.\s*limit\s*\(/.test(chain)) bound = 'BOUNDED_DOMAIN_WINDOW';
 

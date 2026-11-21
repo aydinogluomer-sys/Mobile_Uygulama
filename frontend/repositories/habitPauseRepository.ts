@@ -10,6 +10,7 @@
  */
 import { supabase } from '../lib/supabase';
 import type { PauseInterval, GoalVersion, PauseDraft } from '../lib/habitPauses';
+import { requireComplete, selectAllPages } from './pagedSelect';
 import { currentUserId, deleteOwned, isTransportFailure, updateOwned, type RepoResult } from './shared';
 
 const PAUSE_COLS = 'id,habit_id,kind,start_date,end_date';
@@ -42,15 +43,19 @@ export async function fetchPauses(): Promise<RepoResult<Optional<PauseInterval>>
 export async function fetchGoalVersions(): Promise<RepoResult<Optional<GoalVersion>>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error, status } = await supabase
-    .from('habit_goal_versions')
-    .select(VERSION_COLS)
-    .eq('user_id', u.userId)
-    .order('effective_from', { ascending: true })
-    .limit(5000);
-  if (isMissingTable(error)) return { ok: true, data: { available: false, rows: [] } };
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
-  return { ok: true, data: { available: true, rows: (data ?? []) as unknown as GoalVersion[] } };
+  const r = await selectAllPages<GoalVersion>((from, to) =>
+    supabase
+      .from('habit_goal_versions')
+      .select(VERSION_COLS)
+      .eq('user_id', u.userId)
+      .order('effective_from', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  if (!r.ok && isMissingTable(r)) return { ok: true, data: { available: false, rows: [] } };
+  const complete = requireComplete(r, 'Hedef sürümleri');
+  if (!complete.ok) return complete;
+  return { ok: true, data: { available: true, rows: complete.data } };
 }
 
 /** A pause (habitId set) or a holiday (habitId null). The DB CHECK pins the pairing. */

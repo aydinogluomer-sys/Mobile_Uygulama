@@ -8,7 +8,6 @@ import {
   Modal,
   TextInput,
   Alert,
-  Share,
   ActivityIndicator,
   Switch,
   Linking,
@@ -22,7 +21,10 @@ import {
   listWebhooks, registerWebhook, removeWebhook,
   type WebhookRow,
 } from '../../services/webhookService';
-import { buildBackup, renderBackup, MAX_ROWS, type ExportFormat } from '../../services/exportService';
+import { buildBackup, isBackupComplete, renderBackup, MAX_ROWS, type ExportFormat } from '../../services/exportService';
+import { shareOrDownload } from '../../lib/shareFile';
+import { EXPORT_META } from '../../lib/focusReport';
+import { todayLocal } from '../../lib/date';
 import { deleteAccount, signOutCurrentAccount, unsentChangeCount } from '../../services/accountService';
 import { flushAllOutboxes } from '../../services/unifiedOutbox';
 import SignOutConfirmModal from '../../components/SignOutConfirmModal';
@@ -88,6 +90,7 @@ export default function SettingsScreen() {
     router.push('/onboarding/needs');
   }
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [seedingDemo, setSeedingDemo] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   // F04 (NAV-02) — a user-facing sign-out, confirmed in a modal that also works on the web.
@@ -128,6 +131,7 @@ export default function SettingsScreen() {
   const handleExportData = async (format: ExportFormat) => {
     try {
       setExportingFormat(format);
+      setExportNotice(null);
 
       // Built on the device from this account's own repositories. The three
       // endpoints this replaces read the entire database with no user filter
@@ -136,33 +140,54 @@ export default function SettingsScreen() {
       // R08 — the manifest names the account, so the file can be checked later.
       const me = await currentUser();
       const backup = await buildBackup(new Date(), { userId: me?.id ?? null });
+      const notices: string[] = [];
 
       // R08.02 — a collection cut at the row ceiling (MAX_ROWS) is said out loud too:
       // such a file is refused by the restore check, so it must not look complete.
-      if (backup.truncated.length > 0) {
-        Alert.alert(
-          'Dışa aktarım tam değil',
-          `Şu bölümler ${MAX_ROWS.toLocaleString('tr-TR')} kayıt sınırında kesildi: ${backup.truncated.join(', ')}. Bu dosya geri yükleme için kullanılamaz; paylaşılan metin hangi bölümlerin eksik olduğunu yazıyor.`,
-        );
+      if (!isBackupComplete(backup)) {
+        if (backup.truncated.length > 0) {
+          notices.push(
+            `Şu bölümler ${MAX_ROWS.toLocaleString('tr-TR')} kayıt sınırında kesildi: ${backup.truncated.join(', ')}. Bu dosya geri yükleme için kullanılamaz.`,
+          );
+          Alert.alert(
+            'Dışa aktarım tam değil',
+            `Şu bölümler ${MAX_ROWS.toLocaleString('tr-TR')} kayıt sınırında kesildi: ${backup.truncated.join(', ')}. Bu dosya geri yükleme için kullanılamaz; paylaşılan metin hangi bölümlerin eksik olduğunu yazıyor.`,
+          );
+        }
+        if (backup.failed.length > 0) {
+          notices.push(`Şu bölümler okunamadı: ${backup.failed.map((f) => f.collection).join(', ')}.`);
+          Alert.alert(
+            'Dışa aktarım eksik',
+            `Şu bölümler okunamadı: ${backup.failed.map((f) => f.collection).join(', ')}.\n\n` +
+              'Yine de paylaşabilirsiniz; dosya hangi bölümlerin eksik olduğunu yazıyor.',
+          );
+        }
       }
-      if (backup.failed.length > 0) {
-        Alert.alert(
-          'Dışa aktarım eksik',
-          `Şu bölümler okunamadı: ${backup.failed.map((f) => f.collection).join(', ')}.
 
-` +
-            'Yine de paylaşabilirsiniz; dosya hangi bölümlerin eksik olduğunu yazıyor.',
-        );
-      }
-
-      await Share.share({
-        message: renderBackup(backup, format),
+      const out = await shareOrDownload({
+        filename: `aderyth-disa-aktarim-${todayLocal()}.${EXPORT_META[format].ext}`,
+        mime: EXPORT_META[format].mime,
+        content: renderBackup(backup, format),
         title: `Aderyth Veri Dışa Aktarımı (${format.toUpperCase()})`,
       });
+      if (out === 'downloaded') {
+        notices.push('Dosya indirildi.');
+      } else if (out === 'too_large') {
+        notices.push(
+          'Dışa aktarım bu cihazın paylaşım menüsüne sığmayacak kadar büyük; JSON biçimini dene ya da web sürümünden indir.',
+        );
+      }
+      const nextNotice = notices.filter(Boolean).join(' ');
+      setExportNotice(nextNotice || null);
     } catch (error) {
-      Alert.alert('Hata', 'Veriler dışa aktarılırken bir hata oluştu');
-      // R10.03 — through the scrubbing funnel, never raw to the device log.
-      reportError(error, 'manual', 'export');
+      if (error instanceof Error && error.message === 'DOWNLOAD_UNAVAILABLE') {
+        setExportNotice('Tarayıcın dosya indirmeyi engelledi; indirme iznini kontrol et.');
+      } else {
+        Alert.alert('Hata', 'Veriler dışa aktarılırken bir hata oluştu');
+        setExportNotice('Veriler dışa aktarılırken bir hata oluştu.');
+        // R10.03 — through the scrubbing funnel, never raw to the device log.
+        reportError(error, 'manual', 'export');
+      }
     } finally {
       setExportingFormat(null);
     }
@@ -453,6 +478,7 @@ export default function SettingsScreen() {
                 Bu tam bir yedek değildir — tam geri yükleme yoktur. JSON dosyası
                 aşağıda doğrulanıp eksik kayıtlar hesabına eklenebilir; alışkanlık
                 kayıtları, odak oturumları ve webhook&apos;lar geri yüklenemez.
+                Dışa aktarım tüm alışkanlık kayıtlarını (yapıldı, kısmen, atlandı, kaçırıldı) notlarıyla içerir.
               </Text>
               {/* R08.03 — the chosen protection boundary, said before sharing (docs/implementation-v3/R08_BACKUP_PROTECTION.md). */}
               <Text style={styles.exportSubtitle} accessibilityRole="text">
@@ -506,6 +532,11 @@ export default function SettingsScreen() {
                   )}
                 </TouchableOpacity>
               </View>
+              {exportNotice !== null && (
+                <Text style={styles.exportNotice} accessibilityLiveRegion="polite">
+                  {exportNotice}
+                </Text>
+              )}
               <RestorePanel />
               <CsvImportPanel />
             </View>
@@ -1162,6 +1193,7 @@ const styles = StyleSheet.create({
   },
   exportButton: {
     flex: 1,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1172,6 +1204,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderWidth: 2,
     borderColor: colors.border,
+  },
+  exportNotice: {
+    marginTop: 10,
+    fontSize: 12,
+    color: colors.textDim,
+    lineHeight: 17,
   },
   exportButtonLoading: {
     opacity: 0.6,

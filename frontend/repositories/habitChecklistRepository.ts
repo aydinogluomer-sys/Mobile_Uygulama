@@ -9,6 +9,7 @@
 import { supabase } from '../lib/supabase';
 import type { ChecklistCheck, ChecklistItem } from '../lib/habitChecklist';
 import { isMissingTable, type Optional } from './habitPauseRepository';
+import { requireComplete, selectAllPages } from './pagedSelect';
 import { currentUserId, isTransportFailure, updateOwned, type RepoResult } from './shared';
 
 const ITEM_COLS = 'id,habit_id,title,required,position,created_at,archived_at';
@@ -17,30 +18,39 @@ const CHECK_COLS = 'item_id,habit_id,day';
 export async function fetchChecklistItems(): Promise<RepoResult<Optional<ChecklistItem>>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error, status } = await supabase
-    .from('habit_checklist_items')
-    .select(ITEM_COLS)
-    .eq('user_id', u.userId)
-    .order('position', { ascending: true })
-    .limit(2000);
-  if (isMissingTable(error)) return { ok: true, data: { available: false, rows: [] } };
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
-  return { ok: true, data: { available: true, rows: (data ?? []) as unknown as ChecklistItem[] } };
+  const r = await selectAllPages<ChecklistItem>((from, to) =>
+    supabase
+      .from('habit_checklist_items')
+      .select(ITEM_COLS)
+      .eq('user_id', u.userId)
+      .order('position', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  if (!r.ok && isMissingTable(r)) return { ok: true, data: { available: false, rows: [] } };
+  const complete = requireComplete(r, 'Kontrol listesi adımları');
+  if (!complete.ok) return complete;
+  return { ok: true, data: { available: true, rows: complete.data } };
 }
 
 /** Checks on or after `sinceDay` -- the screens read today and the recent past. */
 export async function fetchChecklistChecks(sinceDay: string): Promise<RepoResult<Optional<ChecklistCheck>>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error, status } = await supabase
-    .from('habit_checklist_checks')
-    .select(CHECK_COLS)
-    .eq('user_id', u.userId)
-    .gte('day', sinceDay)
-    .limit(5000);
-  if (isMissingTable(error)) return { ok: true, data: { available: false, rows: [] } };
-  if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
-  return { ok: true, data: { available: true, rows: (data ?? []) as unknown as ChecklistCheck[] } };
+  const r = await selectAllPages<ChecklistCheck>((from, to) =>
+    supabase
+      .from('habit_checklist_checks')
+      .select(CHECK_COLS)
+      .eq('user_id', u.userId)
+      .gte('day', sinceDay)
+      .order('day', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  if (!r.ok && isMissingTable(r)) return { ok: true, data: { available: false, rows: [] } };
+  const complete = requireComplete(r, 'Kontrol listesi işaretleri');
+  if (!complete.ok) return complete;
+  return { ok: true, data: { available: true, rows: complete.data } };
 }
 
 export async function insertChecklistItem(input: { habit_id: string; title: string; required: boolean; position: number }): Promise<RepoResult<ChecklistItem>> {

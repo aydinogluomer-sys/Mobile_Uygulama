@@ -31,8 +31,9 @@ jest.mock('../../lib/supabase', () => {
     const eqFilters: Record<string, unknown> = {};
     const inFilters: Record<string, unknown[]> = {};
     const rangeFilters: { col: string; op: 'gte' | 'lte'; val: unknown }[] = [];
-    let orderCol: string | null = null;
-    let orderAsc = true;
+    const orders: { col: string; asc: boolean }[] = [];
+    let sliceRange: [number, number] | null = null;
+    let limitN: number | null = null;
 
     const q: any = {
       eq(col: string, val: unknown) { eqFilters[col] = val; return q; },
@@ -40,8 +41,11 @@ jest.mock('../../lib/supabase', () => {
       lte(col: string, val: unknown) { rangeFilters.push({ col, op: 'lte', val }); return q; },
       in(col: string, vals: unknown[]) { inFilters[col] = vals; return q; },
       order(col: string, opts?: { ascending?: boolean }) {
-        orderCol = col; orderAsc = opts?.ascending ?? true; return q;
+        orders.push({ col, asc: opts?.ascending ?? true });
+        return q;
       },
+      range(from: number, to: number) { sliceRange = [from, to]; return q; },
+      limit(n: number) { limitN = n; return q; },
       then(onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) {
         if (mockDb.error) {
           return Promise.resolve({ data: null, error: mockDb.error }).then(onOk, onErr);
@@ -60,14 +64,18 @@ jest.mock('../../lib/supabase', () => {
           }
           return true;
         });
-        if (orderCol) {
-          const col = orderCol;
+        if (orders.length > 0) {
           rows = [...rows].sort((a, b) => {
-            const av = a[col] as string; const bv = b[col] as string;
-            const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-            return orderAsc ? cmp : -cmp;
+            for (const o of orders) {
+              const av = String(a[o.col] ?? '');
+              const bv = String(b[o.col] ?? '');
+              if (av !== bv) return o.asc ? (av < bv ? -1 : 1) : (av > bv ? -1 : 1);
+            }
+            return 0;
           });
         }
+        if (sliceRange) rows = rows.slice(sliceRange[0], sliceRange[1] + 1);
+        else if (limitN !== null) rows = rows.slice(0, limitN);
         return Promise.resolve({ data: rows.map((r) => project(r, cols)), error: null }).then(onOk, onErr);
       },
     };

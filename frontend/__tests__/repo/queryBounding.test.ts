@@ -31,11 +31,23 @@ type Row = {
   userScoped: boolean;
 };
 
+const ALLOWED_EXEMPT_REASONS = new Set([
+  'tek gün penceresi',
+  'satır sayısı alışkanlık sayısıyla sınırlı',
+  'kullanıcı başına tek ayar satırı',
+]);
+
+const PAGED_EXEMPT: Readonly<Record<string, string>> = {};
+
 const collectionRows: Row[] = [];
 const allRows: Row[] = [];
+const rawLimitViolations: string[] = [];
 
 for (const file of files) {
   const src = stripComments(readFileSync(join(REPO_DIR, file), 'utf8'));
+  for (const m of src.matchAll(/\.\s*limit\s*\(\s*(\d+)\s*\)/g)) {
+    if (Number(m[1]) > 1000) rawLimitViolations.push(`${file}: ${m[0]}`);
+  }
 
   for (const c of extractChains(src)) {
     const row: Row = {
@@ -89,6 +101,15 @@ describe('the extractor works (everything below depends on it)', () => {
     expect(allRows.length).toBeGreaterThan(25);
     expect(collectionRows.length).toBeGreaterThan(10);
   });
+
+  it('classifies .range() as RANGE_PAGED and unpaged .gte() as UNPAGED_WINDOW', () => {
+    const paged = extractChains(`const q = await supabase.from('habit_logs').select('*').eq('user_id', u).gte('completed_at', s).range(0, 499);`);
+    expect(paged[0].bound).toBe('RANGE_PAGED');
+    const unpaged = extractChains(`const q = await supabase.from('habit_logs').select('*').eq('user_id', u).gte('completed_at', s);`);
+    expect(unpaged[0].bound).toBe('UNPAGED_WINDOW');
+    const fakeCap = extractChains(`const q = await supabase.from('habit_logs').select('*').eq('user_id', u).gte('completed_at', s).limit(5000);`);
+    expect(fakeCap[0].bound).toBe('UNPAGED_WINDOW');
+  });
 });
 
 describe('every collection SELECT is bounded', () => {
@@ -97,6 +118,20 @@ describe('every collection SELECT is bounded', () => {
       .filter((r) => r.bound === 'UNCLASSIFIED')
       .map((r) => `${r.repository}::${r.operation} -> ${r.table}`);
     expect(unbounded).toEqual([]);
+  });
+
+  it("hiçbir koleksiyon SELECT'i UNPAGED_WINDOW değildir (muaf liste dışında)", () => {
+    for (const [key, why] of Object.entries(PAGED_EXEMPT)) {
+      expect({ key, valid: ALLOWED_EXEMPT_REASONS.has(why) }).toEqual({ key, valid: true });
+    }
+    const offenders = collectionRows
+      .filter((r) => r.bound === 'UNPAGED_WINDOW' && !(`${r.repository}::${r.operation}` in PAGED_EXEMPT))
+      .map((r) => `${r.repository}::${r.operation} -> ${r.table}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it('hiçbir .limit(n) sunucu tavanını aşmaz', () => {
+    expect(rawLimitViolations).toEqual([]);
   });
 
   it('every collection SELECT is scoped to the owner', () => {
@@ -137,12 +172,14 @@ describe('the matrix document is generated from the code', () => {
       '',
       `- queries: **${allRows.length}**`,
       `- collection SELECTs: **${collectionRows.length}**`,
-      ...(['KEYSET_PAGE', 'DATE_WINDOW', 'BOUNDED_SEARCH', 'EXACT_COUNT', 'BOUNDED_DOMAIN_WINDOW', 'SINGLE_ROW'] as BoundKind[])
+      ...(['KEYSET_PAGE', 'RANGE_PAGED', 'DATE_WINDOW', 'BOUNDED_SEARCH', 'EXACT_COUNT', 'BOUNDED_DOMAIN_WINDOW', 'SINGLE_ROW'] as BoundKind[])
         .map((k) => `- ${k}: **${allRows.filter((r) => r.bound === k).length}**`),
+      `- **UNPAGED_WINDOW: ${allRows.filter((r) => r.bound === 'UNPAGED_WINDOW').length}**`,
       `- **UNCLASSIFIED: ${allRows.filter((r) => r.bound === 'UNCLASSIFIED').length}**`,
       '',
     ].join('\n');
     writeFileSync(join(ROOT, '..', 'docs', 'QUERY_BOUNDING_MATRIX.md'), lines, 'utf8');
     expect(lines).toContain('UNCLASSIFIED: 0');
+    expect(lines).toContain('UNPAGED_WINDOW: 0');
   });
 });

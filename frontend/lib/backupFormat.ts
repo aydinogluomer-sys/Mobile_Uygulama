@@ -52,7 +52,7 @@ export const REGISTRY: readonly CollectionSpec[] = [
   { name: 'journal_entries', restorable: true, order: 2, uniqueBy: 'date' },
   { name: 'bad_habits', restorable: true, order: 2 },
   { name: 'habit_logs', restorable: false, order: 3, relations: { habit_id: 'habits' },
-    reason: 'Sunucu her kayıt için XP veriyor; geri yüklemek XP\'yi şişirirdi (sunucu yolu yok).' },
+    reason: 'Tarihçen dosyada tam durur (tüm durumlar, notlar dahil); ancak sunucu her kayıt için XP veriyor ve XP vermeden ekleyen bir sunucu yolu henüz yok, bu yüzden bu uygulama alışkanlık kayıtlarını geri yükleyemez.' },
   { name: 'focus_sessions', restorable: false, order: 3,
     reason: 'Odak oturumları puan üretir; dosyadan geri yüklenmez.' },
   { name: 'webhooks', restorable: false, order: 3,
@@ -86,6 +86,10 @@ export const REGISTRY: readonly CollectionSpec[] = [
   { name: 'habit_goal_versions', restorable: true, order: 2, relations: { habit_id: 'habits' } },
   { name: 'habit_checklist_items', restorable: true, order: 2, relations: { habit_id: 'habits' } },
   { name: 'habit_checklist_checks', restorable: true, order: 3, relations: { item_id: 'habit_checklist_items' } },
+  { name: 'profiles', restorable: false, order: 4,
+    reason: 'Hesap kimliğin (e-posta, kullanıcı adı, AI kişiliği) bilgi için dosyadadır; XP, seviye ve sayaçlar sunucu otoritesidir ve geri yazılmaz.' },
+  { name: 'user_onboarding', restorable: false, order: 4,
+    reason: 'Kurulum yanıtların bilgi için dosyadadır; kurulum durumu cihaza ve oturuma bağlıdır ve geri yazılmaz.' },
   { name: 'device', restorable: false, order: 4,
     reason: 'Bu cihazdaki ayarlar ve yerel veriler (duygular, rutinler, hatırlatma ayarları): bilgi için dışa aktarılır, başka cihaza otomatik yazılmaz.' },
 ];
@@ -97,17 +101,50 @@ export const REGISTRY: readonly CollectionSpec[] = [
 export const SERVER_COLLECTIONS = REGISTRY.map((c) => c.name).filter((n) => n !== 'device');
 
 /**
- * R08.01 — tables the app touches that are deliberately NOT in a backup:
- * the server owns them (scores, budgets, credits, badges, profile counters,
- * install state). Pinned by __tests__/repo/backupRegistryComplete.test.ts:
- * a new table must land in the registry or here, with a reason.
+ * R08.01 / F20 (SYN-20) — tables in the schema that are deliberately NOT in a
+ * backup: server-owned scores/budgets/credits, OAuth secrets, catalogue tables,
+ * unused/dormant tables, and tables awaiting cloud migration. Pinned by
+ * __tests__/repo/backupRegistryComplete.test.ts against live_schema + 028+.
  */
 export const NOT_BACKED_UP: Readonly<Record<string, string>> = {
-  profiles: 'XP, seviye ve sayaçlar sunucu otoritesidir (R08.05).',
   profile_badges: 'Rozetleri sunucu verir.',
   willpower_state: 'Günlük irade bütçesi sunucu tarafında yeniden kurulur.',
   credit_transactions: 'FP hareketleri sunucu otoritesidir (R08.05).',
-  user_onboarding: 'Kurulum kimliği ve durumu cihaz/oturuma bağlıdır.',
+  user_subscriptions: 'Plan ve Focus Point bakiyesi sunucu otoritesidir; dosyadan yazılamaz.',
+  weekly_xp: 'Haftalık XP sunucu tarafından türetilir; kullanıcı içeriği değildir.',
+  daily_capacity: 'Günlük kapasite sunucu tarafında yeniden hesaplanır.',
+  habit_xp_awards: 'XP ödül defteri sunucu otoritesidir (036); kullanıcı içeriği değildir.',
+  ai_requests: 'AI isteklerinin teknik kaydı (istek kimliği, durum, ücret); sohbet içeriğin ai_messages içinde dışa aktarılır.',
+  ai_calls: 'Eski AI çağrı sayacı; uygulama kullanmıyor.',
+  google_calendar_integrations: 'Sağlayıcı erişim belirteçleri kimlik bilgisidir; dışa aktarılmaz.',
+  notion_integrations: 'Sağlayıcı erişim belirteçleri kimlik bilgisidir; dışa aktarılmaz.',
+  spotify_accounts: 'Sağlayıcı erişim belirteçleri kimlik bilgisidir; dışa aktarılmaz.',
+  user_gamification: 'Uykudaki RPG tablosu (kapsam eki F13 kalıcı iptal); yüzeye çıkmaz.',
+  user_pets: 'Uykudaki RPG tablosu (kapsam eki F13 kalıcı iptal); yüzeye çıkmaz.',
+  user_inventory: 'Uykudaki RPG tablosu (kapsam eki F13 kalıcı iptal); yüzeye çıkmaz.',
+  user_quests: 'Uykudaki RPG tablosu (kapsam eki F13 kalıcı iptal); yüzeye çıkmaz.',
+  user_skills: 'Uykudaki RPG tablosu (kapsam eki F13 kalıcı iptal); yüzeye çıkmaz.',
+  user_challenges: 'Uykudaki RPG tablosu (kapsam eki F13 kalıcı iptal); yüzeye çıkmaz.',
+  boss_contributors: 'Uykudaki RPG tablosu (kapsam eki F13 kalıcı iptal); yüzeye çıkmaz.',
+  quests: 'Katalog tablosu; kullanıcı verisi içermez.',
+  shop_items: 'Katalog tablosu; kullanıcı verisi içermez.',
+  skills: 'Katalog tablosu; kullanıcı verisi içermez.',
+  pet_stages: 'Katalog tablosu; kullanıcı verisi içermez.',
+  global_bosses: 'Katalog tablosu; kullanıcı verisi içermez.',
+  challenges: 'Katalog tablosu; kullanıcı verisi içermez.',
+  habit_templates: 'Katalog tablosu; kullanıcı verisi içermez.',
+  calendars: 'İstemci tarafından okunmaz ya da yazılmaz; yüzeye çıkmadığı için dışa aktarılacak kullanıcı içeriği yoktur.',
+  events: 'İstemci tarafından okunmaz ya da yazılmaz; yüzeye çıkmadığı için dışa aktarılacak kullanıcı içeriği yoktur.',
+  event_templates: 'İstemci tarafından okunmaz ya da yazılmaz; yüzeye çıkmadığı için dışa aktarılacak kullanıcı içeriği yoktur.',
+  reminders: 'İstemci tarafından okunmaz ya da yazılmaz; yüzeye çıkmadığı için dışa aktarılacak kullanıcı içeriği yoktur.',
+  habit_reminders: 'İstemci tarafından okunmaz ya da yazılmaz; yüzeye çıkmadığı için dışa aktarılacak kullanıcı içeriği yoktur.',
+  routine_items: 'İstemci tarafından okunmaz ya da yazılmaz; yüzeye çıkmadığı için dışa aktarılacak kullanıcı içeriği yoktur.',
+  routine_templates: 'Bulut tablosu F40 ile gelir; o zamana dek veri cihazdadır ve dışa aktarımın "device" bölümündedir.',
+  routine_template_versions: 'Bulut tablosu F40 ile gelir; o zamana dek veri cihazdadır ve dışa aktarımın "device" bölümündedir.',
+  routine_sessions: 'Bulut tablosu F40 ile gelir; o zamana dek veri cihazdadır ve dışa aktarımın "device" bölümündedir.',
+  mood_definitions: 'Bulut tablosu F40 ile gelir; o zamana dek veri cihazdadır ve dışa aktarımın "device" bölümündedir.',
+  mood_checkins: 'Bulut tablosu F40 ile gelir; o zamana dek veri cihazdadır ve dışa aktarımın "device" bölümündedir.',
+  review_next_actions: 'Bulut tablosu F40 ile gelir; o zamana dek veri cihazdadır ve dışa aktarımın "device" bölümündedir.',
 };
 
 export const specFor = (name: string) => REGISTRY.find((c) => c.name === name);
@@ -116,6 +153,7 @@ export const specFor = (name: string) => REGISTRY.find((c) => c.name === name);
 export const AUTHORITY_FIELDS = [
   'xp', 'total_xp', 'level', 'focus_points', 'fp', 'willpower_rank', 'tier', 'subscription',
   'subscription_tier', 'is_premium', 'access_token', 'refresh_token', 'token', 'secret', 'headers', 'api_key',
+  'streak_current', 'streak_best', 'purged_xp',
 ] as const;
 
 export function stripAuthority<T extends Record<string, unknown>>(row: T): { row: T; stripped: string[] } {
@@ -189,19 +227,36 @@ export type FileCheck =
   | { ok: true; file: BackupFile; collections: Record<string, Record<string, unknown>[]> }
   | { ok: false; reason: string };
 
+export const MAX_BACKUP_TEXT_CHARS = 25_000_000;
+
 /** Parse and verify a pasted export. Nothing is trusted before this passes. */
 export function verifyBackupText(text: string, signedInUserId: string): FileCheck {
+  if (typeof text !== 'string' || text.length > MAX_BACKUP_TEXT_CHARS) {
+    return { ok: false, reason: 'Dosya çok büyük (25 MB üstü); yapıştırarak doğrulanamaz.' };
+  }
   let o: BackupFile;
   try { o = JSON.parse(text); } catch { return { ok: false, reason: 'Metin bir dışa aktarım dosyası değil (JSON okunamadı).' }; }
   const m = o?.manifest;
-  if (!m || typeof m !== 'object') return { ok: false, reason: 'Manifest yok: bu dosya biçim 3\'ten eski ya da düzenlenmiş. Yeniden dışa aktar.' };
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return { ok: false, reason: 'Manifest yok: bu dosya biçim 3\'ten eski ya da düzenlenmiş. Yeniden dışa aktar.' };
   if (m.format !== BACKUP_FORMAT_VERSION) return { ok: false, reason: `Desteklenmeyen biçim (${String(m.format)}).` };
   if (m.user_id !== signedInUserId) return { ok: false, reason: 'Bu dosya başka bir hesaba ait. Hesaplar arası içe aktarma desteklenmiyor.' };
   if (Array.isArray(o.truncated) && o.truncated.length > 0) {
     return { ok: false, reason: `Dosya eksik (kesilmiş koleksiyonlar: ${o.truncated.join(', ')}). Eksik bir dosya geri yüklenmez.` };
   }
+  if (!m.collections || typeof m.collections !== 'object' || Array.isArray(m.collections)) {
+    return { ok: false, reason: 'Manifest koleksiyon listesi bozuk.' };
+  }
   const collections: Record<string, Record<string, unknown>[]> = {};
-  for (const [name, meta] of Object.entries(m.collections ?? {})) {
+  for (const [name, meta] of Object.entries(m.collections)) {
+    if (
+      !meta ||
+      typeof meta !== 'object' ||
+      Array.isArray(meta) ||
+      !Number.isInteger((meta as { count?: unknown }).count) ||
+      typeof (meta as { checksum?: unknown }).checksum !== 'string'
+    ) {
+      return { ok: false, reason: `"${name}" koleksiyonunun manifest kaydı bozuk.` };
+    }
     const rows = o[name];
     if (!Array.isArray(rows)) return { ok: false, reason: `"${name}" koleksiyonu dosyada yok.` };
     if (rows.length !== meta.count) return { ok: false, reason: `"${name}" sayısı tutmuyor (${rows.length} / ${meta.count}): dosya kesilmiş ya da düzenlenmiş.` };

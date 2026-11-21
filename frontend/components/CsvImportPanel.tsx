@@ -16,11 +16,12 @@ export default function CsvImportPanel() {
   const header = hasHeader ? rows[0] ?? [] : (rows[0] ?? []).map((_, i) => `Sütun ${i + 1}`);
   const [mapping, setMapping] = useState<Mapping>({});
   const [report, setReport] = useState<ImportReport | null>(null);
+  const [resuming, setResuming] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   function reset(nextTarget = target, nextRows = rows) {
-    setReport(null); setMsg(null);
+    setReport(null); setResuming(false); setMsg(null);
     setMapping(guessMapping(nextTarget, hasHeader ? nextRows[0] ?? [] : []));
   }
 
@@ -29,10 +30,11 @@ export default function CsvImportPanel() {
     const next = cur === undefined ? 0 : cur + 1 >= header.length ? undefined : cur + 1;
     setMapping({ ...mapping, [field]: next });
     setReport(null);
+    setResuming(false);
   }
 
   async function check() {
-    setBusy(true); setMsg(null);
+    setBusy(true); setMsg(null); setResuming(false);
     const r = await previewImport({ target, rows, mapping, hasHeader });
     setBusy(false);
     if (!r.ok) { setMsg(`Hesaptaki kayıtlar okunamadı: ${r.error}`); return; }
@@ -44,8 +46,15 @@ export default function CsvImportPanel() {
     setBusy(true);
     const r = await runImport(target, report);
     setBusy(false);
-    setMsg(r.ok ? `${r.inserted} kayıt eklendi.` : `${r.inserted} kayıt eklendi, sonra durdu: ${r.error}`);
-    setReport(null);
+    if (r.ok) {
+      setMsg(`${r.inserted} kayıt eklendi${r.skipped ? `, ${r.skipped} kayıt zaten vardı` : ''}.`);
+      setReport(null);
+      setResuming(false);
+    } else {
+      setMsg(`${r.inserted} kayıt eklendi, sonra durdu: ${r.error}. Kalanı için "Kaldığı yerden sürdür"e bas.`);
+      setReport(r.remaining);
+      setResuming(true);
+    }
   }
 
   return (
@@ -84,8 +93,14 @@ export default function CsvImportPanel() {
           {report.ok.slice(0, 5).map((r) => <Text key={r.line} style={s.preview}>{r.line}. satır → {Object.values(r.values).join(' · ')}</Text>)}
           {report.invalid.slice(0, 5).map((r) => <Text key={`i${r.line}`} style={s.err}>{r.line ? `${r.line}. satır: ` : ''}{r.reason}</Text>)}
           {report.ok.length > 0 && (
-            <TouchableOpacity style={[s.btn, s.primary]} onPress={doImport} disabled={busy} accessibilityRole="button" accessibilityLabel="Geçerli satırları içe aktar">
-              <Text style={s.primaryText}>{report.ok.length} satırı içe aktar</Text>
+            <TouchableOpacity
+              style={[s.btn, s.primary]}
+              onPress={doImport}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel={resuming ? 'Kaldığı yerden sürdür' : 'Geçerli satırları içe aktar'}
+            >
+              <Text style={s.primaryText}>{resuming ? 'Kaldığı yerden sürdür' : `${report.ok.length} satırı içe aktar`}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -108,7 +123,7 @@ const s = StyleSheet.create({
   mapRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
   mapField: { fontSize: 13, color: colors.text },
   mapCol: { fontSize: 13, color: colors.accent },
-  btn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, marginTop: space.sm },
+  btn: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, marginTop: space.sm },
   btnText: { fontSize: 13, color: colors.textDim },
   primary: { backgroundColor: colors.accent, borderColor: colors.accent },
   primaryText: { fontSize: 13, color: colors.bg, fontWeight: '700' },

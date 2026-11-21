@@ -100,8 +100,21 @@ const mockRepoState = {
   habitLogsFail: false,
 };
 
-jest.mock('../../repositories/habitRepository', () => ({
-  fetchHabits: jest.fn(async () => ({ ok: true, data: mockRepoState.habits })),
+jest.mock('../../repositories/exportRepository', () => ({
+  MAX_EXPORT_ROWS: 20_000,
+  EXPORT_FULL_TABLES: ['habits', 'habit_logs', 'journal_entries', 'focus_sessions', 'webhooks'],
+  fetchFullTable: jest.fn(async (table: string) => {
+    if (table === 'habit_logs') {
+      return mockRepoState.habitLogsFail
+        ? { ok: false, error: 'timeout' }
+        : { ok: true, data: { rows: [{ id: 'l1', habit_id: 'h1', completed_at: '2026-08-30', state: 'done' }], truncated: false } };
+    }
+    if (table === 'habits') return { ok: true, data: { rows: mockRepoState.habits, truncated: false } };
+    if (table === 'webhooks') return { ok: true, data: { rows: mockRepoState.webhooks, truncated: false } };
+    return { ok: true, data: { rows: [], truncated: false } };
+  }),
+  fetchOwnProfileForExport: jest.fn(async () => ({ ok: true, data: [] })),
+  fetchOwnOnboardingForExport: jest.fn(async () => ({ ok: true, data: [] })),
 }));
 jest.mock('../../repositories/taskRepository', () => ({
   fetchTasksPage: jest.fn(async () => ({ ok: true, data: { rows: mockRepoState.tasks, hasMore: false, nextCursor: null } })),
@@ -110,22 +123,12 @@ jest.mock('../../repositories/noteRepository', () => ({ fetchNotesPage: jest.fn(
 jest.mock('../../repositories/projectRepository', () => ({ fetchProjectsPage: jest.fn(async () => ({ ok: true, data: { rows: [], hasMore: false, nextCursor: null } })) }));
 jest.mock('../../repositories/goalRepository', () => ({ fetchGoalsPage: jest.fn(async () => ({ ok: true, data: { rows: [], hasMore: false, nextCursor: null } })) }));
 jest.mock('../../repositories/badHabitRepository', () => ({ fetchBadHabitsPage: jest.fn(async () => ({ ok: true, data: { rows: [], hasMore: false, nextCursor: null } })) }));
-jest.mock('../../repositories/journalRepository', () => ({ fetchJournalEntries: jest.fn(async () => ({ ok: true, data: [] })) }));
-jest.mock('../../repositories/focusSessionRepository', () => ({ fetchAllFocusSessions: jest.fn(async () => ({ ok: true, data: [] })) }));
-jest.mock('../../repositories/webhookRepository', () => ({ fetchWebhooks: jest.fn(async () => ({ ok: true, data: mockRepoState.webhooks })) }));
 // R08.01: the rest of the owned tables are read through one generic reader.
 jest.mock('../../repositories/restoreRepository', () => ({
   ...jest.requireActual('../../repositories/restoreRepository'),
   fetchOwnedTable: jest.fn(async () => ({ ok: true, data: { rows: [], truncated: false } })),
 }));
 jest.mock('../../lib/supabase', () => ({ supabase: {} }));
-jest.mock('../../repositories/habitLogRepository', () => ({
-  fetchHabitLogsForHabitsSince: jest.fn(async () =>
-    mockRepoState.habitLogsFail
-      ? { ok: false, error: 'timeout' }
-      : { ok: true, data: [{ id: 'l1', habit_id: 'h1', completed_at: '2026-08-30', state: 'done' }] },
-  ),
-}));
 
 beforeEach(() => { mockRepoState.habitLogsFail = false; });
 

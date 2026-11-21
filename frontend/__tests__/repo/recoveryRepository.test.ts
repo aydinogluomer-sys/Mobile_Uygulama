@@ -15,13 +15,20 @@ jest.mock('../../lib/supabase', () => {
   function select(cols: string) {
     const eqFilters: Record<string, unknown> = {};
     const rangeFilters: { col: string; op: 'gte' | 'lte'; val: unknown }[] = [];
+    const orders: { col: string; asc: boolean }[] = [];
+    let sliceRange: [number, number] | null = null;
     const q: any = {
       eq(col: string, val: unknown) { eqFilters[col] = val; return q; },
       gte(col: string, val: unknown) { rangeFilters.push({ col, op: 'gte', val }); return q; },
       lte(col: string, val: unknown) { rangeFilters.push({ col, op: 'lte', val }); return q; },
+      order(col: string, opts?: { ascending?: boolean }) {
+        orders.push({ col, asc: opts?.ascending ?? true });
+        return q;
+      },
+      range(from: number, to: number) { sliceRange = [from, to]; return q; },
       then(onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) {
         if (mockDb.error) return Promise.resolve({ data: null, error: mockDb.error }).then(onOk, onErr);
-        const rows = mockDb.rows.filter((r) => {
+        let rows = mockDb.rows.filter((r) => {
           for (const [col, val] of Object.entries(eqFilters)) if (r[col] !== val) return false;
           for (const f of rangeFilters) {
             const v = r[f.col] as string;
@@ -30,6 +37,17 @@ jest.mock('../../lib/supabase', () => {
           }
           return true;
         });
+        if (orders.length > 0) {
+          rows = [...rows].sort((a, b) => {
+            for (const o of orders) {
+              const av = String(a[o.col] ?? '');
+              const bv = String(b[o.col] ?? '');
+              if (av !== bv) return o.asc ? (av < bv ? -1 : 1) : (av > bv ? -1 : 1);
+            }
+            return 0;
+          });
+        }
+        if (sliceRange) rows = rows.slice(sliceRange[0], sliceRange[1] + 1);
         return Promise.resolve({ data: rows, error: null }).then(onOk, onErr);
       },
     };

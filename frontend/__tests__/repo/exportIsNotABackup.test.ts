@@ -117,6 +117,8 @@ describe('no import path exists', () => {
     const repo = stripComments(readFileSync(join(ROOT, 'repositories', 'restoreRepository.ts'), 'utf8'));
     expect(repo).not.toMatch(/\.update\(|\.upsert\(|\.delete\(/);
     expect(repo).not.toMatch(/'habit_logs'|'focus_sessions'|'webhooks'/);
+    const exportRepo = stripComments(readFileSync(join(ROOT, 'repositories', 'exportRepository.ts'), 'utf8'));
+    expect(exportRepo).not.toMatch(/\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
   });
 
   it('the file still says WHY, so the next person does not rediscover it', () => {

@@ -1,19 +1,6 @@
 /**
- * R08.03 / R08.04 — the dry run: what a restore WOULD do, computed without
- * writing anything.
- *
- * Safe merge, never overwrite:
- *   insert      the id is not in the account -> it will be added
- *   present     the same id with the same content is already there -> nothing
- *               (this is what makes restoring the same file twice one effect)
- *   conflict    the same id with different content -> the account's current
- *               row is KEPT; the file's version is reported, not applied
- *   orphan      a relation points at a row that is neither in the account nor
- *               in the file -> not inserted
- *   blocked     a collection the registry marks not restorable -> reported
- *               with its reason, never inserted
- * Rows of another owner are refused; the manifest already guarantees the
- * account, this re-checks every row's `user_id`.
+ * R08.03 / R08.04 / F20 (SYN-18, SYN-19) — the dry run: what a restore WOULD do,
+ * computed without writing anything.
  *
  * Pure.
  */
@@ -31,7 +18,12 @@ export type CollectionPlan = {
   blocked: string | null;
 };
 
-export type RestorePlan = { collections: CollectionPlan[]; inserts: number; blockedRows: number };
+export type RestorePlan = {
+  userId: string;
+  collections: CollectionPlan[];
+  inserts: number;
+  blockedRows: number;
+};
 
 /** Fields the server sets on write; ignored when comparing a file row with the account's. */
 const VOLATILE = new Set(['updated_at', 'user_id']);
@@ -49,14 +41,32 @@ export function planRestore(params: {
 }): RestorePlan {
   const { userId, file, existing } = params;
   const out: CollectionPlan[] = [];
-  const ids = (name: string) => new Set<string>([
-    ...((file[name] ?? []).map((r) => String(r.id))),
-    ...(existing[name] ? [...existing[name].keys()] : []),
-  ]);
+  const idSets = new Map<string, Set<string>>();
+  const ids = (name: string): Set<string> => {
+    let s = idSets.get(name);
+    if (!s) {
+      s = new Set<string>([
+        ...((file[name] ?? []).map((r) => String(r.id))),
+        ...(existing[name] ? [...existing[name].keys()] : []),
+      ]);
+      idSets.set(name, s);
+    }
+    return s;
+  };
 
   for (const spec of [...REGISTRY].sort((a, b) => a.order - b.order)) {
     const rows = file[spec.name] ?? [];
-    const plan: CollectionPlan = { name: spec.name, inFile: rows.length, insert: [], present: 0, conflicts: [], orphans: [], foreign: 0, stripped: [], blocked: null };
+    const plan: CollectionPlan = {
+      name: spec.name,
+      inFile: rows.length,
+      insert: [],
+      present: 0,
+      conflicts: [],
+      orphans: [],
+      foreign: 0,
+      stripped: [],
+      blocked: null,
+    };
     if (!spec.restorable) {
       plan.blocked = spec.reason ?? 'Geri yüklenmez.';
       out.push(plan);
@@ -72,8 +82,6 @@ export function planRestore(params: {
         if (sameContent(mine, r)) plan.present += 1; else plan.conflicts.push(id);
         continue;
       }
-      // A second natural key (one journal entry per date): a different id on
-      // the same key is the account's own row for that slot -- keep it.
       if (spec.uniqueBy && [...cur.values()].some((x) => x[spec.uniqueBy!] === r[spec.uniqueBy!])) {
         plan.conflicts.push(id);
         continue;
@@ -90,6 +98,7 @@ export function planRestore(params: {
     out.push(plan);
   }
   return {
+    userId,
     collections: out,
     inserts: out.reduce((n, c) => n + c.insert.length, 0),
     blockedRows: out.filter((c) => c.blocked).reduce((n, c) => n + c.inFile, 0),
@@ -111,6 +120,17 @@ export function planSummary(p: RestorePlan): string[] {
     lines.push(`${c.name}: ${parts.join(' · ')}`);
   }
   return lines;
+}
+
+/** "Bu dosyadan geri yüklenemeyenler": engelli koleksiyonlar, `habit_logs` ilk sırada, kayıt sayısı ve nedenle. */
+export function planNotices(p: RestorePlan): string[] {
+  const blocked = p.collections.filter((c) => c.blocked && c.inFile > 0);
+  const logs = blocked.filter((c) => c.name === 'habit_logs');
+  const rest = blocked.filter((c) => c.name !== 'habit_logs' && c.name !== 'device');
+  return [
+    ...logs.map((c) => `${c.name}: ${c.inFile} kayıt (tarihçen) dosyada duruyor ama bu uygulamada geri yüklenemez. ${c.blocked}`),
+    ...rest.map((c) => `${c.name}: ${c.inFile} kayıt geri yüklenmez. ${c.blocked}`),
+  ];
 }
 
 export { specFor };

@@ -141,7 +141,8 @@ const SECTIONS: Section[] = [
   {
     title: 'Verilerini dışa aktarma',
     body: [
-      'Ayarlar → Veri ve Gizlilik bölümünden verilerini JSON, CSV veya Excel biçiminde dışa aktarabilirsin. Bu dosya bir yedek değildir; geri yükleme yoktur.',
+      'Ayarlar → Veri ve Gizlilik bölümünden verilerini JSON, CSV veya Excel biçiminde dışa aktarabilirsin. Dosya tüm alışkanlık kayıtlarını (notlar dahil), hesap kimliğini ve kurulum yanıtlarını içerir ve şifrelenmez. Bu tam bir yedek değildir: JSON dosyasını aynı bölümde doğrulayıp eksik kayıtlarını hesabına ekleyebilirsin; alışkanlık kayıtların (tarihçe), odak oturumların ve webhook’ların geri yüklenemez. Uygulamayı açtığında günde en fazla bir kez, cihazında son 3 yerel yedek kopyası tutulur; hesabını sildiğinde bu kopyalar da silinir.',
+      'Obsidian (Markdown) aktarımı seçtiğin içeriği (günlük ve notlar dahil olabilir) düz metin olarak cihazının panosuna kopyalar. Pano diğer uygulamalar ve klavye yöneticileri tarafından okunabilir; Aderyth panoyu 60 saniye sonra, başka bir şey kopyalamadıysan, otomatik temizlemeyi dener.',
     ],
   },
   {

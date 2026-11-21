@@ -22,6 +22,7 @@
  */
 import { supabase } from '../lib/supabase';
 import type { RecoveryPlan, RecoveryStatus, RecoveryStrategy } from '../lib/supabase';
+import { requireComplete, selectAllPages } from './pagedSelect';
 import { currentUserId, deleteOwned, updateOwned, insertOwnedWithId, updateOwnedVersioned, deleteOwnedIfPresent, type RepoResult } from './shared';
 
 // All fifteen columns. The previous list stopped at `created_at` and
@@ -40,14 +41,18 @@ export async function fetchRecoveryPlansForReview(params: {
 }): Promise<RepoResult<RecoveryPlan[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
-    .from('recovery_plans')
-    .select(SELECT)
-    .eq('user_id', u.userId)
-    .gte('target_date', params.start)
-    .lte('target_date', params.end);
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as RecoveryPlan[] };
+  const r = await selectAllPages<RecoveryPlan>((from, to) =>
+    supabase
+      .from('recovery_plans')
+      .select(SELECT)
+      .eq('user_id', u.userId)
+      .gte('target_date', params.start)
+      .lte('target_date', params.end)
+      .order('target_date', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  return requireComplete(r, 'Telafi planları');
 }
 
 // ---------------------------------------------------------------------------
