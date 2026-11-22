@@ -24,6 +24,7 @@ jest.mock('../../lib/analytics', () => ({ buildEvent: jest.fn((n: string, p: unk
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as analytics from '../../lib/analytics';
+import { EMPTY_TALLY } from '../../lib/focusRitual';
 import { useFocusStore, DEFAULT_SETTINGS, type FocusTask } from '../../store/focusStore';
 
 const T0 = 1_800_000_000_000;
@@ -44,6 +45,7 @@ beforeEach(async () => {
   useFocusStore.setState({
     phase: 'work', status: 'idle', secondsLeft: 1500, sessionsCompleted: 0, sessionStartedAt: null,
     clock: null, smallStep: null, pausedAt: null, lastPartial: null,
+    intent: null, interruptions: EMPTY_TALLY,
     settings: { ...DEFAULT_SETTINGS, autoStartBreaks: true, autoCheckTasks: true },
     justCompleted: null, focusTasks: [FOCUS_TASK], selectedTaskId: 'ft1', loadingTasks: false,
   });
@@ -106,7 +108,13 @@ describe('R03.03 — finishing', () => {
     expect(s.secondsLeft).toBe(1500);
     expect(s.smallStep).toBeNull();
     expect(s.clock).toBeNull();
-    expect(s.justCompleted).toEqual({ taskTitle: 'ilk paragraf', seconds: 300, sessionNumber: 1 });
+    expect(s.justCompleted).toEqual({
+      taskTitle: 'ilk paragraf',
+      seconds: 300,
+      sessionNumber: 1,
+      intent: null,
+      interruptions: 0,
+    });
   });
 
   it('the selected focus task is untouched', async () => {

@@ -25,7 +25,14 @@ describe('the copy', () => {
     expect(read('app/tabs/today.tsx')).toMatch(/\{FLOW_COPY\.lighten\}/);
     expect(read('app/tabs/today.tsx')).toMatch(/\{FLOW_COPY\.afterBreak\}/);
     expect(read('app/tabs/focus.tsx')).toMatch(/\{FLOW_COPY\.afterFocusBreak\}/);
+    expect(read('components/focus/FocusIntentSheet.tsx')).toMatch(/\{FLOW_COPY\.intentAsk\}/);
+    expect(read('components/focus/InterruptionPrompt.tsx')).toMatch(/\{FLOW_COPY\.interruptionAsk\}/);
+    expect(read('components/focusFlow/FlowClosurePage.tsx')).toMatch(/\{FLOW_COPY\.flowDailyDoneTitle\}/);
+    expect(read('components/focusFlow/FlowClosurePage.tsx')).toMatch(/\{FLOW_COPY\.flowDailyTry\}/);
     expect(read('app/tabs/today.tsx')).not.toMatch(/Bugün kenara koyacaklarını seç\./);
+    expect(read('components/focus/FocusIntentSheet.tsx')).not.toMatch(/Bu oturumda ne bitmiş olsun\?/);
+    expect(read('components/focus/InterruptionPrompt.tsx')).not.toMatch(/Uygulamadan ayrılmıştın\. Ne oldu\?/);
+    expect(read('components/focusFlow/FlowClosurePage.tsx')).not.toMatch(/Bugünlük yeterli/);
   });
 });
 

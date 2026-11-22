@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusStore } from '../../store/focusStore';
 import { FormError, IconButton, ProgressRing } from '../../components/ui';
@@ -23,6 +24,8 @@ import FocusThemeModal from '../../components/focus/FocusThemeModal';
 import FocusSettingsModal from '../../components/focus/FocusSettingsModal';
 import FocusSpotifyCard from '../../components/focus/FocusSpotifyCard';
 import FocusSessionCompleteModal from '../../components/focus/FocusSessionCompleteModal';
+import FocusIntentSheet from '../../components/focus/FocusIntentSheet';
+import InterruptionPrompt from '../../components/focus/InterruptionPrompt';
 import { FOCUS_PRESETS } from '../../lib/focusThemes';
 import { FLOW_COPY, isBackFromFocusBreak } from '../../lib/flowCopy';
 import { progressFraction } from '../../lib/focusTimer';
@@ -58,6 +61,7 @@ export default function FocusScreen() {
     updateSettings, loadSettings, restoreSession, clearJustCompleted,
   } = useFocusStore();
   const lastPartial = useFocusStore((st) => st.lastPartial);
+  const pendingAway = useFocusStore((st) => st.interruptions.pendingAwayMs);
 
   const reduceMotion = useReducedMotion();
   const haloAnim = useRef(new Animated.Value(0)).current;
@@ -88,6 +92,8 @@ export default function FocusScreen() {
   const [taskActionError, setTaskActionError] = useState<string | null>(null);
   const [startHint, setStartHint] = useState('');
   const [focusMode, setFocusMode] = useState<'timer' | 'deep_work'>('timer');
+  const [showIntent, setShowIntent] = useState(false);
+  const [lastIntent, setLastIntent] = useState<string | null>(null);
 
   const activePreset = FOCUS_PRESETS.find((p) => p.id === settings.presetId) ?? FOCUS_PRESETS[0];
   const phaseColor = activePreset.id === 'default' ? PHASE_COLORS[phase] : activePreset.accent;
@@ -135,6 +141,12 @@ export default function FocusScreen() {
     return () => sub.remove();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => () => {
+      useFocusStore.getState().classifyAway(null);
+    }, []),
+  );
+
   const selectedTask = focusTasks.find((t) => t.id === selectedTaskId);
 
   async function handleAddTask() {
@@ -153,6 +165,14 @@ export default function FocusScreen() {
   // Seçim yapılınca uyarıyı temizle
   useEffect(() => { if (selectedTaskId) setStartHint(''); }, [selectedTaskId]);
 
+  function beginSession(text: string | null) {
+    setShowIntent(false);
+    void useFocusStore.getState().setIntent(text);
+    setStartHint('');
+    haptic.medium();
+    start();
+  }
+
   function handleStartPause() {
     if (status === 'running') { haptic.light(); pause(); return; }
     // Çalışma fazında: önce ne üzerine odaklanılacağı eklenip seçilmeli.
@@ -166,6 +186,19 @@ export default function FocusScreen() {
       } else {
         setStartHint('Listeden bir odak konusu seç, sonra başlat.');
       }
+      return;
+    }
+    if (phase === 'work' && status === 'idle' && !smallStep && settings.intentPrompt) {
+      haptic.light();
+      setLastIntent(null);
+      setShowIntent(true);
+      void useFocusStore
+        .getState()
+        .loadLastIntent()
+        .then((t) => {
+          setLastIntent(t);
+        })
+        .catch(() => {});
       return;
     }
     setStartHint('');
@@ -350,6 +383,12 @@ export default function FocusScreen() {
           )}
         </View>
 
+        <InterruptionPrompt
+          visible={pendingAway !== null && phase === 'work'}
+          accent={phaseColor}
+          onChoose={(cause) => useFocusStore.getState().classifyAway(cause)}
+        />
+
         {/* Kontroller */}
         {(() => {
           const gated = status !== 'running' && phase === 'work' && !selectedTaskId;
@@ -529,6 +568,18 @@ export default function FocusScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <FocusIntentSheet
+        visible={showIntent}
+        initialText={lastIntent}
+        accent={phaseColor}
+        onSubmit={beginSession}
+        onSkip={() => beginSession(null)}
+        onDisable={() => {
+          updateSettings({ intentPrompt: false });
+          beginSession(null);
+        }}
+      />
 
       {/* Ayarlar */}
       <FocusSettingsModal
