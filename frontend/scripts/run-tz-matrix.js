@@ -21,6 +21,8 @@ const TZ_SAFE_SUITES = [
   '__tests__/lib/crossConsumerFixtures.test.ts',
   '__tests__/lib/yearGrid.test.ts',
   '__tests__/lib/yearPixels.test.ts',
+  '__tests__/lib/dayClose.test.ts',
+  '__tests__/lib/taskQuickAdd.test.ts',
 ];
 
 function assertZone(zone) {

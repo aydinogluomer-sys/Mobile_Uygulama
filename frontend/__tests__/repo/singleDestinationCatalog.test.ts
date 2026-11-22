@@ -33,8 +33,7 @@ const EMBEDDED_SCREEN_PATHS = new Set(
     .filter((r) => r.startsWith('/screens/')),
 );
 
-// Coordinator removes after wiring navigateTo in today.tsx at Wave 9 merge gate
-const EMBEDDED_PUSH_ALLOWLIST = new Set<string>(['app/tabs/today.tsx']);
+const EMBEDDED_PUSH_ALLOWLIST = new Set<string>([]);
 
 export function findEmbeddedScreenPushes(
   fileRel: string,

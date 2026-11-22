@@ -75,6 +75,9 @@ import { isMeasurableTracking } from '../../lib/habitEngine';
 import { markNoteHintSeen, normalizeNote, NOTE_MAX_LENGTH, readNoteHintSeen } from '../../lib/habitNote';
 import { logsForPeriod, type ReviewLogRow } from '../../services/reviewService';
 import { bootstrapTodayScreen } from '../../services/todayBootstrapService';
+import { navigateTo, type DestinationId } from '../../lib/destinations';
+import { useProjectStore } from '../../store/projectStore';
+import { quickAddToTaskInput } from '../../lib/taskQuickAdd';
 import type { Habit } from '../../lib/supabase';
 import {
   isoWeek,
@@ -108,17 +111,13 @@ const PRIORITY_TONE: Record<string, keyof Palette> = {
 
 const EMPTY_GROUPS: ReadonlySet<PartGroupKey> = new Set<PartGroupKey>();
 
-const MORE_MENU_ROUTES = {
-  focus: '/tabs/focus',
-  weekly: '/screens/weekly-review',
-  recovery: '/screens/recovery',
-  projects: '/screens/projects',
-  notes: '/screens/notes',
-} as const;
-
-function isMoreMenuKey(id: string): id is keyof typeof MORE_MENU_ROUTES {
-  return Object.prototype.hasOwnProperty.call(MORE_MENU_ROUTES, id);
-}
+const MORE_MENU_DESTINATIONS: Readonly<Record<string, DestinationId>> = {
+  focus: 'focus',
+  weekly: 'weekly-review',
+  recovery: 'recovery',
+  projects: 'projects',
+  notes: 'notes',
+};
 
 export default function TodayScreen() {
   const router = useRouter();
@@ -162,6 +161,14 @@ export default function TodayScreen() {
     })),
   );
   const coreSync = useCoreOutboxSync();
+  const rawProjects = useProjectStore((st) => st.projects);
+  const quickProjects = useMemo(
+    () =>
+      rawProjects
+        .filter((p) => !p.status || p.status === 'active')
+        .map((p) => ({ id: p.id, name: p.name })),
+    [rawProjects],
+  );
   const wp = useWillpowerStore((st) => st.state);
   const fetchToday = useWillpowerStore((st) => st.fetchToday);
   const { recoveryPlans, fetchPlans } = useRecoveryStore(
@@ -350,8 +357,9 @@ export default function TodayScreen() {
       setShutdownOpen(true);
       return;
     }
-    if (picked !== null && isMoreMenuKey(picked)) {
-      router.push(MORE_MENU_ROUTES[picked]);
+    const destId = picked !== null ? MORE_MENU_DESTINATIONS[picked] : undefined;
+    if (destId) {
+      navigateTo(router, destId);
     }
   }, [nowAction?.kind, router]);
 
@@ -359,7 +367,7 @@ export default function TodayScreen() {
     (a: NextAction) => {
       if (a.kind === 'focus') router.push('/tabs/focus' as any);
       else if (a.kind === 'routine') router.push('/screens/routine-runner' as any);
-      else if (a.kind === 'recovery') router.push('/screens/recovery' as any);
+      else if (a.kind === 'recovery') navigateTo(router, 'recovery');
       else if (a.kind === 'task') router.push('/tabs/tasks' as any);
       else {
         const h = habits.find((x) => x.id === a.id);
@@ -434,7 +442,7 @@ export default function TodayScreen() {
         value: plannedRecovery > 0 ? String(plannedRecovery) : '—',
         sub: plannedRecovery > 0 ? 'planlı telafi var' : 'denge korunuyor',
         tone: plannedRecovery > 0 ? 'warn' : 'mute',
-        onPress: () => router.push('/screens/recovery' as any),
+        onPress: () => navigateTo(router, 'recovery'),
       },
     ];
   }, [
@@ -555,7 +563,7 @@ export default function TodayScreen() {
           <View style={s.mastheadActions}>
             <SyncStatusBadge pending={pendingSyncCount + taskSync.pending + coreSync.pending} dead={deadSyncCount + taskSync.dead + taskSync.conflict + coreSync.dead + coreSync.conflict} />
             <TouchableOpacity
-              onPress={() => router.push('/screens/journal' as any)}
+              onPress={() => navigateTo(router, 'journal')}
               activeOpacity={0.7}
               accessibilityRole="button"
               accessibilityLabel="Günlüğü aç"
@@ -563,7 +571,7 @@ export default function TodayScreen() {
               <IconCircle icon="journal-outline" color={c.accent} size={40} />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => router.push('/screens/profile' as any)}
+              onPress={() => navigateTo(router, 'profile')}
               activeOpacity={0.7}
               accessibilityRole="button"
               accessibilityLabel="Profili aç"
@@ -867,7 +875,18 @@ export default function TodayScreen() {
                 <View style={{ marginBottom: space.sm }}>
                   <InlineComposer
                     placeholder="Bugün için hızlı bir adım ekle…"
-                    onSubmit={async (t) => { await addTask({ title: t, priority: 'none', list_type: 'inbox', due_date: today }); }}
+                    quickAdd={{ projects: quickProjects }}
+                    voice
+                    onSubmit={async (t, quick) => {
+                      await addTask(
+                        quickAddToTaskInput(
+                          t,
+                          quick,
+                          { priority: 'none', list_type: 'inbox', due_date: today, project_id: null },
+                          today,
+                        ),
+                      );
+                    }}
                   />
                 </View>
                 {pendingTasks.length === 0 ? (
@@ -930,7 +949,7 @@ export default function TodayScreen() {
               <>
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  onPress={() => router.push('/screens/profile' as any)}
+                  onPress={() => navigateTo(router, 'profile')}
                   accessibilityRole="button"
                   accessibilityLabel="Profil ve deneyim puanını aç"
                 >
@@ -950,7 +969,7 @@ export default function TodayScreen() {
                 <RecoveryRailCard
                   plans={recoveryPlans}
                   today={today}
-                  onOpen={() => router.push('/screens/recovery' as any)}
+                  onOpen={() => navigateTo(router, 'recovery')}
                 />
               </>
             )}
@@ -968,7 +987,7 @@ export default function TodayScreen() {
             )}
 
             {showStrategy && (
-              <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => router.push('/screens/okr' as any)}>
+              <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => navigateTo(router, 'okr')}>
                 <EmbeddedFiligree source={DECOR.cornerBlueprint} anchor="bottom-right" size={108} opacity={0.17} />
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.xs }}>
                   <SectionHeader title="STRATEJİ & OKR" variant="overline" />
@@ -1149,7 +1168,7 @@ export default function TodayScreen() {
                   style={s.shutdownOptionCard}
                   onPress={() => {
                     setShutdownOpen(false);
-                    router.push('/screens/journal' as any);
+                    navigateTo(router, 'journal');
                   }}
                   accessibilityRole="button"
                   accessibilityLabel="Günü tek cümlelik günlük yansımasıyla kapat"
@@ -1166,7 +1185,7 @@ export default function TodayScreen() {
                   style={s.shutdownOptionCard}
                   onPress={() => {
                     setShutdownOpen(false);
-                    router.push('/screens/recovery' as any);
+                    navigateTo(router, 'recovery');
                   }}
                   accessibilityRole="button"
                   accessibilityLabel="Telafi kalkanını ve yarının planını incele"

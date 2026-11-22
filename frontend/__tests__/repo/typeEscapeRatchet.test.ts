@@ -118,12 +118,12 @@ function ratchetProblems(
 
 const ROOT = join(__dirname, '..', '..');
 
-// Locked to exact post-Wave-4 production measurement (F12 genericAny 1 -> 0 in spotifyStore.ts; F24 asAny 135 -> 130 in today.tsx MORE_MENU_ROUTES).
+// Locked to exact post-Wave-9 production measurement (F28/F29/F30/F32 + today.tsx navigateTo: asAny 129 -> 85, asNever 17 -> 15, colonAny 5 -> 4).
 const CEILINGS: Readonly<EscapeCounts> = {
-  asAny: 129,
+  asAny: 85,
   asUnknownAs: 50,
-  asNever: 17,
-  colonAny: 5,
+  asNever: 15,
+  colonAny: 4,
   genericAny: 0,
   tsDirective: 0,
   eslintDisable: 14,

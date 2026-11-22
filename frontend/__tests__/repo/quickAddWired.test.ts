@@ -43,10 +43,9 @@ describe('F30 — Quick-Add, Speech Hardening, Smart Lists & Subtask Cascade Wir
     expect(projects).toContain('<InlineComposer');
     expect(projects).not.toContain('quickAdd=');
 
-    // TODO(Wave9-merge): Coordinator enables after wiring quickAdd in today.tsx
-    // const today = readCode('app/tabs/today.tsx');
-    // expect(today).toContain('quickAdd=');
-    // expect(today).toMatch(/\bvoice\b/);
+    const today = readCode('app/tabs/today.tsx');
+    expect(today).toContain('quickAdd=');
+    expect(today).toMatch(/\bvoice\b/);
   });
 
   it('InlineComposer.tsx preserves run-tests.js invariants and wires parseQuickAdd + useSpeechInput', () => {

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { confirm } from '../../lib/dialog';
+import { confirm, notify } from '../../lib/dialog';
+import { useFocusParam } from '../../hooks/useFocusParam';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore, type Task, type ListType, type TaskPriority } from '../../store/taskStore';
@@ -45,10 +46,39 @@ export default function TasksScreen() {
   const [listType, setListType] = useState<ListType>('inbox');
   const [splitTarget, setSplitTarget] = useState<Task | null>(null);
 
-  const { tasks, loadingMore, hasMore, loadMore, fetchTasks, addTask, toggleDone, removeTask, archiveTask, byList } = useTaskStore();
+  const { tasks, loading, loadingMore, hasMore, loadMore, fetchTasks, addTask, toggleDone, removeTask, archiveTask, byList } = useTaskStore();
   const { projects, fetchProjects } = useProjectStore();
+  const [initialLoaded, setInitialLoaded] = useState(tasks.length > 0);
+  const { id: focusId, consume: consumeFocus } = useFocusParam();
+  const consumedFocusRef = useRef<string | null>(null);
 
-  useEffect(() => { fetchTasks(); fetchProjects(); }, [fetchTasks, fetchProjects]);
+  useEffect(() => {
+    void Promise.resolve(fetchTasks()).finally(() => setInitialLoaded(true));
+    void fetchProjects();
+  }, [fetchTasks, fetchProjects]);
+
+  useEffect(() => {
+    if (!focusId) {
+      consumedFocusRef.current = null;
+      return;
+    }
+    if (consumedFocusRef.current === focusId) return;
+    const match = tasks.find((t) => t.id === focusId);
+    if (match) {
+      consumedFocusRef.current = focusId;
+      setViewMode('list');
+      setSmartList(null);
+      setActiveTab(match.completed || match.status === 'cancelled' ? 'done' : match.list_type);
+      setSplitTarget(match);
+      consumeFocus();
+      return;
+    }
+    if (initialLoaded && !loading) {
+      consumedFocusRef.current = focusId;
+      consumeFocus();
+      void notify('Öğe bulunamadı', 'Aradığın görev silinmiş ya da taşınmış olabilir.');
+    }
+  }, [focusId, tasks, initialLoaded, loading, consumeFocus]);
 
   const activeProjects = useMemo(
     () =>

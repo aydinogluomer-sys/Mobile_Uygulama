@@ -177,10 +177,11 @@ describe('every colour without a token is accounted for', () => {
     for (const l of untokened) counts[classify(l)] = (counts[classify(l)] ?? 0) + 1;
     // Recorded rather than merely bounded: if a category's population moves,
     // the number that moved is in the diff, and somebody has to say why.
+    // F28 unified habits.tsx & dashboard.tsx into redirects: category-hue 79 -> 74, category-tint 29 -> 25.
     expect(counts).toEqual({
-      'category-hue': 79,
+      'category-hue': 74,
       'illustration': 30,
-      'category-tint': 29,
+      'category-tint': 25,
       'theme-palette': 24,
       'third-party-brand': 13,
     });
