@@ -13,6 +13,8 @@ jest.mock('../../lib/supabase', () => ({ supabase: {} }));
 jest.mock('../../lib/session', () => ({ currentUser: jest.fn(async () => ({ id: 'u1', email: null })) }));
 jest.mock('../../lib/notifications', () => ({
   hasPermission: jest.fn(async () => false),
+  notificationAccess: jest.fn(async () => 'ask'),
+  openNotificationSettings: jest.fn(async () => true),
   scheduleHabitReminder: jest.fn(), cancelHabitReminder: jest.fn(),
 }));
 jest.mock('../../services/habitService', () => ({
