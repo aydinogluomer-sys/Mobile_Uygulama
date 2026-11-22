@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  Dimensions, TouchableOpacity, Modal, RefreshControl,
+  useWindowDimensions, TouchableOpacity, Modal, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,25 +18,24 @@ import AreaRadar from '../../components/AreaRadar';
 import HabitListView from '../../components/HabitListView';
 import { colors, space, radius, font, hexA, fontFamily } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
+import { barWidth, chartWidth, heatmapCellSize, radarSize } from '../../lib/layoutMetrics';
 import { Card, StatTile, SectionHeader, ProgressBar, ProgressRing, EmptyState, Button, EditorialBanner } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
-const { width } = Dimensions.get('window');
-const CELL_SIZE = Math.floor((width - 48) / 53);
 const CELL_GAP = 2;
 
 const MONTHS_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
 type HeatmapData = Record<string, number>;
 
-const CHART_WIDTH = width - 64;
 const BAR_COUNT = 14;
 const BAR_GAP = 3;
-const BAR_W = Math.floor((CHART_WIDTH - BAR_GAP * (BAR_COUNT - 1)) / BAR_COUNT);
 const CHART_H = 80;
 
-export function TrendChart({ data }: { data: number[] }) {
+export function TrendChart({ data, width: winWidth = 375 }: { data: number[]; width?: number }) {
+  const CHART_WIDTH = chartWidth(winWidth);
+  const BAR_W = barWidth(CHART_WIDTH, BAR_COUNT, BAR_GAP);
   const max = Math.max(...data, 1);
   // R07.07 — the chart as text, for screen readers.
   const text = seriesText('Son 14 gün tamamlanan', data.map((v, i) => ({ label: format(subDays(new Date(), BAR_COUNT - 1 - i), 'dd/MM'), value: v })));
@@ -76,6 +75,7 @@ export function TrendChart({ data }: { data: number[] }) {
 
 export default function StatsScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [heatmap, setHeatmap] = useState<HeatmapData>({});
@@ -244,6 +244,7 @@ export default function StatsScreen() {
   }
 
   function renderHeatmap() {
+    const CELL_SIZE = heatmapCellSize(width);
     const weeks: Date[][] = [];
     let currentWeek: Date[] = [];
     for (let i = 0; i < 365; i++) {
@@ -445,7 +446,7 @@ export default function StatsScreen() {
         <View style={s.trendCard}>
           <Text style={s.cardTitle}>14 Günlük Trend</Text>
           <Text style={s.cardSub}>Günlük alışkanlık tamamlamaları</Text>
-          <TrendChart data={trend14} />
+          <TrendChart data={trend14} width={width} />
         </View>
 
         {/* Heatmap — motivasyon öğesi yukarı taşındı */}
@@ -458,7 +459,7 @@ export default function StatsScreen() {
           {anyAreaHabits ? (
             <>
               <View style={s.areaRadarWrap}>
-                <AreaRadar values={areaValues} size={Math.min(280, width - 80)} />
+                <AreaRadar values={areaValues} size={radarSize(width)} />
               </View>
               {areaStats.map((a) => (
                 <View key={a.key} style={[s.areaRow, a.count === 0 && { opacity: 0.4 }]}>

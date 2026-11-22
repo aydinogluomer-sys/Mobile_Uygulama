@@ -54,8 +54,8 @@ describe('F25 (DSA-01) — light theme release gate and first-wave migration fen
     expect(evaluateLightThemeGate(LIGHT_THEME_ENABLED, staticImporters, INTENTIONALLY_DARK)).toEqual([]);
   });
 
-  it('(+) all 29 first-wave files have zero static colors imports', () => {
-    expect(FIRST_WAVE_THEMED).toHaveLength(29);
+  it('(+) all first-wave themed files have zero static colors imports', () => {
+    expect(FIRST_WAVE_THEMED).toHaveLength(31);
     const regressed = FIRST_WAVE_THEMED.filter((rel) => {
       const code = stripComments(readFileSync(join(ROOT, rel), 'utf8'));
       return STATIC_COLORS_IMPORT_RE.test(code);

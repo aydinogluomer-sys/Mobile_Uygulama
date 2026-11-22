@@ -27,7 +27,7 @@ import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from 
 import { isMeasurableTracking } from '../../lib/habitEngine';
 import { explainActivation } from '../../services/capacityService';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
-import { EditorialBanner, FormError, LoadErrorState } from '../../components/ui';
+import { EditorialBanner, FormError, LoadErrorState, SheetModal } from '../../components/ui';
 import { AtmosphericScreenCanvas } from '../../components/spatial';
 import { CANVASES, RITUAL_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
@@ -529,52 +529,67 @@ export default function HabitsScreen() {
       />
 
       {/* Silme nedeni modalı */}
-      <Modal visible={!!deleteTarget} animationType="fade" transparent onRequestClose={() => setDeleteTarget(null)}>
-        <View style={styles.delOverlay}>
-          <View style={styles.delSheet}>
-            <View style={styles.delIconWrap}>
-              <Ionicons name="trash-outline" size={26} color={colors.error} />
-            </View>
-            <Text style={styles.delTitle}>Alışkanlığı Sil</Text>
-            <Text style={styles.delSub} numberOfLines={2}>
-              &quot;{deleteTarget?.name}&quot; silinecek. Nedenini seçer misin?
-            </Text>
-
-            <View style={styles.reasonWrap}>
-              {DELETE_REASONS.map((r) => {
-                const sel = deleteReason === r;
-                return (
-                  <TouchableOpacity
-                    key={r}
-                    style={[styles.reasonChip, sel && styles.reasonChipSel]}
-                    onPress={() => setDeleteReason(r)}
-                  >
-                    <Text style={[styles.reasonChipText, sel && styles.reasonChipTextSel]}>{r}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <TextInput
-              style={styles.reasonInput}
-              placeholder="Veya kendi nedenini yaz (opsiyonel)"
-              placeholderTextColor={colors.textFaint}
-              value={DELETE_REASONS.includes(deleteReason) ? '' : deleteReason}
-              onChangeText={setDeleteReason}
-            />
-
-            <View style={styles.delActions}>
-              <TouchableOpacity style={styles.delCancelBtn} onPress={() => setDeleteTarget(null)}>
-                <Text style={styles.delCancelText}>Vazgeç</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.delConfirmBtn} onPress={confirmDelete}>
-                <Ionicons name="trash" size={16} color={colors.white} />
-                <Text style={styles.delConfirmText}>Sil</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+      <SheetModal
+        visible={!!deleteTarget}
+        align="center"
+        onClose={() => setDeleteTarget(null)}
+        sheetStyle={styles.delSheet}
+        accessibilityLabel="Alışkanlığı sil"
+      >
+        <View style={styles.delIconWrap}>
+          <Ionicons name="trash-outline" size={26} color={colors.error} />
         </View>
-      </Modal>
+        <Text style={styles.delTitle}>Alışkanlığı Sil</Text>
+        <Text style={styles.delSub} numberOfLines={2}>
+          &quot;{deleteTarget?.name}&quot; silinecek. Nedenini seçer misin?
+        </Text>
+
+        <View style={styles.reasonWrap} accessibilityRole="radiogroup">
+          {DELETE_REASONS.map((r) => {
+            const sel = deleteReason === r;
+            return (
+              <TouchableOpacity
+                key={r}
+                style={[styles.reasonChip, sel && styles.reasonChipSel]}
+                onPress={() => setDeleteReason(r)}
+                accessibilityRole="radio"
+                accessibilityLabel={r}
+                accessibilityState={{ selected: sel, checked: sel }}
+              >
+                <Text style={[styles.reasonChipText, sel && styles.reasonChipTextSel]}>{r}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TextInput
+          style={styles.reasonInput}
+          placeholder="Veya kendi nedenini yaz (opsiyonel)"
+          placeholderTextColor={colors.textFaint}
+          value={DELETE_REASONS.includes(deleteReason) ? '' : deleteReason}
+          onChangeText={setDeleteReason}
+        />
+
+        <View style={styles.delActions}>
+          <TouchableOpacity
+            style={styles.delCancelBtn}
+            onPress={() => setDeleteTarget(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Vazgeç"
+          >
+            <Text style={styles.delCancelText}>Vazgeç</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.delConfirmBtn}
+            onPress={confirmDelete}
+            accessibilityRole="button"
+            accessibilityLabel="Alışkanlığı sil"
+          >
+            <Ionicons name="trash" size={16} color={colors.white} />
+            <Text style={styles.delConfirmText}>Sil</Text>
+          </TouchableOpacity>
+        </View>
+      </SheetModal>
 
       {/* Kapasite Yöneticisi modalı */}
       <Modal visible={!!capacityTarget} animationType="slide" transparent onRequestClose={() => setCapacityTarget(null)}>
@@ -808,7 +823,6 @@ const styles = StyleSheet.create({
   undoBtnText: { fontSize: 13, color: colors.accent, fontWeight: '700' },
 
   // Silme nedeni modalı
-  delOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 24 },
   delSheet: { backgroundColor: colors.surface, borderRadius: 20, padding: 22, borderWidth: 1, borderColor: colors.border },
   delIconWrap: {
     width: 52, height: 52, borderRadius: 16, backgroundColor: alphaHex(colors.error, '18'),

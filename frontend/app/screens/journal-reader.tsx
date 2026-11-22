@@ -1,7 +1,7 @@
 import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, FlatList, Dimensions, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, FlatList, useWindowDimensions, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,13 +24,13 @@ function parseDate(d: string): Date {
   return new Date(y, m - 1, day);
 }
 
-const W = Dimensions.get('window').width;
-
 export default function JournalReaderScreen() {
+  const { width: W } = useWindowDimensions();
   const { date } = useLocalSearchParams<{ date?: string }>();
   const { entries, fetchEntries } = useJournalStore();
   const listRef = useRef<FlatList<JournalEntry>>(null);
   const positioned = useRef(false);
+  const prevWidthRef = useRef(W);
 
   useEffect(() => { if (entries.length === 0) fetchEntries(); }, [entries.length, fetchEntries]);
 
@@ -40,6 +40,14 @@ export default function JournalReaderScreen() {
   );
   const [idx, setIdx] = useState(0);
   useEffect(() => { setIdx(startIndex); }, [startIndex]);
+
+  useEffect(() => {
+    if (prevWidthRef.current === W) return;
+    prevWidthRef.current = W;
+    if (entries.length > 0) {
+      listRef.current?.scrollToIndex({ index: idx, animated: false });
+    }
+  }, [W, entries.length, idx]);
 
   // Store sonradan dolarsa hedefe konumlan (bir kez)
   useEffect(() => {
@@ -92,7 +100,7 @@ export default function JournalReaderScreen() {
           setTimeout(() => listRef.current?.scrollToIndex({ index, animated: false }), 80);
         }}
         onMomentumScrollEnd={(e) => setIdx(Math.round(e.nativeEvent.contentOffset.x / W))}
-        renderItem={({ item }) => <Page entry={item} />}
+        renderItem={({ item }) => <Page entry={item} width={W} />}
       />
 
       {/* Sayfa çevirme barı */}
@@ -128,7 +136,7 @@ export default function JournalReaderScreen() {
   );
 }
 
-function Page({ entry }: { entry: JournalEntry }) {
+function Page({ entry, width: W }: { entry: JournalEntry; width: number }) {
   const router = useRouter();
   const habits = useHabitStore((st) => st.habits);
   const dt = parseDate(entry.date);

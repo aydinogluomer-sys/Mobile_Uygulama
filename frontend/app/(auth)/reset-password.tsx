@@ -200,7 +200,7 @@ export default function ResetPasswordScreen() {
             <Button label="Yeni Şifreyi Kaydet" onPress={handleResetPassword} loading={loading} disabled={!sessionReady} size="lg" style={{ marginTop: space.sm }} />
 
             <Link href="/(auth)/login" asChild>
-              <TouchableOpacity style={s.backBtn}>
+              <TouchableOpacity style={s.backBtn} accessibilityRole="link" accessibilityLabel="Giriş ekranına dön">
                 <Ionicons name="arrow-back" size={14} color={colors.textDim} />
                 <Text style={s.backText}>Giriş ekranına dön</Text>
               </TouchableOpacity>
@@ -253,6 +253,6 @@ const s = StyleSheet.create({
   errorText: { color: colors.error, fontSize: 13, flex: 1 },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
   infoText: { color: colors.success, fontSize: 13, flex: 1, lineHeight: 18 },
-  backBtn: { marginTop: space.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  backBtn: { marginTop: space.sm, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   backText: { color: colors.textDim, fontSize: 14 },
 });

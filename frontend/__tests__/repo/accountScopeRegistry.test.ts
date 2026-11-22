@@ -34,6 +34,7 @@ const KNOWN_UNSCOPED_KEYS: Record<string, string> = {
   app_theme_dark: 'device display preference',
   app_seasonal_motion: 'device display preference',
   app_accent: 'device display preference',
+  app_haptics: 'device haptic feedback preference',
   'aderyth:drawer_shortcuts_v1': 'device navigation preference',
   app_cmd_recents: 'device command palette history',
   'aderyth:focus_flow_saved_v1': 'device focus-flow bookmarks',
