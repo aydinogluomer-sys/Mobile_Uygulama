@@ -106,8 +106,8 @@ query is unbounded; this does not.
 | `taskRepository.ts` | `updateTaskVersioned` | `tasks` | no | SINGLE_ROW | yes |
 | `webhookRepository.ts` | `fetchWebhooks` | `webhooks` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `webhookRepository.ts` | `insertWebhook` | `webhooks` | no | WRITE | — |
-| `willpowerRepository.ts` | `fetchOrCreateWillpowerState` | `willpower_state` | no | SINGLE_ROW | yes |
-| `willpowerRepository.ts` | `fetchOrCreateWillpowerState` | `willpower_state` | no | WRITE | — |
+| `willpowerRepository.ts` | `resetWillpowerRepositoryMemory` | `willpower_state` | no | WRITE | — |
+| `willpowerRepository.ts` | `resetWillpowerRepositoryMemory` | `willpower_state` | no | SINGLE_ROW | yes |
 | `willpowerRepository.ts` | `updateWillpowerState` | `willpower_state` | no | WRITE | yes |
 
 ## Totals
