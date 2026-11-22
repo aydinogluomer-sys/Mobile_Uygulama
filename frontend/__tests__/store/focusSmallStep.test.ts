@@ -10,7 +10,12 @@ jest.mock('../../services/focusService', () => ({
     mockWork.calls.push(args);
     return { sessionRecorded: true, taskCompleted: false };
   }),
+  recordPartialWorkPhase: jest.fn(async () => ({ recorded: true })),
   addTask: jest.fn(), completeTask: jest.fn(), listOpenTasks: jest.fn(async () => ({ ok: true, data: [] })), removeTask: jest.fn(),
+}));
+jest.mock('../../lib/notifications', () => ({
+  scheduleFocusEnd: jest.fn(async () => true),
+  cancelFocusEnd: jest.fn(async () => undefined),
 }));
 jest.mock('../../lib/haptics', () => ({ haptic: { success: jest.fn() } }));
 // F04: a focus session is saved under the signed-in user's key; this suite runs as one user.
@@ -38,7 +43,8 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   useFocusStore.setState({
     phase: 'work', status: 'idle', secondsLeft: 1500, sessionsCompleted: 0, sessionStartedAt: null,
-    clock: null, smallStep: null, settings: { ...DEFAULT_SETTINGS, autoStartBreaks: true, autoCheckTasks: true },
+    clock: null, smallStep: null, pausedAt: null, lastPartial: null,
+    settings: { ...DEFAULT_SETTINGS, autoStartBreaks: true, autoCheckTasks: true },
     justCompleted: null, focusTasks: [FOCUS_TASK], selectedTaskId: 'ft1', loadingTasks: false,
   });
 });
@@ -81,7 +87,15 @@ describe('R03.03 — finishing', () => {
 
   it('records one session titled with the step, crediting no focus task', async () => {
     await finishStep();
-    expect(mockWork.calls).toEqual([{ task: undefined, plannedSeconds: 300, completedSeconds: 300, autoCheckTasks: false, title: 'ilk paragraf' }]);
+    expect(mockWork.calls).toEqual([{
+      task: undefined,
+      plannedSeconds: 300,
+      completedSeconds: 300,
+      autoCheckTasks: false,
+      title: 'ilk paragraf',
+      startedAtIso: new Date(T0).toISOString(),
+      endedAtIso: new Date(T0 + 5 * MIN).toISOString(),
+    }]);
   });
 
   it('no break follows; the timer goes back to the plan', async () => {

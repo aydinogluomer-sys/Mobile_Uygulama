@@ -31,6 +31,7 @@ import { fetchJournalEntry, JOURNAL_CAS_MISMATCH, upsertJournalEntry } from '../
 import { insertNoteWithId, updateNoteVersioned, fetchNoteRow, deleteNoteIfPresent, type NoteRow } from '../repositories/noteRepository';
 import { insertRecoveryPlanRow, updateRecoveryPlanRow, deleteRecoveryPlanIfPresent } from '../repositories/recoveryRepository';
 import { insertFocusSessionRow } from '../repositories/focusSessionRepository';
+import { creditFocusTaskForSession } from '../repositories/focusTaskRepository';
 import { insertGoalWithId, updateGoalOwned, deleteGoalIfPresent, type GoalKind } from '../repositories/goalRepository';
 import { insertProjectWithId, updateProjectOwned, deleteProjectIfPresent } from '../repositories/projectRepository';
 import { insertReadingItemWithId, updateReadingItemOwned, deleteReadingItemIfPresent, type ReadingStatus, type ReadingType } from '../repositories/readingListRepository';
@@ -133,7 +134,10 @@ export const recoveryPlanTransport: Transport = async (cmd) => {
 export const focusSessionTransport: Transport = async (cmd: OutboxCommand) => {
   if (cmd.kind !== 'create') return { kind: 'rejected', error: 'a focus session is only ever created' };
   const res = await insertFocusSessionRow({ ...cmd.payload, id: cmd.entityId }, cmd.userId);
-  if (res.ok || res.code === '23505') return applied();
+  // INT-09: kredi YALNIZ satırı bu çağrı ilk kez yazdıysa verilir. 23505 = satır zaten vardı
+  // (önceki teslim kredisini denedi): yeniden oynatma çift kredi veremez.
+  if (res.ok) { await creditFocusTaskForSession(cmd.payload); return applied(); }
+  if (res.code === '23505') return applied();
   return classifyFailure(res);
 };
 

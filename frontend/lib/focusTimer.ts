@@ -93,9 +93,14 @@ export type SessionSnapshot = {
    * the time between the app dying and coming back is not focus.
    */
   lastSeenAt: number;
+  /** F16 — epoch ms the session was paused, when paused; omitted while running. */
+  pausedAt?: number;
   /** R03.03 — the small step this session is, if it is one. */
   step?: SmallStep;
 };
+
+const PHASES: readonly FocusPhase[] = ['work', 'shortBreak', 'longBreak'];
+const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
 export function snapshotOf(params: {
   phase: FocusPhase;
@@ -104,9 +109,11 @@ export function snapshotOf(params: {
   sessionsCompleted: number;
   now: number;
   step?: SmallStep | null;
+  pausedAt?: number | null;
 }): SessionSnapshot {
   return {
     ...(params.step ? { step: params.step } : {}),
+    ...(isNum(params.pausedAt) ? { pausedAt: params.pausedAt } : {}),
     v: SESSION_SNAPSHOT_VERSION,
     phase: params.phase,
     clock: params.clock,
@@ -115,9 +122,6 @@ export function snapshotOf(params: {
     lastSeenAt: params.now,
   };
 }
-
-const PHASES: readonly FocusPhase[] = ['work', 'shortBreak', 'longBreak'];
-const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
 /**
  * Parse a stored snapshot. Anything malformed or from another version is
@@ -132,6 +136,7 @@ export function parseSnapshot(raw: string | null): SessionSnapshot | null {
   if (typeof o.sessionStartedAt !== 'string') return null;
   if (!isNum(o.sessionsCompleted) || o.sessionsCompleted < 0) return null;
   if (!isNum(o.lastSeenAt)) return null;
+  if (o.pausedAt !== undefined && !isNum(o.pausedAt)) return null;
   const c = o.clock;
   if (!c || !isNum(c.plannedSeconds) || c.plannedSeconds <= 0) return null;
   if (!isNum(c.accumulatedMs) || c.accumulatedMs < 0) return null;
@@ -139,6 +144,7 @@ export function parseSnapshot(raw: string | null): SessionSnapshot | null {
   if (o.step !== undefined && !isSmallStep(o.step)) return null;
   return {
     ...(o.step !== undefined ? { step: o.step as SmallStep } : {}),
+    ...(o.pausedAt !== undefined ? { pausedAt: o.pausedAt } : {}),
     v: SESSION_SNAPSHOT_VERSION,
     phase: o.phase,
     clock: { plannedSeconds: c.plannedSeconds, accumulatedMs: c.accumulatedMs, runningSince: c.runningSince },
@@ -158,4 +164,53 @@ export function restoredClock(s: SessionSnapshot): TimerClock {
   if (c.runningSince === null) return c;
   const end = Math.max(c.runningSince, s.lastSeenAt);
   return pauseClock(c, end);
+}
+
+// ---------------------------------------------------------------------------
+// F16 — wall-clock end, snapshot freshness, safe progress, honest session span
+// ---------------------------------------------------------------------------
+
+/** Saklanan oturum anlık görüntüsünün en çok yaşı (son görülme / duraklatma anından): 12 saat. */
+export const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+/** Yarım kalan emek olarak saklanacak en kısa etkin süre (saniye). Altı yanlışlıkla dokunuştur. */
+export const MIN_PARTIAL_SECONDS = 60;
+/** Uygulamadan bu kadar (ms) uzakta kalmak "geri döndü" sayılır; bildirim çekmecesi dokunuşu sayılmaz. */
+export const AWAY_MIN_MS = 10_000;
+/** OS bitiş bildiriminin gecikme payı (ms): ön plandaki tick önce iptal edebilsin. */
+export const FOCUS_END_GRACE_MS = 2_000;
+
+/** Yaş, duraklatılmış oturumda duraklatma anından (`pausedAt`), değilse son görülme anından (`lastSeenAt`) ölçülür. */
+export function isSnapshotFresh(s: Pick<SessionSnapshot, 'lastSeenAt' | 'pausedAt'>, now: number): boolean {
+  return now - (s.pausedAt ?? s.lastSeenAt) <= SESSION_MAX_AGE_MS;
+}
+
+/** Çalışan saatin plana ulaşacağı an (epoch ms); duraklatılmışsa null. */
+export function expectedEndMs(c: TimerClock): number | null {
+  if (c.runningSince === null) return null;
+  return c.runningSince + Math.max(0, c.plannedSeconds * 1000 - c.accumulatedMs);
+}
+
+/** Halka dolumu 0..1. Toplam <= 0 veya sayı değilse 0 (NaN ve Infinity yok). */
+export function progressFraction(totalSeconds: number, secondsLeft: number): number {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0 || !Number.isFinite(secondsLeft)) return 0;
+  return Math.min(1, Math.max(0, (totalSeconds - secondsLeft) / totalSeconds));
+}
+
+/** Oturum satırının zaman aralığı: bitiş verilmezse şimdi, başlangıç verilmezse bitişten etkin süre kadar geri; başlangıç bitişi aşmaz. */
+export function sessionSpan(p: {
+  startedAtIso?: string;
+  endedAtIso?: string;
+  completedSeconds: number;
+  now: number;
+}): { startedAt: string; endedAt: string } {
+  const parsedEnd = p.endedAtIso !== undefined ? Date.parse(p.endedAtIso) : Number.NaN;
+  const endMs = Number.isFinite(parsedEnd) ? parsedEnd : p.now;
+  const parsedStart = p.startedAtIso !== undefined ? Date.parse(p.startedAtIso) : Number.NaN;
+  const secs = Number.isFinite(p.completedSeconds) ? Math.max(0, p.completedSeconds) : 0;
+  let startMs = Number.isFinite(parsedStart) ? parsedStart : endMs - secs * 1000;
+  if (startMs > endMs) startMs = endMs;
+  return {
+    startedAt: new Date(startMs).toISOString(),
+    endedAt: new Date(endMs).toISOString(),
+  };
 }

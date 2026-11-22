@@ -9,7 +9,7 @@ import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import { useTaskStore } from '../../store/taskStore';
 import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
-import { nextActionable, primaryAction, todaySummaryLine, type NextAction } from '../../lib/todayNext';
+import { focusForNext, nextActionable, primaryAction, todaySummaryLine, type NextAction } from '../../lib/todayNext';
 import { FLOW_COPY, recentlyEndedBreak } from '../../lib/flowCopy';
 import { useWillpowerStore } from '../../store/willpowerStore';
 import { useFocusStore } from '../../store/focusStore';
@@ -268,7 +268,7 @@ export default function TodayScreen() {
   const { tasks, fetchTasks, toggleDone, dueToday, overdue, addTask, sync: taskSync } = useTaskStore();
   const coreSync = useCoreOutboxSync();
   const { state: wp, fetchToday } = useWillpowerStore();
-  const { sessionsCompleted, status: focusStatus, smallStep: focusSmallStep, focusTasks, selectedTaskId } = useFocusStore();
+  const { sessionsCompleted, status: focusStatus, smallStep: focusSmallStep, focusTasks, selectedTaskId, pausedAt: focusPausedAt, sessionStartedAt: focusStartedAt } = useFocusStore();
   const { plans: recoveryPlans, fetchPlans } = useRecoveryStore();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -345,7 +345,15 @@ export default function TodayScreen() {
   // R03.01 — the ONE next step (lib/todayNext): an open focus session or
   // routine first, then today's make-up, overdue work, today's habits and tasks.
   const nowAction: NextAction | null = nextActionable({
-    focus: { status: focusStatus, title: focusSmallStep?.title ?? focusTasks.find((t) => t.id === selectedTaskId)?.title ?? null },
+    focus: focusForNext(
+      {
+        status: focusStatus,
+        title: focusSmallStep?.title ?? focusTasks.find((t) => t.id === selectedTaskId)?.title ?? null,
+        pausedAt: focusPausedAt,
+        startedAtIso: focusStartedAt,
+      },
+      Date.now(),
+    ),
     routine: runnerSession ? { status: runnerSession.status, templateName: runnerSession.templateName, done: Object.keys(runnerSession.results).length, total: runnerSession.steps.length } : null,
     recoveryToday: recoveryPlans
       .filter((p) => p.status === 'planned' && p.target_date === today)

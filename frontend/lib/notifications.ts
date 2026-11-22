@@ -15,8 +15,16 @@ import { Platform } from 'react-native';
 import type { Habit } from './supabase';
 import { parseTime, type PlannedReminder, type ReminderSettings } from './reminderPlan';
 import { CATEGORY_BINARY, CATEGORY_MEASURE, SNOOZE_MINUTES } from './notificationActions';
+import type { FocusPhase } from './focusTimer';
 
 export const HABIT_CHANNEL = 'habit-reminders';
+export const FOCUS_CHANNEL = 'focus-timer';
+export const FOCUS_END_KIND = 'focus-end';
+export type FocusEndKind = 'work' | 'break';
+export const focusEndId = (kind: FocusEndKind): string => `${FOCUS_END_KIND}-${kind}`;
+export function focusEndKindOf(phase: FocusPhase): FocusEndKind {
+  return phase === 'work' ? 'work' : 'break';
+}
 
 // Ön planda da bildirim gösterilsin
 Notifications.setNotificationHandler({
@@ -42,6 +50,11 @@ export async function ensureChannel(): Promise<void> {
     await Notifications.setNotificationChannelAsync(HABIT_CHANNEL, {
       name: 'Alışkanlık Hatırlatıcıları',
       importance: Notifications.AndroidImportance.DEFAULT,
+    });
+    await Notifications.setNotificationChannelAsync(FOCUS_CHANNEL, {
+      name: 'Odak Bitişi',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      vibrationPattern: [0, 200, 120, 200],
     });
     channelReady = true;
   } catch { /* yeniden denenir */ }
@@ -209,4 +222,55 @@ export async function scheduleRecoveryReminder(
   } catch {
     /* sessiz geç */
   }
+}
+
+// ── F16: Odak bitiş bildirimi (tek seferlik, sabit kimlikli, sessiz öncelik) ──
+
+export function focusEndContent(phase: FocusPhase, plannedSeconds: number): { title: string; body: string } {
+  if (phase === 'work') {
+    const minutes = Math.max(1, Math.round(plannedSeconds / 60));
+    return { title: 'Odak tamam', body: `${minutes} dk bitti. Hazır olduğunda mola ver ya da devam et.` };
+  }
+  return { title: 'Mola bitti', body: 'Hazır olduğunda odağa dönebilirsin; acele yok.' };
+}
+
+export async function scheduleFocusEnd(p: {
+  phase: FocusPhase;
+  endsAtMs: number;
+  plannedSeconds: number;
+  withSound: boolean;
+  now?: number;
+}): Promise<boolean> {
+  if (p.endsAtMs <= (p.now ?? Date.now()) + 1000) return false;
+  if (!(await hasPermission())) return false;
+  await ensureChannel();
+  try {
+    await Notifications.scheduleNotificationAsync({
+      identifier: focusEndId(focusEndKindOf(p.phase)),
+      content: {
+        ...focusEndContent(p.phase, p.plannedSeconds),
+        sound: p.withSound,
+        data: { kind: FOCUS_END_KIND, phase: p.phase },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(p.endsAtMs),
+        ...(Platform.OS === 'android' ? { channelId: FOCUS_CHANNEL } : {}),
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function cancelFocusEnd(kind?: FocusEndKind): Promise<void> {
+  const kinds: FocusEndKind[] = kind ? [kind] : ['work', 'break'];
+  await Promise.all(
+    kinds.map(async (k) => {
+      const id = focusEndId(k);
+      try { await Notifications.cancelScheduledNotificationAsync(id); } catch { /* yoksay */ }
+      try { await Notifications.dismissNotificationAsync(id); } catch { /* yoksay */ }
+    }),
+  );
 }

@@ -23,6 +23,7 @@ import FocusSpotifyCard from '../../components/focus/FocusSpotifyCard';
 import FocusSessionCompleteModal from '../../components/focus/FocusSessionCompleteModal';
 import { FOCUS_PRESETS } from '../../lib/focusThemes';
 import { FLOW_COPY, isBackFromFocusBreak } from '../../lib/flowCopy';
+import { progressFraction } from '../../lib/focusTimer';
 
 const IS_TEST = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
@@ -48,6 +49,7 @@ export default function FocusScreen() {
     fetchFocusTasks, addFocusTask, removeFocusTask, completeFocusTask, selectTask,
     updateSettings, loadSettings, restoreSession, clearJustCompleted,
   } = useFocusStore();
+  const lastPartial = useFocusStore((st) => st.lastPartial);
 
   const reduceMotion = useReducedMotion();
   const haloAnim = useRef(new Animated.Value(0)).current;
@@ -90,7 +92,7 @@ export default function FocusScreen() {
   // The open session's own plan (a small step, or settings edited mid-session),
   // else the configured length.
   const totalSeconds = clock?.plannedSeconds ?? customDurations[phase as keyof typeof customDurations];
-  const progressPct = ((totalSeconds - secondsLeft) / totalSeconds) * 100;
+  const progressPct = progressFraction(totalSeconds, secondsLeft) * 100;
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
 
@@ -110,13 +112,13 @@ export default function FocusScreen() {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (appStateRef.current === 'active' && next !== 'active') {
-        if (useFocusStore.getState().status === 'running') pause();
-      }
+      const prev = appStateRef.current;
       appStateRef.current = next;
+      if (prev === 'active' && next !== 'active') { useFocusStore.getState().onBackground(); return; }
+      if (prev !== 'active' && next === 'active') { useFocusStore.getState().onForeground(); }
     });
     return () => sub.remove();
-  }, [pause]);
+  }, []);
 
   const selectedTask = focusTasks.find((t) => t.id === selectedTaskId);
 
@@ -287,6 +289,11 @@ export default function FocusScreen() {
           {sessionsCompleted > 0 && (
             <Text style={s.sessionCount}>{sessionsCompleted} seans tamamlandı</Text>
           )}
+          {lastPartial ? (
+            <Text style={s.sessionCount} accessibilityLiveRegion="polite">
+              {`Kısmi odak kaydedildi: ${Math.max(1, Math.floor(lastPartial.seconds / 60))} dk. Yarım kalan emek de sayılır.`}
+            </Text>
+          ) : null}
           {/* R03.07 — "mola sonrası dön" */}
           {isBackFromFocusBreak({ phase, status, sessionsCompleted }) && (
             <Text style={s.sessionCount} accessibilityLiveRegion="polite">{FLOW_COPY.afterFocusBreak}</Text>
