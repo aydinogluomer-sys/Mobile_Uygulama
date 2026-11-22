@@ -29,9 +29,10 @@ import { useLogStore } from '../store/logStore';
 import { useTaskStore } from '../store/taskStore';
 // R04 — reminders follow the schedule; their buttons act once.
 import * as Notifications from 'expo-notifications';
-import { useHabitStore } from '../store/habitStore';
-import { registerReminderReconciler } from '../lib/notifications';
-import { reconcileReminders, handleReminderResponse } from '../services/reminderService';
+import { useHabitStore, whenHabitsLoaded } from '../store/habitStore';
+import { registerReminderReconciler, REMINDERS_SUPPORTED } from '../lib/notifications';
+import { createReconcileTrigger, reconcileReminders, handleReminderResponse, REPLAN_DEBOUNCE_MS } from '../services/reminderService';
+import { hasReminderHabits } from '../lib/reminderPlan';
 import { syncProfileTimeZone } from '../services/timeZoneSyncService';
 import { resolveOnboardingRouting, useOnboardingStore } from '../store/onboardingStore';
 import OnboardingGate from '../components/onboarding/OnboardingGate';
@@ -280,9 +281,6 @@ function RootLayoutInner() {
         void flushPendingSync();
         void useTaskStore.getState().flush();
         void coreOutbox.flush();
-        // R04.04 — the plan is built from local dates at run time, so this
-        // also re-plans after a timezone or DST change.
-        void reconcileReminders(() => useHabitStore.getState().habits);
         // F06 (NAV-04): a status that came from the device cache (or a failed silent refresh) is
         // read again from the server, silently; the screen stays up whatever the answer.
         if (useOnboardingStore.getState().staleStatus) void hydrateOnboarding();
@@ -316,23 +314,25 @@ function RootLayoutInner() {
   // F06: keyed on the user id -- an hourly token refresh no longer tears down and re-registers the
   // notification listeners and re-plans every reminder.
   useEffect(() => {
-    if (loading || !sessionUid) { registerReminderReconciler(null); return; }
-    const run = () => reconcileReminders(() => useHabitStore.getState().habits);
+    if (loading || !sessionUid || !REMINDERS_SUPPORTED) { registerReminderReconciler(null); return; }
+    const habitsNow = () => { const s = useHabitStore.getState(); return s.habitsLoaded ? s.habits : null; };
+    const trigger = createReconcileTrigger({ run: () => reconcileReminders(habitsNow), delayMs: REPLAN_DEBOUNCE_MS });
+    const run = () => trigger.flushNow();
     registerReminderReconciler(run);
-    void run();
-    const unsubLogs = useLogStore.subscribe((s, prev) => { if (s.logs !== prev.logs) void run(); });
-    // Status changes (activate / queue), breaks, holidays and goal versions
-    // all change the habit list: re-plan.
-    const unsubHabits = useHabitStore.subscribe((s, prev) => { if (s.habits !== prev.habits) void run(); });
+    void whenHabitsLoaded().then(() => trigger.flushNow());
+    const unsubLogs = useLogStore.subscribe((s, prev) => { if (s.logs !== prev.logs && hasReminderHabits(useHabitStore.getState().habits)) trigger.schedule(); });
+    const unsubHabits = useHabitStore.subscribe((s, prev) => { if (s.habits !== prev.habits && (hasReminderHabits(s.habits) || hasReminderHabits(prev.habits))) trigger.schedule(); });
+    const appSub = AppState.addEventListener('change', (next: AppStateStatus) => { if (next === 'active') void trigger.flushNow(); });
     const deps = {
       get habits() { return useHabitStore.getState().habits; },
+      whenHabitsReady: () => whenHabitsLoaded(),
       logHabit: (p: { habitId: string; date: Date; state: 'done' | 'partial' | 'skip' | 'miss' }) => useLogStore.getState().logHabit(p),
       openMeasure: () => router.push('/tabs/timeline' as never),
       reconcile: run,
     };
     const respSub = Notifications.addNotificationResponseReceivedListener((r) => { void handleReminderResponse(r, deps); });
     void Notifications.getLastNotificationResponseAsync().then((r) => { if (r) void handleReminderResponse(r, deps); }).catch(() => undefined);
-    return () => { unsubLogs(); unsubHabits(); respSub.remove(); registerReminderReconciler(null); };
+    return () => { trigger.cancel(); unsubLogs(); unsubHabits(); appSub.remove(); respSub.remove(); registerReminderReconciler(null); };
   }, [loading, sessionUid, router]);
 
   // F15 -- the device zone is reported once per session and again when the app returns to the

@@ -63,6 +63,7 @@ function emitAnalytics(name: AnalyticsEventName, props: Record<string, unknown>)
 type HabitInsert = Omit<Habit, 'id' | 'created_at' | 'user_id'>;
 
 export type HabitActionResult = { ok: true } | { ok: false; error: string; reason?: string };
+export type HabitUpdateResult = { ok: true } | { ok: false; error: string };
 
 const ACTIVATION_MESSAGES: Record<string, string> = {
   no_state: 'Bugünkü irade bütçesi okunamadı; bağlantı gelince tekrar dene.',
@@ -77,6 +78,7 @@ const inFlight = new Set<string>();
 type HabitStore = {
   habits: Habit[];
   loading: boolean;
+  habitsLoaded: boolean;
   error: string | null;
   hasLoaded: boolean;
   /** R01.05 — every pause and holiday of this user. */
@@ -98,7 +100,7 @@ type HabitStore = {
   fetchHabits: (opts?: { force?: boolean }) => Promise<void>;
   addInstalledHabits: (habits: Habit[]) => void;
   addHabit: (habit: HabitInsert) => Promise<Habit | null>;
-  updateHabit: (id: string, updates: Partial<Habit>) => Promise<void>;
+  updateHabit: (id: string, updates: Partial<Habit>) => Promise<HabitUpdateResult>;
   removeHabit: (id: string) => Promise<void>;
   restoreHabit: (habit: Habit) => Promise<void>;
   purgeHabit: (habit: Habit, reason: string) => Promise<void>;
@@ -153,7 +155,7 @@ async function runFetchHabits(set: HabitSet, get: HabitGet, epoch: number): Prom
     // the first time) rather than presenting "no pauses" as a fact.
     if (res.ok) {
       const { pauses, goalVersions } = get();
-      set({ habits: attachTimeOff(res.data, pauses, goalVersions), error: null, hasLoaded: true });
+      set({ habits: attachTimeOff(res.data, pauses, goalVersions), error: null, hasLoaded: true, habitsLoaded: true });
       habitsFetchedAt = Date.now();
       habitsFetchedEpoch = epoch;
     } else {
@@ -170,6 +172,7 @@ export const useHabitStore = create<HabitStore>((rawSet, get) => {
   return {
   habits: [],
   loading: false,
+  habitsLoaded: false,
   error: null,
   hasLoaded: false,
   pauses: [],
@@ -329,7 +332,9 @@ export const useHabitStore = create<HabitStore>((rawSet, get) => {
         if (merged.reminders?.enabled && active) scheduleHabitReminder(merged);
         else cancelHabitReminder(merged.id);
       }
+      return { ok: true };
     }
+    return { ok: false, error: res.offline ? 'Bağlantı yok; değişiklik kaydedilmedi.' : (res.error || 'Kaydedilemedi.') };
   },
 
   removeHabit: async (id) => {
@@ -440,3 +445,26 @@ useHabitStore.subscribe(() => {
 
 // F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
 registerAccountScoped({ name: 'habit', store: useHabitStore, onReset: () => { inFlight.clear(); } });
+
+export const HABITS_WAIT_MS = 5000;
+
+/** Habit listesi yüklenince (veya zaman aşımında mevcut listeyle) çözülür; yüklenmiyorsa fetchHabits() başlatır. */
+export function whenHabitsLoaded(timeoutMs: number = HABITS_WAIT_MS): Promise<readonly Habit[]> {
+  const first = useHabitStore.getState();
+  if (first.habitsLoaded) return Promise.resolve(first.habits);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      unsub();
+      clearTimeout(timer);
+      resolve(useHabitStore.getState().habits);
+    };
+    const unsub = useHabitStore.subscribe((st) => {
+      if (st.habitsLoaded) finish();
+    });
+    const timer = setTimeout(finish, timeoutMs);
+    if (!first.loading) void first.fetchHabits();
+  });
+}

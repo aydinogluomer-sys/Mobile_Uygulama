@@ -25,6 +25,8 @@ jest.mock('../../lib/notifications', () => ({
     return true;
   }),
   scheduleSnooze: jest.fn(async (habitId: string, day: string) => { mockOS.snoozes.push({ habitId, day }); }),
+  scheduleReentryNudge: jest.fn(async () => true),
+  cancelReentryNudge: jest.fn(async () => undefined),
   reminderTitle: (n: string) => n,
 }));
 jest.mock('../../repositories/habitLogRepository', () => ({

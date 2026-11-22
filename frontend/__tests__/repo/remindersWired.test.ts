@@ -1,7 +1,9 @@
 /**
- * R04 — wiring: no DAILY trigger is created any more, the Android channel
- * does not depend on the permission path, the root layout registers the
- * reconciler and handles buttons, and no deferred trigger is offered.
+ * R04 / F17 — wiring: no DAILY trigger is created any more, the Android channel
+ * does not depend on the permission path, system settings path exists without
+ * nag priorities, the root layout guards web, gates subscriptions on
+ * hasReminderHabits with debounce, refreshes the horizon on launch and
+ * foreground, and no deferred trigger is offered.
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -28,17 +30,33 @@ describe('lib/notifications', () => {
   it('hidden titles reach the lock screen', () => {
     expect(lib).toMatch(/title: reminderTitle\(habit\.name, settings\)/);
   });
+  it('offers openNotificationSettings via Linking.openSettings without timeSensitive/interruptionLevel (DOM-18)', () => {
+    expect(lib).toContain('export async function openNotificationSettings(');
+    expect(lib).toContain('Linking.openSettings()');
+    expect(lib).not.toMatch(/interruptionLevel|timeSensitive/);
+  });
 });
 
 describe('root layout', () => {
   const layout = code('app/_layout.tsx');
-  it('registers the reconciler, re-plans on log and habit changes and on foreground, handles buttons', () => {
+  it('guards web, registers the reconciler, debounces gated store changes, flushes on boot and foreground, and awaits habits for taps', () => {
+    expect(layout.indexOf('!REMINDERS_SUPPORTED')).toBeGreaterThan(-1);
+    expect(layout.indexOf('!REMINDERS_SUPPORTED')).toBeLessThan(layout.indexOf('addNotificationResponseReceivedListener'));
     expect(layout).toMatch(/registerReminderReconciler\(run\);/);
-    expect(layout).toMatch(/useLogStore\.subscribe\(\(s, prev\) => \{ if \(s\.logs !== prev\.logs\) void run\(\); \}\)/);
-    expect(layout).toMatch(/useHabitStore\.subscribe\(\(s, prev\) => \{ if \(s\.habits !== prev\.habits\) void run\(\); \}\)/);
+    expect(layout).toMatch(/void whenHabitsLoaded\(\)\.then\(\(\) => trigger\.flushNow\(\)\)/);
+    expect(layout).toMatch(
+      /useLogStore\.subscribe\(\(s, prev\) => \{ if \(s\.logs !== prev\.logs && hasReminderHabits\(useHabitStore\.getState\(\)\.habits\)\) trigger\.schedule\(\); \}\)/,
+    );
+    expect(layout).toMatch(
+      /useHabitStore\.subscribe\(\(s, prev\) => \{ if \(s\.habits !== prev\.habits && \(hasReminderHabits\(s\.habits\) \|\| hasReminderHabits\(prev\.habits\)\)\) trigger\.schedule\(\); \}\)/,
+    );
+    expect(layout).toMatch(
+      /AppState\.addEventListener\('change', \(next: AppStateStatus\) => \{ if \(next === 'active'\) void trigger\.flushNow\(\); \}\)/,
+    );
+    expect(layout).toMatch(/whenHabitsReady: \(\) => whenHabitsLoaded\(\)/);
     expect(layout).toMatch(/addNotificationResponseReceivedListener/);
     expect(layout).toMatch(/getLastNotificationResponseAsync/);
-    expect(layout).toMatch(/if \(next === 'active'\) \{[\s\S]*?reconcileReminders\(/);
+    expect(layout).not.toContain('reconcileReminders(() => useHabitStore');
   });
 });
 

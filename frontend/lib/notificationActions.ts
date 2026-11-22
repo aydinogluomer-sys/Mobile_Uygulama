@@ -60,3 +60,10 @@ export const MAX_HANDLED = 200;
 export function rememberHandled(list: readonly string[], key: string): string[] {
   return [key, ...list.filter((k) => k !== key)].slice(0, MAX_HANDLED);
 }
+
+export type HandledOutcome = 'logged' | 'skipped' | 'snoozed' | 'opened' | 'duplicate' | 'ignored' | 'failed';
+
+/** Yalnız işlemin gerçekten tamamlandığı sonuçlar "işlendi" kaydı yazar (DOM-14). */
+export function shouldRecordHandled(outcome: HandledOutcome): boolean {
+  return outcome === 'logged' || outcome === 'skipped' || outcome === 'snoozed' || outcome === 'opened';
+}
