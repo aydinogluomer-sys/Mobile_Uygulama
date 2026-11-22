@@ -4,6 +4,8 @@ export const FIRST_WAVE_THEMED: readonly string[] = [
   'app/tabs/settings.tsx',
   'app/tabs/today.tsx',
   'components/motion/MorphingPillTabs.tsx',
+  'components/settings/AccountSection.tsx',
+  'components/settings/SettingRow.tsx',
   'components/settings/TodayToolsSection.tsx',
   'components/spatial/AtmosphericScreenCanvas.tsx',
   'components/today/HabitSection.tsx',

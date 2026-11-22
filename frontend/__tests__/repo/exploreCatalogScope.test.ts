@@ -153,6 +153,9 @@ describe('B. Kaynaksız klinik ve nörobilim iddiaları yok (F15, Thefor F-2)', 
 describe('C. Rakip marka adları kullanıcı yüzeyinde yok (PS-04)', () => {
   const targets = [
     'app/tabs/hub.tsx',
+    'components/hub/ExploreView.tsx',
+    'components/hub/ToolsView.tsx',
+    'lib/destinations.ts',
     'lib/exploreCatalog.ts',
     'lib/routinePacks.ts',
     'lib/onboarding.ts',
@@ -181,24 +184,33 @@ describe('C. Rakip marka adları kullanıcı yüzeyinde yok (PS-04)', () => {
 
 describe('D. Hub alt başlık vaatleri hedef ekranlarla hizalı (CMP1-O06)', () => {
   it('takvim alt başlığı Aylık takvim der, Zaman blokları vaat etmez; akış Odak mikro-dersleri der', () => {
-    const hub = stripComments(read('app', 'tabs', 'hub.tsx'));
-    expect(hub).toContain("subtitle: 'Aylık takvim'");
-    expect(hub).not.toContain('Zaman blokları');
-    expect(hub).toContain('Odak mikro-dersleri');
-    expect(hub).toContain('Kısa odak mikro-dersleri, tek tek');
-    expect(hub).toContain('Hazır rutin koleksiyonları ve tek dokunuşla mikro alışkanlıklar');
+    const hubAll = [
+      stripComments(read('app', 'tabs', 'hub.tsx')),
+      stripComments(read('components', 'hub', 'ExploreView.tsx')),
+      stripComments(read('components', 'hub', 'ToolsView.tsx')),
+      stripComments(read('lib', 'destinations.ts')),
+    ].join('\n');
+    expect(hubAll).toContain("blurb: 'Aylık takvim'");
+    expect(hubAll).not.toContain('Zaman blokları');
+    expect(hubAll).toContain('Odak mikro-dersleri');
+    expect(hubAll).toContain('Kısa odak mikro-dersleri, tek tek');
+    expect(hubAll).toContain('Hazır rutin koleksiyonları ve tek dokunuşla mikro alışkanlıklar');
   });
 });
 
 describe('E. Routine AI ücretsiz konumlandırma satırı (Thefor F-8, FREE MVP)', () => {
-  it('hub.tsx tek cümlelik ücretsiz konumlandırma içerir ve yasaklı abonelik/fiyat belirteçleri içermez', () => {
-    const hub = stripComments(read('app', 'tabs', 'hub.tsx'));
-    expect(hub).toContain('AI Rutin ücretsizdir: para istemez, yalnızca Focus Point harcar.');
+  it('hub yüzeyleri tek cümlelik ücretsiz konumlandırma içerir ve yasaklı abonelik/fiyat belirteçleri içermez', () => {
+    const hubSurface = [
+      stripComments(read('app', 'tabs', 'hub.tsx')),
+      stripComments(read('components', 'hub', 'ExploreView.tsx')),
+      stripComments(read('components', 'hub', 'ToolsView.tsx')),
+    ].join('\n');
+    expect(hubSurface).toContain('AI Rutin ücretsizdir: para istemez, yalnızca Focus Point harcar.');
 
     for (const banned of ['Abone Ol', 'Test modu', 'EN POPÜLER', 'Üyeliği Yükselt']) {
-      expect(hub).not.toContain(banned);
+      expect(hubSurface).not.toContain(banned);
     }
-    expect(hub).not.toMatch(/\bpriceLabel\b|\bPERIOD_LABEL\b|\bBillingPeriod\b/);
+    expect(hubSurface).not.toMatch(/\bpriceLabel\b|\bPERIOD_LABEL\b|\bBillingPeriod\b/);
   });
 });
 

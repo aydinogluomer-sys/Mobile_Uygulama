@@ -8,6 +8,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, Stack } from 'expo-router';
+import { navigateTo } from '../../lib/destinations';
 import type { Habit } from '../../lib/supabase';
 import { useHabitStore } from '../../store/habitStore';
 import { useTaskStore } from '../../store/taskStore';
@@ -734,7 +735,7 @@ export default function AICoachScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[s.modalBtn, s.modalBtnPrimary]}
-                    onPress={() => { setSummaryModal(false); router.push('/screens/journal' as any); }}
+                    onPress={() => { setSummaryModal(false); navigateTo(router, 'journal'); }}
                     accessibilityRole="link"
                     accessibilityLabel="Günlüğü aç"
                   >

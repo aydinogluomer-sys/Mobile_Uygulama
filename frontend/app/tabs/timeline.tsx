@@ -42,6 +42,9 @@ import { isMeasurableTracking } from '../../lib/habitEngine';
 import { measuredEntryFor } from '../../services/habitLogService';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { useRouter } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
+import HabitMgmtCard from '../../components/habits/HabitMgmtCard';
+import { navigateTo } from '../../lib/destinations';
 
 const FAB_BOTTOM = Platform.OS === 'ios' ? 100 : 80;
 
@@ -79,8 +82,11 @@ export default function TimelineScreen() {
   const pendingIntent = useCommandStore((st) => st.pendingIntent);
   const consumeIntent = useCommandStore((st) => st.consumeIntent);
   useEffect(() => {
-    if (pendingIntent !== 'new-habit') return;
-    if (consumeIntent() === 'new-habit') setShowOnboarding(true);
+    if (pendingIntent === 'new-habit') {
+      if (consumeIntent() === 'new-habit') setShowOnboarding(true);
+    } else if (pendingIntent === 'ai-routine') {
+      if (consumeIntent() === 'ai-routine') setShowAIRoutine(true);
+    }
   }, [pendingIntent, consumeIntent]);
 
   const [xpAnim, setXpAnim] = useState<number | null>(null);
@@ -94,9 +100,48 @@ export default function TimelineScreen() {
   // Kapasite yöneticisi
   const [capacityTarget, setCapacityTarget] = useState<Omit<Habit, 'id' | 'created_at' | 'user_id'> | null>(null);
 
-  const { habits, loading: habitsLoading, fetchHabits, addHabit, activateHabit, pauseHabit, updateHabit, removeHabit, restoreHabit, purgeHabit } = useHabitStore();
-  const { fetchLogsForDate, logHabit, getLogForHabit, getRemainingValue } = useLogStore();
-  const { state: wp, fetchToday, canActivate, spend, refund } = useWillpowerStore();
+  const {
+    habits,
+    loading: habitsLoading,
+    fetchHabits,
+    addHabit,
+    activateHabit,
+    pauseHabit,
+    updateHabit,
+    removeHabit,
+    restoreHabit,
+    purgeHabit,
+  } = useHabitStore(
+    useShallow((st) => ({
+      habits: st.habits,
+      loading: st.loading,
+      fetchHabits: st.fetchHabits,
+      addHabit: st.addHabit,
+      activateHabit: st.activateHabit,
+      pauseHabit: st.pauseHabit,
+      updateHabit: st.updateHabit,
+      removeHabit: st.removeHabit,
+      restoreHabit: st.restoreHabit,
+      purgeHabit: st.purgeHabit,
+    })),
+  );
+  const { fetchLogsForDate, logHabit, getLogForHabit, getRemainingValue } = useLogStore(
+    useShallow((st) => ({
+      fetchLogsForDate: st.fetchLogsForDate,
+      logHabit: st.logHabit,
+      getLogForHabit: st.getLogForHabit,
+      getRemainingValue: st.getRemainingValue,
+    })),
+  );
+  const { state: wp, fetchToday, canActivate, spend, refund } = useWillpowerStore(
+    useShallow((st) => ({
+      state: st.state,
+      fetchToday: st.fetchToday,
+      canActivate: st.canActivate,
+      spend: st.spend,
+      refund: st.refund,
+    })),
+  );
 
   // W1 (task Phase-1 CODER-F, Plan §10): şu an aktif alışkanlıkların yükü --
   // canActivate'e gerçek kapasite verisi geçmek için kullanılır. `habitsLoading`
@@ -412,97 +457,19 @@ export default function TimelineScreen() {
     );
   };
 
-  // Bekleme/Fikirler → yönetim kartı
-  const renderMgmtCard = (habit: Habit) => {
-    const imp = habit.impact_level ? impactMeta(habit.impact_level) : null;
-    const isIdea = habit.status === 'idea';
-    const isCompleted = habit.status === 'completed';
-    const cue = cueLabel(habit, habits);
-    return (
-      <View key={habit.id} style={[styles.mgmtCard, isIdea && styles.mgmtCardIdea, isCompleted && styles.mgmtCardDone]}>
-        <View style={[styles.iconWrap, { backgroundColor: (habit.color ?? colors.primary) + '25' }]}>
-          <Ionicons name={(habit.icon ?? 'star-outline') as any} size={22} color={habit.color ?? colors.primary} />
-        </View>
-        <View style={styles.mgmtMeta}>
-          <Text style={styles.mgmtName}>{habit.name}</Text>
-          <View style={styles.rowBadges}>
-            {imp && (
-              <View style={[styles.impactChip, { backgroundColor: imp.color + '20', borderColor: imp.color + '40' }]}>
-                <View style={[styles.impactChipDot, { backgroundColor: imp.color }]} />
-                <Text style={[styles.impactChipText, { color: imp.color }]}>{imp.label}</Text>
-              </View>
-            )}
-            <View style={styles.wpCostBadge}>
-              <Ionicons name="flash" size={10} color="#f59e0b" />
-              <Text style={styles.wpCostText}>{habit.willpower_cost}</Text>
-            </View>
-            {isMeasurableTracking(habit.tracking_type) && (
-              <View style={styles.measurableBadge}><Text style={styles.measurableBadgeText}>📊 {habit.unit}</Text></View>
-            )}
-          </View>
-          {cue && (
-            <View style={styles.cueRow}>
-              <Ionicons name="link-outline" size={11} color={colors.neutral500} />
-              <Text style={styles.cueText} numberOfLines={1}>{cue}</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.cardActions}>
-          {isCompleted ? (
-            <TouchableOpacity
-              style={styles.moveBtn}
-              onPress={() => handleReopen(habit)}
-              accessibilityRole="button"
-              accessibilityLabel={`${habit.name} alışkanlığını geri aç`}
-            >
-              <Ionicons name="refresh-outline" size={14} color={colors.primary} />
-              <Text style={styles.moveBtnText}>Geri Aç</Text>
-            </TouchableOpacity>
-          ) : isIdea ? (
-            <TouchableOpacity
-              style={styles.moveBtn}
-              onPress={() => handleMoveToWaiting(habit)}
-              accessibilityRole="button"
-              accessibilityLabel={`${habit.name} alışkanlığını bekleme odasına al`}
-            >
-              <Ionicons name="arrow-up-circle-outline" size={14} color={colors.primary} />
-              <Text style={styles.moveBtnText}>Beklet</Text>
-            </TouchableOpacity>
-          ) : (
-            <>
-              <IconButton
-                compact
-                icon="checkmark-done-circle-outline"
-                size={22}
-                color="#10b981"
-                label={`${habit.name} alışkanlığını tamamlandı say`}
-                style={styles.rowIconBtn}
-                onPress={() => { void handleComplete(habit); }}
-              />
-              <IconButton
-                compact
-                icon="play-circle"
-                size={26}
-                color="#10b981"
-                label={`${habit.name} alışkanlığını etkinleştir`}
-                style={styles.activateBtn}
-                onPress={() => { void handleActivate(habit); }}
-              />
-            </>
-          )}
-          <IconButton
-            compact
-            icon="trash-outline"
-            size={16}
-            color="#ef4444"
-            label={`${habit.name} alışkanlığını sil`}
-            style={styles.trashBtn}
-            onPress={() => { setDeleteReason(''); setDeleteTarget(habit); }}
-          />
-        </View>
-      </View>
-    );
-  };
+  // Bekleme/Fikirler/Tamamlanan → sunumsal yönetim kartı (HabitMgmtCard)
+  const renderMgmtCard = (habit: Habit) => (
+    <HabitMgmtCard
+      key={habit.id}
+      habit={habit}
+      cue={cueLabel(habit, habits)}
+      onActivate={(h) => { void handleActivate(h); }}
+      onComplete={(h) => { void handleComplete(h); }}
+      onMoveToWaiting={(h) => { void handleMoveToWaiting(h); }}
+      onReopen={(h) => { void handleReopen(h); }}
+      onRemove={(h) => { setDeleteReason(''); setDeleteTarget(h); }}
+    />
+  );
 
   if (loading) {
     return (
@@ -567,7 +534,7 @@ export default function TimelineScreen() {
 
       {viewMode === 'matrix' ? (
         <View style={{ flex: 1 }}>
-          <HabitListView />
+          <HabitListView onAdd={() => setShowOnboarding(true)} />
         </View>
       ) : (
         <>
@@ -614,7 +581,7 @@ export default function TimelineScreen() {
             <View style={styles.topActionGrid}>
               <TouchableOpacity
                 style={styles.routineBannerHalf}
-                onPress={() => router.push('/screens/routine-runner' as any)}
+                onPress={() => navigateTo(router, 'routine-runner')}
                 activeOpacity={0.8}
                 accessibilityRole="button"
                 accessibilityLabel="Rutin Yürütücüyü Başlat"
@@ -649,7 +616,7 @@ export default function TimelineScreen() {
             {/* Keşfet & Koleksiyonlar Vitrini Geçişi (TheFor Tarzı Keşfet) */}
             <TouchableOpacity
               style={styles.exploreStripCard}
-              onPress={() => router.push('/tabs/hub' as any)}
+              onPress={() => navigateTo(router, 'explore')}
               activeOpacity={0.82}
               accessibilityRole="button"
               accessibilityLabel="Rutin ve Alışkanlık Keşfet Vitrinini Aç"
@@ -854,7 +821,8 @@ export default function TimelineScreen() {
                 <Text style={styles.capSub}>&quot;{capacityTarget?.name}&quot; ({capacityTarget?.willpower_cost} irade) aktif etmek için yer aç</Text>
               </View>
             </View>
-            {wp && capacityTarget && (
+              {/* İrade bütçesi özeti (wp.daily_budget) */}
+              {wp && capacityTarget && (
               <View style={styles.capStatRow}>
                 <View style={styles.capStat}><Text style={styles.capStatVal}>{wp.daily_budget - wp.used}</Text><Text style={styles.capStatLabel}>Boş İrade</Text></View>
                 <View style={styles.capStat}><Text style={styles.capStatVal}>{wp.focus_capacity - wp.active_count}</Text><Text style={styles.capStatLabel}>Boş Slot</Text></View>

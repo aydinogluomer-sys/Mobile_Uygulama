@@ -1,14 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
-  TextInput,
   ActivityIndicator,
-  Linking,
   Switch,
 } from 'react-native';
 import { confirm, notify } from '../../lib/dialog';
@@ -17,14 +14,10 @@ import { runDeleteAccountFlow } from '../../lib/deleteAccountFlow';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../../store/themeStore';
-import { accentsFor, alphaHex, hexA, onColor, space, type AccentKey, type Palette } from '../../lib/tokens';
+import { accentsFor, alphaHex, font, onColor, radius, space, type AccentKey, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemeMode, useThemedStyles } from '../../hooks/useThemeColors';
 import { useAccent } from '../../lib/useAccent';
 import type { SeasonalMotionIntensity } from '../../components/seasonalMotion/types';
-import {
-  listWebhooks, registerWebhook, removeWebhook,
-  type WebhookRow,
-} from '../../services/webhookService';
 import { buildBackup, isBackupComplete, renderBackup, MAX_ROWS, type ExportFormat } from '../../services/exportService';
 import { shareOrDownload } from '../../lib/shareFile';
 import { EXPORT_META } from '../../lib/focusReport';
@@ -32,30 +25,29 @@ import { todayLocal } from '../../lib/date';
 import { deleteAccount, signOutCurrentAccount, unsentChangeCount } from '../../services/accountService';
 import { flushAllOutboxes } from '../../services/unifiedOutbox';
 import SignOutConfirmModal from '../../components/SignOutConfirmModal';
-import { LIGHT_THEME_ENABLED, PUBLIC_SITE_URLS_LIVE, PUBLIC_SITE_URLS } from '../../lib/featureGates';
+import { LIGHT_THEME_ENABLED } from '../../lib/featureGates';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '../../lib/destinations';
 import BadHabitsTracker from '../../components/BadHabitsTracker';
 import { useOnboardingStore } from '../../store/onboardingStore';
 // F06 (PRF-03): the seeder is loaded through its __DEV__-only gate, never imported statically
 import { loadDemoSeed } from '../../lib/demoSeedGate';
-import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 // R08 — check an export and merge what is missing; never a full restore.
 import RestorePanel from '../../components/RestorePanel';
 import CsvImportPanel from '../../components/CsvImportPanel';
 import OutboxStatusModal from '../../components/OutboxStatusModal';
 import ObsidianExportModal from '../../components/ObsidianExportModal';
 import { currentUser } from '../../lib/session';
-import IntegrationItemCard from '../../components/IntegrationItemCard';
-import {
-  INTEGRATION_CATEGORIES,
-  type IntegrationCategoryId,
-} from '../../constants/integrations';
-import { CURRENT_FEATURES, UPCOMING_FEATURES, type FeatureHighlight } from '../../constants/features';
+import { CURRENT_FEATURES, type FeatureHighlight } from '../../constants/features';
 import { reportError } from '../../lib/crashReporting';
 import { Chip, EditorialBanner, EmblemMedallion } from '../../components/ui';
 import TodayToolsSection from '../../components/settings/TodayToolsSection';
+import SettingRow from '../../components/settings/SettingRow';
+import AccountSection from '../../components/settings/AccountSection';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
+
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 const SEASONAL_OPTIONS: { v: SeasonalMotionIntensity; l: string }[] = [
   { v: 'off', l: 'Kapalı' },
@@ -74,7 +66,7 @@ function ThemeModeRow({ isDark, onSelectDark }: { isDark: boolean; onSelectDark:
           size={18}
           color={isDark ? c.accent : c.warning}
         />
-        <View style={{ flex: 1 }}>
+        <View style={styles.flex1}>
           <Text style={styles.themeLabel}>Tema modu</Text>
           <Text style={styles.themeSubLabel}>Kâğıt tonlu, gündüz için</Text>
         </View>
@@ -115,13 +107,6 @@ export default function SettingsScreen() {
   const hapticsEnabled = useHapticsEnabled();
   const modeAccents = accentsFor(mode);
 
-  const [showWebhookModal, setShowWebhookModal] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<IntegrationCategoryId | null>(
-    null
-  );
-  const [categoryDetailVisible, setCategoryDetailVisible] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [webhooks, setWebhooks] = useState<WebhookRow[]>([]);
   const [showBadHabitsTracker, setShowBadHabitsTracker] = useState(false);
   const [showOutboxModal, setShowOutboxModal] = useState(false);
   const [showObsidianModal, setShowObsidianModal] = useState(false);
@@ -132,6 +117,7 @@ export default function SettingsScreen() {
     beginPersonalization();
     router.push('/onboarding/needs');
   }
+
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [seedingDemo, setSeedingDemo] = useState(false);
@@ -142,32 +128,18 @@ export default function SettingsScreen() {
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [signOutUnsent, setSignOutUnsent] = useState(0);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
+
   useEffect(() => {
     let alive = true;
-    currentUser().then((u) => { if (alive) setAccountEmail(u?.email ?? null); }).catch(() => undefined);
-    return () => { alive = false; };
+    currentUser()
+      .then((u) => {
+        if (alive) setAccountEmail(u?.email ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
   }, []);
-
-  const loadWebhooks = async () => {
-    const res = await listWebhooks();
-    if (!res.ok) {
-      void notify('Hata', `Webhook'lar yüklenemedi: ${res.error}`);
-      return;
-    }
-    setWebhooks(res.data);
-  };
-
-  const handleAddWebhook = async () => {
-    const res = await registerWebhook({ url: webhookUrl });
-    if (!res.ok) {
-      void notify('Hata', res.error);
-      return;
-    }
-    setWebhookUrl('');
-    setShowWebhookModal(false);
-    await loadWebhooks();
-    void notify('Başarılı', 'Webhook eklendi!');
-  };
 
   const handleExportData = async (format: ExportFormat) => {
     try {
@@ -226,15 +198,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleOpenWebhookFromDetail = () => {
-    setCategoryDetailVisible(false);
-    setTimeout(() => {
-      setSelectedCategoryId(null);
-      loadWebhooks();
-      setShowWebhookModal(true);
-    }, 280);
-  };
-
   const deleteFlowRef = useRef(false);
   const handleDeleteAccount = async () => {
     if (deletingAccount || deleteFlowRef.current) return;
@@ -270,14 +233,10 @@ export default function SettingsScreen() {
     }
   };
 
-  const selectedCategory = selectedCategoryId
-    ? INTEGRATION_CATEGORIES.find((cat) => cat.id === selectedCategoryId) ?? null
-    : null;
-
   const renderFeatureItem = (item: FeatureHighlight) => (
     <View key={item.id} style={styles.featureItem}>
-      <View style={[styles.featureIcon, { backgroundColor: `${item.color}20` }]}>
-        <Ionicons name={item.icon as any} size={20} color={item.color} />
+      <View style={[styles.featureIcon, { backgroundColor: alphaHex(item.color, '20') }]}>
+        <Ionicons name={item.icon as IoniconName} size={20} color={item.color} />
       </View>
       <View style={styles.featureInfo}>
         <Text style={styles.featureTitle}>{item.title}</Text>
@@ -299,37 +258,23 @@ export default function SettingsScreen() {
     setSignOutError(null);
     const res = await signOutCurrentAccount();
     setSigningOut(false);
-    if (!res.ok) { setSignOutError(res.error); return; }
+    if (!res.ok) {
+      setSignOutError(res.error);
+      return;
+    }
     setSignOutOpen(false);
   };
 
   const handleSyncFirst = async () => {
     setSigningOut(true);
-    try { await flushAllOutboxes(); } catch { /* the count below says what is still waiting */ }
+    try {
+      await flushAllOutboxes();
+    } catch {
+      /* the count below says what is still waiting */
+    }
     setSignOutUnsent(unsentChangeCount());
     setSigningOut(false);
   };
-
-  const renderSettingItem = (
-    icon: string,
-    title: string,
-    subtitle: string,
-    onPress: () => void,
-    color: string = c.accent,
-  ) => (
-    <TouchableOpacity style={styles.settingItem} onPress={onPress}>
-      <View style={styles.settingLeft}>
-        <View style={[styles.settingIcon, { backgroundColor: color + '20' }]}>
-          <Ionicons name={icon as any} size={24} color={color} />
-        </View>
-        <View style={styles.settingInfo}>
-          <Text style={styles.settingTitle}>{title}</Text>
-          <Text style={styles.settingSubtitle}>{subtitle}</Text>
-        </View>
-      </View>
-      <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
-    </TouchableOpacity>
-  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -349,7 +294,7 @@ export default function SettingsScreen() {
             subtitle="Görünüm, yerel yedekleme ve hesap kontrol merkezi."
             accentColor={c.accent}
             minHeight={94}
-            style={{ marginBottom: 16 }}
+            style={styles.bannerGap}
             rightSlot={
               <EmblemMedallion
                 source={SCREEN_BANNERS.privacyVaultSeal}
@@ -371,7 +316,7 @@ export default function SettingsScreen() {
             <View style={styles.motionBlock}>
               <View style={styles.motionHead}>
                 <Ionicons name="sparkles-outline" size={18} color={c.accent} />
-                <View style={{ flex: 1 }}>
+                <View style={styles.flex1}>
                   <Text style={styles.themeLabel}>Arka plan animasyonları</Text>
                   <Text style={styles.themeSubLabel}>
                     Aylık takvim arka planlarında hafif mevsimsel hareketler gösterir.
@@ -386,6 +331,9 @@ export default function SettingsScreen() {
                       key={o.v}
                       style={[styles.segBtn, on && styles.segBtnOn]}
                       onPress={() => setSeasonalMotion(o.v)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Arka plan animasyonları: ${o.l}`}
+                      accessibilityState={{ selected: on }}
                     >
                       <Text style={[styles.segText, on && styles.segTextOn]}>{o.l}</Text>
                     </TouchableOpacity>
@@ -394,11 +342,11 @@ export default function SettingsScreen() {
               </View>
             </View>
 
-            {/* Aksan rengi (Atlas: clay/moss/slate/amber) */}
+            {/* Aksan rengi seçici (Atlas: clay/moss/slate/amber) */}
             <View style={styles.motionBlock}>
               <View style={styles.motionHead}>
                 <Ionicons name="color-palette-outline" size={18} color={accentTheme.primary} />
-                <View style={{ flex: 1 }}>
+                <View style={styles.flex1}>
                   <Text style={styles.themeLabel}>Aksan rengi</Text>
                   <Text style={styles.themeSubLabel}>
                     Birincil butonlar, sekme çubuğu ve Bugün başlığında kullanılır.
@@ -415,11 +363,16 @@ export default function SettingsScreen() {
                       style={styles.accentItem}
                       onPress={() => setAccent(k)}
                       activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Aksan rengi: ${a.label}`}
+                      accessibilityState={{ selected: on }}
                     >
                       <View style={[styles.accentDot, { backgroundColor: a.primary }, on && styles.accentDotOn]}>
                         {on && <Ionicons name="checkmark" size={16} color={onColor(a.primary)} />}
                       </View>
-                      <Text style={[styles.accentLabel, on && { color: a.primary, fontWeight: '700' }]}>{a.label}</Text>
+                      <Text style={[styles.accentLabel, on && { color: a.primary, fontWeight: '700' }]}>
+                        {a.label}
+                      </Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -430,7 +383,7 @@ export default function SettingsScreen() {
             <View style={styles.motionBlock}>
               <View style={styles.hapticRow}>
                 <Ionicons name="radio-button-on-outline" size={18} color={c.accent} />
-                <View style={{ flex: 1 }}>
+                <View style={styles.flex1}>
                   <Text style={styles.themeLabel}>Dokunsal geri bildirim</Text>
                   <Text style={styles.themeSubLabel}>
                     Düğmelere ve tamamlamalara hafif titreşim verir. Seni yoruyorsa kapat.
@@ -452,12 +405,12 @@ export default function SettingsScreen() {
 
           <TodayToolsSection />
 
-          <ChapterDivider source={DECOR.dividerSundial} label="VERİ KASASI & YEDEK" style={{ marginBottom: 18 }} />
+          <ChapterDivider source={DECOR.dividerSundial} label="VERİ KASASI & YEDEK" style={styles.dividerGap} />
 
-          {/* Data & Privacy */}
+          {/* Veri ve Gizlilik */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Veri ve Gizlilik</Text>
-            
+
             <View style={styles.exportContainer}>
               <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.11} />
               <Text style={styles.exportTitle}>Verileri Dışa Aktar</Text>
@@ -475,12 +428,14 @@ export default function SettingsScreen() {
                 Dosya şifrelenmez; içinde günlüğün ve notların var — yalnız güvendiğin bir yere kaydet.
                 Oturum ve erişim anahtarları dosyaya hiç girmez.
               </Text>
-              
+
               <View style={styles.exportButtons}>
                 <TouchableOpacity
                   style={[styles.exportButton, exportingFormat === 'json' && styles.exportButtonLoading]}
                   onPress={() => handleExportData('json')}
                   disabled={exportingFormat !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel="JSON olarak dışa aktar"
                 >
                   {exportingFormat === 'json' ? (
                     <ActivityIndicator size="small" color={c.accent} />
@@ -496,6 +451,8 @@ export default function SettingsScreen() {
                   style={[styles.exportButton, exportingFormat === 'excel' && styles.exportButtonLoading]}
                   onPress={() => handleExportData('excel')}
                   disabled={exportingFormat !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel="Excel olarak dışa aktar"
                 >
                   {exportingFormat === 'excel' ? (
                     <ActivityIndicator size="small" color={c.success} />
@@ -511,6 +468,8 @@ export default function SettingsScreen() {
                   style={[styles.exportButton, exportingFormat === 'csv' && styles.exportButtonLoading]}
                   onPress={() => handleExportData('csv')}
                   disabled={exportingFormat !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel="CSV olarak dışa aktar"
                 >
                   {exportingFormat === 'csv' ? (
                     <ActivityIndicator size="small" color={c.warning} />
@@ -533,155 +492,86 @@ export default function SettingsScreen() {
 
             {/* DEMO-001B - sadece gelistirme derlemesinde. */}
             {__DEV__ && loadDemoSeed()?.isSeedingAllowed() === true && (
-              <TouchableOpacity
-                style={[styles.settingItem, seedingDemo && styles.seedBtnDisabled]}
-                onPress={handleSeedDemoData}
-                disabled={seedingDemo}
-              >
-                <View style={styles.settingLeft}>
-                  <View style={[styles.settingIcon, { backgroundColor: alphaHex(c.success, '20') }]}>
-                    <Ionicons name="flask-outline" size={24} color={c.success} />
-                  </View>
-                  <View style={styles.settingInfo}>
-                    <Text style={styles.settingTitle}>Demo verileri doldur</Text>
-                    <Text style={styles.settingSubtitle}>Test icin gorev, aliskanlik, gunluk ve odak verisi ekler</Text>
-                  </View>
-                </View>
-                {seedingDemo ? <ActivityIndicator size="small" color={c.success} /> : <Ionicons name="chevron-forward" size={20} color={c.textFaint} />}
-              </TouchableOpacity>
+              <View style={styles.seedRowGap}>
+                <SettingRow
+                  icon="flask-outline"
+                  label="Demo verileri doldur"
+                  hint="Test icin gorev, aliskanlik, gunluk ve odak verisi ekler"
+                  tone={c.success}
+                  disabled={seedingDemo}
+                  busy={seedingDemo}
+                  onPress={handleSeedDemoData}
+                />
+              </View>
             )}
           </View>
 
-          {/* Account — privacy policy and the deletion the stores require */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Hesap</Text>
+          {/* Hesap */}
+          <AccountSection
+            email={accountEmail}
+            onSignOut={openSignOut}
+            onDeleteAccount={handleDeleteAccount}
+            signingOut={signingOut}
+            deletingAccount={deletingAccount}
+          />
 
-            {renderSettingItem(
-              'shield-checkmark-outline',
-              'Gizlilik Politikası',
-              'Hangi verilerin saklanıyor ve neden',
-              () => router.push('/screens/privacy'),
-              c.info
-            )}
-
-            {PUBLIC_SITE_URLS_LIVE && renderSettingItem(
-              'help-buoy-outline',
-              'Destek',
-              'Yardım, hesap ve teknik sorunlar',
-              () => { Linking.openURL(PUBLIC_SITE_URLS.support).catch(() => {}); },
-              c.teal
-            )}
-
-            {/* F04 (NAV-02): signing out of THIS device, above the permanent deletion */}
-            <TouchableOpacity
-              style={[styles.settingItem, (deletingAccount || signingOut) && styles.seedBtnDisabled]}
-              onPress={openSignOut}
-              disabled={deletingAccount || signingOut}
-              accessibilityRole="button"
-              accessibilityLabel="Oturumu kapat"
-              accessibilityHint="Hesabını bu cihazdan çıkarır"
-              accessibilityState={{ disabled: deletingAccount || signingOut, busy: signingOut }}
-            >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: alphaHex(c.info, '20') }]}>
-                  <Ionicons name="log-out-outline" size={24} color={c.info} />
-                </View>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Oturumu Kapat</Text>
-                  <Text style={styles.settingSubtitle}>{accountEmail ?? 'Bu cihazdan çık'}</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.settingItem, deletingAccount && styles.seedBtnDisabled]}
-              onPress={handleDeleteAccount}
-              disabled={deletingAccount}
-              accessibilityRole="button"
-              accessibilityLabel="Hesabı sil"
-              accessibilityHint="Hesabını ve kişisel verilerini kalıcı olarak siler"
-              accessibilityState={{ disabled: deletingAccount, busy: deletingAccount }}
-            >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: alphaHex(c.error, '20') }]}>
-                  <Ionicons name="trash-outline" size={24} color={c.error} />
-                </View>
-                <View style={styles.settingInfo}>
-                  <Text style={[styles.settingTitle, { color: c.error }]}>Hesabı Sil</Text>
-                  <Text style={styles.settingSubtitle}>
-                    Hesabın ve verilerin kalıcı olarak silinir. Geri alınamaz.
-                  </Text>
-                </View>
-              </View>
-              {deletingAccount
-                ? <ActivityIndicator size="small" color={c.error} />
-                : <Ionicons name="chevron-forward" size={20} color={c.textFaint} />}
-            </TouchableOpacity>
-          </View>
-
-          {/* Personalization */}
+          {/* Kişiselleştirme */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Kişiselleştirme</Text>
-
-            {renderSettingItem(
-              'sparkles',
-              'Başlangıç tercihleri',
-              'Hedeflerini, tempoyu ve hatırlatma tercihini güncelle',
-              openPersonalization,
-              c.primary
-            )}
+            <SettingRow
+              icon="sparkles"
+              label="Başlangıç tercihleri"
+              hint="Hedeflerini, tempoyu ve hatırlatma tercihini güncelle"
+              tone={c.primary}
+              onPress={openPersonalization}
+            />
           </View>
 
-          {/* Tracking */}
+          {/* Takip & Veri Araçları */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Takip & Veri Araçları</Text>
-            
-            {renderSettingItem(
-              'ban',
-              'Bıraktığım Alışkanlıklar',
-              'Tasarruf ve ilerlemenizi görün',
-              () => setShowBadHabitsTracker(true),
-              c.error
-            )}
 
-            {renderSettingItem(
-              'document-text-outline',
-              'Obsidian Markdown Aktarımı',
-              'Alışkanlık ve notları Obsidian kasasına kopyala',
-              () => setShowObsidianModal(true),
-              c.accent
-            )}
+            <SettingRow
+              icon="ban"
+              label="Bıraktığım Alışkanlıklar"
+              hint="Tasarruf ve ilerlemenizi görün"
+              tone={c.error}
+              onPress={() => setShowBadHabitsTracker(true)}
+            />
 
-            {renderSettingItem(
-              'cloud-offline-outline',
-              'Çevrimdışı Senkronizasyon',
-              'Bekleyen yerel işlemleri ve sunucu bağlantısını incele',
-              () => setShowOutboxModal(true),
-              c.teal
-            )}
+            <SettingRow
+              icon="document-text-outline"
+              label="Obsidian Markdown Aktarımı"
+              hint="Alışkanlık ve notları Obsidian kasasına kopyala"
+              tone={c.accent}
+              onPress={() => setShowObsidianModal(true)}
+            />
+
+            <SettingRow
+              icon="cloud-offline-outline"
+              label="Çevrimdışı Senkronizasyon"
+              hint="Bekleyen yerel işlemleri ve sunucu bağlantısını incele"
+              tone={c.teal}
+              onPress={() => setShowOutboxModal(true)}
+            />
           </View>
 
-          {/* Integrations */}
+          {/* Bağlantılar (NAV-14: dürüst tek giriş) */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Entegrasyonlar</Text>
-
-            {INTEGRATION_CATEGORIES.map((category) => (
-              <IntegrationCategoryCard
-                key={category.id}
-                category={category}
-                onPress={() => {
-                  setSelectedCategoryId(category.id);
-                  setCategoryDetailVisible(true);
-                }}
-              />
-            ))}
+            <Text style={styles.sectionTitle}>Bağlantılar</Text>
+            <SettingRow
+              icon="git-network-outline"
+              label="Bağlantılar"
+              hint="Takvim, Notion ve Spotify bağlantıları şu an kapalı; açılması sahip kararına bağlı."
+              tone={c.teal}
+              onPress={() => navigateTo(router, 'integrations')}
+            />
           </View>
 
-          {/* About */}
+          {/* Hakkında & Neler var */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Hakkında</Text>
-            
+
             <View style={styles.infoCard}>
               <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" opacity={0.14} size={108} />
               <Text style={styles.appName}>Aderyth</Text>
@@ -691,172 +581,25 @@ export default function SettingsScreen() {
                 Verileriniz tamamen sizin kontrolünüzde.
               </Text>
             </View>
-          </View>
 
-          {/* Features */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Özellikler</Text>
-            <Text style={styles.featureSectionIntro}>
-              Aderyth’in kendi alışkanlık motoru. Dış bağlantılar için Entegrasyonlar
-              bölümüne bakın.
-            </Text>
             <View style={styles.featureCard}>
-              <Text style={styles.featureGroupTitle}>Şu an kullanabileceğiniz</Text>
+              <Text style={styles.featureGroupTitle}>Neler var</Text>
               {CURRENT_FEATURES.map(renderFeatureItem)}
-              <View style={styles.featureDivider} />
-              <Text style={styles.featureGroupTitle}>Yakında</Text>
-              {UPCOMING_FEATURES.map(renderFeatureItem)}
             </View>
           </View>
         </View>
       </ScrollView>
 
-      {/* Webhook Modal */}
-      <Modal
-        visible={showWebhookModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowWebhookModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Webhook Ekle</Text>
-              <TouchableOpacity onPress={() => setShowWebhookModal(false)}>
-                <Ionicons name="close" size={28} color={c.textDim} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.modalDescription}>
-              {`Alışkanlık veya görev tamamlandığında otomatik olarak bu URL'e POST isteği gönderilecek.`}
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              placeholder="https://hooks.n8n.cloud/webhook/..."
-              placeholderTextColor={c.textFaint}
-              value={webhookUrl}
-              onChangeText={setWebhookUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-
-            {webhooks.length > 0 && (
-              <View style={styles.webhookList}>
-                <Text style={styles.webhookListTitle}>{`Mevcut Webhook'lar:`}</Text>
-                {webhooks.map((webhook) => (
-                  <View key={webhook.id} style={styles.webhookItem}>
-                    <Text style={styles.webhookUrl} numberOfLines={1}>
-                      {webhook.url}
-                    </Text>
-                    <TouchableOpacity
-                      accessibilityRole="button"
-                      accessibilityLabel={`${webhook.url} webhook'unu sil`}
-                      onPress={async () => {
-                        const res = await removeWebhook(webhook.id);
-                        if (!res.ok) {
-                          void notify('Hata', res.error);
-                          return;
-                        }
-                        await loadWebhooks();
-                      }}
-                    >
-                      <Ionicons name="trash-outline" size={20} color={c.error} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            <TouchableOpacity style={styles.addButton} onPress={handleAddWebhook}>
-              <Text style={styles.addButtonText}>Webhook Ekle</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.helpText}>
-              💡 Örnek Payload:{' \n'}
-              {JSON.stringify(
-                {
-                  event: 'habit_completed',
-                  data: { habit_name: 'Spor', strength_score: 85 },
-                },
-                null,
-                2
-              )}
-            </Text>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Category Detail Modal */}
-      <Modal
-        visible={categoryDetailVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => {
-          setCategoryDetailVisible(false);
-          setSelectedCategoryId(null);
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity
-                onPress={() => {
-                  setCategoryDetailVisible(false);
-                  setSelectedCategoryId(null);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Geri"
-              >
-                <Ionicons name="chevron-back" size={28} color={c.textDim} />
-              </TouchableOpacity>
-              {selectedCategory ? (
-                <View style={styles.categoryModalHeaderText}>
-                  <Text style={styles.modalTitle}>{selectedCategory.title}</Text>
-                  <Text style={styles.modalDescription} numberOfLines={2}>
-                    {selectedCategory.description}
-                  </Text>
-                </View>
-              ) : null}
-              <View style={styles.categoryModalHeaderSpacer} />
-            </View>
-
-            {selectedCategory ? (
-              <ScrollView
-                style={styles.categoryDetailScroll}
-                showsVerticalScrollIndicator={false}
-              >
-                {selectedCategory.items.map((item) => (
-                  <IntegrationItemCard
-                    key={item.id}
-                    item={item}
-                    accentColor={selectedCategory.accentColor}
-                    onPress={
-                      item.id === 'webhook' && item.status === 'available'
-                        ? handleOpenWebhookFromDetail
-                        : undefined
-                    }
-                  />
-                ))}
-              </ScrollView>
-            ) : null}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Bad Habits Tracker */}
       <BadHabitsTracker
         visible={showBadHabitsTracker}
         onClose={() => setShowBadHabitsTracker(false)}
       />
 
-      {/* Obsidian Export Modal */}
       <ObsidianExportModal
         visible={showObsidianModal}
         onClose={() => setShowObsidianModal(false)}
       />
 
-      {/* Outbox Status Modal */}
       <OutboxStatusModal
         visible={showOutboxModal}
         onClose={() => setShowOutboxModal(false)}
@@ -867,9 +610,15 @@ export default function SettingsScreen() {
         unsent={signOutUnsent}
         busy={signingOut}
         error={signOutError}
-        onSyncFirst={() => { void handleSyncFirst(); }}
-        onConfirm={() => { void handleSignOut(); }}
-        onCancel={() => { if (!signingOut) setSignOutOpen(false); }}
+        onSyncFirst={() => {
+          void handleSyncFirst();
+        }}
+        onConfirm={() => {
+          void handleSignOut();
+        }}
+        onCancel={() => {
+          if (!signingOut) setSignOutOpen(false);
+        }}
       />
     </SafeAreaView>
   );
@@ -877,336 +626,127 @@ export default function SettingsScreen() {
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    themeLabel: { fontSize: 15, fontWeight: '600', color: c.text },
-    themeSubLabel: { fontSize: 12, color: c.textFaint, marginTop: 2 },
+    flex1: { flex: 1 },
+    bannerGap: { marginBottom: space.md },
+    dividerGap: { marginBottom: space.lg },
+    seedRowGap: { marginTop: space.md },
+    themeLabel: { ...font.body, fontWeight: '600', color: c.text },
+    themeSubLabel: { ...font.caption, color: c.textFaint, marginTop: space.xs },
     motionBlock: {
-      backgroundColor: c.surface, borderRadius: 12, padding: 14, marginTop: 12,
-      borderWidth: 1, borderColor: c.border, gap: 12,
+      backgroundColor: c.surface,
+      borderRadius: radius.md,
+      padding: space.md,
+      marginTop: space.md,
+      borderWidth: 1,
+      borderColor: c.border,
+      gap: space.md,
     },
-    motionHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    motionHead: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
     hapticRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 44 },
     hapticSwitch: { minHeight: 44 },
-    segRow: { flexDirection: 'row', gap: 8 },
+    segRow: { flexDirection: 'row', gap: space.sm },
     segBtn: {
-      flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: 10,
-      borderWidth: 1, borderColor: c.border, backgroundColor: c.bg,
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: space.sm,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.bg,
+      minHeight: 44,
     },
     themeRadioBtn: { minHeight: 44 },
     segBtnOn: { backgroundColor: alphaHex(c.accent, '22'), borderColor: c.accent },
-    segText: { fontSize: 13, fontWeight: '700', color: c.textFaint },
+    segText: { ...font.bodySm, fontWeight: '700', color: c.textFaint },
     segTextOn: { color: c.accent },
-    accentRow: { flexDirection: 'row', gap: 8 },
-    accentItem: { flex: 1, alignItems: 'center', gap: 6 },
+    accentRow: { flexDirection: 'row', gap: space.sm },
+    accentItem: { flex: 1, alignItems: 'center', gap: space.xs, minHeight: 44 },
     accentDot: {
-      width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-      borderWidth: 2, borderColor: 'transparent',
-    },
-    accentDotOn: { borderColor: c.text },
-    accentLabel: { fontSize: 12, fontWeight: '600', color: c.textFaint },
-    container: {
-      flex: 1,
-      backgroundColor: c.bg,
-    },
-    scrollView: {
-      flex: 1,
-    },
-    content: {
-      padding: 16,
-      overflow: 'hidden',
-      position: 'relative',
-    },
-    title: {
-      fontSize: 32,
-      fontWeight: 'bold',
-      color: c.text,
-      marginBottom: 4,
-    },
-    subtitle: {
-      fontSize: 16,
-      color: c.textDim,
-      marginBottom: 24,
-    },
-    section: {
-      marginBottom: 32,
-    },
-    sectionTitle: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: c.text,
-      marginBottom: 12,
-    },
-    settingItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: c.surface,
-      borderRadius: 12,
-      padding: 16,
-      overflow: 'hidden',
-      position: 'relative',
-      marginBottom: 12,
-      borderWidth: 1,
-      borderColor: c.border,
-    },
-    settingLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-    },
-    settingIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 12,
+      width: 36,
+      height: 36,
+      borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: 12,
+      borderWidth: 2,
+      borderColor: 'transparent',
     },
-    settingInfo: {
-      flex: 1,
-    },
-    settingTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: c.text,
-      marginBottom: 4,
-    },
-    settingSubtitle: {
-      fontSize: 13,
-      color: c.textDim,
-    },
+    accentDotOn: { borderColor: c.text },
+    accentLabel: { ...font.caption, fontWeight: '600', color: c.textFaint },
+    container: { flex: 1, backgroundColor: c.bg },
+    scrollView: { flex: 1 },
+    content: { padding: space.md, overflow: 'hidden', position: 'relative' },
+    title: { ...font.display, fontWeight: 'bold', color: c.text, marginBottom: space.xs },
+    subtitle: { ...font.body, color: c.textDim, marginBottom: space.xl },
+    section: { marginBottom: space.xxl },
+    sectionTitle: { ...font.h3, fontWeight: 'bold', color: c.text, marginBottom: space.md },
     infoCard: {
       backgroundColor: c.surface,
-      borderRadius: 12,
-      padding: 20,
+      borderRadius: radius.md,
+      padding: space.lg,
       overflow: 'hidden',
       position: 'relative',
       borderWidth: 1,
       borderColor: c.border,
       alignItems: 'center',
+      marginBottom: space.md,
     },
-    appName: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: c.text,
-      marginBottom: 4,
-    },
-    appVersion: {
-      fontSize: 14,
-      color: c.accent,
-      marginBottom: 12,
-    },
-    appDescription: {
-      fontSize: 14,
-      color: c.textDim,
-      textAlign: 'center',
-      lineHeight: 20,
-    },
-    featureSectionIntro: {
-      fontSize: 13,
-      color: c.textDim,
-      marginBottom: 12,
-      lineHeight: 18,
-    },
+    appName: { ...font.h2, fontWeight: 'bold', color: c.text, marginBottom: space.xs },
+    appVersion: { ...font.bodySm, color: c.accent, marginBottom: space.md },
+    appDescription: { ...font.bodySm, color: c.textDim, textAlign: 'center' },
     featureCard: {
       backgroundColor: c.surface,
-      borderRadius: 12,
-      padding: 16,
+      borderRadius: radius.md,
+      padding: space.md,
       overflow: 'hidden',
       position: 'relative',
       borderWidth: 1,
       borderColor: c.border,
     },
-    featureGroupTitle: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: c.text,
-      marginBottom: 8,
-    },
-    featureDivider: {
-      height: 1,
-      backgroundColor: c.border,
-      marginVertical: 12,
-    },
+    featureGroupTitle: { ...font.body, fontWeight: '600', color: c.text, marginBottom: space.sm },
     featureItem: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      paddingVertical: 10,
+      paddingVertical: space.sm,
     },
     featureIcon: {
       width: 36,
       height: 36,
-      borderRadius: 10,
+      borderRadius: radius.sm,
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: 12,
+      marginRight: space.md,
     },
-    featureInfo: {
-      flex: 1,
-    },
-    featureTitle: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: c.text,
-      marginBottom: 2,
-    },
-    featureDescription: {
-      fontSize: 13,
-      color: c.textDim,
-      lineHeight: 18,
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: hexA(c.black, 0.7),
-      justifyContent: 'flex-end',
-    },
-    modalContent: {
-      backgroundColor: c.surface,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      padding: 24,
-      minHeight: '60%',
-    },
-    modalHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 16,
-    },
-    modalTitle: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: c.text,
-    },
-    modalDescription: {
-      fontSize: 14,
-      color: c.textDim,
-      marginBottom: 20,
-      lineHeight: 20,
-    },
-    input: {
-      backgroundColor: c.surface,
-      borderRadius: 12,
-      padding: 16,
-      overflow: 'hidden',
-      position: 'relative',
-      fontSize: 14,
-      color: c.text,
-      marginBottom: 20,
-      borderWidth: 1,
-      borderColor: c.border,
-    },
-    webhookList: {
-      marginBottom: 20,
-    },
-    webhookListTitle: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: c.textDim,
-      marginBottom: 12,
-    },
-    webhookItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: c.surface,
-      borderRadius: 8,
-      padding: 12,
-      marginBottom: 8,
-      borderWidth: 1,
-      borderColor: c.border,
-    },
-    webhookUrl: {
-      fontSize: 12,
-      color: c.textDim,
-      flex: 1,
-      marginRight: 8,
-    },
-    addButton: {
-      backgroundColor: c.accent,
-      borderRadius: 12,
-      padding: 16,
-      overflow: 'hidden',
-      position: 'relative',
-      alignItems: 'center',
-      marginBottom: 16,
-    },
-    addButtonText: {
-      fontSize: 16,
-      fontWeight: 'bold',
-      color: onColor(c.accent),
-    },
-    helpText: {
-      fontSize: 11,
-      color: c.textFaint,
-      fontFamily: 'monospace',
-      backgroundColor: c.surface,
-      padding: 12,
-      borderRadius: 8,
-      lineHeight: 16,
-    },
+    featureInfo: { flex: 1 },
+    featureTitle: { ...font.body, fontWeight: '600', color: c.text, marginBottom: space.xs },
+    featureDescription: { ...font.bodySm, color: c.textDim },
     exportContainer: {
       backgroundColor: c.surface,
-      borderRadius: 12,
-      padding: 16,
+      borderRadius: radius.md,
+      padding: space.md,
       overflow: 'hidden',
       position: 'relative',
       borderWidth: 1,
       borderColor: c.border,
     },
-    exportTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: c.text,
-      marginBottom: 4,
-    },
-    exportSubtitle: {
-      fontSize: 13,
-      color: c.textDim,
-      marginBottom: 16,
-    },
-    exportButtons: {
-      flexDirection: 'row',
-      gap: 12,
-    },
+    exportTitle: { ...font.body, fontWeight: '600', color: c.text, marginBottom: space.xs },
+    exportSubtitle: { ...font.bodySm, color: c.textDim, marginBottom: space.md },
+    exportButtons: { flexDirection: 'row', gap: space.md },
     exportButton: {
       flex: 1,
       minHeight: 44,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
+      gap: space.sm,
       backgroundColor: c.surface,
-      borderRadius: 12,
-      paddingVertical: 16,
-      paddingHorizontal: 12,
+      borderRadius: radius.md,
+      paddingVertical: space.md,
+      paddingHorizontal: space.md,
       borderWidth: 2,
       borderColor: c.border,
     },
-    exportNotice: {
-      marginTop: 10,
-      fontSize: 12,
-      color: c.textDim,
-      lineHeight: 17,
-    },
-    exportButtonLoading: {
-      opacity: 0.6,
-    },
-    exportButtonText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: c.text,
-    },
-    seedBtnDisabled: {
-      opacity: 0.7,
-    },
-    categoryModalHeaderText: {
-      flex: 1,
-      marginHorizontal: 8,
-    },
-    categoryModalHeaderSpacer: {
-      width: 28,
-    },
-    categoryDetailScroll: {
-      flex: 1,
-    },
+    exportNotice: { marginTop: space.sm, ...font.caption, color: c.textDim },
+    exportButtonLoading: { opacity: 0.6 },
+    exportButtonText: { ...font.bodySm, fontWeight: '600', color: c.text },
   });

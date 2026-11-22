@@ -1,12 +1,13 @@
 import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReadingListScreen from './reading-list';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Modal, KeyboardAvoidingView, Platform, useWindowDimensions,
 } from 'react-native';
-import { confirm } from '../../lib/dialog';
+import { confirm, notify } from '../../lib/dialog';
+import { useFocusParam } from '../../hooks/useFocusParam';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,8 +43,34 @@ export default function NotesScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'notes' | 'reading_list'>('notes');
+  const [initialLoaded, setInitialLoaded] = useState(notes.length > 0);
+  const { id: focusId, consume: consumeFocus } = useFocusParam();
+  const consumedFocusRef = useRef<string | null>(null);
 
-  useEffect(() => { fetchNotes(); }, [fetchNotes]);
+  useEffect(() => {
+    void Promise.resolve(fetchNotes()).finally(() => setInitialLoaded(true));
+  }, [fetchNotes]);
+
+  useEffect(() => {
+    if (!focusId) {
+      consumedFocusRef.current = null;
+      return;
+    }
+    if (consumedFocusRef.current === focusId) return;
+    const match = notes.find((n) => n.id === focusId);
+    if (match) {
+      consumedFocusRef.current = focusId;
+      setViewMode('notes');
+      openEdit(match);
+      consumeFocus();
+      return;
+    }
+    if (initialLoaded && !loading) {
+      consumedFocusRef.current = focusId;
+      consumeFocus();
+      void notify('Öğe bulunamadı', 'Aradığın not silinmiş ya da taşınmış olabilir.');
+    }
+  }, [focusId, notes, initialLoaded, loading, consumeFocus]);
 
   // Search is SERVER-side now, so it cannot be computed during render. The
   // previous `search(query)` filtered the in-memory array, which only ever

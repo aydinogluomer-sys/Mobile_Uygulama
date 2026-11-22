@@ -67,8 +67,8 @@ describe('R01.06-a — today.tsx asks the schedule oracle', () => {
 });
 
 describe('R01.06-a — A7: nothing becomes unreachable', () => {
-  it('habits.tsx still lists every active habit, unfiltered by schedule', () => {
-    const code = codeLinesOf(read('app/tabs/habits.tsx'));
+  it('timeline.tsx (unified habit screen) still lists every active habit, unfiltered by schedule', () => {
+    const code = codeLinesOf(read('app/tabs/timeline.tsx'));
     expect(code.some((l) => /const activeHabits = habits\.filter\(\(h\) => h\.status === 'active'\);/.test(l))).toBe(true);
     expect(code.some((l) => /\bisEligibleOn\b|\bselectTodayHabits\b/.test(l))).toBe(false);
   });

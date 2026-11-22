@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '../../lib/destinations';
 import { useProfileStore } from '../../store/profileStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
@@ -105,7 +106,7 @@ export default function ProfileScreen() {
             artOpacity={0.42}
             scrim={0.72}
             accentColor={colors.warning}
-            onPress={() => router.push('/screens/leaderboard' as any)}
+            onPress={() => navigateTo(router, 'leaderboard')}
             accessibilityLabel="Sıralamayı gör"
           >
             <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.warning, '22') }]}>
@@ -122,7 +123,7 @@ export default function ProfileScreen() {
             artOpacity={0.42}
             scrim={0.72}
             accentColor={colors.primary}
-            onPress={() => router.push('/screens/focus-points' as any)}
+            onPress={() => navigateTo(router, 'focus-points')}
             accessibilityLabel="Focus Points ve kredi geçmişini gör"
           >
             <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.primary, '22') }]}>
@@ -139,7 +140,7 @@ export default function ProfileScreen() {
             artOpacity={0.42}
             scrim={0.72}
             accentColor={colors.success}
-            onPress={() => router.push('/screens/achievements' as any)}
+            onPress={() => navigateTo(router, 'achievements')}
             accessibilityLabel="Başarımlar ve rozetleri gör"
           >
             <View style={[s.bentoIconWrap, { backgroundColor: alphaHex(colors.success, '22') }]}>
@@ -193,7 +194,7 @@ export default function ProfileScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={s.sectionTitle}>ROZETLER {badges.length > 0 ? `(${badges.length})` : ''}</Text>
             <TouchableOpacity
-              onPress={() => router.push('/screens/achievements' as any)}
+              onPress={() => navigateTo(router, 'achievements')}
               accessibilityRole="link"
               accessibilityLabel="Tüm başarımları ve rozetleri gör"
             >
@@ -202,7 +203,7 @@ export default function ProfileScreen() {
           </View>
           {badges.length === 0 ? (
             <TouchableOpacity
-              onPress={() => router.push('/screens/achievements' as any)}
+              onPress={() => navigateTo(router, 'achievements')}
               style={{ paddingVertical: 4 }}
               accessibilityRole="link"
               accessibilityLabel="Başarımlar galerisini aç"

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { confirm } from '../../lib/dialog';
+import { confirm, notify } from '../../lib/dialog';
+import { useFocusParam } from '../../hooks/useFocusParam';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useProjectStore, type Project } from '../../store/projectStore';
@@ -31,13 +32,38 @@ export default function ProjectsScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [initialLoaded, setInitialLoaded] = useState(projects.length > 0);
+  const { id: focusId, consume: consumeFocus } = useFocusParam();
+  const consumedFocusRef = useRef<string | null>(null);
 
   const detailProject = projects.find((p) => p.id === detailId) ?? null;
   const detailTasks = detailId ? tasks.filter((t) => t.project_id === detailId) : [];
   const detailDone = detailTasks.filter((t) => t.completed).length;
   const detailPct = detailTasks.length > 0 ? detailDone / detailTasks.length : 0;
 
-  useEffect(() => { fetchProjects(); fetchTasks(); }, [fetchProjects, fetchTasks]);
+  useEffect(() => {
+    void Promise.all([fetchProjects(), fetchTasks()]).finally(() => setInitialLoaded(true));
+  }, [fetchProjects, fetchTasks]);
+
+  useEffect(() => {
+    if (!focusId) {
+      consumedFocusRef.current = null;
+      return;
+    }
+    if (consumedFocusRef.current === focusId) return;
+    const match = projects.find((p) => p.id === focusId);
+    if (match) {
+      consumedFocusRef.current = focusId;
+      setDetailId(match.id);
+      consumeFocus();
+      return;
+    }
+    if (initialLoaded) {
+      consumedFocusRef.current = focusId;
+      consumeFocus();
+      void notify('Öğe bulunamadı', 'Aradığın proje silinmiş ya da arşivlenmiş olabilir.');
+    }
+  }, [focusId, projects, initialLoaded, consumeFocus]);
 
   async function handleAdd() {
     if (!name.trim()) return;

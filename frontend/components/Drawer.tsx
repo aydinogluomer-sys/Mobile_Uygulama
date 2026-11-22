@@ -1,129 +1,109 @@
+/**
+ * F28 (NAV-11, NAV-21) — Single-catalog Drawer.
+ *
+ * Consumes `visibleDestinations('drawer')` from `lib/destinations.ts` instead of
+ * a duplicate local module list (legacy shortcut routes such as `/screens/monthly-review`,
+ * `/screens/reading-list`, and `/screens/calendar` resolve through `destinationForLegacyRoute`).
+ * Shows the 8 `tier === 'core'` destinations up top and groups `more` + `labs` under
+ * a collapsible "Daha fazla" section (`moreOpen ?? stage === 'established'`).
+ */
 import { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Animated,
-  Modal, Pressable, ScrollView, Platform,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  Modal,
+  Pressable,
+  ScrollView,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useShallow } from 'zustand/react/shallow';
 import { useDrawerStore } from '../store/drawerStore';
 import { useCommandStore } from '../store/commandStore';
 import { useProfileStore } from '../store/profileStore';
 import { useSubscriptionStore } from '../store/subscriptionStore';
+import { useDisclosureStore } from '../store/disclosureStore';
+import { currentUser } from '../lib/session';
+import {
+  destinationForLegacyRoute,
+  navigateTo,
+  routeKeyOf,
+  visibleDestinations,
+  type Destination,
+  type DestinationId,
+  type DrawerGroup,
+  type ToneKey,
+} from '../lib/destinations';
 import { colors, alphaHex, radius } from '../lib/tokens';
 import { TEXTURES } from '../lib/visualAssets';
 import TexturedSurface from './ui/TexturedSurface';
 import IconButton from './ui/IconButton';
 import { useReducedMotion } from './seasonalMotion/useReducedMotion';
 
-const DRAWER_WIDTH = 310;
+export const MAX_DRAWER_WIDTH = 310;
+const CLOSE_DURATION_MS = 310;
 
-type DrawerItem = {
-  label: string;
-  shortLabel?: string;
-  icon: string;
-  color: string;
-  route: string;
-  badge?: string;
-  hint?: string;
-};
+export function drawerWidth(windowWidth: number): number {
+  if (!Number.isFinite(windowWidth) || windowWidth <= 0) return MAX_DRAWER_WIDTH;
+  return Math.min(MAX_DRAWER_WIDTH, Math.max(220, Math.round(windowWidth - 45)));
+}
 
-// Kısayol olarak atanabilecek ekstra özel modüller + tüm grup öğeleri
-const EXTRA_MODULES: DrawerItem[] = [
-  { label: 'Derin Odak', shortLabel: 'Derin Odak', icon: 'flash', color: colors.teal, route: '/screens/deep-work', hint: 'Odak oturumu' },
-  { label: 'Telafi Planı', shortLabel: 'Telafi', icon: 'umbrella-outline', color: colors.warning, route: '/screens/recovery', hint: 'Kaçan alışkanlık telafisi' },
-  { label: 'Puan Geçmişi', shortLabel: 'Puanlar', icon: 'receipt-outline', color: colors.primary, route: '/screens/credit-history', hint: 'Focus Points hareketleri' },
+export function shouldRenderDrawer(input: {
+  isOpen: boolean;
+  mounted: boolean;
+  platform: string;
+}): boolean {
+  if (input.platform === 'web') return true;
+  return input.isOpen || input.mounted;
+}
+
+const DRAWER_GROUPS: readonly DrawerGroup[] = [
+  'PLANLAMA',
+  'ALIŞKANLIKLAR',
+  'KİŞİSEL',
+  'SİSTEM',
 ];
 
-// Navigasyon Grupları
-const GROUPS: { title: string; subtitle?: string; items: DrawerItem[] }[] = [
-  {
-    title: 'PLANLAMA',
-    subtitle: 'Strateji ve Hedefler',
-    items: [
-      { label: 'OKR', shortLabel: 'OKR', icon: 'flag-outline', color: colors.error, route: '/screens/okr', hint: 'Çeyreklik hedefler & Key Results' },
-      { label: 'Hedefler', shortLabel: 'Hedefler', icon: 'trophy-outline', color: colors.warning, route: '/screens/goals', hint: 'Uzun & orta vadeli vizyon' },
-      { label: 'Yaşam Alanları', shortLabel: 'Yaşam Alanı', icon: 'pie-chart-outline', color: colors.success, route: '/screens/life-areas', hint: 'Yaşam çarkı & denge alanları' },
-      { label: 'Projeler', shortLabel: 'Projeler', icon: 'folder-outline', color: colors.primary, route: '/screens/projects', hint: 'Aktif proje & kilometre taşları' },
-      { label: 'Eisenhower Matrisi', shortLabel: 'Eisenhower', icon: 'grid-outline', color: colors.error, route: '/screens/eisenhower', hint: 'Acil / önemli görev matrisi' },
-      { label: 'Takvim', shortLabel: 'Takvim', icon: 'calendar-outline', color: colors.primary, route: '/screens/calendar', hint: 'Zaman blokları ve planlama' },
-    ],
-  },
-  {
-    title: 'ALIŞKANLIKLAR',
-    subtitle: 'Rutinler ve Döngüler',
-    items: [
-      { label: 'Odak Akışı (Flow)', shortLabel: 'Odak Akışı', icon: 'flame-outline', color: colors.primary, route: '/screens/focus-flow', badge: 'YENİ', hint: 'Dikey verimlilik videoları & Inflow akışı' },
-      { label: 'Rutin & Alışkanlık Keşfet', shortLabel: 'Keşfet', icon: 'compass-outline', color: colors.warning, route: '/tabs/hub', hint: 'Hazır koleksiyonlar & atomik alışkanlıklar' },
-      { label: 'Rutin Yürütücü', shortLabel: 'Rutin Koş', icon: 'play-circle-outline', color: colors.success, route: '/screens/routine-runner', hint: 'Sabah & akşam adımları' },
-      { label: 'Triage & Matris', shortLabel: 'Triage', icon: 'options-outline', color: colors.primary, route: '/screens/dashboard', hint: 'Aktif, bekleyen ve fikir alışkanlıkları' },
-      { label: 'İçgörüler', shortLabel: 'İçgörüler', icon: 'bulb-outline', color: colors.accent, route: '/screens/insights', hint: 'Haftalık & aylık davranış analizi' },
-      { label: 'Aylık Özet', shortLabel: 'Aylık Özet', icon: 'calendar-number-outline', color: colors.accent, route: '/screens/monthly-review', hint: 'Aylık değerlendirme & rapor' },
-      { label: 'Haftalık Rapor', shortLabel: 'Haftalık Özet', icon: 'bar-chart-outline', color: colors.teal, route: '/screens/weekly-review', hint: 'Haftalık kazanımlar' },
-    ],
-  },
-  {
-    title: 'KİŞİSEL',
-    subtitle: 'Gelişim & Bilgi Kütüphanesi',
-    items: [
-      { label: 'Başarımlar & Rozetler', shortLabel: 'Rozetler', icon: 'ribbon-outline', color: colors.warning, route: '/screens/achievements', hint: 'Kazanılan rozetler & XP ödülleri' },
-      { label: 'Sıralama (Leaderboard)', shortLabel: 'Sıralama', icon: 'podium-outline', color: colors.warning, route: '/screens/leaderboard', hint: 'Puan & seviye ligi' },
-      { label: 'Okuma Listesi', shortLabel: 'Kitaplık', icon: 'book-outline', color: colors.teal, route: '/screens/reading-list', hint: 'Kitaplık ve okuma hedefleri' },
-      { label: 'Günlük Arşivi', shortLabel: 'Günlükler', icon: 'journal-outline', color: colors.primaryBright, route: '/screens/journal-archive', hint: 'Geçmiş günlük kayıtları & okuyucu' },
-      { label: 'Notlar', shortLabel: 'Notlar', icon: 'document-text-outline', color: colors.textDim, route: '/screens/notes', hint: 'Kişisel bilgi kütüphanesi' },
-      { label: 'AI Koç', shortLabel: 'AI Koç', icon: 'sparkles-outline', color: colors.info, route: '/screens/ai-coach', hint: 'Akıllı davranış & alışkanlık koçu' },
-    ],
-  },
-  {
-    title: 'SİSTEM',
-    subtitle: 'Hesap & Yapılandırma',
-    items: [
-      { label: 'Keşfet (Hub)', shortLabel: 'Keşfet', icon: 'compass-outline', color: colors.primary, route: '/tabs/hub', hint: 'Tüm sistem genel bakış paneli' },
-      { label: 'Focus Points', shortLabel: 'Focus Points', icon: 'diamond-outline', color: colors.warning, route: '/screens/focus-points', hint: 'AI kredi bakiyesi & kullanım' },
-      { label: 'Entegrasyonlar', shortLabel: 'Bağlantılar', icon: 'git-network-outline', color: colors.teal, route: '/screens/integrations', hint: 'Takvim & dış bağlantılar' },
-      { label: 'Gizlilik & Güvenlik', shortLabel: 'Gizlilik', icon: 'shield-checkmark-outline', color: colors.textDim, route: '/screens/privacy', hint: 'Veri ihracı & güvenlik' },
-      { label: 'Ayarlar', shortLabel: 'Ayarlar', icon: 'settings-outline', color: colors.textFaint, route: '/tabs/settings', hint: 'Uygulama tercihleri' },
-    ],
-  },
-];
+function toneColor(tone: ToneKey): string {
+  return colors[tone];
+}
 
-// Tüm atanabilir modüllerin birleştirilmiş kataloğu
-const ALL_MODULES: DrawerItem[] = (() => {
-  const seen = new Set<string>();
-  const list: DrawerItem[] = [];
-  for (const item of [...GROUPS.flatMap((g) => g.items), ...EXTRA_MODULES]) {
-    if (!seen.has(item.route)) {
-      seen.add(item.route);
-      list.push(item);
-    }
-  }
-  return list;
-})();
-
-const MODULE_BY_ROUTE = new Map<string, DrawerItem>(
-  ALL_MODULES.map((m) => [m.route, m]),
-);
+function shortcutKeyFor(dest: Destination, shortcutRoutes: readonly string[]): string {
+  const existing = shortcutRoutes.find((r) => destinationForLegacyRoute(r)?.id === dest.id);
+  if (existing) return existing;
+  return dest.legacyRoutes[0] ?? routeKeyOf(dest.href);
+}
 
 function ShortcutCard({
-  sc,
+  dest,
+  routeKey,
   editing,
   onNavigate,
   onRemove,
 }: {
-  sc: DrawerItem;
+  dest: Destination;
+  routeKey: string;
   editing: boolean;
-  onNavigate: (route: string) => void;
+  onNavigate: (id: DestinationId) => void;
   onRemove: (route: string) => void;
 }) {
-  const name = sc.shortLabel || sc.label;
+  const name = dest.shortLabel || dest.label;
+  const color = toneColor(dest.tone);
+  const iconName = dest.icon as keyof typeof Ionicons.glyphMap;
   const inner = (
     <>
-      <View style={[s.shortcutIcon, { backgroundColor: alphaHex(sc.color, '20') }]}>
-        <Ionicons name={sc.icon as any} size={18} color={sc.color} />
+      <View style={[s.shortcutIcon, { backgroundColor: alphaHex(color, '20') }]}>
+        <Ionicons name={iconName} size={18} color={color} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={s.shortcutLabel} numberOfLines={1}>{name}</Text>
-        <Text style={s.shortcutHint} numberOfLines={1}>{sc.hint}</Text>
+        <Text style={s.shortcutHint} numberOfLines={1}>{dest.hint}</Text>
       </View>
     </>
   );
@@ -138,7 +118,7 @@ function ShortcutCard({
           size={14}
           color={colors.error}
           label={`${name} kısayolunu kaldır`}
-          onPress={() => onRemove(sc.route)}
+          onPress={() => onRemove(routeKey)}
         />
       </View>
     );
@@ -147,7 +127,7 @@ function ShortcutCard({
   return (
     <TouchableOpacity
       style={s.shortcutCard}
-      onPress={() => onNavigate(sc.route)}
+      onPress={() => onNavigate(dest.id)}
       activeOpacity={0.75}
       accessibilityRole="button"
       accessibilityLabel={name}
@@ -159,55 +139,105 @@ function ShortcutCard({
 
 export default function Drawer() {
   const router = useRouter();
+  const { width: winWidth } = useWindowDimensions();
+  const panelWidth = drawerWidth(winWidth);
+
   const {
     isOpen,
     close,
+    moreOpen,
+    setMoreOpen,
     shortcutRoutes,
     hydrateShortcuts,
     removeShortcut,
     toggleShortcut,
     resetShortcuts,
-  } = useDrawerStore();
-  const openCmd = useCommandStore((s) => s.open);
-  const profile = useProfileStore((s) => s.profile);
-  const focusPoints = useSubscriptionStore((s) => s.focusPoints);
-  const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  } = useDrawerStore(
+    useShallow((st) => ({
+      isOpen: st.isOpen,
+      close: st.close,
+      moreOpen: st.moreOpen,
+      setMoreOpen: st.setMoreOpen,
+      shortcutRoutes: st.shortcutRoutes,
+      hydrateShortcuts: st.hydrateShortcuts,
+      removeShortcut: st.removeShortcut,
+      toggleShortcut: st.toggleShortcut,
+      resetShortcuts: st.resetShortcuts,
+    })),
+  );
+  const openCmd = useCommandStore((st) => st.open);
+  const profile = useProfileStore((st) => st.profile);
+  const focusPoints = useSubscriptionStore((st) => st.focusPoints);
+  const stage = useDisclosureStore((st) => st.stage);
+
+  const translateX = useRef(new Animated.Value(-panelWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const reduceMotion = useReducedMotion();
+  const [mounted, setMounted] = useState(isOpen);
   const [isEditingShortcuts, setIsEditingShortcuts] = useState(false);
 
   useEffect(() => {
-    hydrateShortcuts();
-  }, [hydrateShortcuts]);
+    let alive = true;
+    void currentUser()
+      .then((u) => {
+        if (alive && u?.id) void hydrateShortcuts(u.id);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [hydrateShortcuts, isOpen]);
 
   useEffect(() => {
-    if (!isOpen) {
-      setIsEditingShortcuts(false);
+    if (isOpen) {
+      setMounted(true);
+      if (reduceMotion) {
+        translateX.setValue(0);
+        backdropOpacity.setValue(1);
+        return;
+      }
+      Animated.parallel([
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+          damping: 22,
+          stiffness: 220,
+        }),
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      return;
     }
+
+    setIsEditingShortcuts(false);
     if (reduceMotion) {
-      translateX.setValue(isOpen ? 0 : -DRAWER_WIDTH);
-      backdropOpacity.setValue(isOpen ? 1 : 0);
+      translateX.setValue(-panelWidth);
+      backdropOpacity.setValue(0);
+      setMounted(false);
       return;
     }
     Animated.parallel([
-      Animated.spring(translateX, {
-        toValue: isOpen ? 0 : -DRAWER_WIDTH,
+      Animated.timing(translateX, {
+        toValue: -panelWidth,
+        duration: CLOSE_DURATION_MS,
         useNativeDriver: true,
-        damping: 22,
-        stiffness: 220,
       }),
       Animated.timing(backdropOpacity, {
-        toValue: isOpen ? 1 : 0,
-        duration: 200,
+        toValue: 0,
+        duration: CLOSE_DURATION_MS,
         useNativeDriver: true,
       }),
-    ]).start();
-  }, [isOpen, translateX, backdropOpacity, reduceMotion]);
+    ]).start(({ finished }) => {
+      if (finished) setMounted(false);
+    });
+  }, [isOpen, panelWidth, translateX, backdropOpacity, reduceMotion]);
 
-  function navigate(route: string) {
-    const base = route.split('?')[0];
+  function handleNavigate(id: DestinationId) {
     close();
-    setTimeout(() => router.push(base as any), 100);
+    setTimeout(() => navigateTo(router, id), 100);
   }
 
   function handleOpenSearch() {
@@ -215,246 +245,321 @@ export default function Drawer() {
     setTimeout(() => openCmd(), 150);
   }
 
-  if (!isOpen && Platform.OS !== 'web') return null;
+  if (!shouldRenderDrawer({ isOpen, mounted, platform: Platform.OS })) return null;
 
   const userLevel = profile?.level ?? 1;
   const username = profile?.username || 'Aderyth';
+  const allDestinations = visibleDestinations('drawer');
+  const coreItems = allDestinations.filter((d) => d.tier === 'core');
+  const moreItems = allDestinations.filter((d) => d.tier !== 'core');
+  const expanded = moreOpen ?? stage === 'established';
 
-  const activeShortcuts: DrawerItem[] = shortcutRoutes
-    .map((route) => MODULE_BY_ROUTE.get(route))
-    .filter((item): item is DrawerItem => Boolean(item));
+  const activeShortcuts: { routeKey: string; dest: Destination }[] = [];
+  const seenShortcutIds = new Set<DestinationId>();
+  for (const r of shortcutRoutes) {
+    const dest = destinationForLegacyRoute(r);
+    if (dest && !seenShortcutIds.has(dest.id)) {
+      seenShortcutIds.add(dest.id);
+      activeShortcuts.push({ routeKey: r, dest });
+    }
+  }
+
+  const hiddenA11yProps =
+    !isOpen && Platform.OS === 'web'
+      ? ({ 'aria-hidden': true } as Record<string, unknown>)
+      : !isOpen
+        ? {
+            accessibilityElementsHidden: true,
+            importantForAccessibility: 'no-hide-descendants' as const,
+          }
+        : {};
+
+  const renderNavRow = (item: Destination) => {
+    const color = toneColor(item.tone);
+    const iconName = item.icon as keyof typeof Ionicons.glyphMap;
+    const isPinned = seenShortcutIds.has(item.id);
+    const pinRouteKey = shortcutKeyFor(item, shortcutRoutes);
+
+    return (
+      <View key={item.id} style={s.itemRow}>
+        <TouchableOpacity
+          style={s.item}
+          onPress={() => handleNavigate(item.id)}
+          accessibilityRole="button"
+          accessibilityLabel={item.label}
+        >
+          <View style={[s.itemIcon, { backgroundColor: alphaHex(color, '15') }]}>
+            <Ionicons name={iconName} size={17} color={color} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.itemLabel} numberOfLines={2}>{item.label}</Text>
+            {item.hint ? <Text style={s.itemHint} numberOfLines={2}>{item.hint}</Text> : null}
+          </View>
+          {!isEditingShortcuts && (
+            <Ionicons name="chevron-forward" size={14} color={colors.textGhost} />
+          )}
+        </TouchableOpacity>
+        {isEditingShortcuts && (
+          <TouchableOpacity
+            style={[s.pinBtn, isPinned && s.pinBtnActive]}
+            onPress={() => toggleShortcut(pinRouteKey)}
+            accessibilityRole="button"
+            accessibilityLabel={isPinned ? `${item.label} kısayollardan çıkar` : `${item.label} kısayollara ekle`}
+          >
+            <Ionicons
+              name={isPinned ? 'trash-outline' : 'add'}
+              size={14}
+              color={isPinned ? colors.error : colors.primary}
+            />
+            <Text style={[s.pinBtnText, isPinned && { color: colors.error }]}>
+              {isPinned ? 'Çıkar' : 'Ata'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   return (
-    <Modal visible={isOpen} transparent animationType="none" onRequestClose={close}>
-      {/* Backdrop */}
-      <Animated.View style={[s.backdrop, { opacity: backdropOpacity }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityRole="button" accessibilityLabel="Menüyü kapat" />
-      </Animated.View>
+    <Modal
+      visible={Platform.OS === 'web' ? isOpen : isOpen || mounted}
+      transparent
+      animationType="none"
+      onRequestClose={close}
+    >
+      <View
+        style={StyleSheet.absoluteFill}
+        pointerEvents={isOpen ? 'auto' : 'none'}
+        {...hiddenA11yProps}
+      >
+        {/* Backdrop */}
+        <Animated.View style={[s.backdrop, { opacity: backdropOpacity }]}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={close}
+            accessibilityRole="button"
+            accessibilityLabel="Menüyü kapat"
+          />
+        </Animated.View>
 
-      {/* Panel */}
-      <Animated.View style={[s.panel, { transform: [{ translateX }] }]}>
-        <TexturedSurface source={TEXTURES.linen} textureOpacity={0.07} overlayOnly />
-        <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
-          {/* Header & Profil Kartı */}
-          <View style={s.header}>
-            <TouchableOpacity
-              style={s.headerLeft}
-              onPress={() => navigate('/screens/profile')}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Profile git"
-            >
-              <View style={s.avatar}>
-                <Ionicons name="person" size={18} color={colors.accent} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.appName} numberOfLines={1}>{username}</Text>
-                <View style={s.badgeRow}>
-                  <View style={s.levelBadge}>
-                    <Text style={s.levelBadgeText}>⚡ Lvl {userLevel}</Text>
-                  </View>
-                  <View style={s.fpBadge}>
-                    <Text style={s.fpBadgeText}>💎 {focusPoints} FP</Text>
+        {/* Panel */}
+        <Animated.View style={[s.panel, { width: panelWidth, transform: [{ translateX }] }]}>
+          <TexturedSurface source={TEXTURES.linen} textureOpacity={0.07} overlayOnly />
+          <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
+            {/* Header & Profil Kartı */}
+            <View style={s.header}>
+              <TouchableOpacity
+                style={s.headerLeft}
+                onPress={() => handleNavigate('profile')}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Profile git"
+              >
+                <View style={s.avatar}>
+                  <Ionicons name="person" size={18} color={colors.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.appName} numberOfLines={1}>{username}</Text>
+                  <View style={s.badgeRow}>
+                    <View style={s.levelBadge}>
+                      <Text style={s.levelBadgeText}>⚡ Lvl {userLevel}</Text>
+                    </View>
+                    <View style={s.fpBadge}>
+                      <Text style={s.fpBadgeText}>💎 {focusPoints} FP</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={close} style={s.closeBtn} accessibilityRole="button" accessibilityLabel="Menüyü kapat">
-              <Ionicons name="close" size={20} color={colors.textFaint} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={s.divider} />
-
-          {/* Nav items */}
-          <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-            {/* 1. Hızlı Kısayollar (Özelleştirilebilir Bento Grid) */}
-            <View style={s.shortcutSection}>
-              <View style={s.shortcutHeaderRow}>
-                <View style={s.shortcutTitleLeft}>
-                  <Text style={s.sectionHeader}>HIZLI KISAYOLLAR</Text>
-                  <View style={s.countPill}>
-                    <Text style={s.countPillText}>{activeShortcuts.length}</Text>
-                  </View>
-                </View>
-                <View style={s.shortcutActionsRight}>
-                  {isEditingShortcuts && (
-                    <TouchableOpacity
-                      style={s.resetBtn}
-                      onPress={resetShortcuts}
-                      accessibilityRole="button"
-                      accessibilityLabel="Varsayılan kısayollara sıfırla"
-                    >
-                      <Ionicons name="refresh-outline" size={12} color={colors.textDim} />
-                      <Text style={s.resetBtnText}>Sıfırla</Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={[s.editShortcutsBtn, isEditingShortcuts && s.editShortcutsBtnActive]}
-                    onPress={() => setIsEditingShortcuts((v) => !v)}
-                    accessibilityRole="button"
-                    accessibilityLabel={isEditingShortcuts ? 'Kısayol düzenlemeyi bitir' : 'Hızlı kısayolları düzenle'}
-                  >
-                    <Ionicons
-                      name={isEditingShortcuts ? 'checkmark' : 'options-outline'}
-                      size={12}
-                      color={isEditingShortcuts ? colors.white : colors.primary}
-                    />
-                    <Text style={[s.editShortcutsBtnText, isEditingShortcuts && { color: colors.white }]}>
-                      {isEditingShortcuts ? 'Bitti' : 'Düzenle'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={s.shortcutGrid}>
-                {activeShortcuts.map((sc) => (
-                  <ShortcutCard
-                    key={sc.route}
-                    sc={sc}
-                    editing={isEditingShortcuts}
-                    onNavigate={navigate}
-                    onRemove={removeShortcut}
-                  />
-                ))}
-
-                {/* + Modül Ata Kartı */}
-                <TouchableOpacity
-                  style={s.addShortcutCard}
-                  onPress={() => setIsEditingShortcuts((v) => !v)}
-                  activeOpacity={0.75}
-                  accessibilityRole="button"
-                  accessibilityLabel="Hızlı kısayollara modül ata veya kaldır"
-                >
-                  <View style={s.addShortcutIcon}>
-                    <Ionicons name={isEditingShortcuts ? 'chevron-up' : 'add'} size={18} color={colors.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.addShortcutLabel}>
-                      {isEditingShortcuts ? 'Seçiciyi Kapat' : 'Modül Ata'}
-                    </Text>
-                    <Text style={s.shortcutHint} numberOfLines={1}>
-                      {isEditingShortcuts ? 'Listeyi gizle' : 'Ekle / Çıkar'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-
-              {/* Düzenleme Modu: Modül Atama / Kaldırma Seçici Paneli */}
-              {isEditingShortcuts && (
-                <View style={s.pickerBox}>
-                  <Text style={s.pickerHelp}>
-                    Hızlı kısayollarda görmek istediğiniz modüllere dokunarak ekleyebilir veya çıkarabilirsiniz:
-                  </Text>
-                  <View style={s.pickerChipsWrap}>
-                    {ALL_MODULES.map((mod) => {
-                      const isPinned = shortcutRoutes.includes(mod.route);
-                      return (
-                        <TouchableOpacity
-                          key={mod.route}
-                          style={[
-                            s.pickerChip,
-                            isPinned && {
-                              backgroundColor: alphaHex(mod.color, '22'),
-                              borderColor: mod.color,
-                            },
-                          ]}
-                          onPress={() => toggleShortcut(mod.route)}
-                          activeOpacity={0.75}
-                          accessibilityRole="button"
-                          accessibilityLabel={isPinned ? `${mod.label} kısayolunu çıkar` : `${mod.label} kısayolunu ekle`}
-                        >
-                          <Ionicons
-                            name={mod.icon as any}
-                            size={13}
-                            color={isPinned ? mod.color : colors.textDim}
-                          />
-                          <Text
-                            style={[
-                              s.pickerChipText,
-                              isPinned && { color: colors.text, fontWeight: '700' },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {mod.shortLabel || mod.label}
-                          </Text>
-                          <Ionicons
-                            name={isPinned ? 'checkmark-circle' : 'add-circle-outline'}
-                            size={14}
-                            color={isPinned ? mod.color : colors.textGhost}
-                          />
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={close}
+                style={s.closeBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Menüyü kapat"
+              >
+                <Ionicons name="close" size={20} color={colors.textFaint} />
+              </TouchableOpacity>
             </View>
 
-            {/* Navigasyon Grupları (PLANLAMA / ALIŞKANLIKLAR / KİŞİSEL / SİSTEM) */}
-            {GROUPS.map((group) => (
-              <View key={group.title} style={s.group}>
-                <Text style={s.groupTitle}>{group.title}</Text>
-                {group.items.map((item) => {
-                  const isPinned = shortcutRoutes.includes(item.route);
-                  return (
-                    <View key={item.label} style={s.itemRow}>
+            <View style={s.divider} />
+
+            {/* Nav items */}
+            <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+              {/* 1. Hızlı Kısayollar */}
+              <View style={s.shortcutSection}>
+                <View style={s.shortcutHeaderRow}>
+                  <View style={s.shortcutTitleLeft}>
+                    <Text style={s.sectionHeader}>HIZLI KISAYOLLAR</Text>
+                    <View style={s.countPill}>
+                      <Text style={s.countPillText}>{activeShortcuts.length}</Text>
+                    </View>
+                  </View>
+                  <View style={s.shortcutActionsRight}>
+                    {isEditingShortcuts && (
                       <TouchableOpacity
-                        style={s.item}
-                        onPress={() => navigate(item.route)}
+                        style={s.resetBtn}
+                        onPress={resetShortcuts}
                         accessibilityRole="button"
-                        accessibilityLabel={item.label}
+                        accessibilityLabel="Varsayılan kısayollara sıfırla"
                       >
-                        <View style={[s.itemIcon, { backgroundColor: alphaHex(item.color, '15') }]}>
-                          <Ionicons name={item.icon as any} size={17} color={item.color} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.itemLabel}>{item.label}</Text>
-                          {item.hint && <Text style={s.itemHint}>{item.hint}</Text>}
-                        </View>
-                        {!isEditingShortcuts && (
-                          <Ionicons name="chevron-forward" size={14} color={colors.textGhost} />
-                        )}
+                        <Ionicons name="refresh-outline" size={12} color={colors.textDim} />
+                        <Text style={s.resetBtnText}>Sıfırla</Text>
                       </TouchableOpacity>
-                      {isEditingShortcuts && (
-                        <TouchableOpacity
-                          style={[s.pinBtn, isPinned && s.pinBtnActive]}
-                          onPress={() => toggleShortcut(item.route)}
-                          accessibilityRole="button"
-                          accessibilityLabel={isPinned ? `${item.label} kısayollardan çıkar` : `${item.label} kısayollara ekle`}
-                        >
-                          <Ionicons
-                            name={isPinned ? 'trash-outline' : 'add'}
-                            size={14}
-                            color={isPinned ? colors.error : colors.primary}
-                          />
-                          <Text style={[s.pinBtnText, isPinned && { color: colors.error }]}>
-                            {isPinned ? 'Çıkar' : 'Ata'}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
+                    )}
+                    <TouchableOpacity
+                      style={[s.editShortcutsBtn, isEditingShortcuts && s.editShortcutsBtnActive]}
+                      onPress={() => setIsEditingShortcuts((v) => !v)}
+                      accessibilityRole="button"
+                      accessibilityLabel={isEditingShortcuts ? 'Kısayol düzenlemeyi bitir' : 'Hızlı kısayolları düzenle'}
+                    >
+                      <Ionicons
+                        name={isEditingShortcuts ? 'checkmark' : 'options-outline'}
+                        size={12}
+                        color={isEditingShortcuts ? colors.white : colors.primary}
+                      />
+                      <Text style={[s.editShortcutsBtnText, isEditingShortcuts && { color: colors.white }]}>
+                        {isEditingShortcuts ? 'Bitti' : 'Düzenle'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={s.shortcutGrid}>
+                  {activeShortcuts.map(({ routeKey, dest }) => (
+                    <ShortcutCard
+                      key={dest.id}
+                      dest={dest}
+                      routeKey={routeKey}
+                      editing={isEditingShortcuts}
+                      onNavigate={handleNavigate}
+                      onRemove={removeShortcut}
+                    />
+                  ))}
+
+                  <TouchableOpacity
+                    style={s.addShortcutCard}
+                    onPress={() => setIsEditingShortcuts((v) => !v)}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityLabel="Hızlı kısayollara modül ata veya kaldır"
+                  >
+                    <View style={s.addShortcutIcon}>
+                      <Ionicons name={isEditingShortcuts ? 'chevron-up' : 'add'} size={18} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.addShortcutLabel}>
+                        {isEditingShortcuts ? 'Seçiciyi Kapat' : 'Modül Ata'}
+                      </Text>
+                      <Text style={s.shortcutHint} numberOfLines={1}>
+                        {isEditingShortcuts ? 'Listeyi gizle' : 'Ekle / Çıkar'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {isEditingShortcuts && (
+                  <View style={s.pickerBox}>
+                    <Text style={s.pickerHelp}>
+                      Hızlı kısayollarda görmek istediğiniz modüllere dokunarak ekleyebilir veya çıkarabilirsiniz:
+                    </Text>
+                    <View style={s.pickerChipsWrap}>
+                      {allDestinations.map((mod) => {
+                        const isPinned = seenShortcutIds.has(mod.id);
+                        const color = toneColor(mod.tone);
+                        const iconName = mod.icon as keyof typeof Ionicons.glyphMap;
+                        const pinRouteKey = shortcutKeyFor(mod, shortcutRoutes);
+                        return (
+                          <TouchableOpacity
+                            key={mod.id}
+                            style={[
+                              s.pickerChip,
+                              isPinned && {
+                                backgroundColor: alphaHex(color, '22'),
+                                borderColor: color,
+                              },
+                            ]}
+                            onPress={() => toggleShortcut(pinRouteKey)}
+                            activeOpacity={0.75}
+                            accessibilityRole="button"
+                            accessibilityLabel={isPinned ? `${mod.label} kısayolunu çıkar` : `${mod.label} kısayolunu ekle`}
+                          >
+                            <Ionicons
+                              name={iconName}
+                              size={13}
+                              color={isPinned ? color : colors.textDim}
+                            />
+                            <Text
+                              style={[
+                                s.pickerChipText,
+                                isPinned && { color: colors.text, fontWeight: '700' },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {mod.shortLabel || mod.label}
+                            </Text>
+                            <Ionicons
+                              name={isPinned ? 'checkmark-circle' : 'add-circle-outline'}
+                              size={14}
+                              color={isPinned ? color : colors.textGhost}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              {/* 2. Çekirdek Gezinme (tier === 'core', 8 öğe) */}
+              <View style={s.group}>
+                <Text style={s.groupTitle}>TEMEL YÜZEYLER</Text>
+                {coreItems.map(renderNavRow)}
+              </View>
+
+              {/* 3. Katlanır "Daha fazla" (more + labs) */}
+              <TouchableOpacity
+                style={s.moreToggle}
+                onPress={() => setMoreOpen(!expanded)}
+                accessibilityRole="button"
+                accessibilityLabel="Daha fazla"
+                accessibilityState={{ expanded }}
+              >
+                <Text style={s.moreToggleText}>Daha fazla</Text>
+                <Ionicons
+                  name={expanded ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={colors.textDim}
+                />
+              </TouchableOpacity>
+
+              {expanded &&
+                DRAWER_GROUPS.map((groupTitle) => {
+                  const groupItems = moreItems.filter((item) => item.drawerGroup === groupTitle);
+                  if (groupItems.length === 0) return null;
+                  return (
+                    <View key={groupTitle} style={s.group}>
+                      <Text style={s.groupTitle}>{groupTitle}</Text>
+                      {groupItems.map(renderNavRow)}
                     </View>
                   );
                 })}
-              </View>
-            ))}
-          </ScrollView>
+            </ScrollView>
 
-          {/* Footer - Hızlı Arama Kısayolu */}
-          <View style={s.footer}>
-            <TouchableOpacity
-              style={s.searchBar}
-              onPress={handleOpenSearch}
-              accessibilityRole="button"
-              accessibilityLabel="Komut paletini veya aramayı aç"
-            >
-              <Ionicons name="search-outline" size={15} color={colors.textFaint} />
-              <Text style={s.searchBarText}>Tüm sistemde ara…</Text>
-              <Text style={s.searchShortcut}>⌘ K</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </Animated.View>
+            {/* Footer - Hızlı Arama Kısayolu */}
+            <View style={s.footer}>
+              <TouchableOpacity
+                style={s.searchBar}
+                onPress={handleOpenSearch}
+                accessibilityRole="button"
+                accessibilityLabel="Komut paletini veya aramayı aç"
+              >
+                <Ionicons name="search-outline" size={15} color={colors.textFaint} />
+                <Text style={s.searchBarText}>Tüm sistemde ara…</Text>
+                <Text style={s.searchShortcut}>⌘ K</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
@@ -469,7 +574,6 @@ const s = StyleSheet.create({
     top: 0,
     left: 0,
     bottom: 0,
-    width: DRAWER_WIDTH,
     backgroundColor: colors.surface,
     borderRightWidth: 1,
     borderRightColor: colors.border,
@@ -509,7 +613,7 @@ const s = StyleSheet.create({
     borderRadius: 4,
   },
   fpBadgeText: { fontSize: 10, fontWeight: '700', color: colors.primary },
-  closeBtn: { padding: 6, borderRadius: radius.sm },
+  closeBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
   divider: { height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 0 },
   scroll: { padding: 12, paddingBottom: 24 },
 
@@ -655,6 +759,25 @@ const s = StyleSheet.create({
     fontWeight: '600',
   },
 
+  moreToggle: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  moreToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textDim,
+  },
+
   group: { marginBottom: 18 },
   groupTitle: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1.2, marginBottom: 6, paddingLeft: 6 },
   itemRow: {
@@ -664,6 +787,7 @@ const s = StyleSheet.create({
   },
   item: {
     flex: 1,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -675,6 +799,7 @@ const s = StyleSheet.create({
   itemLabel: { fontSize: 13, color: colors.text, fontWeight: '600' },
   itemHint: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
   pinBtn: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
@@ -702,6 +827,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
   },
   searchBar: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

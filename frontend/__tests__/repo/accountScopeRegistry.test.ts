@@ -23,7 +23,7 @@ const read = (p: string): string => readFileSync(join(FRONTEND, p), 'utf8').repl
 const code = (p: string): string => stripComments(read(p));
 
 /** Stores that describe this device, not the person using it. */
-const DEVICE_LEVEL_STORES = ['themeStore.ts', 'drawerStore.ts', 'commandStore.ts'];
+const DEVICE_LEVEL_STORES = ['themeStore.ts', 'commandStore.ts'];
 
 /**
  * Constant storage keys that carry no user id, each with its reason. A new one makes this test red
@@ -35,7 +35,7 @@ const KNOWN_UNSCOPED_KEYS: Record<string, string> = {
   app_seasonal_motion: 'device display preference',
   app_accent: 'device display preference',
   app_haptics: 'device haptic feedback preference',
-  'aderyth:drawer_shortcuts_v1': 'device navigation preference',
+  'aderyth:drawer_shortcuts_v1': 'legacy unscoped drawer shortcuts key, read once to migrate to aderyth:drawer_shortcuts_v1:<uid> (F28)',
   app_cmd_recents: 'device command palette history',
   'aderyth:focus_flow_saved_v1': 'device focus-flow bookmarks',
   'reminders.settings.v1': 'device reminder preference',
@@ -215,7 +215,10 @@ describe('every account boundary goes through the registry', () => {
   });
 
   it('Settings: the sign-out sits above the deletion and uses the modal, not Alert', () => {
-    const settings = code('app/tabs/settings.tsx');
+    const settings = [
+      code('app/tabs/settings.tsx'),
+      code('components/settings/AccountSection.tsx'),
+    ].join('\n');
     expect(settings).toContain('signOutCurrentAccount');
     expect(settings).toContain('<SignOutConfirmModal');
     expect(settings.indexOf('Oturumu Kapat')).toBeGreaterThan(-1);

@@ -21,6 +21,12 @@ export const HOT_FILES: readonly string[] = [
   'hooks/useTodayModel.ts',
   'components/today/HabitSection.tsx',
   'components/FocusFlowView.tsx',
+  'app/tabs/hub.tsx',
+  'components/hub/ExploreView.tsx',
+  'components/hub/ToolsView.tsx',
+  'app/tabs/timeline.tsx',
+  'components/HabitListView.tsx',
+  'components/CommandPalette.tsx',
 ];
 
 const SCAN_DIRS = ['app', 'components', 'hooks'] as const;
@@ -31,7 +37,8 @@ const UNSHALLOWED_OBJECT_SELECTOR_RE = /\buse[A-Za-z]+Store\s*\(\s*\([^)]*\)\s*=
 
 // Pre-F27 baseline on f87818e1 was 93 (today.tsx: 6, FocusFlowView.tsx: 3, YearlyHeatmap.tsx: 1 in F31).
 // Post-Wave-8B locked ceiling: 93 - 10 = 83.
-export const BASELINE = 83;
+// F28 (PRF-12, PRF-18): habits (-2), timeline (-3), HabitListView (-1), Drawer (-1), CommandPalette (-5), hub (-3) => 83 - 15 = 68.
+export const BASELINE = 68;
 
 function walkCodeFiles(relDir: string): string[] {
   const abs = join(ROOT, relDir);
