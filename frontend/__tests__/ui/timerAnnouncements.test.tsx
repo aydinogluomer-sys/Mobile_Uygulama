@@ -174,10 +174,11 @@ describe('F26 (DSA-04, DSA-09) — timer announcements and spoken durations', ()
 
     const runnerRaw = readFileSync(join(ROOT, 'app/screens/routine-runner.tsx'), 'utf8');
     const runnerCode = stripComments(runnerRaw);
+    const runnerClockRaw = readFileSync(join(ROOT, 'components/routineRunner/RunnerClock.tsx'), 'utf8');
     expect(runnerRaw).toContain('AccessibilityInfo.announceForAccessibility(`Sıradaki adım: ${step.title}`)');
     expect(runnerCode).not.toMatch(/from ['"]expo-speech['"]|require\(['"]expo-speech['"]\)/);
     expect(runnerCode).toContain('RunningStepAnnouncer');
-    expect(runnerRaw).toContain('accessibilityRole="timer"');
+    expect(runnerClockRaw).toContain('accessibilityRole="timer"');
 
     const focusRaw = readFileSync(join(ROOT, 'app/tabs/focus.tsx'), 'utf8');
     expect(focusRaw).toContain('PHASE_SPOKEN');

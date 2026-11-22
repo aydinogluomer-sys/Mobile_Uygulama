@@ -1,5 +1,6 @@
 import { resetWebhookCache } from '../services/webhookService';
 import { coreOutbox } from '../services/coreOutbox';
+import { createWebTabDeps, outboxEngine } from '../lib/outboxEngine';
 // F05 (SYN-15) — the coordinator flushes waiting work while the app is open (one timer, no polling library).
 import { syncFlushers } from '../services/unifiedOutbox';
 import { startSyncCoordinator } from '../lib/syncCoordinator';
@@ -381,6 +382,12 @@ function RootLayoutInner() {
     });
     return () => sub.remove();
   }, [loading, session]);
+
+  // F46 (SYN-10) -- multi-tab web lock + BroadcastChannel/storage coordination across all 4 outbox channels.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    return outboxEngine.attachTabs(createWebTabDeps());
+  }, []);
 
   // CI PARİTESİ (davranış değişikliği DEĞİL, yalnızca tipleme).
   //

@@ -2080,3 +2080,46 @@ owner_decision: OD-07 2026-11-21 Kırılgan metin guard'larının davranış tes
   - `FIRST_WAVE_THEMED` `33 -> 39` dosyaya yükseltildi (`+SettingRow`, `+AccountSection`, `+InlineComposer`, `+DayCloseEcho`, `+DayCloseMood`, `+DayCloseTasks`); `run-tz-matrix.js` `11 -> 13` pakete genişletildi (`+yearPixels`, `+dayClose`, `+taskQuickAdd` -> 4 bölgede **52/52**).
   - Monoton tavanlar aşağı kilitlendi: `wholeStoreSubscriptionRatchet` `BASELINE: 83 -> 68` (`-15`); `typeEscapeRatchet` `asAny: 129 -> 85` (`-44`), `asNever: 17 -> 15` (`-2`), `colonAny: 5 -> 4` (`-1`); `TOUCHABLE_CEILINGS` `noRole: 128 -> 93` (`-35`), `noLabel: 148 -> 114` (`-34`), `iconOnlyNoLabel: 33 -> 22` (`-11`); `designTokensRatchet` `QUOTED_HEX: 118 -> 102`, `RGBA_LITERAL: 72 -> 70`, `FONT_SIZE_LITERAL: 1080 -> 954`, `SPACING_LITERAL: 1580 -> 1386`, `RADIUS_LITERAL: 530 -> 467`, `STATIC_COLORS_IMPORTERS: 118 -> 113`, `RAW_TOUCHABLES: 585 -> 564`, `LEGACY_TOKEN_USAGES: 62 -> 61`.
 - **Nihai seri kapılar:** `typecheck:ci` `exit=0`; `lint:ci` `exit=0` (0 uyarı); `node run-tests.js` **147/147** `exit=0`; 4-bölge `test:tz` **52/52** `exit=0`; tam `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB` **439/439 suite · 5482/5482 test** yeşil (Wave 8B'deki 415/5345'ten +24 suite, +137 test); Wave 9 toplam mutasyon **51/51 KILLED** (kümülatif **265/265**); `git diff --check` `exit=0`.
+
+### F33 (2026-11-22) — `233a36ca` (`faz/F33-odak-niyet-kesinti-flow` — Grup G2 12/12 Kapanışı)
+
+- **Durum:** DONE (Grup G2 12/12 kapandı; `db: false`, yeni bağımlılık veya `featureGates` değişikliği yok). **Kapsanan bulgular & mekanikler:** PRF-04, PRF-05, PRF-13, PRF-23, GEM-07, PS-11, PS-15, PS-17.
+- **Özet değişiklikler:**
+  - `FocusFlowView.tsx` `1864 -> 483` satıra bölündü (`useFocusFlowFeed`, `useFlowKeyboard`, `FocusFlowPager`, `FocusFlowPage`, `FlowClosurePage`); `windowRadius = 1` sanallaştırma ile açılışta mount edilen arka plan görseli `14 -> <= 2` düzeyine düşürüldü; web ok tuşu gezintisi, YouTube oynatıcı, TTS ve nefes halkası `useIsFocused` + düzenlenebilir alan korumasına bağlandı; `FocusFlowView`, `Drawer` ve `ExploreView` zamanlayıcıları `useTimeoutRef` ile sızıntısız hale getirildi.
+  - Bugün ile Keşfet arasında paylaşılan gün-damgalı ve hesap-kapsamlı `lowEnergyStore` eklendi; Kaydedilenler dışındaki akış kategorileri kullanıcıya bağlı günlük 3 kart sınırı (`FLOW_DAILY_CAP = 3`) ve `"Bugünlük yeterli"` kapanışıyla sınırlandı.
+  - Odak sekmesine Reduce Motion uyumlu, atlanabilir 4 sn nefes + tek satır niyet (`FocusIntentSheet`) ve `>= 10 sn` arka plan dönüşlerinde 12 sn'de kendiliğinden kapanan yargısız kesinti kaydı (`InterruptionPrompt`) eklendi; serbest metin niyet/kesinti verisi şema ve analitik katmanından tamamen izole tutuldu (9 yeni test paketi).
+- **Mutasyon kanıtı:** M01–M10 -> **10/10 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F34 (2026-11-22) — `c0c3fd6d` (`faz/F34-rutin-saglamligi-secici` — `F35` dahil)
+
+- **Durum:** DONE (`db: false`, yeni bağımlılık veya `featureGates` değişikliği yok). **Kapsanan bulgular & mekanikler:** INT-14, INT-19, PRF-24, PS-30.
+- **Özet değişiklikler:**
+  - `lib/focusTimer.ts` `isTimerClock`, `lib/routineRunner.ts` boş sürüm/adım korumaları (`latestVersion -> undefined`, `startSession -> null`, `moveStep` sınır kontrolü, `parseSaved`), uydurma 2 dk sabiti içermeyen dürüst `computeRunnerClock`/`etaLabel`, tek-yazıcı `planHabitLogs`/`staleLogs` ve `F27` `currentPartOfDay` ile 24 saat birebir eşlikli `runnerPartOfDay`/`suggestTemplate`.
+  - `store/routineRunnerStore.ts` `accountEpoch()` korumalı tek-yazıcı `reconcileLogs`, ilk bozuk kopyayı ezmeden `routine.v1.<uid>.bad` karantinası ve `activeTemplateId`; `RunnerClock.tsx` (çalışma sırasında `AtmosphericScreenCanvas` yeniden render sayısı `0/sn`), `ActiveRoutinePicker.tsx` ve `routine-runner.tsx` (canlı palet, 600 ms çift dokunuş kilidi, `StaleLogNotice` — 4 yeni test paketi).
+- **Mutasyon kanıtı:** M1–M9 -> **9/9 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F36 (2026-11-22) — `037d40cf` (`faz/F36-zaman-korlugu-destegi`)
+
+- **Durum:** DONE (`db: false`, yeni bağımlılık veya `featureGates` değişikliği yok). **Kapsanan mekanikler:** PS-01, PS-02, PS-06, PS-12 (zaman körlüğü desteği: sıradaki blok geri sayımı, `DayTimeStrip`, görev/akşam hatırlatıcıları ve kademeli takip bildirimleri).
+- **Özet değişiklikler:**
+  - `frontend/lib/nextBlock.ts` (`parseBlockTime`, `blockDayOf`, `blocksOn`, `nextBlockInfo`, `nextBlockChip`, `layoutDayStrip`), `hooks/useMinuteClock.ts`, `components/calendar/DayTimeStrip.tsx` (`calendar.tsx`), `NextUpStrip.tsx` (`blockTasks` + canlı geri sayım çipi) ve `todaySelectors.ts` (`'HH:mm'` blok etiketi).
+  - `frontend/lib/taskReminderPlan.ts` (`planTaskReminders`, `planEveningClose`, `planFollowUps`, `classifyTimeSupport`, `reconcileTimeSupport`), `notificationActions.ts` (`FOLLOW_UP_GAPS_MIN = [10, 30]`, `rememberStopped`, `pruneStopped`), `notifications.ts` (`TIME_SUPPORT_CHANNEL`, sıfır `interruptionLevel`/`timeSensitive`/`HIGH`/`MAX`), `reminderService.ts` (`TimeSupportContext`, `stopFollowUps` -> `scheduleSnooze`), `_layout.tsx`, `today.tsx`, `NotificationSettingsCard.tsx` ve `SQL_FOR_OWNER.md` (6 yeni test paketi; 4-bölge TZ matrisi `nextBlock` + `taskReminderPlan` + `crossConsumerFixtures` yeşil).
+- **Mutasyon kanıtı:** M1–M8 -> **8/8 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F46 (2026-11-22) — `0f004cdc` (`faz/F46-birlesik-outbox-ve-webhook`)
+
+- **Durum:** DONE (`db: false`, yeni bağımlılık veya `featureGates` değişikliği yok). **Kapsanan bulgular:** SYN-14, STO-10, SYN-17, SYN-10, REP-14, DOM-21, SYN-26.
+- **Özet değişiklikler:**
+  - `frontend/lib/outboxEngine.ts` + `services/outboxChannel.ts` altında 4 dayanıklı kanal (`task`, `core`, `habit`, `effect`) tek motorda birleştirildi (`rev`, `settled` defteri, `EntityPolicy`, atomik `replaceCommand`, çoklu-sekme `mergeOutboxStates`, `skippedUnknown`).
+  - Web çoklu-sekme kilidi (`lib/tabCoordination.ts` `navigator.locks` + `BroadcastChannel`/`storage` + `_layout.tsx` `attachTabs`), 5 CRUD store'da (`goal`, `project`, `lifeAreas`, `okr`, `readingList`) paylaşılan `writeThrough`, `noteService`/`journalService` atomik `coreOutbox.replace` ve `logStore` için geri-okuma doğrulamalı idempotent `migrateLegacyHabitQueue` (`MAX_ATTEMPTS = 6`).
+  - `services/webhookService.ts` yerel/özel ağ SSRF doğrulaması (`classifyHost`), saf TS RFC 4231 doğrulamalı `HMAC-SHA256` (`lib/hmacSha256.ts`, `X-Aderyth-Signature`), deterministik `webhookOperationId`, dayanıklı `effectChannel` teslimi, `components/settings/WebhookModal.tsx` tek seferlik imza anahtarı gösterimi, `dataLayerBoundary.test.ts` `TRANSPORT_CALL` genişletmesi ve `R02_OFFLINE_MATRIX.md` (8 yeni + 9 genişletilen test paketi).
+- **Mutasyon kanıtı:** M01–M13 -> **13/13 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### Wave 10 Seri Birleştirme Kapısı (2026-11-22)
+
+- **Birleştirilen dallar:** `faz/F33-odak-niyet-kesinti-flow` (`233a36ca`), `faz/F34-rutin-saglamligi-secici` (`c0c3fd6d`), `faz/F36-zaman-korlugu-destegi` (`037d40cf`), `faz/F46-birlesik-outbox-ve-webhook` (`0f004cdc`).
+- **Çözülen dikişler ve aşağı çekilen monoton tavanlar:**
+  - `store/taskStore.ts` (`F36` `tasksLoaded` + `F46` `createOutboxChannel`), `app/tabs/today.tsx` (`F33` `useLowEnergyStore` + `F34` `suggestTemplate` + `F36` `blockTasks`/akşam kapanışı) ve `app/_layout.tsx` (`F36` zaman-destek mutabakatı + `F46` `outboxEngine.attachTabs(createWebTabDeps())`) birleştirildi; `focusRitualWired`, `routineRunnerWired` ve `syncLifecycleWired` tam kapsamda etkinleştirildi.
+  - `run-tz-matrix.js` `13 -> 15` pakete genişletildi (`+nextBlock`, `+taskReminderPlan` -> 4 bölgede **60/60**).
+  - Monoton tavanlar aşağı kilitlendi: `designTokensRatchet` `RGBA_LITERAL: 70 -> 36` (`-34`), `FONT_SIZE_LITERAL: 954 -> 934` (`-20`), `SPACING_LITERAL: 1386 -> 1374` (`-12`), `RADIUS_LITERAL: 467 -> 465` (`-2`), `STATIC_COLORS_IMPORTERS: 113 -> 111` (`-2`), `RAW_TOUCHABLES: 564 -> 563` (`-1`), `LEGACY_TOKEN_USAGES: 61 -> 59` (`-2`); `TOUCHABLE_CEILINGS` `noLabel: 114 -> 113`.
+- **Nihai seri kapılar:** `typecheck:ci` `exit=0`; `lint:ci` `exit=0` (0 uyarı); `node run-tests.js` **147/147** `exit=0`; 4-bölge `test:tz` **60/60** `exit=0`; tam `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB` **466/466 suite · 5671/5671 test** yeşil (Wave 9'daki 439/5482'den +27 suite, +189 test); Wave 10 toplam mutasyon **40/40 KILLED** (kümülatif **305/305**); `git diff --check` `exit=0`.

@@ -74,8 +74,7 @@ describe('the screen keeps the promises', () => {
 
   it('Today has the entry', () => {
     expect(code('app/tabs/today.tsx')).toMatch(/router\.push\('\/screens\/routine-runner' as any\)/);
-    // Coordinator enables after wiring today.tsx at Wave 10 merge gate
-    // expect(code('app/tabs/today.tsx')).toMatch(/suggestTemplate\(/);
+    expect(code('app/tabs/today.tsx')).toMatch(/suggestTemplate\(/);
   });
 
   it('F34 (+) screen mounts RunnerClock and ActiveRoutinePicker and removes 1s setTick', () => {

@@ -12,7 +12,8 @@ import {
 } from '../repositories/okrRepository';
 import { createLatest } from '../lib/latestOnly';
 import { serialByKey } from '../lib/serialByKey';
-import { hasPending, newOperationId, overlay } from '../lib/outbox';
+import { newOperationId, overlay } from '../lib/outbox';
+import { safeUserIdOf, writeThrough } from '../lib/outboxEngine';
 import { invalidateCachedSnapshot, readCachedSnapshot, setCachedSnapshot } from '../lib/localReadCache';
 import { currentUser } from '../lib/session';
 import { coreOutbox } from '../services/coreOutbox';
@@ -22,6 +23,7 @@ export type OKR = OkrRow & { key_results: KeyResult[] };
 
 export const OKR_OBJECTIVE_ENTITY = 'okr_objective';
 export const KEY_RESULT_ENTITY = 'key_result';
+const DEVICE_SAVE_WARNING = 'Değişiklik cihaza kaydedilemedi; uygulama kapanırsa kaybolabilir.';
 
 type OkrAggregate = { okrs: OkrRow[]; keyResults: KeyResultRow[] };
 
@@ -30,13 +32,7 @@ const okrLatest = createLatest();
 const OKR_CACHE_KEYS = ['okrs:q4', 'okrs:q8'] as const;
 let activeQuarters: number | undefined;
 
-async function safeUserId(): Promise<string | null> {
-  try {
-    return (await currentUser())?.id ?? null;
-  } catch {
-    return null;
-  }
-}
+const safeUserId = (): Promise<string | null> => safeUserIdOf(currentUser);
 
 function snapshotOf(okrs: OKR[]): OkrAggregate {
   return { okrs: okrs.map(({ key_results: _keyResults, ...o }) => o), keyResults: okrs.flatMap((o) => o.key_results) };
@@ -154,28 +150,34 @@ export const useOKRStore = create<OKRStore>((set, get) => ({
     if (!text) return false;
     const id = newOperationId();
     const payload = { objective: text, year, quarter };
-    const res = await insertObjectiveWithId({ id, ...payload });
-    if (res.ok) {
-      commit(set, get, (s) => ({ okrs: [{ ...res.data, key_results: [] }, ...s.okrs], error: null }));
-      return true;
+
+    const res = await writeThrough({
+      channel: coreOutbox,
+      entity: OKR_OBJECTIVE_ENTITY,
+      entityId: id,
+      kind: 'create',
+      payload,
+      online: () => insertObjectiveWithId({ id, ...payload }),
+      userId: safeUserId,
+    });
+    if (!res.ok) {
+      set({ error: res.error });
+      return false;
     }
-    if (res.offline) {
-      const uid = (await safeUserId()) ?? '';
-      const queued = await coreOutbox.write({ entity: OKR_OBJECTIVE_ENTITY, entityId: id, kind: 'create', payload });
-      if (queued.ok) {
-        const optimistic: OKR = {
-          id,
-          user_id: uid,
-          ...payload,
-          created_at: new Date().toISOString(),
-          key_results: [],
-        };
-        commit(set, get, (s) => ({ okrs: [optimistic, ...s.okrs], error: null }));
-        return true;
-      }
-    }
-    set({ error: res.error });
-    return false;
+
+    const row: OKR =
+      res.via === 'online'
+        ? { ...res.row, key_results: [] }
+        : {
+            id,
+            user_id: res.userId ?? '',
+            ...payload,
+            created_at: new Date().toISOString(),
+            key_results: [],
+          };
+    const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+    commit(set, get, (s) => ({ okrs: [row, ...s.okrs], error }));
+    return true;
   },
 
   addKeyResult: async (okrId, title, target, unit) => {
@@ -190,157 +192,101 @@ export const useOKRStore = create<OKRStore>((set, get) => ({
     const pendingObjCmd = box?.commands.find(
       (c) => c.entity === OKR_OBJECTIVE_ENTITY && c.entityId === okrId && c.kind === 'create',
     );
-    if (pendingObjCmd) {
-      const uid = (await safeUserId()) ?? '';
-      const queued = await coreOutbox.write({
-        entity: KEY_RESULT_ENTITY,
-        entityId: id,
-        kind: 'create',
-        payload,
-        dependsOn: [pendingObjCmd.operationId],
-      });
-      if (!queued.ok) { set({ error: 'Çevrimdışı anahtar sonuç eklenemedi.' }); return false; }
-      void coreOutbox.flush();
-      const optimistic: KeyResult = { id, user_id: uid, ...payload, created_at: new Date().toISOString() };
-      commit(set, get, (s) => ({
-        okrs: s.okrs.map((o) => (o.id === okrId ? { ...o, key_results: [...o.key_results, optimistic] } : o)),
-        error: null,
-      }));
-      return true;
+
+    const res = await writeThrough({
+      channel: coreOutbox,
+      entity: KEY_RESULT_ENTITY,
+      entityId: id,
+      kind: 'create',
+      payload,
+      ...(pendingObjCmd ? { dependsOn: [pendingObjCmd.operationId] } : {}),
+      online: () => insertKeyResultWithId({ id, ...payload }),
+      userId: safeUserId,
+    });
+    if (!res.ok) {
+      set({ error: pendingObjCmd ? 'Çevrimdışı anahtar sonuç eklenemedi.' : res.error });
+      return false;
     }
 
-    const res = await insertKeyResultWithId({ id, ...payload });
-    if (res.ok) {
-      commit(set, get, (s) => ({
-        okrs: s.okrs.map((o) => (o.id === okrId ? { ...o, key_results: [...o.key_results, res.data] } : o)),
-        error: null,
-      }));
-      return true;
-    }
-    if (res.offline) {
-      const uid = (await safeUserId()) ?? '';
-      const queued = await coreOutbox.write({ entity: KEY_RESULT_ENTITY, entityId: id, kind: 'create', payload });
-      if (queued.ok) {
-        const optimistic: KeyResult = { id, user_id: uid, ...payload, created_at: new Date().toISOString() };
-        commit(set, get, (s) => ({
-          okrs: s.okrs.map((o) => (o.id === okrId ? { ...o, key_results: [...o.key_results, optimistic] } : o)),
-          error: null,
-        }));
-        return true;
-      }
-    }
-    set({ error: res.error });
-    return false;
+    const row: KeyResult =
+      res.via === 'online'
+        ? res.row
+        : { id, user_id: res.userId ?? '', ...payload, created_at: new Date().toISOString() };
+    const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+    commit(set, get, (s) => ({
+      okrs: s.okrs.map((o) => (o.id === okrId ? { ...o, key_results: [...o.key_results, row] } : o)),
+      error,
+    }));
+    return true;
   },
 
   updateKRValue: (krId, current) =>
     serialByKey(`kr:${krId}`, async () => {
       const safeVal = Number.isFinite(current) ? Math.max(0, current) : 0;
-      await coreOutbox.ensure();
-      const box = coreOutbox.state();
-      if (box && hasPending(box, KEY_RESULT_ENTITY, krId)) {
-        const queued = await coreOutbox.write({ entity: KEY_RESULT_ENTITY, entityId: krId, kind: 'update', payload: { current_value: safeVal } });
-        if (!queued.ok) { set({ error: 'Çevrimdışı anahtar sonuç güncellenemedi.' }); return false; }
-        void coreOutbox.flush();
-        commit(set, get, (s) => ({
-          okrs: s.okrs.map((o) => ({
-            ...o,
-            key_results: o.key_results.map((k) => (k.id === krId ? { ...k, current_value: safeVal } : k)),
-          })),
-          error: null,
-        }));
-        return true;
+      const res = await writeThrough({
+        channel: coreOutbox,
+        entity: KEY_RESULT_ENTITY,
+        entityId: krId,
+        kind: 'update',
+        payload: { current_value: safeVal },
+        online: () => updateKeyResultValue(krId, safeVal),
+        userId: safeUserId,
+      });
+      if (!res.ok) {
+        set({ error: res.error });
+        return false;
       }
 
-      const res = await updateKeyResultValue(krId, safeVal);
-      if (res.ok) {
-        commit(set, get, (s) => ({
-          okrs: s.okrs.map((o) => ({
-            ...o,
-            key_results: o.key_results.map((k) => (k.id === krId ? res.data : k)),
-          })),
-          error: null,
-        }));
-        return true;
-      }
-      if (res.offline) {
-        const queued = await coreOutbox.write({ entity: KEY_RESULT_ENTITY, entityId: krId, kind: 'update', payload: { current_value: safeVal } });
-        if (queued.ok) {
-          commit(set, get, (s) => ({
-            okrs: s.okrs.map((o) => ({
-              ...o,
-              key_results: o.key_results.map((k) => (k.id === krId ? { ...k, current_value: safeVal } : k)),
-            })),
-            error: null,
-          }));
-          return true;
-        }
-      }
-      set({ error: res.error });
-      return false;
+      const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+      commit(set, get, (s) => ({
+        okrs: s.okrs.map((o) => ({
+          ...o,
+          key_results: o.key_results.map((k) =>
+            k.id === krId ? (res.via === 'online' ? res.row : { ...k, current_value: safeVal }) : k,
+          ),
+        })),
+        error,
+      }));
+      return true;
     }),
 
   removeObjective: async (id) => {
-    await coreOutbox.ensure();
-    const box = coreOutbox.state();
-    if (box && hasPending(box, OKR_OBJECTIVE_ENTITY, id)) {
-      const queued = await coreOutbox.write({ entity: OKR_OBJECTIVE_ENTITY, entityId: id, kind: 'delete' });
-      if (!queued.ok) { set({ error: 'Çevrimdışı hedef silinemedi.' }); return false; }
-      void coreOutbox.flush();
-      commit(set, get, (s) => ({ okrs: s.okrs.filter((o) => o.id !== id), error: null }));
-      return true;
+    const res = await writeThrough({
+      channel: coreOutbox,
+      entity: OKR_OBJECTIVE_ENTITY,
+      entityId: id,
+      kind: 'delete',
+      online: () => deleteObjective(id),
+      userId: safeUserId,
+    });
+    if (!res.ok) {
+      set({ error: res.error });
+      return false;
     }
-
-    const res = await deleteObjective(id);
-    if (res.ok) {
-      commit(set, get, (s) => ({ okrs: s.okrs.filter((o) => o.id !== id), error: null }));
-      return true;
-    }
-    if (res.offline) {
-      const queued = await coreOutbox.write({ entity: OKR_OBJECTIVE_ENTITY, entityId: id, kind: 'delete' });
-      if (queued.ok) {
-        commit(set, get, (s) => ({ okrs: s.okrs.filter((o) => o.id !== id), error: null }));
-        return true;
-      }
-    }
-    set({ error: res.error });
-    return false;
+    const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+    commit(set, get, (s) => ({ okrs: s.okrs.filter((o) => o.id !== id), error }));
+    return true;
   },
 
   removeKR: async (id) => {
-    await coreOutbox.ensure();
-    const box = coreOutbox.state();
-    if (box && hasPending(box, KEY_RESULT_ENTITY, id)) {
-      const queued = await coreOutbox.write({ entity: KEY_RESULT_ENTITY, entityId: id, kind: 'delete' });
-      if (!queued.ok) { set({ error: 'Çevrimdışı anahtar sonuç silinemedi.' }); return false; }
-      void coreOutbox.flush();
-      commit(set, get, (s) => ({
-        okrs: s.okrs.map((o) => ({ ...o, key_results: o.key_results.filter((k) => k.id !== id) })),
-        error: null,
-      }));
-      return true;
+    const res = await writeThrough({
+      channel: coreOutbox,
+      entity: KEY_RESULT_ENTITY,
+      entityId: id,
+      kind: 'delete',
+      online: () => deleteKeyResult(id),
+      userId: safeUserId,
+    });
+    if (!res.ok) {
+      set({ error: res.error });
+      return false;
     }
-
-    const res = await deleteKeyResult(id);
-    if (res.ok) {
-      commit(set, get, (s) => ({
-        okrs: s.okrs.map((o) => ({ ...o, key_results: o.key_results.filter((k) => k.id !== id) })),
-        error: null,
-      }));
-      return true;
-    }
-    if (res.offline) {
-      const queued = await coreOutbox.write({ entity: KEY_RESULT_ENTITY, entityId: id, kind: 'delete' });
-      if (queued.ok) {
-        commit(set, get, (s) => ({
-          okrs: s.okrs.map((o) => ({ ...o, key_results: o.key_results.filter((k) => k.id !== id) })),
-          error: null,
-        }));
-        return true;
-      }
-    }
-    set({ error: res.error });
-    return false;
+    const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+    commit(set, get, (s) => ({
+      okrs: s.okrs.map((o) => ({ ...o, key_results: o.key_results.filter((k) => k.id !== id) })),
+      error,
+    }));
+    return true;
   },
 }));
 

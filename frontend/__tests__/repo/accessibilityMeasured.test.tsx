@@ -114,7 +114,7 @@ const FIRST_WAVE_A11Y = [
 
 export const TOUCHABLE_CEILINGS = {
   noRole: 93,
-  noLabel: 114,
+  noLabel: 113,
   iconOnlyNoLabel: 22,
 } as const;
 

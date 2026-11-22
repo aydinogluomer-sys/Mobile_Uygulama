@@ -70,16 +70,16 @@ const literals = tsxFiles.flatMap((f) =>
   [...rawByFile.get(f)!.matchAll(HEX_RE)].map((m) => ({ f, hex: m[1] })),
 );
 
-// Exact post-Wave-9 measured ceilings (ratchet may only move down)
+// Exact post-Wave-10 measured ceilings (ratchet may only move down)
 export const CEILINGS = {
   QUOTED_HEX: 102,
-  RGBA_LITERAL: 70,
-  FONT_SIZE_LITERAL: 954,
-  SPACING_LITERAL: 1386,
-  RADIUS_LITERAL: 467,
-  STATIC_COLORS_IMPORTERS: 113,
-  RAW_TOUCHABLES: 564,
-  LEGACY_TOKEN_USAGES: 61,
+  RGBA_LITERAL: 36,
+  FONT_SIZE_LITERAL: 934,
+  SPACING_LITERAL: 1374,
+  RADIUS_LITERAL: 465,
+  STATIC_COLORS_IMPORTERS: 111,
+  RAW_TOUCHABLES: 563,
+  LEGACY_TOKEN_USAGES: 59,
 } as const;
 
 describe('designTokensRatchet (DSA-06, DSA-07, DSA-13)', () => {

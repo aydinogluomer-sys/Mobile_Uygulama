@@ -1,10 +1,5 @@
 /**
- * Notes: reads, and writes through the core outbox (R02.03).
- *
- * A note gets its id on the device, so a create delivered twice is one note.
- * An edit carries the `updated_at` it was made against; if the note changed
- * elsewhere meanwhile the edit is a CONFLICT and both versions are kept until
- * the user picks -- "aynı notta çatışan sürümü koru" (R02.05, T08).
+ * Notes: reads, and writes through the core outbox (R02.03 / F46).
  */
 import { coreOutbox } from './coreOutbox';
 import {
@@ -69,8 +64,8 @@ function conflictCopyId(operationId: string): string {
 
 /**
  * `mine`: this device's edit over the server's current version. `theirs`:
- * drop this device's edit. `both`: keep the server's note AND this device's
- * text as a new note "(çakışan sürüm)" -- nothing is lost.
+ * drop this device's edit. `both`: atomically replace the conflict command
+ * with a new "(çakışan sürüm)" note command so nothing is lost on crash or save failure.
  */
 export async function resolveNoteConflict(id: string, choice: ConflictChoice, localTitle: string): Promise<{ ok: boolean; error?: string; copyId?: string }> {
   const cmd = pendingNoteCommands().find((c) => c.entityId === id && c.status === 'conflict');
@@ -84,15 +79,20 @@ export async function resolveNoteConflict(id: string, choice: ConflictChoice, lo
     return { ok: true };
   }
   const p = cmd.payload as { title?: string; content?: string; tags?: string[] };
-  const copy = await createNote({
-    id: conflictCopyId(cmd.operationId),
-    title: `${p.title ?? localTitle} (çakışan sürüm)`,
-    content: p.content ?? cur.data?.content ?? '',
-    tags: p.tags ?? cur.data?.tags ?? [],
+  const copyId = conflictCopyId(cmd.operationId);
+  const replaced = await coreOutbox.replace(cmd.operationId, {
+    entity: NOTE_ENTITY,
+    entityId: copyId,
+    kind: 'create',
+    payload: {
+      title: `${p.title ?? localTitle} (çakışan sürüm)`,
+      content: p.content ?? cur.data?.content ?? '',
+      tags: p.tags ?? cur.data?.tags ?? [],
+    },
   });
-  if (!copy.ok) return { ok: false, error: copy.error };
-  // If the copy could not be saved on device, the conflict command holds the only durable local copy: keep it.
-  if (!copy.savedOnDevice) return { ok: false, error: 'Kopya cihaza kaydedilemedi; çakışma korunuyor, tekrar dene.' };
-  await coreOutbox.discard(cmd.operationId);
-  return { ok: true, copyId: copy.id };
+  if (!replaced.ok || !replaced.savedOnDevice) {
+    return { ok: false, error: 'Çakışma çözümü cihaza kaydedilemedi; çakışma korunuyor.' };
+  }
+  await coreOutbox.flush();
+  return { ok: true, copyId };
 }

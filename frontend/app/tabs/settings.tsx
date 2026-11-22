@@ -44,6 +44,13 @@ import { Chip, EditorialBanner, EmblemMedallion } from '../../components/ui';
 import TodayToolsSection from '../../components/settings/TodayToolsSection';
 import SettingRow from '../../components/settings/SettingRow';
 import AccountSection from '../../components/settings/AccountSection';
+import WebhookModal from '../../components/settings/WebhookModal';
+import {
+  listWebhooks,
+  registerWebhook,
+  removeWebhook,
+  type WebhookRow,
+} from '../../services/webhookService';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
@@ -110,6 +117,13 @@ export default function SettingsScreen() {
   const [showBadHabitsTracker, setShowBadHabitsTracker] = useState(false);
   const [showOutboxModal, setShowOutboxModal] = useState(false);
   const [showObsidianModal, setShowObsidianModal] = useState(false);
+  const [showWebhookModal, setShowWebhookModal] = useState(false);
+  const [webhooks, setWebhooks] = useState<WebhookRow[]>([]);
+  const [webhooksLoading, setWebhooksLoading] = useState(false);
+  const [webhookBusy, setWebhookBusy] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookError, setWebhookError] = useState<string | null>(null);
+  const [latestSigningSecret, setLatestSigningSecret] = useState<string | null>(null);
   const router = useRouter();
   const beginPersonalization = useOnboardingStore((s) => s.beginPersonalization);
 
@@ -274,6 +288,57 @@ export default function SettingsScreen() {
     }
     setSignOutUnsent(unsentChangeCount());
     setSigningOut(false);
+  };
+
+  const loadWebhooks = async () => {
+    setWebhooksLoading(true);
+    setWebhookError(null);
+    const res = await listWebhooks();
+    setWebhooksLoading(false);
+    if (res.ok) {
+      setWebhooks(res.data);
+    } else {
+      setWebhookError(res.error);
+    }
+  };
+
+  const openWebhookModal = () => {
+    setLatestSigningSecret(null);
+    setWebhookError(null);
+    setShowWebhookModal(true);
+    void loadWebhooks();
+  };
+
+  const handleAddWebhook = async () => {
+    if (webhookBusy) return;
+    setWebhookBusy(true);
+    setWebhookError(null);
+    const res = await registerWebhook({ url: webhookUrl });
+    setWebhookBusy(false);
+    if (!res.ok) {
+      setWebhookError(res.error);
+      return;
+    }
+    setWebhookUrl('');
+    setLatestSigningSecret(res.signingSecret);
+    void notify(
+      'İmza anahtarı',
+      'İmza anahtarın, bir daha gösterilmez; alıcıda doğrulamak için kaydet.',
+    );
+    await loadWebhooks();
+  };
+
+  const handleRemoveWebhook = async (id: string) => {
+    if (webhookBusy) return;
+    setWebhookBusy(true);
+    setWebhookError(null);
+    const res = await removeWebhook(id);
+    setWebhookBusy(false);
+    if (!res.ok) {
+      setWebhookError(res.error);
+      return;
+    }
+    await loadWebhooks();
   };
 
   return (
@@ -566,6 +631,13 @@ export default function SettingsScreen() {
               tone={c.teal}
               onPress={() => navigateTo(router, 'integrations')}
             />
+            <SettingRow
+              icon="link-outline"
+              label="Webhook Bildirimleri"
+              hint="Tamamlama olaylarını kendi https alıcına imzalı olarak ilet"
+              tone={c.accent}
+              onPress={openWebhookModal}
+            />
           </View>
 
           {/* Hakkında & Neler var */}
@@ -603,6 +675,27 @@ export default function SettingsScreen() {
       <OutboxStatusModal
         visible={showOutboxModal}
         onClose={() => setShowOutboxModal(false)}
+      />
+
+      <WebhookModal
+        visible={showWebhookModal}
+        webhooks={webhooks}
+        loading={webhooksLoading}
+        busy={webhookBusy}
+        url={webhookUrl}
+        error={webhookError}
+        signingSecret={latestSigningSecret}
+        onChangeUrl={setWebhookUrl}
+        onAdd={() => {
+          void handleAddWebhook();
+        }}
+        onRemove={(id) => {
+          void handleRemoveWebhook(id);
+        }}
+        onClose={() => {
+          setLatestSigningSecret(null);
+          setShowWebhookModal(false);
+        }}
       />
 
       <SignOutConfirmModal

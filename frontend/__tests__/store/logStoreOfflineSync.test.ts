@@ -34,7 +34,8 @@
  * deliberately-broken stub (see the task report's "red-first evidence").
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { enqueue as enqueueOp, emptyQueueState, saveSyncQueue, MAX_ATTEMPTS } from '../../lib/syncQueue';
+import { MAX_ATTEMPTS } from '../../lib/outbox';
+import { enqueue as enqueueOp, emptyQueueState, saveSyncQueue } from '../../lib/syncQueue';
 
 type Row = {
   id: string; habit_id: string; user_id: string; completed_at: string;
@@ -329,7 +330,7 @@ describe('AC-O03 -- N offline taps on the same (habit, day) collapse to one writ
 });
 
 describe('AC-O04 -- a permanently failing op reaches a terminal state, not retried forever', () => {
-  it('goes dead after MAX_ATTEMPTS rejections and stops being attempted', async () => {
+  it('goes dead after MAX_ATTEMPTS (6 on unified outbox) rejections and stops being attempted', async () => {
     const habitId = 'dead-1';
     mockDb.insertError = { message: 'check constraint violation' }; // reached the server, real rejection
 
@@ -408,8 +409,8 @@ describe('F04 (STO-01) -- the queue in memory goes with the account', () => {
 
 describe('F05 (SYN-03) -- what each failure class costs', () => {
   const opOnDisk = async () => {
-    const raw = await AsyncStorage.getItem('atlas_sync_queue_v1:u1');
-    return raw ? JSON.parse(raw).ops[0] : undefined;
+    const raw = await AsyncStorage.getItem('outbox.v1.habit.u1');
+    return raw ? JSON.parse(raw).state.commands[0] : undefined;
   };
 
   it('a lost connection costs nothing, however often it happens', async () => {

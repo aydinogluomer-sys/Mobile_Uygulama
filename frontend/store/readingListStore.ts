@@ -15,7 +15,8 @@ import {
 import type { Cursor, Page } from '../repositories/shared';
 import { createLatestByKey } from '../lib/latestOnly';
 import { serialByKey } from '../lib/serialByKey';
-import { hasPending, newOperationId, overlay } from '../lib/outbox';
+import { newOperationId, overlay } from '../lib/outbox';
+import { safeUserIdOf, writeThrough } from '../lib/outboxEngine';
 import { readCachedSnapshot, setCachedSnapshot } from '../lib/localReadCache';
 import { currentUser } from '../lib/session';
 import { coreOutbox } from '../services/coreOutbox';
@@ -24,19 +25,14 @@ export type { ReadingStatus, ReadingType };
 export type ReadingItem = ReadingItemRow;
 
 export const READING_ENTITY = 'reading_item';
+const DEVICE_SAVE_WARNING = 'Değişiklik cihaza kaydedilemedi; uygulama kapanırsa kaybolabilir.';
 const STATUSES: ReadingStatus[] = ['want_to_read', 'reading', 'completed'];
 
 const tabCacheKey = (status: ReadingStatus) => `reading:${status}:p1`;
 const COUNTS_CACHE_KEY = 'reading:counts';
 const tabLatest = createLatestByKey();
 
-async function safeUserId(): Promise<string | null> {
-  try {
-    return (await currentUser())?.id ?? null;
-  } catch {
-    return null;
-  }
-}
+const safeUserId = (): Promise<string | null> => safeUserIdOf(currentUser);
 
 const withPendingTab = (status: ReadingStatus, rows: ReadingItem[]): ReadingItem[] => {
   const box = coreOutbox.state();
@@ -265,44 +261,42 @@ export const useReadingListStore = create<ReadingListStore>((set, get) => ({
       notes: null,
       rating: null,
     };
-    const res = await insertReadingItemWithId({ id, ...payload });
-    if (res.ok) {
-      // A new item is always `want_to_read`, so it belongs to that tab only.
-      commit(set, get, (s) => ({
-        tabs: {
-          ...s.tabs,
-          want_to_read: { ...s.tabs.want_to_read, items: [res.data, ...s.tabs.want_to_read.items] },
-        },
-        counts: { ...s.counts, want_to_read: s.counts.want_to_read + 1 },
-        error: null,
-      }));
-      return true;
+
+    const res = await writeThrough({
+      channel: coreOutbox,
+      entity: READING_ENTITY,
+      entityId: id,
+      kind: 'create',
+      payload,
+      online: () => insertReadingItemWithId({ id, ...payload }),
+      userId: safeUserId,
+    });
+    if (!res.ok) {
+      set({ error: res.error });
+      return false;
     }
-    if (res.offline) {
-      const uid = (await safeUserId()) ?? '';
-      const now = new Date().toISOString();
-      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'create', payload });
-      if (queued.ok) {
-        const optimistic: ReadingItem = {
-          id,
-          user_id: uid,
-          ...payload,
-          created_at: now,
-          updated_at: now,
-        };
-        commit(set, get, (s) => ({
-          tabs: {
-            ...s.tabs,
-            want_to_read: { ...s.tabs.want_to_read, items: [optimistic, ...s.tabs.want_to_read.items] },
-          },
-          counts: { ...s.counts, want_to_read: s.counts.want_to_read + 1 },
-          error: null,
-        }));
-        return true;
-      }
-    }
-    set({ error: res.error });
-    return false;
+
+    const now = new Date().toISOString();
+    const row: ReadingItem =
+      res.via === 'online'
+        ? res.row
+        : {
+            id,
+            user_id: res.userId ?? '',
+            ...payload,
+            created_at: now,
+            updated_at: now,
+          };
+    const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+    commit(set, get, (s) => ({
+      tabs: {
+        ...s.tabs,
+        want_to_read: { ...s.tabs.want_to_read, items: [row, ...s.tabs.want_to_read.items] },
+      },
+      counts: { ...s.counts, want_to_read: s.counts.want_to_read + 1 },
+      error,
+    }));
+    return true;
   },
 
   updateStatus: (id, status) =>
@@ -316,7 +310,7 @@ export const useReadingListStore = create<ReadingListStore>((set, get) => ({
         return null;
       };
 
-      const moveLocally = (row: ReadingItem) => {
+      const moveLocally = (row: ReadingItem, error: string | null) => {
         const from = findExisting()?.status ?? null;
         commit(set, get, (s) => {
           const tabs = { ...s.tabs };
@@ -327,133 +321,121 @@ export const useReadingListStore = create<ReadingListStore>((set, get) => ({
           return {
             tabs,
             counts: from && from !== status ? shiftCounts(s.counts, from, status) : s.counts,
-            error: null,
+            error,
           };
         });
       };
 
-      await coreOutbox.ensure();
-      const box = coreOutbox.state();
-      if (box && hasPending(box, READING_ENTITY, id)) {
-        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { status } });
-        if (!queued.ok) { set({ error: 'Çevrimdışı okuma durumu güncellenemedi.' }); return false; }
-        void coreOutbox.flush();
-        const cur = findExisting();
-        if (cur) moveLocally({ ...cur, status, updated_at: new Date().toISOString() });
-        return true;
+      const res = await writeThrough({
+        channel: coreOutbox,
+        entity: READING_ENTITY,
+        entityId: id,
+        kind: 'update',
+        payload: { status },
+        online: () => updateReadingStatus(id, status),
+        userId: safeUserId,
+      });
+      if (!res.ok) {
+        set({ error: res.error });
+        return false;
       }
 
-      const res = await updateReadingStatus(id, status);
-      if (res.ok) {
-        moveLocally(res.data);
+      if (res.via === 'online') {
+        moveLocally(res.row, null);
         await get().refreshCounts();
         return true;
       }
-      if (res.offline) {
-        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { status } });
-        if (queued.ok) {
-          const cur = findExisting();
-          if (cur) moveLocally({ ...cur, status, updated_at: new Date().toISOString() });
-          return true;
-        }
+
+      const error = !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+      const cur = findExisting();
+      if (cur) {
+        moveLocally({ ...cur, status, updated_at: new Date().toISOString() }, error);
+      } else if (error) {
+        set({ error });
       }
-      set({ error: res.error });
-      return false;
+      return true;
     }),
 
   updateRating: (id, rating) =>
     serialByKey(`reading:${id}`, async () => {
-      await coreOutbox.ensure();
-      const box = coreOutbox.state();
-      if (box && hasPending(box, READING_ENTITY, id)) {
-        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { rating } });
-        if (!queued.ok) { set({ error: 'Çevrimdışı puan güncellenemedi.' }); return false; }
-        void coreOutbox.flush();
-        commit(set, get, (s) => ({ tabs: patchInTabs(s.tabs, id, { rating }), error: null }));
-        return true;
+      const res = await writeThrough({
+        channel: coreOutbox,
+        entity: READING_ENTITY,
+        entityId: id,
+        kind: 'update',
+        payload: { rating },
+        online: () => updateReadingRating(id, rating),
+        userId: safeUserId,
+      });
+      if (!res.ok) {
+        set({ error: res.error });
+        return false;
       }
-
-      const res = await updateReadingRating(id, rating);
-      if (res.ok) {
-        commit(set, get, (s) => ({ tabs: replaceInTabs(s.tabs, res.data), error: null }));
-        return true;
-      }
-      if (res.offline) {
-        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { rating } });
-        if (queued.ok) {
-          commit(set, get, (s) => ({ tabs: patchInTabs(s.tabs, id, { rating }), error: null }));
-          return true;
-        }
-      }
-      set({ error: res.error });
-      return false;
+      const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+      commit(set, get, (s) => ({
+        tabs: res.via === 'online' ? replaceInTabs(s.tabs, res.row) : patchInTabs(s.tabs, id, { rating }),
+        error,
+      }));
+      return true;
     }),
 
   updateNotes: (id, notes) =>
     serialByKey(`reading:${id}`, async () => {
-      await coreOutbox.ensure();
-      const box = coreOutbox.state();
-      if (box && hasPending(box, READING_ENTITY, id)) {
-        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { notes } });
-        if (!queued.ok) { set({ error: 'Çevrimdışı not güncellenemedi.' }); return false; }
-        void coreOutbox.flush();
-        commit(set, get, (s) => ({ tabs: patchInTabs(s.tabs, id, { notes }), error: null }));
-        return true;
+      const res = await writeThrough({
+        channel: coreOutbox,
+        entity: READING_ENTITY,
+        entityId: id,
+        kind: 'update',
+        payload: { notes },
+        online: () => updateReadingNotes(id, notes),
+        userId: safeUserId,
+      });
+      if (!res.ok) {
+        set({ error: res.error });
+        return false;
       }
-
-      const res = await updateReadingNotes(id, notes);
-      if (res.ok) {
-        commit(set, get, (s) => ({ tabs: replaceInTabs(s.tabs, res.data), error: null }));
-        return true;
-      }
-      if (res.offline) {
-        const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'update', payload: { notes } });
-        if (queued.ok) {
-          commit(set, get, (s) => ({ tabs: patchInTabs(s.tabs, id, { notes }), error: null }));
-          return true;
-        }
-      }
-      set({ error: res.error });
-      return false;
+      const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+      commit(set, get, (s) => ({
+        tabs: res.via === 'online' ? replaceInTabs(s.tabs, res.row) : patchInTabs(s.tabs, id, { notes }),
+        error,
+      }));
+      return true;
     }),
 
   removeItem: async (id) => {
-    const removeFromTabs = () => {
+    const removeFromTabs = (error: string | null) => {
       const was = STATUSES.find((st) => get().tabs[st].items.some((i) => i.id === id)) ?? null;
       commit(set, get, (s) => {
         const tabs = { ...s.tabs };
         for (const st of STATUSES) {
           tabs[st] = { ...tabs[st], items: tabs[st].items.filter((i) => i.id !== id) };
         }
-        return { tabs, counts: shiftCounts(s.counts, was, null), error: null };
+        return { tabs, counts: shiftCounts(s.counts, was, null), error };
       });
     };
 
-    await coreOutbox.ensure();
-    const box = coreOutbox.state();
-    if (box && hasPending(box, READING_ENTITY, id)) {
-      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'delete' });
-      if (!queued.ok) { set({ error: 'Çevrimdışı okuma öğesi silinemedi.' }); return false; }
-      void coreOutbox.flush();
-      removeFromTabs();
-      return true;
+    const res = await writeThrough({
+      channel: coreOutbox,
+      entity: READING_ENTITY,
+      entityId: id,
+      kind: 'delete',
+      online: () => deleteReadingItem(id),
+      userId: safeUserId,
+    });
+    if (!res.ok) {
+      set({ error: res.error });
+      return false;
     }
 
-    const res = await deleteReadingItem(id);
-    if (res.ok) {
-      removeFromTabs();
+    if (res.via === 'online') {
+      removeFromTabs(null);
       await get().refreshCounts();
       return true;
     }
-    if (res.offline) {
-      const queued = await coreOutbox.write({ entity: READING_ENTITY, entityId: id, kind: 'delete' });
-      if (queued.ok) {
-        removeFromTabs();
-        return true;
-      }
-    }
-    set({ error: res.error });
-    return false;
+
+    const error = !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+    removeFromTabs(error);
+    return true;
   },
 
   byStatus: (status) => get().tabs[status].items,

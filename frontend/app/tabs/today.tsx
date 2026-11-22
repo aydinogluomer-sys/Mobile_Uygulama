@@ -44,6 +44,8 @@ import RecoveryRailCard from '../../components/today/RecoveryRailCard';
 import SmallStartSheet from '../../components/SmallStartSheet';
 import OutboxIssues from '../../components/OutboxIssues';
 import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
+import { BUILT_IN_TEMPLATES, suggestTemplate } from '../../lib/routineRunner';
+import { isLowEnergyOn, useLowEnergyStore } from '../../store/lowEnergyStore';
 import type { SmallStepParent } from '../../lib/smallStart';
 import TimeOffSheet from '../../components/TimeOffSheet';
 import ChecklistSheet from '../../components/ChecklistSheet';
@@ -143,6 +145,15 @@ export default function TodayScreen() {
   );
   const [checklistFor, setChecklistFor] = useState<Habit | null>(null);
   const runnerSession = useRoutineRunnerStore((st) => st.session);
+  const runnerActiveTemplateId = useRoutineRunnerStore((st) => st.activeTemplateId);
+  const runnerUserTemplates = useRoutineRunnerStore((st) => st.templates);
+  const suggestedRoutineName = useMemo(() => {
+    if (runnerSession && runnerSession.status !== 'finished') return null;
+    const templates = [...BUILT_IN_TEMPLATES, ...runnerUserTemplates];
+    const sug = suggestTemplate(templates, clock.hour, runnerActiveTemplateId);
+    if (!sug) return null;
+    return templates.find((t) => t.id === sug.templateId)?.name ?? null;
+  }, [runnerSession, runnerUserTemplates, clock.hour, runnerActiveTemplateId]);
 
   const { fetchLogsForDate, getLogForHabit, logHabit, pendingSyncCount, deadSyncCount } = useLogStore(
     useShallow((st) => ({
@@ -195,7 +206,8 @@ export default function TodayScreen() {
   const [holidayOpen, setHolidayOpen] = useState(false);
 
   const [activeSegment, setActiveSegment] = useState<'all' | 'habits' | 'tasks' | 'balance'>('all');
-  const [lowEnergyFilter, setLowEnergyFilter] = useState(false);
+  const lowEnergyFilter = useLowEnergyStore((st) => isLowEnergyOn(st, clock.today));
+  const setLowEnergy = useLowEnergyStore((st) => st.set);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const closeFlow = useDayClose(shutdownOpen);
   const lightDayFromCloseRef = useRef(false);
@@ -678,7 +690,7 @@ export default function TodayScreen() {
                 selected={lowEnergyFilter}
                 onPress={() => {
                   haptic.select();
-                  setLowEnergyFilter((v) => !v);
+                  setLowEnergy(!lowEnergyFilter, clock.today);
                 }}
                 accessibilityLabel="Düşük enerji filtresi: yalnız hafif alışkanlıkları öne çıkar"
                 style={s.calmChip}
@@ -987,7 +999,9 @@ export default function TodayScreen() {
                 <Text style={s.breakNote}>
                   {runnerSession && runnerSession.status !== 'finished'
                     ? `${runnerSession.templateName} sürüyor · ${Object.keys(runnerSession.results).length}/${runnerSession.steps.length} — devam et`
-                    : 'Sabah, akşam ya da çalışma rutinini adım adım başlat.'}
+                    : suggestedRoutineName
+                      ? `Şimdi: ${suggestedRoutineName} rutinini adım adım başlat.`
+                      : 'Sabah, akşam ya da çalışma rutinini adım adım başlat.'}
                 </Text>
               </Card>
             )}

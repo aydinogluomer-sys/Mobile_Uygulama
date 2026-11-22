@@ -63,16 +63,41 @@ jest.mock('../../lib/supabase', () => {
 
 import { useLogStore, NO_SESSION_ERROR } from '../../store/logStore';
 import {
-  enqueue, emptyQueueState, saveSyncQueue, markFailed, QUARANTINE_KEY, type SyncQueueState,
+  enqueue, emptyQueueState, saveSyncQueue, markFailed, QUARANTINE_KEY, type SyncOp, type SyncQueueState,
 } from '../../lib/syncQueue';
+import type { OutboxCommand } from '../../lib/outbox';
+import { parseHabitLogEntityId } from '../../lib/outboxEngine';
+import { namespacedOutboxKey } from '../../lib/outboxStorage';
 import { pinToday } from '../helpers/pinnedClock';
 import { resetAccountMemory } from '../../lib/accountScope';
 
 const DAY = '2026-08-04';
-const keyOf = (uid: string) => `atlas_sync_queue_v1:${uid}`;
+const keyOf = (uid: string) => namespacedOutboxKey('habit', uid);
 async function onDisk(uid: string): Promise<SyncQueueState | null> {
   const raw = await AsyncStorage.getItem(keyOf(uid));
-  return raw ? (JSON.parse(raw) as SyncQueueState) : null;
+  if (!raw) return null;
+  const parsed = JSON.parse(raw) as { state: { commands: OutboxCommand[]; nextSeq: number } };
+  const ops: SyncOp[] = parsed.state.commands.map((c) => {
+    const p = parseHabitLogEntityId(c.entityId) ?? { habitId: c.entityId, date: DAY };
+    return {
+      id: c.operationId,
+      habitId: p.habitId,
+      date: p.date,
+      intent: c.payload.intent as SyncOp['intent'],
+      attempts: c.attempts,
+      status: c.status === 'dead' ? 'dead' : 'pending',
+      seq: c.seq,
+      createdAt: c.createdAt,
+      updatedAt: c.createdAt,
+      ...(c.readyAt > 0 ? { readyAt: c.readyAt } : {}),
+      ...(c.lastError !== undefined ? { lastError: c.lastError } : {}),
+      userId: c.userId,
+      priorState: null,
+      ...(c.retryableCount !== undefined ? { retryableCount: c.retryableCount } : {}),
+      ...(c.firstRetryableAt !== undefined ? { firstRetryableAt: c.firstRetryableAt } : {}),
+    };
+  });
+  return { ops, nextSeq: parsed.state.nextSeq };
 }
 const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 const tap = (habitId = 'h1') => useLogStore.getState().logHabit({ habitId, date: new Date(`${DAY}T12:00:00`), state: 'done' });
@@ -121,7 +146,7 @@ describe('SYN-01 — a session that starts after boot owns the queue', () => {
     expect(res).toEqual({ ok: false, error: NO_SESSION_ERROR });
     expect(useLogStore.getState().logs).toEqual([]);
     expect(useLogStore.getState().pendingSyncCount).toBe(0);
-    expect(await AsyncStorage.getAllKeys()).not.toContainEqual(expect.stringMatching(/^atlas_sync_queue_v1/));
+    expect(await AsyncStorage.getAllKeys()).not.toContainEqual(expect.stringMatching(/^(atlas_sync_queue_v1|outbox\.v1\.habit)/));
   });
 
   it('no owner yet but a session: the tap finds the session itself and is saved under it', async () => {

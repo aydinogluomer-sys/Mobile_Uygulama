@@ -42,8 +42,7 @@ describe('F33 wiring & privacy/schema invariants', () => {
     expect(flowViewCode).toContain('useIsFocused');
 
     expect(code('hooks/useFocusFlowFeed.ts')).toContain('useLowEnergyStore');
-    // Coordinator enables after wiring today.tsx at Wave 10 merge gate
-    // expect(code('app/tabs/today.tsx')).toContain('useLowEnergyStore');
+    expect(code('app/tabs/today.tsx')).toContain('useLowEnergyStore');
 
     expect(code('components/Drawer.tsx')).toContain('useTimeoutRef');
     expect(code('components/Drawer.tsx')).not.toMatch(/\bsetTimeout\s*\(/);

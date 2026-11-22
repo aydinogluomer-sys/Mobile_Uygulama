@@ -6,6 +6,7 @@ import {
 } from '../repositories/lifeAreaRepository';
 import { todayLocal } from '../lib/date';
 import { createLatest } from '../lib/latestOnly';
+import { safeUserIdOf, writeThrough } from '../lib/outboxEngine';
 import { readCachedSnapshot, setCachedSnapshot } from '../lib/localReadCache';
 import { currentUser } from '../lib/session';
 import { coreOutbox } from '../services/coreOutbox';
@@ -27,6 +28,7 @@ export type AreaValues = Record<AreaKey, number>;
 
 export const LIFE_AREA_ENTITY = 'life_area_log';
 const LIFE_AREAS_CACHE_KEY = 'life_areas:latest';
+const DEVICE_SAVE_WARNING = 'Değişiklik cihaza kaydedilemedi; uygulama kapanırsa kaybolabilir.';
 
 const DEFAULT_VALUES: AreaValues = {
   saglik: 5, kariyer: 5, egitim: 5, finans: 5,
@@ -38,13 +40,7 @@ type CachedLifeAreas = {
   lastSavedDate: string | null;
 };
 
-async function safeUserId(): Promise<string | null> {
-  try {
-    return (await currentUser())?.id ?? null;
-  } catch {
-    return null;
-  }
-}
+const safeUserId = (): Promise<string | null> => safeUserIdOf(currentUser);
 
 const lifeLatest = createLatest();
 
@@ -56,8 +52,6 @@ function applyPendingLifeAreaOverlay(base: CachedLifeAreas): CachedLifeAreas {
     .sort((a, b) => a.seq - b.seq);
   if (pending.length === 0) return base;
   const last = pending[pending.length - 1];
-  // Sunucudaki en son gün bekleyen kaydın gününden yeniyse görünümü bekleyen (eski) kayıt ezmez;
-  // kayıt yine de teslim edilince KENDİ gününe yazılır.
   if (base.lastSavedDate && last.entityId < base.lastSavedDate) return base;
   const merged = { ...base.values };
   for (const [k, v] of Object.entries(last.payload)) {
@@ -141,44 +135,29 @@ export const useLifeAreasStore = create<LifeAreasStore>((set, get) => ({
     const { values } = get();
     const payload = Object.fromEntries(LIFE_AREAS.map((a) => [a.key, values[a.key]]));
 
-    const res = await upsertLifeAreaLogs(today, payload);
-    if (res.ok) {
-      const uid = await safeUserId();
-      if (uid) {
-        void setCachedSnapshot<CachedLifeAreas>(uid, LIFE_AREAS_CACHE_KEY, {
-          values: { ...values },
-          lastSavedDate: today,
-        });
-      }
-      set({ lastSavedDate: today, saving: false });
-      return true;
-    }
-
-    if (res.offline) {
-      const queued = await coreOutbox.write({
-        entity: LIFE_AREA_ENTITY,
-        entityId: today,
-        kind: 'update',
-        payload,
-      });
-      if (queued.ok) {
-        const uid = await safeUserId();
-        if (uid) {
-          void setCachedSnapshot<CachedLifeAreas>(uid, LIFE_AREAS_CACHE_KEY, {
-            values: { ...values },
-            lastSavedDate: today,
-          });
-        }
-        set({ lastSavedDate: today, saving: false });
-        return true;
-      }
-      set({ saving: false, error: 'Cihaza kaydedilemedi; tekrar dene.' });
+    const res = await writeThrough({
+      channel: coreOutbox,
+      entity: LIFE_AREA_ENTITY,
+      entityId: today,
+      kind: 'update',
+      payload,
+      online: () => upsertLifeAreaLogs(today, payload),
+      userId: safeUserId,
+    });
+    if (!res.ok) {
+      set({ saving: false, error: res.error });
       return false;
     }
 
-    // A non-offline server rejection still refuses to record `lastSavedDate`.
-    set({ saving: false, error: res.error });
-    return false;
+    const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+    set({ lastSavedDate: today, saving: false, error });
+    if (res.userId) {
+      void setCachedSnapshot<CachedLifeAreas>(res.userId, LIFE_AREAS_CACHE_KEY, {
+        values: { ...values },
+        lastSavedDate: today,
+      });
+    }
+    return true;
   },
 }));
 

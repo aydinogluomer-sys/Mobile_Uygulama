@@ -65,28 +65,35 @@ beforeEach(() => {
   resetWebhookCache();
 });
 
-describe('DOM-21 — only a transition into done is announced', () => {
-  it('miss -> done (update of a confirmed row) announces once, with the op id as the delivery id', async () => {
+describe('DOM-21 / F46 — deterministic subjectKey announcement', () => {
+  it('update of a confirmed row to done announces with deterministic subjectKey habitId|date', async () => {
     mockRepo.update.mockResolvedValue({ ok: true, data: row('done') });
-    await persistCompletion({ ...base, confirmedId: 'r1', priorState: 'miss', deliveryKey: 'op-7' });
+    await persistCompletion({ ...base, confirmedId: 'r1' });
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith(
       'habit_completed',
       { habit_id: 'h1', date: '2026-08-04', state: 'done', value: null },
-      { deliveryId: 'op-7' },
+      { subjectKey: 'h1|2026-08-04' },
     );
   });
 
-  it('done -> done (a measurable habit past its target, a repeated save) announces nothing', async () => {
+  it('same-day repeat done passes the exact same subjectKey so effectChannel deduplicates it', async () => {
     mockRepo.update.mockResolvedValue({ ok: true, data: row('done') });
-    await persistCompletion({ ...base, confirmedId: 'r1', priorState: 'done', deliveryKey: 'op-8' });
-    expect(notify).not.toHaveBeenCalled();
+    await persistCompletion({ ...base, confirmedId: 'r1' });
+    await persistCompletion({ ...base, confirmedId: 'r1' });
+    expect(notify).toHaveBeenNthCalledWith(1, 'habit_completed', expect.any(Object), { subjectKey: 'h1|2026-08-04' });
+    expect(notify).toHaveBeenNthCalledWith(2, 'habit_completed', expect.any(Object), { subjectKey: 'h1|2026-08-04' });
   });
 
-  it('a first row for the day (insert) announces, whatever the caller remembered', async () => {
+  it('a first row for the day (insert) announces with deterministic subjectKey', async () => {
     mockRepo.insert.mockResolvedValue({ ok: true, data: row('done') });
-    await persistCompletion({ ...base, priorState: 'done', deliveryKey: 'op-9' });
+    await persistCompletion(base);
     expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      'habit_completed',
+      { habit_id: 'h1', date: '2026-08-04', state: 'done', value: null },
+      { subjectKey: 'h1|2026-08-04' },
+    );
   });
 
   it.each(['partial', 'skip', 'miss'])('a %s write announces nothing', async (state) => {
@@ -94,42 +101,34 @@ describe('DOM-21 — only a transition into done is announced', () => {
     await persistCompletion({ ...base, patch: toPatch({ state: state as 'partial' }) });
     expect(notify).not.toHaveBeenCalled();
   });
-
-  it('without a delivery key no options are passed (the old call shape)', async () => {
-    mockRepo.insert.mockResolvedValue({ ok: true, data: row('done') });
-    await persistCompletion(base);
-    expect(notify).toHaveBeenCalledWith('habit_completed', expect.any(Object), undefined);
-  });
 });
 
-describe('SYN-26 — a replayed write does not announce twice', () => {
-  it('23505 recovery: the row found on the server is already done -> nothing', async () => {
+describe('SYN-26 / F46 — lost-response 23505 replay delivers once via deterministic subjectKey', () => {
+  it('23505 recovery when server already holds done (lost first response) still notifies with deterministic subjectKey', async () => {
     mockRepo.insert.mockResolvedValue({ ok: false, error: 'duplicate key', code: '23505', offline: false, status: 409 });
     mockRepo.find.mockResolvedValue({ ok: true, data: row('done', 'r9') });
     mockRepo.update.mockResolvedValue({ ok: true, data: row('done', 'r9') });
-    const res = await persistCompletion({ ...base, priorState: null, deliveryKey: 'op-1' });
+    const res = await persistCompletion(base);
     expect(res.ok).toBe(true);
-    expect(notify).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      'habit_completed',
+      { habit_id: 'h1', date: '2026-08-04', state: 'done', value: null },
+      { subjectKey: 'h1|2026-08-04' },
+    );
   });
 
-  it('23505 recovery: the row found was miss -> announced once', async () => {
+  it('23505 recovery: the row found was miss -> announced with deterministic subjectKey', async () => {
     mockRepo.insert.mockResolvedValue({ ok: false, error: 'duplicate key', code: '23505', offline: false, status: 409 });
     mockRepo.find.mockResolvedValue({ ok: true, data: row('miss', 'r9') });
     mockRepo.update.mockResolvedValue({ ok: true, data: row('done', 'r9') });
-    await persistCompletion({ ...base, priorState: null, deliveryKey: 'op-2' });
+    await persistCompletion(base);
     expect(notify).toHaveBeenCalledTimes(1);
-  });
-
-  it('an op that carries priorState done (replayed) announces nothing', async () => {
-    mockRepo.update.mockResolvedValue({ ok: true, data: row('done') });
-    await persistCompletion({ ...base, confirmedId: 'r1', priorState: 'done', deliveryKey: 'op-3' });
-    expect(notify).not.toHaveBeenCalled();
-  });
-
-  it('an op saved by an older build (no priorState) keeps the old behaviour: announced', async () => {
-    mockRepo.update.mockResolvedValue({ ok: true, data: row('done') });
-    await persistCompletion({ ...base, confirmedId: 'r1', deliveryKey: 'op-4' });
-    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      'habit_completed',
+      { habit_id: 'h1', date: '2026-08-04', state: 'done', value: null },
+      { subjectKey: 'h1|2026-08-04' },
+    );
   });
 
   it('a transient server failure is marked retryable, a refusal is not', async () => {
@@ -292,21 +291,29 @@ describe('the delivery header: native only', () => {
 });
 
 describe('REP-14 privacy — no free text leaves', () => {
-  it('setCompleted announces { task_id } only', async () => {
+  it('setCompleted announces { task_id } only with daily subjectKey', async () => {
     mockRepo.taskUpdate.mockResolvedValue({ ok: true, data: { id: 't1', title: 'Gizli başlık' } });
     await setCompleted('t1', true);
-    expect(notify).toHaveBeenCalledWith('task_completed', { task_id: 't1' });
+    expect(notify).toHaveBeenCalledWith(
+      'task_completed',
+      { task_id: 't1' },
+      { subjectKey: expect.stringMatching(/^t1:\d{4}-\d{2}-\d{2}$/) },
+    );
     expect(notify.mock.calls[0][1]).not.toHaveProperty('title');
   });
 
-  it('the outbox delivery path announces { task_id } only', async () => {
+  it('the outbox delivery path announces { task_id } only with daily subjectKey', async () => {
     const cmd = {
       operationId: 'o', userId: 'u1', entity: 'task', entityId: 't2', kind: 'update',
       payload: { completed: true, title: 'Gizli başlık' }, baseVersion: 'v1', dependsOn: [], seq: 1, attempts: 0,
       status: 'pending', createdAt: 0, readyAt: 0,
     } as unknown as OutboxCommand;
     await deliverTaskCommand(cmd);
-    expect(notify).toHaveBeenCalledWith('task_completed', { task_id: 't2' });
+    expect(notify).toHaveBeenCalledWith(
+      'task_completed',
+      { task_id: 't2' },
+      { subjectKey: expect.stringMatching(/^t2:\d{4}-\d{2}-\d{2}$/) },
+    );
     expect(notify.mock.calls[0][1]).not.toHaveProperty('title');
   });
 

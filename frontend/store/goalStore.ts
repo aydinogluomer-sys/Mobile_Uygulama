@@ -12,7 +12,8 @@ import {
   type GoalRow,
 } from '../repositories/goalRepository';
 import type { Cursor, Page } from '../repositories/shared';
-import { hasPending, newOperationId, overlay } from '../lib/outbox';
+import { newOperationId, overlay } from '../lib/outbox';
+import { safeUserIdOf, writeThrough } from '../lib/outboxEngine';
 import { readCachedSnapshot, setCachedSnapshot } from '../lib/localReadCache';
 import { currentUser } from '../lib/session';
 import { coreOutbox } from '../services/coreOutbox';
@@ -22,15 +23,10 @@ export type Goal = GoalRow;
 
 export const GOAL_ENTITY = 'goal';
 const GOALS_CACHE_KEY = 'goals:p1';
+const DEVICE_SAVE_WARNING = 'Değişiklik cihaza kaydedilemedi; uygulama kapanırsa kaybolabilir.';
 const loadLatest = createLatest();
 
-async function safeUserId(): Promise<string | null> {
-  try {
-    return (await currentUser())?.id ?? null;
-  } catch {
-    return null;
-  }
-}
+const safeUserId = (): Promise<string | null> => safeUserIdOf(currentUser);
 
 const withPendingGoals = (rows: Goal[]): Goal[] => {
   const box = coreOutbox.state();
@@ -38,17 +34,15 @@ const withPendingGoals = (rows: Goal[]): Goal[] => {
   return overlay(box, GOAL_ENTITY, rows).filter((g) => !g.archived);
 };
 
-/**
- * Goals.
- *
- * Direct `supabase.from('goals')` calls moved to
- * `repositories/goalRepository`. The three mutations were previously keyed on
- * `id` alone with their results discarded; they are now owner-scoped and
- * report failure instead of updating the list regardless. `progress` is also
- * clamped in the repository to the 0..100 the live `goals_progress_check`
- * enforces, so an out-of-range value becomes a sane one rather than a
- * silently rejected write.
- */
+async function persistGoalsCache(uid: string | null, state: Pick<GoalStore, 'goals' | 'cursor' | 'hasMore'>): Promise<void> {
+  if (!uid) return;
+  await setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, {
+    rows: state.goals,
+    nextCursor: state.cursor,
+    hasMore: state.hasMore,
+  });
+}
+
 type GoalStore = {
   goals: Goal[];
   loading: boolean;
@@ -128,7 +122,10 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
     try {
       const res = await fetchGoalsPage(cursor);
       if (!run.isCurrent()) return;
-      if (!res.ok) { set({ loadingMore: false, error: res.error }); return; }
+      if (!res.ok) {
+        set({ loadingMore: false, error: res.error });
+        return;
+      }
       set((s) => {
         const seen = new Set(s.goals.map((g) => g.id));
         const fresh = res.data.rows.filter((g) => !seen.has(g.id));
@@ -141,8 +138,6 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
 
   addGoal: async (g) => {
     const clampedProgress = Math.max(0, Math.min(100, Math.round(g.progress ?? 0)));
-    // F19 (STO-11): mint id BEFORE the first attempt so a lost response (status 0 after commit)
-    // queues the outbox create with the same id and settles via 23505 on replay.
     const id = newOperationId();
     const payload = {
       kind: g.kind,
@@ -153,156 +148,99 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
       month: g.month ?? null,
       archived: false,
     };
-    const res = await insertGoalWithId({ id, ...payload });
-    if (res.ok) {
-      set((s) => {
-        const nextGoals = [res.data, ...s.goals];
-        void safeUserId().then((uid) => {
-          if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
-        });
-        return { goals: nextGoals, error: null };
-      });
-      return true;
+
+    const res = await writeThrough({
+      channel: coreOutbox,
+      entity: GOAL_ENTITY,
+      entityId: id,
+      kind: 'create',
+      payload,
+      online: () => insertGoalWithId({ id, ...payload }),
+      userId: safeUserId,
+    });
+    if (!res.ok) {
+      set({ error: res.error });
+      return false;
     }
-    if (res.offline) {
-      const uid = (await safeUserId()) ?? '';
-      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'create', payload });
-      if (queued.ok) {
-        const optimistic: Goal = {
-          id,
-          user_id: uid,
-          ...payload,
-          created_at: new Date().toISOString(),
-        };
-        set((s) => {
-          const nextGoals = [optimistic, ...s.goals];
-          if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
-          return { goals: nextGoals, error: null };
-        });
-        return true;
-      }
-    }
-    set({ error: res.error });
-    return false;
+
+    const row: Goal =
+      res.via === 'online'
+        ? res.row
+        : {
+            id,
+            user_id: res.userId ?? '',
+            ...payload,
+            created_at: new Date().toISOString(),
+          };
+    const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+    set((s) => ({ goals: [row, ...s.goals], error }));
+    void persistGoalsCache(res.userId, get());
+    return true;
   },
 
   updateProgress: (id, progress) =>
     serialByKey(`goal:${id}`, async () => {
       const clamped = Math.max(0, Math.min(100, Math.round(progress)));
-      await coreOutbox.ensure();
-      const box = coreOutbox.state();
-      if (box && hasPending(box, GOAL_ENTITY, id)) {
-        const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'update', payload: { progress: clamped } });
-        if (!queued.ok) { set({ error: 'Çevrimdışı hedef güncellenemedi.' }); return false; }
-        void coreOutbox.flush();
-        set((s) => ({ goals: s.goals.map((g) => (g.id === id ? { ...g, progress: clamped } : g)), error: null }));
-        return true;
+      const res = await writeThrough({
+        channel: coreOutbox,
+        entity: GOAL_ENTITY,
+        entityId: id,
+        kind: 'update',
+        payload: { progress: clamped },
+        online: () => updateGoalProgress(id, clamped),
+        userId: safeUserId,
+      });
+      if (!res.ok) {
+        set({ error: res.error });
+        return false;
       }
 
-      const res = await updateGoalProgress(id, clamped);
-      if (res.ok) {
-        set((s) => {
-          const nextGoals = s.goals.map((g) => (g.id === id ? res.data : g));
-          void safeUserId().then((uid) => {
-            if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
-          });
-          return { goals: nextGoals, error: null };
-        });
-        return true;
-      }
-      if (res.offline) {
-        const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'update', payload: { progress: clamped } });
-        if (queued.ok) {
-          set((s) => {
-            const nextGoals = s.goals.map((g) => (g.id === id ? { ...g, progress: clamped } : g));
-            void safeUserId().then((uid) => {
-              if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
-            });
-            return { goals: nextGoals, error: null };
-          });
-          return true;
-        }
-      }
-      set({ error: res.error });
-      return false;
+      const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+      set((s) => ({
+        goals: s.goals.map((g) => (g.id === id ? (res.via === 'online' ? res.row : { ...g, progress: clamped }) : g)),
+        error,
+      }));
+      void persistGoalsCache(res.userId, get());
+      return true;
     }),
 
   archiveGoal: async (id) => {
-    await coreOutbox.ensure();
-    const box = coreOutbox.state();
-    if (box && hasPending(box, GOAL_ENTITY, id)) {
-      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'update', payload: { archived: true } });
-      if (!queued.ok) { set({ error: 'Çevrimdışı hedef arşivlenemedi.' }); return false; }
-      void coreOutbox.flush();
-      set((s) => ({ goals: s.goals.filter((g) => g.id !== id), error: null }));
-      return true;
+    const res = await writeThrough({
+      channel: coreOutbox,
+      entity: GOAL_ENTITY,
+      entityId: id,
+      kind: 'update',
+      payload: { archived: true },
+      online: () => repoArchive(id),
+      userId: safeUserId,
+    });
+    if (!res.ok) {
+      set({ error: res.error });
+      return false;
     }
-
-    const res = await repoArchive(id);
-    if (res.ok) {
-      set((s) => {
-        const nextGoals = s.goals.filter((g) => g.id !== id);
-        void safeUserId().then((uid) => {
-          if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
-        });
-        return { goals: nextGoals, error: null };
-      });
-      return true;
-    }
-    if (res.offline) {
-      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'update', payload: { archived: true } });
-      if (queued.ok) {
-        set((s) => {
-          const nextGoals = s.goals.filter((g) => g.id !== id);
-          void safeUserId().then((uid) => {
-            if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
-          });
-          return { goals: nextGoals, error: null };
-        });
-        return true;
-      }
-    }
-    set({ error: res.error });
-    return false;
+    const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+    set((s) => ({ goals: s.goals.filter((g) => g.id !== id), error }));
+    void persistGoalsCache(res.userId, get());
+    return true;
   },
 
   removeGoal: async (id) => {
-    await coreOutbox.ensure();
-    const box = coreOutbox.state();
-    if (box && hasPending(box, GOAL_ENTITY, id)) {
-      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'delete' });
-      if (!queued.ok) { set({ error: 'Çevrimdışı hedef silinemedi.' }); return false; }
-      void coreOutbox.flush();
-      set((s) => ({ goals: s.goals.filter((g) => g.id !== id), error: null }));
-      return true;
+    const res = await writeThrough({
+      channel: coreOutbox,
+      entity: GOAL_ENTITY,
+      entityId: id,
+      kind: 'delete',
+      online: () => repoDelete(id),
+      userId: safeUserId,
+    });
+    if (!res.ok) {
+      set({ error: res.error });
+      return false;
     }
-
-    const res = await repoDelete(id);
-    if (res.ok) {
-      set((s) => {
-        const nextGoals = s.goals.filter((g) => g.id !== id);
-        void safeUserId().then((uid) => {
-          if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
-        });
-        return { goals: nextGoals, error: null };
-      });
-      return true;
-    }
-    if (res.offline) {
-      const queued = await coreOutbox.write({ entity: GOAL_ENTITY, entityId: id, kind: 'delete' });
-      if (queued.ok) {
-        set((s) => {
-          const nextGoals = s.goals.filter((g) => g.id !== id);
-          void safeUserId().then((uid) => {
-            if (uid) void setCachedSnapshot<Page<Goal>>(uid, GOALS_CACHE_KEY, { rows: nextGoals, nextCursor: s.cursor, hasMore: s.hasMore });
-          });
-          return { goals: nextGoals, error: null };
-        });
-        return true;
-      }
-    }
-    set({ error: res.error });
-    return false;
+    const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+    set((s) => ({ goals: s.goals.filter((g) => g.id !== id), error }));
+    void persistGoalsCache(res.userId, get());
+    return true;
   },
 }));
 

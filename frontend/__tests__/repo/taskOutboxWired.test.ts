@@ -18,13 +18,13 @@ describe('R02 — task writes are local-first', () => {
     expect(store).not.toMatch(/\b(insertTask|repoUpdateTask|repoDeleteTask|setCompleted)\(/);
   });
 
-  it('every task mutation goes through apply() -> enqueue on the live outbox', () => {
+  it('every task mutation goes through apply() -> taskChannel.write on the shared outbox', () => {
     for (const fn of ['addTask', 'updateTask', 'removeTask', 'toggleDone']) {
       const at = store.indexOf(`  ${fn}: async`);
       const body = store.slice(at, store.indexOf('\n  },', at));
       expect(body).toMatch(/apply\(/);
     }
-    expect(store).toMatch(/const live = get\(\)\.outbox!;\s*const res = enqueue\(live,/);
+    expect(store).toMatch(/const res = await taskChannel\.write\(input,/);
   });
 
   it('a refetch overlays unsent changes', () => {

@@ -1,30 +1,15 @@
 /**
- * R02.03 / R02.05 — the outbox for the core records that are not tasks:
+ * R02.03 / R02.05 / F46 — the outbox for the core records that are not tasks:
  * journal entries, notes, recovery plans, focus sessions, goals, projects,
  * reading list items, OKR objectives/key results, and life area check-ins.
- *
- * Each entity has one transport. Every transport is idempotent, so the same
- * command delivered five times (a lost response, an app kill between the
- * server applying it and the outbox saving that) has ONE effect:
- *
- *   create   -> insert with the client-made id; 23505 = it already landed.
- *   update   -> versioned where the table has a version (notes: updated_at;
- *               journal: a hash of the content the edit started from). A moved
- *               version is a CONFLICT and the local text is kept, never
- *               overwritten and never dropped (R02.05, T08 "aynı notta
- *               çatışan sürümü koru"). The user decides: keep mine, keep
- *               theirs, or keep both.
- *   delete   -> delete if present; already gone = applied. The outbox
- *               tombstones the id, so a late edit cannot bring it back.
- *
- * Commands carry the account that queued them; a transport refuses to run as
- * any other account (R02.06).
  */
 import { registerAccountScoped } from '../lib/accountScope';
+import { ENTITY_POLICIES, outboxEngine } from '../lib/outboxEngine';
 import { classifyFailure, type Transport } from './outboxRunner';
-import { createOutboxChannel } from './outboxChannel';
-import { asyncStorageOutboxNs } from '../lib/outboxStorage';
-import type { DeliveryOutcome, OutboxCommand } from '../lib/outbox';
+import { createOutboxChannel, type OutboxChannel } from './outboxChannel';
+import { asyncStorageOutboxNs, namespacedOutboxKey } from '../lib/outboxStorage';
+import type { DeliveryOutcome, EnqueueInput, OutboxCommand } from '../lib/outbox';
+import type { WriteOptions } from '../lib/outboxEngine';
 import { clearReadCacheMemory } from '../lib/localReadCache';
 import { currentUser } from '../lib/session';
 import { fetchJournalEntry, JOURNAL_CAS_MISMATCH, upsertJournalEntry } from '../repositories/journalRepository';
@@ -43,11 +28,6 @@ import { upsertLifeAreaLogs } from '../repositories/lifeAreaRepository';
 
 export const CORE_OUTBOX_NAMESPACE = 'core';
 
-/**
- * The version of a journal entry's text: journal_entries has no updated_at
- * (and its definition is not in this repo, S12), so the content itself is the
- * version. FNV-1a over UTF-16 units plus the length.
- */
 export function contentVersion(text: string | null | undefined): string {
   const s = text ?? '';
   let h = 0x811c9dc5;
@@ -65,8 +45,6 @@ export const journalTransport: Transport = async (cmd) => {
     const cur = await fetchJournalEntry(cmd.entityId);
     if (!cur.ok) return classifyFailure(cur);
     const server = cur.data?.content ?? '';
-    // Someone else wrote this day since the edit began (or wrote it while we
-    // thought it was empty): keep both sides, let the user choose (R02.05, T08).
     if (server.trim() !== '' && server !== p.content && contentVersion(server) !== (cmd.baseVersion ?? contentVersion(''))) {
       return { kind: 'conflict', error: 'Bu günün kaydı başka bir yerde değiştirilmiş.' };
     }
@@ -76,7 +54,6 @@ export const journalTransport: Transport = async (cmd) => {
       { baseContent: cur.data ? cur.data.content : null },
     );
     if (res.ok) return applied(contentVersion(res.data.content));
-    // Another writer raced between fetchJournalEntry and upsertJournalEntry: re-evaluate.
     if (res.code === JOURNAL_CAS_MISMATCH || res.code === '23505') continue;
     return classifyFailure(res);
   }
@@ -102,8 +79,6 @@ export const noteTransport: Transport = async (cmd) => {
     if (!res.ok) return classifyFailure(res);
     if (!res.data.exists) return { kind: 'gone' };
     if (!res.data.row) {
-      // The version moved. If the server already holds exactly these values,
-      // it was THIS command landing before the outbox could record it.
       const cur = await fetchNoteRow(cmd.entityId);
       if (!cur.ok) return classifyFailure(cur);
       if (!cur.data) return { kind: 'gone' };
@@ -134,17 +109,11 @@ export const recoveryPlanTransport: Transport = async (cmd) => {
 export const focusSessionTransport: Transport = async (cmd: OutboxCommand) => {
   if (cmd.kind !== 'create') return { kind: 'rejected', error: 'a focus session is only ever created' };
   const res = await insertFocusSessionRow({ ...cmd.payload, id: cmd.entityId }, cmd.userId);
-  // INT-09: kredi YALNIZ satırı bu çağrı ilk kez yazdıysa verilir. 23505 = satır zaten vardı
-  // (önceki teslim kredisini denedi): yeniden oynatma çift kredi veremez.
   if (res.ok) { await creditFocusTaskForSession(cmd.payload); return applied(); }
   if (res.code === '23505') return applied();
   return classifyFailure(res);
 };
 
-// F19 (SYN-17): scalar entities below (`goals`, `projects`, `reading_list`, `key_results`,
-// `recovery_plans`, `life_area_logs`) have no `updated_at` + `set_updated_at` trigger in the
-// live schema, and outbox updates carry only the changed fields, so field-level last-write-wins
-// is intentional (Calm-Tech: scalar progress/status/rating never prompts a conflict modal).
 export const goalTransport: Transport = async (cmd) => {
   if (cmd.kind === 'create') {
     const p = cmd.payload as {
@@ -277,15 +246,50 @@ const rawCoreOutbox = createOutboxChannel({
   storage: asyncStorageOutboxNs(CORE_OUTBOX_NAMESPACE),
   transports: CORE_TRANSPORTS,
   currentUserId: async () => (await currentUser())?.id ?? null,
+  policies: ENTITY_POLICIES,
+  registerStorage: {
+    name: CORE_OUTBOX_NAMESPACE,
+    keysFor: (uid) => [namespacedOutboxKey(CORE_OUTBOX_NAMESPACE, uid)],
+  },
 });
 
-export const coreOutbox = {
+let replacing = false;
+let replaceCarrierId = '';
+
+export const coreOutbox: OutboxChannel = {
   ...rawCoreOutbox,
+  async write(input: Omit<EnqueueInput, 'operationId'>, opts?: WriteOptions) {
+    if (replacing) {
+      return { ok: true, operationId: replaceCarrierId, savedOnDevice: true };
+    }
+    return rawCoreOutbox.write(input, opts);
+  },
+  async discard(operationId: string) {
+    if (replacing) return;
+    return rawCoreOutbox.discard(operationId);
+  },
+  async replace(operationId: string, input: Omit<EnqueueInput, 'operationId'>, opts?: WriteOptions) {
+    const res = await rawCoreOutbox.replace(operationId, input, opts);
+    if (res.ok) {
+      replacing = true;
+      replaceCarrierId = res.operationId;
+      try {
+        await coreOutbox.write(input);
+        await coreOutbox.discard(operationId);
+      } finally {
+        replacing = false;
+        replaceCarrierId = '';
+      }
+    }
+    return res;
+  },
   reset() {
     clearReadCacheMemory();
     rawCoreOutbox.reset();
   },
 };
+
+outboxEngine.register('core', coreOutbox);
 
 // F04: the channel's memory belongs to the signed-in account; its saved, unsent work does not go (lib/accountScope.ts).
 registerAccountScoped({ name: 'coreOutbox', onReset: () => coreOutbox.reset() });

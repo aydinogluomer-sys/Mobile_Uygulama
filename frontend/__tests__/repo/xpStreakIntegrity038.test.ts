@@ -486,7 +486,7 @@ describe('038: the client half of the contract', () => {
     expect(body.length).toBeGreaterThan(500);
     const check = body.indexOf('if (!isLoggableDay(dateStr)) return Promise.resolve({ ok: false, error: LOGGABLE_DAY_MESSAGE });');
     expect(check).toBeGreaterThan(-1);
-    for (const later of ['buildOptimisticLog(', 'enqueueOp(', 'saveSyncQueue(', 'serialise(']) {
+    for (const later of ['buildOptimisticLog(', 'habitChannel.ensure(', 'habitChannel.write(']) {
       expect({ later, after: body.indexOf(later) > check }).toEqual({ later, after: true });
     }
   });

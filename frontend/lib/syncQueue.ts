@@ -1,4 +1,9 @@
 /**
+ * @deprecated F46 (Stage G, SYN-14): Live habit-log queueing now runs on the unified outbox
+ * (`lib/outbox.ts` + `services/outboxChannel.ts` under `outbox.v1.habit.<uid>`). This module is
+ * retained solely as the legacy disk parser (`loadSyncQueue` / `isValidOp`) for one-time migration
+ * in `lib/outboxEngine.ts` (`migrateLegacyHabitQueue`) and legacy unit tests.
+ *
  * Offline habit-log sync queue.  (Phase 4, plan §18)
  *
  * THE PROBLEM THIS FILE SOLVES, stated once so every function below can stay
