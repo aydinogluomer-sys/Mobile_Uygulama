@@ -80,7 +80,7 @@ describe('the legacy spend function has no caller', () => {
 });
 
 describe('the four call sites wait out REQUEST_IN_PROGRESS before answered()', () => {
-  const coach = stripComments(read('frontend/app/screens/ai-coach.tsx'));
+  const coach = stripComments(read('frontend/hooks/useCoachSend.ts'));
   const insights = stripComments(read('frontend/app/screens/journal-insights.tsx'));
   const routine = stripComments(read('frontend/store/routineStore.ts'));
   const slice = (src: string, from: string, to: string) => {
@@ -89,7 +89,7 @@ describe('the four call sites wait out REQUEST_IN_PROGRESS before answered()', (
   };
   const sites: [string, string, string][] = [
     ['ai-coach send', slice(coach, 'async function send(', 'async function summarize('), 'coachAttempt.answered();'],
-    ['ai-coach summarize', slice(coach, 'async function summarize(', 'async function saveSummaryToJournal('), 'summaryAttempt.answered();'],
+    ['ai-coach summarize', slice(coach, 'async function summarize(', 'return { send, summarize,'), 'summaryAttempt.answered();'],
     ['journal-insights', slice(insights, 'async function generate(', 'return ('), 'insightAttempt.answered();'],
     ['routineStore', slice(routine, 'generateRoutine: async', 'stageCoachProposal:'), 'routineAttempt.answered();'],
   ];

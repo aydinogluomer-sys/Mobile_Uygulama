@@ -8,6 +8,7 @@ import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, relative, sep } from 'path';
 import { stripComments } from '../helpers/sourceText';
 import { buildSchemaModel } from '../helpers/sqlSchemaParser';
+import { edgeSource } from '../helpers/edgeSource';
 
 const mockTransport = {
   session: { user: { id: 'u1' }, access_token: 'jwt' } as { user: { id: string }; access_token: string } | null,
@@ -269,7 +270,6 @@ describe('2. REP-18 — Analitik katman sınırı ve tek istemci fiyat kaynağı
   it('focusPointService.COST === ACTION_COST ve sunucu generate-routine COST literaliyle birebir eşittir (+ olumsuz kontrol)', () => {
     expect(COST).toBe(ACTION_COST);
 
-    const { edgeSource } = require('../helpers/edgeSource') as typeof import('../helpers/edgeSource');
     const edgeSrc = stripComments(edgeSource('generate-routine'));
     const serverCost = parseServerCostLiteral(edgeSrc);
     expect(priceMismatch(ACTION_COST, serverCost)).toEqual([]);

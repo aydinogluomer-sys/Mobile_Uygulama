@@ -56,6 +56,7 @@ query is unbounded; this does not.
 | `habitRepository.ts` | `fetchHabits` | `habits` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitRepository.ts` | `insertHabit` | `habits` | no | WRITE | — |
 | `habitRepository.ts` | `insertRoutineHabits` | `habits` | no | WRITE | — |
+| `habitRepository.ts` | `insertRoutineHabits` | `habits` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitRepository.ts` | `purgeHabit` | `habit_deletions` | no | WRITE | — |
 | `habitRepository.ts` | `searchHabits` | `habits` | yes | BOUNDED_SEARCH | yes |
 | `journalInsightRepository.ts` | `fetchJournalInsight` | `journal_insights` | no | SINGLE_ROW | yes |
@@ -113,14 +114,14 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **102**
-- collection SELECTs: **42**
+- queries: **103**
+- collection SELECTs: **43**
 - KEYSET_PAGE: **7**
 - RANGE_PAGED: **14**
 - DATE_WINDOW: **0**
 - BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **2**
-- BOUNDED_DOMAIN_WINDOW: **15**
+- BOUNDED_DOMAIN_WINDOW: **16**
 - SINGLE_ROW: **17**
 - **UNPAGED_WINDOW: 0**
 - **UNCLASSIFIED: 0**
