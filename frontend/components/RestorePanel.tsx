@@ -7,7 +7,8 @@
  * dependency (expo-document-picker -- stop point S14).
  */
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { confirm } from '../lib/dialog';
 import { colors, space, radius } from '../lib/tokens';
 import { dryRunRestore, executeRestore, loadRestoreJob, type RestoreReport } from '../services/restoreService';
 import { isInterrupted, interruptedText, type RestoreJob } from '../lib/restoreJob';
@@ -60,17 +61,15 @@ export default function RestorePanel() {
     setPlan(r.plan); setSummary(r.summary); setNotices(r.notices ?? []); setJob(r.job);
   }
 
-  function confirmMerge() {
+  async function confirmMerge() {
     if (!plan) return;
     if (plan.inserts === 0) { setError('Eklenecek bir şey yok: hesabında bu dosyadaki her şey zaten var.'); return; }
-    Alert.alert(
-      'Eksikleri ekle',
-      `${plan.inserts} kayıt eklenecek. Mevcut hiçbir kayıt değiştirilmez ya da silinmez. Alışkanlıklar kuyruğa (bekleyen) eklenir.`,
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        { text: 'Ekle', onPress: () => { void run(); } },
-      ],
-    );
+    const yes = await confirm({
+      title: 'Eksikleri ekle',
+      message: `${plan.inserts} kayıt eklenecek. Mevcut hiçbir kayıt değiştirilmez ya da silinmez. Alışkanlıklar kuyruğa (bekleyen) eklenir.`,
+      confirmText: 'Ekle',
+    });
+    if (yes) await run();
   }
 
   async function run() {

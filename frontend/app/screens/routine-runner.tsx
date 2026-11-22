@@ -11,7 +11,8 @@
  * time-up gives one haptic.
  */
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, AccessibilityInfo, AppState } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, AccessibilityInfo, AppState } from 'react-native';
+import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
@@ -358,10 +359,11 @@ export default function RoutineRunnerScreen() {
         {st.error && <Text style={x.error} accessibilityRole="alert">{st.error}</Text>}
 
         <TouchableOpacity style={x.finish}
-          onPress={() => Alert.alert('Rutini bitir', 'İşaretlenmemiş adımlar işaretlenmemiş kalır.', [
-            { text: 'Vazgeç', style: 'cancel' },
-            { text: 'Bitir', onPress: () => st.finish() },
-          ])}
+          onPress={async () => {
+            if (await confirm({ title: 'Rutini bitir', message: 'İşaretlenmemiş adımlar işaretlenmemiş kalır.', confirmText: 'Bitir' })) {
+              st.finish();
+            }
+          }}
           accessibilityRole="button" accessibilityLabel="Rutini bitir">
           <Text style={x.finishText}>Bitir</Text>
         </TouchableOpacity>

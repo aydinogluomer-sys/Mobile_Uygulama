@@ -8,10 +8,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   Platform,
-  Alert,
   Modal,
   TextInput,
 } from 'react-native';
+import { notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FadeInUpView from '../../components/motion/FadeInUpView';
@@ -127,7 +127,7 @@ export default function TimelineScreen() {
     const nextState = (!log || log.state === 'miss') ? 'done' : 'miss';
     if (nextState === 'done') haptic.success(); else haptic.light();
     const res = await logHabit({ habitId: habit.id, date: selectedDate, state: nextState });
-    if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
+    if (!res.ok) void notify('Kaydedilemedi', res.error);
   };
 
   // R01.03-a — the modal's number is what the user ADDS; what is written is the
@@ -147,7 +147,7 @@ export default function TimelineScreen() {
       targetDirection: intent.targetDirection,
     });
     if (!res.ok) {
-      Alert.alert('Kaydedilemedi', res.error);
+      void notify('Kaydedilemedi', res.error);
       return;                       // modalı açık bırak; kullanıcı tekrar denesin
     }
     setMeasureHabit(null);
@@ -172,9 +172,9 @@ export default function TimelineScreen() {
       setXpAnim(habitData.willpower_cost);
       setTimeout(() => setXpAnim(null), 2000);
     } else if (finalStatus === 'idea') {
-      Alert.alert('🗑 Fikirler\'e Eklendi', 'Düşük öncelikli bir alışkanlık. Fikirler bölümünde saklandı.', [{ text: 'Tamam' }]);
+      void notify('🗑 Fikirler\'e Eklendi', 'Düşük öncelikli bir alışkanlık. Fikirler bölümünde saklandı.');
     } else {
-      Alert.alert(`${TRIAGE_META[triage].emoji} Bekleme Odasına Alındı`, `Strateji kararı: ${TRIAGE_META[triage].label}.`, [{ text: 'Tamam' }]);
+      void notify(`${TRIAGE_META[triage].emoji} Bekleme Odasına Alındı`, `Strateji kararı: ${TRIAGE_META[triage].label}.`);
     }
     await loadData();
   };
@@ -204,7 +204,7 @@ export default function TimelineScreen() {
   const handleActivate = async (habit: Habit) => {
     if (!canActivate(habit.willpower_cost, habitsLoading ? undefined : { habit, activeHabits })) {
       haptic.warning();
-      Alert.alert('Kapasite Dolu', `${habit.willpower_cost} irade gerekiyor; bütçen yetmiyor veya slot dolu.`, [{ text: 'Tamam' }]);
+      void notify('Kapasite Dolu', `${habit.willpower_cost} irade gerekiyor; bütçen yetmiyor veya slot dolu.`);
       return;
     }
     const r = await activateHabit(habit.id, habit.willpower_cost);

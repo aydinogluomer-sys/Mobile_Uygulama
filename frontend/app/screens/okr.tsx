@@ -2,8 +2,9 @@ import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal,
-  Alert, Platform,
+  Platform,
 } from 'react-native';
+import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useOKRStore, krProgress, objectiveProgress, type KeyResult, type OKR } from '../../store/okrStore';
@@ -49,11 +50,10 @@ export default function OKRScreen() {
     if (!isNaN(v)) await updateKRValue(editKr.id, v);
     setEditKr(null); setEditVal('');
   }
-  function confirmRemoveObj(o: OKR) {
-    Alert.alert('Objective Sil', `"${o.objective}" ve anahtar sonuçları silinecek.`, [
-      { text: 'Vazgeç', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => removeObjective(o.id) },
-    ]);
+  async function confirmRemoveObj(o: OKR) {
+    if (await confirm({ title: 'Objective Sil', message: `"${o.objective}" ve anahtar sonuçları silinecek.`, confirmText: 'Sil', destructive: true })) {
+      await removeObjective(o.id);
+    }
   }
 
   if (loading && okrs.length === 0) {

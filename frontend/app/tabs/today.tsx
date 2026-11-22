@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Platform, View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions, Alert, Modal } from 'react-native';
+import { Animated, Platform, View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions, Modal } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { actionSheet, notify, type DialogOption } from '../../lib/dialog';
 import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import { useTaskStore } from '../../store/taskStore';
@@ -366,15 +367,28 @@ export default function TodayScreen() {
     focusSessionsToday: sessionsCompleted,
   });
   // R06.02 — the secondary jobs, one tap away instead of on the hero.
-  function openMoreMenu() {
-    Alert.alert('Diğer', undefined, [
-      ...(nowAction?.kind !== 'focus' ? [{ text: 'Odağa geç', onPress: () => router.push('/tabs/focus' as any) }] : []),
-      { text: 'Haftayı değerlendir', onPress: () => router.push('/screens/weekly-review' as any) },
-      { text: 'Denge planı', onPress: () => router.push('/screens/recovery' as any) },
-      { text: 'Projeler', onPress: () => router.push('/screens/projects' as any) },
-      { text: 'Notlar', onPress: () => router.push('/screens/notes' as any) },
-      { text: 'Vazgeç', style: 'cancel' },
-    ]);
+  const MORE_MENU_ROUTES = {
+    focus: '/tabs/focus',
+    weekly: '/screens/weekly-review',
+    recovery: '/screens/recovery',
+    projects: '/screens/projects',
+    notes: '/screens/notes',
+  } as const;
+  function isMoreMenuKey(id: string): id is keyof typeof MORE_MENU_ROUTES {
+    return Object.prototype.hasOwnProperty.call(MORE_MENU_ROUTES, id);
+  }
+  async function openMoreMenu() {
+    const options: DialogOption[] = [
+      ...(nowAction?.kind !== 'focus' ? [{ id: 'focus', label: 'Odağa geç', icon: 'timer-outline' }] : []),
+      { id: 'weekly', label: 'Haftayı değerlendir', icon: 'calendar-outline' },
+      { id: 'recovery', label: 'Denge planı', icon: 'leaf-outline' },
+      { id: 'projects', label: 'Projeler', icon: 'folder-outline' },
+      { id: 'notes', label: 'Notlar', icon: 'document-text-outline' },
+    ];
+    const picked = await actionSheet({ title: 'Diğer', options });
+    if (picked !== null && isMoreMenuKey(picked)) {
+      router.push(MORE_MENU_ROUTES[picked]);
+    }
   }
   function openNowAction(a: NextAction) {
     if (a.kind === 'focus') router.push('/tabs/focus' as any);
@@ -459,7 +473,7 @@ export default function TodayScreen() {
     const done = log?.state === 'done' || log?.state === 'partial';
     haptic.success();
     const res = await logHabit({ habitId: h.id, date: new Date(), state: done ? 'miss' : 'done' });
-    if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
+    if (!res.ok) void notify('Kaydedilemedi', res.error);
   }
 
   // R03.02 — what can be set aside: today's work that is not done yet.
@@ -490,7 +504,7 @@ export default function TodayScreen() {
     setLightDaySaving(false);
     if (failed.length > 0) {
       const names = habits.filter((h) => failed.includes(h.id)).map((h) => h.name).join(', ');
-      Alert.alert('Bir kısmı kaydedilemedi', names);
+      void notify('Bir kısmı kaydedilemedi', names);
       setLightDayPick(new Set(failed));
       return;
     }
@@ -958,7 +972,7 @@ export default function TodayScreen() {
                         style={s.lightDayBtn}
                         onPress={async () => {
                           const res = await endTimeOff(holiday.id);
-                          if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
+                          if (!res.ok) void notify('Kaydedilemedi', res.error);
                         }}
                         accessibilityRole="button"
                         accessibilityLabel="Tatili bugün bitir"

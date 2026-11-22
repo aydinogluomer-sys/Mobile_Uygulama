@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import ReadingListScreen from './reading-list';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Modal, KeyboardAvoidingView, Platform, Alert, useWindowDimensions,
+  TextInput, Modal, KeyboardAvoidingView, Platform, useWindowDimensions,
 } from 'react-native';
+import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -102,18 +103,11 @@ export default function NotesScreen() {
     setActionError(useNoteStore.getState().error);
   }
 
-  function confirmDelete(n: Note) {
-    Alert.alert('Notu Sil', `"${n.title || 'Not'}" silinsin mi?`, [
-      { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Sil',
-        style: 'destructive',
-        onPress: async () => {
-          const ok = await removeNote(n.id);
-          setActionError(ok ? null : (useNoteStore.getState().error ?? 'Not silinemedi.'));
-        },
-      },
-    ]);
+  async function confirmDelete(n: Note) {
+    if (await confirm({ title: 'Notu Sil', message: `"${n.title || 'Not'}" silinsin mi?`, confirmText: 'Sil', destructive: true })) {
+      const ok = await removeNote(n.id);
+      setActionError(ok ? null : (useNoteStore.getState().error ?? 'Not silinemedi.'));
+    }
   }
 
   function formatDate(d: string) {

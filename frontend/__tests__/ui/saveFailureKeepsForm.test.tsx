@@ -99,6 +99,7 @@ import NotesScreen from '../../app/screens/notes';
 import ProjectsScreen from '../../app/screens/projects';
 import ReadingListScreen from '../../app/screens/reading-list';
 import DeepWorkScreen from '../../app/screens/deep-work';
+import { dismissAllDialogs } from '../../lib/dialog';
 
 function textOf(r: TestRenderer.ReactTestRenderer): string {
   const out: string[] = [];
@@ -134,6 +135,7 @@ describe('saveFailureKeepsForm — GAP1-07 & GAP1-08', () => {
   });
 
   afterEach(async () => {
+    dismissAllDialogs();
     await act(async () => {
       while (mounted.length > 0) mounted.pop()!.unmount();
     });
@@ -215,7 +217,7 @@ describe('saveFailureKeepsForm — GAP1-07 & GAP1-08', () => {
     const noteCard = r.root.findAllByType(TouchableOpacity).find((b) => b.props.accessibilityLabel === 'Mevcut Not')!;
     await act(async () => {
       noteCard.props.onLongPress();
-      await Promise.resolve();
+      await new Promise((res) => setTimeout(res, 0));
     });
     expect(textOf(r)).toContain('Not sunucudan silinemedi');
     alertSpy.mockRestore();
@@ -237,6 +239,7 @@ describe('saveFailureKeepsForm — GAP1-07 & GAP1-08', () => {
       'Projeyi Arşivle',
       expect.stringContaining('arşivlensin mi'),
       expect.arrayContaining([expect.objectContaining({ text: 'Arşivle' })]),
+      expect.objectContaining({ cancelable: true }),
     );
     alertSpy.mockRestore();
 

@@ -8,11 +8,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Alert,
   Platform,
   Modal,
   TextInput,
 } from 'react-native';
+import { confirm, notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FadeInUpView from '../../components/motion/FadeInUpView';
@@ -110,16 +110,14 @@ export default function HabitsScreen() {
       setXpAnim(habitData.willpower_cost);
       setTimeout(() => setXpAnim(null), 2000);
     } else if (finalStatus === 'idea') {
-      Alert.alert(
+      void notify(
         '🗑 Fikirler\'e Eklendi',
         'Düşük öncelikli bir alışkanlık. Fikirler bölümünde saklandı; istediğinde beklemeye alabilirsin.',
-        [{ text: 'Tamam' }]
       );
     } else {
-      Alert.alert(
+      void notify(
         `${TRIAGE_META[triage].emoji} Bekleme Odasına Alındı`,
         `Strateji kararı: ${TRIAGE_META[triage].label}. Zamanı gelince Aktif Odak'a alabilirsin.`,
-        [{ text: 'Tamam' }]
       );
     }
   };
@@ -204,25 +202,16 @@ export default function HabitsScreen() {
     if (!canActivate(habit.willpower_cost, loading ? undefined : { habit, activeHabits })) {
       // R03.04 — say why, say how, and let the user overrule a load SUGGESTION.
       const e = explain(habit);
-      Alert.alert(
-        'Şimdilik bekliyor',
-        `${e.why}
-
-${e.how}`,
-        e.canOverride
-          ? [
-              { text: 'Vazgeç', style: 'cancel' },
-              {
-                text: 'Yine de etkinleştir',
-                onPress: () => {
-                  void activateHabit(habit.id, habit.willpower_cost, { override: true }).then((r) =>
-                    setActionError(r.ok ? null : r.error),
-                  );
-                },
-              },
-            ]
-          : [{ text: 'Tamam' }],
-      );
+      const message = `${e.why}\n\n${e.how}`;
+      if (e.canOverride) {
+        const override = await confirm({ title: 'Şimdilik bekliyor', message, confirmText: 'Yine de etkinleştir' });
+        if (override) {
+          const r = await activateHabit(habit.id, habit.willpower_cost, { override: true });
+          setActionError(r.ok ? null : r.error);
+        }
+      } else {
+        void notify('Şimdilik bekliyor', message);
+      }
       return;
     }
     const r = await activateHabit(habit.id, habit.willpower_cost);

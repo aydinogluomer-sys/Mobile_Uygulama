@@ -89,6 +89,39 @@ module.exports = defineConfig([
     },
   },
   {
+    // F24 — one dialog layer. Alert / ActionSheetIOS / window.confirm are dead or truncated on
+    // react-native-web and Android (GAP2-01, NAV-03); lib/dialog.ts is the only file allowed to call them.
+    // Note: components/IntegrationDetailModal.tsx is a temporary Wave 4 parallel-execution exception for F23
+    // (Orchestrator removes it after merging F23 + F24).
+    files: [
+      'app/**/*.{ts,tsx}',
+      'components/**/*.{ts,tsx}',
+      'hooks/**/*.{ts,tsx}',
+      'lib/**/*.{ts,tsx}',
+      'services/**/*.{ts,tsx}',
+      'store/**/*.{ts,tsx}',
+      'repositories/**/*.{ts,tsx}',
+    ],
+    ignores: ['lib/dialog.ts', 'components/IntegrationDetailModal.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.object.name='Alert'][callee.property.name=/^(alert|prompt)$/]",
+          message: 'Use confirm()/notify()/actionSheet() from lib/dialog (Alert is a no-op on web and shows 3 buttons on Android).',
+        },
+        {
+          selector: "ImportDeclaration[source.value='react-native'] > ImportSpecifier[imported.name=/^(Alert|ActionSheetIOS)$/]",
+          message: 'Import dialogs from lib/dialog, not from react-native.',
+        },
+        {
+          selector: "CallExpression[callee.object.name='window'][callee.property.name=/^(alert|confirm|prompt)$/]",
+          message: 'Use lib/dialog; window.* dialogs bypass the theme, queue and account boundary.',
+        },
+      ],
+    },
+  },
+  {
     files: ['__tests__/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.jest, ...globals.node } },
     rules: {

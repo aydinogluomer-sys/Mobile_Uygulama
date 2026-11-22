@@ -170,5 +170,5 @@ describe('the local copy', () => {
 
 it('the manual export says when a collection hit the row ceiling (no silent cut)', () => {
   const src = fs.readFileSync(path.join(__dirname, '../../app/tabs/settings.tsx'), 'utf8');
-  expect(src).toMatch(/if \(backup\.truncated\.length > 0\) \{[\s\S]*?Alert\.alert\(\s*'Dışa aktarım tam değil'/);
+  expect(src).toMatch(/if \(backup\.truncated\.length > 0\) \{[\s\S]*?void notify\(\s*'Dışa aktarım tam değil'/);
 });

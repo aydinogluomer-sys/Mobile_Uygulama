@@ -37,6 +37,7 @@ import OnboardingGate from '../components/onboarding/OnboardingGate';
 import { installGlobalErrorHandlers, reportError } from '../lib/crashReporting';
 import { initCrashReporting } from '../lib/sentryClient';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
+import DialogHost from '../components/ui/DialogHost';
 
 // Web OAuth popup callback'ini tamamla; aksi halde openAuthSessionAsync beklemede kalabilir.
 WebBrowser.maybeCompleteAuthSession();
@@ -441,16 +442,19 @@ function RootLayoutInner() {
   // kırık ekrana geri dönmek fallback yerine aynı throw'u yeniden üretirdi.
   // Sekme/grup değişimi ("başka bir yere gittim") doğru granülerlik.
   return (
-    <ErrorBoundary context="root-navigator" resetKeys={[segments[0]]}>
-      {/* R06.05 — covers the app-switcher preview when "hide titles" is on */}
-      <PrivacyCover />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="tabs" />
-        <Stack.Screen name="habits" />
-        <Stack.Screen name="screens" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding" />
-      </Stack>
-    </ErrorBoundary>
+    <>
+      <ErrorBoundary context="root-navigator" resetKeys={[segments[0]]}>
+        {/* R06.05 — covers the app-switcher preview when "hide titles" is on */}
+        <PrivacyCover />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="tabs" />
+          <Stack.Screen name="habits" />
+          <Stack.Screen name="screens" options={{ headerShown: false }} />
+          <Stack.Screen name="onboarding" />
+        </Stack>
+      </ErrorBoundary>
+      <DialogHost />
+    </>
   );
 }

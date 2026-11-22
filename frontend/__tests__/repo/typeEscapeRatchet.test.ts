@@ -118,9 +118,9 @@ function ratchetProblems(
 
 const ROOT = join(__dirname, '..', '..');
 
-// Locked to exact post-Wave-3 production measurement (baseline: asAny 138 -> 135 after F20, asUnknownAs 62 -> 50, asNever 20 -> 17, colonAny 6 -> 5, genericAny 1, tsDirective 0, eslintDisable 14).
+// Locked to exact production measurement (baseline: asAny 138 -> 135 after F20 -> 130 after F24 today.tsx MORE_MENU_ROUTES, asUnknownAs 62 -> 50, asNever 20 -> 17, colonAny 6 -> 5, genericAny 1, tsDirective 0, eslintDisable 14).
 const CEILINGS: Readonly<EscapeCounts> = {
-  asAny: 135,
+  asAny: 130,
   asUnknownAs: 50,
   asNever: 17,
   colonAny: 5,
