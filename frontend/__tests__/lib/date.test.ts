@@ -11,7 +11,7 @@
  */
 import {
   ymd, todayLocal, parseLocalDate, startOfWeekLocal,
-  weekStartYmd, addDaysLocal, daysBetweenLocal, isSameLocalDay, ymLocal, ymdFromIso,
+  weekStartYmd, isoWeekNumber, addDaysLocal, daysBetweenLocal, isSameLocalDay, ymLocal, ymdFromIso,
 } from '../../lib/date';
 import { describeIstanbul, IS_ISTANBUL, TEST_ZONE } from '../helpers/zone';
 
@@ -131,6 +131,24 @@ describe('startOfWeekLocal', () => {
 
   it('weekStartYmd agrees', () => {
     expect(weekStartYmd(new Date(2026, 7, 9, 22, 0))).toBe('2026-08-03');
+  });
+});
+
+describe('isoWeekNumber', () => {
+  it('computes ISO-8601 week boundaries across year edges (2025/2026/2027)', () => {
+    expect(isoWeekNumber(new Date(2026, 0, 1, 12, 0))).toBe(1);
+    expect(isoWeekNumber(new Date(2026, 11, 31, 12, 0))).toBe(53);
+    expect(isoWeekNumber(new Date(2025, 11, 29, 12, 0))).toBe(1);
+    expect(isoWeekNumber(new Date(2027, 0, 3, 12, 0))).toBe(53);
+  });
+
+  it('uses the LOCAL calendar day so 00:30 and 23:30 on the same local day match', () => {
+    const sunEarly = new Date(2026, 7, 9, 0, 30, 0);
+    const sunLate = new Date(2026, 7, 9, 23, 30, 0);
+    const monEarly = new Date(2026, 7, 10, 0, 30, 0);
+    expect(isoWeekNumber(sunEarly)).toBe(32);
+    expect(isoWeekNumber(sunLate)).toBe(32);
+    expect(isoWeekNumber(monEarly)).toBe(33);
   });
 });
 

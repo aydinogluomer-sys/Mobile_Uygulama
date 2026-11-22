@@ -6,6 +6,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
+import { rendersKey } from '../helpers/catalog';
 import { stripComments } from '../helpers/sourceText';
 
 const mockEnsurePermission = jest.fn(async () => true);
@@ -103,7 +104,7 @@ describe('F36 timeSupportWired — static wiring, purity & scope invariants', ()
     expect(cal).toContain('function animatePage(');
 
     const nextUp = code('components/today/NextUpStrip.tsx');
-    expect(nextUp).toContain('SIRADA');
+    expect(rendersKey(nextUp, 'today.nextUp.overline', 'AKIŞ / SIRADA')).toBe(true);
     expect(nextUp).toContain('dueLabel');
   });
 

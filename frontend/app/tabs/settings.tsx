@@ -53,20 +53,21 @@ import {
 } from '../../services/webhookService';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
+import { t, type StringKey } from '../../lib/i18n';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-const SEASONAL_OPTIONS: { v: SeasonalMotionIntensity; l: string }[] = [
-  { v: 'off', l: 'Kapalı' },
-  { v: 'subtle', l: 'Hafif' },
-  { v: 'normal', l: 'Normal' },
-];
+const SEASONAL_OPTIONS = [
+  { v: 'off', labelKey: 'settings.motion.off', label: () => t('settings.motion.off') },
+  { v: 'subtle', labelKey: 'settings.motion.subtle', label: () => t('settings.motion.subtle') },
+  { v: 'normal', labelKey: 'settings.motion.normal', label: () => t('settings.motion.normal') },
+] as const satisfies readonly { v: SeasonalMotionIntensity; labelKey: StringKey; label: () => string }[];
 
 function ThemeModeRow({ isDark, onSelectDark }: { isDark: boolean; onSelectDark: (dark: boolean) => void }) {
   const c = useThemeColors();
   const styles = useThemedStyles(makeStyles);
   return (
-    <View style={styles.motionBlock} accessibilityRole="radiogroup" accessibilityLabel="Tema modu">
+    <View style={styles.motionBlock} accessibilityRole="radiogroup" accessibilityLabel={t('settings.theme.title')}>
       <View style={styles.motionHead}>
         <Ionicons
           name={isDark ? 'moon-outline' : 'sunny-outline'}
@@ -74,13 +75,13 @@ function ThemeModeRow({ isDark, onSelectDark }: { isDark: boolean; onSelectDark:
           color={isDark ? c.accent : c.warning}
         />
         <View style={styles.flex1}>
-          <Text style={styles.themeLabel}>Tema modu</Text>
-          <Text style={styles.themeSubLabel}>Kâğıt tonlu, gündüz için</Text>
+          <Text style={styles.themeLabel}>{t('settings.theme.title')}</Text>
+          <Text style={styles.themeSubLabel}>{t('settings.theme.sub')}</Text>
         </View>
       </View>
       <View style={styles.segRow}>
         <Chip
-          label="Koyu tema"
+          label={t('settings.theme.dark')}
           color={c.accent}
           selected={isDark}
           onPress={() => onSelectDark(true)}
@@ -88,7 +89,7 @@ function ThemeModeRow({ isDark, onSelectDark }: { isDark: boolean; onSelectDark:
           style={[styles.segBtn, styles.themeRadioBtn, isDark && styles.segBtnOn]}
         />
         <Chip
-          label="Açık tema"
+          label={t('settings.theme.light')}
           color={c.accent}
           selected={!isDark}
           onPress={() => onSelectDark(false)}
@@ -166,20 +167,21 @@ export default function SettingsScreen() {
 
       if (!isBackupComplete(backup)) {
         if (backup.truncated.length > 0) {
+          const sections = backup.truncated.join(', ');
           notices.push(
-            `Şu bölümler ${MAX_ROWS.toLocaleString('tr-TR')} kayıt sınırında kesildi: ${backup.truncated.join(', ')}. Bu dosya geri yükleme için kullanılamaz.`,
+            t('settings.export.truncated.notice', { max: MAX_ROWS, sections }),
           );
           void notify(
-            'Dışa aktarım tam değil',
-            `Şu bölümler ${MAX_ROWS.toLocaleString('tr-TR')} kayıt sınırında kesildi: ${backup.truncated.join(', ')}. Bu dosya geri yükleme için kullanılamaz; paylaşılan metin hangi bölümlerin eksik olduğunu yazıyor.`,
+            t('settings.export.truncated.title'),
+            t('settings.export.truncated.body', { max: MAX_ROWS, sections }),
           );
         }
         if (backup.failed.length > 0) {
-          notices.push(`Şu bölümler okunamadı: ${backup.failed.map((f) => f.collection).join(', ')}.`);
+          const failedSections = backup.failed.map((f) => f.collection).join(', ');
+          notices.push(t('settings.export.failed.notice', { sections: failedSections }));
           void notify(
-            'Dışa aktarım eksik',
-            `Şu bölümler okunamadı: ${backup.failed.map((f) => f.collection).join(', ')}.\n\n` +
-              'Yine de paylaşabilirsiniz; dosya hangi bölümlerin eksik olduğunu yazıyor.',
+            t('settings.export.failed.title'),
+            t('settings.export.failed.body', { sections: failedSections }),
           );
         }
       }
@@ -188,23 +190,21 @@ export default function SettingsScreen() {
         filename: `aderyth-disa-aktarim-${todayLocal()}.${EXPORT_META[format].ext}`,
         mime: EXPORT_META[format].mime,
         content: renderBackup(backup, format),
-        title: `Aderyth Veri Dışa Aktarımı (${format.toUpperCase()})`,
+        title: t('settings.export.shareTitle', { format: format.toUpperCase() }),
       });
       if (out === 'downloaded') {
-        notices.push('Dosya indirildi.');
+        notices.push(t('settings.export.downloaded'));
       } else if (out === 'too_large') {
-        notices.push(
-          'Dışa aktarım bu cihazın paylaşım menüsüne sığmayacak kadar büyük; JSON biçimini dene ya da web sürümünden indir.',
-        );
+        notices.push(t('settings.export.tooLarge'));
       }
       const nextNotice = notices.filter(Boolean).join(' ');
       setExportNotice(nextNotice || null);
     } catch (error) {
       if (error instanceof Error && error.message === 'DOWNLOAD_UNAVAILABLE') {
-        setExportNotice('Tarayıcın dosya indirmeyi engelledi; indirme iznini kontrol et.');
+        setExportNotice(t('settings.export.downloadBlocked'));
       } else {
-        void notify('Hata', 'Veriler dışa aktarılırken bir hata oluştu');
-        setExportNotice('Veriler dışa aktarılırken bir hata oluştu.');
+        void notify(t('common.error'), t('settings.export.errorAlert'));
+        setExportNotice(t('settings.export.errorNotice'));
         reportError(error, 'manual', 'export');
       }
     } finally {
@@ -236,11 +236,19 @@ export default function SettingsScreen() {
       setSeedingDemo(true);
       const result = await demo.seedDemoData();
       void notify(
-        'Demo veri hazır',
-        `Projeler: +${result.projects}\nGörevler: +${result.tasks}\nAlışkanlıklar: +${result.habits}\nLoglar: +${result.logs}\nOdak görevleri: +${result.focusTasks}\nTelafi planları: +${result.recoveryPlans}\nGünlük girdileri: +${result.journalEntries}`,
+        t('settings.dev.seed.doneTitle'),
+        t('settings.dev.seed.doneBody', {
+          projects: result.projects,
+          tasks: result.tasks,
+          habits: result.habits,
+          logs: result.logs,
+          focusTasks: result.focusTasks,
+          recoveryPlans: result.recoveryPlans,
+          journalEntries: result.journalEntries,
+        }),
       );
     } catch (error) {
-      void notify('Hata', 'Demo verileri eklenirken bir hata oluştu.');
+      void notify(t('common.error'), t('settings.dev.seed.error'));
       reportError(error, 'manual', 'demo-seed');
     } finally {
       setSeedingDemo(false);
@@ -322,8 +330,8 @@ export default function SettingsScreen() {
     setWebhookUrl('');
     setLatestSigningSecret(res.signingSecret);
     void notify(
-      'İmza anahtarı',
-      'İmza anahtarın, bir daha gösterilmez; alıcıda doğrulamak için kaydet.',
+      t('settings.webhook.secretTitle'),
+      t('settings.webhook.secretBody'),
     );
     await loadWebhooks();
   };
@@ -354,9 +362,9 @@ export default function SettingsScreen() {
           <EditorialBanner
             source={SCREEN_BANNERS.privacyVaultSeal}
             textureSource={TEXTURES.linen}
-            eyebrow="SİSTEM & MAHREMİYET"
-            title="Aderyth Ayarları"
-            subtitle="Görünüm, yerel yedekleme ve hesap kontrol merkezi."
+            eyebrow={t('settings.banner.overline')}
+            title={t('settings.banner.title')}
+            subtitle={t('settings.banner.sub')}
             accentColor={c.accent}
             minHeight={94}
             style={styles.bannerGap}
@@ -369,12 +377,12 @@ export default function SettingsScreen() {
               />
             }
           />
-          <Text style={styles.title}>Ayarlar</Text>
-          <Text style={styles.subtitle}>Uygulamanızı özelleştirin</Text>
+          <Text style={styles.title}>{t('settings.header.title')}</Text>
+          <Text style={styles.subtitle}>{t('settings.header.sub')}</Text>
 
           {/* Görünüm */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Görünüm</Text>
+            <Text style={styles.sectionTitle}>{t('settings.appearance.title')}</Text>
             {LIGHT_THEME_ENABLED ? <ThemeModeRow isDark={isDark} onSelectDark={setDark} /> : null}
 
             {/* Mevsimsel arka plan animasyonları (contract §13) */}
@@ -382,25 +390,26 @@ export default function SettingsScreen() {
               <View style={styles.motionHead}>
                 <Ionicons name="sparkles-outline" size={18} color={c.accent} />
                 <View style={styles.flex1}>
-                  <Text style={styles.themeLabel}>Arka plan animasyonları</Text>
+                  <Text style={styles.themeLabel}>{t('settings.motion.title')}</Text>
                   <Text style={styles.themeSubLabel}>
-                    Aylık takvim arka planlarında hafif mevsimsel hareketler gösterir.
+                    {t('settings.motion.sub')}
                   </Text>
                 </View>
               </View>
               <View style={styles.segRow}>
                 {SEASONAL_OPTIONS.map((o) => {
                   const on = seasonalMotion === o.v;
+                  const optLabel = o.label();
                   return (
                     <TouchableOpacity
                       key={o.v}
                       style={[styles.segBtn, on && styles.segBtnOn]}
                       onPress={() => setSeasonalMotion(o.v)}
                       accessibilityRole="button"
-                      accessibilityLabel={`Arka plan animasyonları: ${o.l}`}
+                      accessibilityLabel={t('settings.motion.option.a11y', { label: optLabel })}
                       accessibilityState={{ selected: on }}
                     >
-                      <Text style={[styles.segText, on && styles.segTextOn]}>{o.l}</Text>
+                      <Text style={[styles.segText, on && styles.segTextOn]}>{optLabel}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -412,9 +421,9 @@ export default function SettingsScreen() {
               <View style={styles.motionHead}>
                 <Ionicons name="color-palette-outline" size={18} color={accentTheme.primary} />
                 <View style={styles.flex1}>
-                  <Text style={styles.themeLabel}>Aksan rengi</Text>
+                  <Text style={styles.themeLabel}>{t('settings.accent.title')}</Text>
                   <Text style={styles.themeSubLabel}>
-                    Birincil butonlar, sekme çubuğu ve Bugün başlığında kullanılır.
+                    {t('settings.accent.sub')}
                   </Text>
                 </View>
               </View>
@@ -429,7 +438,7 @@ export default function SettingsScreen() {
                       onPress={() => setAccent(k)}
                       activeOpacity={0.8}
                       accessibilityRole="button"
-                      accessibilityLabel={`Aksan rengi: ${a.label}`}
+                      accessibilityLabel={t('settings.accent.option.a11y', { label: a.label })}
                       accessibilityState={{ selected: on }}
                     >
                       <View style={[styles.accentDot, { backgroundColor: a.primary }, on && styles.accentDotOn]}>
@@ -449,9 +458,9 @@ export default function SettingsScreen() {
               <View style={styles.hapticRow}>
                 <Ionicons name="radio-button-on-outline" size={18} color={c.accent} />
                 <View style={styles.flex1}>
-                  <Text style={styles.themeLabel}>Dokunsal geri bildirim</Text>
+                  <Text style={styles.themeLabel}>{t('settings.haptics.title')}</Text>
                   <Text style={styles.themeSubLabel}>
-                    Düğmelere ve tamamlamalara hafif titreşim verir. Seni yoruyorsa kapat.
+                    {t('settings.haptics.sub')}
                   </Text>
                 </View>
                 <Switch
@@ -460,7 +469,7 @@ export default function SettingsScreen() {
                   trackColor={{ false: c.border, true: alphaHex(accentTheme.primary, '66') }}
                   thumbColor={hapticsEnabled ? accentTheme.primary : c.textFaint}
                   accessibilityRole="switch"
-                  accessibilityLabel="Dokunsal geri bildirim"
+                  accessibilityLabel={t('settings.haptics.title')}
                   accessibilityState={{ checked: hapticsEnabled }}
                   style={styles.hapticSwitch}
                 />
@@ -470,28 +479,24 @@ export default function SettingsScreen() {
 
           <TodayToolsSection />
 
-          <ChapterDivider source={DECOR.dividerSundial} label="VERİ KASASI & YEDEK" style={styles.dividerGap} />
+          <ChapterDivider source={DECOR.dividerSundial} label={t('settings.vault.overline')} style={styles.dividerGap} />
 
           {/* Veri ve Gizlilik */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Veri ve Gizlilik</Text>
+            <Text style={styles.sectionTitle}>{t('settings.privacy.title')}</Text>
 
             <View style={styles.exportContainer}>
               <EmbeddedFiligree source={DECOR.guillocheWave} anchor="full-bleed" opacity={0.11} />
-              <Text style={styles.exportTitle}>Verileri Dışa Aktar</Text>
+              <Text style={styles.exportTitle}>{t('settings.export.title')}</Text>
               <Text style={styles.exportSubtitle}>
-                Power BI, Excel veya diğer analiz araçlarında kullanabilirsiniz
+                {t('settings.export.toolsSub')}
               </Text>
               <Text style={styles.exportSubtitle}>
-                Bu tam bir yedek değildir — tam geri yükleme yoktur. JSON dosyası
-                aşağıda doğrulanıp eksik kayıtlar hesabına eklenebilir; alışkanlık
-                kayıtları, odak oturumları ve webhook&apos;lar geri yüklenemez.
-                Dışa aktarım tüm alışkanlık kayıtlarını (yapıldı, kısmen, atlandı, kaçırıldı) notlarıyla içerir.
+                {t('settings.export.disclaimer')}
               </Text>
               {/* R08.03 — the chosen protection boundary, said before sharing (docs/implementation-v3/R08_BACKUP_PROTECTION.md). */}
               <Text style={styles.exportSubtitle} accessibilityRole="text">
-                Dosya şifrelenmez; içinde günlüğün ve notların var — yalnız güvendiğin bir yere kaydet.
-                Oturum ve erişim anahtarları dosyaya hiç girmez.
+                {t('settings.export.notEncrypted')}
               </Text>
 
               <View style={styles.exportButtons}>
@@ -500,7 +505,7 @@ export default function SettingsScreen() {
                   onPress={() => handleExportData('json')}
                   disabled={exportingFormat !== null}
                   accessibilityRole="button"
-                  accessibilityLabel="JSON olarak dışa aktar"
+                  accessibilityLabel={t('settings.export.json.a11y')}
                 >
                   {exportingFormat === 'json' ? (
                     <ActivityIndicator size="small" color={c.accent} />
@@ -517,7 +522,7 @@ export default function SettingsScreen() {
                   onPress={() => handleExportData('excel')}
                   disabled={exportingFormat !== null}
                   accessibilityRole="button"
-                  accessibilityLabel="Excel olarak dışa aktar"
+                  accessibilityLabel={t('settings.export.excel.a11y')}
                 >
                   {exportingFormat === 'excel' ? (
                     <ActivityIndicator size="small" color={c.success} />
@@ -534,7 +539,7 @@ export default function SettingsScreen() {
                   onPress={() => handleExportData('csv')}
                   disabled={exportingFormat !== null}
                   accessibilityRole="button"
-                  accessibilityLabel="CSV olarak dışa aktar"
+                  accessibilityLabel={t('settings.export.csv.a11y')}
                 >
                   {exportingFormat === 'csv' ? (
                     <ActivityIndicator size="small" color={c.warning} />
@@ -560,8 +565,8 @@ export default function SettingsScreen() {
               <View style={styles.seedRowGap}>
                 <SettingRow
                   icon="flask-outline"
-                  label="Demo verileri doldur"
-                  hint="Test icin gorev, aliskanlik, gunluk ve odak verisi ekler"
+                  label={t('settings.dev.seed.label')}
+                  hint={t('settings.dev.seed.hint')}
                   tone={c.success}
                   disabled={seedingDemo}
                   busy={seedingDemo}
@@ -582,11 +587,11 @@ export default function SettingsScreen() {
 
           {/* Kişiselleştirme */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Kişiselleştirme</Text>
+            <Text style={styles.sectionTitle}>{t('settings.personalization.title')}</Text>
             <SettingRow
               icon="sparkles"
-              label="Başlangıç tercihleri"
-              hint="Hedeflerini, tempoyu ve hatırlatma tercihini güncelle"
+              label={t('settings.personalization.label')}
+              hint={t('settings.personalization.hint')}
               tone={c.primary}
               onPress={openPersonalization}
             />
@@ -594,28 +599,28 @@ export default function SettingsScreen() {
 
           {/* Takip & Veri Araçları */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Takip & Veri Araçları</Text>
+            <Text style={styles.sectionTitle}>{t('settings.tools.title')}</Text>
 
             <SettingRow
               icon="ban"
-              label="Bıraktığım Alışkanlıklar"
-              hint="Tasarruf ve ilerlemenizi görün"
+              label={t('settings.tools.badHabits.label')}
+              hint={t('settings.tools.badHabits.hint')}
               tone={c.error}
               onPress={() => setShowBadHabitsTracker(true)}
             />
 
             <SettingRow
               icon="document-text-outline"
-              label="Obsidian Markdown Aktarımı"
-              hint="Alışkanlık ve notları Obsidian kasasına kopyala"
+              label={t('settings.tools.obsidian.label')}
+              hint={t('settings.tools.obsidian.hint')}
               tone={c.accent}
               onPress={() => setShowObsidianModal(true)}
             />
 
             <SettingRow
               icon="cloud-offline-outline"
-              label="Çevrimdışı Senkronizasyon"
-              hint="Bekleyen yerel işlemleri ve sunucu bağlantısını incele"
+              label={t('settings.tools.offline.label')}
+              hint={t('settings.tools.offline.hint')}
               tone={c.teal}
               onPress={() => setShowOutboxModal(true)}
             />
@@ -623,18 +628,18 @@ export default function SettingsScreen() {
 
           {/* Bağlantılar (NAV-14: dürüst tek giriş) */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Bağlantılar</Text>
+            <Text style={styles.sectionTitle}>{t('settings.connections.title')}</Text>
             <SettingRow
               icon="git-network-outline"
-              label="Bağlantılar"
-              hint="Takvim, Notion ve Spotify bağlantıları şu an kapalı; açılması sahip kararına bağlı."
+              label={t('settings.connections.title')}
+              hint={t('settings.connections.integrations.hint')}
               tone={c.teal}
               onPress={() => navigateTo(router, 'integrations')}
             />
             <SettingRow
               icon="link-outline"
-              label="Webhook Bildirimleri"
-              hint="Tamamlama olaylarını kendi https alıcına imzalı olarak ilet"
+              label={t('settings.connections.webhooks.label')}
+              hint={t('settings.connections.webhooks.hint')}
               tone={c.accent}
               onPress={openWebhookModal}
             />
@@ -642,20 +647,19 @@ export default function SettingsScreen() {
 
           {/* Hakkında & Neler var */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Hakkında</Text>
+            <Text style={styles.sectionTitle}>{t('settings.about.title')}</Text>
 
             <View style={styles.infoCard}>
               <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" opacity={0.14} size={108} />
               <Text style={styles.appName}>Aderyth</Text>
-              <Text style={styles.appVersion}>Versiyon 1.0.0</Text>
+              <Text style={styles.appVersion}>{t('settings.about.version')}</Text>
               <Text style={styles.appDescription}>
-                Minimalist, bilimsel temelli alışkanlık takip uygulaması.
-                Verileriniz tamamen sizin kontrolünüzde.
+                {t('settings.about.description')}
               </Text>
             </View>
 
             <View style={styles.featureCard}>
-              <Text style={styles.featureGroupTitle}>Neler var</Text>
+              <Text style={styles.featureGroupTitle}>{t('settings.about.featuresTitle')}</Text>
               {CURRENT_FEATURES.map(renderFeatureItem)}
             </View>
           </View>

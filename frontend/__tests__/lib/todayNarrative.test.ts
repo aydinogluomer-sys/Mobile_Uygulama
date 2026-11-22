@@ -44,6 +44,110 @@ describe('F27 (INT-22) — lib/todayNarrative calm backlog & zero streak pressur
     expect(n.tail).toBe(' seni bekliyor; hazır olduğunda başla.');
   });
 
+  it('(+) F44 characterization — pins exact lead/emphasis/tail/sub across every priority and hour/focusSessions branch', () => {
+    // 1. Overdue > OVERDUE_CALM_LIMIT + morning no focus
+    expect(
+      buildTodayNarrative({
+        hour: 8,
+        overdueCount: 6,
+        todayTaskCount: 4,
+        remainingHabits: 2,
+        totalHabits: 3,
+        focusSessions: 0,
+      }),
+    ).toEqual({
+      lead: 'Birikmiş işler var; ',
+      emphasis: 'bugün yalnız birini',
+      tail: ' seç.',
+      sub: 'Güne kısa bir odak bloğuyla başla.',
+    });
+
+    // 2. Overdue 1..5 + afternoon no focus
+    expect(
+      buildTodayNarrative({
+        hour: 14,
+        overdueCount: 3,
+        todayTaskCount: 4,
+        remainingHabits: 2,
+        totalHabits: 3,
+        focusSessions: 0,
+      }),
+    ).toEqual({
+      lead: 'Bugün önce ',
+      emphasis: '3 gecikmiş işi',
+      tail: ' sakin biçimde topla.',
+      sub: 'Bir odak bloğu aç ve ilerlemeyi sürdür.',
+    });
+
+    // 3. Today tasks > 0 + evening no focus
+    expect(
+      buildTodayNarrative({
+        hour: 20,
+        overdueCount: 0,
+        todayTaskCount: 4,
+        remainingHabits: 2,
+        totalHabits: 3,
+        focusSessions: 0,
+      }),
+    ).toEqual({
+      lead: 'Bugün ',
+      emphasis: '4 planlı görevi',
+      tail: ' net bir akışla bitir.',
+      sub: 'Günü sakin bir kapanışla bitir.',
+    });
+
+    // 4. Remaining habits > 0 + focusSessions > 0 overrides hour sub
+    expect(
+      buildTodayNarrative({
+        hour: 9,
+        overdueCount: 0,
+        todayTaskCount: 0,
+        remainingHabits: 2,
+        totalHabits: 5,
+        focusSessions: 3,
+      }),
+    ).toEqual({
+      lead: 'Bugün ',
+      emphasis: '2 alışkanlık',
+      tail: ' seni bekliyor; hazır olduğunda başla.',
+      sub: 'Bugün 3 odak seansı tamamlandı; ritmi koru.',
+    });
+
+    // 5. All habits done (remainingHabits = 0, totalHabits > 0) at boundary hour = 12
+    expect(
+      buildTodayNarrative({
+        hour: 12,
+        overdueCount: 0,
+        todayTaskCount: 0,
+        remainingHabits: 0,
+        totalHabits: 3,
+        focusSessions: 0,
+      }),
+    ).toEqual({
+      lead: 'Masadaki işler ',
+      emphasis: 'tamamlandı',
+      tail: ' — sıradaki odağı planla.',
+      sub: 'Bir odak bloğu aç ve ilerlemeyi sürdür.',
+    });
+
+    // 6. Clean slate (totalHabits = 0) at boundary hour = 18
+    expect(
+      buildTodayNarrative({
+        hour: 18,
+        overdueCount: 0,
+        todayTaskCount: 0,
+        remainingHabits: 0,
+        totalHabits: 0,
+        focusSessions: 0,
+      }),
+    ).toEqual({
+      lead: 'Bugüne ',
+      emphasis: 'temiz bir sayfa',
+      tail: ' ile başla.',
+      sub: 'Günü sakin bir kapanışla bitir.',
+    });
+  });
+
   it('(-) never emits "seriyi koru" across any narrative branch or hour', () => {
     const cases: NarrativeInput[] = [
       { ...base, overdueCount: 1 },

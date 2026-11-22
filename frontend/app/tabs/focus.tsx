@@ -29,20 +29,9 @@ import InterruptionPrompt from '../../components/focus/InterruptionPrompt';
 import { FOCUS_PRESETS } from '../../lib/focusThemes';
 import { FLOW_COPY, isBackFromFocusBreak } from '../../lib/flowCopy';
 import { progressFraction } from '../../lib/focusTimer';
+import { t } from '../../lib/i18n';
 
 const IS_TEST = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
-
-const PHASE_LABELS: Record<string, string> = {
-  work: 'Çalışma Seansı',
-  shortBreak: 'Kısa Mola',
-  longBreak: 'Uzun Mola',
-};
-
-const PHASE_SPOKEN: Record<string, string> = {
-  work: 'Odak',
-  shortBreak: 'Kısa mola',
-  longBreak: 'Uzun mola',
-};
 
 const PHASE_COLORS: Record<string, string> = {
   work: colors.primary,
@@ -110,11 +99,23 @@ export default function FocusScreen() {
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
 
+  const PHASE_LABELS: Record<string, string> = {
+    work: t('focus.phase.work'),
+    shortBreak: t('focus.phase.shortBreak'),
+    longBreak: t('focus.phase.longBreak'),
+  };
+
+  const PHASE_SPOKEN: Record<string, string> = {
+    work: t('focus.phase.spoken.work'),
+    shortBreak: t('focus.phase.spoken.shortBreak'),
+    longBreak: t('focus.phase.spoken.longBreak'),
+  };
+
   useTimerAnnouncements({
     running: status === 'running',
     secondsLeft,
     phaseKey: phase,
-    phaseLabel: PHASE_SPOKEN[phase] ?? 'Odak',
+    phaseLabel: PHASE_SPOKEN[phase] ?? t('focus.phase.spoken.work'),
   });
 
   // R05.03 — a session the app was killed in comes back paused.
@@ -180,11 +181,11 @@ export default function FocusScreen() {
     if (phase === 'work' && !selectedTaskId && !smallStep) {
       haptic.light();
       if (focusTasks.length === 0) {
-        setStartHint('Önce ne üzerine odaklanacağını ekle, sonra başlat.');
+        setStartHint(t('focus.hint.addFirst'));
         setAddTaskError(null);
         setShowAddTask(true);
       } else {
-        setStartHint('Listeden bir odak konusu seç, sonra başlat.');
+        setStartHint(t('focus.hint.selectFirst'));
       }
       return;
     }
@@ -234,19 +235,19 @@ export default function FocusScreen() {
             style={[s.viewBtn, focusMode === 'timer' && s.viewBtnActive]}
             onPress={() => { haptic.select(); setFocusMode('timer'); }}
             accessibilityRole="button"
-            accessibilityLabel="Pomodoro zamanlayıcı görünümü"
+            accessibilityLabel={t('focus.mode.timer.a11y')}
           >
             <Ionicons name="timer-outline" size={14} color={focusMode === 'timer' ? colors.primary : colors.textDim} />
-            <Text style={[s.viewText, focusMode === 'timer' && s.viewTextActive]}>Zamanlayıcı</Text>
+            <Text style={[s.viewText, focusMode === 'timer' && s.viewTextActive]}>{t('focus.mode.timer')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[s.viewBtn, focusMode === 'deep_work' && s.viewBtnActive]}
             onPress={() => { haptic.select(); setFocusMode('deep_work'); }}
             accessibilityRole="button"
-            accessibilityLabel="Derin çalışma günlüğü görünümü"
+            accessibilityLabel={t('focus.mode.deepWork.a11y')}
           >
             <Ionicons name="flash-outline" size={14} color={focusMode === 'deep_work' ? colors.primary : colors.textDim} />
-            <Text style={[s.viewText, focusMode === 'deep_work' && s.viewTextActive]}>Derin Çalışma</Text>
+            <Text style={[s.viewText, focusMode === 'deep_work' && s.viewTextActive]}>{t('focus.mode.deepWork')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -274,7 +275,11 @@ export default function FocusScreen() {
                   accessibilityState={{ selected: active }}
                 >
                   <Text style={[s.phaseBtnText, { color: col }]}>
-                    {p === 'work' ? 'Çalışma' : p === 'shortBreak' ? 'Kısa' : 'Uzun'}
+                    {p === 'work'
+                      ? t('focus.phase.short.work')
+                      : p === 'shortBreak'
+                        ? t('focus.phase.short.shortBreak')
+                        : t('focus.phase.short.longBreak')}
                   </Text>
                 </TouchableOpacity>
               );
@@ -285,7 +290,7 @@ export default function FocusScreen() {
             icon="color-palette-outline"
             size={18}
             color={colors.textFaint}
-            label="Odak temasını seç"
+            label={t('focus.toolbar.theme.a11y')}
             style={s.settingsBtn}
             onPress={() => setShowTheme(true)}
           />
@@ -294,7 +299,7 @@ export default function FocusScreen() {
             icon="stats-chart-outline"
             size={18}
             color={colors.textFaint}
-            label="Odak raporlarını aç"
+            label={t('focus.toolbar.reports.a11y')}
             style={s.settingsBtn}
             onPress={() => setShowReport(true)}
           />
@@ -303,7 +308,7 @@ export default function FocusScreen() {
             icon="settings-outline"
             size={18}
             color={colors.textFaint}
-            label="Odak ayarlarını aç"
+            label={t('focus.toolbar.settings.a11y')}
             style={s.settingsBtn}
             onPress={() => setShowSettings(true)}
           />
@@ -333,7 +338,10 @@ export default function FocusScreen() {
                 style={s.timerInner}
                 accessible
                 accessibilityRole="timer"
-                accessibilityLabel={`${PHASE_SPOKEN[phase] ?? 'Odak'}, ${spokenDuration(secondsLeft)} kaldı`}
+                accessibilityLabel={t('focus.timer.remaining.a11y', {
+                  phase: PHASE_SPOKEN[phase] ?? t('focus.phase.spoken.work'),
+                  duration: spokenDuration(secondsLeft),
+                })}
               >
                 <Text
                   style={[s.timerText, { color: phaseColor }]}
@@ -353,9 +361,9 @@ export default function FocusScreen() {
           {/* R03.03 — a small step shows itself and its task, kept apart */}
           {smallStep ? (
             <View style={[s.selectedTask, { borderColor: phaseColor + '40', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }]}>
-              <Text style={s.stepEyebrow}>KÜÇÜK ADIM · {smallStep.minutes} dk</Text>
+              <Text style={s.stepEyebrow}>{t('focus.smallStep.eyebrow', { minutes: smallStep.minutes })}</Text>
               <Text style={s.selectedTaskTitle} numberOfLines={2}>{smallStep.title}</Text>
-              <Text style={s.stepParent} numberOfLines={1}>Asıl iş: {smallStep.parent.title} — bu adım onu tamamlamaz</Text>
+              <Text style={s.stepParent} numberOfLines={1}>{t('focus.smallStep.parent', { title: smallStep.parent.title })}</Text>
             </View>
           ) : selectedTask ? (
             <View style={[s.selectedTask, { borderColor: phaseColor + '40' }]}>
@@ -366,15 +374,15 @@ export default function FocusScreen() {
               </Text>
             </View>
           ) : (
-            <Text style={s.noTaskHint}>Başlamak için bir odak konusu ekle/seç ↓</Text>
+            <Text style={s.noTaskHint}>{t('focus.noTaskHint')}</Text>
           )}
 
           {sessionsCompleted > 0 && (
-            <Text style={s.sessionCount}>{sessionsCompleted} seans tamamlandı</Text>
+            <Text style={s.sessionCount}>{t('focus.sessionsCompleted', { count: sessionsCompleted })}</Text>
           )}
           {lastPartial ? (
             <Text style={s.sessionCount} accessibilityLiveRegion="polite">
-              {`Kısmi odak kaydedildi: ${Math.max(1, Math.floor(lastPartial.seconds / 60))} dk. Yarım kalan emek de sayılır.`}
+              {t('focus.partialSaved', { minutes: Math.max(1, Math.floor(lastPartial.seconds / 60)) })}
             </Text>
           ) : null}
           {/* R03.07 — "mola sonrası dön" */}
@@ -394,12 +402,12 @@ export default function FocusScreen() {
           const gated = status !== 'running' && phase === 'work' && !selectedTaskId;
           const startLabel =
             status === 'running'
-              ? 'Duraklat'
+              ? t('focus.controls.pause')
               : status === 'paused'
-                ? 'Devam et'
+                ? t('focus.controls.resume.a11y')
                 : gated
-                  ? 'Odak konusu seç'
-                  : 'Başla';
+                  ? t('focus.controls.selectTopic.a11y')
+                  : t('focus.controls.start');
           return (
             <>
               <View style={s.controls}>
@@ -407,7 +415,7 @@ export default function FocusScreen() {
                   icon="refresh-outline"
                   size={22}
                   color={colors.textDim}
-                  label="Sıfırla"
+                  label={t('focus.controls.reset.a11y')}
                   style={[s.resetBtn, { backgroundColor: activePreset.cardBg }]}
                   onPress={() => { haptic.light(); reset(); }}
                 />
@@ -417,11 +425,17 @@ export default function FocusScreen() {
                   onPress={handleStartPause}
                   accessibilityRole="button"
                   accessibilityLabel={startLabel}
-                  accessibilityHint={gated ? 'Önce bir odak konusu seç' : undefined}
+                  accessibilityHint={gated ? t('focus.controls.gatedHint.a11y') : undefined}
                 >
                   <Ionicons name={status === 'running' ? 'pause' : gated ? 'lock-closed' : 'play'} size={gated ? 22 : 28} color={colors.white} />
                   <Text style={s.startBtnText}>
-                    {status === 'running' ? 'Duraklat' : status === 'paused' ? 'Devam Et' : gated ? 'Konu Seç' : 'Başla'}
+                    {status === 'running'
+                      ? t('focus.controls.pause')
+                      : status === 'paused'
+                        ? t('focus.controls.resume')
+                        : gated
+                          ? t('focus.controls.selectTopic')
+                          : t('focus.controls.start')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -436,23 +450,23 @@ export default function FocusScreen() {
         {/* Görev listesi */}
         <View style={s.taskSection}>
           <View style={s.taskSectionHeader}>
-            <Text style={s.sectionTitle}>ODAK KONUSU</Text>
+            <Text style={s.sectionTitle}>{t('focus.topic.overline')}</Text>
             <TouchableOpacity
               style={s.addTaskBtn}
               onPress={() => { setAddTaskError(null); setShowAddTask(true); }}
               accessibilityRole="button"
-              accessibilityLabel="Odak konusu ekle"
+              accessibilityLabel={t('focus.topic.add.a11y')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Ionicons name="add" size={16} color={phaseColor} />
-              <Text style={[s.addTaskText, { color: phaseColor }]}>Ekle</Text>
+              <Text style={[s.addTaskText, { color: phaseColor }]}>{t('focus.topic.add')}</Text>
             </TouchableOpacity>
           </View>
           <FormError message={taskActionError} />
 
           {focusTasks.length === 0 ? (
             <View style={s.emptyTasks}>
-              <Text style={s.emptyTasksText}>Bir konu ekle (alışkanlık ya da görev), sonra başla</Text>
+              <Text style={s.emptyTasksText}>{t('focus.topic.empty')}</Text>
             </View>
           ) : (
             focusTasks.map((task) => {
@@ -463,7 +477,7 @@ export default function FocusScreen() {
                     style={s.taskCheck}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     accessibilityRole="checkbox"
-                    accessibilityLabel={`${task.title} odak konusunu tamamla`}
+                    accessibilityLabel={t('focus.topic.complete.a11y', { title: task.title })}
                     accessibilityState={{ checked: Boolean(task.completed) }}
                     onPress={async () => {
                       const r = await completeFocusTask(task.id);
@@ -482,7 +496,11 @@ export default function FocusScreen() {
                     style={s.taskBody}
                     onPress={() => selectTask(isSelected ? null : task.id)}
                     accessibilityRole="button"
-                    accessibilityLabel={`${task.title}, ${task.completed_pomodoros} / ${task.estimated_pomodoros} pomodoro`}
+                    accessibilityLabel={t('focus.topic.item.a11y', {
+                      title: task.title,
+                      completed: task.completed_pomodoros,
+                      estimated: task.estimated_pomodoros,
+                    })}
                     accessibilityState={{ selected: isSelected }}
                   >
                     <Text style={[s.taskTitle, isSelected && { color: colors.white, fontWeight: '600' }]} numberOfLines={1}>
@@ -500,7 +518,7 @@ export default function FocusScreen() {
                     icon="close"
                     size={16}
                     color={colors.textGhost}
-                    label={`${task.title} odak konusunu sil`}
+                    label={t('focus.topic.delete.a11y', { title: task.title })}
                     style={s.taskDelete}
                     onPress={() => {
                       void removeFocusTask(task.id).then((r) => {
@@ -520,16 +538,16 @@ export default function FocusScreen() {
       <Modal visible={showAddTask} transparent animationType="slide" onRequestClose={() => setShowAddTask(false)}>
         <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={s.sheet}>
-            <Text style={s.sheetTitle}>Ne Üzerine Odaklanacaksın?</Text>
+            <Text style={s.sheetTitle}>{t('focus.sheet.title')}</Text>
             <TextInput
               style={s.input}
-              placeholder="Alışkanlık ya da görev…"
+              placeholder={t('focus.sheet.placeholder')}
               placeholderTextColor={colors.textFaint}
               value={newTaskTitle}
               onChangeText={setNewTaskTitle}
               autoFocus
             />
-            <Text style={s.fieldLabel}>Tahmini Pomodoro</Text>
+            <Text style={s.fieldLabel}>{t('focus.sheet.estimatedPomodoros')}</Text>
             <View style={s.pomRow} accessibilityRole="radiogroup">
               {[1,2,3,4,5].map((n) => (
                 <TouchableOpacity
@@ -537,7 +555,7 @@ export default function FocusScreen() {
                   style={[s.pomBtn, newTaskPomodoros === n && { backgroundColor: phaseColor + '30', borderColor: phaseColor }]}
                   onPress={() => setNewTaskPomodoros(n)}
                   accessibilityRole="radio"
-                  accessibilityLabel={`${n} pomodoro`}
+                  accessibilityLabel={t('focus.pomodoroCount', { count: n })}
                   accessibilityState={{ selected: newTaskPomodoros === n, checked: newTaskPomodoros === n }}
                 >
                   <Text style={[s.pomBtnText, newTaskPomodoros === n && { color: phaseColor }]}>{n}</Text>
@@ -550,19 +568,19 @@ export default function FocusScreen() {
                 style={s.cancelBtn}
                 onPress={() => setShowAddTask(false)}
                 accessibilityRole="button"
-                accessibilityLabel="İptal"
+                accessibilityLabel={t('focus.sheet.cancel')}
               >
-                <Text style={s.cancelText}>İptal</Text>
+                <Text style={s.cancelText}>{t('focus.sheet.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.confirmBtn, { backgroundColor: phaseColor }, !newTaskTitle.trim() && s.confirmBtnDisabled]}
                 onPress={handleAddTask}
                 disabled={!newTaskTitle.trim()}
                 accessibilityRole="button"
-                accessibilityLabel="Odak konusunu kaydet"
+                accessibilityLabel={t('focus.sheet.save.a11y')}
                 accessibilityState={{ disabled: !newTaskTitle.trim() }}
               >
-                <Text style={s.confirmText}>Ekle</Text>
+                <Text style={s.confirmText}>{t('focus.topic.add')}</Text>
               </TouchableOpacity>
             </View>
           </View>

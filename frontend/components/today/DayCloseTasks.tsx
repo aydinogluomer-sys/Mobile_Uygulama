@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { DAY_CLOSE_COPY } from '../../lib/dayClose';
+import { t } from '../../lib/i18n';
 import { font, radius, space, type Palette } from '../../lib/tokens';
 import { Button } from '../ui';
 
@@ -91,7 +92,7 @@ export default function DayCloseTasks({
                     color={c.accent}
                     onPress={() => onDecide(row.id, 'tomorrow')}
                     accessibilityRole="button"
-                    accessibilityLabel={`${row.title}: yarına taşı`}
+                    accessibilityLabel={t('today.dayClose.tomorrow.a11y', { title: row.title })}
                     style={s.actionBtn}
                   />
                   <Button
@@ -101,7 +102,7 @@ export default function DayCloseTasks({
                     color={c.textDim}
                     onPress={() => onDecide(row.id, 'release')}
                     accessibilityRole="button"
-                    accessibilityLabel={`${row.title}: Bir Gün listesine bırak`}
+                    accessibilityLabel={t('today.dayClose.release.a11y', { title: row.title })}
                     style={s.actionBtn}
                   />
                 </View>

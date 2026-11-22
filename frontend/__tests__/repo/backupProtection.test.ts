@@ -5,6 +5,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { rendersKey } from '../helpers/catalog';
 
 const ROOT = path.join(__dirname, '../..');
 const read = (f: string) => fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -17,7 +18,13 @@ it('the decision is written down, with the key-recovery boundary', () => {
 });
 
 it('the user is told before sharing that the file is not encrypted', () => {
-  expect(read('app/tabs/settings.tsx')).toMatch(/Dosya şifrelenmez; içinde günlüğün ve notların var/);
+  expect(
+    rendersKey(
+      read('app/tabs/settings.tsx'),
+      'settings.export.notEncrypted',
+      'Dosya şifrelenmez; içinde günlüğün ve notların var — yalnız güvendiğin bir yere kaydet. Oturum ve erişim anahtarları dosyaya hiç girmez.',
+    ),
+  ).toBe(true);
 });
 
 it('no home-made cryptography anywhere in the app code', () => {

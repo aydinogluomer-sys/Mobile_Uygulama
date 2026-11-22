@@ -40,6 +40,7 @@ jest.mock('../../repositories/restoreRepository', () => ({
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as fs from 'fs';
 import * as path from 'path';
+import { rendersKey } from '../helpers/catalog';
 import { runLocalBackup, maybeRunDailyLocalBackup, loadLocalBackupStatus, latestCompleteLocalBackup } from '../../services/localBackupService';
 import { buildBackup } from '../../services/exportService';
 import {
@@ -170,5 +171,6 @@ describe('the local copy', () => {
 
 it('the manual export says when a collection hit the row ceiling (no silent cut)', () => {
   const src = fs.readFileSync(path.join(__dirname, '../../app/tabs/settings.tsx'), 'utf8');
-  expect(src).toMatch(/if \(backup\.truncated\.length > 0\) \{[\s\S]*?void notify\(\s*'Dışa aktarım tam değil'/);
+  expect(rendersKey(src, 'settings.export.truncated.title', 'Dışa aktarım tam değil')).toBe(true);
+  expect(src).toMatch(/if \(backup\.truncated\.length > 0\) \{[\s\S]*?void notify\(\s*t\(\s*'settings\.export\.truncated\.title'\s*\)/);
 });

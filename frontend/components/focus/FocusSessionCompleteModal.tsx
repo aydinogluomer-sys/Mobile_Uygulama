@@ -10,6 +10,7 @@ import { EmbeddedFiligree } from '../spatial';
 import { Button } from '../ui';
 import { CompletedSession, useFocusStore } from '../../store/focusStore';
 import { FLOW_COPY } from '../../lib/flowCopy';
+import { t } from '../../lib/i18n';
 import { acknowledgementFor, interruptionSummary, type IntentAnswer } from '../../lib/focusRitual';
 import { FocusSessionRow, inRange, summary, byTask, buckets, fmtDuration, fmtHours } from '../../lib/focusReport';
 import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
@@ -70,13 +71,13 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
                 <Ionicons name="checkmark" size={26} color={accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.title}>Seans Tamamlandı</Text>
+                <Text style={s.title}>{t('focus.complete.title')}</Text>
                 <Text style={s.sub} numberOfLines={1}>
-                  {session?.taskTitle ? session.taskTitle : 'Odak seansı'} · {session ? fmtDuration(session.seconds) : ''}
+                  {session?.taskTitle ? session.taskTitle : t('focus.complete.defaultTask')} · {session ? fmtDuration(session.seconds) : ''}
                 </Text>
                 {awayNote ? <Text style={s.awayNote}>{awayNote}</Text> : null}
               </View>
-              <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Tamamlandı penceresini kapat">
+              <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('focus.complete.close.a11y')}>
                 <Ionicons name="close" size={22} color={colors.textFaint} />
               </TouchableOpacity>
             </View>
@@ -85,15 +86,15 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
           <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
             {/* İstatistik kartları (bu hafta — gerçek veri) */}
             <View style={s.statRow}>
-              <Stat value={`${fmtHours(sum.totalSeconds)}s`} label="Toplam odak" />
-              <Stat value={`${sum.totalSessions}`} label="Oturum" />
-              <Stat value={`${sum.daysFocused}`} label="Odaklı gün" />
+              <Stat value={t('focus.stat.hoursValue', { hours: fmtHours(sum.totalSeconds) })} label={t('focus.stat.totalFocus')} />
+              <Stat value={`${sum.totalSessions}`} label={t('focus.stat.sessions')} />
+              <Stat value={`${sum.daysFocused}`} label={t('focus.stat.daysFocused')} />
             </View>
 
             {/* ODAK SAATLERİ — gerçek veriyle bar grafiği */}
             {settings.showFocusChart && (
               <>
-                <Text style={s.sectionTitle}>ODAK SAATLERİ</Text>
+                <Text style={s.sectionTitle}>{t('focus.complete.hours.overline')}</Text>
                 <View style={[s.chart, { height: CHART_H }]}>
                   {chart.map((b, i) => (
                     <View key={i} style={s.chartCol}>
@@ -148,14 +149,14 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
             {/* GÖREVE GÖRE SÜRE — gerçek veri */}
             {tasks.length > 0 && (
               <>
-                <Text style={s.sectionTitle}>GÖREVE GÖRE SÜRE</Text>
-                {tasks.slice(0, 5).map((t) => (
-                  <View key={t.title} style={s.ttRow}>
-                    <Text style={s.ttName} numberOfLines={1}>{t.title}</Text>
+                <Text style={s.sectionTitle}>{t('focus.complete.byTask.overline')}</Text>
+                {tasks.slice(0, 5).map((tk) => (
+                  <View key={tk.title} style={s.ttRow}>
+                    <Text style={s.ttName} numberOfLines={1}>{tk.title}</Text>
                     <View style={s.ttBar}>
-                      <View style={[s.ttBarFill, { width: `${Math.round((t.totalSeconds / Math.max(1, tasks[0].totalSeconds)) * 100)}%`, backgroundColor: accent }]} />
+                      <View style={[s.ttBarFill, { width: `${Math.round((tk.totalSeconds / Math.max(1, tasks[0].totalSeconds)) * 100)}%`, backgroundColor: accent }]} />
                     </View>
-                    <Text style={s.ttVal}>{fmtDuration(t.totalSeconds)}</Text>
+                    <Text style={s.ttVal}>{fmtDuration(tk.totalSeconds)}</Text>
                   </View>
                 ))}
               </>
@@ -166,10 +167,10 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
           <View style={s.foot}>
             <TouchableOpacity style={[s.primaryBtn, { backgroundColor: accent }]} onPress={onOpenReport}>
               <Ionicons name="stats-chart-outline" size={18} color={colors.white} />
-              <Text style={s.primaryText}>Tam Raporu Gör</Text>
+              <Text style={s.primaryText}>{t('focus.complete.openReport')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.secondaryBtn} onPress={onClose}>
-              <Text style={s.secondaryText}>Kapat</Text>
+              <Text style={s.secondaryText}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>

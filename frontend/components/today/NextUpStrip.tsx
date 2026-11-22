@@ -5,6 +5,7 @@ import * as ExpoRouter from 'expo-router';
 import { useMinuteClock } from '../../hooks/useMinuteClock';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { nextBlockChip, nextBlockInfo, type BlockTask } from '../../lib/nextBlock';
+import { t } from '../../lib/i18n';
 import { space, radius, font, type Palette } from '../../lib/tokens';
 
 export type NextUpItem = {
@@ -62,7 +63,7 @@ function NextUpStrip({ items, onPress, blockTasks }: NextUpStripProps) {
 
       {items.length > 0 ? (
         <>
-          <Text style={s.label}>AKIŞ / SIRADA</Text>
+          <Text style={s.label}>{t('today.nextUp.overline')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.strip}>
             {items.map((it, i) => (
               <View key={it.id} style={s.itemWrap}>

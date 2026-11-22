@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Habit } from '../../lib/supabase';
+import { t } from '../../lib/i18n';
 import { impactMeta } from '../../lib/triage';
 import { isMeasurableTracking } from '../../lib/habitEngine';
 import { alphaHex, font, hexA, radius, space, type Palette } from '../../lib/tokens';
@@ -79,20 +80,20 @@ export default function HabitMgmtCard({
             style={s.moveBtn}
             onPress={() => onReopen(habit)}
             accessibilityRole="button"
-            accessibilityLabel={`${habit.name} alışkanlığını geri aç`}
+            accessibilityLabel={t('habits.mgmt.reopen.a11y', { name: habit.name })}
           >
             <Ionicons name="refresh-outline" size={14} color={c.primary} />
-            <Text style={s.moveBtnText}>Geri Aç</Text>
+            <Text style={s.moveBtnText}>{t('habits.mgmt.reopen')}</Text>
           </TouchableOpacity>
         ) : isIdea ? (
           <TouchableOpacity
             style={s.moveBtn}
             onPress={() => onMoveToWaiting(habit)}
             accessibilityRole="button"
-            accessibilityLabel={`${habit.name} alışkanlığını bekleme odasına al`}
+            accessibilityLabel={t('habits.mgmt.moveToWaiting.a11y', { name: habit.name })}
           >
             <Ionicons name="arrow-up-circle-outline" size={14} color={c.primary} />
-            <Text style={s.moveBtnText}>Beklet</Text>
+            <Text style={s.moveBtnText}>{t('habits.mgmt.wait')}</Text>
           </TouchableOpacity>
         ) : (
           <>
@@ -101,7 +102,7 @@ export default function HabitMgmtCard({
               icon="checkmark-done-circle-outline"
               size={22}
               color={c.success}
-              label={`${habit.name} alışkanlığını tamamlandı say`}
+              label={t('habits.mgmt.complete.a11y', { name: habit.name })}
               onPress={() => onComplete(habit)}
             />
             <IconButton
@@ -109,7 +110,7 @@ export default function HabitMgmtCard({
               icon="play-circle"
               size={26}
               color={c.success}
-              label={`${habit.name} alışkanlığını etkinleştir`}
+              label={t('habits.mgmt.activate.a11y', { name: habit.name })}
               onPress={() => onActivate(habit)}
             />
           </>
@@ -119,7 +120,7 @@ export default function HabitMgmtCard({
           icon="trash-outline"
           size={16}
           color={c.error}
-          label={`${habit.name} alışkanlığını sil`}
+          label={t('habits.mgmt.delete.a11y', { name: habit.name })}
           style={s.trashBtn}
           onPress={() => onRemove(habit)}
         />
