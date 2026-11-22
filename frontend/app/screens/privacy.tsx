@@ -65,7 +65,7 @@ const SECTIONS: Section[] = [
     body: [
       'Alışkanlıkların ve tamamlama kayıtların, görevlerin, projelerin, notların, hedeflerin ve OKR’ların, rutinlerin, telafi planların, odak ve derin çalışma seansların, irade/kapasite kayıtların, bıraktığın alışkanlıklar, okuma listen, yaşam alanı kayıtların, takvim etkinliklerin ve haftalık/aylık değerlendirmelerin hesabına bağlı olarak saklanır.',
       'Günlük (journal) kayıtların serbest metindir ve hesabına bağlı saklanır.',
-      'Bu verilere yalnızca sen erişebilirsin. Veritabanı satır düzeyinde güvenlik (RLS) ile korunur: her sorgu oturumundaki kimliğe göre sınırlanır.',
+      'Veritabanı satır düzeyinde güvenlik (RLS) ile korunur: başka kullanıcılar bu verilere erişemez; her sorgu oturumundaki kimliğe göre sınırlanır. Tek istisna senin başlattığın yapay zekâ özellikleridir (aşağıdaki "AI Koç" ve "Günlük İçgörüsü" bölümleri).',
     ],
   },
   {
@@ -76,6 +76,15 @@ const SECTIONS: Section[] = [
       'Sağlayıcı anahtarı yalnızca sunucudadır; uygulamanın içinde bulunmaz. Bir sohbetin içeriği yalnızca o sohbet için gönderilir, başka bir sohbete taşınmaz.',
       'Anthropic’in bu içeriği kendi tarafında ne kadar süre işlediği/sakladığı, Aderyth’in kontrolünde değildir ve burada bir taahhüt olarak sunulmaz. Aderyth’in kendi tarafında sakladığı sohbetler, hesabını sildiğinde silinir.',
       'Ayrıca her AI isteği için teknik bir kayıt (istek kimliği, mod, durum, harcanan Focus Point) tutulur. Bu kayıt faturalandırma ve tekrar koruması içindir.',
+    ],
+  },
+  {
+    title: 'Günlük İçgörüsü',
+    body: [
+      'Günlük İçgörüsü’nü yalnızca sen başlattığında, seçtiğin dönemdeki günlük kayıtlarının metni yapay zekâ sağlayıcımız Anthropic’e gönderilir. Hangi günlerin gideceğini ekranda kendin seçersin; çıkardığın günlerin metni gönderilmez.',
+      'Gönderilen alanlar: seçili günlük kayıtlarının metni (en fazla 8000 karakter), dönem adı ve teknik bir istek kimliği.',
+      'Aderyth gönderilen günlük metnini veritabanında ayrıca saklamaz; AI isteğinin teknik kaydında (istek kimliği, mod, durum, harcanan Focus Point) metnin yalnızca tek yönlü özeti tutulur. Üretilen içgörü hesabına bağlı saklanır ve hesabını sildiğinde silinir.',
+      'Anthropic’in bu metni kendi tarafında ne kadar süre işlediği/sakladığı Aderyth’in kontrolünde değildir ve burada bir taahhüt olarak sunulmaz. İçgörü oluşturmazsan hiçbir şey gönderilmez.',
     ],
   },
   {
@@ -134,7 +143,7 @@ const SECTIONS: Section[] = [
     title: 'Hizmet sağlayıcılar',
     body: [
       'Supabase — barındırma, veritabanı ve kimlik doğrulama.',
-      'Anthropic — AI Koç ve AI rutin oluşturma isteklerinin işlenmesi.',
+      'Anthropic — AI Koç, AI rutin oluşturma ve Günlük İçgörüsü isteklerinin işlenmesi.',
       'Sentry — çökme raporlama.',
     ],
   },
@@ -194,7 +203,7 @@ export default function PrivacyScreen() {
         {SECTIONS.map((sec) => (
           <View key={sec.title} style={s.section}>
             <EmbeddedFiligree source={DECOR.guillocheWave} anchor="bottom-right" opacity={0.11} size={96} />
-            <Text style={s.h2}>{sec.title}</Text>
+            <Text style={s.h2} accessibilityRole="header">{sec.title}</Text>
             {sec.body.map((p) => (
               <Text key={p.slice(0, 40)} style={s.p}>{p}</Text>
             ))}

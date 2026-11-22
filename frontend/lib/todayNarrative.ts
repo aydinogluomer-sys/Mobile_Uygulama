@@ -58,8 +58,8 @@ export function buildTodayNarrative(input: NarrativeInput): TodayNarrative {
   if (remainingHabits > 0) {
     return {
       lead: 'Bugün ',
-      emphasis: `${remainingHabits} alışkanlığı`,
-      tail: ' tamamlayıp seriyi koru.',
+      emphasis: `${remainingHabits} alışkanlık`,
+      tail: ' seni bekliyor; hazır olduğunda başla.',
       sub,
     };
   }

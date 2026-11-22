@@ -224,6 +224,7 @@ export default function JournalInsightsScreen() {
                   );
                 })}
               </View>
+              <Text style={s.cardMeta}>Seçili kayıtların metni, içgörü oluşturduğunda Anthropic’e gönderilir (en fazla 8000 karakter). Ayrıntı Gizlilik ekranında.</Text>
             </View>
 
             {error && (
