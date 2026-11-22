@@ -120,7 +120,7 @@ const ROOT = join(__dirname, '..', '..');
 
 // Locked to exact post-Wave-4 production measurement (F12 genericAny 1 -> 0 in spotifyStore.ts; F24 asAny 135 -> 130 in today.tsx MORE_MENU_ROUTES).
 const CEILINGS: Readonly<EscapeCounts> = {
-  asAny: 130,
+  asAny: 129,
   asUnknownAs: 50,
   asNever: 17,
   colonAny: 5,

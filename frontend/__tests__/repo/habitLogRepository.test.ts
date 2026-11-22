@@ -15,7 +15,12 @@ type PgError = { message: string; code?: string };
 const mockDb = {
   rows: [] as Record<string, unknown>[],
   error: null as PgError | null,
+  status: 200 as number,
   user: { id: 'u1' } as { id: string } | null,
+  lastSelectedCols: '' as string,
+  lastUpdate: null as { patch: Record<string, unknown>; eqs: [string, unknown][] } | null,
+  insertCalled: 0,
+  upsertCalled: 0,
 };
 
 jest.mock('../../lib/supabase', () => {
@@ -28,6 +33,7 @@ jest.mock('../../lib/supabase', () => {
   }
 
   function select(cols: string) {
+    mockDb.lastSelectedCols = cols;
     const eqFilters: Record<string, unknown> = {};
     const inFilters: Record<string, unknown[]> = {};
     const rangeFilters: { col: string; op: 'gte' | 'lte'; val: unknown }[] = [];
@@ -82,6 +88,33 @@ jest.mock('../../lib/supabase', () => {
     return q;
   }
 
+  function update(patch: Record<string, unknown>) {
+    const eqs: [string, unknown][] = [];
+    let selectedCols = 'id,notes';
+    const q: any = {
+      eq(col: string, val: unknown) {
+        eqs.push([col, val]);
+        return q;
+      },
+      select(cols: string) {
+        selectedCols = cols;
+        mockDb.lastSelectedCols = cols;
+        return q;
+      },
+      async maybeSingle() {
+        mockDb.lastUpdate = { patch, eqs: [...eqs] };
+        if (mockDb.error) {
+          return { data: null, error: mockDb.error, status: mockDb.status };
+        }
+        const match = mockDb.rows.find((r) => eqs.every(([c, v]) => r[c] === v));
+        if (!match) return { data: null, error: null, status: 200 };
+        Object.assign(match, patch);
+        return { data: project(match, selectedCols), error: null, status: 200 };
+      },
+    };
+    return q;
+  }
+
   return {
     supabase: {
       auth: {
@@ -93,7 +126,18 @@ jest.mock('../../lib/supabase', () => {
         return { data: { session: r.data.user ? { user: r.data.user, access_token: 'test-jwt' } : null } };
       },
        getUser: jest.fn(async () => ({ data: { user: mockDb.user }, error: null })) },
-      from: () => ({ select }),
+      from: () => ({
+        select,
+        update,
+        insert: () => {
+          mockDb.insertCalled += 1;
+          throw new Error('insert must not be called');
+        },
+        upsert: () => {
+          mockDb.upsertCalled += 1;
+          throw new Error('upsert must not be called');
+        },
+      }),
     },
   };
 });
@@ -103,12 +147,19 @@ import {
   fetchHabitLogsHeatmap,
   fetchHabitIdsCompletedSince,
   fetchHabitLogsForHabitsSince,
+  fetchHabitLogsForHabit,
+  updateLogNote,
 } from '../../repositories/habitLogRepository';
 
 beforeEach(() => {
   mockDb.rows = [];
   mockDb.error = null;
+  mockDb.status = 200;
   mockDb.user = { id: 'u1' };
+  mockDb.lastSelectedCols = '';
+  mockDb.lastUpdate = null;
+  mockDb.insertCalled = 0;
+  mockDb.upsertCalled = 0;
 });
 
 describe('fetchHabitLogsForReview', () => {
@@ -189,5 +240,85 @@ describe('fetchHabitLogsForHabitsSince', () => {
     if (res.ok) {
       expect(res.data.map((r) => r.completed_at)).toEqual(['2026-08-03', '2026-08-01']);
     }
+  });
+});
+
+describe('fetchHabitLogsForHabit & updateLogNote (F31 PS-03)', () => {
+  it('(+) fetchHabitLogsForHabit selects notes column and returns it per row', async () => {
+    mockDb.rows = [
+      {
+        id: 'l1',
+        habit_id: 'h1',
+        user_id: 'u1',
+        completed_at: '2026-08-10',
+        state: 'skip',
+        value: null,
+        notes: 'misafir geldi',
+      },
+    ];
+    const res = await fetchHabitLogsForHabit({
+      habitId: 'h1',
+      start: '2026-08-01',
+      end: '2026-08-31',
+    });
+    expect(mockDb.lastSelectedCols).toContain('notes');
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data).toEqual([
+        {
+          habit_id: 'h1',
+          completed_at: '2026-08-10',
+          state: 'skip',
+          value: null,
+          notes: 'misafir geldi',
+        },
+      ]);
+    }
+  });
+
+  it('(+) updateLogNote updates ONLY notes with habit_id + user_id + completed_at eq chain, and (-) never inserts/upserts', async () => {
+    mockDb.rows = [
+      {
+        id: 'l1',
+        habit_id: 'h1',
+        user_id: 'u1',
+        completed_at: '2026-08-10',
+        state: 'skip',
+        value: null,
+        notes: null,
+      },
+    ];
+    const res = await updateLogNote({
+      habitId: 'h1',
+      dateStr: '2026-08-10',
+      note: 'erken yattım',
+    });
+    expect(res).toEqual({ ok: true, data: { id: 'l1', notes: 'erken yattım' } });
+    expect(mockDb.lastUpdate?.patch).toEqual({ notes: 'erken yattım' });
+    expect(mockDb.lastUpdate?.eqs).toEqual(
+      expect.arrayContaining([
+        ['habit_id', 'h1'],
+        ['user_id', 'u1'],
+        ['completed_at', '2026-08-10'],
+      ]),
+    );
+    expect(mockDb.insertCalled).toBe(0);
+    expect(mockDb.upsertCalled).toBe(0);
+  });
+
+  it('(-) updateLogNote returns code:"no_row" when no row exists, without inserting', async () => {
+    mockDb.rows = [];
+    const res = await updateLogNote({
+      habitId: 'h1',
+      dateStr: '2026-08-10',
+      note: 'yok',
+    });
+    expect(res).toEqual({
+      ok: false,
+      error: 'Bu gün için kayıt bulunamadı.',
+      code: 'no_row',
+    });
+    expect(mockDb.insertCalled).toBe(0);
+    expect(mockDb.upsertCalled).toBe(0);
   });
 });

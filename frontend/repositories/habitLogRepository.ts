@@ -17,7 +17,9 @@ export type ReviewLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' 
 export type HeatmapLogRow = Pick<HabitLog, 'completed_at' | 'state'>;
 export type HabitIdLogRow = { habit_id: string | null };
 export type StreakLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
-export type HabitDetailLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
+export type HabitDetailLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'> & {
+  notes: string | null;
+};
 
 const HABIT_ID_BATCH = 100;
 
@@ -160,7 +162,7 @@ export async function fetchHabitLogsForHabit(params: {
   const r = await selectAllPages<HabitDetailLogRow>((from, to) =>
     supabase
       .from('habit_logs')
-      .select('habit_id, completed_at, state, value')
+      .select('habit_id, completed_at, state, value, notes')
       .eq('user_id', u.userId)
       .eq('habit_id', params.habitId)
       .gte('completed_at', params.start)
@@ -263,4 +265,38 @@ export async function updateHabitLog(
   return updateOwned<HabitLog>({
     table: 'habit_logs', id, userId: u.userId, patch, columns: WRITE_COLS,
   });
+}
+
+/**
+ * F31 (PS-03): updates ONLY `notes` on an existing `habit_logs` row.
+ * Never inserts or upserts, and never touches `xp`, `state`, or `value`.
+ */
+export async function updateLogNote(params: {
+  habitId: string;
+  dateStr: string;
+  note: string | null;
+}): Promise<RepoResult<{ id: string; notes: string | null }>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error, status } = await supabase
+    .from('habit_logs')
+    .update({ notes: params.note })
+    .eq('habit_id', params.habitId)
+    .eq('user_id', u.userId)
+    .eq('completed_at', params.dateStr)
+    .select('id,notes')
+    .maybeSingle();
+  if (error) {
+    return {
+      ok: false,
+      error: error.message,
+      offline: isTransportFailure(status, error),
+      status,
+      code: error.code,
+    };
+  }
+  if (!data) {
+    return { ok: false, error: 'Bu gün için kayıt bulunamadı.', code: 'no_row' };
+  }
+  return { ok: true, data };
 }

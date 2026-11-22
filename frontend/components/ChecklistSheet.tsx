@@ -4,14 +4,17 @@
  * required step -> done, some progress -> partial, nothing left ticked on a
  * logged day -> miss. Optional steps are extra; they never decide the state.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, space, radius } from '../lib/tokens';
+import { currentUser } from '../lib/session';
 import { useHabitStore } from '../store/habitStore';
 import { useLogStore } from '../store/logStore';
 import { itemsOn, logStepFor, progressLabel, progressOn } from '../lib/habitChecklist';
 import { parseLocalDate } from '../lib/date';
+import { formatDayLongTR } from '../lib/yearGrid';
+import HabitDayNote from './habits/HabitDayNote';
 import type { Habit } from '../lib/supabase';
 
 interface Props {
@@ -26,6 +29,12 @@ export default function ChecklistSheet({ habit, day, onClose }: Props) {
   const { logHabit, getLogForHabit } = useLogStore();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [offerNote, setOfferNote] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void currentUser().then((u) => setUserId(u?.id ?? null));
+  }, []);
 
   if (!habit) return null;
   const items = itemsOn(checklistItems, habit.id, day);
@@ -42,7 +51,14 @@ export default function ChecklistSheet({ habit, day, onClose }: Props) {
     const step = logStepFor(res.progress, getLogForHabit(habit.id, day)?.state);
     if (step) {
       const logged = await logHabit({ habitId: habit.id, date: parseLocalDate(day) ?? new Date(), state: step });
-      if (!logged.ok) setError(`Adım kaydedildi ama günün kaydı güncellenemedi: ${logged.error}`);
+      if (!logged.ok) {
+        setError(`Adım kaydedildi ama günün kaydı güncellenemedi: ${logged.error}`);
+        setOfferNote(false);
+      } else {
+        setOfferNote(step === 'partial');
+      }
+    } else {
+      setOfferNote(false);
     }
     setBusy(null);
   }
@@ -78,6 +94,28 @@ export default function ChecklistSheet({ habit, day, onClose }: Props) {
               );
             })}
           </ScrollView>
+          {offerNote && (
+            <HabitDayNote
+              variant="offer"
+              dayLabel={formatDayLongTR(day)}
+              initial={null}
+              userId={userId}
+              onDismiss={() => setOfferNote(false)}
+              onSave={async (note) => {
+                const res = await logHabit({
+                  habitId: habit.id,
+                  date: parseLocalDate(day) ?? new Date(),
+                  state: 'partial',
+                  note,
+                });
+                if (res.ok) {
+                  setOfferNote(false);
+                  return { ok: true };
+                }
+                return { ok: false, error: res.error };
+              }}
+            />
+          )}
           <Text style={s.note}>
             Zorunlu adımların hepsi bitince gün tamamlanmış sayılır; bir kısmı bitince kısmi. İsteğe bağlı adımlar ekstradır.
           </Text>

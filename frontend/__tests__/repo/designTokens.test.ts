@@ -183,7 +183,6 @@ describe('every colour without a token is accounted for', () => {
       'category-tint': 29,
       'theme-palette': 24,
       'third-party-brand': 13,
-      'heatmap-scale': 6,
     });
   });
 

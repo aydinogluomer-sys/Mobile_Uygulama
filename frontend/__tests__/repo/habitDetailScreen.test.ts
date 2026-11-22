@@ -126,6 +126,13 @@ describe('Habit Detail -- five distinct calendar-state colours (plan §11 explic
     expect(new Set(hexes).size).toBe(5);
   });
 
+  it('(-) Calm-Tech (F31): miss state colour is neutral and NEVER colors.error', () => {
+    const missEntry = entries.find((e) => e.key === 'miss');
+    expect(missEntry).toBeDefined();
+    expect(missEntry!.token).not.toBe('error');
+    expect(missEntry!.hex.toLowerCase()).not.toBe(colors.error.toLowerCase());
+  });
+
   it('proves the extractor actually parses the object literal shape (sanity check)', () => {
     const sample = `
       const CALENDAR_STATE_COLORS: Record<CalendarDayState, string> = {

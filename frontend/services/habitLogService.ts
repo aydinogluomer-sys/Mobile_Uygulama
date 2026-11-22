@@ -36,7 +36,9 @@ import {
   findHabitLog as repoFindHabitLog,
   insertHabitLog as repoInsertHabitLog,
   updateHabitLog as repoUpdateHabitLog,
+  updateLogNote as repoUpdateLogNote,
 } from '../repositories/habitLogRepository';
+import { normalizeNote } from '../lib/habitNote';
 import { describeHabitLogError } from '../lib/pgErrors';
 import { isTransientStatus } from '../repositories/shared';
 
@@ -50,6 +52,8 @@ export type LogPatch = {
   is_completed: boolean;
   /** R01.06 — tap-time zone; sent only while LOG_TIMEZONE_ENABLED. */
   tz?: string;
+  /** F31 (PS-03) — optional private single-line note; omitted when untouched. */
+  notes?: string | null;
 };
 
 export type CompletionIntent = {
@@ -59,6 +63,7 @@ export type CompletionIntent = {
   baseXp?: number;
   targetDirection?: TargetDirection;
   tz?: string;
+  note?: string | null;
 };
 
 export const DEFAULT_BASE_XP = 30;
@@ -97,6 +102,7 @@ export function toPatch(intent: CompletionIntent): LogPatch {
     is_completed: intent.state === 'done',
     // R01.06 — only a sane zone (a hydrated queue is untrusted input).
     ...(typeof intent.tz === 'string' && intent.tz.length >= 1 && intent.tz.length <= 64 ? { tz: intent.tz } : {}),
+    ...(intent.note !== undefined ? { notes: normalizeNote(intent.note) ?? null } : {}),
   };
 }
 
@@ -317,4 +323,34 @@ export async function loadDay(dateStr: string): Promise<
 > {
   const res = await repoFetchLogsForDate(dateStr);
   return res.ok ? { ok: true, logs: res.data } : { ok: false, error: res.error };
+}
+
+export type SaveLogNoteResult =
+  | { ok: true; notes: string | null }
+  | { ok: false; error: string; offline?: boolean; code?: string };
+
+/**
+ * F31 (PS-03) — edits ONLY `notes` on an existing `habit_logs` row.
+ * Never sends `xp`, `state`, or `value`, never inserts, and never fires webhooks.
+ */
+export async function saveLogNote(params: {
+  habitId: string;
+  dateStr: string;
+  note: string | null;
+}): Promise<SaveLogNoteResult> {
+  const normalized = normalizeNote(params.note) ?? null;
+  const res = await repoUpdateLogNote({
+    habitId: params.habitId,
+    dateStr: params.dateStr,
+    note: normalized,
+  });
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: describeHabitLogError(res.error),
+      ...(res.offline ? { offline: true } : {}),
+      ...(res.code ? { code: res.code } : {}),
+    };
+  }
+  return { ok: true, notes: res.data.notes };
 }

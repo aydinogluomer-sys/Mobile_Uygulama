@@ -7,23 +7,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { format, subDays, getDaysInMonth } from 'date-fns';
-import { decimalTR, seriesText, heatmapText } from '../../lib/chartText';
+import { decimalTR, seriesText } from '../../lib/chartText';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 import { currentUser } from '../../lib/session';
+import { parseLocalDate, ymd } from '../../lib/date';
+import { buildAggregateYearGrid, type AggregateRow } from '../../lib/yearGrid';
 import { useHabitStore } from '../../store/habitStore';
 import { useTaskStore } from '../../store/taskStore';
 import { heatmapLogs as fetchHabitLogsHeatmap, habitIdsCompletedSince as fetchHabitIdsCompletedSince } from '../../services/habitService';
 import { LIFE_AREAS, AreaKey } from '../../store/lifeAreasStore';
 import AreaRadar from '../../components/AreaRadar';
 import HabitListView from '../../components/HabitListView';
+import KintsugiYearGrid from '../../components/habits/KintsugiYearGrid';
 import { colors, space, radius, font, hexA, fontFamily } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { barWidth, chartWidth, heatmapCellSize, radarSize } from '../../lib/layoutMetrics';
+import { barWidth, chartWidth, radarSize } from '../../lib/layoutMetrics';
 import { Card, StatTile, SectionHeader, ProgressBar, ProgressRing, EmptyState, Button, EditorialBanner } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
-
-const CELL_GAP = 2;
 
 const MONTHS_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
@@ -79,6 +80,8 @@ export default function StatsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [heatmap, setHeatmap] = useState<HeatmapData>({});
+  const [heatRows, setHeatRows] = useState<readonly AggregateRow[]>([]);
+  const [heatError, setHeatError] = useState(false);
   const [trend14, setTrend14] = useState<number[]>(Array(14).fill(0));
   const [areaComp30, setAreaComp30] = useState<Record<string, number>>({});
   const [view, setView] = useState<'ozet' | 'liste'>('ozet');
@@ -182,7 +185,9 @@ export default function StatsScreen() {
 
       if (heatmapRes.ok) {
         setPartialData(false);
+        setHeatError(false);
         const data = heatmapRes.data;
+        setHeatRows(data);
         const map: HeatmapData = {};
         let total = 0;
         let today = 0;
@@ -207,6 +212,7 @@ export default function StatsScreen() {
         });
         setTrend14(arr);
       } else {
+        setHeatError(true);
         setPartialData(heatmapRes.code === 'TOO_LARGE');
       }
 
@@ -233,100 +239,52 @@ export default function StatsScreen() {
 
   const avgPerDay = dayOfMonth > 0 ? decimalTR(Math.round((monthCompletions / dayOfMonth) * 10) / 10) : '0';
 
-  // Günlük tamamlama oranına (0-1) göre yeşil tonu; 0 → gri
-  function ratioColor(ratio: number) {
-    if (ratio <= 0) return colors.surfaceAlt;
-    if (ratio <= 0.2) return '#4A2A1B';
-    if (ratio <= 0.4) return '#6E331C';
-    if (ratio <= 0.6) return '#934628';
-    if (ratio <= 0.8) return colors.primaryDeep;
-    return colors.accent;
-  }
-
   function renderHeatmap() {
-    const CELL_SIZE = heatmapCellSize(width);
-    const weeks: Date[][] = [];
-    let currentWeek: Date[] = [];
-    for (let i = 0; i < 365; i++) {
-      const date = subDays(now, 364 - i);
-      if (date.getDay() === 0 && currentWeek.length > 0) {
-        weeks.push(currentWeek);
-        currentWeek = [];
-      }
-      currentWeek.push(date);
-    }
-    if (currentWeek.length > 0) weeks.push(currentWeek);
-
     const D = Math.max(1, activeHabits.length);
-    const PITCH = CELL_SIZE + CELL_GAP;
-    // Ay başlangıç sütunları
-    let lastMonth = -1;
-    const monthStarts: { label: string; col: number }[] = [];
-    weeks.forEach((week, wi) => {
-      const m = week[0].getMonth();
-      if (m !== lastMonth) { lastMonth = m; monthStarts.push({ label: MONTHS_TR[m].slice(0, 3), col: wi }); }
+    const aggModel = buildAggregateYearGrid({
+      rows: heatRows,
+      todayYmd: ymd(now),
+      capacity: D,
     });
+
+    function onPickHeatDay(day: string | null) {
+      if (!day) {
+        setSelectedDay(null);
+        return;
+      }
+      const count = heatmap[day] ?? 0;
+      setSelectedDay({ date: day, count, ratio: Math.min(1, count / D) });
+    }
+
+    const selectedDateObj = selectedDay ? (parseLocalDate(selectedDay.date) ?? now) : null;
 
     return (
       <View style={s.heatmapCard}>
         <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={118} opacity={0.14} />
         <Text style={s.cardTitle}>Yıllık Aktivite</Text>
         <Text style={s.cardSub}>Son 365 gün · günlük tamamlama oranı (yapılan / aktif alışkanlık)</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}
-          accessible accessibilityRole="image"
-          accessibilityLabel={heatmapText('Yıllık aktivite', weeks.flat().map((d) => heatmap[format(d, 'yyyy-MM-dd')] ?? 0), longestStreak)}>
-          <View>
-            {/* Ay etiketleri */}
-            <View style={{ height: 14, width: weeks.length * PITCH, marginBottom: 2 }}>
-              {monthStarts.map((ms) => (
-                <Text key={ms.col} style={[s.monthLabel, { left: ms.col * PITCH }]}>{ms.label}</Text>
-              ))}
-            </View>
-            {/* Grid */}
-            <View style={s.heatmap}>
-              {weeks.map((week, wi) => (
-                <View key={wi} style={s.heatmapWeek}>
-                  {week.map((day, di) => {
-                    const key = format(day, 'yyyy-MM-dd');
-                    const count = heatmap[key] ?? 0;
-                    const ratio = Math.min(1, count / D);
-                    const sel = selectedDay?.date === key;
-                    return (
-                      <TouchableOpacity
-                        key={di}
-                        activeOpacity={0.7}
-                        onPress={() => { haptic.select(); setSelectedDay({ date: key, count, ratio }); }}
-                        style={[s.heatmapCell, {
-                          backgroundColor: ratioColor(ratio),
-                          width: CELL_SIZE, height: CELL_SIZE, marginBottom: CELL_GAP,
-                          borderWidth: sel ? 1.5 : 0, borderColor: colors.white,
-                        }]}
-                      />
-                    );
-                  })}
-                </View>
-              ))}
-            </View>
-          </View>
-        </ScrollView>
+        <KintsugiYearGrid
+          mode="aggregate"
+          model={aggModel}
+          selected={selectedDay?.date ?? null}
+          onSelect={onPickHeatDay}
+          status={heatError ? 'error' : 'ready'}
+          onRetry={() => { void loadData(); }}
+        />
 
-        {/* Seçili gün detayı */}
-        {selectedDay && (
+        {selectedDay && selectedDateObj && (
           <View style={s.heatDetail}>
-            <View style={[s.heatDetailDot, { backgroundColor: ratioColor(selectedDay.ratio) }]} />
+            <View
+              style={[
+                s.heatDetailDot,
+                { backgroundColor: selectedDay.ratio > 0 ? colors.success : colors.surfaceAlt },
+              ]}
+            />
             <Text style={s.heatDetailText}>
-              {format(new Date(selectedDay.date), 'dd.MM.yyyy')} · %{Math.round(selectedDay.ratio * 100)} ({selectedDay.count}/{D} alışkanlık)
+              {format(selectedDateObj, 'dd.MM.yyyy')} · %{Math.round(selectedDay.ratio * 100)} ({selectedDay.count}/{D} alışkanlık)
             </Text>
           </View>
         )}
-
-        <View style={s.legend}>
-          <Text style={s.legendText}>0%</Text>
-          {[colors.surfaceAlt, '#4A2A1B', '#6E331C', '#934628', colors.primaryDeep, colors.accent].map((c) => (
-            <View key={c} style={[s.legendCell, { backgroundColor: c }]} />
-          ))}
-          <Text style={s.legendText}>100%</Text>
-        </View>
       </View>
     );
   }
@@ -654,15 +612,8 @@ const s = StyleSheet.create({
   heatmapCard: { backgroundColor: hexA(colors.surface, 0.92), borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16, overflow: 'hidden', position: 'relative' },
   cardTitle: { fontFamily: fontFamily.serif, fontSize: 18, fontWeight: '400', letterSpacing: -0.3, color: colors.text, marginBottom: 2 },
   cardSub: { fontSize: 12, color: colors.textDim, marginBottom: 14 },
-  heatmap: { flexDirection: 'row', gap: CELL_GAP },
-  heatmapWeek: { flexDirection: 'column' },
-  heatmapCell: { borderRadius: 2 },
-  monthLabel: { position: 'absolute', top: 0, fontSize: 9, color: colors.textFaint },
   heatDetail: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
   heatDetailDot: { width: 11, height: 11, borderRadius: 2 },
   heatDetailText: { fontSize: 12, color: colors.neutral200, fontWeight: '600' },
-  legend: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 },
-  legendText: { fontSize: 11, color: colors.textDim },
-  legendCell: { width: 11, height: 11, borderRadius: 2 },
 
 });
