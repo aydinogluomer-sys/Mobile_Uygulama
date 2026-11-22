@@ -1,17 +1,19 @@
 /**
- * Task Decomposition Service V2 tests.  (Phase 3, CODER-L, plan §15 / Gate D)
+ * Task Decomposition Service V2 tests.  (Phase 3, CODER-L, plan §15 / Gate D + F30 verb families & parent link)
  *
- * Same instrument as `__tests__/lib/routineProposal.test.ts`: pure domain
- * tests, no I/O, no Supabase, no store. Every hostile/malformed input class
- * named in this task's brief gets its own assertion, and the happy path is
- * proven to still match the OLD hard-coded template exactly (preserving
- * existing behaviour/Turkish copy, per the brief).
+ * Pure domain tests, no I/O, no Supabase, no store. Every hostile/malformed
+ * input class is asserted alongside F30 verb-family step derivation, 2-min
+ * starter descriptions, emoji-safe topic truncation, and parent linkage.
  */
 import {
   validateSubtaskProposal,
   buildLocalSplitProposal,
   toSplitTaskInputs,
-  SPLIT_LABELS,
+  deriveSplitSteps,
+  shortTopic,
+  STEP_FAMILIES,
+  GENERIC_STEPS,
+  MAX_TOPIC_LENGTH,
   MAX_SUBTASKS_PER_PROPOSAL,
   MAX_SUBTASK_TITLE_LENGTH,
   MAX_SUBTASK_DESCRIPTION_LENGTH,
@@ -21,9 +23,9 @@ import {
 function validRaw(): SubtaskDecompositionProposal {
   return {
     subtasks: [
-      { title: 'Rapor — Başlangıç', description: '15 dk blok (1/3)' },
-      { title: 'Rapor — Devam', description: '15 dk blok (2/3)' },
-      { title: 'Rapor — Bitiş', description: '15 dk blok (3/3)' },
+      { title: 'Gerekenleri tek bir yere topla — Rapor', description: '2 dk · ilk adım · 15 dk blok (1/3)' },
+      { title: 'İlk taslağı 10 dakikada çıkar — Rapor', description: '15 dk blok (2/3)' },
+      { title: 'Gözden geçir ve bitir — Rapor', description: '15 dk blok (3/3)' },
     ],
   };
 }
@@ -38,18 +40,21 @@ describe('validateSubtaskProposal -- the happy path', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok:true');
     expect(result.proposal.subtasks).toHaveLength(3);
-    expect(result.proposal.subtasks[0]).toEqual({ title: 'Rapor — Başlangıç', description: '15 dk blok (1/3)' });
+    expect(result.proposal.subtasks[0]).toEqual({
+      title: 'Gerekenleri tek bir yere topla — Rapor',
+      description: '2 dk · ilk adım · 15 dk blok (1/3)',
+    });
   });
 
   it('trims title/description', () => {
     const raw = validRaw();
-    raw.subtasks[0].title = '  Rapor — Başlangıç  ';
-    raw.subtasks[0].description = '  15 dk blok (1/3)  ';
+    raw.subtasks[0].title = '  Gerekenleri tek bir yere topla — Rapor  ';
+    raw.subtasks[0].description = '  2 dk · ilk adım · 15 dk blok (1/3)  ';
     const result = validateSubtaskProposal(raw);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok:true');
-    expect(result.proposal.subtasks[0].title).toBe('Rapor — Başlangıç');
-    expect(result.proposal.subtasks[0].description).toBe('15 dk blok (1/3)');
+    expect(result.proposal.subtasks[0].title).toBe('Gerekenleri tek bir yere topla — Rapor');
+    expect(result.proposal.subtasks[0].description).toBe('2 dk · ilk adım · 15 dk blok (1/3)');
   });
 
   it('accepts a null description -- "no description supplied" is a valid, real state', () => {
@@ -224,87 +229,74 @@ describe('validateSubtaskProposal -- hostile input', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Preserving existing behaviour -- buildLocalSplitProposal matches the OLD
-// component's hard-coded template table exactly.
+// F30 (INT-15) -- Verb-family concrete steps, 2-min starter, and safe length
 // ---------------------------------------------------------------------------
 
-describe('buildLocalSplitProposal -- preserves the original ADHDTaskSplitter behaviour/copy', () => {
-  it('15-minute preset uses the original Turkish labels', () => {
-    const raw = buildLocalSplitProposal('Rapor Hazırla', 15);
-    const result = validateSubtaskProposal(raw);
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('expected ok:true');
-    expect(result.proposal.subtasks.map((s) => s.title)).toEqual([
-      'Rapor Hazırla — Başlangıç',
-      'Rapor Hazırla — Devam',
-      'Rapor Hazırla — Bitiş',
+describe('deriveSplitSteps, shortTopic & buildLocalSplitProposal (F30)', () => {
+  it('derives concrete Turkish action steps from the trailing task verb and falls back to GENERIC_STEPS', () => {
+    const prep = buildLocalSplitProposal('Vergi beyannamesini hazırla', 25);
+    const rPrep = validateSubtaskProposal(prep);
+    expect(rPrep.ok).toBe(true);
+    if (!rPrep.ok) throw new Error('expected ok:true');
+    expect(rPrep.proposal.subtasks.map((s) => s.title)).toEqual([
+      'Gerekenleri tek bir yere topla — Vergi beyannamesini hazırla',
+      'İlk taslağı 10 dakikada çıkar — Vergi beyannamesini hazırla',
+      'Gözden geçir ve bitir — Vergi beyannamesini hazırla',
     ]);
-    expect(result.proposal.subtasks.map((s) => s.description)).toEqual([
-      '15 dk blok (1/3)',
-      '15 dk blok (2/3)',
-      '15 dk blok (3/3)',
-    ]);
+    expect(rPrep.proposal.subtasks[0].description).toMatch(/^2 dk/);
+    expect(rPrep.proposal.subtasks[1].description).toBe('25 dk blok (2/3)');
+    expect(rPrep.proposal.subtasks[2].description).toBe('25 dk blok (3/3)');
+
+    expect(deriveSplitSteps('Mutfağı topla')[0]).toBe('Tek bir köşe seç');
+    expect(deriveSplitSteps('Doktoru ara')[0]).toBe('Numarayı ya da formu bul');
+    expect(deriveSplitSteps('E-postayı gönder')[0]).toBe('Göndereceğin şeyi hazır et');
+    expect(deriveSplitSteps('Faturayı öde')[0]).toBe('Ödeme bilgisini bul');
+    expect(deriveSplitSteps('Makaleyi oku')[0]).toBe('Kaynağı aç');
+    expect(deriveSplitSteps(' Dönem sonu sunumu ')).toEqual(GENERIC_STEPS);
   });
 
-  it('25-minute preset uses the original Pomodoro labels', () => {
-    const raw = buildLocalSplitProposal('Rapor Hazırla', 25);
-    const result = validateSubtaskProposal(raw);
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('expected ok:true');
-    expect(result.proposal.subtasks.map((s) => s.title)).toEqual([
-      'Rapor Hazırla — 1. Pomodoro',
-      'Rapor Hazırla — 2. Pomodoro',
-      'Rapor Hazırla — 3. Pomodoro',
-    ]);
-  });
-
-  it('45-minute preset uses the original Deep Work labels', () => {
-    const raw = buildLocalSplitProposal('Rapor Hazırla', 45);
-    const result = validateSubtaskProposal(raw);
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('expected ok:true');
-    expect(result.proposal.subtasks.map((s) => s.title)).toEqual([
-      'Rapor Hazırla — Hazırlık & Araştırma',
-      'Rapor Hazırla — Ana Çalışma',
-      'Rapor Hazırla — Gözden Geçirme',
-    ]);
-  });
-
-  it('an unknown duration falls back to the original generic "Parça N" labels', () => {
-    const raw = buildLocalSplitProposal('Bir Görev', 99);
-    const result = validateSubtaskProposal(raw);
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('expected ok:true');
-    expect(result.proposal.subtasks.map((s) => s.title)).toEqual([
-      'Bir Görev — Parça 1',
-      'Bir Görev — Parça 2',
-      'Bir Görev — Parça 3',
-    ]);
-  });
-
-  it('SPLIT_LABELS is exported and matches the three original presets', () => {
-    expect(SPLIT_LABELS[15]).toEqual(['Başlangıç', 'Devam', 'Bitiş']);
-    expect(SPLIT_LABELS[25]).toEqual(['1. Pomodoro', '2. Pomodoro', '3. Pomodoro']);
-    expect(SPLIT_LABELS[45]).toEqual(['Hazırlık & Araştırma', 'Ana Çalışma', 'Gözden Geçirme']);
-  });
-
-  it('every real preset the app offers survives validation (never rejected by construction)', () => {
-    for (const minutes of [15, 25, 45]) {
-      const result = validateSubtaskProposal(buildLocalSplitProposal('Herhangi Bir Görev', minutes));
-      expect(result.ok).toBe(true);
+  it('keeps every step <= 45 chars, omits generic Devam/Bitiş/Pomodoro labels, and validates 140+, 1000-char, and emoji titles', () => {
+    for (const fam of STEP_FAMILIES) {
+      for (const step of fam.steps) {
+        expect(step.length).toBeLessThanOrEqual(45);
+        expect(step).not.toMatch(/\b(?:Devam|Bitiş|Pomodoro)\b/);
+      }
     }
+    for (const step of GENERIC_STEPS) {
+      expect(step.length).toBeLessThanOrEqual(45);
+    }
+
+    const long140 = 'Çok uzun bir proje planlama görevi '.repeat(5).trim();
+    expect(long140.length).toBeGreaterThanOrEqual(140);
+    expect(validateSubtaskProposal(buildLocalSplitProposal(long140, 45)).ok).toBe(true);
+
+    const long1000 = 'x'.repeat(1000);
+    expect(validateSubtaskProposal(buildLocalSplitProposal(long1000, 15)).ok).toBe(true);
+
+    const emojiTitle = `${'🔥🎯✨'.repeat(30)} hazırla`;
+    const rEmoji = validateSubtaskProposal(buildLocalSplitProposal(emojiTitle, 25));
+    expect(rEmoji.ok).toBe(true);
+    // Surrogate pairs are never sliced in half (no lone surrogates)
+    expect(shortTopic(emojiTitle, MAX_TOPIC_LENGTH)).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+    expect(shortTopic(emojiTitle, MAX_TOPIC_LENGTH)).not.toContain('...');
+    expect(shortTopic(emojiTitle, MAX_TOPIC_LENGTH)).not.toContain('…');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Assembly -- toSplitTaskInputs only runs on already-validated input, never
-// invents a field the AI/local schema does not cover.
+// Assembly -- toSplitTaskInputs inherits parent context + parent_task_id / is_subtask
 // ---------------------------------------------------------------------------
 
 describe('toSplitTaskInputs', () => {
-  const parent = { priority: 'high' as const, due_date: '2026-09-01', project_id: 'proj-1', list_type: 'this_week' as const };
+  const parent = {
+    id: 'parent-99',
+    priority: 'high' as const,
+    due_date: '2026-09-01',
+    project_id: 'proj-1',
+    list_type: 'this_week' as const,
+  };
 
-  it('inherits status/priority/due_date/project_id/list_type/completed from the PARENT task, never the proposal', () => {
+  it('inherits status/priority/due_date/project_id/list_type/completed AND sets parent_task_id + is_subtask:true', () => {
     const result = validateSubtaskProposal(validRaw());
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok:true');
@@ -317,12 +309,14 @@ describe('toSplitTaskInputs', () => {
       expect(row.project_id).toBe('proj-1');
       expect(row.list_type).toBe('this_week');
       expect(row.completed).toBe(false);
+      expect(row.parent_task_id).toBe('parent-99');
+      expect(row.is_subtask).toBe(true);
     }
-    expect(rows[0].title).toBe('Rapor — Başlangıç');
-    expect(rows[0].description).toBe('15 dk blok (1/3)');
+    expect(rows[0].title).toBe('Gerekenleri tek bir yere topla — Rapor');
+    expect(rows[0].description).toBe('2 dk · ilk adım · 15 dk blok (1/3)');
   });
 
-  it('a null proposal description becomes "" -- a structural default for a non-nullable DB column, not an invented fact', () => {
+  it('a null proposal description becomes "" -- a structural default for a non-nullable DB column', () => {
     const result = validateSubtaskProposal({ subtasks: [{ title: 'Tek adım', description: null }] });
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok:true');
@@ -334,8 +328,16 @@ describe('toSplitTaskInputs', () => {
     const result = validateSubtaskProposal({ subtasks: [{ title: 'Tek adım', description: null }] });
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok:true');
-    const rows = toSplitTaskInputs(result.proposal, { priority: 'none', due_date: null, project_id: null, list_type: 'inbox' });
+    const rows = toSplitTaskInputs(result.proposal, {
+      id: 'parent-empty',
+      priority: 'none',
+      due_date: null,
+      project_id: null,
+      list_type: 'inbox',
+    });
     expect(rows[0].due_date).toBeNull();
     expect(rows[0].project_id).toBeNull();
+    expect(rows[0].parent_task_id).toBe('parent-empty');
+    expect(rows[0].is_subtask).toBe(true);
   });
 });
