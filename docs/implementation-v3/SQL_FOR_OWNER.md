@@ -71,6 +71,7 @@ select distinct c.relname as dependent_relation, c.relkind
 | 040 | `040_privilege_hygiene.sql` | Ayrıcalık, `search_path` ve hassas sütun hijyeni + F07-R3 (F09): 20 SECURITY DEFINER fonksiyonda `search_path` sabitlenir, anon yazma/`MAINTAIN` ve küresel `PUBLIC EXECUTE` kapanır, liderlik ve sıra RPC'leri oturum zorunlu ve 1..100 sınırlı olur, `profiles` kullanıcı adı şekil kısıtı (`NOT VALID`, bozuk adlar `archive_040` yedeğiyle onarılır), 028–031'in 10 tablosuna dar yetki, OAuth belirteç tablolarında istemci gizli sütun erişimi kapanır, `add_xp` ve abonelik yenilemesi satır kilidi alır, `ai_request_reconcile_stale` mod duyarlı ileti yazar, iptal edilen F13 tablolarında yazma kapanır ve 6 tablo `archive_f13` şemasına taşınır. Uygulamadan önce §3'teki üç ön sorguyu çalıştırın; 028–039 (özellikle 036, 038, 039) uygulanmış olmalı; sonra `select * from public.xp_drift();` 0 satır. | yok (Notion yeniden açılmadan önce `notion-sync` F45'te service-role'e taşınmalı) | §2.13 | `supabase/rollbacks/040_privilege_hygiene.rollback.sql` — en başta (039/038/036'dan önce) geri alınır; **güvenlik açıklarını yeniden açar** |
 | 041 | `041_rls_initplan_and_indexes.sql` | RLS performansı: 45 politika `(SELECT auth.uid())` biçimine geçer, 6 kopya politika düşer, `tasks` alt görev FK'si ON DELETE CASCADE olur, 26 yabancı anahtar indeksi eklenir, yinelenen `idx_habit_logs_habit_date` düşer; veri ve yetki değişmez | yok | §2.14 | `supabase/rollbacks/041_rls_initplan_and_indexes.rollback.sql` |
 | 042 | `042_numeric_measures_and_willpower.sql` | Ölçülebilir ondalık değerler ve atomik irade bütçesi (F14): `habit_logs.value` ve `habits.daily_goal` `numeric(12,2)` olur, `habit_xp_value(uuid, text, numeric)` istemciye kapalı (`SECURITY INVOKER`) kurulur, `spend_willpower(date, numeric, integer, boolean)` atomik harcama/iade RPC'si eklenir | yok — **ondalık kabul eden istemci sürümünden ÖNCE uygulanır** (§5) | §2.15 | `supabase/rollbacks/042_numeric_measures_and_willpower.rollback.sql` — kayıplı (kesirler tam sayıya yuvarlanır; önce yedek) |
+| 043 | `043_profile_time_zone.sql` | Kullanıcı saat dilimi ve yerel gün/hafta sınırları (F15, DB2-11): `profiles.time_zone` (1..64 IANA), `set_profile_time_zone(text)` (`pg_timezone_names` doğrulamalı RPC), `local_date_in_zone` ve `week_start_in_zone` (geçersiz/boş -> UTC), `fn_habit_log_guard` yerel gün penceresi, `track_weekly_xp` ve `get_weekly_leaderboard` yerel hafta sınırı. **038 önkoşul.** | yok (istemci RPC yoksa sessizce atlar, uygulanınca kendiliğinden çalışır; `LOG_TIMEZONE_ENABLED` 033'e bağlıdır ve ayrıdır) | §2.16 | `supabase/rollbacks/043_profile_time_zone.rollback.sql` — kayıtlı saat dilimleri düşer (uygulama bir sonraki açılışta yeniden bildirir) |
 
 ### Geri alma nasıl çalıştırılır
 
@@ -79,7 +80,7 @@ tek kullanımlık Postgres 17'de sınanır: ileri uygula, sondan başa geri al, 
 yeniden ileri uygula. **Canlıda hiçbiri çalıştırılmadı; yalnız sahip çalıştırır (OD-02).**
 
 1. Önce yedek (S1), sonra `select * from public.xp_drift();` (0 satır beklenir).
-2. Sıra **büyükten küçüğe**: 042 (F14), 041 (F10), 040 (F09), 039 (F07), 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 042 en başta, ardından 041 ve 040,
+2. Sıra **büyükten küçüğe**: 043 (F15), 042 (F14), 041 (F10), 040 (F09), 039 (F07), 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 043 en başta, ardından 042, 041 ve 040,
    036'dan önce de 038 geri alınır (036 betiği, `fn_habit_log_guard` varken reddeder).
 3. Her betik için **aynı oturumda** önce onay, sonra dosya. Onay değeri betiğin kendi numarası değilse betik `P0001` ile durur
    ve hiçbir şey değiştirmez:
@@ -237,6 +238,22 @@ select has_function_privilege('authenticated', 'public.spend_willpower(date, num
        has_function_privilege('anon', 'public.spend_willpower(date, numeric, integer, boolean)', 'execute') as anon_can_spend,
        has_function_privilege('authenticated', 'public.habit_xp_value(uuid, text, numeric)', 'execute') as authenticated_can_score;
 select * from public.xp_drift();
+
+-- 2.16 (043) profiles.time_zone, set_profile_time_zone, yerel gün/hafta yardımcıları, ACL ve xp_drift kontrolü
+select column_name, data_type from information_schema.columns
+ where table_schema = 'public' and table_name = 'profiles' and column_name = 'time_zone';
+select count(*) filter (where time_zone is null) as without_zone,
+       count(*) filter (where time_zone is not null) as with_zone
+  from public.profiles;
+select p.oid::regprocedure as signature, p.prosecdef as security_definer
+  from pg_proc p
+ where p.pronamespace = 'public'::regnamespace
+   and p.proname in ('set_profile_time_zone', 'local_date_in_zone', 'week_start_in_zone', 'track_weekly_xp', 'get_weekly_leaderboard', 'fn_habit_log_guard')
+ order by 1;
+select has_function_privilege('anon', 'public.set_profile_time_zone(text)', 'execute') as anon_can_set,
+       has_function_privilege('authenticated', 'public.set_profile_time_zone(text)', 'execute') as authenticated_can_set;
+select name from pg_timezone_names where name in ('Europe/Istanbul', 'America/New_York', 'Pacific/Auckland', 'UTC') order by 1;
+select * from public.xp_drift();
 ```
 
 ## 3. BLOCKED / ÖN SORGU — tanımı repoda olmayan ya da 040 öncesi denetlenecek nesneler (yalnız okuma sorguları)
@@ -326,8 +343,9 @@ where h.tracking_type in ('numeric','duration')
 | 1 | 028, 029, 030, 031 uygulandı + §2.1–2.4 doğrulandı | yok — istemci tabloları fail-open okur (PGRST205/42P01), tablo gelince kendiliğinden açılır |
 | 2 | 033 uygulandı + §2.6 | `LOG_TIMEZONE_ENABLED = true` |
 | 3 | 032 → 034 → 035 uygulandı + §2.8 `has_lighten_week = true` **ve** `generate-routine` edge function deploy edildi (S3) | `COACH_ACTIONS_V2_ENABLED = true` |
+| 4 | 043 uygulandı + §2.16 | yok — istemci RPC yoksa sessizce atlar, uygulanınca kendiliğinden çalışır (`LOG_TIMEZONE_ENABLED` 033'e bağlıdır ve bu fazla çevrilmez) |
 
-039'u uygulamadan ÖNCE istemci sürümü mağazalarda olmalı; sonra 039; Edge deploy (S3) sıradan bağımsızdır. **042 (F14) ise tersine ondalık girdiyi kabul eden istemci sürümünden ÖNCE uygulanır** (böylece ondalık `daily_goal` ve `habit_logs.value` yazımları veritabanında reddedilmez ve `spend_willpower` atomik RPC hazır olur); hemen ardından `select * from public.xp_drift();` 0 satır olmalıdır. Her adımdan sonra `select * from public.xp_drift();` 0 satır.
+039'u uygulamadan ÖNCE istemci sürümü mağazalarda olmalı; sonra 039; Edge deploy (S3) sıradan bağımsızdır. **042 (F14) ise tersine ondalık girdiyi kabul eden istemci sürümünden ÖNCE uygulanır** (böylece ondalık `daily_goal` ve `habit_logs.value` yazımları veritabanında reddedilmez ve `spend_willpower` atomik RPC hazır olur); hemen ardından `select * from public.xp_drift();` 0 satır olmalıdır. **043 (F15), 038 uygulandıktan sonra uygulanır; ardından `select * from public.xp_drift();` 0 satır; `LOG_TIMEZONE_ENABLED` 033'e bağlıdır ve bu fazla çevrilmez.** Her adımdan sonra `select * from public.xp_drift();` 0 satır.
 
 Mevcut beş kapı (`SPOTIFY_OAUTH_ENABLED`, `NOTION_INTEGRATION_ENABLED`, `GOOGLE_CALENDAR_INTEGRATION_ENABLED`,
 `PAID_SUBSCRIPTIONS_ENABLED`, `PUBLIC_SITE_URLS_LIVE`) bu migration'larla **ilgisizdir** ve kapalı kalır.
@@ -385,6 +403,7 @@ canlıyı denetlemez. Canlı doğrulama §2'dir.
 | `09_rls_initplan_041.sql` | 041 (F10): `public` ve `archive_f13` şemalarında çıplak `auth.uid()`/`auth.role()` politikası yok (`InitPlan` plan şekli ve negatif kontroller dahil), çakışan kopya politikalar (`tasks`, `challenges`, `habit_templates`, `weekly_xp`, `user_challenges`) kalktı, `anon` katalog okuması kapalı, 26 FK öncü indeksi var, yinelenen `idx_habit_logs_habit_date` düştü, `tasks_parent_task_id_fkey` `ON DELETE CASCADE` ve bölücü düz yükü çalışıyor, `xp_drift()` boş | ~69 PASS |
 | `10_numeric_and_willpower_042.sql` | 042 (F14): `habit_logs.value` ve `habits.daily_goal` `numeric(12,2)` (yuvarlama ve aralık reddi dahil), `habit_xp_value(uuid, text, numeric)` puanlaması ve istemci erişim yasağı, `get_today_bootstrap` JSON sayı taşıması, `spend_willpower` harcama/birikim/aşım reddi/clamp/iade tabanı/girdi sınırları/kiracı yalıtımı/`anon` ve kimliksiz çağrı reddi, `xp_drift()` boş | 26 PASS |
 | `10_willpower_concurrency_042.sh` | 042 (F14): 8 eşzamanlı oturumla `spend_willpower` sert harcama yarışı (tek kazanan, 7 red, `used = 8`) ve `clamp` yarışı (`used = 15`, 0 hata, `active_count = 8`) | 2 PASS |
+| `11_profile_time_zone_043.sql` | 043 (F15): `profiles.time_zone` sütunu ve `1..64` CHECK, `local_date_in_zone` ve `week_start_in_zone` sabit anlar ve DST kenarları, `set_profile_time_zone` geçerli IANA kaydı / idempotensi / bilinmeyen ve kısaltma reddi / doğrudan `UPDATE` yasağı / kiracı yalıtımı / `anon` reddi, `fn_habit_log_guard` uç saat dilimlerinde yerel gün penceresi (`Pacific/Kiritimati`, `Pacific/Pago_Pago`), geçersiz kayıtlı bölgede UTC'ye düşüş, `track_weekly_xp` ve `get_weekly_leaderboard` yerel hafta uyumu, `xp_drift()` boş | 25 PASS |
 
 **`supabase/tests/expected_failures.txt` ne demek.** Bilinen açıkların test adı listesidir; her satır bulgu
 kimliğini taşır ve başlıkta kapatan faz yazar. Koşucu iki yönlü karşılaştırır: listede olmayan bir test kırmızıysa

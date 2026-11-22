@@ -61,6 +61,7 @@ old filenames.
 | 040 | `040_privilege_hygiene.sql` | **NOT APPLIED** (DB frozen, S1/S2 — privilege, search_path & sensitive-column hygiene + F07-R3; 028–039 prerequisite) | — |
 | 041 | `041_rls_initplan_and_indexes.sql` | **NOT APPLIED** (DB frozen, S1/S2 — RLS initplan wrapping, duplicate policies removed, FK indexes) | — |
 | 042 | `042_numeric_measures_and_willpower.sql` | **NOT APPLIED** (DB frozen, S1/S2 — numeric(12,2) measurable columns & atomic spend_willpower RPC) | — |
+| 043 | `043_profile_time_zone.sql` | **NOT APPLIED** (DB frozen, S1/S2 — profiles.time_zone, local-day window and week) | — |
 
 Keep this table when adding a migration: the old names are cited throughout
 `docs/audit/`, `docs/plan/`, `PROGRESS.md` and the audit reports, which are

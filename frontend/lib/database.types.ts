@@ -1525,6 +1525,8 @@ export type Database = {
           coins: number | null;
           skill_points: number | null;
           purged_xp: number;
+          // @source migration:043
+          time_zone: string | null;
         };
         Insert: {
           id: string;
@@ -1545,6 +1547,7 @@ export type Database = {
           coins?: number | null;
           skill_points?: number | null;
           purged_xp?: number;
+          time_zone?: string | null;
         };
         Update: {
           id?: string;
@@ -1565,6 +1568,7 @@ export type Database = {
           coins?: number | null;
           skill_points?: number | null;
           purged_xp?: number;
+          time_zone?: string | null;
         };
         Relationships: [];
       };
@@ -2429,6 +2433,11 @@ export type Database = {
       refund_focus_points: {
         Args: { p_user_id: string; p_request_id: string; p_reason: string };
         Returns: { ok: boolean; balance: number; already: boolean }[];
+      };
+      // @source migration:043
+      set_profile_time_zone: {
+        Args: { p_time_zone: string };
+        Returns: boolean;
       };
       // @source live
       spend_focus_points_v2: {

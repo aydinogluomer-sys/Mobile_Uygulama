@@ -193,6 +193,7 @@ export type Profile = {
   willpower_rank: string | null;
   streak_record: number | null;
   created_at: string;
+  time_zone?: string | null;
 };
 
 // profile_badges tablosu — kazanılan rozetler

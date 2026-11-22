@@ -7,7 +7,7 @@ Postgres 17 hizmetinde sınanmak üzere bağlanmıştır; ilk gerçek CI koşusu
 
 ## Amaç
 
-`supabase/migrations/028` ile `042` arasındaki on beş migration ileri yönde yazılmıştır ve canlıda
+`supabase/migrations/028` ile `043` arasındaki on altı migration ileri yönde yazılmıştır ve canlıda
 uygulanmamıştır. Sahip birini bir Supabase branch'inde ya da canlıda uygulayıp bir sorun görürse,
 elinde sınanmış bir geri dönüş yolu olmalıdır. Her migration için bir geri alma betiği, CI'da
 "ileri uygula, sondan başa geri al, kataloğu baştakiyle karşılaştır, yeniden ileri uygula" döngüsüyle
@@ -77,10 +77,11 @@ seri açıklarını yeniden açar) yedek ister
 
 ## Betikler ve sıra
 
-Sıra **büyükten küçüğe**: 042, 041, 040, 039, 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
+Sıra **büyükten küçüğe**: 043, 042, 041, 040, 039, 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
 
 | Betik | Geri aldığı migration | Etkisi | Veri kaybı |
 | --- | --- | --- | --- |
+| `043_profile_time_zone.rollback.sql` | `043_profile_time_zone.sql` | `profiles.time_zone`, `profiles_time_zone_check`, `set_profile_time_zone`, `local_date_in_zone` ve `week_start_in_zone` düşer; `fn_habit_log_guard`, `track_weekly_xp` ve `get_weekly_leaderboard` 043 öncesi UTC gövdelerine döner | kayıtlı IANA saat dilimi adları silinir (uygulama bir sonraki açılışta yeniden bildirir; XP ve defter değişmez) |
 | `042_numeric_measures_and_willpower.rollback.sql` | `042_numeric_measures_and_willpower.sql` | `habit_logs.value` ve `habits.daily_goal` `integer` tipine döner, `habit_xp_value(uuid, text, integer)` canlı gövdesiyle geri gelir, `habit_xp_value(uuid, text, numeric)` ve `spend_willpower` düşer | **kayıplı**: ondalık `value` ve `daily_goal` değerleri en yakın tam sayıya yuvarlanır (XP ve defter değişmez) |
 | `041_rls_initplan_and_indexes.rollback.sql` | `041_rls_initplan_and_indexes.sql` | 45 politika satır-başı `auth.uid()`/`auth.role()` biçimine döner, 5 kopya politika geri gelir (`weekly_xp` P0 yazma politikası bilerek geri getirilmez), `tasks_parent_task_id_fkey` `ON DELETE` kuralsız haline döner, 26 FK indeksi düşer, `idx_habit_logs_habit_date` geri gelir | yok (yalnız performans/katalog değişikliği) |
 | `040_privilege_hygiene.rollback.sql` | `040_privilege_hygiene.sql` | 6 F13 tablosu `archive_f13`'ten `public`'e döner, düşürülen zombi tetikleyiciler (`archive_040.dropped_triggers`), 8 fonksiyon gövdesi (F07-R3 dahil), onarılmış kullanıcı adları (`archive_040.profiles_username_backup`), 20 `search_path` sabitlemesi ve tüm `public` tablo/sütun/fonksiyon/varsayılan ACL'leri `archive_040.acl_snapshot`'tan 039 sonrası duruma döner | yok; boş `archive_040` ve `archive_f13` şemaları yerinde kalır; **güvenlik açıklarını yeniden açar** |
@@ -116,6 +117,8 @@ uygulanmamış sayılır ve böyle bir veritabanına `TO PUBLIC` hakları vermem
 geri alması ödül tetikleyicisine 036'nın defter yazan gövdesini verir; 036 da geri alınmışsa bu gövde
 her log yazımını kırardı. **040 da ikinci çalıştırmada reddeder** (`040 is not applied`,
 `archive_040.acl_snapshot` yoksa): anlık görüntü olmadan ACL tahmini yapmaz.
+**043 de ikinci çalıştırmada reddeder** (`043 is not applied`, `profiles.time_zone` yoksa): 038 ve 040
+geri alınmışken eski fonksiyon gövdelerini taban veritabanında yeniden yaratmamak için.
 
 ## Neyi geri almaz
 

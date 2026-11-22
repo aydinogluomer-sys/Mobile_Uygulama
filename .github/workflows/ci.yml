@@ -504,6 +504,11 @@ jobs:
                 echo "040 rollback ran a second time" >&2; exit 1
               fi
               grep -q "040 is not applied" "$err"
+            elif [ "${num}" = "043" ]; then
+              if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb" 2>"$err"; then
+                echo "043 rollback ran a second time" >&2; exit 1
+              fi
+              grep -q "043 is not applied" "$err"
             else
               psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb"
             fi
