@@ -32,6 +32,7 @@ import * as Notifications from 'expo-notifications';
 import { useHabitStore } from '../store/habitStore';
 import { registerReminderReconciler } from '../lib/notifications';
 import { reconcileReminders, handleReminderResponse } from '../services/reminderService';
+import { syncProfileTimeZone } from '../services/timeZoneSyncService';
 import { resolveOnboardingRouting, useOnboardingStore } from '../store/onboardingStore';
 import OnboardingGate from '../components/onboarding/OnboardingGate';
 import { installGlobalErrorHandlers, reportError } from '../lib/crashReporting';
@@ -333,6 +334,17 @@ function RootLayoutInner() {
     void Notifications.getLastNotificationResponseAsync().then((r) => { if (r) void handleReminderResponse(r, deps); }).catch(() => undefined);
     return () => { unsubLogs(); unsubHabits(); respSub.remove(); registerReminderReconciler(null); };
   }, [loading, sessionUid, router]);
+
+  // F15 -- the device zone is reported once per session and again when the app returns to the
+  // foreground (a trip changes the zone). Silent by design: it never blocks, never shows UI.
+  useEffect(() => {
+    if (loading || !session) return;
+    void syncProfileTimeZone();
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next === 'active') void syncProfileTimeZone();
+    });
+    return () => sub.remove();
+  }, [loading, session]);
 
   // CI PARİTESİ (davranış değişikliği DEĞİL, yalnızca tipleme).
   //

@@ -43,7 +43,7 @@ import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAsset
 /** One heading plus its paragraphs. Keeps the body below readable as prose. */
 type Section = { title: string; body: string[] };
 
-const UPDATED = '8 Eylül 2026';
+const UPDATED = '22 Kasım 2026';
 
 const SECTIONS: Section[] = [
   {
@@ -58,6 +58,7 @@ const SECTIONS: Section[] = [
     body: [
       'Kayıt olurken e-posta adresin ve parolan alınır. Parola, kimlik doğrulama sağlayıcımız Supabase tarafından şifrelenmiş (hash) olarak saklanır; Aderyth parolanı düz metin olarak görmez.',
       'Ayrıca hesabına bağlı bir kullanıcı kimliği (id) ve isteğe bağlı bir kullanıcı adı tutulur.',
+      'Gün ve hafta sınırlarını senin saatine göre hesaplamak için cihazının saat diliminin adı (örneğin Europe/Istanbul) hesabına kaydedilir; bu bir konum bilgisi değildir.',
     ],
   },
   {

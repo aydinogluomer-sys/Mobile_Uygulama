@@ -61,6 +61,22 @@ export function deviceTimeZone(): string | null {
 }
 
 /**
+ * F15 — Intl bu bölgeyi tanıyor mu? Boş, null ve 64 karakterden uzun girdi false.
+ * `deviceTimeZone` tek `resolvedOptions().timeZone` noktası olarak korunur.
+ */
+export function isValidTimeZone(zone: string | null | undefined): zone is string {
+  if (typeof zone !== 'string') return false;
+  const trimmed = zone.trim();
+  if (trimmed.length < 1 || trimmed.length > 64 || trimmed !== zone) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * R01.06 — THE contract for "which day is this, and where was it written".
  * The day is the local calendar day (never UTC); the zone is recorded beside
  * it, captured at the same instant, so a log made while travelling can be
