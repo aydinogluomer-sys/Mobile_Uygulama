@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { navigateTo } from '../../lib/destinations';
 // R07.01 — formatting, tags and habit links in the reader.
 import JournalBody from '../../components/JournalBody';
 import { useHabitStore } from '../../store/habitStore';
@@ -169,7 +170,7 @@ function Page({ entry, width: W }: { entry: JournalEntry; width: number }) {
               habits={habits}
               bodyStyle={s.body}
               onOpenHabit={(id) => router.push(`/screens/habit-detail?id=${id}` as never)}
-              onTag={(t) => router.push(`/screens/journal-archive?tag=${encodeURIComponent(t)}` as never)}
+              onTag={(t) => navigateTo(router, 'journal-archive', { tag: t })}
             />
           ) : (
             <Text style={s.body}>(boş sayfa)</Text>

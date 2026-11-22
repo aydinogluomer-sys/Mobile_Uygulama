@@ -8,13 +8,15 @@ import { useTaskStore } from '../../store/taskStore';
 import { useDrawerStore } from '../../store/drawerStore';
 import { useThemeStore } from '../../store/themeStore';
 import Drawer from '../../components/Drawer';
-import CommandPalette from '../../components/CommandPalette';
 import OutboxStatusModal from '../../components/OutboxStatusModal';
 import { LIGHT_THEME_ENABLED } from '../../lib/featureGates';
+import { navigateTo } from '../../lib/destinations';
 import { tabBarHeight, tabBarPaddingBottom } from '../../lib/layoutMetrics';
 import { type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useAccent } from '../../lib/useAccent';
+
+export const unstable_settings = { initialRouteName: 'today' };
 
 function HamburgerButton() {
   const open = useDrawerStore((s) => s.open);
@@ -67,7 +69,7 @@ function HeaderActions({ onOpenSync }: { onOpenSync: () => void }) {
         </TouchableOpacity>
       ) : null}
       {/* Odak modu */}
-      <TouchableOpacity style={h.iconBtn} onPress={() => router.push('/tabs/focus' as any)} accessibilityRole="button" accessibilityLabel="Odak modunu aç">
+      <TouchableOpacity style={h.iconBtn} onPress={() => navigateTo(router, 'focus')} accessibilityRole="button" accessibilityLabel="Odak modunu aç">
         <Ionicons name="timer-outline" size={18} color={c.textDim} />
       </TouchableOpacity>
       {/* Komut veya ara (Hem mobil hem masaüstünde erişilebilir) */}
@@ -98,14 +100,6 @@ export default function TabLayout() {
     <>
       <Drawer />
       <OutboxStatusModal visible={showOutboxModal} onClose={() => setShowOutboxModal(false)} />
-      {/*
-        Mounted here, once, and nowhere else.
-
-        The header's "Komut veya ara" pill (see `HeaderActions` above) calls
-        `useCommandStore.open()`, which flips a flag that only this component
-        reads.
-      */}
-      <CommandPalette />
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: accent.bright,
@@ -185,9 +179,7 @@ export default function TabLayout() {
           }}
         />
 
-        {/*
-          Hidden, NOT deleted.
-        */}
+        {/* Hidden legacy routes preserved for deep-link redirects */}
         <Tabs.Screen name="tasks" options={{ href: null, title: 'Görevler' }} />
         <Tabs.Screen name="focus" options={{ href: null, title: 'Odak' }} />
         <Tabs.Screen name="stats" options={{ href: null, title: 'İstatistikler' }} />

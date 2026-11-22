@@ -8,6 +8,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
+import { navigateTo } from '../../lib/destinations';
 import { useJournalStore } from '../../store/journalStore';
 import { MOODS } from '../../lib/journalMoods';
 import { todayLocal, ymd, addDaysLocal, parseLocalDate } from '../../lib/date';
@@ -122,7 +123,7 @@ export default function JournalScreen() {
         options={{
           headerRight: () => (
             <TouchableOpacity
-              onPress={() => router.push('/screens/journal-archive' as any)}
+              onPress={() => navigateTo(router, 'journal-archive')}
               style={s.archiveBtn}
               hitSlop={8}
               accessibilityRole="link"
@@ -271,7 +272,7 @@ export default function JournalScreen() {
                   <TouchableOpacity
                     key={key}
                     style={s.insightBtn}
-                    onPress={() => router.push(`/screens/journal-insights?period=${key}` as any)}
+                    onPress={() => navigateTo(router, 'journal-insights', { period: key })}
                     accessibilityRole="link"
                     accessibilityLabel={`${label} AI içgörülerini aç`}
                   >
@@ -290,7 +291,7 @@ export default function JournalScreen() {
                 <Text style={s.historyTitle}>GEÇMİŞ KAYITLAR</Text>
                 <TouchableOpacity
                   style={s.archiveLink}
-                  onPress={() => router.push('/screens/journal-archive' as any)}
+                  onPress={() => navigateTo(router, 'journal-archive')}
                   accessibilityRole="link"
                   accessibilityLabel="Tüm günlük arşivini aç"
                 >

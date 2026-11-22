@@ -19,7 +19,6 @@ const ROOT = join(__dirname, '..', '..');
 const read = (p: string) => stripComments(readFileSync(join(ROOT, p), 'utf8'));
 
 const GATES = [
-  'app/tabs/habits.tsx',
   'app/tabs/timeline.tsx',
   'lib/routineProposal.ts',
   'lib/starterPlan.ts',

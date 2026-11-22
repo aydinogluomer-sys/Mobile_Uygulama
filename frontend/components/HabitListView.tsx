@@ -5,7 +5,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 import { useHabitStore } from '../store/habitStore';
+import { useCommandStore } from '../store/commandStore';
+import { navigateTo } from '../lib/destinations';
 import {
   computeTriage, TRIAGE_META, impactMeta, endConditionLabel, IMPACT_LEVELS,
   type ImpactLevel,
@@ -47,11 +50,31 @@ function areaMeta(key: string | null | undefined) {
   return LIFE_AREAS.find((a) => a.key === key) ?? null;
 }
 
+export type HabitListViewProps = {
+  onAdd?: () => void;
+};
+
 // Tüm alışkanlıkların yönetim/genel-bakış görünümü (İstatistikler → Liste sekmesi).
 // Durum bazlı gruplama + filtre + sıralama: bir kontrol merkezi.
-export default function HabitListView() {
+export default function HabitListView({ onAdd }: HabitListViewProps) {
   const router = useRouter();
-  const { habits, loading, error, fetchHabits } = useHabitStore();
+  const { habits, loading, error, fetchHabits } = useHabitStore(
+    useShallow((st) => ({
+      habits: st.habits,
+      loading: st.loading,
+      error: st.error,
+      fetchHabits: st.fetchHabits,
+    })),
+  );
+
+  function handleAdd() {
+    if (onAdd) {
+      onAdd();
+      return;
+    }
+    useCommandStore.getState().requestIntent('new-habit');
+    navigateTo(router, 'habits');
+  }
   const [statusFilter, setStatusFilter] = useState<Set<StatusKey>>(new Set());
   const [impactFilter, setImpactFilter] = useState<Set<ImpactLevel>>(new Set());
   const [search, setSearch] = useState('');
@@ -264,7 +287,7 @@ export default function HabitListView() {
             title="Henüz alışkanlık yok"
             hint="İlk alışkanlığını ekleyerek sistemini kurmaya başla."
             ctaLabel="Alışkanlık Ekle"
-            onCta={() => router.push('/tabs/habits')}
+            onCta={handleAdd}
           />
         )
       ) : totalShown === 0 ? (
@@ -308,7 +331,12 @@ export default function HabitListView() {
       )}
 
       {/* Ekle FAB → alışkanlık akışı */}
-      <TouchableOpacity style={s.fab} onPress={() => router.push('/tabs/habits')} accessibilityLabel="Alışkanlık ekle">
+      <TouchableOpacity
+        style={s.fab}
+        onPress={handleAdd}
+        accessibilityRole="button"
+        accessibilityLabel="Alışkanlık ekle"
+      >
         <Ionicons name="add" size={28} color={colors.white} />
       </TouchableOpacity>
     </View>

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import SegmentedTabs, { type Segment } from '../../components/SegmentedTabs';
 import { colors, radius, alphaHex } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
+import { useTabParam } from '../../hooks/useTabParams';
 import TasksScreen from './tasks';
 import ProjectsScreen from '../screens/projects';
 import OKRScreen from '../screens/okr';
@@ -17,11 +17,22 @@ import CalendarScreen from '../screens/calendar';
  * PLAN — Calm Tech 3-Katmanlı Planlama Pusulası:
  * 1. Eylem (Görevler, Projeler, Odak Sayacı)
  * 2. Strateji Pusulası (Yaşam Alanları → Hedefler → OKR "Altın İplik" Hiyerarşisi)
- * 3. Takvim (Zaman Blokları ve Ajanda)
+ * 3. Takvim (Aylık Takvim ve Ajanda)
  */
 type PlanGroup = 'execution' | 'strategy' | 'calendar';
 type ExecutionSub = 'tasks' | 'projects' | 'focus';
 type StrategySub = 'goals' | 'life_areas' | 'okr';
+
+export const PLAN_TABS = [
+  'tasks',
+  'projects',
+  'focus',
+  'goals',
+  'life_areas',
+  'okr',
+  'calendar',
+] as const;
+export type PlanTab = (typeof PLAN_TABS)[number];
 
 const SEGMENTS: readonly Segment<PlanGroup>[] = [
   { key: 'execution', label: 'Görev & Odak' },
@@ -30,24 +41,31 @@ const SEGMENTS: readonly Segment<PlanGroup>[] = [
 ];
 
 export default function PlanScreen() {
-  const params = useLocalSearchParams<{ tab?: string }>();
-  const [group, setGroup] = useState<PlanGroup>('execution');
-  const [execSub, setExecSub] = useState<ExecutionSub>('tasks');
-  const [stratSub, setStratSub] = useState<StrategySub>('goals');
+  const { value: tabParam, stamp } = useTabParam(PLAN_TABS);
+  const [group, setGroup] = useState<PlanGroup>(() => {
+    if (tabParam === 'goals' || tabParam === 'life_areas' || tabParam === 'okr') return 'strategy';
+    if (tabParam === 'calendar') return 'calendar';
+    return 'execution';
+  });
+  const [execSub, setExecSub] = useState<ExecutionSub>(() =>
+    tabParam === 'tasks' || tabParam === 'projects' || tabParam === 'focus' ? tabParam : 'tasks',
+  );
+  const [stratSub, setStratSub] = useState<StrategySub>(() =>
+    tabParam === 'goals' || tabParam === 'life_areas' || tabParam === 'okr' ? tabParam : 'goals',
+  );
 
   useEffect(() => {
-    const t = params.tab;
-    if (!t) return;
-    if (t === 'tasks' || t === 'projects' || t === 'focus') {
+    if (!tabParam) return;
+    if (tabParam === 'tasks' || tabParam === 'projects' || tabParam === 'focus') {
       setGroup('execution');
-      setExecSub(t);
-    } else if (t === 'goals' || t === 'life_areas' || t === 'okr') {
+      setExecSub(tabParam);
+    } else if (tabParam === 'goals' || tabParam === 'life_areas' || tabParam === 'okr') {
       setGroup('strategy');
-      setStratSub(t);
-    } else if (t === 'calendar') {
+      setStratSub(tabParam);
+    } else if (tabParam === 'calendar') {
       setGroup('calendar');
     }
-  }, [params.tab]);
+  }, [tabParam, stamp]);
 
   return (
     <View style={s.root}>
@@ -57,9 +75,9 @@ export default function PlanScreen() {
       {group === 'execution' && (
         <View style={s.contextBar}>
           {[
-            { key: 'tasks' as const, label: 'Görevler', icon: 'checkbox-outline' },
-            { key: 'projects' as const, label: 'Projeler', icon: 'folder-outline' },
-            { key: 'focus' as const, label: 'Odak Sayacı', icon: 'timer-outline' },
+            { key: 'tasks' as const, label: 'Görevler', icon: 'checkbox-outline' as const },
+            { key: 'projects' as const, label: 'Projeler', icon: 'folder-outline' as const },
+            { key: 'focus' as const, label: 'Odak Sayacı', icon: 'timer-outline' as const },
           ].map((item) => {
             const active = execSub === item.key;
             return (
@@ -70,7 +88,7 @@ export default function PlanScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
               >
-                <Ionicons name={item.icon as any} size={13} color={active ? colors.primary : colors.textFaint} />
+                <Ionicons name={item.icon} size={13} color={active ? colors.primary : colors.textFaint} />
                 <Text style={[s.contextPillText, active && s.contextPillTextActive]}>{item.label}</Text>
               </TouchableOpacity>
             );
@@ -81,9 +99,9 @@ export default function PlanScreen() {
       {group === 'strategy' && (
         <View style={s.contextBar}>
           {[
-            { key: 'life_areas' as const, label: '1. Yaşam Alanı', icon: 'pie-chart-outline' },
-            { key: 'goals' as const, label: '2. Hedefler', icon: 'trophy-outline' },
-            { key: 'okr' as const, label: '3. OKR & Sonuç', icon: 'flag-outline' },
+            { key: 'life_areas' as const, label: '1. Yaşam Alanı', icon: 'pie-chart-outline' as const },
+            { key: 'goals' as const, label: '2. Hedefler', icon: 'trophy-outline' as const },
+            { key: 'okr' as const, label: '3. OKR & Sonuç', icon: 'flag-outline' as const },
           ].map((item) => {
             const active = stratSub === item.key;
             return (
@@ -94,7 +112,7 @@ export default function PlanScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
               >
-                <Ionicons name={item.icon as any} size={13} color={active ? colors.primary : colors.textFaint} />
+                <Ionicons name={item.icon} size={13} color={active ? colors.primary : colors.textFaint} />
                 <Text style={[s.contextPillText, active && s.contextPillTextActive]}>{item.label}</Text>
               </TouchableOpacity>
             );

@@ -41,6 +41,8 @@ import { installGlobalErrorHandlers, reportError } from '../lib/crashReporting';
 import { initCrashReporting } from '../lib/sentryClient';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
 import DialogHost from '../components/ui/DialogHost';
+import CommandPalette from '../components/CommandPalette';
+import { useWebShortcuts } from '../hooks/useWebShortcuts';
 
 // Web OAuth popup callback'ini tamamla; aksi halde openAuthSessionAsync beklemede kalabilir.
 WebBrowser.maybeCompleteAuthSession();
@@ -373,6 +375,13 @@ function RootLayoutInner() {
   const inPasswordRecovery = inAuthGroup && (
     segmentPath[1] === 'forgot-password' || segmentPath[1] === 'reset-password'
   );
+  const shellVisible =
+    !SUPABASE_CONFIG_ERROR &&
+    !loading &&
+    (hasSupabaseSession ? onboardingHydration === 'ready' : !!notionSession) &&
+    !inAuthGroup &&
+    segmentPath[0] !== 'onboarding';
+  useWebShortcuts(shellVisible);
 
   useEffect(() => {
     if (loading) return;
@@ -462,11 +471,11 @@ function RootLayoutInner() {
       <ErrorBoundary context="root-navigator" resetKeys={[segments[0]]}>
         {/* R06.05 — covers the app-switcher preview when "hide titles" is on */}
         <PrivacyCover />
+        {shellVisible && <CommandPalette />}
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="tabs" />
-          <Stack.Screen name="habits" />
-          <Stack.Screen name="screens" options={{ headerShown: false }} />
+          <Stack.Screen name="screens" />
           <Stack.Screen name="onboarding" />
         </Stack>
       </ErrorBoundary>

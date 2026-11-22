@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '../../lib/destinations';
 import { useTaskStore, Task, QuadrantType } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import type { Habit } from '../../lib/supabase';
@@ -224,8 +225,8 @@ export default function EisenhowerScreen() {
               </>
             ) : (
               <>
-                <HabitQuadrantBox triage="do_now" habits={byTriage('do_now')} onTap={() => router.push('/tabs/habits')} />
-                <HabitQuadrantBox triage="plan" habits={byTriage('plan')} onTap={() => router.push('/tabs/habits')} />
+                <HabitQuadrantBox triage="do_now" habits={byTriage('do_now')} onTap={() => navigateTo(router, 'habits')} />
+                <HabitQuadrantBox triage="plan" habits={byTriage('plan')} onTap={() => navigateTo(router, 'habits')} />
               </>
             )}
           </View>
@@ -237,8 +238,8 @@ export default function EisenhowerScreen() {
               </>
             ) : (
               <>
-                <HabitQuadrantBox triage="wait_watch" habits={byTriage('wait_watch')} onTap={() => router.push('/tabs/habits')} />
-                <HabitQuadrantBox triage="eliminate" habits={byTriage('eliminate')} onTap={() => router.push('/tabs/habits')} />
+                <HabitQuadrantBox triage="wait_watch" habits={byTriage('wait_watch')} onTap={() => navigateTo(router, 'habits')} />
+                <HabitQuadrantBox triage="eliminate" habits={byTriage('eliminate')} onTap={() => navigateTo(router, 'habits')} />
               </>
             )}
           </View>

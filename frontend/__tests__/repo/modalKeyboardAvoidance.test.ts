@@ -5,7 +5,6 @@ import { blankNonCode, modalBlocks } from '../helpers/a11yScan';
 const ROOT = join(__dirname, '..', '..');
 
 export const ALLOWED_MODAL_WITHOUT_KAV: Readonly<Record<string, number>> = {
-  'app/tabs/settings.tsx': 1,
   'components/BadHabitsTracker.tsx': 2,
   'components/coach/ConversationSheet.tsx': 1,
   'components/CommandPalette.tsx': 1,
@@ -17,7 +16,6 @@ const MIGRATED_SHEET_MODAL_FILES = [
   'app/screens/okr.tsx',
   'app/screens/goals.tsx',
   'app/tabs/timeline.tsx',
-  'app/tabs/habits.tsx',
   'app/screens/deep-work.tsx',
 ] as const;
 

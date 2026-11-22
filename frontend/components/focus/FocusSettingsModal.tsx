@@ -6,6 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { currentUser } from '../../lib/session';
+import { SPOTIFY_OAUTH_ENABLED } from '../../lib/featureGates';
+import { navigateTo } from '../../lib/destinations';
 import { colors } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { IconButton } from '../ui';
@@ -31,7 +33,7 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: 'reports', label: 'Raporlar' },
   { key: 'sounds', label: 'Sesler' },
   { key: 'account', label: 'Hesap' },
-  { key: 'integrations', label: 'Entegrasyonlar' },
+  ...(SPOTIFY_OAUTH_ENABLED ? [{ key: 'integrations' as const, label: 'Entegrasyonlar' }] : []),
   { key: 'advanced', label: 'Gelişmiş' },
 ];
 
@@ -68,7 +70,7 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
 
   function openIntegrations() {
     onClose();
-    setTimeout(() => router.push('/screens/integrations' as any), 120);
+    setTimeout(() => navigateTo(router, 'integrations'), 120);
   }
 
   async function exportAll(fmt: ExportFmt) {
@@ -242,7 +244,7 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
             </>
           )}
 
-          {tab === 'integrations' && (
+          {tab === 'integrations' && SPOTIFY_OAUTH_ENABLED && (
             <>
               <Text style={s.note}>Notion, takvim ve diğer servisleri Entegrasyonlar ekranından yönet.</Text>
               <NavRow label="Entegrasyonları yönet" hint="Notion · Google · diğer" onPress={openIntegrations} />

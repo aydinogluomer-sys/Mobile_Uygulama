@@ -66,7 +66,7 @@ type Hook = {
 };
 
 const STORE_DIR = join(__dirname, '..', '..', 'store');
-const DEVICE_LEVEL = ['themeStore.ts', 'drawerStore.ts', 'commandStore.ts'];
+const DEVICE_LEVEL = ['themeStore.ts', 'commandStore.ts'];
 
 /** file -> the Zustand hooks it exports (found by shape, not by name lists) */
 const hooks: { file: string; name: string; hook: Hook }[] = [];
@@ -95,12 +95,12 @@ beforeEach(() => {
 });
 
 describe('the scan sees every store', () => {
-  it('29 store files, one hook each; 26 account-scoped and 3 device-level', () => {
+  it('29+ store files, one hook each; account-scoped and 2 device-level', () => {
     expect(readdirSync(STORE_DIR).filter((f) => f.endsWith('.ts')).length).toBeGreaterThanOrEqual(29);
     expect(new Set(hooks.map((h) => h.file)).size).toBe(hooks.length);
     expect(deviceLevel.map((h) => h.file).sort()).toEqual([...DEVICE_LEVEL].sort());
-    expect(accountScoped.length).toBe(hooks.length - 3);
-    expect(accountScoped.length).toBeGreaterThanOrEqual(26);
+    expect(accountScoped.length).toBe(hooks.length - 2);
+    expect(accountScoped.length).toBeGreaterThanOrEqual(27);
   });
 });
 
@@ -205,7 +205,7 @@ describe('the registry core', () => {
     for (const n of [
       'habit', 'goal', 'project', 'okr', 'readingList', 'lifeAreas', 'routine', 'profile', 'subscription', 'insights',
       'deepWork', 'notion', 'googleCalendar', 'spotify', 'willpower', 'task', 'mood', 'routineRunner', 'notionSession',
-      'journal', 'note', 'recovery', 'log', 'onboarding', 'focus', 'aiConversation', 'disclosure', 'coreOutbox',
+      'journal', 'note', 'recovery', 'log', 'onboarding', 'focus', 'aiConversation', 'disclosure', 'drawer', 'coreOutbox',
     ]) expect({ n, registered: names.includes(n) }).toEqual({ n, registered: true });
   });
 

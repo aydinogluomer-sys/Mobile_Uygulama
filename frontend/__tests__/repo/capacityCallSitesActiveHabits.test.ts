@@ -33,7 +33,6 @@ const ROOT = join(__dirname, '..', '..');
  * states, so they stay here.
  */
 const FILES: [string, () => string][] = [
-  ['app/tabs/habits.tsx', () => readFileSync(join(ROOT, 'app', 'tabs', 'habits.tsx'), 'utf8')],
   ['app/tabs/timeline.tsx', () => readFileSync(join(ROOT, 'app', 'tabs', 'timeline.tsx'), 'utf8')],
   ['components/HabitOnboarding.tsx', () => readHabitOnboardingSource(ROOT)],
 ];

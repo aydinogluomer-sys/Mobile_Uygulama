@@ -21,12 +21,16 @@ import { join } from 'path';
 import { dailyLoad, capacityAdvice, type HabitLoadInput } from '../../lib/capacity';
 
 const ROOT = join(__dirname, '..', '..');
+// F28 (NAV-09): app/tabs/habits.tsx reduced to a <Redirect href="/tabs/timeline" /> stub;
+//app/tabs/timeline.tsx is now the single canonical habit screen & capacity modal owner.
 const FILES: [string, string][] = [
-  ['app/tabs/habits.tsx', join(ROOT, 'app', 'tabs', 'habits.tsx')],
   ['app/tabs/timeline.tsx', join(ROOT, 'app', 'tabs', 'timeline.tsx')],
 ];
 
 describe('W2 source -- capacity modal calls dailyLoad(/capacityAdvice(', () => {
+  it('scans a non-empty list of habit screen sources', () => {
+    expect(FILES.length).toBeGreaterThan(0);
+  });
   it.each(FILES)('%s calls capacityAdvice(', (_name, path) => {
     expect(readFileSync(path, 'utf8')).toMatch(/\bcapacityAdvice\(/);
   });
