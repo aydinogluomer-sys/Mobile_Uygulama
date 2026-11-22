@@ -5,6 +5,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { HABIT_ONBOARDING_FILES } from '../helpers/habitOnboardingSource';
 import { stripComments } from '../helpers/sourceText';
 import { parseAction, handledKey, rememberHandled, DEFAULT_ACTION, MAX_HANDLED } from '../../lib/notificationActions';
 
@@ -43,7 +44,7 @@ describe('root layout', () => {
 
 describe('R04.06 — no deferred trigger is offered', () => {
   it('reminder UI has no location / NFC / chain option', () => {
-    for (const p of ['components/ReminderEditor.tsx', 'components/NotificationSettingsCard.tsx', 'components/HabitOnboarding.tsx']) {
+    for (const p of ['components/ReminderEditor.tsx', 'components/NotificationSettingsCard.tsx', ...HABIT_ONBOARDING_FILES]) {
       expect(code(p)).not.toMatch(/konum|NFC|location|geofence/i);
     }
   });

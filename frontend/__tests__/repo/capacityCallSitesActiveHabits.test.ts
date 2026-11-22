@@ -14,6 +14,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { readHabitOnboardingSource } from '../helpers/habitOnboardingSource';
 import { stripComments } from '../helpers/sourceText';
 
 const ROOT = join(__dirname, '..', '..');
@@ -31,10 +32,10 @@ const ROOT = join(__dirname, '..', '..');
  * The three screens still call `canActivate` directly for their disabled
  * states, so they stay here.
  */
-const FILES: [string, string][] = [
-  ['app/tabs/habits.tsx', join(ROOT, 'app', 'tabs', 'habits.tsx')],
-  ['app/tabs/timeline.tsx', join(ROOT, 'app', 'tabs', 'timeline.tsx')],
-  ['components/HabitOnboarding.tsx', join(ROOT, 'components', 'HabitOnboarding.tsx')],
+const FILES: [string, () => string][] = [
+  ['app/tabs/habits.tsx', () => readFileSync(join(ROOT, 'app', 'tabs', 'habits.tsx'), 'utf8')],
+  ['app/tabs/timeline.tsx', () => readFileSync(join(ROOT, 'app', 'tabs', 'timeline.tsx'), 'utf8')],
+  ['components/HabitOnboarding.tsx', () => readHabitOnboardingSource(ROOT)],
 ];
 
 /**
@@ -85,13 +86,13 @@ function tracedIdentifiers(text: string): string[] {
 }
 
 describe('W1 -- canActivate call sites pass activeHabits-derived capacity data', () => {
-  it.each(FILES)('%s calls canActivate at least once', (_name, path) => {
-    const src = stripComments(readFileSync(path, 'utf8'));
+  it.each(FILES)('%s calls canActivate at least once', (_name, load) => {
+    const src = stripComments(load());
     expect(extractCanActivateCalls(src).length).toBeGreaterThan(0);
   });
 
-  it.each(FILES)('%s: every canActivate( call site references activeHabits (directly, or via a local variable traced back to it)', (_name, path) => {
-    const src = stripComments(readFileSync(path, 'utf8'));
+  it.each(FILES)('%s: every canActivate( call site references activeHabits (directly, or via a local variable traced back to it)', (_name, load) => {
+    const src = stripComments(load());
     const traced = tracedIdentifiers(src);
     const calls = extractCanActivateCalls(src);
     const missing = calls.filter((c) => !traced.some((name) => new RegExp(`\\b${name}\\b`).test(c)));
