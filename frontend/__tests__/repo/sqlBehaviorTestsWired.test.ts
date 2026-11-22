@@ -732,7 +732,7 @@ describe('run.sh: its own fail paths, proven by running it against a fake psql',
         'RESULT|T91d_wrapped|PASS|ok',
         'RESULT|T02a_anon_execute.all|PASS|none',
         'RESULT|T02b_search_path.loose/0|FAIL|search_path is not pinned',
-        ...filler(193),
+        ...filler(223),
       ],
     },
     expected: 'T02b_search_path.loose/0   # TST-01\n',
@@ -782,7 +782,7 @@ describe('run.sh: its own fail paths, proven by running it against a fake psql',
     callsStart?: string[];
   };
   const scenarios: Scenario[] = [
-    { label: 'the failing set equals the known-red list (exit 0); the fingerprint is the first psql call', change: (c) => c, status: 0, includes: ['OK: the failing set equals expected_failures.txt', 'SUMMARY: results=200'], callsStart: ['c', 'stdin', `f:${SQL}`] },
+    { label: 'the failing set equals the known-red list (exit 0); the fingerprint is the first psql call', change: (c) => c, status: 0, includes: ['OK: the failing set equals expected_failures.txt', 'SUMMARY: results=230'], callsStart: ['c', 'stdin', `f:${SQL}`] },
     { label: 'a red test that is not listed is UNEXPECTED (exit 1)', change: (c) => canned(c, setVerdict('T91b_denied', 'FAIL')), status: 1, includes: ['UNEXPECTED FAILURES', 'T91b_denied'] },
     { label: 'a listed test that turned green is STALE (exit 1)', change: (c) => canned(c, setVerdict('T02b_search_path.loose/0', 'PASS')), status: 1, includes: ['STALE expected_failures.txt', 'T02b_search_path.loose/0'] },
     { label: 'an EMPTY known-red list with nothing red passes: the state F09 leaves behind (exit 0)', change: (c) => ({ ...canned(c, setVerdict('T02b_search_path.loose/0', 'PASS')), expected: '# nothing is known-red any more\n' }), status: 0, includes: ['expected_failures=0'] },

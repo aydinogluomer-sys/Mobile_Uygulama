@@ -128,7 +128,10 @@ the privacy policy; declare `Username` as visible to other users.
 | Data | Retention |
 |---|---|
 | Everything user-owned | Until the user deletes the account, then removed immediately |
-| Account deletion | Cascades across all 47 `public` tables holding a `user_id` — verified live in Step 11B |
+| Account deletion | Best-effort Google OAuth token revocation (`delete-account`), then `auth.admin.deleteUser` cascades across all 47 `public` tables holding a `user_id` — verified live in Step 11B |
+| `ai_requests.response` & `ai_requests.error` (cached AI response body & failure detail for idempotent replay) | Scrubbed (`response = '{}'::jsonb`, `error = NULL`) after **30 days** by `public.purge_ai_retention()` (migration `044`, scheduled via `pg_cron` once owner enables OD-25; deleted immediately on account deletion) |
+| `ai_requests` ledger rows (`status <> 'in_progress'`) & AI `credit_transactions` rows (`request_id IS NOT NULL`) | Deleted after **400 days** by `public.purge_ai_retention()` (migration `044` + OD-25; deleted immediately on account deletion) |
+| `ai_calls` operational rate/telemetry rows | Deleted after **7 days** by `public.purge_ai_retention()` (migration `044` + OD-25; deleted immediately on account deletion) |
 | Anthropic-side retention | **Not under Aderyth's control.** Not claimed either way in the policy |
 | Sentry-side retention | Set by the Sentry project's own retention policy, which the owner controls once the project exists. `NEEDS_OWNER_CONFIRMATION` |
 | Backups | `NEEDS_OWNER_CONFIRMATION` — Supabase project backup retention is a hosting setting; state it once confirmed |

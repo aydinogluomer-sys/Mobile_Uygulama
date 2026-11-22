@@ -19,13 +19,9 @@
  *                because a second provider call on a 5 FP message is a cost
  *                the user never agreed to.
  */
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { edgeSource } from '../helpers/edgeSource';
 
-const SRC = readFileSync(
-  join(__dirname, '..', '..', '..', 'supabase', 'functions', 'generate-routine', 'index.ts'),
-  'utf8',
-);
+const SRC = edgeSource('generate-routine');
 
 /** The body of `loadCoachHistory`, which is where all three rules live. */
 const LOADER = (() => {

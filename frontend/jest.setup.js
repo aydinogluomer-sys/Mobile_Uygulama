@@ -12,6 +12,9 @@ if (!process.env.EXPO_PUBLIC_SUPABASE_URL) {
 if (!process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY) {
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key-local';
 }
+if (!process.env.EXPO_PUBLIC_AI_TRANSPORT) {
+  process.env.EXPO_PUBLIC_AI_TRANSPORT = 'invoke';
+}
 
 /**
  * AsyncStorage is a native module; under jest there is no native side, so any

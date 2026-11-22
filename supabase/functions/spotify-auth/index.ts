@@ -1,5 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from '@supabase/supabase-js';
 import { parseAllowlist, isAllowedRedirect } from '../_shared/redirectAllowlist.ts';
 import { mintState, verifyState } from '../_shared/oauthState.ts';
 
@@ -108,7 +107,7 @@ async function spotifyControl(token: string, method: string, path: string, body?
   return { ok: true };
 }
 
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   const url = new URL(req.url);

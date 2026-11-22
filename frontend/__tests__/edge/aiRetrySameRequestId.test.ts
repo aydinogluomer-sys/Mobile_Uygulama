@@ -75,6 +75,7 @@ const mockFake = {
   rows: [] as MsgRow[],
   createCalls: 0,
   seq: 0,
+  failAssistantCode: null as string | null,
 };
 
 jest.mock('../../repositories/aiConversationRepository', () => {
@@ -90,6 +91,11 @@ jest.mock('../../repositories/aiConversationRepository', () => {
       return { ok: true, data: { id, user_id: 'user-A', title, project_id: null, created_at: at, updated_at: at, last_message_at: at, archived_at: null } };
     },
     insertMessage: async (input: { conversationId: string; role: 'user' | 'assistant'; content: string; requestId?: string | null }) => {
+      if (input.role === 'assistant' && mockFake.failAssistantCode) {
+        const code = mockFake.failAssistantCode;
+        mockFake.failAssistantCode = null;
+        return { ok: false, error: 'new row violates row-level security policy', code };
+      }
       const existing = mockFake.rows.find((r) => r.conversation_id === input.conversationId && r.role === input.role && input.requestId && r.request_id === input.requestId);
       if (existing) return { ok: true, data: existing };
       mockFake.seq += 1;
@@ -371,16 +377,16 @@ describe('the real repository and 23505', () => {
     expect(res).toEqual({ ok: true, data: stored('assistant') });
   });
 
-  it('(-) without a requestId 23505 comes back as an error', async () => {
+  it('(-) without a requestId 23505 comes back as an error with code', async () => {
     mockDb.insert = { data: null, error: duplicate };
     const res = await realInsertMessage({ conversationId: 'conv-x', role: 'user', content: TEXT, requestId: null });
-    expect(res).toEqual({ ok: false, error: duplicate.message });
+    expect(res).toEqual({ ok: false, error: duplicate.message, code: '23505' });
   });
 
-  it('(-) another code (42501) comes back as an error', async () => {
+  it('(-) another code (42501) comes back as an error with code so runCoachTurn can surface EDG-19 guidance', async () => {
     mockDb.insert = { data: null, error: { code: '42501', message: 'new row violates row-level security policy' } };
     const res = await realInsertMessage({ conversationId: 'conv-x', role: 'user', content: TEXT, requestId: 'req-1-aaaaaaaa' });
-    expect(res).toEqual({ ok: false, error: 'new row violates row-level security policy' });
+    expect(res).toEqual({ ok: false, error: 'new row violates row-level security policy', code: '42501' });
   });
 
   it('(+) when the pre-read finds the row, the insert is never called', async () => {
@@ -388,5 +394,20 @@ describe('the real repository and 23505', () => {
     const res = await realInsertMessage({ conversationId: 'conv-x', role: 'user', content: TEXT, requestId: 'req-1-aaaaaaaa' });
     expect(res).toEqual({ ok: true, data: stored('user') });
     expect(mockDb.insertCalls).toBe(0);
+  });
+
+  it('(+) F21 (EDG-19): runCoachTurn translates assistant 42501 RLS refusal into user-facing Turkish refund-pending guidance', async () => {
+    mockFake.failAssistantCode = '42501';
+    const out = await runCoachTurn({
+      conversationId: 'conv-x',
+      text: TEXT,
+      requestId: 'req-42501-aaaaaaa',
+      invoke: async () => ({ reply: 'Sunucuda kaydı tamamlanmamış yanıt', actions: [] }),
+    });
+    expect(out).toEqual({
+      ok: false,
+      error: 'Yanıt kaydedilemedi. Biraz sonra tekrar dene; ücret alındıysa süre dolunca iade edilir.',
+      code: '42501',
+    });
   });
 });

@@ -267,9 +267,8 @@ describe('2. REP-18 — Analitik katman sınırı ve tek istemci fiyat kaynağı
   it('focusPointService.COST === ACTION_COST ve sunucu generate-routine COST literaliyle birebir eşittir (+ olumsuz kontrol)', () => {
     expect(COST).toBe(ACTION_COST);
 
-    const edgeSrc = stripComments(
-      readFileSync(join(REPO_ROOT, 'supabase', 'functions', 'generate-routine', 'index.ts'), 'utf8'),
-    );
+    const { edgeSource } = require('../helpers/edgeSource') as typeof import('../helpers/edgeSource');
+    const edgeSrc = stripComments(edgeSource('generate-routine'));
     const serverCost = parseServerCostLiteral(edgeSrc);
     expect(priceMismatch(ACTION_COST, serverCost)).toEqual([]);
 

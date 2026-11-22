@@ -127,4 +127,52 @@ describe('edge deployment manifest', () => {
   it('the release check that consumes this manifest is present', () => {
     expect(existsSync(join(REPO, 'tools', 'verify-edge-deployment.mjs'))).toBe(true);
   });
+
+  it('F21 (EDG-11): supabase/config.toml [functions.<slug>] blocks match deploy:true entries and exclude deploy:false entries', () => {
+    const configToml = readFileSync(join(REPO, 'supabase', 'config.toml'), 'utf8');
+
+    const parseFunctionBlocks = (toml: string): Map<string, { verifyJwt?: boolean; importMap?: string }> => {
+      const blocks = new Map<string, { verifyJwt?: boolean; importMap?: string }>();
+      const lines = toml.replace(/\r\n?/g, '\n').split('\n');
+      let currentSlug: string | null = null;
+      for (const rawLine of lines) {
+        const line = rawLine.replace(/#.*$/, '').trim();
+        if (!line) continue;
+        const sec = /^\[([^\]]+)\]$/.exec(line);
+        if (sec) {
+          const fnMatch = /^functions\.([a-z0-9-]+)$/.exec(sec[1]);
+          currentSlug = fnMatch ? fnMatch[1] : null;
+          if (currentSlug) blocks.set(currentSlug, {});
+          continue;
+        }
+        if (!currentSlug) continue;
+        const entry = blocks.get(currentSlug)!;
+        const vMatch = /^verify_jwt\s*=\s*(true|false)$/.exec(line);
+        if (vMatch) entry.verifyJwt = vMatch[1] === 'true';
+        const imMatch = /^import_map\s*=\s*"([^"]+)"$/.exec(line);
+        if (imMatch) entry.importMap = imMatch[1];
+      }
+      return blocks;
+    };
+
+    const blocks = parseFunctionBlocks(configToml);
+    const deployedEntries = manifest.functions.filter((f) => f.deploy);
+    const undeployedEntries = manifest.functions.filter((f) => !f.deploy);
+
+    expect([...blocks.keys()].sort()).toEqual(deployedEntries.map((f) => f.slug).sort());
+    for (const f of deployedEntries) {
+      const block = blocks.get(f.slug);
+      expect(block).toEqual({
+        verifyJwt: f.verifyJwt,
+        importMap: './functions/deno.json',
+      });
+    }
+    for (const f of undeployedEntries) {
+      expect(blocks.has(f.slug)).toBe(false);
+    }
+
+    // Negative control: flipping subscription-webhook verify_jwt to true or adding spotify-auth is caught
+    const broken = parseFunctionBlocks(`${configToml}\n[functions.spotify-auth]\nverify_jwt = true\n`);
+    expect(broken.has('spotify-auth')).toBe(true);
+  });
 });

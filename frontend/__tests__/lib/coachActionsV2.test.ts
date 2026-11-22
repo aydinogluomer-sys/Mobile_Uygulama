@@ -51,6 +51,39 @@ describe('each action', () => {
   it('unexpected keys are refused', () => {
     expect(ok({ type: 'move_task', task_query: 'a', date: 'today', extra: 1 })).toMatch(/unexpected key/);
   });
+
+  it('F21 (INT-12): edit_reminder_time accepts wire { times, days } and persisted { reminders }, rejects both together, and all 7 V2 actions round-trip losslessly', () => {
+    const fromWire = ok({ type: 'edit_reminder_time', habit_query: 'Kitap Oku', times: ['08:30', '21:00'], days: [0, 2, 4] });
+    expect(typeof fromWire).toBe('object');
+    const fromPersisted = ok(JSON.parse(JSON.stringify(fromWire)) as Record<string, unknown>);
+    expect(fromPersisted).toEqual(fromWire);
+
+    expect(
+      ok({
+        type: 'edit_reminder_time',
+        habit_query: 'Kitap Oku',
+        times: ['08:30'],
+        reminders: { enabled: true, time: '08:30', times: ['08:30'] },
+      }),
+    ).toBe('ambiguous reminder shape');
+
+    const samples: Record<string, unknown>[] = [
+      { type: 'edit_habit_schedule', habit_query: 'Yürüyüş', frequency_config: { kind: 'weekly', count: 3 } },
+      { type: 'pause_habit', habit_query: 'Spor', from: '2026-10-12', until: '2026-10-18' },
+      { type: 'move_task', task_query: 'Rapor', date: '2026-10-09' },
+      { type: 'suggest_small_step', task_query: 'Tez', step: 'Başlığı yaz', minutes: 5 },
+      { type: 'lighten_today', habit_queries: ['Spor', 'Okuma'] },
+      { type: 'edit_reminder_time', habit_query: 'Su İç', times: ['09:00'], days: [0, 1, 2, 3, 4] },
+      { type: 'lighten_week' },
+    ];
+    expect(samples.map((x) => x.type)).toEqual([...V2_ACTION_TYPES]);
+    for (const sample of samples) {
+      const first = readActionV2(sample, TODAY, NOW);
+      expect(typeof first).toBe('object');
+      const roundTripped = readActionV2(JSON.parse(JSON.stringify(first)) as Record<string, unknown>, TODAY, NOW);
+      expect(roundTripped).toEqual(first);
+    }
+  });
 });
 
 describe('resolving a task', () => {

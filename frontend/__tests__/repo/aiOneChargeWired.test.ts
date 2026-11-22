@@ -3,7 +3,7 @@
  * for the resend and closes it only on a server answer. The routine store and
  * the journal-insight screen are covered behaviourally
  * (store/routineGenerateOneCharge, ui/journalInsightsContext); the coach
- * screen's two calls are pinned here structurally.
+ * hook's two calls (`hooks/useCoachSend.ts`, extracted in F21) are pinned here structurally.
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -11,10 +11,11 @@ import { stripComments } from '../helpers/sourceText';
 
 const code = (p: string) => stripComments(readFileSync(join(__dirname, '..', '..', p), 'utf8'));
 
-describe('coach screen', () => {
-  const src = code('app/screens/ai-coach.tsx');
+describe('coach screen / useCoachSend hook', () => {
+  const src = code('hooks/useCoachSend.ts');
   const send = src.slice(src.indexOf('async function send('), src.indexOf('async function summarize('));
-  const summ = src.slice(src.indexOf('async function summarize('), src.indexOf('async function saveSummaryToJournal('));
+  const summStart = src.indexOf('async function summarize(');
+  const summ = src.slice(summStart, src.indexOf('\n  return {', summStart));
 
   it('a message: the id comes from the keeper keyed by thread + text; no-answer is rethrown before the attempt is closed', () => {
     expect(send).toMatch(/const requestId = coachAttempt\.begin\(`\$\{activeId \?\? ''\}\|\$\{msg\}`\);/);
@@ -45,9 +46,9 @@ describe('coach screen', () => {
     expect(still).toBeGreaterThan(-1);
     expect(still).toBeLessThan(summ.indexOf('summaryAttempt.answered();'));
   });
-  it('the keepers live outside the component (they survive a re-render)', () => {
-    const comp = src.indexOf('export default function AICoachScreen');
-    expect(src.indexOf('const coachAttempt = createAttemptKeeper(newRequestId);')).toBeLessThan(comp);
-    expect(src.indexOf('const summaryAttempt = createAttemptKeeper(newRequestId);')).toBeLessThan(comp);
+  it('the keepers live outside the hook (they survive a re-render)', () => {
+    const hookFn = src.indexOf('export function useCoachSend');
+    expect(src.indexOf('const coachAttempt = createAttemptKeeper(newRequestId);')).toBeLessThan(hookFn);
+    expect(src.indexOf('const summaryAttempt = createAttemptKeeper(newRequestId);')).toBeLessThan(hookFn);
   });
 });

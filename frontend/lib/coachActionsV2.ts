@@ -54,7 +54,7 @@ const ALLOWED: Record<V2ActionType, Set<string>> = {
   move_task: new Set(['type', 'task_query', 'date']),
   suggest_small_step: new Set(['type', 'task_query', 'step', 'minutes']),
   lighten_today: new Set(['type', 'habit_queries']),
-  edit_reminder_time: new Set(['type', 'habit_query', 'times', 'days']),
+  edit_reminder_time: new Set(['type', 'habit_query', 'times', 'days', 'reminders']),
   lighten_week: new Set(['type']),
 };
 
@@ -119,11 +119,24 @@ export function readActionV2(raw: Record<string, unknown>, today: string, now: D
     case 'edit_reminder_time': {
       const q = str(raw.habit_query, 80);
       if (!q) return 'invalid habit_query';
-      if (!Array.isArray(raw.times) || raw.times.some((x) => typeof x !== 'string')) return 'invalid times';
-      const days = raw.days === undefined ? [] : raw.days;
+      if (raw.reminders !== undefined && (raw.times !== undefined || raw.days !== undefined)) {
+        return 'ambiguous reminder shape';
+      }
+      let rawTimes: unknown = raw.times;
+      let rawDays: unknown = raw.days;
+      if (raw.reminders !== undefined) {
+        if (!raw.reminders || typeof raw.reminders !== 'object' || Array.isArray(raw.reminders)) {
+          return 'invalid reminder: not object';
+        }
+        const rem = raw.reminders as Record<string, unknown>;
+        rawTimes = rem.times;
+        rawDays = rem.days;
+      }
+      if (!Array.isArray(rawTimes) || rawTimes.some((x) => typeof x !== 'string')) return 'invalid times';
+      const days = rawDays === undefined ? [] : rawDays;
       if (!Array.isArray(days) || days.some((d) => typeof d !== 'number')) return 'invalid days';
       // The same rule the reminder editor uses -- one validator for both doors.
-      const built = buildReminderConfig(true, raw.times as string[], days as number[]);
+      const built = buildReminderConfig(true, rawTimes as string[], days as number[]);
       if (!built.ok) return `invalid reminder: ${built.reason}`;
       return { type: t, habit_query: q, reminders: built.config };
     }

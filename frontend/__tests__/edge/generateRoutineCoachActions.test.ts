@@ -16,13 +16,9 @@
  *                 action list and the prose survives. The user paid for the
  *                 reply; a bad suggestion must not consume it.
  */
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { edgeSource } from '../helpers/edgeSource';
 
-const SRC = readFileSync(
-  join(__dirname, '..', '..', '..', 'supabase', 'functions', 'generate-routine', 'index.ts'),
-  'utf8',
-);
+const SRC = edgeSource('generate-routine');
 
 describe('coach action block — billing is untouched', () => {
   it('coach still costs 5 and routine still costs 25', () => {

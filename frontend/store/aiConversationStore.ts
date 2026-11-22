@@ -358,11 +358,27 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
 
   resolvePending: async (status) => {
     const current = get().pendingAction;
-    if (!current) return true;
+    if (!current) {
+      if (status === 'confirmed' && unresolvedConfirmations.size > 0) {
+        const ids = [...unresolvedConfirmations];
+        const retryId = ids[ids.length - 1];
+        const retryRes = await resolveStagedAction(retryId, 'confirmed');
+        if (retryRes.ok) {
+          unresolvedConfirmations.delete(retryId);
+          set({ error: null });
+          return true;
+        }
+        return false;
+      }
+      return true;
+    }
     const openedIn = get().activeId;
     set({ pendingAction: null });
     const res = await resolveStagedAction(current.row.id, status);
-    if (res.ok) return true;
+    if (res.ok) {
+      unresolvedConfirmations.delete(current.row.id);
+      return true;
+    }
     if (status === 'cancelled') {
       if (get().activeId === openedIn && get().pendingAction === null) set({ pendingAction: current });
       set({ error: res.error });

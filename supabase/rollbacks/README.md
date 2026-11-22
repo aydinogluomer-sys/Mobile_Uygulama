@@ -7,7 +7,7 @@ Postgres 17 hizmetinde sınanmak üzere bağlanmıştır; ilk gerçek CI koşusu
 
 ## Amaç
 
-`supabase/migrations/028` ile `043` arasındaki on altı migration ileri yönde yazılmıştır ve canlıda
+`supabase/migrations/028` ile `044` arasındaki on yedi migration ileri yönde yazılmıştır ve canlıda
 uygulanmamıştır. Sahip birini bir Supabase branch'inde ya da canlıda uygulayıp bir sorun görürse,
 elinde sınanmış bir geri dönüş yolu olmalıdır. Her migration için bir geri alma betiği, CI'da
 "ileri uygula, sondan başa geri al, kataloğu baştakiyle karşılaştır, yeniden ileri uygula" döngüsüyle
@@ -77,10 +77,11 @@ seri açıklarını yeniden açar) yedek ister
 
 ## Betikler ve sıra
 
-Sıra **büyükten küçüğe**: 043, 042, 041, 040, 039, 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
+Sıra **büyükten küçüğe**: 044, 043, 042, 041, 040, 039, 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
 
 | Betik | Geri aldığı migration | Etkisi | Veri kaybı |
 | --- | --- | --- | --- |
+| `044_ai_messages_and_retention.rollback.sql` | `044_ai_messages_and_retention.sql` | `ai_messages_insert_own` 026 şekline döner, `purge_ai_retention()` ve `ai_requests_user_created_idx` düşer, `cleanup_old_ai_calls()` EXECUTE hakları taban haline döner | yok (044 altında `purge_ai_retention()` çalıştırıldıysa boşaltılmış/silinmiş AI kayıtları geri gelmez) |
 | `043_profile_time_zone.rollback.sql` | `043_profile_time_zone.sql` | `profiles.time_zone`, `profiles_time_zone_check`, `set_profile_time_zone`, `local_date_in_zone` ve `week_start_in_zone` düşer; `fn_habit_log_guard`, `track_weekly_xp` ve `get_weekly_leaderboard` 043 öncesi UTC gövdelerine döner | kayıtlı IANA saat dilimi adları silinir (uygulama bir sonraki açılışta yeniden bildirir; XP ve defter değişmez) |
 | `042_numeric_measures_and_willpower.rollback.sql` | `042_numeric_measures_and_willpower.sql` | `habit_logs.value` ve `habits.daily_goal` `integer` tipine döner, `habit_xp_value(uuid, text, integer)` canlı gövdesiyle geri gelir, `habit_xp_value(uuid, text, numeric)` ve `spend_willpower` düşer | **kayıplı**: ondalık `value` ve `daily_goal` değerleri en yakın tam sayıya yuvarlanır (XP ve defter değişmez) |
 | `041_rls_initplan_and_indexes.rollback.sql` | `041_rls_initplan_and_indexes.sql` | 45 politika satır-başı `auth.uid()`/`auth.role()` biçimine döner, 5 kopya politika geri gelir (`weekly_xp` P0 yazma politikası bilerek geri getirilmez), `tasks_parent_task_id_fkey` `ON DELETE` kuralsız haline döner, 26 FK indeksi düşer, `idx_habit_logs_habit_date` geri gelir | yok (yalnız performans/katalog değişikliği) |
@@ -110,7 +111,7 @@ Zorunlu sıra kısıtları şunlardır:
 
 ## Güvenli yeniden çalıştırma
 
-028, 029, 030, 031, 033, 037, 039 ve 041 `IF EXISTS` / `IF NOT EXISTS` ve idempotent politika/kısıt yenilemesi kullanır: ikinci çalıştırma no-op'tur. 032, 034 ve 035
+028, 029, 030, 031, 033, 037, 039, 041 ve 044 `IF EXISTS` / `IF NOT EXISTS` ve idempotent politika/kısıt yenilemesi kullanır: ikinci çalıştırma no-op'tur. 032, 034 ve 035
 aynı kısıtı yeniden kurar. **036 ikinci çalıştırmada reddeder** (`036 is not applied`): defter yoksa 036
 uygulanmamış sayılır ve böyle bir veritabanına `TO PUBLIC` hakları vermemek bilinçli bir güvencedir.
 **038 de ikinci çalıştırmada reddeder** (`038 is not applied`, `fn_habit_log_guard` yoksa): 038'in

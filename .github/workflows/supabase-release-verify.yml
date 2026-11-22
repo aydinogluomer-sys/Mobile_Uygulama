@@ -58,20 +58,11 @@ jobs:
           env -u SUPABASE_PROJECT_REF bash supabase/predeploy_guard.sh
 
       - name: Typecheck & test Edge Functions before checking live parity
+        env:
+          DENO_NO_PACKAGE_JSON: '1'
         run: |
-          deno check \
-            supabase/functions/_shared/aiIdempotency.ts \
-            supabase/functions/_shared/coachContractSchema.ts \
-            supabase/functions/_shared/oauthState.ts \
-            supabase/functions/_shared/redirectAllowlist.ts \
-            supabase/functions/delete-account/index.ts \
-            supabase/functions/generate-routine/index.ts \
-            supabase/functions/google-auth/index.ts \
-            supabase/functions/notion-auth/index.ts \
-            supabase/functions/notion-sync/index.ts \
-            supabase/functions/spotify-auth/index.ts \
-            supabase/functions/subscription-webhook/index.ts
-          deno test supabase/functions/_shared/aiIdempotency_test.ts
+          deno task --config supabase/functions/deno.json check
+          deno task --config supabase/functions/deno.json test
 
       - name: Verify live Edge Function deployment parity against DEPLOYMENT.json
         env:

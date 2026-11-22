@@ -86,8 +86,13 @@ export type ProviderResult =
   /** A well-formed refusal: empty text, truncated output, unparseable JSON. */
   | { ok: false; reason: string; message: string };
 
+export type AdmitResult =
+  | { ok: true }
+  | { ok: false; status: 429; code: string; message: string };
+
 export type IdempotencyDeps = {
   begin(input: { requestId: string; mode: AiMode; fingerprint: string }): Promise<BeginOutcome>;
+  admit?(input: { requestId: string; mode: AiMode }): Promise<AdmitResult>;
   complete(input: { requestId: string; response: Record<string, unknown> }): Promise<void>;
   fail(input: { requestId: string; error: string }): Promise<void>;
   release(input: { requestId: string }): Promise<void>;
@@ -117,6 +122,8 @@ export const IDEMPOTENCY_MISMATCH = 'IDEMPOTENCY_KEY_REUSE_MISMATCH';
 export const REQUEST_IN_PROGRESS = 'REQUEST_IN_PROGRESS';
 export const IDEMPOTENCY_CONSUMED = 'IDEMPOTENCY_KEY_CONSUMED';
 export const INSUFFICIENT_CREDITS = 'INSUFFICIENT_CREDITS';
+export const DAILY_LIMIT = 'DAILY_LIMIT';
+export const TOO_MANY_IN_FLIGHT = 'TOO_MANY_IN_FLIGHT';
 export const REFUND_PENDING = 'REFUND_PENDING';
 export const REFUND_PENDING_NOTE = 'Focus Point iaden güvende; hesabına otomatik olarak işlenecek.';
 
@@ -219,6 +226,14 @@ export async function runIdempotentAiRequest(
   }
 
   // ── claimed: this caller does the work, once ────────────────────────────
+  if (deps.admit) {
+    const gate = await deps.admit({ requestId, mode });
+    if (!gate.ok) {
+      await deps.release({ requestId });
+      return { status: gate.status, body: { error: gate.message, code: gate.code } };
+    }
+  }
+
   const spend = await deps.spend({ requestId, mode, cost });
 
   if (spend.kind === 'unavailable') {
@@ -282,7 +297,9 @@ export async function runIdempotentAiRequest(
     result = await deps.callProvider();
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);
-    return failAndRefund({ reason: 'ai_error', dbError: raw, userMessage: deps.describeError(raw) });
+    console.error('ai provider call failed:', raw);
+    const safeMsg = deps.describeError(raw);
+    return failAndRefund({ reason: 'ai_error', dbError: safeMsg, userMessage: safeMsg });
   }
   if (!result.ok) {
     return failAndRefund({ reason: result.reason, dbError: result.message, userMessage: result.message });

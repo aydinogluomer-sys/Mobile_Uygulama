@@ -24,7 +24,14 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { stripComments } from '../helpers/sourceText';
-import { withEdgeDeadline, EdgeTimeoutError, EDGE_TIMEOUT_MS } from '../../lib/edgeCall';
+import {
+  withEdgeDeadline,
+  EdgeTimeoutError,
+  EDGE_TIMEOUT_MS,
+  STREAM_FIRST_BYTE_MS,
+  STREAM_IDLE_MS,
+  STREAM_TOTAL_MS,
+} from '../../lib/edgeCall';
 
 describe('withEdgeDeadline', () => {
   it('passes the value through when the call returns in time', async () => {
@@ -77,11 +84,15 @@ describe('withEdgeDeadline', () => {
     expect(err.message).toMatch(/sunucu yanıt vermedi/);
   });
 
-  it('the default deadline is long enough for an AI generation', () => {
+  it('the default deadline is long enough for an AI generation and stream deadlines export distinct constants', () => {
     // generate-routine calls Anthropic and returns paragraphs; a tight limit
     // would cut off work that was going to succeed.
     expect(EDGE_TIMEOUT_MS).toBeGreaterThanOrEqual(15_000);
     expect(EDGE_TIMEOUT_MS).toBeLessThanOrEqual(60_000);
+    expect(STREAM_FIRST_BYTE_MS).toBe(20_000);
+    expect(STREAM_IDLE_MS).toBe(20_000);
+    expect(STREAM_TOTAL_MS).toBe(90_000);
+    expect(STREAM_TOTAL_MS).toBeGreaterThan(STREAM_IDLE_MS);
   });
 });
 
@@ -130,14 +141,14 @@ describe('every edge call site goes through it', () => {
   });
 
   it('none is issued without a deadline', () => {
-    // `withEdgeDeadline` wraps the call, so its name appears on the same line
-    // as the call it guards, or the line above when the call is broken across
-    // lines. Both are accepted; a bare call is not.
+    // `withEdgeDeadline` / `withStreamDeadline` wraps the call, so its name
+    // appears on the same line as the call it guards, or the line above when
+    // the call is broken across lines. Both are accepted; a bare call is not.
     const offenders = sites.filter((s) => {
       const f = files.find((x) => x.rel === s.rel)!;
       const lines = f.code.split('\n');
       const window = [lines[s.line - 2] ?? '', lines[s.line - 1] ?? ''].join(' ');
-      return !window.includes('withEdgeDeadline');
+      return !/withEdgeDeadline|withStreamDeadline/.test(window);
     });
     expect(offenders.map((o) => `${o.rel}:${o.line}`)).toEqual([]);
   });

@@ -29,13 +29,11 @@
  */
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
+import { edgeSource } from '../helpers/edgeSource';
 import { stripComments } from '../helpers/sourceText';
 
 const ROOT = join(__dirname, '..', '..');
-const REPO = join(ROOT, '..');
-const FN = join(REPO, 'supabase', 'functions', 'generate-routine', 'index.ts');
-
-const fn = stripComments(readFileSync(FN, 'utf8'));
+const fn = stripComments(edgeSource('generate-routine'));
 
 /** Every `mode: '<x>'` sent to `generate-routine` from app/ + store/ + lib/. */
 function modesSentByClient(): string[] {

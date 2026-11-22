@@ -183,22 +183,14 @@ jobs:
           fi
 
       - name: Typecheck Edge Functions & _shared modules (deno check)
-        run: |
-          deno check \
-            supabase/functions/_shared/aiIdempotency.ts \
-            supabase/functions/_shared/coachContractSchema.ts \
-            supabase/functions/_shared/oauthState.ts \
-            supabase/functions/_shared/redirectAllowlist.ts \
-            supabase/functions/delete-account/index.ts \
-            supabase/functions/generate-routine/index.ts \
-            supabase/functions/google-auth/index.ts \
-            supabase/functions/notion-auth/index.ts \
-            supabase/functions/notion-sync/index.ts \
-            supabase/functions/spotify-auth/index.ts \
-            supabase/functions/subscription-webhook/index.ts
+        env:
+          DENO_NO_PACKAGE_JSON: '1'
+        run: deno task --config supabase/functions/deno.json check
 
       - name: Run Deno 2 Edge unit tests
-        run: deno test supabase/functions/_shared/aiIdempotency_test.ts
+        env:
+          DENO_NO_PACKAGE_JSON: '1'
+        run: deno task --config supabase/functions/deno.json test
 
   db-migrations-verify:
     runs-on: ubuntu-latest
