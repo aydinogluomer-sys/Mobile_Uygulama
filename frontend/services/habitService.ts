@@ -55,13 +55,15 @@ export const purgeHabit = (habit: Pick<Habit, 'id' | 'name'>, reason: string | n
   repoPurge(habit, reason);
 
 /**
- * Activates a habit: checks capacity, writes the status, then charges the
- * willpower — in that order.
+ * Activates a habit: checks capacity, charges willpower atomically, then writes
+ * the habit status — with a compensating refund if the status write fails.
  *
- * The order is the point. Charging first and then failing the write would
- * debit a budget for a habit that never became active; the previous
- * implementation happened to get this right but nothing recorded that it
- * mattered, and the two steps lived in different files.
+ * Why spend comes first now (F14; REP-09 / STO-15): `spend` executes an atomic
+ * server-side `spend_willpower` RPC that enforces `used + cost <= daily_budget`
+ * under row lock. Charging first prevents two devices (or offline writes) from
+ * flipping habits to `active` without ever recording the budget debit; if the
+ * subsequent `habits` update fails, a best-effort `refund` restores the budget
+ * and the caller sees `'write_failed'` ("Kaydedilemedi; bütçen değişmedi").
  *
  * The capacity check runs against the CURRENT active set, which the caller
  * supplies. Passing an incomplete set under-reports load and permits an
@@ -89,26 +91,37 @@ export async function activateHabit(params: {
   });
   if (!verdict.allowed) return { ok: false, verdict };
 
-  const updated = await repoUpdate(params.habit.id, { status: 'active' } as Partial<Habit>);
-  if (!updated.ok) return { ok: false, verdict: { allowed: false, reason: 'no_state' } };
+  const s = params.willpower.state;
+  if (!s) return { ok: false, verdict: { allowed: false, reason: 'no_state' } };
 
-  // Only now is the budget charged: the habit is active, so the spend is
-  // real. A failure here leaves an active habit and an uncharged budget,
-  // which self-corrects on the next refresh; the inverse would not.
-  if (params.willpower.state) await spend(params.willpower.state, params.cost);
+  const spent = await spend(s, params.cost);
+  if (!spent.ok) {
+    return { ok: false, verdict: { allowed: false, reason: spent.reason } };
+  }
+
+  const updated = await repoUpdate(params.habit.id, { status: 'active' });
+  if (!updated.ok) {
+    await refund(spent.data, params.cost);
+    return { ok: false, verdict: { allowed: false, reason: 'write_failed' } };
+  }
+
   return { ok: true, habit: updated.data };
 }
 
-/** Moves a habit back to waiting and returns its willpower. */
+/** Moves a habit back to waiting and returns its willpower (conservative on refund failure). */
 export async function pauseHabit(params: {
   habitId: string;
   cost: number;
   willpower: { state: WillpowerStateRow | null };
-}): Promise<{ ok: true; habit: Habit } | { ok: false; error: string }> {
-  const updated = await repoUpdate(params.habitId, { status: 'waiting' } as Partial<Habit>);
+}): Promise<{ ok: true; habit: Habit; refunded: boolean } | { ok: false; error: string }> {
+  const updated = await repoUpdate(params.habitId, { status: 'waiting' });
   if (!updated.ok) return { ok: false, error: updated.error };
-  if (params.willpower.state) await refund(params.willpower.state, params.cost);
-  return { ok: true, habit: updated.data };
+  let refunded = true;
+  if (params.willpower.state) {
+    const ref = await refund(params.willpower.state, params.cost);
+    refunded = ref.ok;
+  }
+  return { ok: true, habit: updated.data, refunded };
 }
 
 /**

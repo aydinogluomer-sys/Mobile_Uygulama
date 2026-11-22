@@ -69,7 +69,10 @@ const ACTIVATION_MESSAGES: Record<string, string> = {
   stale: 'Bütçe bilgisi eski; yenilenince tekrar dene.',
   over_budget: 'Bugünkü irade bütçesi doldu; yarın ya da bir alışkanlığı beklemeye alınca olur.',
   over_capacity: 'Aynı anda taşıyabileceğin yük doldu; önce birini beklemeye al.',
+  write_failed: 'Kaydedilemedi; bütçen değişmedi. Bağlantını kontrol edip tekrar dene.',
 };
+
+const inFlight = new Set<string>();
 
 type HabitStore = {
   habits: Habit[];
@@ -374,44 +377,56 @@ export const useHabitStore = create<HabitStore>((rawSet, get) => {
   // willpowerStore with each screen deciding whether to supply the capacity
   // input at all.
   activateHabit: async (id, willpowerCost, opts) => {
+    if (inFlight.has(id)) return { ok: false, error: 'İşlem sürüyor.' };
     const wp = useWillpowerStore.getState();
     const { habits, loading } = get();
     const target = habits.find((h) => h.id === id);
     if (!target) return { ok: false, error: 'Alışkanlık bulunamadı.' };
-    const res = await activateHabitOp({
-      habit: target,
-      cost: willpowerCost,
-      willpower: { state: wp.state, stale: wp.isStale() },
-      activeHabits: habits.filter((h) => h.status === 'active'),
-      // A half-loaded habit list under-reports load, so the strict rule is
-      // only used once the set is known to be complete.
-      useCapacityRule: !loading,
-      override: opts?.override === true,
-    });
-    if (!res.ok) {
-      const reason = res.verdict.allowed ? undefined : res.verdict.reason;
-      return {
-        ok: false,
-        reason,
-        error: (reason ? ACTIVATION_MESSAGES[reason] : undefined) ?? 'Alışkanlık etkinleştirilemedi.',
-      };
+    inFlight.add(id);
+    try {
+      const res = await activateHabitOp({
+        habit: target,
+        cost: willpowerCost,
+        willpower: { state: wp.state, stale: wp.isStale() },
+        activeHabits: habits.filter((h) => h.status === 'active'),
+        // A half-loaded habit list under-reports load, so the strict rule is
+        // only used once the set is known to be complete.
+        useCapacityRule: !loading,
+        override: opts?.override === true,
+      });
+      if (!res.ok) {
+        const reason = res.verdict.allowed ? undefined : res.verdict.reason;
+        return {
+          ok: false,
+          reason,
+          error: (reason ? ACTIVATION_MESSAGES[reason] : undefined) ?? 'Alışkanlık etkinleştirilemedi.',
+        };
+      }
+      touchHabits();
+      set((state) => ({ habits: state.habits.map((h) => (h.id === id ? res.habit : h)) }));
+      await wp.fetchToday();
+      return { ok: true };
+    } finally {
+      inFlight.delete(id);
     }
-    touchHabits();
-    set((state) => ({ habits: state.habits.map((h) => (h.id === id ? res.habit : h)) }));
-    await wp.fetchToday();
-    return { ok: true };
   },
 
   pauseHabit: async (id, willpowerCost) => {
-    const wp = useWillpowerStore.getState();
-    const res = await pauseHabitOp({
-      habitId: id, cost: willpowerCost, willpower: { state: wp.state },
-    });
-    if (!res.ok) return { ok: false, error: res.error };
-    touchHabits();
-    set((state) => ({ habits: state.habits.map((h) => (h.id === id ? res.habit : h)) }));
-    await wp.fetchToday();
-    return { ok: true };
+    if (inFlight.has(id)) return { ok: false, error: 'İşlem sürüyor.' };
+    inFlight.add(id);
+    try {
+      const wp = useWillpowerStore.getState();
+      const res = await pauseHabitOp({
+        habitId: id, cost: willpowerCost, willpower: { state: wp.state },
+      });
+      if (!res.ok) return { ok: false, error: res.error };
+      touchHabits();
+      set((state) => ({ habits: state.habits.map((h) => (h.id === id ? res.habit : h)) }));
+      await wp.fetchToday();
+      return { ok: true };
+    } finally {
+      inFlight.delete(id);
+    }
   },
   };
 });
@@ -424,4 +439,4 @@ useHabitStore.subscribe(() => {
 });
 
 // F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
-registerAccountScoped({ name: 'habit', store: useHabitStore });
+registerAccountScoped({ name: 'habit', store: useHabitStore, onReset: () => { inFlight.clear(); } });

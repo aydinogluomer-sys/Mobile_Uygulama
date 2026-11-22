@@ -42,6 +42,14 @@ JOIN public.credit_transactions t
 WHERE a.status = 'failed'
   AND NOT EXISTS (SELECT 1 FROM public.credit_transactions t2
                   WHERE t2.user_id = a.user_id AND t2.request_id = a.request_id || ':refund');
+
+-- 0.6 042 öncesi (F14): habit_logs veya habits tablolarına bağımlı görünüm var mı? (beklenen: 0 satır)
+select distinct c.relname as dependent_relation, c.relkind
+  from pg_depend d
+  join pg_rewrite r on r.oid = d.objid
+  join pg_class c on c.oid = r.ev_class
+ where d.refobjid in ('public.habit_logs'::regclass, 'public.habits'::regclass)
+   and c.relname not in ('habit_logs', 'habits');
 ```
 
 ## 1. Uygulama sırası
@@ -62,6 +70,7 @@ WHERE a.status = 'failed'
 | 039 | `039_focus_point_hardening.sql` | Focus Point kredi bütünlüğü (F07): aynı (konuşma, `request_id`) için tek kullanıcı mesajı (`ai_messages_user_request_uniq`, önce yinelenen kopyalar silinir), iadesi yazılmamış başarısız AI isteklerine `refund_focus_points` ile tek seferlik iade, eski `spend_focus_points(integer, text)` istemcilere kapanır (036 ile aynı). İstemci sürümünden SONRA (§5). | yok | §2.12 | `supabase/rollbacks/039_focus_point_hardening.rollback.sql` |
 | 040 | `040_privilege_hygiene.sql` | Ayrıcalık, `search_path` ve hassas sütun hijyeni + F07-R3 (F09): 20 SECURITY DEFINER fonksiyonda `search_path` sabitlenir, anon yazma/`MAINTAIN` ve küresel `PUBLIC EXECUTE` kapanır, liderlik ve sıra RPC'leri oturum zorunlu ve 1..100 sınırlı olur, `profiles` kullanıcı adı şekil kısıtı (`NOT VALID`, bozuk adlar `archive_040` yedeğiyle onarılır), 028–031'in 10 tablosuna dar yetki, OAuth belirteç tablolarında istemci gizli sütun erişimi kapanır, `add_xp` ve abonelik yenilemesi satır kilidi alır, `ai_request_reconcile_stale` mod duyarlı ileti yazar, iptal edilen F13 tablolarında yazma kapanır ve 6 tablo `archive_f13` şemasına taşınır. Uygulamadan önce §3'teki üç ön sorguyu çalıştırın; 028–039 (özellikle 036, 038, 039) uygulanmış olmalı; sonra `select * from public.xp_drift();` 0 satır. | yok (Notion yeniden açılmadan önce `notion-sync` F45'te service-role'e taşınmalı) | §2.13 | `supabase/rollbacks/040_privilege_hygiene.rollback.sql` — en başta (039/038/036'dan önce) geri alınır; **güvenlik açıklarını yeniden açar** |
 | 041 | `041_rls_initplan_and_indexes.sql` | RLS performansı: 45 politika `(SELECT auth.uid())` biçimine geçer, 6 kopya politika düşer, `tasks` alt görev FK'si ON DELETE CASCADE olur, 26 yabancı anahtar indeksi eklenir, yinelenen `idx_habit_logs_habit_date` düşer; veri ve yetki değişmez | yok | §2.14 | `supabase/rollbacks/041_rls_initplan_and_indexes.rollback.sql` |
+| 042 | `042_numeric_measures_and_willpower.sql` | Ölçülebilir ondalık değerler ve atomik irade bütçesi (F14): `habit_logs.value` ve `habits.daily_goal` `numeric(12,2)` olur, `habit_xp_value(uuid, text, numeric)` istemciye kapalı (`SECURITY INVOKER`) kurulur, `spend_willpower(date, numeric, integer, boolean)` atomik harcama/iade RPC'si eklenir | yok — **ondalık kabul eden istemci sürümünden ÖNCE uygulanır** (§5) | §2.15 | `supabase/rollbacks/042_numeric_measures_and_willpower.rollback.sql` — kayıplı (kesirler tam sayıya yuvarlanır; önce yedek) |
 
 ### Geri alma nasıl çalıştırılır
 
@@ -70,7 +79,7 @@ tek kullanımlık Postgres 17'de sınanır: ileri uygula, sondan başa geri al, 
 yeniden ileri uygula. **Canlıda hiçbiri çalıştırılmadı; yalnız sahip çalıştırır (OD-02).**
 
 1. Önce yedek (S1), sonra `select * from public.xp_drift();` (0 satır beklenir).
-2. Sıra **büyükten küçüğe**: 041 (F10), 040 (F09), 039 (F07), 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 041 en başta, ardından 040,
+2. Sıra **büyükten küçüğe**: 042 (F14), 041 (F10), 040 (F09), 039 (F07), 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 042 en başta, ardından 041 ve 040,
    036'dan önce de 038 geri alınır (036 betiği, `fn_habit_log_guard` varken reddeder).
 3. Her betik için **aynı oturumda** önce onay, sonra dosya. Onay değeri betiğin kendi numarası değilse betik `P0001` ile durur
    ve hiçbir şey değiştirmez:
@@ -214,6 +223,20 @@ select count(*) as yeni_indeks from pg_indexes where schemaname = 'public' and i
 
 -- 2.14-f xp_drift hâlâ boş (beklenen: 0 satır)
 select * from public.xp_drift();
+
+-- 2.15 (042) sütun tipleri numeric(12,2), iki fonksiyon SECURITY INVOKER, ACL ve xp_drift kontrolü
+select table_name, column_name, data_type, numeric_precision, numeric_scale
+  from information_schema.columns
+ where table_schema = 'public'
+   and ((table_name = 'habit_logs' and column_name = 'value') or (table_name = 'habits' and column_name = 'daily_goal'));
+select p.oid::regprocedure as signature, p.prosecdef as security_definer
+  from pg_proc p
+ where p.pronamespace = 'public'::regnamespace and p.proname in ('habit_xp_value', 'spend_willpower')
+ order by 1;
+select has_function_privilege('authenticated', 'public.spend_willpower(date, numeric, integer, boolean)', 'execute') as authenticated_can_spend,
+       has_function_privilege('anon', 'public.spend_willpower(date, numeric, integer, boolean)', 'execute') as anon_can_spend,
+       has_function_privilege('authenticated', 'public.habit_xp_value(uuid, text, numeric)', 'execute') as authenticated_can_score;
+select * from public.xp_drift();
 ```
 
 ## 3. BLOCKED / ÖN SORGU — tanımı repoda olmayan ya da 040 öncesi denetlenecek nesneler (yalnız okuma sorguları)
@@ -304,7 +327,7 @@ where h.tracking_type in ('numeric','duration')
 | 2 | 033 uygulandı + §2.6 | `LOG_TIMEZONE_ENABLED = true` |
 | 3 | 032 → 034 → 035 uygulandı + §2.8 `has_lighten_week = true` **ve** `generate-routine` edge function deploy edildi (S3) | `COACH_ACTIONS_V2_ENABLED = true` |
 
-039'u uygulamadan ÖNCE istemci sürümü mağazalarda olmalı; sonra 039; Edge deploy (S3) sıradan bağımsızdır. Her adımdan sonra `select * from public.xp_drift();` 0 satır.
+039'u uygulamadan ÖNCE istemci sürümü mağazalarda olmalı; sonra 039; Edge deploy (S3) sıradan bağımsızdır. **042 (F14) ise tersine ondalık girdiyi kabul eden istemci sürümünden ÖNCE uygulanır** (böylece ondalık `daily_goal` ve `habit_logs.value` yazımları veritabanında reddedilmez ve `spend_willpower` atomik RPC hazır olur); hemen ardından `select * from public.xp_drift();` 0 satır olmalıdır. Her adımdan sonra `select * from public.xp_drift();` 0 satır.
 
 Mevcut beş kapı (`SPOTIFY_OAUTH_ENABLED`, `NOTION_INTEGRATION_ENABLED`, `GOOGLE_CALENDAR_INTEGRATION_ENABLED`,
 `PAID_SUBSCRIPTIONS_ENABLED`, `PUBLIC_SITE_URLS_LIVE`) bu migration'larla **ilgisizdir** ve kapalı kalır.
@@ -360,6 +383,8 @@ canlıyı denetlemez. Canlı doğrulama §2'dir.
 | `07_focus_point_039.sql` | 039 (F07): aynı `(conversation_id, request_id)` için ikinci kullanıcı mesajı reddedilir (`23505`), asistan yanıtı ve başka konuşma serbesttir, çapraz kiracı mesaj okuma/yazma ve eski/servis FP RPC'leri istemciye kapalıdır, `xp_drift()` boş | 8 PASS |
 | `08_privilege_hygiene_040.sql` | 040 (F09 + F07-R3): anon yazma/`MAINTAIN` ve `PUBLIC EXECUTE` kapalı, 20 `SECURITY DEFINER` `search_path` sabit, liderlik ve sıra RPC'leri oturum zorunlu + 1..100 sınırlı + yalnız kendi sırası, `profiles` dar sütun INSERT + kullanıcı adı şekil kısıtı + `handle_new_user` temizliği, 028–031'in 10 tablosu dar yetki ve RLS, OAuth belirteç tabloları gizli sütun yalıtımı, 17 F13 tablosu yazma yasağı ve 6 tablonun `archive_f13`'e taşınması, `add_xp` ve abonelik yenileme satır kilidi, `ai_request_reconcile_stale` mod duyarlı ileti (`routine` vs diğer modlar), `get_today_bootstrap` salt-okunur (`STABLE`), `xp_drift()` boş | 37 PASS |
 | `09_rls_initplan_041.sql` | 041 (F10): `public` ve `archive_f13` şemalarında çıplak `auth.uid()`/`auth.role()` politikası yok (`InitPlan` plan şekli ve negatif kontroller dahil), çakışan kopya politikalar (`tasks`, `challenges`, `habit_templates`, `weekly_xp`, `user_challenges`) kalktı, `anon` katalog okuması kapalı, 26 FK öncü indeksi var, yinelenen `idx_habit_logs_habit_date` düştü, `tasks_parent_task_id_fkey` `ON DELETE CASCADE` ve bölücü düz yükü çalışıyor, `xp_drift()` boş | ~69 PASS |
+| `10_numeric_and_willpower_042.sql` | 042 (F14): `habit_logs.value` ve `habits.daily_goal` `numeric(12,2)` (yuvarlama ve aralık reddi dahil), `habit_xp_value(uuid, text, numeric)` puanlaması ve istemci erişim yasağı, `get_today_bootstrap` JSON sayı taşıması, `spend_willpower` harcama/birikim/aşım reddi/clamp/iade tabanı/girdi sınırları/kiracı yalıtımı/`anon` ve kimliksiz çağrı reddi, `xp_drift()` boş | 26 PASS |
+| `10_willpower_concurrency_042.sh` | 042 (F14): 8 eşzamanlı oturumla `spend_willpower` sert harcama yarışı (tek kazanan, 7 red, `used = 8`) ve `clamp` yarışı (`used = 15`, 0 hata, `active_count = 8`) | 2 PASS |
 
 **`supabase/tests/expected_failures.txt` ne demek.** Bilinen açıkların test adı listesidir; her satır bulgu
 kimliğini taşır ve başlıkta kapatan faz yazar. Koşucu iki yönlü karşılaştırır: listede olmayan bir test kırmızıysa

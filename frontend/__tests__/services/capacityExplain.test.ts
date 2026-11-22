@@ -88,7 +88,8 @@ describe('the activation service honours the override end to end', () => {
     }));
     jest.doMock('../../repositories/willpowerRepository', () => ({
       ...jest.requireActual('../../repositories/willpowerRepository'),
-      updateWillpowerState: jest.fn(async () => ({ ok: true, data: null })),
+      spendWillpower: jest.fn(async () => ({ ok: true, data: wp({ used: 3, active_count: 1 }) })),
+      updateWillpowerState: jest.fn(async () => ({ ok: true, data: wp({ used: 3, active_count: 1 }) })),
     }));
     const { activateHabit } = jest.requireActual('../../services/habitService') as typeof import('../../services/habitService');
     const base = { habit: heavy('new'), cost: 3, willpower: { state: wp(), stale: false }, activeHabits: crowd, useCapacityRule: true };

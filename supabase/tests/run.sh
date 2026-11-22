@@ -59,7 +59,7 @@ if [ "$fingerprint" != "t" ]; then
   exit 2
 fi
 
-MIN_RESULTS=140  # sanity floor: a run that emits almost nothing is a broken harness, not a pass (01..09 emit ~180)
+MIN_RESULTS=168  # sanity floor: a run that emits almost nothing is a broken harness, not a pass (01..10 emit ~208)
 
 work="$(mktemp -d)"
 results="$work/results"; : >"$results"
@@ -146,6 +146,15 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   PERFORM aderyth_test.res(p_name, false, format('control failed %s: %s', SQLSTATE, SQLERRM));
 END $f$;
+
+CREATE FUNCTION aderyth_test.expect_error(p_name text, p_sql text, p_sqlstate text)
+RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+  EXECUTE p_sql;
+  PERFORM aderyth_test.res(p_name, false, 'statement ran; SQLSTATE ' || p_sqlstate || ' expected');
+EXCEPTION WHEN OTHERS THEN
+  PERFORM aderyth_test.res(p_name, SQLSTATE = p_sqlstate, format('got %s: %s', SQLSTATE, SQLERRM));
+END $f$;
 SQL
 then
   echo "HARNESS ERROR: could not install the aderyth_test helper schema (is the database reachable and bootstrapped?)" >&2
@@ -224,7 +233,7 @@ fi
 declared="$work/declared"
 {
   for f in "$here"/[0-9][0-9]_*.sql; do tr '\r\n' '  ' <"$f"; echo; done \
-    | grep -oE "(res|expect_denied|expect_allowed|expect_no_effect)\([[:space:]]*'T[0-9]{2}[A-Za-z0-9_]*'" \
+    | grep -oE "(res|expect_denied|expect_allowed|expect_no_effect|expect_error)\([[:space:]]*'T[0-9]{2}[A-Za-z0-9_]*'" \
     | sed -E "s/.*'(T[0-9]{2}[A-Za-z0-9_]*)'$/\1/" || true
   grep -hoE '^[[:space:]]*(report|info)[[:space:]]+T[0-9]{2}[A-Za-z0-9_]*' /dev/null "$here"/[0-9][0-9]_*.sh \
     | sed -E 's/.*[[:space:]](T[0-9]{2}[A-Za-z0-9_]*)$/\1/' || true

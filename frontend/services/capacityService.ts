@@ -1,26 +1,47 @@
 /**
  * Willpower capacity — the rule that decides whether a habit may be active.
- * (plan §8 service layer, §10 capacity engine)
+ * (plan §8 service layer, §10 capacity engine; F14 REP-09, STO-15, INT-05)
  *
  * ## Why this is a service and not "just the store"
  *
  * Activation is a cross-aggregate decision: it reads today's willpower row,
  * the set of currently-active habits, and the load of the habit being
- * activated, and only then does it write to two different tables. That is
- * domain orchestration by definition, and it was previously split across
- * `willpowerStore.canActivate` (the rule), `habitStore.activateHabit` (the
- * sequencing) and three screens (which supplied the capacity input, or
- * forgot to).
+ * activated, and only then does it write to two different tables.
  *
- * The store keeps today's row for rendering. The DECISION lives here.
+ * The store keeps today's row for rendering. The DECISION and the atomic
+ * `spend_willpower` contract live here.
  */
-import { canActivate as capacityCanActivate, dailyLoad, habitsInRangeOn, habitLoadPoints, CAPACITY_CEILING_DEFAULT, type HabitLoadInput } from '../lib/capacity';
+import {
+  canActivate as capacityCanActivate,
+  dailyLoad,
+  habitsInRangeOn,
+  habitLoadPoints,
+  CAPACITY_CEILING_DEFAULT,
+  type HabitLoadInput,
+} from '../lib/capacity';
 import { isPausedOn, type PauseInterval } from '../lib/habitPauses';
 import {
   fetchOrCreateWillpowerState,
+  spendWillpower,
   updateWillpowerState,
   type WillpowerStateRow,
 } from '../repositories/willpowerRepository';
+
+export const WILLPOWER_CONTRACT = {
+  resetsDaily: true,
+  chargedOn: ['activate', 'install'],
+  refundedOn: ['pause-same-day'],
+  copy: {
+    overBudgetHow:
+      'Yarın bütçe yenilenir. Bugün etkinleştirdiğin bir alışkanlığı beklemeye alırsan harcanan irade geri döner.',
+    writeFailedWhy: 'Kaydedilemedi; bütçen değişmedi.',
+    writeFailedHow: 'Bağlantını kontrol edip tekrar dene.',
+  },
+} as const;
+
+export type WillpowerSpendOutcome =
+  | { ok: true; data: WillpowerStateRow }
+  | { ok: false; error: string; reason: 'over_budget' | 'write_failed' };
 
 /**
  * Exactly what `lib/capacity` needs, no more. Deliberately NOT `Habit`: the
@@ -43,29 +64,25 @@ export type CapacityInput = {
 function currentLoadOf(input: CapacityInput): number {
   const asOf = input.asOf ?? new Date();
   return dailyLoad({
-    habits: habitsInRangeOn(input.activeHabits ?? [], asOf)
-      .filter((h) => !isPausedOn(h as { pause_intervals?: readonly PauseInterval[] }, asOf)),
+    habits: habitsInRangeOn(input.activeHabits ?? [], asOf).filter(
+      (h) => !isPausedOn(h as { pause_intervals?: readonly PauseInterval[] }, asOf),
+    ),
   }).normalised;
 }
 
 export type ActivationVerdict =
   | { allowed: true }
-  | { allowed: false; reason: 'no_state' | 'stale' | 'over_budget' | 'over_capacity' };
+  | {
+      allowed: false;
+      reason: 'no_state' | 'stale' | 'over_budget' | 'over_capacity' | 'write_failed';
+    };
 
 /**
  * May a habit costing `cost` be activated right now?
  *
- * Two independent ceilings, checked in order, because they fail for different
- * reasons and the caller wants to know which:
- *
+ * Two independent ceilings, checked in order:
  *  1. the daily willpower BUDGET — a hard spend limit for the day;
  *  2. the concurrent LOAD ceiling — how much can be carried at once.
- *
- * Without `capacityInput` the second falls back to the legacy fixed-slot
- * rule. That fallback exists because a half-loaded habit list would
- * UNDER-report load and wrongly permit an activation; callers that cannot
- * yet supply the real active set get the conservative rule rather than a
- * confident wrong answer.
  */
 export function evaluateActivation(params: {
   state: WillpowerStateRow | null;
@@ -125,29 +142,51 @@ export function explainActivation(params: {
   const verdict = evaluateActivation(params);
   const ceiling = params.capacityInput?.ceiling ?? CAPACITY_CEILING_DEFAULT;
   const currentLoad = params.capacityInput ? Math.round(currentLoadOf(params.capacityInput)) : null;
-  const incoming = params.capacityInput ? Math.round(habitLoadPoints(params.capacityInput.habit)) : null;
+  const incoming = params.capacityInput
+    ? Math.round(habitLoadPoints(params.capacityInput.habit))
+    : null;
   const base = { verdict, ceiling, currentLoad, incoming };
   if (verdict.allowed) {
-    return { ...base, canOverride: false, why: 'Bugünkü kapasiten bunu taşıyabilir.', how: "Etkinleştir'e dokun." };
+    return {
+      ...base,
+      canOverride: false,
+      why: 'Bugünkü kapasiten bunu taşıyabilir.',
+      how: "Etkinleştir'e dokun.",
+    };
   }
   const s = params.state;
   switch (verdict.reason) {
     case 'stale':
     case 'no_state':
-      return { ...base, canOverride: false, why: 'Bugünün irade verisi henüz yüklenmedi.', how: 'Sayfayı yenileyip tekrar dene.' };
+      return {
+        ...base,
+        canOverride: false,
+        why: 'Bugünün irade verisi henüz yüklenmedi.',
+        how: 'Sayfayı yenileyip tekrar dene.',
+      };
     case 'over_budget':
       return {
-        ...base, canOverride: false,
+        ...base,
+        canOverride: false,
         why: `Bugünkü irade bütçesi yetmiyor: ${s!.used} + ${params.cost} > ${s!.daily_budget}.`,
-        how: 'Yarın bütçe yenilenir; ya da aktif bir alışkanlığı beklemeye alarak irade geri kazan.',
+        how: WILLPOWER_CONTRACT.copy.overBudgetHow,
       };
     case 'over_capacity':
       return {
-        ...base, canOverride: true,
-        why: currentLoad !== null
-          ? `Bugünkü yük ${currentLoad}/100; bu alışkanlık +${incoming} ekler, önerilen sınır ${ceiling}.`
-          : `Aktif alışkanlık sınırı dolu (${s!.active_count}/${s!.focus_capacity}).`,
+        ...base,
+        canOverride: true,
+        why:
+          currentLoad !== null
+            ? `Bugünkü yük ${currentLoad}/100; bu alışkanlık +${incoming} ekler, önerilen sınır ${ceiling}.`
+            : `Aktif alışkanlık sınırı dolu (${s!.active_count}/${s!.focus_capacity}).`,
         how: 'Aktif bir alışkanlığı beklemeye al — ya da istersen yine de etkinleştir.',
+      };
+    case 'write_failed':
+      return {
+        ...base,
+        canOverride: false,
+        why: WILLPOWER_CONTRACT.copy.writeFailedWhy,
+        how: WILLPOWER_CONTRACT.copy.writeFailedHow,
       };
   }
 }
@@ -156,18 +195,68 @@ export async function loadToday(date: string) {
   return fetchOrCreateWillpowerState(date);
 }
 
-/** Charges `cost` against today's budget and takes one capacity slot. */
-export async function spend(state: WillpowerStateRow, cost: number) {
-  return updateWillpowerState(state.state_date, {
-    used: state.used + cost,
-    active_count: state.active_count + 1,
+/** Charges `cost` atomically via `spend_willpower` (with pre-042 fallback). */
+export async function spend(
+  state: WillpowerStateRow,
+  cost: number,
+  options?: { activations?: number; clamp?: boolean },
+): Promise<WillpowerSpendOutcome> {
+  const rpc = await spendWillpower({
+    day: state.state_date,
+    amount: cost,
+    activeDelta: options?.activations,
+    clamp: options?.clamp,
   });
+  if (rpc.ok) return { ok: true, data: rpc.data };
+
+  if (rpc.kind === 'missing_rpc') {
+    const slots = options?.activations ?? 1;
+    if (!options?.clamp && cost > 0 && state.used + cost > state.daily_budget) {
+      return { ok: false, reason: 'over_budget', error: WILLPOWER_CONTRACT.copy.overBudgetHow };
+    }
+    const nextUsed =
+      options?.clamp && cost > 0
+        ? Math.max(state.used, Math.min(state.daily_budget, state.used + cost))
+        : Math.max(0, state.used + cost);
+    const legacy = await updateWillpowerState(state.state_date, {
+      used: nextUsed,
+      active_count: Math.max(0, state.active_count + slots),
+    });
+    return legacy.ok
+      ? { ok: true, data: legacy.data }
+      : { ok: false, reason: 'write_failed', error: legacy.error };
+  }
+
+  if (rpc.kind === 'budget_exceeded') {
+    return { ok: false, reason: 'over_budget', error: rpc.error };
+  }
+  return { ok: false, reason: 'write_failed', error: rpc.error };
 }
 
-/** Returns `cost` and releases one slot, never going below zero. */
-export async function refund(state: WillpowerStateRow, cost: number) {
-  return updateWillpowerState(state.state_date, {
-    used: Math.max(0, state.used - cost),
-    active_count: Math.max(0, state.active_count - 1),
+/** Returns `cost` and releases slots atomically, never going below zero. */
+export async function refund(
+  state: WillpowerStateRow,
+  cost: number,
+  options?: { activations?: number },
+): Promise<WillpowerSpendOutcome> {
+  const deltaSlots = -(options?.activations ?? 1);
+  const absCost = Math.abs(cost);
+  const rpc = await spendWillpower({
+    day: state.state_date,
+    amount: -absCost,
+    activeDelta: deltaSlots,
   });
+  if (rpc.ok) return { ok: true, data: rpc.data };
+
+  if (rpc.kind === 'missing_rpc') {
+    const legacy = await updateWillpowerState(state.state_date, {
+      used: Math.max(0, state.used - absCost),
+      active_count: Math.max(0, state.active_count + deltaSlots),
+    });
+    return legacy.ok
+      ? { ok: true, data: legacy.data }
+      : { ok: false, reason: 'write_failed', error: legacy.error };
+  }
+
+  return { ok: false, reason: 'write_failed', error: rpc.error };
 }

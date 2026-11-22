@@ -2435,6 +2435,11 @@ export type Database = {
         Args: { p_user_id: string; p_amount: number; p_reason: string; p_request_id: string };
         Returns: { ok: boolean; balance: number; replayed: boolean }[];
       };
+      // @source migration:042
+      spend_willpower: {
+        Args: { p_day: string; p_amount: number; p_active_delta?: number | null; p_clamp?: boolean };
+        Returns: Database['public']['Tables']['willpower_state']['Row'];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

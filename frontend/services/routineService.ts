@@ -18,6 +18,7 @@
  */
 import { isNoAnswer, retryWhileInProgress, type InvokeOutcome, type RetryOutcome } from '../lib/aiAttempt';
 import { extractInvokeError } from '../lib/aiInvoke';
+import { todayLocal } from '../lib/date';
 import { computeWillpowerCost } from '../lib/triage';
 import type { FrequencyConfig, Habit } from '../lib/supabase';
 import {
@@ -25,6 +26,7 @@ import {
   type InstallHabitRow,
 } from '../repositories/habitRepository';
 import { fetchRoutines as repoFetchRoutines } from '../repositories/routineRepository';
+import { loadToday, spend } from './capacityService';
 import { invokeEdgeFunction } from './edgeFunctions';
 
 /** The user's saved routines. Bounded in the repository. */
@@ -106,15 +108,17 @@ export function buildInstallRows(
 }
 
 export type InstallResult =
-  | { ok: true; habits: Habit[] }
+  | { ok: true; habits: Habit[]; budgetRecorded: boolean }
   | { ok: false; error: string };
 
 /**
- * Persists a validated, capacity-evaluated proposal as habits.
+ * Persists a validated, capacity-evaluated proposal as habits and records the
+ * active rows' willpower cost against today's budget (`clamp: true`).
  *
  * `installId` is optional and passed straight through. Callers that do not
  * supply one -- the Routine Pack picker and the AI builder -- produce rows
- * with `install_id = null`, exactly as before.
+ * with `install_id = null`, exactly as before. A failure to record the budget
+ * never fails the confirmed install (`budgetRecorded: false`).
  */
 export async function installProposal(
   habits: ProposalHabit[],
@@ -123,7 +127,29 @@ export async function installProposal(
 ): Promise<InstallResult> {
   const rows = buildInstallRows(habits, toActivate);
   const res = await insertRoutineHabits(rows, installId);
-  return res.ok ? { ok: true, habits: res.data } : { ok: false, error: res.error };
+  if (!res.ok) return { ok: false, error: res.error };
+
+  const active = res.data.filter((h) => h.status === 'active');
+  if (active.length === 0) {
+    return { ok: true, habits: res.data, budgetRecorded: true };
+  }
+
+  const totalCost = active.reduce((sum, h) => sum + (h.willpower_cost ?? 0), 0);
+  let budgetRecorded = false;
+  try {
+    const today = await loadToday(todayLocal());
+    if (today.ok) {
+      const spent = await spend(today.data, totalCost, {
+        activations: active.length,
+        clamp: true,
+      });
+      budgetRecorded = spent.ok;
+    }
+  } catch {
+    budgetRecorded = false;
+  }
+
+  return { ok: true, habits: res.data, budgetRecorded };
 }
 
 export type RoutineGenerationReply =

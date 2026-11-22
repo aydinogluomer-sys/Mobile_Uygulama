@@ -150,8 +150,9 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
     if (get().isStale()) return null;
     const s = get().state;
     if (!s) return null;
-    if (s.daily_budget === 0) return 100;
-    return Math.round(((s.daily_budget - s.used) / s.daily_budget) * 100);
+    if (!Number.isFinite(s.daily_budget) || !Number.isFinite(s.used)) return null;
+    if (s.daily_budget <= 0) return 100;
+    return Math.max(0, Math.min(100, Math.round(((s.daily_budget - s.used) / s.daily_budget) * 100)));
   },
 
   spend: async (cost) => {

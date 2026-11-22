@@ -127,12 +127,13 @@ describe('the service, not the store, now applies the capacity rule', () => {
     expect(service).toContain('params.useCapacityRule');
   });
 
-  it('willpower is charged AFTER the status write, never before', () => {
-    // Charging first and then failing the write debits a budget for a habit
-    // that never activated.
-    const writeAt = service.indexOf("status: 'active'");
+  it('willpower is charged atomically BEFORE the status write, with a compensating refund on failure (F14)', () => {
     const spendAt = service.indexOf('await spend(');
-    expect(spendAt).toBeGreaterThan(writeAt);
+    const writeAt = service.indexOf("status: 'active'");
+    const refundAt = service.indexOf('await refund(');
+    expect(spendAt).toBeGreaterThan(-1);
+    expect(writeAt).toBeGreaterThan(spendAt);
+    expect(refundAt).toBeGreaterThan(writeAt);
   });
 });
 

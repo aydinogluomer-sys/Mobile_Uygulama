@@ -7,7 +7,7 @@ Postgres 17 hizmetinde sınanmak üzere bağlanmıştır; ilk gerçek CI koşusu
 
 ## Amaç
 
-`supabase/migrations/028` ile `041` arasındaki on dört migration ileri yönde yazılmıştır ve canlıda
+`supabase/migrations/028` ile `042` arasındaki on beş migration ileri yönde yazılmıştır ve canlıda
 uygulanmamıştır. Sahip birini bir Supabase branch'inde ya da canlıda uygulayıp bir sorun görürse,
 elinde sınanmış bir geri dönüş yolu olmalıdır. Her migration için bir geri alma betiği, CI'da
 "ileri uygula, sondan başa geri al, kataloğu baştakiyle karşılaştır, yeniden ileri uygula" döngüsüyle
@@ -77,10 +77,11 @@ seri açıklarını yeniden açar) yedek ister
 
 ## Betikler ve sıra
 
-Sıra **büyükten küçüğe**: 041, 040, 039, 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
+Sıra **büyükten küçüğe**: 042, 041, 040, 039, 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
 
 | Betik | Geri aldığı migration | Etkisi | Veri kaybı |
 | --- | --- | --- | --- |
+| `042_numeric_measures_and_willpower.rollback.sql` | `042_numeric_measures_and_willpower.sql` | `habit_logs.value` ve `habits.daily_goal` `integer` tipine döner, `habit_xp_value(uuid, text, integer)` canlı gövdesiyle geri gelir, `habit_xp_value(uuid, text, numeric)` ve `spend_willpower` düşer | **kayıplı**: ondalık `value` ve `daily_goal` değerleri en yakın tam sayıya yuvarlanır (XP ve defter değişmez) |
 | `041_rls_initplan_and_indexes.rollback.sql` | `041_rls_initplan_and_indexes.sql` | 45 politika satır-başı `auth.uid()`/`auth.role()` biçimine döner, 5 kopya politika geri gelir (`weekly_xp` P0 yazma politikası bilerek geri getirilmez), `tasks_parent_task_id_fkey` `ON DELETE` kuralsız haline döner, 26 FK indeksi düşer, `idx_habit_logs_habit_date` geri gelir | yok (yalnız performans/katalog değişikliği) |
 | `040_privilege_hygiene.rollback.sql` | `040_privilege_hygiene.sql` | 6 F13 tablosu `archive_f13`'ten `public`'e döner, düşürülen zombi tetikleyiciler (`archive_040.dropped_triggers`), 8 fonksiyon gövdesi (F07-R3 dahil), onarılmış kullanıcı adları (`archive_040.profiles_username_backup`), 20 `search_path` sabitlemesi ve tüm `public` tablo/sütun/fonksiyon/varsayılan ACL'leri `archive_040.acl_snapshot`'tan 039 sonrası duruma döner | yok; boş `archive_040` ve `archive_f13` şemaları yerinde kalır; **güvenlik açıklarını yeniden açar** |
 | `039_focus_point_hardening.rollback.sql` | `039_focus_point_hardening.sql` | `ai_messages_user_request_uniq` düşer | yok; 039'un sildiği yinelenen kullanıcı mesajları ve yazdığı iadeler geri alınmaz, `spend_focus_points(integer, text)` REVOKE'u 036'ya da aittir (gerekçe betiğin başında) |

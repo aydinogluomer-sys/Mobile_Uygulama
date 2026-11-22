@@ -209,7 +209,7 @@ const habitsFixtureTrackingTypes = (text: string): string[] => {
 const declaredResultNames = (sources: string[]): string[] => {
   const names: string[] = [];
   for (const src of sources) {
-    for (const m of src.matchAll(/\b(?:res|expect_denied|expect_allowed|expect_no_effect)\(\s*'(T\d\d[A-Za-z0-9_]*)'/g)) names.push(m[1]);
+    for (const m of src.matchAll(/\b(?:res|expect_denied|expect_allowed|expect_no_effect|expect_error)\(\s*'(T\d\d[A-Za-z0-9_]*)'/g)) names.push(m[1]);
     for (const m of src.matchAll(/^[ \t]*(?:report|info)[ \t]+(T\d\d[A-Za-z0-9_]*)\b/gm)) names.push(m[1]);
     for (const m of src.matchAll(/RESULT\|(T\d\d[A-Za-z0-9_]*)\|/g)) names.push(m[1]);
   }
@@ -310,6 +310,7 @@ const release = read('.github/workflows/supabase-release-verify.yml');
 const live = read('supabase/live_schema.sql');
 const runSh = read(`${TESTS_DIR}/run.sh`);
 const concurrencySh = read(`${TESTS_DIR}/05_concurrency_spend.sh`);
+const willpowerConcurrencySh = read(`${TESTS_DIR}/10_willpower_concurrency_042.sh`);
 const hygieneSql = read(`${TESTS_DIR}/02_security_definer_hygiene.sql`);
 const expectedText = read(`${TESTS_DIR}/expected_failures.txt`);
 const guard = read('supabase/predeploy_guard.sh');
@@ -589,8 +590,12 @@ describe('the runners refuse anything but a local database', () => {
     return -1;
   };
 
-  it('run.sh and 05 carry the PGHOST case with a REFUSED branch, before any psql call', () => {
-    for (const [name, text] of [['run.sh', runSh], ['05_concurrency_spend.sh', concurrencySh]] as const) {
+  it('run.sh, 05 and 10 carry the PGHOST case with a REFUSED branch, before any psql call', () => {
+    for (const [name, text] of [
+      ['run.sh', runSh],
+      ['05_concurrency_spend.sh', concurrencySh],
+      ['10_willpower_concurrency_042.sh', willpowerConcurrencySh],
+    ] as const) {
       expect({ name, refuses: REFUSE.test(text) }).toEqual({ name, refuses: true });
       const call = firstPsqlCall(text);
       // `echo "REFUSED:` is the branch itself; the bare word also sits in the header comment
@@ -612,7 +617,7 @@ describe('the runners refuse anything but a local database', () => {
     expect({ bash: BASH, stdout: (probe.stdout ?? '').trim(), status: probe.status }).toEqual({ bash: BASH, stdout: 'probe', status: 0 });
   });
 
-  const scripts = [`${TESTS_DIR}/run.sh`, `${TESTS_DIR}/05_concurrency_spend.sh`];
+  const scripts = [`${TESTS_DIR}/run.sh`, `${TESTS_DIR}/05_concurrency_spend.sh`, `${TESTS_DIR}/10_willpower_concurrency_042.sh`];
   const refusals: [string, Record<string, string | undefined>][] = [
     ['PGHOST unset', {}],
     ['a remote PGHOST', { PGHOST: 'db.example.test' }],
@@ -633,10 +638,11 @@ describe('the runners refuse anything but a local database', () => {
 describe('the runners also refuse a local database that does not look like the throwaway CI one', () => {
   const fingerprintOf = (text: string): string => /^FINGERPRINT_SQL="(.*)"$/m.exec(text)?.[1] ?? '';
 
-  it('run.sh and 05 carry the same read-only catalog fingerprint', () => {
+  it('run.sh, 05 and 10 carry the same read-only catalog fingerprint', () => {
     const sql = fingerprintOf(runSh);
     expect(sql).toMatch(/^SELECT /);
     expect(fingerprintOf(concurrencySh)).toBe(sql);
+    expect(fingerprintOf(willpowerConcurrencySh)).toBe(sql);
     // GoTrue's auth.users has encrypted_password, the CI stub does not; a hosted project's role is no superuser
     expect(sql).toContain("a.attname = 'encrypted_password'");
     expect(sql).toContain("current_setting('is_superuser') = 'on'");
@@ -649,7 +655,9 @@ describe('the runners also refuse a local database that does not look like the t
     expect(marker(runSh, '\nFINGERPRINT_SQL=')).toBeLessThan(marker(runSh, 'CREATE SCHEMA aderyth_test'));
     expect(marker(concurrencySh, '\nFINGERPRINT_SQL=')).toBeLessThan(marker(concurrencySh, '\ntrap cleanup EXIT'));
     expect(marker(concurrencySh, '\nFINGERPRINT_SQL=')).toBeLessThan(marker(concurrencySh, 'INSERT INTO auth.users'));
-    for (const text of [runSh, concurrencySh]) {
+    expect(marker(willpowerConcurrencySh, '\nFINGERPRINT_SQL=')).toBeLessThan(marker(willpowerConcurrencySh, '\ntrap cleanup EXIT'));
+    expect(marker(willpowerConcurrencySh, '\nFINGERPRINT_SQL=')).toBeLessThan(marker(willpowerConcurrencySh, 'INSERT INTO auth.users'));
+    for (const text of [runSh, concurrencySh, willpowerConcurrencySh]) {
       expect(text).toContain('[ "$fingerprint" != "t" ]');
       expect(text).toContain('REFUSED: the target does not look like the throwaway CI database');
     }
@@ -724,7 +732,7 @@ describe('run.sh: its own fail paths, proven by running it against a fake psql',
         'RESULT|T91d_wrapped|PASS|ok',
         'RESULT|T02a_anon_execute.all|PASS|none',
         'RESULT|T02b_search_path.loose/0|FAIL|search_path is not pinned',
-        ...filler(140),
+        ...filler(168),
       ],
     },
     expected: 'T02b_search_path.loose/0   # TST-01\n',
@@ -774,7 +782,7 @@ describe('run.sh: its own fail paths, proven by running it against a fake psql',
     callsStart?: string[];
   };
   const scenarios: Scenario[] = [
-    { label: 'the failing set equals the known-red list (exit 0); the fingerprint is the first psql call', change: (c) => c, status: 0, includes: ['OK: the failing set equals expected_failures.txt', 'SUMMARY: results=147'], callsStart: ['c', 'stdin', `f:${SQL}`] },
+    { label: 'the failing set equals the known-red list (exit 0); the fingerprint is the first psql call', change: (c) => c, status: 0, includes: ['OK: the failing set equals expected_failures.txt', 'SUMMARY: results=175'], callsStart: ['c', 'stdin', `f:${SQL}`] },
     { label: 'a red test that is not listed is UNEXPECTED (exit 1)', change: (c) => canned(c, setVerdict('T91b_denied', 'FAIL')), status: 1, includes: ['UNEXPECTED FAILURES', 'T91b_denied'] },
     { label: 'a listed test that turned green is STALE (exit 1)', change: (c) => canned(c, setVerdict('T02b_search_path.loose/0', 'PASS')), status: 1, includes: ['STALE expected_failures.txt', 'T02b_search_path.loose/0'] },
     { label: 'an EMPTY known-red list with nothing red passes: the state F09 leaves behind (exit 0)', change: (c) => ({ ...canned(c, setVerdict('T02b_search_path.loose/0', 'PASS')), expected: '# nothing is known-red any more\n' }), status: 0, includes: ['expected_failures=0'] },
@@ -852,7 +860,7 @@ describe('test names: unique, complete and reconciled with the known-red list', 
   });
 
   it('the helpers behind the probes exist, and T04e pins the error text of the function\'s own guard', () => {
-    for (const fn of ['res', 'expect_denied', 'expect_no_effect', 'expect_allowed']) {
+    for (const fn of ['res', 'expect_denied', 'expect_no_effect', 'expect_allowed', 'expect_error']) {
       expect(runSh).toContain(`CREATE FUNCTION aderyth_test.${fn}(`);
     }
     expect(runSh).toContain('p_message text DEFAULT NULL');
@@ -860,12 +868,12 @@ describe('test names: unique, complete and reconciled with the known-red list', 
     expect(t04e).toContain("'authentication required'");
   });
 
-  it('every test file is NN_<name>.sql|sh with a unique number, and run.sh globs two digits', () => {
+  it('every test file is NN_<name>.sql|sh with at most one .sql and one .sh per number, and run.sh globs two digits', () => {
     const files = numberedTests();
     expect(files.length).toBeGreaterThanOrEqual(5);
     expect(files.filter((f) => !/^\d\d_[a-z0-9_]+\.(sql|sh)$/.test(f))).toEqual([]);
-    const numbers = files.map((f) => f.slice(0, 2));
-    expect(numbers.filter((n, i) => numbers.indexOf(n) !== i)).toEqual([]);
+    const keys = files.map((f) => `${f.slice(0, 2)}.${f.split('.').pop()}`);
+    expect(keys.filter((k, i) => keys.indexOf(k) !== i)).toEqual([]);
     // a one-digit glob would silently skip 10_*.. which the plan reserves for later phases
     expect(runSh).toContain('"$here"/[0-9][0-9]_*');
     expect(runSh).not.toMatch(/0\[0-9\]_\*/);
