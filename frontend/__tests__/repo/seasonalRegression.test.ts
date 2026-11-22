@@ -288,3 +288,25 @@ describe('W1 regression guard -- no HTML entity ever lands inside a JS string/te
     expect(count).toBeGreaterThan(50);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 7 -- F25 (PRF-07): SeasonalMotion must never receive a bare `isVisible` prop
+// ---------------------------------------------------------------------------
+
+const BARE_IS_VISIBLE_PROP = /<SeasonalMotion\b[^>]*\bisVisible(?:\s*(?:\/>|\n)|\s+(?!=))/;
+
+describe('F25 (PRF-07) -- SeasonalMotion never receives a bare boolean-shorthand isVisible prop', () => {
+  it('every <SeasonalMotion> site passes an explicit isVisible={expr} expression', () => {
+    const offenders = ['app', 'components']
+      .flatMap((d) => walk(join(ROOT, d)))
+      .map(rel)
+      .filter((p) => BARE_IS_VISIBLE_PROP.test(read(p)));
+    expect(offenders).toEqual([]);
+  });
+
+  it('proves BARE_IS_VISIBLE_PROP catches shorthand isVisible and accepts isVisible={expr}', () => {
+    expect(BARE_IS_VISIBLE_PROP.test('<SeasonalMotion month={m} intensity="subtle" reduceMotion={r} isVisible />')).toBe(true);
+    expect(BARE_IS_VISIBLE_PROP.test('<SeasonalMotion\n  month={m}\n  isVisible\n/>')).toBe(true);
+    expect(BARE_IS_VISIBLE_PROP.test('<SeasonalMotion month={m} intensity="subtle" reduceMotion={r} isVisible={active} />')).toBe(false);
+  });
+});

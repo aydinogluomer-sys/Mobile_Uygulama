@@ -30,6 +30,7 @@ const DEVICE_LEVEL_STORES = ['themeStore.ts', 'drawerStore.ts', 'commandStore.ts
  * until someone decides: does it belong to a user (then the key gets the uid), or to the device?
  */
 const KNOWN_UNSCOPED_KEYS: Record<string, string> = {
+  app_theme_mode: 'device display preference',
   app_theme_dark: 'device display preference',
   app_seasonal_motion: 'device display preference',
   app_accent: 'device display preference',

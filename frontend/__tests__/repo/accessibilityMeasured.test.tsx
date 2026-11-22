@@ -19,7 +19,12 @@ import { colors, contrastRatio, onColor, ACCENTS } from '../../lib/tokens';
 import Button, { MIN_TOUCH } from '../../components/ui/Button';
 import Chip from '../../components/ui/Chip';
 
-const BGS = { bg: colors.bg, surface: colors.surface, surfaceAlt: colors.surfaceAlt };
+const BGS = {
+  bg: colors.bg,
+  surface: colors.surface,
+  surfaceAlt: colors.surfaceAlt,
+  surfaceHover: colors.surfaceHover,
+};
 
 describe('contrast (WCAG 2.1)', () => {
   it('body and secondary text reach AA 4.5:1 on every background', () => {
