@@ -69,10 +69,27 @@ export default function IntegrationDetailModal({
 
   function handleTestTrigger() {
     haptic.medium();
-    Alert.alert(
-      '🚀 Test Olayı Gönderildi',
-      `"${item?.title}" servisine test olayı iletildi: { event: "habit.test_ping", timestamp: "${new Date().toLocaleTimeString('tr-TR')}" }`
-    );
+    const trimmed = webhookUrl.trim();
+    let validHttps = false;
+    if (trimmed.length > 0) {
+      try {
+        const parsed = new URL(trimmed);
+        validHttps = parsed.protocol === 'https:' && parsed.hostname.length > 0;
+      } catch {
+        validHttps = false;
+      }
+    }
+    if (validHttps) {
+      Alert.alert(
+        'Adres kontrol edildi',
+        'Adres geçerli görünüyor. Bu sürümde ayarların yalnız bu cihazda saklanır; dış servise test olayı gönderilmez.',
+      );
+    } else {
+      Alert.alert(
+        'Adres geçerli görünmüyor',
+        'https ile başlayan tam bir adres gir.',
+      );
+    }
   }
 
   async function handleDisconnect() {
@@ -187,10 +204,10 @@ export default function IntegrationDetailModal({
                 style={s.secondaryBtn}
                 onPress={handleTestTrigger}
                 accessibilityRole="button"
-                accessibilityLabel="Test Olayı Gönder"
+                accessibilityLabel="Adresi kontrol et"
               >
-                <Ionicons name="paper-plane-outline" size={16} color={colors.text} />
-                <Text style={s.secondaryBtnText}>Test Olayı Tetikle</Text>
+                <Ionicons name="checkmark-circle-outline" size={16} color={colors.text} />
+                <Text style={s.secondaryBtnText}>Adresi kontrol et</Text>
               </TouchableOpacity>
 
               {isConfigured && (

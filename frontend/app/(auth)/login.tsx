@@ -53,7 +53,7 @@ const decorativeA11y =
 const POSTER_PILLARS = [
   { num: '01', title: 'Sakin Akış Mimarisi', sub: 'Gürültüsüz, tek odaklı günlük ritim.' },
   { num: '02', title: 'Kintsugi Şefkatli Telafi', sub: 'Kırılan seriyi suçluluksuz onaran sistem.' },
-  { num: '03', title: 'Tam Veri Egemenliği', sub: 'Sıfır reklam, sıfır izleme SDK’sı.' },
+  { num: '03', title: 'Tam Veri Egemenliği', sub: 'Reklam yok. Verilerini dışa aktarabilir, hesabını silebilirsin.' },
 ] as const;
 
 export default function LoginScreen() {

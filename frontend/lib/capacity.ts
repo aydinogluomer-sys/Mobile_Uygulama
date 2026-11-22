@@ -444,6 +444,7 @@ export const CAPACITY_CEILING_DEFAULT = 85;
 /**
  * Max-capacity replacement for `willpowerStore.canActivate`'s fixed
  * `active_count < focus_capacity` rule.
+ * Keşfet atomik ekleme de bu kuralı kullanır (`exploreCatalog.buildAtomicHabitInsert`).
  *
  * NOTE: `willpowerStore.ts` is NOT modified by this change (out of scope
  * for the domain layer per the phase-1 task split). This function is the

@@ -2,10 +2,11 @@ import {
   ROUTINE_PACKS,
   packLoad,
   type RoutinePack,
+  type RoutinePackHabit,
   type RoutinePackKey,
 } from './routinePacks';
 import { computeWillpowerCost } from './triage';
-import { habitLoadPoints, habitsInRangeOn } from './capacity';
+import { canActivate as fitsCapacity, habitLoadPoints, habitsInRangeOn } from './capacity';
 import type { FrequencyConfig, Habit } from './supabase';
 
 export type ExploreCategory =
@@ -15,7 +16,7 @@ export type ExploreCategory =
   | 'sleep'
   | 'health'
   | 'mind'
-  | 'finance';
+  | 'order';
 
 const EXPLORE_HUE: Record<ExploreCategory, string> = {
   all: '#8b5cf6',
@@ -24,8 +25,11 @@ const EXPLORE_HUE: Record<ExploreCategory, string> = {
   sleep: '#6366f1',
   health: '#10b981',
   mind: '#ec4899',
-  finance: '#06b6d4',
+  order: '#06b6d4',
 };
+
+// OD-06 (2026-11-21): sahip onayıyla sabitlendi.
+export const EXPLORE_ORDER_LABEL = 'Ev & Evrak Düzeni';
 
 export const EXPLORE_CATEGORIES: {
   key: ExploreCategory;
@@ -39,7 +43,7 @@ export const EXPLORE_CATEGORIES: {
   { key: 'sleep', label: 'Uyku Hijyeni', icon: 'moon-outline', color: EXPLORE_HUE.sleep },
   { key: 'health', label: 'Beden & Sağlık', icon: 'fitness-outline', color: EXPLORE_HUE.health },
   { key: 'mind', label: 'Zihin & Sakinlik', icon: 'leaf-outline', color: EXPLORE_HUE.mind },
-  { key: 'finance', label: 'Finans & Düzen', icon: 'wallet-outline', color: EXPLORE_HUE.finance },
+  { key: 'order', label: EXPLORE_ORDER_LABEL, icon: 'file-tray-full-outline', color: EXPLORE_HUE.order },
 ];
 
 export type ExploreCollection = {
@@ -70,7 +74,7 @@ const COLLECTION_META: Record<
     color: EXPLORE_HUE.morning,
     timeWindowLabel: '06:30 – 10:00',
     scientificSummary:
-      'Uyandıktan sonraki ilk 60 dakikada hidratasyon, doğal gün ışığı ve mikro hareket ile kortizol uyanış tepkisini (CAR) dengeler; güne reaktif değil kontrollü başlamanızı sağlar.',
+      'Uyandıktan sonraki ilk saatte bir bardak su, gün ışığı ve kısa hareketle güne telaşsız, kendi ritminde başlamana yardım edebilir.',
   },
   'deep-work': {
     badge: 'ODAK PROTOKOLÜ',
@@ -78,7 +82,7 @@ const COLLECTION_META: Record<
     color: EXPLORE_HUE.focus,
     timeWindowLabel: '09:30 – 16:30',
     scientificSummary:
-      'Bilişsel bağlam değiştirme (context-switching) maliyetini sıfırlamak için tekil öncelik belirleme ve bildirimsiz 50 dakikalık ultradian odak blokları kurar.',
+      'Önceliklerini sadeleştirip bildirimleri sessize alarak dikkat dağılmasını azaltmana ve tek bir işe odaklanmana destek olabilir.',
   },
   'sleep-reset': {
     badge: 'GECE & UYKU HİJYENİ',
@@ -86,7 +90,7 @@ const COLLECTION_META: Record<
     color: EXPLORE_HUE.sleep,
     timeWindowLabel: '21:00 – 23:30',
     scientificSummary:
-      'Mavi ışık maruziyetini keserek melatonin baskılanmasını önler, parasempatik sinir sistemini devreye sokar ve derin uyku (REM/NREM) mimarisini korur.',
+      'Akşam saatlerinde ekran ve parlak ışığı azaltıp sakin bir kapanış kurmak, zihninin yavaşlamasını ve uykuya geçişi kolaylaştırabilir.',
   },
   'fitness-foundation': {
     badge: 'FİZİKSEL DAYANIKLILIK',
@@ -94,7 +98,7 @@ const COLLECTION_META: Record<
     color: EXPLORE_HUE.health,
     timeWindowLabel: 'Gün İçi & Akşam',
     scientificSummary:
-      'Direnç antrenmanı, eklem mobilitesi, günlük 8000 adım ve makro/su takibini birleştirerek metabolik ve kas-iskelet sağlığını sürdürülebilir bir rutine bağlar.',
+      'Düzenli hareket, esneme, adım ve su alışkanlıklarını bir araya getirerek gün boyu enerjini dengeli tutmana yardımcı olabilir.',
   },
   'everyday-foundations': {
     badge: 'DÜŞÜK SÜRTÜNMELİ ÇAPALAR',
@@ -102,7 +106,7 @@ const COLLECTION_META: Record<
     color: EXPLORE_HUE.mind,
     timeWindowLabel: 'Tüm Gün · Mikro',
     scientificSummary:
-      'Yorgun veya yoğun günlerde bile seriyi kırmadan sürdürülebilen, her biri 3–10 dakikalık düşük irade maliyetli atomik alışkanlık çapaları sunar.',
+      'Yorgun veya yoğun günlerde bile zorlanmadan sürdürülebilen, her biri 3–10 dakikalık düşük yüklü küçük günlük çapalar sunar.',
   },
 };
 
@@ -143,7 +147,7 @@ export type ExploreAtomicHabit = {
   daypartLabel: string;
   difficulty: 1 | 3 | 5;
   estimated_minutes: number;
-  tracking_type: 'boolean' | 'numeric';
+  tracking_type: RoutinePackHabit['tracking_type'];
   unit?: string | null;
   daily_goal?: number | null;
   target_direction?: 'at_least' | 'at_most' | null;
@@ -153,294 +157,219 @@ export type ExploreAtomicHabit = {
   packKey?: RoutinePackKey;
 };
 
+type ExploreAtomicExtra = {
+  id: string;
+  color: string;
+  category: Exclude<ExploreCategory, 'all'>;
+  daypartLabel: string;
+  life_area: string;
+  whyItWorks: string;
+};
+
+function fromPack(
+  packKey: RoutinePackKey,
+  habitName: string,
+  extra: ExploreAtomicExtra,
+): ExploreAtomicHabit {
+  const pack = ROUTINE_PACKS.find((p) => p.key === packKey);
+  const habit = pack?.habits.find((h) => h.name === habitName);
+  if (!pack || !habit) {
+    throw new Error(`exploreCatalog: "${habitName}" alışkanlığı "${packKey}" paketinde bulunamadı.`);
+  }
+  return {
+    id: extra.id,
+    name: habit.name,
+    icon: habit.icon,
+    color: extra.color,
+    category: extra.category,
+    daypartLabel: extra.daypartLabel,
+    difficulty: habit.difficulty,
+    estimated_minutes: habit.estimated_minutes,
+    tracking_type: habit.tracking_type,
+    ...(habit.unit !== undefined ? { unit: habit.unit } : {}),
+    ...(habit.daily_goal !== undefined ? { daily_goal: habit.daily_goal } : {}),
+    ...(habit.target_direction !== undefined ? { target_direction: habit.target_direction } : {}),
+    frequency_config: habit.frequency_config,
+    life_area: extra.life_area,
+    whyItWorks: extra.whyItWorks,
+    packKey,
+  };
+}
+
 export const EXPLORE_ATOMIC_HABITS: ExploreAtomicHabit[] = [
   // SABAH ENERJİSİ
-  {
+  fromPack('morning-reset', 'Bir bardak su iç', {
     id: 'atomic-water-morning',
-    name: 'Bir bardak su iç',
-    icon: 'water-outline',
     color: EXPLORE_HUE.morning,
     category: 'morning',
     daypartLabel: 'Sabah · Uyanınca',
-    difficulty: 1,
-    estimated_minutes: 2,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Sağlık',
-    whyItWorks: 'Gece boyunca oluşan hafif dehidrasyonu giderir ve metabolik uyanışı hızlandırır.',
-    packKey: 'morning-reset',
-  },
-  {
+    whyItWorks:
+      'Gece boyunca kuruyan vücuduna güne başlamadan önce küçük bir iyilik yapmak, güne daha hafif başlamana yardım edebilir.',
+  }),
+  fromPack('morning-reset', 'Yatağını topla', {
     id: 'atomic-make-bed',
-    name: 'Yatağını topla',
-    icon: 'bed-outline',
     color: EXPLORE_HUE.morning,
     category: 'morning',
     daypartLabel: 'Sabah · 3 dk',
-    difficulty: 1,
-    estimated_minutes: 3,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Yaşam Düzeni',
-    whyItWorks: 'Günün ilk "tamamlanmış görev" dopaminini üreterek zincirleme düzen hissini başlatır.',
-    packKey: 'morning-reset',
-  },
-  {
+    whyItWorks:
+      'Günün ilk küçük adımını birkaç dakikada tamamlamak, odada sade bir düzen hissi kurmana yardımcı olabilir.',
+  }),
+  fromPack('morning-reset', 'Gün ışığında kısa yürüyüş', {
     id: 'atomic-sunlight-walk',
-    name: 'Gün ışığında kısa yürüyüş',
-    icon: 'sunny-outline',
     color: EXPLORE_HUE.morning,
     category: 'morning',
     daypartLabel: 'Sabah · 15 dk',
-    difficulty: 3,
-    estimated_minutes: 15,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Sağlık',
-    whyItWorks: 'Sabah doğal ışık retinadaki ipRGC hücrelerini uyararak sirkadiyen saati ve akşam melatonin salgısını kilitler.',
-    packKey: 'morning-reset',
-  },
+    whyItWorks:
+      'Sabah açık havada ve doğal ışıkta birkaç dakika yürümek, uyku mahmurluğunu dağıtıp güne uyanık başlamana destek olabilir.',
+  }),
 
   // ODAK & ÜRETKENLİK
-  {
+  fromPack('morning-reset', 'Günün 3 önceliğini yaz', {
     id: 'atomic-top3-priorities',
-    name: 'Günün 3 önceliğini yaz',
-    icon: 'journal-outline',
     color: EXPLORE_HUE.focus,
     category: 'focus',
     daypartLabel: 'Sabah · Planlama',
-    difficulty: 3,
-    estimated_minutes: 10,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Kariyer & Odak',
-    whyItWorks: 'Karar yorgunluğunu (decision fatigue) önler; çalışma belleğini gün boyu sadece 3 ana çıktıya odaklar.',
-    packKey: 'morning-reset',
-  },
-  {
+    whyItWorks:
+      'Gün boyu her şeye yetişmeye çalışmak yerine yalnızca 3 net öncelik seçmek, karar yorgunluğunu hafifletebilir.',
+  }),
+  fromPack('deep-work', 'Kesintisiz derin çalışma bloğu', {
     id: 'atomic-deep-work-50',
-    name: 'Kesintisiz derin çalışma bloğu',
-    icon: 'hourglass-outline',
     color: EXPLORE_HUE.focus,
     category: 'focus',
     daypartLabel: 'Gün İçi · 50 dk',
-    difficulty: 5,
-    estimated_minutes: 50,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Kariyer & Odak',
-    whyItWorks: 'Dikkat kalıntısını (attention residue) temizleyerek en zor bilişsel işi yüksek akış (flow) halinde bitirmenizi sağlar.',
-    packKey: 'deep-work',
-  },
-  {
+    whyItWorks:
+      'Tek bir işe kesintisiz zaman ayırmak, yarım kalan işlerin yarattığı dağınıklığı azaltıp ilerleme hissini güçlendirebilir.',
+  }),
+  fromPack('deep-work', 'Bildirimsiz odak seansı', {
     id: 'atomic-no-notif-sprint',
-    name: 'Bildirimsiz odak seansı',
-    icon: 'eye-off-outline',
     color: EXPLORE_HUE.focus,
     category: 'focus',
     daypartLabel: 'Gün İçi · 25 dk',
-    difficulty: 5,
-    estimated_minutes: 25,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Kariyer & Odak',
-    whyItWorks: 'Telefonu görüş alanından çıkarmak bile bilişsel kapasiteyi %10–15 oranında geri kazandırır.',
-    packKey: 'deep-work',
-  },
+    whyItWorks:
+      'Telefonu ve bildirimleri kısa süreliğine görüş alanından uzaklaştırmak, bölünmeden çalışmanı kolaylaştırabilir.',
+  }),
 
   // UYKU HİJYENİ
-  {
+  fromPack('sleep-reset', 'Yatmadan 1 saat önce ekran yok', {
     id: 'atomic-no-screen-bedtime',
-    name: 'Yatmadan 1 saat önce ekran yok',
-    icon: 'phone-portrait-outline',
     color: EXPLORE_HUE.sleep,
     category: 'sleep',
     daypartLabel: 'Gece · Uyku Öncesi',
-    difficulty: 3,
-    estimated_minutes: 25,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Uyku',
-    whyItWorks: 'Kısa dalga boylu mavi ışığı ve sosyal medya dopamin döngüsünü keserek uykuya geçiş süresini kısaltır.',
-    packKey: 'sleep-reset',
-  },
-  {
+    whyItWorks:
+      'Uyumadan önce parlak ekranlara ve akışlara ara vermek, zihninin gece temposuna daha sakin geçmesine yardım edebilir.',
+  }),
+  fromPack('sleep-reset', 'Öğleden sonra kafeini kes', {
     id: 'atomic-caffeine-cutoff',
-    name: 'Öğleden sonra kafeini kes',
-    icon: 'cafe-outline',
     color: EXPLORE_HUE.sleep,
     category: 'sleep',
     daypartLabel: '14:00 Sonrası',
-    difficulty: 1,
-    estimated_minutes: 5,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Uyku',
-    whyItWorks: 'Kafeinin yarılanma ömrü 5–7 saattir; öğleden sonra kesmek gece derin uyku (SWS) kalitesini korur.',
-    packKey: 'sleep-reset',
-  },
-  {
+    whyItWorks:
+      'Kafeinin etkisi saatlerce sürebildiği için öğleden sonra ara vermek, akşam daha rahat gevşemene destek olabilir.',
+  }),
+  fromPack('sleep-reset', 'Işıkları kıs', {
     id: 'atomic-dim-lights',
-    name: 'Işıkları kıs',
-    icon: 'bulb-outline',
     color: EXPLORE_HUE.sleep,
     category: 'sleep',
     daypartLabel: 'Gece · 5 dk',
-    difficulty: 1,
-    estimated_minutes: 5,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Uyku',
-    whyItWorks: 'Tavan aydınlatması yerine sıcak/loş ışık kullanmak epifiz bezine biyolojik gece sinyalini verir.',
-    packKey: 'sleep-reset',
-  },
+    whyItWorks:
+      'Akşam tavan ışıkları yerine daha loş ve sıcak bir aydınlatmaya geçmek, günün kapandığını hissetmeni kolaylaştırabilir.',
+  }),
 
   // BEDEN & SAĞLIK
-  {
+  fromPack('morning-reset', '10 dakika esneme / mobilite', {
     id: 'atomic-mobility-10',
-    name: '10 dakika esneme / mobilite',
-    icon: 'body-outline',
     color: EXPLORE_HUE.health,
     category: 'health',
     daypartLabel: 'Sabah / Akşam · 12 dk',
-    difficulty: 3,
-    estimated_minutes: 12,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Sağlık',
-    whyItWorks: 'Masa başı duruş kaynaklı omurga ve kalça gerginliğini çözer, eklem kan dolaşımını artırır.',
-    packKey: 'morning-reset',
-  },
-  {
+    whyItWorks:
+      'Masa başında biriken sırt, boyun ve kalça gerginliğini nazik hareketlerle yumuşatmana yardımcı olabilir.',
+  }),
+  fromPack('fitness-foundation', 'Adım hedefi', {
     id: 'atomic-steps-8000',
-    name: 'Adım hedefi',
-    icon: 'footsteps-outline',
     color: EXPLORE_HUE.health,
     category: 'health',
     daypartLabel: 'Tüm Gün · 8000 adım',
-    difficulty: 3,
-    estimated_minutes: 8,
-    tracking_type: 'numeric',
-    unit: 'adım',
-    daily_goal: 8000,
-    target_direction: 'at_least',
-    frequency_config: { kind: 'daily' },
     life_area: 'Sağlık',
-    whyItWorks: 'Günlük 8000 adım, kardiyovasküler sağlık ve insülin duyarlılığı için klinik olarak en verimli eşiktir.',
-    packKey: 'fitness-foundation',
-  },
-  {
+    whyItWorks:
+      'Gün içine yayılan düzenli yürüyüş adımları, uzun süre hareketsiz kalmayı kırıp enerjini tazeleyebilir.',
+  }),
+  fromPack('fitness-foundation', 'Su hedefi', {
     id: 'atomic-water-8-glasses',
-    name: 'Su hedefi',
-    icon: 'water-outline',
     color: EXPLORE_HUE.health,
     category: 'health',
     daypartLabel: 'Tüm Gün · 8 bardak',
-    difficulty: 1,
-    estimated_minutes: 5,
-    tracking_type: 'numeric',
-    unit: 'bardak',
-    daily_goal: 8,
-    target_direction: 'at_least',
-    frequency_config: { kind: 'daily' },
     life_area: 'Sağlık',
-    whyItWorks: '%2’lik su kaybı bile odaklanmayı ve kısa süreli belleği düşürür; ölçülebilir su takibi gün boyu zindelik sağlar.',
-    packKey: 'fitness-foundation',
-  },
+    whyItWorks:
+      'Gün boyu su içmeyi küçük ve görünür bir hedefle takip etmek, yorgunluk ve dalgınlık hissini azaltmaya yardım edebilir.',
+  }),
 
   // ZİHİN & SAKİNLİK
-  {
+  fromPack('everyday-foundations', '5 dakika nefes egzersizi', {
     id: 'atomic-breath-5min',
-    name: '5 dakika nefes egzersizi',
-    icon: 'leaf-outline',
     color: EXPLORE_HUE.mind,
     category: 'mind',
     daypartLabel: 'Sabah / Stres Anı · 5 dk',
-    difficulty: 1,
-    estimated_minutes: 5,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Zihin',
-    whyItWorks: 'Uzun nefes verme (4-4-6) vagus sinirini uyararak kalp atış hızını ve akut stresi 90 saniye içinde düşürür.',
-    packKey: 'everyday-foundations',
-  },
-  {
+    whyItWorks:
+      'Yavaş ve uzun nefes alışverişleriyle birkaç dakika durmak, yoğun anlarda bedensel gerginliği yatıştırmana destek olabilir.',
+  }),
+  fromPack('everyday-foundations', '10 dakika okuma', {
     id: 'atomic-reading-10min',
-    name: '10 dakika okuma',
-    icon: 'book-outline',
     color: EXPLORE_HUE.mind,
     category: 'mind',
     daypartLabel: 'Akşam · 10 dk',
-    difficulty: 1,
-    estimated_minutes: 10,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Gelişim',
-    whyItWorks: 'Günde sadece 10 dakika okuma, yılda ~15 kitap bitirmenizi sağlar ve zihni hızlı ekran uyarımından yavaş düşünmeye geçirir.',
-    packKey: 'everyday-foundations',
-  },
-  {
+    whyItWorks:
+      'Günde yalnızca 10 dakika okumak, hızlı ekran temposundan çıkıp düşüncelerini yavaşlatmana yardımcı olabilir.',
+  }),
+  fromPack('sleep-reset', 'Uyumadan önce şükran notu', {
     id: 'atomic-gratitude-note',
-    name: 'Uyumadan önce şükran notu',
-    icon: 'heart-outline',
     color: EXPLORE_HUE.mind,
     category: 'mind',
     daypartLabel: 'Gece · 5 dk',
-    difficulty: 3,
-    estimated_minutes: 5,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Zihin',
-    whyItWorks: 'Beynin olumsuzluk önyargısını (negativity bias) dengeler; gece ruminasyonunu azaltarak uykuya geçişi rahatlatır.',
-    packKey: 'sleep-reset',
-  },
+    whyItWorks:
+      'Günü kapatırken iyi giden küçük bir ayrıntıyı not etmek, zihnini sakinleştirip uykuya hazırlayabilir.',
+  }),
 
-  // FİNANS & DÜZEN
-  {
-    id: 'atomic-expense-log',
-    name: 'Günlük harcamaları kaydet',
-    icon: 'wallet-outline',
-    color: EXPLORE_HUE.finance,
-    category: 'finance',
+  // EV & EVRAK DÜZENİ
+  fromPack('everyday-foundations', 'Evrakları tek yere topla', {
+    id: 'atomic-paper-pile',
+    color: EXPLORE_HUE.order,
+    category: 'order',
     daypartLabel: 'Akşam · 5 dk',
-    difficulty: 1,
-    estimated_minutes: 5,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
-    life_area: 'Finans',
-    whyItWorks: 'Harcamayı yapıldığı gün kaydetmek dürtüsel alışveriş farkındalığını artırır ve ay sonu sürprizlerini önler.',
-    packKey: 'everyday-foundations',
-  },
-  {
+    life_area: 'Yaşam Düzeni',
+    whyItWorks:
+      'Dağınık kağıtları, postaları ve belgeleri tek bir dosyada toplamak, biriken evrak stresini küçük adımlarla eritmene yardım edebilir.',
+  }),
+  fromPack('everyday-foundations', 'Çalışma alanını topla', {
     id: 'atomic-clear-desk',
-    name: 'Çalışma alanını topla',
-    icon: 'file-tray-outline',
-    color: EXPLORE_HUE.finance,
-    category: 'finance',
+    color: EXPLORE_HUE.order,
+    category: 'order',
     daypartLabel: 'Akşam · 5 dk',
-    difficulty: 1,
-    estimated_minutes: 5,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Yaşam Düzeni',
-    whyItWorks: 'Ertesi sabah masaya oturduğunuzda görsel karmaşayı sıfırlar; işe başlama sürtünmesini ortadan kaldırır.',
-    packKey: 'everyday-foundations',
-  },
-  {
+    whyItWorks:
+      'Akşam masanın üstünü birkaç dakikada toplamak, ertesi gün işe başlama sürtünmesini azaltabilir.',
+  }),
+  fromPack('deep-work', 'Gün sonu değerlendirme', {
     id: 'atomic-evening-review',
-    name: 'Gün sonu değerlendirme',
-    icon: 'checkmark-done-outline',
-    color: EXPLORE_HUE.finance,
-    category: 'finance',
+    color: EXPLORE_HUE.order,
+    category: 'order',
     daypartLabel: 'Akşam · 5 dk',
-    difficulty: 1,
-    estimated_minutes: 5,
-    tracking_type: 'boolean',
-    frequency_config: { kind: 'daily' },
     life_area: 'Yaşam Düzeni',
-    whyItWorks: 'Açık kalan görev döngülerini (Zeigarnik etkisi) kağıda/sisteme aktararak zihnin akşam gerçekten dinlenmesini sağlar.',
-    packKey: 'deep-work',
-  },
+    whyItWorks:
+      'Açık kalan işleri kağıda ya da sisteme boşaltmak, akşam zihninin dinlenmesini kolaylaştırabilir.',
+  }),
 ];
 
 export function buildAtomicHabitInsert(
@@ -462,21 +391,29 @@ export function buildAtomicHabitInsert(
       }),
     0,
   );
-  const candidatePoints = habitLoadPoints({
-    difficulty: item.difficulty,
-    estimated_minutes: item.estimated_minutes,
-    frequency_config: item.frequency_config,
-    impact_level: 'medium',
-  });
 
-  const assignedStatus: 'active' | 'waiting' =
-    Math.round(currentPoints + candidatePoints) >= 86 ? 'waiting' : 'active';
+  const assignedStatus: 'active' | 'waiting' = fitsCapacity({
+    currentLoad: currentPoints,
+    habit: {
+      difficulty: item.difficulty,
+      estimated_minutes: item.estimated_minutes,
+      frequency_config: item.frequency_config,
+      impact_level: 'medium',
+    },
+  })
+    ? 'active'
+    : 'waiting';
+
+  // `habits_tracking_type_check` (supabase/live_schema.sql:2228) accepts
+  // 'boolean' | 'numeric' | 'duration' | 'abstinence'; mirrors services/routineService.ts:77.
+  const persistedTrackingType: 'boolean' | 'numeric' =
+    item.tracking_type === 'numeric' ? 'numeric' : 'boolean';
 
   const willpowerCost = computeWillpowerCost({
     difficulty: item.difficulty,
     impact_level: 'medium',
     behavior_type: 'positive',
-    tracking_type: item.tracking_type,
+    tracking_type: persistedTrackingType,
     frequency_config: item.frequency_config,
     estimated_minutes: item.estimated_minutes,
   });
@@ -488,7 +425,7 @@ export function buildAtomicHabitInsert(
       icon: item.icon,
       color: item.color,
       behavior_type: 'positive',
-      tracking_type: item.tracking_type,
+      tracking_type: persistedTrackingType,
       unit: item.unit ?? null,
       daily_goal: item.daily_goal ?? null,
       target_direction: item.target_direction ?? null,

@@ -99,7 +99,7 @@ const HUB_ITEMS: HubItem[] = [
   {
     id: 'calendar',
     label: 'Takvim Planı',
-    subtitle: 'Zaman blokları ve gün planı',
+    subtitle: 'Aylık takvim',
     icon: 'calendar',
     color: colors.info,
     route: '/screens/calendar',
@@ -108,7 +108,7 @@ const HUB_ITEMS: HubItem[] = [
   {
     id: 'focus_flow',
     label: 'Odak Akışı (Flow)',
-    subtitle: 'Dikey verimlilik videoları ve Inflow mikro-dersleri',
+    subtitle: 'Odak mikro-dersleri',
     icon: 'play-circle',
     color: colors.primary,
     route: '/screens/focus-flow',
@@ -349,7 +349,7 @@ export default function HubScreen() {
           sleep: ['sleep-reset'],
           health: ['fitness-foundation', 'morning-reset'],
           mind: ['everyday-foundations', 'sleep-reset'],
-          finance: ['everyday-foundations'],
+          order: ['everyday-foundations'],
         };
         if (!catMap[exploreCat].includes(col.key)) return false;
       }
@@ -452,9 +452,9 @@ export default function HubScreen() {
             <Text style={s.pageTitle}>Keşfet</Text>
             <Text style={s.pageSub}>
               {mode === 'flow'
-                ? 'Sıfır dikkat dağınıklığıyla dikey verimlilik videoları & Inflow akışı'
+                ? 'Kısa odak mikro-dersleri, tek tek'
                 : mode === 'explore'
-                  ? 'Bilimsel rutin koleksiyonları ve tek dokunuşla mikro alışkanlıklar'
+                  ? 'Hazır rutin koleksiyonları ve tek dokunuşla mikro alışkanlıklar'
                   : 'Tüm sistem modüllerine ve araçlara tek noktadan ulaşın'}
             </Text>
           </View>
@@ -552,7 +552,7 @@ export default function HubScreen() {
               onChangeText={setSearch}
               placeholder={
                 mode === 'explore'
-                  ? 'Alışkanlık, koleksiyon veya bilimsel etki ara (örn: uyku, su, odak)...'
+                  ? 'Alışkanlık veya koleksiyon ara (örn: uyku, su, odak)...'
                   : 'Modül veya araç ara (örn: okr, kitap, odak)...'
               }
               placeholderTextColor={colors.textFaint}
@@ -643,7 +643,7 @@ export default function HubScreen() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════════
-            MOD 1: THEFOR TARZI RUTİN & ALIŞKANLIK KEŞFET VİTRİNİ
+            MOD 1: RUTİN & MİKRO ALIŞKANLIK KEŞFET VİTRİNİ
             ══════════════════════════════════════════════════════════════════ */}
         {mode === 'explore' ? (
           <>
@@ -844,11 +844,11 @@ export default function HubScreen() {
               </View>
             )}
 
-            {/* 3. Bilimsel Atomik Alışkanlık Rafları ("Neden İşe Yarar?" + Tek Dokunuşla Ekle) */}
+            {/* 3. Mikro Alışkanlık Rafları ("Neden İşe Yarayabilir?" + Tek Dokunuşla Ekle) */}
             <View style={s.sectionBlock}>
               <View style={s.sectionTitleRow}>
                 <Text style={s.sectionHeader}>
-                  ATOMİK ALIŞKANLIKLAR · TEK DOKUNUŞLA EKLE
+                  MİKRO ALIŞKANLIKLAR · TEK DOKUNUŞLA EKLE
                 </Text>
                 <Text style={s.sectionCountText}>{filteredAtomicHabits.length} alışkanlık</Text>
               </View>
@@ -948,11 +948,11 @@ export default function HubScreen() {
                           </TouchableOpacity>
                         </View>
 
-                        {/* Bilimsel / Davranışsal "Neden İşe Yarar?" Kutusu */}
+                        {/* Davranışsal "Neden İşe Yarayabilir?" Kutusu */}
                         <View style={s.whyBox}>
                           <Ionicons name="bulb-outline" size={13} color={item.color} />
                           <Text style={s.whyText}>
-                            <Text style={s.whyLabel}>Neden işe yarar? </Text>
+                            <Text style={s.whyLabel}>Neden işe yarayabilir? </Text>
                             {item.whyItWorks}
                           </Text>
                         </View>
@@ -985,6 +985,9 @@ export default function HubScreen() {
                 <Text style={s.aiStudioTitle}>Aradığın rutini bulamadın mı?</Text>
                 <Text style={s.aiStudioSub}>
                   Hedefini veya yaşam temponu yaz; kapasite motoru senin için kişisel bir paket tasarlasın.
+                </Text>
+                <Text style={s.aiStudioSub}>
+                  AI Rutin ücretsizdir: para istemez, yalnızca Focus Point harcar.
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.info} />

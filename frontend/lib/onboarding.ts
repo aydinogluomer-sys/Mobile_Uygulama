@@ -41,7 +41,8 @@ export const GOAL_LABELS: Record<GoalId, string> = {
   learning: 'Öğrenme',
   mental_wellbeing: 'Zihinsel İyi Oluş',
   daily_order: 'Günlük Düzen',
-  finance: 'Finans',
+  // OD-06 (2026-11-21): anahtar saklı cevap uyumu için 'finance' kalır; gösterim etiketi onaylandı.
+  finance: 'Ev & Evrak Düzeni',
   other: 'Diğer',
 };
 

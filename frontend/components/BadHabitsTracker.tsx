@@ -17,6 +17,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { haptic } from '../lib/haptics';
+/*
+ * SCOPE (F23, GAP1-15): maliyet ve tasarruf, bırakma motivasyonudur; bütçe/harcama aracı DEĞİLDİR
+ * (F14 finans modülü kalıcı iptal). Bu alanları başka ekrana, grafiğe, dışa aktarıma veya kategoriye taşıma.
+ */
 import {
   listBadHabits, createBadHabit, savingsFor, type Savings,
 } from '../services/badHabitService';
@@ -50,6 +54,10 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
   const [deflectedUrges, setDeflectedUrges] = useState(0);
   const urgeCountedRef = useRef(false);
   const deflectedRef = useRef(0);
+  /*
+   * SCOPE (F23, GAP1-15): maliyet ve tasarruf, bırakma motivasyonudur; bütçe/harcama aracı DEĞİLDİR
+   * (F14 finans modülü kalıcı iptal). Bu alanları başka ekrana, grafiğe, dışa aktarıma veya kategoriye taşıma.
+   */
   const [newHabit, setNewHabit] = useState({
     name: '',
     description: '',

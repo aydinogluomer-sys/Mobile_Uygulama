@@ -136,7 +136,7 @@ export const ROUTINE_PACKS: readonly RoutinePack[] = [
     //
     // Tagging the original packs for the onboarding goals showed that
     // `finance` had ZERO candidate habits and `learning` had one, so a user
-    // who picked Finans on the first screen would have watched their answer
+    // who picked the home-and-paperwork goal on the first screen would have watched their answer
     // change nothing — the question would have been decorative, which is the
     // one thing the onboarding brief forbids. These are five deliberately
     // small, low-difficulty habits covering the thin goals; it is a pack in
@@ -153,7 +153,7 @@ export const ROUTINE_PACKS: readonly RoutinePack[] = [
     statedLoad: 14,
     habits: [
       { name: '10 dakika okuma', icon: 'book-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 10, frequency_config: { kind: 'daily' }, goals: ['learning'], daypart: 'evening' },
-      { name: 'Günlük harcamaları kaydet', icon: 'wallet-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, goals: ['finance'], daypart: 'evening' },
+      { name: 'Evrakları tek yere topla', icon: 'documents-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, goals: ['finance'], daypart: 'evening' },
       { name: '5 dakika nefes egzersizi', icon: 'leaf-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, goals: ['mental_wellbeing'], daypart: 'morning' },
       { name: 'Çalışma alanını topla', icon: 'file-tray-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 5, frequency_config: { kind: 'daily' }, goals: ['daily_order'], daypart: 'evening' },
       { name: 'Bugünü tek cümleyle yaz', icon: 'create-outline', tracking_type: 'binary', difficulty: 1, estimated_minutes: 3, frequency_config: { kind: 'daily' }, goals: ['mental_wellbeing', 'daily_order'], daypart: 'bedtime' },
