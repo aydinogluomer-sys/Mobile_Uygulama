@@ -8,12 +8,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusStore } from '../../store/focusStore';
-import { FormError, ProgressRing } from '../../components/ui';
+import { FormError, IconButton, ProgressRing } from '../../components/ui';
 import { EmbeddedFiligree } from '../../components/spatial';
 import { haptic } from '../../lib/haptics';
 import { colors, fontFamily, alphaHex, hexA } from '../../lib/tokens';
 import { DECOR, getFocusBackdrop } from '../../lib/visualAssets';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
+import { spokenDuration, useTimerAnnouncements } from '../../hooks/useTimerAnnouncements';
 
 
 import DeepWorkScreen from '../screens/deep-work';
@@ -32,6 +33,12 @@ const PHASE_LABELS: Record<string, string> = {
   work: 'Çalışma Seansı',
   shortBreak: 'Kısa Mola',
   longBreak: 'Uzun Mola',
+};
+
+const PHASE_SPOKEN: Record<string, string> = {
+  work: 'Odak',
+  shortBreak: 'Kısa mola',
+  longBreak: 'Uzun mola',
 };
 
 const PHASE_COLORS: Record<string, string> = {
@@ -96,6 +103,13 @@ export default function FocusScreen() {
   const progressPct = progressFraction(totalSeconds, secondsLeft) * 100;
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
+
+  useTimerAnnouncements({
+    running: status === 'running',
+    secondsLeft,
+    phaseKey: phase,
+    phaseLabel: PHASE_SPOKEN[phase] ?? 'Odak',
+  });
 
   // R05.03 — a session the app was killed in comes back paused.
   useEffect(() => { fetchFocusTasks(); loadSettings(); restoreSession(); }, [fetchFocusTasks, loadSettings, restoreSession]);
@@ -213,7 +227,7 @@ export default function FocusScreen() {
 
         {/* Üst araç çubuğu */}
         <View style={s.topRow}>
-          <View style={s.phaseRow}>
+          <View style={s.phaseRow} accessibilityRole="tablist">
             {(['work', 'shortBreak', 'longBreak'] as const).map((p) => {
               const active = phase === p;
               const col = active ? phaseColor : colors.textFaint;
@@ -222,6 +236,9 @@ export default function FocusScreen() {
                   key={p}
                   style={[s.phaseBtn, active && { backgroundColor: phaseColor + '22', borderColor: phaseColor }]}
                   onPress={() => { haptic.select(); setPhase(p); }}
+                  accessibilityRole="tab"
+                  accessibilityLabel={PHASE_LABELS[p]}
+                  accessibilityState={{ selected: active }}
                 >
                   <Text style={[s.phaseBtnText, { color: col }]}>
                     {p === 'work' ? 'Çalışma' : p === 'shortBreak' ? 'Kısa' : 'Uzun'}
@@ -230,15 +247,33 @@ export default function FocusScreen() {
               );
             })}
           </View>
-          <TouchableOpacity style={s.settingsBtn} onPress={() => setShowTheme(true)}>
-            <Ionicons name="color-palette-outline" size={18} color={colors.textFaint} />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.settingsBtn} onPress={() => setShowReport(true)}>
-            <Ionicons name="stats-chart-outline" size={18} color={colors.textFaint} />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.settingsBtn} onPress={() => setShowSettings(true)}>
-            <Ionicons name="settings-outline" size={18} color={colors.textFaint} />
-          </TouchableOpacity>
+          <IconButton
+            compact
+            icon="color-palette-outline"
+            size={18}
+            color={colors.textFaint}
+            label="Odak temasını seç"
+            style={s.settingsBtn}
+            onPress={() => setShowTheme(true)}
+          />
+          <IconButton
+            compact
+            icon="stats-chart-outline"
+            size={18}
+            color={colors.textFaint}
+            label="Odak raporlarını aç"
+            style={s.settingsBtn}
+            onPress={() => setShowReport(true)}
+          />
+          <IconButton
+            compact
+            icon="settings-outline"
+            size={18}
+            color={colors.textFaint}
+            label="Odak ayarlarını aç"
+            style={s.settingsBtn}
+            onPress={() => setShowSettings(true)}
+          />
         </View>
 
         {/* Timer kartı */}
@@ -261,9 +296,23 @@ export default function FocusScreen() {
               />
             )}
             <ProgressRing progress={progressPct / 100} size={200} stroke={12} color={phaseColor}>
-              <View style={s.timerInner}>
-                <Text style={[s.timerText, { color: phaseColor }]}>{pad(mins)}:{pad(secs)}</Text>
-                <Text style={s.phaseLabel}>{PHASE_LABELS[phase]}</Text>
+              <View
+                style={s.timerInner}
+                accessible
+                accessibilityRole="timer"
+                accessibilityLabel={`${PHASE_SPOKEN[phase] ?? 'Odak'}, ${spokenDuration(secondsLeft)} kaldı`}
+              >
+                <Text
+                  style={[s.timerText, { color: phaseColor }]}
+                  importantForAccessibility="no"
+                  maxFontSizeMultiplier={1.25}
+                  adjustsFontSizeToFit
+                  numberOfLines={1}
+                  minimumFontScale={0.7}
+                >
+                  {pad(mins)}:{pad(secs)}
+                </Text>
+                <Text style={s.phaseLabel} maxFontSizeMultiplier={1.4}>{PHASE_LABELS[phase]}</Text>
               </View>
             </ProgressRing>
           </View>
@@ -304,16 +353,32 @@ export default function FocusScreen() {
         {/* Kontroller */}
         {(() => {
           const gated = status !== 'running' && phase === 'work' && !selectedTaskId;
+          const startLabel =
+            status === 'running'
+              ? 'Duraklat'
+              : status === 'paused'
+                ? 'Devam et'
+                : gated
+                  ? 'Odak konusu seç'
+                  : 'Başla';
           return (
             <>
               <View style={s.controls}>
-                <TouchableOpacity style={[s.resetBtn, { backgroundColor: activePreset.cardBg }]} onPress={() => { haptic.light(); reset(); }}>
-                  <Ionicons name="refresh-outline" size={22} color={colors.textDim} />
-                </TouchableOpacity>
+                <IconButton
+                  icon="refresh-outline"
+                  size={22}
+                  color={colors.textDim}
+                  label="Sıfırla"
+                  style={[s.resetBtn, { backgroundColor: activePreset.cardBg }]}
+                  onPress={() => { haptic.light(); reset(); }}
+                />
 
                 <TouchableOpacity
                   style={[s.startBtn, { backgroundColor: phaseColor }, gated && s.startBtnGated]}
                   onPress={handleStartPause}
+                  accessibilityRole="button"
+                  accessibilityLabel={startLabel}
+                  accessibilityHint={gated ? 'Önce bir odak konusu seç' : undefined}
                 >
                   <Ionicons name={status === 'running' ? 'pause' : gated ? 'lock-closed' : 'play'} size={gated ? 22 : 28} color={colors.white} />
                   <Text style={s.startBtnText}>
@@ -333,7 +398,13 @@ export default function FocusScreen() {
         <View style={s.taskSection}>
           <View style={s.taskSectionHeader}>
             <Text style={s.sectionTitle}>ODAK KONUSU</Text>
-            <TouchableOpacity style={s.addTaskBtn} onPress={() => { setAddTaskError(null); setShowAddTask(true); }}>
+            <TouchableOpacity
+              style={s.addTaskBtn}
+              onPress={() => { setAddTaskError(null); setShowAddTask(true); }}
+              accessibilityRole="button"
+              accessibilityLabel="Odak konusu ekle"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <Ionicons name="add" size={16} color={phaseColor} />
               <Text style={[s.addTaskText, { color: phaseColor }]}>Ekle</Text>
             </TouchableOpacity>
@@ -351,6 +422,10 @@ export default function FocusScreen() {
                 <View key={task.id} style={[s.taskRow, { backgroundColor: activePreset.cardBg }, isSelected && { borderColor: phaseColor + '60' }]}>
                   <TouchableOpacity
                     style={s.taskCheck}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={`${task.title} odak konusunu tamamla`}
+                    accessibilityState={{ checked: Boolean(task.completed) }}
                     onPress={async () => {
                       const r = await completeFocusTask(task.id);
                       if (r.ok) {
@@ -364,7 +439,13 @@ export default function FocusScreen() {
                     <View style={[s.checkBox, { borderColor: phaseColor }]} />
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={s.taskBody} onPress={() => selectTask(isSelected ? null : task.id)}>
+                  <TouchableOpacity
+                    style={s.taskBody}
+                    onPress={() => selectTask(isSelected ? null : task.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${task.title}, ${task.completed_pomodoros} / ${task.estimated_pomodoros} pomodoro`}
+                    accessibilityState={{ selected: isSelected }}
+                  >
                     <Text style={[s.taskTitle, isSelected && { color: colors.white, fontWeight: '600' }]} numberOfLines={1}>
                       {task.title}
                     </Text>
@@ -375,15 +456,19 @@ export default function FocusScreen() {
                     </View>
                   </TouchableOpacity>
 
-                  <TouchableOpacity
-                    onPress={async () => {
-                      const r = await removeFocusTask(task.id);
-                      setTaskActionError(r.ok ? null : r.error);
-                    }}
+                  <IconButton
+                    compact
+                    icon="close"
+                    size={16}
+                    color={colors.textGhost}
+                    label={`${task.title} odak konusunu sil`}
                     style={s.taskDelete}
-                  >
-                    <Ionicons name="close" size={16} color={colors.textGhost} />
-                  </TouchableOpacity>
+                    onPress={() => {
+                      void removeFocusTask(task.id).then((r) => {
+                        setTaskActionError(r.ok ? null : r.error);
+                      });
+                    }}
+                  />
                 </View>
               );
             })
@@ -406,12 +491,15 @@ export default function FocusScreen() {
               autoFocus
             />
             <Text style={s.fieldLabel}>Tahmini Pomodoro</Text>
-            <View style={s.pomRow}>
+            <View style={s.pomRow} accessibilityRole="radiogroup">
               {[1,2,3,4,5].map((n) => (
                 <TouchableOpacity
                   key={n}
                   style={[s.pomBtn, newTaskPomodoros === n && { backgroundColor: phaseColor + '30', borderColor: phaseColor }]}
                   onPress={() => setNewTaskPomodoros(n)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${n} pomodoro`}
+                  accessibilityState={{ selected: newTaskPomodoros === n, checked: newTaskPomodoros === n }}
                 >
                   <Text style={[s.pomBtnText, newTaskPomodoros === n && { color: phaseColor }]}>{n}</Text>
                 </TouchableOpacity>
@@ -419,13 +507,21 @@ export default function FocusScreen() {
             </View>
             <FormError message={addTaskError} />
             <View style={s.sheetActions}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setShowAddTask(false)}>
+              <TouchableOpacity
+                style={s.cancelBtn}
+                onPress={() => setShowAddTask(false)}
+                accessibilityRole="button"
+                accessibilityLabel="İptal"
+              >
                 <Text style={s.cancelText}>İptal</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.confirmBtn, { backgroundColor: phaseColor }, !newTaskTitle.trim() && s.confirmBtnDisabled]}
                 onPress={handleAddTask}
                 disabled={!newTaskTitle.trim()}
+                accessibilityRole="button"
+                accessibilityLabel="Odak konusunu kaydet"
+                accessibilityState={{ disabled: !newTaskTitle.trim() }}
               >
                 <Text style={s.confirmText}>Ekle</Text>
               </TouchableOpacity>

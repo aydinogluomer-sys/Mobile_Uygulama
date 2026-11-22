@@ -24,6 +24,27 @@ import { haptic } from '../../lib/haptics';
 import { EditorialBanner, EmblemMedallion } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, FOCUS_COMPLETE_GONG, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
+import { spokenDuration, useTimerAnnouncements } from '../../hooks/useTimerAnnouncements';
+
+function RunningStepAnnouncer({
+  running,
+  secondsLeft,
+  stepId,
+  stepTitle,
+}: {
+  running: boolean;
+  secondsLeft: number;
+  stepId: string;
+  stepTitle: string;
+}) {
+  useTimerAnnouncements({
+    running,
+    secondsLeft,
+    phaseKey: stepId,
+    phaseLabel: stepTitle,
+  });
+  return null;
+}
 
 const mmss = (ms: number) => {
   const t = Math.max(0, Math.round(ms / 1000));
@@ -249,6 +270,12 @@ export default function RoutineRunnerScreen() {
 
         {step ? (
           <View style={x.stepCard} accessible accessibilityLabel={`Sıradaki adım: ${step.title}`}>
+            <RunningStepAnnouncer
+              running={Boolean(running && step.kind === 'timed')}
+              secondsLeft={Math.max(0, Math.ceil((remaining ?? 0) / 1000))}
+              stepId={step.id}
+              stepTitle={step.title}
+            />
             <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={136} opacity={0.17} />
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={x.stepEyebrow}>SIRADAKİ ADIM · {s.index + 1}/{s.steps.length}</Text>
@@ -265,7 +292,11 @@ export default function RoutineRunnerScreen() {
               )}
             </View>
             <Text style={x.stepTitle}>{step.title}</Text>
-            <Text style={[x.timer, up && { color: colors.warning }]}>
+            <Text
+              style={[x.timer, up && { color: colors.warning }]}
+              accessibilityRole="timer"
+              accessibilityLabel={`${step.title}, ${spokenDuration(Math.max(0, Math.ceil((remaining ?? elapsed) / 1000)))} ${remaining !== null ? 'kaldı' : 'geçti'}`}
+            >
               {remaining !== null ? mmss(remaining) : mmss(elapsed)}
             </Text>
             {up && <Text style={x.upNote}>Süre doldu. Tamamlamak sana kalmış — yaptıysan işaretle.</Text>}

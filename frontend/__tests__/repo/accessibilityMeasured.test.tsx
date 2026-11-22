@@ -13,11 +13,13 @@ import TestRenderer, { act } from 'react-test-renderer';
 import * as fs from 'fs';
 import * as path from 'path';
 
+jest.setTimeout(30_000);
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 
 import { colors, contrastRatio, onColor, ACCENTS } from '../../lib/tokens';
 import Button, { MIN_TOUCH } from '../../components/ui/Button';
 import Chip from '../../components/ui/Chip';
+import { blankNonCode, scanTouchableSource, scanTouchables } from '../helpers/a11yScan';
 
 const BGS = {
   bg: colors.bg,
@@ -100,5 +102,77 @@ describe('reduced motion', () => {
     // the hook is CALLED in the file, or the file takes the setting as a declared prop
     const ungated = animating.filter((f) => !/useReducedMotion\(\)|reduceMotion: boolean/.test(read(f)));
     expect(ungated).toEqual([]);
+  });
+});
+
+const FIRST_WAVE_A11Y = [
+  'components/focus/FocusSettingsModal.tsx',
+  'app/(auth)/reset-password.tsx',
+  'app/tabs/focus.tsx',
+  'app/tabs/timeline.tsx',
+] as const;
+
+export const TOUCHABLE_CEILINGS = {
+  noRole: 128,
+  noLabel: 148,
+  iconOnlyNoLabel: 33,
+} as const;
+
+describe('touchable roles and labels ratchet (F26 / DSA-02)', () => {
+  const scan = scanTouchables(['app', 'components']);
+
+  it('(+) scanner is live (> 500 touchables across app/ and components/)', () => {
+    expect(scan.total).toBeGreaterThan(500);
+  });
+
+  it('(+) all four first-wave F26 files have zero missing accessibilityRole and accessibilityLabel', () => {
+    for (const rel of FIRST_WAVE_A11Y) {
+      const fileScan = scanTouchableSource(rel, read(rel));
+      expect({ rel, noRole: fileScan.noRole, noLabel: fileScan.noLabel, offenders: fileScan.offenders[rel] ?? [] }).toEqual({
+        rel,
+        noRole: 0,
+        noLabel: 0,
+        offenders: [],
+      });
+    }
+  });
+
+  it('(+) repo-wide missing role, missing label, and icon-only unlabeled counts stay within monotonic ceilings and are not stale (> 5 slack)', () => {
+    expect(scan.noRole).toBeLessThanOrEqual(TOUCHABLE_CEILINGS.noRole);
+    expect(scan.noLabel).toBeLessThanOrEqual(TOUCHABLE_CEILINGS.noLabel);
+    expect(scan.iconOnlyNoLabel).toBeLessThanOrEqual(TOUCHABLE_CEILINGS.iconOnlyNoLabel);
+
+    expect(TOUCHABLE_CEILINGS.noRole - scan.noRole).toBeLessThanOrEqual(5);
+    expect(TOUCHABLE_CEILINGS.noLabel - scan.noLabel).toBeLessThanOrEqual(5);
+    expect(TOUCHABLE_CEILINGS.iconOnlyNoLabel - scan.iconOnlyNoLabel).toBeLessThanOrEqual(5);
+  });
+
+  it('(+) FocusSettingsModal carries semantic tab, switch, checked, and selected accessibility contracts', () => {
+    const modalCode = blankNonCode(read('components/focus/FocusSettingsModal.tsx')).blanked;
+    const modalRaw = read('components/focus/FocusSettingsModal.tsx');
+    expect(modalRaw).toContain('accessibilityRole="tab"');
+    expect(modalRaw).toContain('accessibilityRole="switch"');
+    expect(modalCode).toMatch(/accessibilityState=\{\{\s*checked:/);
+    expect(modalCode).toMatch(/accessibilityState=\{\{\s*selected:/);
+  });
+
+  it('(-) synthetic unlabelled / roleless touchables are caught while comments, strings, and accessible={false} are ignored', () => {
+    const bad = scanTouchableSource(
+      'synthetic.tsx',
+      [
+        '// accessibilityRole="button" accessibilityLabel="Sahte"',
+        '<TouchableOpacity title="accessibilityRole accessibilityLabel" onPress={fn}>',
+        '  <Ionicons name="close" size={18} />',
+        '</TouchableOpacity>',
+        '<TouchableOpacity accessibilityRole="button" accessibilityLabel="" onPress={fn}>',
+        '  <Text>Boş</Text>',
+        '</TouchableOpacity>',
+        '<Pressable accessible={false} onPress={fn} />',
+      ].join('\n'),
+    );
+    expect(bad.total).toBe(2);
+    expect(bad.noRole).toBe(1);
+    expect(bad.noLabel).toBe(2);
+    expect(bad.iconOnlyNoLabel).toBe(1);
   });
 });

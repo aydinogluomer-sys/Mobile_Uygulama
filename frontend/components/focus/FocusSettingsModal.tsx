@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { currentUser } from '../../lib/session';
 import { colors } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
+import { IconButton } from '../ui';
 import {
   toCSV, toExcelXML, sessionsSheet, FocusSessionRow,
   ExportFmt, EXPORT_META, webDownload,
@@ -149,18 +150,23 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
       <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
         <View style={s.header}>
           <Text style={s.title}>Ayarlar</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={10}>
-            <Ionicons name="close" size={24} color={colors.textFaint} />
-          </TouchableOpacity>
+          <IconButton icon="close" size={24} color={colors.textFaint} label="Ayarları kapat" onPress={onClose} />
         </View>
 
         <View style={s.body}>
           {/* Sol dikey bölüm menüsü */}
-          <ScrollView style={s.sidebar} contentContainerStyle={s.sidebarContent} showsVerticalScrollIndicator={false}>
+          <ScrollView style={s.sidebar} contentContainerStyle={s.sidebarContent} showsVerticalScrollIndicator={false} accessibilityRole="tablist">
             {SECTIONS.map((sec) => {
               const on = tab === sec.key;
               return (
-                <TouchableOpacity key={sec.key} style={[s.sideTab, on && { backgroundColor: accent + '22' }]} onPress={() => setTab(sec.key)}>
+                <TouchableOpacity
+                  key={sec.key}
+                  style={[s.sideTab, on && { backgroundColor: accent + '22' }]}
+                  onPress={() => setTab(sec.key)}
+                  accessibilityRole="tab"
+                  accessibilityLabel={sec.label}
+                  accessibilityState={{ selected: on }}
+                >
                   <Text style={[s.sideTabText, on && { color: accent }]} numberOfLines={1}>{sec.label}</Text>
                 </TouchableOpacity>
               );
@@ -258,7 +264,13 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
 
 function NavRow({ label, hint, onPress }: { label: string; hint?: string; onPress: () => void }) {
   return (
-    <TouchableOpacity style={s.row} onPress={onPress}>
+    <TouchableOpacity
+      style={s.row}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+    >
       <View style={{ flex: 1 }}>
         <Text style={s.rowLabel}>{label}</Text>
         {hint ? <Text style={s.rowHint}>{hint}</Text> : null}
@@ -273,7 +285,12 @@ function ConfirmRow({ label, confirmLabel, onConfirm }: { label: string; confirm
   const [armed, setArmed] = useState(false);
   if (!armed) {
     return (
-      <TouchableOpacity style={s.row} onPress={() => setArmed(true)}>
+      <TouchableOpacity
+        style={s.row}
+        onPress={() => setArmed(true)}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+      >
         <Text style={[s.rowLabel, { color: colors.error }]}>{label}</Text>
         <Ionicons name="chevron-forward" size={18} color={colors.error} />
       </TouchableOpacity>
@@ -281,12 +298,22 @@ function ConfirmRow({ label, confirmLabel, onConfirm }: { label: string; confirm
   }
   return (
     <View style={s.row}>
-      <Text style={[s.rowLabel, { color: colors.text }]} numberOfLines={2}>{confirmLabel}</Text>
+      <Text style={[s.rowLabel, { color: colors.text }]} numberOfLines={2} accessibilityLiveRegion="polite">{confirmLabel}</Text>
       <View style={s.confirmBtns}>
-        <TouchableOpacity style={s.confirmCancel} onPress={() => setArmed(false)}>
+        <TouchableOpacity
+          style={s.confirmCancel}
+          onPress={() => setArmed(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Vazgeç"
+        >
           <Text style={s.confirmCancelText}>Vazgeç</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={s.confirmYes} onPress={() => { setArmed(false); onConfirm(); }}>
+        <TouchableOpacity
+          style={s.confirmYes}
+          onPress={() => { setArmed(false); onConfirm(); }}
+          accessibilityRole="button"
+          accessibilityLabel="Evet"
+        >
           <Text style={s.confirmYesText}>Evet</Text>
         </TouchableOpacity>
       </View>
@@ -308,7 +335,14 @@ function ExportRow({ accent, onExport }: { accent: string; onExport: (fmt: Expor
       </View>
       <View style={s.segRow}>
         {opts.map((o) => (
-          <TouchableOpacity key={o.v} style={[s.segBtn, { borderColor: accent }]} onPress={() => onExport(o.v)} activeOpacity={0.8}>
+          <TouchableOpacity
+            key={o.v}
+            style={[s.segBtn, { borderColor: accent }]}
+            onPress={() => onExport(o.v)}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Verini ${o.l} olarak dışa aktar`}
+          >
             <Text style={[s.segText, { color: accent }]}>{o.l}</Text>
           </TouchableOpacity>
         ))}
@@ -333,7 +367,7 @@ function Stepper({ label, value, min, max, step, accent, onChange }: {
         >
           <Ionicons name="remove" size={16} color={colors.textDim} />
         </TouchableOpacity>
-        <Text style={[s.stepValue, { color: accent }]}>{value}</Text>
+        <Text style={[s.stepValue, { color: accent }]} accessibilityLiveRegion="polite">{value}</Text>
         <TouchableOpacity
           style={s.stepBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -364,6 +398,7 @@ function Toggle({ label, value, accent, onToggle, hint }: {
         accessibilityRole="switch"
         accessibilityState={{ checked: value }}
         accessibilityLabel={label}
+        accessibilityHint={hint}
         hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
       >
         <View style={[s.knob, value && { transform: [{ translateX: 18 }] }]} />
@@ -382,7 +417,14 @@ function SegBlock({ label, value, options, accent, onChange }: {
         {options.map((o) => {
           const on = value === o.v;
           return (
-            <TouchableOpacity key={o.v} style={[s.segBtn, on && { backgroundColor: accent + '22', borderColor: accent }]} onPress={() => onChange(o.v)}>
+            <TouchableOpacity
+              key={o.v}
+              style={[s.segBtn, on && { backgroundColor: accent + '22', borderColor: accent }]}
+              onPress={() => onChange(o.v)}
+              accessibilityRole="radio"
+              accessibilityLabel={o.l}
+              accessibilityState={{ selected: on, checked: on }}
+            >
               <Text style={[s.segText, on && { color: accent }]}>{o.l}</Text>
             </TouchableOpacity>
           );

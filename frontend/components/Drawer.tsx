@@ -13,6 +13,7 @@ import { useSubscriptionStore } from '../store/subscriptionStore';
 import { colors, alphaHex, radius } from '../lib/tokens';
 import { TEXTURES } from '../lib/visualAssets';
 import TexturedSurface from './ui/TexturedSurface';
+import IconButton from './ui/IconButton';
 import { useReducedMotion } from './seasonalMotion/useReducedMotion';
 
 const DRAWER_WIDTH = 310;
@@ -102,6 +103,59 @@ const ALL_MODULES: DrawerItem[] = (() => {
 const MODULE_BY_ROUTE = new Map<string, DrawerItem>(
   ALL_MODULES.map((m) => [m.route, m]),
 );
+
+function ShortcutCard({
+  sc,
+  editing,
+  onNavigate,
+  onRemove,
+}: {
+  sc: DrawerItem;
+  editing: boolean;
+  onNavigate: (route: string) => void;
+  onRemove: (route: string) => void;
+}) {
+  const name = sc.shortLabel || sc.label;
+  const inner = (
+    <>
+      <View style={[s.shortcutIcon, { backgroundColor: alphaHex(sc.color, '20') }]}>
+        <Ionicons name={sc.icon as any} size={18} color={sc.color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={s.shortcutLabel} numberOfLines={1}>{name}</Text>
+        <Text style={s.shortcutHint} numberOfLines={1}>{sc.hint}</Text>
+      </View>
+    </>
+  );
+
+  if (editing) {
+    return (
+      <View style={[s.shortcutCard, s.shortcutCardEditing]}>
+        {inner}
+        <IconButton
+          compact
+          icon="close"
+          size={14}
+          color={colors.error}
+          label={`${name} kısayolunu kaldır`}
+          onPress={() => onRemove(sc.route)}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      style={s.shortcutCard}
+      onPress={() => onNavigate(sc.route)}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={name}
+    >
+      {inner}
+    </TouchableOpacity>
+  );
+}
 
 export default function Drawer() {
   const router = useRouter();
@@ -255,40 +309,13 @@ export default function Drawer() {
 
               <View style={s.shortcutGrid}>
                 {activeShortcuts.map((sc) => (
-                  <TouchableOpacity
+                  <ShortcutCard
                     key={sc.route}
-                    style={[s.shortcutCard, isEditingShortcuts && s.shortcutCardEditing]}
-                    onPress={() => {
-                      if (isEditingShortcuts) {
-                        removeShortcut(sc.route);
-                      } else {
-                        navigate(sc.route);
-                      }
-                    }}
-                    activeOpacity={0.75}
-                    accessibilityRole="button"
-                    accessibilityLabel={isEditingShortcuts ? `${sc.shortLabel || sc.label} kısayolunu kaldır` : (sc.shortLabel || sc.label)}
-                  >
-                    <View style={[s.shortcutIcon, { backgroundColor: alphaHex(sc.color, '20') }]}>
-                      <Ionicons name={sc.icon as any} size={18} color={sc.color} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.shortcutLabel} numberOfLines={1}>{sc.shortLabel || sc.label}</Text>
-                      <Text style={s.shortcutHint} numberOfLines={1}>
-                        {isEditingShortcuts ? 'Kaldırmak için dokun' : sc.hint}
-                      </Text>
-                    </View>
-                    {isEditingShortcuts && (
-                      <TouchableOpacity
-                        style={s.removeBadge}
-                        onPress={() => removeShortcut(sc.route)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${sc.shortLabel || sc.label} sil`}
-                      >
-                        <Ionicons name="close" size={12} color={colors.white} />
-                      </TouchableOpacity>
-                    )}
-                  </TouchableOpacity>
+                    sc={sc}
+                    editing={isEditingShortcuts}
+                    onNavigate={navigate}
+                    onRemove={removeShortcut}
+                  />
                 ))}
 
                 {/* + Modül Ata Kartı */}
@@ -569,14 +596,6 @@ const s = StyleSheet.create({
   },
   shortcutLabel: { fontSize: 12, fontWeight: '700', color: colors.text },
   shortcutHint: { fontSize: 10, color: colors.textDim },
-  removeBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.error,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   addShortcutCard: {
     width: '48%',

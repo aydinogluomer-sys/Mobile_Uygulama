@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform, TouchableOpacity, View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { TouchableOpacity, View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCommandStore } from '../../store/commandStore';
 import { useTaskStore } from '../../store/taskStore';
 import { useDrawerStore } from '../../store/drawerStore';
@@ -10,6 +11,7 @@ import Drawer from '../../components/Drawer';
 import CommandPalette from '../../components/CommandPalette';
 import OutboxStatusModal from '../../components/OutboxStatusModal';
 import { LIGHT_THEME_ENABLED } from '../../lib/featureGates';
+import { tabBarHeight, tabBarPaddingBottom } from '../../lib/layoutMetrics';
 import { type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useAccent } from '../../lib/useAccent';
@@ -88,6 +90,8 @@ export default function TabLayout() {
   const inboxCount = useTaskStore((s) => s.tasks.filter((t) => t.list_type === 'inbox' && !t.completed).length);
   const c = useThemeColors();
   const accent = useAccent();
+  const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
   const [showOutboxModal, setShowOutboxModal] = useState(false);
 
   return (
@@ -106,13 +110,21 @@ export default function TabLayout() {
         screenOptions={{
           tabBarActiveTintColor: accent.bright,
           tabBarInactiveTintColor: c.textFaint,
-          tabBarLabelStyle: { fontSize: 11, lineHeight: 14, fontWeight: '600', paddingBottom: 2 },
+          tabBarLabel: ({ children, color }) => (
+            <Text
+              maxFontSizeMultiplier={1.3}
+              numberOfLines={1}
+              style={{ color, fontSize: 11, lineHeight: 14, fontWeight: '600', paddingBottom: 2 }}
+            >
+              {children}
+            </Text>
+          ),
           tabBarStyle: {
             backgroundColor: c.bgElevated,
             borderTopColor: c.borderSubtle,
             borderTopWidth: 1,
-            height: Platform.OS === 'ios' ? 88 : 68,
-            paddingBottom: Platform.OS === 'ios' ? 24 : 10,
+            height: tabBarHeight(insets.bottom, fontScale),
+            paddingBottom: tabBarPaddingBottom(insets.bottom),
             paddingTop: 6,
           },
           headerStyle: {

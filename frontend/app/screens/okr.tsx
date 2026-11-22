@@ -1,14 +1,14 @@
 import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   Platform,
 } from 'react-native';
 import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useOKRStore, krProgress, objectiveProgress, type KeyResult, type OKR } from '../../store/okrStore';
-import { EmptyState, Skeleton, EditorialBanner, EmblemMedallion } from '../../components/ui';
+import { EmptyState, Skeleton, EditorialBanner, EmblemMedallion, SheetModal } from '../../components/ui';
 import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
@@ -195,129 +195,135 @@ export default function OKRScreen() {
       </TouchableOpacity>
 
       {/* Objective modal */}
-      <Modal visible={objModal} animationType="slide" transparent onRequestClose={() => setObjModal(false)}>
-        <View style={s.overlay}>
-          <View style={s.sheet}>
-            <Text style={s.sheetTitle}>Yeni Objective</Text>
-            <TextInput style={s.input} placeholder="Hedefin ne? (örn. Sağlığımı iyileştir)" placeholderTextColor={colors.textFaint} value={objText} onChangeText={setObjText} multiline />
-            <Text style={s.label}>Yıl</Text>
-            <View style={s.row}>
-              {[CUR_Y - 1, CUR_Y, CUR_Y + 1].map((y) => (
-                <TouchableOpacity
-                  key={y}
-                  style={[s.chip, objYear === y && s.chipSel]}
-                  onPress={() => setObjYear(y)}
-                  accessibilityRole="radio"
-                  accessibilityLabel={`${y} yılı`}
-                  accessibilityState={{ selected: objYear === y, checked: objYear === y }}
-                >
-                  <Text style={[s.chipText, objYear === y && s.chipTextSel]}>{y}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={s.label}>Çeyrek</Text>
-            <View style={s.row}>
-              {[1, 2, 3, 4].map((q) => (
-                <TouchableOpacity
-                  key={q}
-                  style={[s.chip, objQuarter === q && s.chipSel]}
-                  onPress={() => setObjQuarter(q)}
-                  accessibilityRole="radio"
-                  accessibilityLabel={`${q}. çeyrek`}
-                  accessibilityState={{ selected: objQuarter === q, checked: objQuarter === q }}
-                >
-                  <Text style={[s.chipText, objQuarter === q && s.chipTextSel]}>Ç{q}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <View style={s.actions}>
-              <TouchableOpacity
-                style={s.cancelBtn}
-                onPress={() => setObjModal(false)}
-                accessibilityRole="button"
-                accessibilityLabel="Vazgeç"
-              >
-                <Text style={s.cancelText}>Vazgeç</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.okBtn, !objText.trim() && s.okBtnDisabled]}
-                onPress={submitObjective}
-                disabled={!objText.trim()}
-                accessibilityRole="button"
-                accessibilityLabel="Objective ekle"
-                accessibilityState={{ disabled: !objText.trim() }}
-              >
-                <Text style={s.okText}>Ekle</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+      <SheetModal
+        visible={objModal}
+        align="bottom"
+        onClose={() => setObjModal(false)}
+        sheetStyle={s.sheet}
+        accessibilityLabel="Yeni Objective"
+      >
+        <Text style={s.sheetTitle}>Yeni Objective</Text>
+        <TextInput style={s.input} placeholder="Hedefin ne? (örn. Sağlığımı iyileştir)" placeholderTextColor={colors.textFaint} value={objText} onChangeText={setObjText} multiline />
+        <Text style={s.label}>Yıl</Text>
+        <View style={s.row}>
+          {[CUR_Y - 1, CUR_Y, CUR_Y + 1].map((y) => (
+            <TouchableOpacity
+              key={y}
+              style={[s.chip, objYear === y && s.chipSel]}
+              onPress={() => setObjYear(y)}
+              accessibilityRole="radio"
+              accessibilityLabel={`${y} yılı`}
+              accessibilityState={{ selected: objYear === y, checked: objYear === y }}
+            >
+              <Text style={[s.chipText, objYear === y && s.chipTextSel]}>{y}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
-      </Modal>
+        <Text style={s.label}>Çeyrek</Text>
+        <View style={s.row}>
+          {[1, 2, 3, 4].map((q) => (
+            <TouchableOpacity
+              key={q}
+              style={[s.chip, objQuarter === q && s.chipSel]}
+              onPress={() => setObjQuarter(q)}
+              accessibilityRole="radio"
+              accessibilityLabel={`${q}. çeyrek`}
+              accessibilityState={{ selected: objQuarter === q, checked: objQuarter === q }}
+            >
+              <Text style={[s.chipText, objQuarter === q && s.chipTextSel]}>Ç{q}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={s.actions}>
+          <TouchableOpacity
+            style={s.cancelBtn}
+            onPress={() => setObjModal(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Vazgeç"
+          >
+            <Text style={s.cancelText}>Vazgeç</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.okBtn, !objText.trim() && s.okBtnDisabled]}
+            onPress={submitObjective}
+            disabled={!objText.trim()}
+            accessibilityRole="button"
+            accessibilityLabel="Objective ekle"
+            accessibilityState={{ disabled: !objText.trim() }}
+          >
+            <Text style={s.okText}>Ekle</Text>
+          </TouchableOpacity>
+        </View>
+      </SheetModal>
 
       {/* Key Result modal */}
-      <Modal visible={krFor !== null} animationType="slide" transparent onRequestClose={() => setKrFor(null)}>
-        <View style={s.overlay}>
-          <View style={s.sheet}>
-            <Text style={s.sheetTitle}>Yeni Key Result</Text>
-            <TextInput style={s.input} placeholder="Ölçülebilir sonuç (örn. Haftada 3 antrenman)" placeholderTextColor={colors.textFaint} value={krTitle} onChangeText={setKrTitle} />
-            <View style={s.row}>
-              <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="Hedef (örn. 12)" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={krTarget} onChangeText={setKrTarget} />
-              <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="Birim (ops.)" placeholderTextColor={colors.textFaint} value={krUnit} onChangeText={setKrUnit} />
-            </View>
-            <View style={s.actions}>
-              <TouchableOpacity
-                style={s.cancelBtn}
-                onPress={() => setKrFor(null)}
-                accessibilityRole="button"
-                accessibilityLabel="Vazgeç"
-              >
-                <Text style={s.cancelText}>Vazgeç</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.okBtn, !(krTitle.trim() && parseFloat(krTarget) > 0) && s.okBtnDisabled]}
-                onPress={submitKR}
-                disabled={!(krTitle.trim() && parseFloat(krTarget) > 0)}
-                accessibilityRole="button"
-                accessibilityLabel="Key Result ekle"
-                accessibilityState={{ disabled: !(krTitle.trim() && parseFloat(krTarget) > 0) }}
-              >
-                <Text style={s.okText}>Ekle</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+      <SheetModal
+        visible={krFor !== null}
+        align="bottom"
+        onClose={() => setKrFor(null)}
+        sheetStyle={s.sheet}
+        accessibilityLabel="Yeni Key Result"
+      >
+        <Text style={s.sheetTitle}>Yeni Key Result</Text>
+        <TextInput style={s.input} placeholder="Ölçülebilir sonuç (örn. Haftada 3 antrenman)" placeholderTextColor={colors.textFaint} value={krTitle} onChangeText={setKrTitle} />
+        <View style={s.row}>
+          <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="Hedef (örn. 12)" placeholderTextColor={colors.textFaint} keyboardType="numeric" value={krTarget} onChangeText={setKrTarget} />
+          <TextInput style={[s.input, { flex: 1, marginBottom: 0 }]} placeholder="Birim (ops.)" placeholderTextColor={colors.textFaint} value={krUnit} onChangeText={setKrUnit} />
         </View>
-      </Modal>
+        <View style={s.actions}>
+          <TouchableOpacity
+            style={s.cancelBtn}
+            onPress={() => setKrFor(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Vazgeç"
+          >
+            <Text style={s.cancelText}>Vazgeç</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.okBtn, !(krTitle.trim() && parseFloat(krTarget) > 0) && s.okBtnDisabled]}
+            onPress={submitKR}
+            disabled={!(krTitle.trim() && parseFloat(krTarget) > 0)}
+            accessibilityRole="button"
+            accessibilityLabel="Key Result ekle"
+            accessibilityState={{ disabled: !(krTitle.trim() && parseFloat(krTarget) > 0) }}
+          >
+            <Text style={s.okText}>Ekle</Text>
+          </TouchableOpacity>
+        </View>
+      </SheetModal>
 
       {/* KR değer güncelle modal */}
-      <Modal visible={editKr !== null} animationType="fade" transparent onRequestClose={() => setEditKr(null)}>
-        <View style={s.overlayCenter}>
-          <View style={s.editSheet}>
-            <Text style={s.sheetTitle}>İlerlemeyi Güncelle</Text>
-            <Text style={s.editSub} numberOfLines={2}>{editKr?.title}</Text>
-            <TextInput style={[s.input, { textAlign: 'center', fontSize: 22 }]} keyboardType="numeric" value={editVal} onChangeText={setEditVal} autoFocus
-              placeholder="0" placeholderTextColor={colors.textFaint} />
-            <Text style={s.editTarget}>Hedef: {editKr?.target_value}{editKr?.unit ? ` ${editKr.unit}` : ''}</Text>
-            <View style={s.actions}>
-              <TouchableOpacity
-                style={s.cancelBtn}
-                onPress={() => setEditKr(null)}
-                accessibilityRole="button"
-                accessibilityLabel="Vazgeç"
-              >
-                <Text style={s.cancelText}>Vazgeç</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.okBtn}
-                onPress={submitEdit}
-                accessibilityRole="button"
-                accessibilityLabel="İlerlemeyi kaydet"
-              >
-                <Text style={s.okText}>Kaydet</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+      <SheetModal
+        visible={editKr !== null}
+        align="center"
+        onClose={() => setEditKr(null)}
+        sheetStyle={s.editSheet}
+        accessibilityLabel="İlerlemeyi Güncelle"
+      >
+        <Text style={s.sheetTitle}>İlerlemeyi Güncelle</Text>
+        <Text style={s.editSub} numberOfLines={2}>{editKr?.title}</Text>
+        <TextInput style={[s.input, { textAlign: 'center', fontSize: 22 }]} keyboardType="numeric" value={editVal} onChangeText={setEditVal} autoFocus
+          placeholder="0" placeholderTextColor={colors.textFaint} />
+        <Text style={s.editTarget}>Hedef: {editKr?.target_value}{editKr?.unit ? ` ${editKr.unit}` : ''}</Text>
+        <View style={s.actions}>
+          <TouchableOpacity
+            style={s.cancelBtn}
+            onPress={() => setEditKr(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Vazgeç"
+          >
+            <Text style={s.cancelText}>Vazgeç</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={s.okBtn}
+            onPress={submitEdit}
+            accessibilityRole="button"
+            accessibilityLabel="İlerlemeyi kaydet"
+          >
+            <Text style={s.okText}>Kaydet</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </SheetModal>
     </SafeAreaView>
   );
 }
@@ -360,8 +366,6 @@ const s = StyleSheet.create({
     shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
   },
 
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
-  overlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 24 },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 24 },
   editSheet: { backgroundColor: colors.surface, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: colors.border },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.white, marginBottom: 14 },

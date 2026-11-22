@@ -32,7 +32,8 @@ import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from 
 import { syncAllReminders } from '../../lib/notifications';
 import { colors, radius, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { EditorialBanner, WillpowerBand, SectionHeader, EmptyState, FormError, ProgressBar } from '../../components/ui';
+import { EditorialBanner, WillpowerBand, SectionHeader, EmptyState, FormError, IconButton, ProgressBar, SheetModal } from '../../components/ui';
+import { undoToastBottom } from '../../lib/layoutMetrics';
 import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { CANVASES, DECOR, RITUAL_BANNERS, TEXTURES } from '../../lib/visualAssets';
@@ -41,6 +42,8 @@ import { isMeasurableTracking } from '../../lib/habitEngine';
 import { measuredEntryFor } from '../../services/habitLogService';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { useRouter } from 'expo-router';
+
+const FAB_BOTTOM = Platform.OS === 'ios' ? 100 : 80;
 
 const DELETE_REASONS = [
   'Artık ihtiyacım yok',
@@ -279,6 +282,9 @@ export default function TimelineScreen() {
               key={i}
               style={[styles.dayItem, sel && styles.daySelected, today && !sel && styles.dayToday]}
               onPress={() => setSelectedDate(day)}
+              accessibilityRole="button"
+              accessibilityLabel={format(day, 'dd MMMM EEEE', { locale: tr })}
+              accessibilityState={{ selected: sel }}
             >
               <Text style={[styles.dayName, sel && styles.dayTextSel]}>{format(day, 'EEE', { locale: tr })}</Text>
               <Text style={[styles.dayNum, sel && styles.dayTextSel]}>{format(day, 'd')}</Text>
@@ -311,6 +317,9 @@ export default function TimelineScreen() {
           else handleYesNoTap(habit);
         }}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`${habit.name}, ${isDone ? 'tamamlandı' : isPartial ? 'kısmen tamamlandı' : 'bekliyor'}`}
+        accessibilityState={{ checked: isDone }}
       >
         <View style={styles.habitRowLeft}>
           <View style={[
@@ -371,15 +380,33 @@ export default function TimelineScreen() {
           {log?.xp != null && log.xp > 0 && (
             <View style={styles.xpBadge}><Text style={styles.xpBadgeText}>+{log.xp}</Text></View>
           )}
-          <TouchableOpacity style={styles.rowIconBtn} onPress={() => handleComplete(habit)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <Ionicons name="checkmark-done-circle-outline" size={22} color="#10b981" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.rowIconBtn} onPress={() => handlePause(habit)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <Ionicons name="pause-circle-outline" size={22} color={colors.neutral400} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.rowTrashBtn} onPress={() => { setDeleteReason(''); setDeleteTarget(habit); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <Ionicons name="trash-outline" size={16} color="#ef4444" />
-          </TouchableOpacity>
+          <IconButton
+            compact
+            icon="checkmark-done-circle-outline"
+            size={22}
+            color="#10b981"
+            label={`${habit.name} alışkanlığını tamamlandı say`}
+            style={styles.rowIconBtn}
+            onPress={() => { void handleComplete(habit); }}
+          />
+          <IconButton
+            compact
+            icon="pause-circle-outline"
+            size={22}
+            color={colors.neutral400}
+            label={`${habit.name} alışkanlığını beklemeye al`}
+            style={styles.rowIconBtn}
+            onPress={() => { void handlePause(habit); }}
+          />
+          <IconButton
+            compact
+            icon="trash-outline"
+            size={16}
+            color="#ef4444"
+            label={`${habit.name} alışkanlığını sil`}
+            style={styles.rowTrashBtn}
+            onPress={() => { setDeleteReason(''); setDeleteTarget(habit); }}
+          />
         </View>
       </TouchableOpacity>
     );
@@ -422,28 +449,56 @@ export default function TimelineScreen() {
         </View>
         <View style={styles.cardActions}>
           {isCompleted ? (
-            <TouchableOpacity style={styles.moveBtn} onPress={() => handleReopen(habit)}>
+            <TouchableOpacity
+              style={styles.moveBtn}
+              onPress={() => handleReopen(habit)}
+              accessibilityRole="button"
+              accessibilityLabel={`${habit.name} alışkanlığını geri aç`}
+            >
               <Ionicons name="refresh-outline" size={14} color={colors.primary} />
               <Text style={styles.moveBtnText}>Geri Aç</Text>
             </TouchableOpacity>
           ) : isIdea ? (
-            <TouchableOpacity style={styles.moveBtn} onPress={() => handleMoveToWaiting(habit)}>
+            <TouchableOpacity
+              style={styles.moveBtn}
+              onPress={() => handleMoveToWaiting(habit)}
+              accessibilityRole="button"
+              accessibilityLabel={`${habit.name} alışkanlığını bekleme odasına al`}
+            >
               <Ionicons name="arrow-up-circle-outline" size={14} color={colors.primary} />
               <Text style={styles.moveBtnText}>Beklet</Text>
             </TouchableOpacity>
           ) : (
             <>
-              <TouchableOpacity style={styles.rowIconBtn} onPress={() => handleComplete(habit)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Ionicons name="checkmark-done-circle-outline" size={22} color="#10b981" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.activateBtn} onPress={() => handleActivate(habit)}>
-                <Ionicons name="play-circle" size={26} color="#10b981" />
-              </TouchableOpacity>
+              <IconButton
+                compact
+                icon="checkmark-done-circle-outline"
+                size={22}
+                color="#10b981"
+                label={`${habit.name} alışkanlığını tamamlandı say`}
+                style={styles.rowIconBtn}
+                onPress={() => { void handleComplete(habit); }}
+              />
+              <IconButton
+                compact
+                icon="play-circle"
+                size={26}
+                color="#10b981"
+                label={`${habit.name} alışkanlığını etkinleştir`}
+                style={styles.activateBtn}
+                onPress={() => { void handleActivate(habit); }}
+              />
             </>
           )}
-          <TouchableOpacity style={styles.trashBtn} onPress={() => { setDeleteReason(''); setDeleteTarget(habit); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="trash-outline" size={16} color="#ef4444" />
-          </TouchableOpacity>
+          <IconButton
+            compact
+            icon="trash-outline"
+            size={16}
+            color="#ef4444"
+            label={`${habit.name} alışkanlığını sil`}
+            style={styles.trashBtn}
+            onPress={() => { setDeleteReason(''); setDeleteTarget(habit); }}
+          />
         </View>
       </View>
     );
@@ -676,7 +731,12 @@ export default function TimelineScreen() {
         onClose={() => setShowBadHabits(false)}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => setShowOnboarding(true)} accessibilityLabel="Alışkanlık ekle">
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setShowOnboarding(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Alışkanlık ekle"
+      >
         <Ionicons name="add" size={28} color={colors.white} />
       </TouchableOpacity>
 
@@ -689,10 +749,21 @@ export default function TimelineScreen() {
 
       {/* Geri Al toast */}
       {pendingDelete && (
-        <FadeInUpView disabled={reduceMotion} duration={250} style={styles.undoToast}>
+        <FadeInUpView
+          disabled={reduceMotion}
+          duration={250}
+          style={styles.undoToast}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
           <Ionicons name="trash" size={16} color="#ef4444" />
           <Text style={styles.undoText} numberOfLines={1}>&quot;{pendingDelete.habit.name}&quot; silindi</Text>
-          <TouchableOpacity style={styles.undoBtn} onPress={handleUndoDelete}>
+          <TouchableOpacity
+            style={styles.undoBtn}
+            onPress={handleUndoDelete}
+            accessibilityRole="button"
+            accessibilityLabel="Silinen alışkanlığı geri al"
+          >
             <Ionicons name="arrow-undo" size={14} color={colors.primary} />
             <Text style={styles.undoBtnText}>Geri Al</Text>
           </TouchableOpacity>
@@ -717,41 +788,60 @@ export default function TimelineScreen() {
       />
 
       {/* Silme nedeni modalı */}
-      <Modal visible={!!deleteTarget} animationType="fade" transparent onRequestClose={() => setDeleteTarget(null)}>
-        <View style={styles.delOverlay}>
-          <View style={styles.delSheet}>
-            <View style={styles.delIconWrap}><Ionicons name="trash-outline" size={26} color="#ef4444" /></View>
-            <Text style={styles.delTitle}>Alışkanlığı Sil</Text>
-            <Text style={styles.delSub} numberOfLines={2}>&quot;{deleteTarget?.name}&quot; silinecek. Nedenini seçer misin?</Text>
-            <View style={styles.reasonWrap}>
-              {DELETE_REASONS.map((r) => {
-                const sel = deleteReason === r;
-                return (
-                  <TouchableOpacity key={r} style={[styles.reasonChip, sel && styles.reasonChipSel]} onPress={() => setDeleteReason(r)}>
-                    <Text style={[styles.reasonChipText, sel && styles.reasonChipTextSel]}>{r}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <TextInput
-              style={styles.reasonInput}
-              placeholder="Veya kendi nedenini yaz (opsiyonel)"
-              placeholderTextColor={colors.textFaint}
-              value={DELETE_REASONS.includes(deleteReason) ? '' : deleteReason}
-              onChangeText={setDeleteReason}
-            />
-            <View style={styles.delActions}>
-              <TouchableOpacity style={styles.delCancelBtn} onPress={() => setDeleteTarget(null)}>
-                <Text style={styles.delCancelText}>Vazgeç</Text>
+      <SheetModal
+        visible={!!deleteTarget}
+        align="center"
+        onClose={() => setDeleteTarget(null)}
+        sheetStyle={styles.delSheet}
+        accessibilityLabel="Alışkanlığı sil"
+      >
+        <View style={styles.delIconWrap}><Ionicons name="trash-outline" size={26} color="#ef4444" /></View>
+        <Text style={styles.delTitle}>Alışkanlığı Sil</Text>
+        <Text style={styles.delSub} numberOfLines={2}>&quot;{deleteTarget?.name}&quot; silinecek. Nedenini seçer misin?</Text>
+        <View style={styles.reasonWrap} accessibilityRole="radiogroup">
+          {DELETE_REASONS.map((r) => {
+            const sel = deleteReason === r;
+            return (
+              <TouchableOpacity
+                key={r}
+                style={[styles.reasonChip, sel && styles.reasonChipSel]}
+                onPress={() => setDeleteReason(r)}
+                accessibilityRole="radio"
+                accessibilityLabel={r}
+                accessibilityState={{ selected: sel, checked: sel }}
+              >
+                <Text style={[styles.reasonChipText, sel && styles.reasonChipTextSel]}>{r}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.delConfirmBtn} onPress={confirmDelete}>
-                <Ionicons name="trash" size={16} color={colors.white} />
-                <Text style={styles.delConfirmText}>Sil</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+            );
+          })}
         </View>
-      </Modal>
+        <TextInput
+          style={styles.reasonInput}
+          placeholder="Veya kendi nedenini yaz (opsiyonel)"
+          placeholderTextColor={colors.textFaint}
+          value={DELETE_REASONS.includes(deleteReason) ? '' : deleteReason}
+          onChangeText={setDeleteReason}
+        />
+        <View style={styles.delActions}>
+          <TouchableOpacity
+            style={styles.delCancelBtn}
+            onPress={() => setDeleteTarget(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Vazgeç"
+          >
+            <Text style={styles.delCancelText}>Vazgeç</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.delConfirmBtn}
+            onPress={confirmDelete}
+            accessibilityRole="button"
+            accessibilityLabel="Alışkanlığı sil"
+          >
+            <Ionicons name="trash" size={16} color={colors.white} />
+            <Text style={styles.delConfirmText}>Sil</Text>
+          </TouchableOpacity>
+        </View>
+      </SheetModal>
 
       {/* Kapasite Yöneticisi modalı */}
       <Modal visible={!!capacityTarget} animationType="slide" transparent onRequestClose={() => setCapacityTarget(null)}>
@@ -801,7 +891,12 @@ export default function TimelineScreen() {
                     </View>
                     <Text style={styles.capItemName} numberOfLines={1}>{h.name}</Text>
                     <View style={styles.capItemCost}><Ionicons name="flash" size={11} color="#f59e0b" /><Text style={styles.capItemCostText}>{h.willpower_cost}</Text></View>
-                    <TouchableOpacity style={styles.capMoveBtn} onPress={() => handlePause(h)}>
+                    <TouchableOpacity
+                      style={styles.capMoveBtn}
+                      onPress={() => handlePause(h)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${h.name} alışkanlığını beklemeye al`}
+                    >
                       <Ionicons name="arrow-down" size={13} color={colors.neutral400} /><Text style={styles.capMoveText}>Beklet</Text>
                     </TouchableOpacity>
                   </View>
@@ -809,10 +904,20 @@ export default function TimelineScreen() {
               )}
             </ScrollView>
             <View style={styles.capActions}>
-              <TouchableOpacity style={styles.capCancelBtn} onPress={() => setCapacityTarget(null)}>
+              <TouchableOpacity
+                style={styles.capCancelBtn}
+                onPress={() => setCapacityTarget(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Vazgeç"
+              >
                 <Text style={styles.capCancelText}>Vazgeç</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.capWaitBtn} onPress={handleWaitPending}>
+              <TouchableOpacity
+                style={styles.capWaitBtn}
+                onPress={handleWaitPending}
+                accessibilityRole="button"
+                accessibilityLabel="Beklemeye ekle"
+              >
                 <Ionicons name="time-outline" size={15} color="#f59e0b" /><Text style={styles.capWaitText}>Beklemeye Ekle</Text>
               </TouchableOpacity>
             </View>
@@ -820,6 +925,9 @@ export default function TimelineScreen() {
               style={[styles.capActivateBtn, !(capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits })) && styles.capActivateDisabled]}
               onPress={handleActivatePending}
               disabled={!(capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits }))}
+              accessibilityRole="button"
+              accessibilityLabel="Aktif olarak ekle"
+              accessibilityState={{ disabled: !(capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits })) }}
             >
               <Ionicons name="flash" size={16} color={colors.white} />
               <Text style={styles.capActivateText}>
@@ -968,7 +1076,7 @@ const styles = StyleSheet.create({
   },
 
   fab: {
-    position: 'absolute', right: 16, bottom: Platform.OS === 'ios' ? 100 : 80,
+    position: 'absolute', right: 16, bottom: FAB_BOTTOM,
     width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
@@ -978,18 +1086,17 @@ const styles = StyleSheet.create({
   xpToastText: { fontSize: 28, fontWeight: 'bold', color: colors.white },
 
   undoToast: {
-    position: 'absolute', left: 16, right: 16, bottom: Platform.OS === 'ios' ? 100 : 80,
+    position: 'absolute', left: 16, right: 16, bottom: undoToastBottom(FAB_BOTTOM),
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: colors.coolBlack800, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
     borderWidth: 1, borderColor: colors.coolBlack700,
     shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 10,
   },
   undoText: { flex: 1, fontSize: 14, color: colors.neutral200 },
-  undoBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: hexA(colors.primary, 0.12), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: hexA(colors.primary, 0.25) },
+  undoBtn: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: hexA(colors.primary, 0.12), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: hexA(colors.primary, 0.25) },
   undoBtnText: { fontSize: 13, color: colors.primary, fontWeight: '700' },
 
   // Silme modalı
-  delOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 24 },
   delSheet: { backgroundColor: colors.coolBlack800, borderRadius: 20, padding: 22, borderWidth: 1, borderColor: colors.coolBlack700 },
   delIconWrap: { width: 52, height: 52, borderRadius: 16, backgroundColor: '#ef444418', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 12 },
   delTitle: { fontSize: 19, fontWeight: '800', color: colors.white, textAlign: 'center', marginBottom: 4 },

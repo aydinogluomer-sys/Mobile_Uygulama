@@ -9,13 +9,15 @@ import {
   TextInput,
   ActivityIndicator,
   Linking,
+  Switch,
 } from 'react-native';
 import { confirm, notify } from '../../lib/dialog';
+import { setHapticsEnabled, useHapticsEnabled } from '../../lib/haptics';
 import { runDeleteAccountFlow } from '../../lib/deleteAccountFlow';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../../store/themeStore';
-import { accentsFor, alphaHex, hexA, onColor, type AccentKey, type Palette } from '../../lib/tokens';
+import { accentsFor, alphaHex, hexA, onColor, space, type AccentKey, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemeMode, useThemedStyles } from '../../hooks/useThemeColors';
 import { useAccent } from '../../lib/useAccent';
 import type { SeasonalMotionIntensity } from '../../components/seasonalMotion/types';
@@ -109,6 +111,7 @@ export default function SettingsScreen() {
   const setSeasonalMotion = useThemeStore((st) => st.setSeasonalMotion);
   const accent = useThemeStore((st) => st.accent);
   const setAccent = useThemeStore((st) => st.setAccent);
+  const hapticsEnabled = useHapticsEnabled();
   const modeAccents = accentsFor(mode);
 
   const [showWebhookModal, setShowWebhookModal] = useState(false);
@@ -419,6 +422,29 @@ export default function SettingsScreen() {
                     </TouchableOpacity>
                   );
                 })}
+              </View>
+            </View>
+
+            {/* Dokunsal geri bildirim (DSA-12) */}
+            <View style={styles.motionBlock}>
+              <View style={styles.hapticRow}>
+                <Ionicons name="radio-button-on-outline" size={18} color={c.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.themeLabel}>Dokunsal geri bildirim</Text>
+                  <Text style={styles.themeSubLabel}>
+                    Düğmelere ve tamamlamalara hafif titreşim verir. Seni yoruyorsa kapat.
+                  </Text>
+                </View>
+                <Switch
+                  value={hapticsEnabled}
+                  onValueChange={setHapticsEnabled}
+                  trackColor={{ false: c.border, true: alphaHex(accentTheme.primary, '66') }}
+                  thumbColor={hapticsEnabled ? accentTheme.primary : c.textFaint}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Dokunsal geri bildirim"
+                  accessibilityState={{ checked: hapticsEnabled }}
+                  style={styles.hapticSwitch}
+                />
               </View>
             </View>
           </View>
@@ -855,6 +881,8 @@ const makeStyles = (c: Palette) =>
       borderWidth: 1, borderColor: c.border, gap: 12,
     },
     motionHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    hapticRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 44 },
+    hapticSwitch: { minHeight: 44 },
     segRow: { flexDirection: 'row', gap: 8 },
     segBtn: {
       flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: 10,
