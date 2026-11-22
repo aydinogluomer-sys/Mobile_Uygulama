@@ -33,6 +33,9 @@ import { isToolVisible } from '../../lib/disclosure';
 import { currentUser } from '../../lib/session';
 import XPDisplay from '../../components/XPDisplay';
 import TodayHero from '../../components/today/TodayHero';
+import DayCloseEcho from '../../components/today/DayCloseEcho';
+import DayCloseMood from '../../components/today/DayCloseMood';
+import DayCloseTasks from '../../components/today/DayCloseTasks';
 import MetricGrid, { type Metric } from '../../components/today/MetricGrid';
 import NextUpStrip from '../../components/today/NextUpStrip';
 import HabitSection, { HolidayCard, SetAsideCard } from '../../components/today/HabitSection';
@@ -48,6 +51,7 @@ import { itemsOn } from '../../lib/habitChecklist';
 import { buildTodayNarrative } from '../../lib/todayNarrative';
 import { space, radius, font, hexA, onColor, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
+import { useDayClose } from '../../hooks/useDayClose';
 import { useTodayClock, useTodayModel } from '../../hooks/useTodayModel';
 import { haptic } from '../../lib/haptics';
 import {
@@ -121,7 +125,7 @@ export default function TodayScreen() {
   const c = useThemeColors();
   const s = useThemedStyles(makeStyles);
   const priorityColor = (p: string): string => c[PRIORITY_TONE[p] ?? 'textGhost'];
-  const { width } = useWindowDimensions();
+  const { width, height: windowHeight } = useWindowDimensions();
   const pagePadding = width < 480 ? space.md : width < 900 ? space.lg : space.xl;
   const isWide = width >= 1180;
   const clock = useTodayClock();
@@ -185,6 +189,8 @@ export default function TodayScreen() {
   const [activeSegment, setActiveSegment] = useState<'all' | 'habits' | 'tasks' | 'balance'>('all');
   const [lowEnergyFilter, setLowEnergyFilter] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
+  const closeFlow = useDayClose(shutdownOpen);
+  const lightDayFromCloseRef = useRef(false);
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<PartGroupKey>>(EMPTY_GROUPS);
   const lightDayOpen = lightDayPick !== null;
 
@@ -475,6 +481,10 @@ export default function TodayScreen() {
   function closeLightDaySheet() {
     setLightDayPick(null);
     setLightDayNote('');
+    if (lightDayFromCloseRef.current) {
+      lightDayFromCloseRef.current = false;
+      setShutdownOpen(true);
+    }
   }
 
   async function confirmLightDay() {
@@ -495,6 +505,24 @@ export default function TodayScreen() {
     }
     haptic.success();
     closeLightDaySheet();
+  }
+
+  const closeRows = useMemo(
+    () =>
+      closeFlow.rows.map((r) => ({
+        id: r.task.id,
+        title: r.task.title,
+        priority: r.task.priority,
+        decision: r.decision,
+      })),
+    [closeFlow.rows],
+  );
+
+  async function onFinishClose() {
+    haptic.success();
+    useDisclosureStore.getState().markFirstClose(clock.today);
+    setShutdownOpen(false);
+    await closeFlow.finish(setAsideHabits.length);
   }
 
   const hasContext = Boolean(!legacyNoticeSeen || afterBreak || holiday || setAsideHabits.length > 0);
@@ -619,6 +647,7 @@ export default function TodayScreen() {
             narrative={narrative}
             ctas={heroCtas}
           />
+          <DayCloseEcho />
           <View style={s.summaryPillRow}>
             <View style={s.summaryPill}>
               <Ionicons name="sparkles" size={13} color={c.accent} />
@@ -1056,89 +1085,105 @@ export default function TodayScreen() {
       <Modal visible={shutdownOpen} transparent animationType="slide" onRequestClose={() => setShutdownOpen(false)}>
         <View style={s.sheetOverlay}>
           <View style={s.sheet}>
-            <View
-              style={s.shutdownHero}
-              pointerEvents="none"
-              {...(Platform.OS === 'web'
-                ? { 'aria-hidden': true }
-                : { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const })}
+            <ScrollView
+              style={{ maxHeight: Math.round(0.68 * windowHeight) }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              {process.env?.NODE_ENV !== 'test' ? (
-                <Image source={BENTO_ART.eveningShutdown} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
-              ) : null}
-              <View style={s.shutdownHeroScrim} />
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.xs }}>
-              <Ionicons name="moon" size={20} color={c.accent} />
-              <Text style={s.shutdownTitle}>Günü Kapat · Zihinsel Kapanış</Text>
-            </View>
-            <Text style={s.sheetBody}>
-              Bugün {completedHabits.length}/{habitSummary.total} ritüel ve {sessionsCompleted} odak seansı tamamladın.
-              Açık kalan döngüleri yarına devredip zihnini dinlenme moduna alabilirsin.
-            </Text>
+              <View
+                style={s.shutdownHero}
+                pointerEvents="none"
+                {...(Platform.OS === 'web'
+                  ? { 'aria-hidden': true }
+                  : { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const })}
+              >
+                {process.env?.NODE_ENV !== 'test' ? (
+                  <Image source={BENTO_ART.eveningShutdown} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
+                ) : null}
+                <View style={s.shutdownHeroScrim} />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.xs }}>
+                <Ionicons name="moon" size={20} color={c.accent} />
+                <Text style={s.shutdownTitle}>Günü Kapat · Zihinsel Kapanış</Text>
+              </View>
+              <Text style={s.sheetBody}>
+                Bugün {completedHabits.length}/{habitSummary.total} ritüel ve {sessionsCompleted} odak seansı tamamladın.
+                Açık kalan döngüleri yarına devredip zihnini dinlenme moduna alabilirsin.
+              </Text>
 
-            <View style={{ gap: space.sm, marginVertical: space.md }}>
-              {remainingHabits > 0 && (
+              <DayCloseMood value={closeFlow.mood} onChoose={closeFlow.chooseMood} />
+
+              {closeRows.length > 0 && (
+                <DayCloseTasks
+                  rows={closeRows}
+                  hasMore={closeFlow.hasMore}
+                  waitingForSync={closeFlow.waitingForSync}
+                  onDecide={closeFlow.decide}
+                  onUndo={closeFlow.undo}
+                  onMoveAll={closeFlow.moveVisibleToTomorrow}
+                />
+              )}
+
+              <View style={{ gap: space.sm, marginVertical: space.md }}>
+                {remainingHabits > 0 && (
+                  <TouchableOpacity
+                    style={s.shutdownOptionCard}
+                    onPress={() => {
+                      lightDayFromCloseRef.current = true;
+                      setShutdownOpen(false);
+                      setLightDayPick(new Set(lightDayCandidates.map((h) => h.id)));
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Kalan ritüelleri cezasız olarak bugünlük kenara koy"
+                  >
+                    <Ionicons name="leaf-outline" size={18} color={c.success} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.shutdownOptionTitle}>Kalan {remainingHabits} ritüeli bugünlük hafiflet</Text>
+                      <Text style={s.shutdownOptionSub}>Serilerin bozulmaz; bugün cezasız kapanır.</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
                   style={s.shutdownOptionCard}
                   onPress={() => {
                     setShutdownOpen(false);
-                    setLightDayPick(new Set(lightDayCandidates.map((h) => h.id)));
+                    router.push('/screens/journal' as any);
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Kalan ritüelleri cezasız olarak bugünlük kenara koy"
+                  accessibilityLabel="Günü tek cümlelik günlük yansımasıyla kapat"
                 >
-                  <Ionicons name="leaf-outline" size={18} color={c.success} />
+                  <Ionicons name="journal-outline" size={18} color={c.accent} />
                   <View style={{ flex: 1 }}>
-                    <Text style={s.shutdownOptionTitle}>Kalan {remainingHabits} ritüeli bugünlük hafiflet</Text>
-                    <Text style={s.shutdownOptionSub}>Serilerin bozulmaz; bugün cezasız kapanır.</Text>
+                    <Text style={s.shutdownOptionTitle}>1 Cümlelik Akşam Yansıması Yaz</Text>
+                    <Text style={s.shutdownOptionSub}>Zihnindeki son düşünceleri kağıda bırak.</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
                 </TouchableOpacity>
-              )}
 
-              <TouchableOpacity
-                style={s.shutdownOptionCard}
-                onPress={() => {
-                  setShutdownOpen(false);
-                  router.push('/screens/journal' as any);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Günü tek cümlelik günlük yansımasıyla kapat"
-              >
-                <Ionicons name="journal-outline" size={18} color={c.accent} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.shutdownOptionTitle}>1 Cümlelik Akşam Yansıması Yaz</Text>
-                  <Text style={s.shutdownOptionSub}>Zihnindeki son düşünceleri kağıda bırak.</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={s.shutdownOptionCard}
-                onPress={() => {
-                  setShutdownOpen(false);
-                  router.push('/screens/recovery' as any);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Telafi kalkanını ve yarının planını incele"
-              >
-                <Ionicons name="shield-checkmark-outline" size={18} color={c.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.shutdownOptionTitle}>Telafi & Yarın Pusulası</Text>
-                  <Text style={s.shutdownOptionSub}>Kaçan adımları yarına veya iki güne böl.</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={s.shutdownOptionCard}
+                  onPress={() => {
+                    setShutdownOpen(false);
+                    router.push('/screens/recovery' as any);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Telafi kalkanını ve yarının planını incele"
+                >
+                  <Ionicons name="shield-checkmark-outline" size={18} color={c.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.shutdownOptionTitle}>Telafi & Yarın Pusulası</Text>
+                    <Text style={s.shutdownOptionSub}>Kaçan adımları yarına veya iki güne böl.</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
 
             <TouchableOpacity
-              style={s.sheetSave}
-              onPress={() => {
-                haptic.success();
-                useDisclosureStore.getState().markFirstClose(clock.today);
-                setShutdownOpen(false);
-              }}
+              style={[s.sheetSave, s.shutdownFinishBtn]}
+              onPress={onFinishClose}
               accessibilityRole="button"
               accessibilityLabel="Bugünlük bitti, ekranı kapat"
             >
@@ -1228,6 +1273,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   sheetCancel: { flex: 1, paddingVertical: space.md, borderRadius: radius.md, alignItems: 'center', borderWidth: 1, borderColor: c.border, minHeight: 48, justifyContent: 'center' },
   sheetCancelText: { color: c.textDim, fontWeight: '600' },
   sheetSave: { flex: 1, paddingVertical: space.md, borderRadius: radius.md, alignItems: 'center', backgroundColor: c.accent, minHeight: 48, justifyContent: 'center' },
+  shutdownFinishBtn: { flex: 0, marginTop: space.sm },
   sheetSaveDisabled: { opacity: 0.4 },
   sheetSaveText: { color: onColor(c.accent), fontWeight: '700' },
   safe: { flex: 1, backgroundColor: c.bg },

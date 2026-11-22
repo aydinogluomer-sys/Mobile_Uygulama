@@ -6,6 +6,7 @@
  */
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 jest.setTimeout(30_000);
 
@@ -121,9 +122,22 @@ it('F16 (INT-10): a focus session paused > 30m yields Today hero to due work, wh
   });
 });
 
+const mountedTrees: TestRenderer.ReactTestRenderer[] = [];
+
+afterEach(async () => {
+  while (mountedTrees.length > 0) {
+    const tree = mountedTrees.pop()!;
+    await act(async () => {
+      tree.unmount();
+    });
+  }
+  jest.useRealTimers();
+});
+
 async function render() {
   let r!: TestRenderer.ReactTestRenderer;
   await act(async () => { r = TestRenderer.create(<TodayScreen />); });
+  mountedTrees.push(r);
   await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
   return r;
 }
@@ -225,4 +239,142 @@ it('R06.02: ONE dominant action on the hero; the rest one tap away; a short capa
   expect(mockPush).not.toHaveBeenCalled();
 
   expect(textOf(r)).toMatch(/1 alışkanlık, 1 görev kaldı/);
+});
+
+describe('F29 — calm 3-tap day-close ritual & morning echo on TodayScreen', () => {
+  it('(+) completes 3-tap day close (mood + 1 task move + finish), persists record, returns from light-day sheet, and shows calm echo next morning', async () => {
+    await AsyncStorage.clear();
+    jest.useFakeTimers().setSystemTime(new Date(2026, 10, 2, 20, 0, 0));
+
+    const closeDay = '2026-11-02';
+    const nextDay = '2026-11-03';
+    (globalThis as any).__pauses = [];
+    (globalThis as any).__tasks = [
+      { id: 't-ov1', user_id: 'u1', title: 'Fatura öde', status: 'pending', priority: 'high', list_type: 'inbox', due_date: '2026-10-31', completed: false, created_at: '2026-10-30T09:00:00Z' },
+      { id: 't-ov2', user_id: 'u1', title: 'Notları topla', status: 'pending', priority: 'medium', list_type: 'inbox', due_date: '2026-11-01', completed: false, created_at: '2026-10-31T09:00:00Z' },
+      { id: 't-tod', user_id: 'u1', title: 'Mektup yaz', status: 'pending', priority: 'low', list_type: 'inbox', due_date: closeDay, completed: false, created_at: '2026-11-02T09:00:00Z' },
+    ];
+
+    const { useTaskStore } = jest.requireActual('../../store/taskStore') as typeof import('../../store/taskStore');
+    const updateSpy = jest.spyOn(useTaskStore.getState(), 'updateTask');
+
+    let r!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      r = TestRenderer.create(<TodayScreen />);
+      jest.advanceTimersByTime(0);
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+    mountedTrees.push(r);
+
+    // No close yesterday -> no echo line yet
+    expect(textOf(r)).not.toContain('Dün günü kapattın');
+
+    const openChip = r.root.findAll(
+      (n) => n.props?.accessibilityLabel === 'Günü kapat: akşam kapanış ritüelini başlat' && typeof n.props?.onPress === 'function',
+    )[0];
+    expect(openChip).toBeDefined();
+    await act(async () => { openChip.props.onPress(); });
+
+    expect(textOf(r)).toContain('Açık kalanlar');
+    expect(textOf(r)).toContain('Fatura öde');
+    expect(textOf(r)).toContain('Notları topla');
+    expect(textOf(r)).toContain('Mektup yaz');
+
+    // Light-day round-trip from shutdown modal returns back to shutdown modal on Vazgeç
+    const lightenOpt = r.root.findAll(
+      (n) => n.props?.accessibilityLabel === 'Kalan ritüelleri cezasız olarak bugünlük kenara koy' && typeof n.props?.onPress === 'function',
+    )[0];
+    expect(lightenOpt).toBeDefined();
+    await act(async () => { lightenOpt.props.onPress(); });
+    const cancelLight = r.root.findAll(
+      (n) => n.props?.accessibilityLabel === 'Vazgeç' && typeof n.props?.onPress === 'function',
+    )[0];
+    await act(async () => { cancelLight.props.onPress(); });
+    expect(textOf(r)).toContain('Günü Kapat · Zihinsel Kapanış');
+
+    // Tap 1: mood ("İyi")
+    const goodMood = r.root.findAll(
+      (n) => n.props?.accessibilityRole === 'radio' && n.props?.accessibilityLabel === 'İyi' && typeof n.props?.onPress === 'function',
+    )[0];
+    expect(goodMood).toBeDefined();
+    await act(async () => {
+      goodMood.props.onPress();
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+
+    // Tap 2: move 1 task to tomorrow
+    updateSpy.mockClear();
+    const moveBtn = r.root.findAll(
+      (n) => n.props?.accessibilityLabel === 'Fatura öde: yarına taşı' && typeof n.props?.onPress === 'function',
+    )[0];
+    expect(moveBtn).toBeDefined();
+    await act(async () => { await moveBtn.props.onPress(); });
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(updateSpy).toHaveBeenCalledWith('t-ov1', { due_date: nextDay });
+
+    // Tap 3: finish close
+    const finishBtn = r.root.findAll(
+      (n) => n.props?.accessibilityLabel === 'Bugünlük bitti, ekranı kapat' && typeof n.props?.onPress === 'function',
+    )[0];
+    await act(async () => {
+      await finishBtn.props.onPress();
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+
+    const savedRaw = await AsyncStorage.getItem('aderyth:day_close:v1:u1');
+    expect(savedRaw).not.toBeNull();
+    expect(JSON.parse(savedRaw!)).toMatchObject({ date: closeDay, movedCount: 1 });
+    expect(useDisclosureStore.getState().firstCloseAt).toBe(closeDay);
+
+    updateSpy.mockRestore();
+    await act(async () => { r.unmount(); });
+
+    // Next morning: echo line appears below TodayHero
+    jest.setSystemTime(new Date(2026, 10, 3, 9, 0, 0));
+    let rMorning!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      rMorning = TestRenderer.create(<TodayScreen />);
+      jest.advanceTimersByTime(0);
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+    mountedTrees.push(rMorning);
+    expect(textOf(rMorning)).toContain('Dün günü kapattın; bir işi bugüne taşıdın.');
+  });
+
+  it('(-) omits Açık kalanlar section when no open candidate tasks exist and saves record even when mood is skipped', async () => {
+    await AsyncStorage.clear();
+    jest.useFakeTimers().setSystemTime(new Date(2026, 10, 2, 20, 0, 0));
+
+    (globalThis as any).__pauses = [];
+    (globalThis as any).__tasks = [];
+    const { useTaskStore } = jest.requireActual('../../store/taskStore') as typeof import('../../store/taskStore');
+    useTaskStore.setState({ tasks: [] });
+
+    let r!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      r = TestRenderer.create(<TodayScreen />);
+      jest.advanceTimersByTime(0);
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+    mountedTrees.push(r);
+
+    const openChip = r.root.findAll(
+      (n) => n.props?.accessibilityLabel === 'Günü kapat: akşam kapanış ritüelini başlat' && typeof n.props?.onPress === 'function',
+    )[0];
+    await act(async () => { openChip.props.onPress(); });
+
+    expect(textOf(r)).not.toContain('Açık kalanlar');
+
+    const finishBtn = r.root.findAll(
+      (n) => n.props?.accessibilityLabel === 'Bugünlük bitti, ekranı kapat' && typeof n.props?.onPress === 'function',
+    )[0];
+    await act(async () => {
+      await finishBtn.props.onPress();
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+
+    const savedRaw = await AsyncStorage.getItem('aderyth:day_close:v1:u1');
+    expect(savedRaw).not.toBeNull();
+    expect(JSON.parse(savedRaw!)).toMatchObject({ date: '2026-11-02', movedCount: 0 });
+  });
 });
