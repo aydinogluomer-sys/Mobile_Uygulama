@@ -6,7 +6,8 @@ import {
   stableJson, newOperationId, MAX_ATTEMPTS, MAX_TOMBSTONES, nextRetryDelayMs,
   nextReadyAt, retryableDelayMs, RETRYABLE_GIVE_UP_MS, markSending,
   CONFIRMED_TOMBSTONE_GRACE_MS, clearTombstones, pruneConfirmedTombstones,
-  type OutboxState, type EnqueueInput,
+  SETTLED_KEEP, SETTLED_MAX_AGE_MS, pruneSettled, replaceCommand, mergeOutboxStates,
+  type OutboxState, type EnqueueInput, type EntityPolicy,
 } from '../../lib/outbox';
 
 const U = 'user-a';
@@ -336,5 +337,178 @@ describe('F05 -- retryable and nextReadyAt', () => {
     expect(nextReadyAt(s)).toBe(Math.min(T0 + retryableDelayMs(1), T0 + nextRetryDelayMs(1)));
     expect(nextReadyAt({ ...s, authBlocked: true })).toBeNull();
     expect(nextReadyAt(markSending(markSending(s, 'a'), 'b'))).toBeNull();
+  });
+});
+
+describe('F46 (5.2-a) — EntityPolicy, settled ledger, replaceCommand, mergeOutboxStates', () => {
+  const REPLACE_POLICY: EntityPolicy = { coalesce: 'replace', conflict: 'none' };
+  const EFFECT_POLICY: EntityPolicy = {
+    coalesce: 'replace',
+    conflict: 'none',
+    maxPending: 3,
+    dedupeTtlMs: SETTLED_MAX_AGE_MS,
+  };
+
+  it('(+) coalesce: replace replaces payload wholesale, revives dead target, resets counters, and increments rev', () => {
+    let s = q(
+      emptyOutbox(U),
+      op({ operationId: 'h-1', entity: 'habit_log', entityId: 'h1|2026-08-04', payload: { intent: { state: 'partial', value: 2 }, staleField: 'drop-me' }, policy: REPLACE_POLICY }),
+    );
+    expect(s.commands[0].rev).toBe(1);
+    for (let i = 0; i < MAX_ATTEMPTS; i += 1) {
+      s = settle(s, 'h-1', { kind: 'rejected', error: 'RLS' }, T0);
+    }
+    expect(s.commands[0]).toMatchObject({ status: 'dead', attempts: MAX_ATTEMPTS });
+
+    const r = enqueue(
+      s,
+      op({ operationId: 'h-2', entity: 'habit_log', entityId: 'h1|2026-08-04', payload: { intent: { state: 'done' } }, policy: REPLACE_POLICY }),
+      U,
+      T0 + 50,
+    );
+    expect(r.ok && r.effect).toBe('merged');
+    if (r.ok) {
+      expect(r.state.commands).toHaveLength(1);
+      expect(r.state.commands[0].payload).toEqual({ intent: { state: 'done' } }); // wholesale, staleField gone
+      expect(r.state.commands[0]).toMatchObject({
+        operationId: 'h-1',
+        status: 'pending',
+        attempts: 0,
+        readyAt: 0,
+      });
+      expect(r.state.commands[0].lastError).toBeUndefined();
+      expect(r.state.commands[0].rev).toBeGreaterThan(2);
+    }
+  });
+
+  it('(-) conflict and sending commands are NEVER coalesced by coalesce: replace', () => {
+    let sConf = q(emptyOutbox(U), op({ operationId: 'c1', entity: 'note', entityId: 'n1', payload: { text: 'a' }, policy: REPLACE_POLICY }));
+    sConf = settle(sConf, 'c1', { kind: 'conflict', error: 'moved' }, T0);
+    const afterConf = q(sConf, op({ operationId: 'c2', entity: 'note', entityId: 'n1', payload: { text: 'b' }, policy: REPLACE_POLICY }));
+    expect(afterConf.commands.map((c) => c.operationId)).toEqual(['c1', 'c2']);
+
+    let sFly = q(emptyOutbox(U), op({ operationId: 'f1', entity: 'habit_log', entityId: 'h1|2026-08-04', payload: { v: 1 }, policy: REPLACE_POLICY }));
+    sFly = markSending(sFly, 'f1');
+    const afterFly = q(sFly, op({ operationId: 'f2', entity: 'habit_log', entityId: 'h1|2026-08-04', payload: { v: 2 }, policy: REPLACE_POLICY }));
+    expect(afterFly.commands.map((c) => c.operationId)).toEqual(['f1', 'f2']);
+    expect(afterFly.commands[0].payload).toEqual({ v: 1 });
+  });
+
+  it('(+) settle(applied/gone), discard, and cancelled delete record operationId in settled; dedupeTtlMs blocks duplicates until TTL expires', () => {
+    let s = q(emptyOutbox(U), op({ operationId: 'wh-1', entity: 'webhook_event', entityId: 'wh-1', payload: { a: 1 }, policy: EFFECT_POLICY }));
+    s = settle(s, 'wh-1', { kind: 'applied' }, T0);
+    expect(s.settled?.['wh-1']).toBe(T0);
+
+    // Within TTL -> duplicate, not re-queued
+    const dup = enqueue(
+      s,
+      op({ operationId: 'wh-1', entity: 'webhook_event', entityId: 'wh-1', payload: { a: 1 }, policy: EFFECT_POLICY }),
+      U,
+      T0 + SETTLED_MAX_AGE_MS - 1,
+    );
+    expect(dup.ok && dup.effect).toBe('duplicate');
+    if (dup.ok) expect(dup.state.commands).toHaveLength(0);
+
+    // After TTL -> pruned and allowed to queue again
+    const afterTtl = enqueue(
+      s,
+      op({ operationId: 'wh-1', entity: 'webhook_event', entityId: 'wh-1', payload: { a: 1 }, policy: EFFECT_POLICY }),
+      U,
+      T0 + SETTLED_MAX_AGE_MS + 1,
+    );
+    expect(afterTtl.ok && afterTtl.effect).toBe('queued');
+  });
+
+  it('(+) maxPending drops the oldest pending non-sending command when exceeded', () => {
+    let s = emptyOutbox(U);
+    for (let i = 1; i <= 4; i += 1) {
+      const r = enqueue(
+        s,
+        op({ operationId: `e-${i}`, entity: 'webhook_event', entityId: `e-${i}`, payload: { i }, policy: EFFECT_POLICY }),
+        U,
+        T0 + i,
+      );
+      if (!r.ok) throw new Error('enqueue failed');
+      s = r.state;
+    }
+    expect(s.commands.map((c) => c.operationId)).toEqual(['e-2', 'e-3', 'e-4']);
+  });
+
+  it('(+) pruneSettled enforces SETTLED_KEEP = 300 newest and drops entries older than 14 days', () => {
+    const big: Record<string, number> = { expired: T0 - SETTLED_MAX_AGE_MS };
+    for (let i = 1; i <= SETTLED_KEEP + 20; i += 1) {
+      big[`id-${i}`] = T0 - 1_000 + i;
+    }
+    const pruned = pruneSettled({ ...emptyOutbox(U), settled: big }, T0);
+    const keys = Object.keys(pruned.settled ?? {});
+    expect(keys).toHaveLength(SETTLED_KEEP);
+    expect(pruned.settled?.expired).toBeUndefined();
+    expect(pruned.settled?.['id-1']).toBeUndefined();
+    expect(pruned.settled?.[`id-${SETTLED_KEEP + 20}`]).toBeDefined();
+  });
+
+  it('(+) replaceCommand atomically swaps old command, marks old id settled, and (-) returns not_found when missing', () => {
+    let s = q(emptyOutbox(U), op({ operationId: 'conf-1', entity: 'journal_entry', entityId: '2026-08-04', payload: { content: 'mine' } }));
+    s = settle(s, 'conf-1', { kind: 'conflict', error: 'cas' }, T0);
+
+    const missing = replaceCommand(s, 'nope', op({ operationId: 'res-1', entity: 'journal_entry', entityId: '2026-08-04' }), U, T0 + 10);
+    expect(missing).toEqual({ ok: false, reason: 'not_found' });
+
+    const ok = replaceCommand(
+      s,
+      'conf-1',
+      op({ operationId: 'res-1', entity: 'journal_entry', entityId: '2026-08-04', payload: { content: 'both' } }),
+      U,
+      T0 + 10,
+    );
+    expect(ok.ok).toBe(true);
+    if (ok.ok) {
+      expect(ok.state.commands.map((c) => c.operationId)).toEqual(['res-1']);
+      expect(ok.state.settled?.['conf-1']).toBe(T0 + 10);
+    }
+  });
+
+  it('(+) mergeOutboxStates reconciles multi-tab commands, higher rev wins, settled/tombstones prevent resurrection, seq renumbers, and (-) cross-user refuses to merge', () => {
+    const base = emptyOutbox(U);
+    const tabA = q(base, op({ operationId: 'op-a', entity: 'note', entityId: 'n-a', kind: 'create', payload: { title: 'A' } }));
+    const tabB0 = q(base, op({ operationId: 'op-b', entity: 'note', entityId: 'n-b', kind: 'create', payload: { title: 'B' } }));
+    // Both tabs started from nextSeq=1 so both commands have seq=1!
+    expect(tabA.commands[0].seq).toBe(1);
+    expect(tabB0.commands[0].seq).toBe(1);
+
+    const merged = mergeOutboxStates(tabA, tabB0, T0);
+    expect(merged.commands.map((c) => c.operationId)).toEqual(['op-a', 'op-b']);
+    expect(merged.commands[0].seq).toBe(1);
+    expect(merged.commands[1].seq).toBe(2);
+    expect(merged.nextSeq).toBe(3);
+
+    // Higher rev wins on the same operationId
+    const tabBUpdated = settle(merged, 'op-a', { kind: 'rejected', error: '422' }, T0 + 5);
+    const reconciled = mergeOutboxStates(merged, tabBUpdated, T0 + 5);
+    expect(reconciled.commands.find((c) => c.operationId === 'op-a')?.attempts).toBe(1);
+
+    // Settled command in disk is NOT resurrected by stale local memory
+    const tabBApplied = settle(reconciled, 'op-a', { kind: 'applied' }, T0 + 10);
+    const noResurrect = mergeOutboxStates(reconciled, tabBApplied, T0 + 10);
+    expect(noResurrect.commands.map((c) => c.operationId)).toEqual(['op-b']);
+
+    // Tombstone in disk drops non-delete command for that entity in local
+    const tabBDiscard = discard(noResurrect, 'op-b', T0 + 20);
+    expect(mergeOutboxStates(noResurrect, tabBDiscard, T0 + 20).commands).toEqual([]);
+
+    const withTomb = q(emptyOutbox(U), op({ operationId: 'del-x', entity: 'note', entityId: 'n-x', kind: 'delete' }));
+    const staleEdit = q(emptyOutbox(U), op({ operationId: 'upd-x', entity: 'note', entityId: 'n-x', kind: 'update', payload: { title: 'late' } }));
+    expect(mergeOutboxStates(staleEdit, withTomb, T0).commands.map((c) => c.operationId)).toEqual(['del-x']);
+
+    // Different userId never merges
+    const bRes = enqueue(emptyOutbox('user-b'), op({ operationId: 'b-only' }), 'user-b', T0);
+    if (!bRes.ok) throw new Error(bRes.reason);
+    expect(mergeOutboxStates(tabA, bRes.state, T0)).toBe(tabA);
+
+    // Legacy persisted blob without rev or settled loads & merges cleanly
+    const legacyCmd = { ...tabA.commands[0] };
+    delete legacyCmd.rev;
+    const legacyState: OutboxState = { userId: U, commands: [legacyCmd], nextSeq: 2, tombstones: {}, authBlocked: false };
+    expect(mergeOutboxStates(legacyState, emptyOutbox(U), T0).commands).toHaveLength(1);
   });
 });

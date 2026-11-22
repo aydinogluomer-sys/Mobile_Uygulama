@@ -1,50 +1,20 @@
 /**
- * R02.03–R02.06 — a generic, durable outbox for core writes.
- *
- * `lib/syncQueue.ts` already does this for ONE entity (habit logs, keyed
- * habit|day). Every other core write -- Today's tasks first -- went straight
- * to the network and simply failed offline. This module is the general form:
- * a persisted, per-account list of commands, each with an `operationId` that
- * makes a re-delivery one effect, an optional entity version for conflict
- * detection, explicit dependencies, and tombstones so a deleted entity cannot
- * be resurrected by a late edit.
+ * R02.03–R02.06 / F46 — a generic, durable outbox for all offline writes and side effects.
  *
  * Pure: no I/O, no clock (time is passed in), no store. Persistence is an
  * adapter (`lib/outboxStorage.ts`); delivery is the runner's job
  * (`services/outboxRunner.ts`). Every function returns a new state.
- *
- * ## Rules, in one place
- *
- *  idempotency   enqueueing an operationId already present with the SAME
- *                payload is a no-op; with a DIFFERENT payload it is refused
- *                (`id_reused`) -- one id, one meaning.
- *  collapse      an update to an entity that already has a pending, not-yet-
- *                sent update merges into it (last write per field wins), so
- *                ten offline edits are one request. A create still pending
- *                absorbs later updates into its payload.
- *  delete        a delete of an entity whose create has not been sent drops
- *                both (it never existed for the server). Otherwise pending
- *                updates for it are dropped and the delete is queued; the id
- *                is tombstoned.
- *  tombstone     a command for a tombstoned entity enqueued AFTER the delete
- *                (a late edit, another device's echo) is dropped -- deleted
- *                things do not come back.
- *  order         by `seq`, except that a command never runs before the
- *                commands it depends on (`dependsOn`), and never before an
- *                earlier command for the same entity.
- *  retry         `offline` costs nothing and retries; `auth` pauses the whole
- *                outbox until credentials are refreshed (no attempts used);
- *                `rejected` uses an attempt with exponential backoff and
- *                becomes `dead` after MAX_ATTEMPTS; `conflict` stops that
- *                command for the user to resolve (never silently applied);
- *                `gone` (the server says the entity no longer exists) drops
- *                updates and counts deletes as applied.
- *  account       the state belongs to ONE user id; the runner refuses to send
- *                a command whose `userId` is not the signed-in account.
  */
 
 export type OutboxKind = 'create' | 'update' | 'delete';
 export type OutboxStatus = 'pending' | 'dead' | 'conflict';
+
+export type EntityPolicy = {
+  coalesce: 'merge' | 'replace';
+  conflict: 'last-writer-wins' | 'versioned' | 'content-cas' | 'none';
+  maxPending?: number;
+  dedupeTtlMs?: number;
+};
 
 export type OutboxCommand = {
   operationId: string;
@@ -74,6 +44,8 @@ export type OutboxCommand = {
   retryableCount?: number;
   /** F05: when the first transient failure happened (ms epoch); the 72-hour give-up counts from here. */
   firstRetryableAt?: number;
+  /** F46 (SYN-10): per-command monotonic revision so multi-tab merges keep the newer transition. */
+  rev?: number;
 };
 
 export type OutboxState = {
@@ -84,16 +56,19 @@ export type OutboxState = {
   tombstones: Record<string, number>;
   /** entity|id -> ms epoch when the server confirmed the delete. Optional; absent on older blobs. */
   confirmedDeletes?: Record<string, number>;
+  /** F46: operationId -> ms epoch when settled/discarded/cancelled (prevents cross-tab resurrection & dedupes effects). */
+  settled?: Record<string, number>;
   /** Set by an `auth` failure; cleared when credentials are refreshed. */
   authBlocked: boolean;
 };
 
 export const MAX_ATTEMPTS = 6;
+export const SETTLED_KEEP = 300;
+export const SETTLED_MAX_AGE_MS = 14 * 24 * 3600_000;
 
 /**
  * F05 (SYN-03): a transient server failure waits longer each time (5 s, 10 s, 20 s ... at most
- * 15 min) and becomes `dead` only after 72 hours of nothing but transient failures. The same
- * numbers live in `lib/syncQueue.ts` (no import between the two; a test keeps them equal).
+ * 15 min) and becomes `dead` only after 72 hours of nothing but transient failures.
  */
 export const RETRYABLE_GIVE_UP_MS = 72 * 3600_000;
 const RETRYABLE_BASE_MS = 5_000;
@@ -117,6 +92,51 @@ export function stableJson(v: unknown): string {
   return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`).join(',')}}`;
 }
 
+function boundSettledMap(entries: [string, number][], now: number): Record<string, number> | undefined {
+  const fresh = entries.filter(([, ts]) => now - ts < SETTLED_MAX_AGE_MS);
+  if (fresh.length === 0) return undefined;
+  const kept = fresh.length <= SETTLED_KEEP
+    ? fresh
+    : fresh.sort((a, b) => b[1] - a[1]).slice(0, SETTLED_KEEP);
+  return Object.fromEntries(kept);
+}
+
+function recordSettled(
+  current: Record<string, number> | undefined,
+  ids: readonly string[],
+  now: number,
+): Record<string, number> | undefined {
+  if (ids.length === 0) return current;
+  const merged: Record<string, number> = { ...(current ?? {}) };
+  for (const id of ids) {
+    const prev = merged[id];
+    merged[id] = prev !== undefined && prev > now ? prev : now;
+  }
+  return boundSettledMap(Object.entries(merged), now);
+}
+
+export function pruneSettled(state: OutboxState, now: number): OutboxState {
+  if (!state.settled) return state;
+  const entries = Object.entries(state.settled);
+  const expired = entries.some(([, ts]) => now - ts >= SETTLED_MAX_AGE_MS);
+  if (!expired && entries.length <= SETTLED_KEEP) return state;
+  const next = boundSettledMap(entries, now);
+  if (next === undefined) {
+    const { settled: _omitted, ...rest } = state;
+    return rest;
+  }
+  return { ...state, settled: next };
+}
+
+function withSettled(state: OutboxState, settled: Record<string, number> | undefined): OutboxState {
+  if (settled === undefined) {
+    if (state.settled === undefined) return state;
+    const { settled: _omitted, ...rest } = state;
+    return rest;
+  }
+  return { ...state, settled };
+}
+
 export type EnqueueInput = {
   operationId: string;
   entity: string;
@@ -125,6 +145,7 @@ export type EnqueueInput = {
   payload?: Record<string, unknown>;
   baseVersion?: string | null;
   dependsOn?: string[];
+  policy?: EntityPolicy;
 };
 
 export type EnqueueResult =
@@ -133,8 +154,15 @@ export type EnqueueResult =
 
 export function enqueue(state0: OutboxState, input: EnqueueInput, userId: string, now: number): EnqueueResult {
   if (userId !== state0.userId) return { ok: false, reason: 'wrong_account' };
-  const state = pruneConfirmedTombstones(state0, now);
+  const state = pruneSettled(pruneConfirmedTombstones(state0, now), now);
   const payload = input.payload ?? {};
+
+  const settledAt = state.settled?.[input.operationId];
+  if (settledAt !== undefined && input.policy?.dedupeTtlMs !== undefined) {
+    if (now - settledAt < input.policy.dedupeTtlMs) {
+      return { ok: true, state, effect: 'duplicate' };
+    }
+  }
 
   const same = state.commands.find((c) => c.operationId === input.operationId);
   if (same) {
@@ -152,15 +180,76 @@ export function enqueue(state0: OutboxState, input: EnqueueInput, userId: string
     return { ok: true, state, effect: 'dropped_tombstoned' };
   }
 
-  // Pending and NOT in flight: only these can still be merged into.
-  const forEntity = state.commands.filter((c) => c.entity === input.entity && c.entityId === input.entityId && c.status === 'pending' && !c.sending);
+  // Pending and NOT in flight: only these can still be merged into under `merge` policy.
+  const forEntity = state.commands.filter(
+    (c) => c.entity === input.entity && c.entityId === input.entityId && c.status === 'pending' && !c.sending,
+  );
+
+  if (input.kind === 'create') {
+    const priorCreate = [...forEntity].reverse().find((c) => c.kind === 'create');
+    if (priorCreate) {
+      const mergedPayload = input.policy?.coalesce === 'replace' ? payload : { ...priorCreate.payload, ...payload };
+      const merged: OutboxCommand = {
+        ...priorCreate,
+        payload: mergedPayload,
+        rev: (priorCreate.rev ?? 1) + 1,
+      };
+      return {
+        ok: true,
+        effect: 'merged',
+        state: { ...state, commands: state.commands.map((c) => (c === priorCreate ? merged : c)) },
+      };
+    }
+  }
 
   if (input.kind === 'update') {
-    // Merge into a pending create or update of the same entity -- not yet sent.
-    const target = [...forEntity].reverse().find((c) => c.kind === 'create' || c.kind === 'update');
-    if (target) {
-      const merged: OutboxCommand = { ...target, payload: { ...target.payload, ...payload } };
-      return { ok: true, effect: 'merged', state: { ...state, commands: state.commands.map((c) => (c === target ? merged : c)) } };
+    if (input.policy?.coalesce === 'replace') {
+      // `replace` coalesces into a pending OR dead (never conflict, never sending) command for the same entity,
+      // replacing its payload wholesale and resetting failure counters.
+      const replaceTarget = [...state.commands]
+        .reverse()
+        .find(
+          (c) =>
+            c.entity === input.entity &&
+            c.entityId === input.entityId &&
+            !c.sending &&
+            (c.status === 'pending' || c.status === 'dead') &&
+            (c.kind === 'create' || c.kind === 'update'),
+        );
+      if (replaceTarget) {
+        const replaced: OutboxCommand = {
+          ...replaceTarget,
+          payload,
+          status: 'pending',
+          attempts: 0,
+          readyAt: 0,
+          lastError: undefined,
+          retryableCount: undefined,
+          firstRetryableAt: undefined,
+          ...(input.baseVersion !== undefined ? { baseVersion: input.baseVersion } : {}),
+          rev: (replaceTarget.rev ?? 1) + 1,
+        };
+        return {
+          ok: true,
+          effect: 'merged',
+          state: { ...state, commands: state.commands.map((c) => (c === replaceTarget ? replaced : c)) },
+        };
+      }
+    } else {
+      // Merge into a pending create or update of the same entity -- not yet sent.
+      const target = [...forEntity].reverse().find((c) => c.kind === 'create' || c.kind === 'update');
+      if (target) {
+        const merged: OutboxCommand = {
+          ...target,
+          payload: { ...target.payload, ...payload },
+          rev: (target.rev ?? 1) + 1,
+        };
+        return {
+          ok: true,
+          effect: 'merged',
+          state: { ...state, commands: state.commands.map((c) => (c === target ? merged : c)) },
+        };
+      }
     }
   }
 
@@ -182,30 +271,165 @@ export function enqueue(state0: OutboxState, input: EnqueueInput, userId: string
       }
     }
     const others = state.commands.filter((c) => !dropped.has(c.operationId));
+    const settledAfterDrop = recordSettled(state.settled, [...dropped, ...(pendingCreate ? [input.operationId] : [])], now);
     if (pendingCreate) {
       // Never reached the server: do NOT add a tombstone (there is no server row to hide).
-      return { ok: true, effect: 'cancelled', state: { ...state, commands: others, nextSeq: state.nextSeq + 1 } };
+      return {
+        ok: true,
+        effect: 'cancelled',
+        state: withSettled({ ...state, commands: others, nextSeq: state.nextSeq + 1 }, settledAfterDrop),
+      };
     }
     const tombstones = pruneTombstones({ ...state.tombstones, [k]: state.nextSeq });
     const confirmedDeletes = state.confirmedDeletes?.[k] !== undefined
       ? Object.fromEntries(Object.entries(state.confirmedDeletes).filter(([ck]) => ck !== k))
       : state.confirmedDeletes;
     const del = makeCommand(state, input, payload, userId, now);
+    const baseNext: OutboxState = {
+      ...state,
+      commands: [...others, del],
+      tombstones,
+      ...(confirmedDeletes !== undefined ? { confirmedDeletes } : {}),
+      nextSeq: state.nextSeq + 1,
+    };
     return {
       ok: true,
       effect: 'queued',
-      state: {
-        ...state,
-        commands: [...others, del],
-        tombstones,
-        ...(confirmedDeletes !== undefined ? { confirmedDeletes } : {}),
-        nextSeq: state.nextSeq + 1,
-      },
+      state: withSettled(baseNext, settledAfterDrop),
     };
   }
 
   const cmd = makeCommand(state, input, payload, userId, now);
-  return { ok: true, effect: 'queued', state: { ...state, commands: [...state.commands, cmd], nextSeq: state.nextSeq + 1 } };
+  let commands = [...state.commands, cmd];
+  const maxPending = input.policy?.maxPending;
+  if (maxPending !== undefined && maxPending > 0) {
+    const pendingOfEntity = commands.filter((c) => c.entity === input.entity && c.status === 'pending' && !c.sending);
+    if (pendingOfEntity.length > maxPending) {
+      const dropCount = pendingOfEntity.length - maxPending;
+      const oldestIds = new Set(
+        [...pendingOfEntity]
+          .sort((a, b) => a.seq - b.seq)
+          .slice(0, dropCount)
+          .map((c) => c.operationId),
+      );
+      commands = commands.filter((c) => !oldestIds.has(c.operationId));
+    }
+  }
+  return { ok: true, effect: 'queued', state: { ...state, commands, nextSeq: state.nextSeq + 1 } };
+}
+
+export type ReplaceResult =
+  | { ok: true; state: OutboxState; effect: 'queued' | 'merged' | 'duplicate' | 'cancelled' | 'dropped_tombstoned' }
+  | { ok: false; reason: 'not_found' | 'id_reused' | 'wrong_account' };
+
+/**
+ * F46 (REP-12, INT-17): atomically drops `oldOperationId` (recording it in `settled` so another tab
+ * cannot resurrect the old conflict command) and enqueues `input` in a single pure transition.
+ */
+export function replaceCommand(
+  state: OutboxState,
+  oldOperationId: string,
+  input: EnqueueInput,
+  userId: string,
+  now: number,
+): ReplaceResult {
+  if (userId !== state.userId) return { ok: false, reason: 'wrong_account' };
+  const existing = state.commands.find((c) => c.operationId === oldOperationId);
+  if (!existing) return { ok: false, reason: 'not_found' };
+  const withoutOld = withSettled(
+    {
+      ...state,
+      commands: state.commands.filter((c) => c.operationId !== oldOperationId),
+    },
+    recordSettled(state.settled, [oldOperationId], now),
+  );
+  return enqueue(withoutOld, input, userId, now);
+}
+
+/**
+ * F46 (SYN-10): pure multi-tab reconciliation of `local` memory and `disk` snapshot.
+ */
+export function mergeOutboxStates(
+  local: OutboxState,
+  disk: OutboxState,
+  now: number,
+  opts?: { authFrom?: 'local' | 'disk' },
+): OutboxState {
+  if (local.userId !== disk.userId) return local;
+
+  const rawSettled: Record<string, number> = {};
+  for (const [id, ts] of Object.entries(disk.settled ?? {})) {
+    rawSettled[id] = ts;
+  }
+  for (const [id, ts] of Object.entries(local.settled ?? {})) {
+    rawSettled[id] = rawSettled[id] !== undefined && rawSettled[id] > ts ? rawSettled[id] : ts;
+  }
+
+  const rawTombstones: Record<string, number> = { ...disk.tombstones };
+  for (const [tk, seq] of Object.entries(local.tombstones)) {
+    rawTombstones[tk] = rawTombstones[tk] !== undefined && rawTombstones[tk] > seq ? rawTombstones[tk] : seq;
+  }
+
+  let mergedConfirmed: Record<string, number> | undefined;
+  if (local.confirmedDeletes || disk.confirmedDeletes) {
+    mergedConfirmed = { ...(disk.confirmedDeletes ?? {}) };
+    for (const [ck, ts] of Object.entries(local.confirmedDeletes ?? {})) {
+      mergedConfirmed[ck] = mergedConfirmed[ck] !== undefined && mergedConfirmed[ck] > ts ? mergedConfirmed[ck] : ts;
+    }
+  }
+
+  const byOpId = new Map<string, OutboxCommand>();
+  for (const d of disk.commands) {
+    byOpId.set(d.operationId, d);
+  }
+  for (const l of local.commands) {
+    const d = byOpId.get(l.operationId);
+    if (!d) {
+      byOpId.set(l.operationId, l);
+    } else {
+      const lRev = l.rev ?? 1;
+      const dRev = d.rev ?? 1;
+      byOpId.set(l.operationId, lRev >= dRev ? l : d);
+    }
+  }
+
+  const tombstones = pruneTombstones(rawTombstones);
+  const surviving = [...byOpId.values()]
+    .filter((c) => {
+      if (rawSettled[c.operationId] !== undefined) return false;
+      const tk = key(c.entity, c.entityId);
+      if (tombstones[tk] !== undefined && c.kind !== 'delete') return false;
+      return true;
+    })
+    .sort((a, b) => a.seq - b.seq || a.createdAt - b.createdAt || a.operationId.localeCompare(b.operationId));
+
+  let prevSeq = 0;
+  const renumbered = surviving.map((c) => {
+    const seq = c.seq <= prevSeq ? prevSeq + 1 : c.seq;
+    prevSeq = seq;
+    return seq === c.seq ? c : { ...c, seq };
+  });
+
+  let maxTombSeq = 0;
+  for (const v of Object.values(tombstones)) {
+    if (v > maxTombSeq) maxTombSeq = v;
+  }
+  const nextSeq = Math.max(local.nextSeq, disk.nextSeq, prevSeq + 1, maxTombSeq + 1);
+  const authBlocked = (opts?.authFrom ?? 'local') === 'disk' ? disk.authBlocked : local.authBlocked;
+  const settled = boundSettledMap(Object.entries(rawSettled), now);
+
+  const assembled: OutboxState = withSettled(
+    {
+      userId: local.userId,
+      commands: renumbered,
+      nextSeq,
+      tombstones,
+      ...(mergedConfirmed !== undefined ? { confirmedDeletes: mergedConfirmed } : {}),
+      authBlocked,
+    },
+    settled,
+  );
+  return pruneSettled(pruneConfirmedTombstones(assembled, now), now);
 }
 
 /** Tombstones are kept for the most recent deletes only -- enough to stop late local edits. */
@@ -263,15 +487,14 @@ function makeCommand(state: OutboxState, input: EnqueueInput, payload: Record<st
     status: 'pending',
     readyAt: 0,
     createdAt: now,
+    rev: 1,
   };
 }
 
 /**
  * The commands that may be sent now, in order. A command waits for every
  * command it depends on, and for every earlier command of the same entity,
- * that is still in the outbox -- whatever its status. A dead or conflicted
- * predecessor therefore holds its dependants back rather than letting them
- * run against a state the server never reached.
+ * that is still in the outbox -- whatever its status.
  */
 export function ready(state: OutboxState, now: number): OutboxCommand[] {
   if (state.authBlocked) return [];
@@ -290,7 +513,12 @@ export function ready(state: OutboxState, now: number): OutboxCommand[] {
 
 /** Mark a command as in flight (see `OutboxCommand.sending`). */
 export function markSending(state: OutboxState, operationId: string): OutboxState {
-  return { ...state, commands: state.commands.map((c) => (c.operationId === operationId ? { ...c, sending: true } : c)) };
+  return {
+    ...state,
+    commands: state.commands.map((c) =>
+      c.operationId === operationId ? { ...c, sending: true, rev: (c.rev ?? 1) + 1 } : c,
+    ),
+  };
 }
 
 /** After a crash nothing is in flight any more: every command is sendable again. */
@@ -314,12 +542,6 @@ export function nextRetryDelayMs(attempts: number): number {
   return Math.min(60 * 60_000, 2_000 * 2 ** Math.max(0, attempts - 1));
 }
 
-/**
- * Apply what happened to one delivery. `applied` (and `gone` for a delete)
- * removes the command; the new server version, if any, becomes the base of
- * later commands for the same entity, so a follow-up edit is checked against
- * the version this one produced.
- */
 function confirmDelete(next: OutboxState, cmd: OutboxCommand, now: number): OutboxState {
   if (cmd.kind !== 'delete') return next;
   const k = key(cmd.entity, cmd.entityId);
@@ -331,22 +553,40 @@ export function settle(state: OutboxState, operationId: string, outcome: Deliver
   const cmd = state.commands.find((c) => c.operationId === operationId);
   if (!cmd) return state;
   const rest = state.commands.filter((c) => c.operationId !== operationId);
-  const replace = (patch: Partial<OutboxCommand>) => ({ ...state, commands: state.commands.map((c) => (c === cmd ? { ...c, sending: false, ...patch } : c)) });
+  const replace = (patch: Partial<OutboxCommand>) => ({
+    ...state,
+    commands: state.commands.map((c) =>
+      c === cmd ? { ...c, sending: false, rev: (c.rev ?? 1) + 1, ...patch } : c,
+    ),
+  });
 
   switch (outcome.kind) {
     case 'applied': {
       const v = outcome.version ?? null;
-      const commands = v === null ? rest : rest.map((c) => (c.entity === cmd.entity && c.entityId === cmd.entityId && c.kind !== 'create' ? { ...c, baseVersion: v } : c));
-      return pruneConfirmedTombstones(confirmDelete({ ...state, commands }, cmd, now), now);
+      const commands = v === null
+        ? rest
+        : rest.map((c) =>
+            c.entity === cmd.entity && c.entityId === cmd.entityId && c.kind !== 'create'
+              ? { ...c, baseVersion: v, rev: (c.rev ?? 1) + 1 }
+              : c,
+          );
+      const nextSettled = recordSettled(state.settled, [operationId], now);
+      return pruneSettled(
+        pruneConfirmedTombstones(confirmDelete(withSettled({ ...state, commands }, nextSettled), cmd, now), now),
+        now,
+      );
     }
     case 'offline':
       return replace({}); // costs nothing; tried again on the next flush
     case 'auth':
       return { ...replace({}), authBlocked: true };
-    case 'gone':
-      // The entity is not on the server: an update has nothing to land on, a
-      // delete is already true. Either way the command is finished.
-      return pruneConfirmedTombstones(confirmDelete({ ...state, commands: rest }, cmd, now), now);
+    case 'gone': {
+      const nextSettled = recordSettled(state.settled, [operationId], now);
+      return pruneSettled(
+        pruneConfirmedTombstones(confirmDelete(withSettled({ ...state, commands: rest }, nextSettled), cmd, now), now),
+        now,
+      );
+    }
     case 'conflict':
       return replace({ status: 'conflict', lastError: outcome.error });
     case 'retryable': {
@@ -380,20 +620,32 @@ export function retry(state: OutboxState, operationId: string, baseVersion?: str
   return {
     ...state,
     commands: state.commands.map((c) => (c.operationId === operationId
-      ? { ...c, status: 'pending', attempts: 0, readyAt: 0, lastError: undefined, retryableCount: undefined, firstRetryableAt: undefined, ...(baseVersion !== undefined ? { baseVersion } : {}) }
+      ? {
+          ...c,
+          status: 'pending',
+          attempts: 0,
+          readyAt: 0,
+          lastError: undefined,
+          retryableCount: undefined,
+          firstRetryableAt: undefined,
+          ...(baseVersion !== undefined ? { baseVersion } : {}),
+          rev: (c.rev ?? 1) + 1,
+        }
       : c)),
   };
 }
 
-/** The user chose to discard a command (their local change is given up). */
-export function discard(state: OutboxState, operationId: string): OutboxState {
-  return { ...state, commands: state.commands.filter((c) => c.operationId !== operationId) };
+/** The user chose to discard a command (their local change is given up; recorded in settled so another tab does not resurrect it). */
+export function discard(state: OutboxState, operationId: string, now: number = Date.now()): OutboxState {
+  const nextSettled = recordSettled(state.settled, [operationId], now);
+  return withSettled(
+    { ...state, commands: state.commands.filter((c) => c.operationId !== operationId) },
+    nextSettled,
+  );
 }
 
 /**
- * F05 (SYN-15): the soonest explicit `readyAt` of a pending command not in flight, or null (nothing
- * pending with a later time, or the outbox waits for credentials). The sync coordinator sleeps
- * until then instead of polling.
+ * F05 (SYN-15): the soonest explicit `readyAt` of a pending command not in flight, or null.
  */
 export function nextReadyAt(state: OutboxState): number | null {
   if (state.authBlocked) return null;
@@ -424,8 +676,7 @@ export function hasPending(state: OutboxState, entity: string, entityId: string)
 
 /**
  * Overlay unsent changes onto server rows, so a refetch never makes a local
- * change disappear before it is delivered: pending creates are added,
- * pending updates are applied, pending deletes (and tombstones) hide rows.
+ * change disappear before it is delivered.
  */
 export function overlay<T extends { id: string }>(state: OutboxState, entity: string, rows: readonly T[]): T[] {
   const mine = [...state.commands].filter((c) => c.entity === entity).sort((a, b) => a.seq - b.seq);

@@ -9,15 +9,22 @@ import {
 } from '../services/taskService';
 import type { Cursor } from '../repositories/shared';
 import { todayLocal } from '../lib/date';
-// R02 — local-first writes through the durable, per-account outbox.
+// R02 / F46 — local-first writes through the shared outbox channel factory.
 import {
-  emptyOutbox, enqueue, overlay, summary, newOperationId, retry as retryCommand, discard as discardCommand, clearAuthBlock, clearTombstones as clearTombstonesIn,
-  type EnqueueInput, type OutboxState, type OutboxSummary,
+  emptyOutbox,
+  newOperationId,
+  overlay,
+  summary,
+  type EnqueueInput,
+  type OutboxCommand,
+  type OutboxState,
+  type OutboxSummary,
 } from '../lib/outbox';
-import { asyncStorageOutbox, type OutboxStorage } from '../lib/outboxStorage';
-import { flushOutbox } from '../services/outboxRunner';
+import { ENTITY_POLICIES, outboxEngine } from '../lib/outboxEngine';
+import { asyncStorageOutbox, outboxKey, type OutboxStorage } from '../lib/outboxStorage';
 import { currentUser } from '../lib/session';
 import type { Task, ListType, QuadrantType } from '../lib/taskTypes';
+import { createOutboxChannel } from '../services/outboxChannel';
 export type { TaskStatus, TaskPriority, ListType, QuadrantType, Task } from '../lib/taskTypes';
 
 type TaskStore = {
@@ -55,281 +62,281 @@ type TaskStore = {
   dueToday: () => Task[];
 };
 
-let storage: OutboxStorage = asyncStorageOutbox;
-/** The flush in progress, if any. A second call waits for it, then runs again. */
-let inFlight: Promise<void> | null = null;
+const swappable: { current: OutboxStorage } = { current: asyncStorageOutbox };
+const swappableStorage: OutboxStorage = {
+  load: (userId) => swappable.current.load(userId),
+  save: (state) => swappable.current.save(state),
+};
+
 const listLatest = createLatest();
 let appliedCount = 0;
+
+async function deliverWithVersionEcho(cmd: OutboxCommand) {
+  const o = await deliverTaskCommand(cmd);
+  if (o.kind === 'applied') appliedCount += 1;
+  if (o.kind === 'applied' && o.version) {
+    const v = o.version;
+    useTaskStore.setState((st) => ({
+      tasks: st.tasks.map((t) => (t.id === cmd.entityId ? { ...t, updated_at: v } : t)),
+    }));
+  }
+  return o;
+}
+
+const taskChannel = createOutboxChannel({
+  storage: swappableStorage,
+  transports: { task: deliverWithVersionEcho },
+  currentUserId: async () => (await currentUser())?.id ?? null,
+  policies: ENTITY_POLICIES,
+  registerStorage: {
+    name: 'task',
+    keysFor: (uid) => [outboxKey(uid)],
+  },
+});
+
 /** Tests and fixtures swap the persistence underneath; the app never does. */
-export function setTaskOutboxStorage(next: OutboxStorage): void { storage = next; }
+export function setTaskOutboxStorage(next: OutboxStorage): void {
+  swappable.current = next;
+  taskChannel.reset();
+}
 
 export const useTaskStore = create<TaskStore>((set, get) => {
-  /**
-   * The one way a task changes locally: the command is written to the outbox
-   * (one atomic save -- the outbox IS the local copy, see lib/outboxStorage),
-   * the screen shows it at once, then delivery is attempted. A change that
-   * cannot be saved locally is reported and not shown.
-   */
+  async function ensureOutbox(): Promise<OutboxState | null> {
+    // If a test simulated a cold restart by clearing `outbox` to `null` directly on the store,
+    // reset channel memory first so `ensure()` reloads from storage.
+    if (get().outbox === null && taskChannel.state() !== null) {
+      taskChannel.reset();
+    }
+    return taskChannel.ensure();
+  }
+
   async function apply(input: Omit<EnqueueInput, 'operationId'>, local: (tasks: Task[]) => Task[]): Promise<boolean> {
-    if (!(await ensureOutbox())) { set({ error: 'Oturum bulunamadı.' }); return false; }
-    // Enqueue on the LIVE outbox and publish it before anything is awaited: a
-    // delivery in flight reads and writes the same state, and a result
-    // computed before an await would overwrite its progress.
-    const live = get().outbox!;
-    const res = enqueue(live, { ...input, operationId: newOperationId() }, live.userId, Date.now());
-    if (!res.ok) { set({ error: 'Değişiklik kaydedilemedi.' }); return false; }
-    set((st) => ({ outbox: res.state, sync: summary(res.state), tasks: local(st.tasks), error: null }));
-    try {
-      // Saves the whole current outbox -- including this change.
-      await storage.save(get().outbox ?? res.state);
-    } catch {
-      // Kept in memory and written by the next successful save; said out loud
-      // because until then an app kill would lose it.
+    if (get().outbox === null && taskChannel.state() !== null) {
+      taskChannel.reset();
+    }
+    const res = await taskChannel.write(input, {
+      onEnqueued: (nextState) => {
+        set((st) => ({
+          outbox: nextState,
+          sync: summary(nextState),
+          tasks: local(st.tasks),
+          error: null,
+        }));
+      },
+    });
+    if (!res.ok) {
+      set({ error: res.error });
+      return false;
+    }
+    if (!res.savedOnDevice) {
       set({ error: 'Değişiklik cihaza kaydedilemedi; uygulama kapanırsa kaybolabilir.' });
     }
-    void get().flush();
     return true;
   }
 
-  async function runFlush(): Promise<void> {
-    const box = await ensureOutbox();
-    if (!box || box.commands.length === 0) return;
-    await flushOutbox({
-      // Always the live outbox: edits made while a request is out are kept.
-      get: () => get().outbox ?? box,
-      set: async (next) => {
-        // R02.06 — reset (sign-out / account deleted) while this delivery was
-        // out: never publish or save the old account's outbox back.
-        const cur = get().outbox;
-        if (!cur || cur.userId !== next.userId) return;
-        set({ outbox: next, sync: summary(next) });
-        try { await storage.save(get().outbox ?? next); } catch { /* kept in memory; saved on the next change */ }
-      },
-    }, {
-      task: async (cmd) => {
-        const o = await deliverTaskCommand(cmd);
-        if (o.kind === 'applied') appliedCount += 1;
-        // The version our own delivery produced becomes the row's, so the
-        // next local edit is not reported as a conflict with ourselves.
-        if (o.kind === 'applied' && o.version) {
-          const v = o.version;
-          set((st) => ({ tasks: st.tasks.map((t) => (t.id === cmd.entityId ? { ...t, updated_at: v } : t)) }));
-        }
-        return o;
-      },
-    }, { currentUserId: async () => (await currentUser())?.id ?? null, now: () => Date.now() });
-  }
-
-  async function ensureOutbox(): Promise<OutboxState | null> {
-    const user = await currentUser();
-    if (!user) return null;
-    const cur = get().outbox;
-    // Another account's outbox is never used -- it stays saved under its own key.
-    if (cur && cur.userId === user.id) return cur;
-    const loaded = await storage.load(user.id);
-    // Someone else may have loaded (and changed) it while this was reading.
-    const now = get().outbox;
-    if (now && now.userId === user.id) return now;
-    set({ outbox: loaded, sync: summary(loaded) });
-    return loaded;
-  }
-
   return {
-  tasks: [],
-  outbox: null,
-  sync: summary(emptyOutbox('')),
-  loading: false,
-  loadingMore: false,
-  hasMore: false,
-  error: null,
-  cursor: null,
+    tasks: [],
+    outbox: null,
+    sync: summary(emptyOutbox('')),
+    loading: false,
+    loadingMore: false,
+    hasMore: false,
+    error: null,
+    cursor: null,
 
-  fetchTasks: async () => {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    fetchTasks: async () => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const run = listLatest.begin();
+        const appliedAtStart = appliedCount;
+        set({ loading: true, error: null });
+        try {
+          const box = await ensureOutbox();
+          if (!run.isCurrent()) return;
+          const res = await fetchTasksPage(null);
+          if (!run.isCurrent()) return;
+          if (!res.ok) {
+            set({ loading: false, error: res.error });
+            return;
+          }
+          if (attempt === 0 && appliedCount !== appliedAtStart) continue;
+          const live = get().outbox ?? box;
+          set({
+            tasks: live ? overlay(live, 'task', res.data.rows) : res.data.rows,
+            cursor: res.data.nextCursor,
+            hasMore: res.data.hasMore,
+            loading: false,
+            loadingMore: false,
+          });
+          void get().flush();
+          return;
+        } finally {
+          run.done();
+          if (listLatest.pending() === 0 && get().loading) set({ loading: false });
+        }
+      }
+    },
+
+    loadMore: async () => {
+      const { cursor, hasMore, loadingMore, loading } = get();
+      if (!hasMore || !cursor || loadingMore || loading) return;
       const run = listLatest.begin();
-      const appliedAtStart = appliedCount;
-      set({ loading: true, error: null });
+      set({ loadingMore: true });
       try {
-        const box = await ensureOutbox();
+        const res = await fetchTasksPage(cursor);
         if (!run.isCurrent()) return;
-        const res = await fetchTasksPage(null);
-        if (!run.isCurrent()) return;
-        if (!res.ok) { set({ loading: false, error: res.error }); return; }
-        if (attempt === 0 && appliedCount !== appliedAtStart) continue;
-        const live = get().outbox ?? box;
-        set({
-          // Unsent changes stay visible over a refetch until they are delivered, over the LIVE outbox.
-          tasks: live ? overlay(live, 'task', res.data.rows) : res.data.rows,
-          cursor: res.data.nextCursor,
-          hasMore: res.data.hasMore,
-          loading: false,
-          loadingMore: false,
+        if (!res.ok) {
+          set({ loadingMore: false, error: res.error });
+          return;
+        }
+        set((s) => {
+          const seen = new Set(s.tasks.map((t) => t.id));
+          const fresh = res.data.rows.filter((t) => !seen.has(t.id));
+          return {
+            tasks: [...s.tasks, ...fresh],
+            cursor: res.data.nextCursor,
+            hasMore: res.data.hasMore,
+            loadingMore: false,
+          };
         });
-        void get().flush();
-        return;
       } finally {
         run.done();
-        if (listLatest.pending() === 0 && get().loading) set({ loading: false });
       }
-    }
-  },
+    },
 
-  loadMore: async () => {
-    const { cursor, hasMore, loadingMore, loading } = get();
-    if (!hasMore || !cursor || loadingMore || loading) return;
-    const run = listLatest.begin();
-    set({ loadingMore: true });
-    try {
-      const res = await fetchTasksPage(cursor);
-      if (!run.isCurrent()) return;
-      if (!res.ok) { set({ loadingMore: false, error: res.error }); return; }
-      set((s) => {
-        const seen = new Set(s.tasks.map((t) => t.id));
-        const fresh = res.data.rows.filter((t) => !seen.has(t.id));
-        return {
-          tasks: [...s.tasks, ...fresh],
-          cursor: res.data.nextCursor,
-          hasMore: res.data.hasMore,
-          loadingMore: false,
-        };
-      });
-    } finally {
-      run.done();
-    }
-  },
+    flush: async () => {
+      if (get().outbox === null && taskChannel.state() !== null) {
+        taskChannel.reset();
+      }
+      await taskChannel.flush();
+    },
 
-  flush: async () => {
-    // A caller that asks to send now must not return before what is waiting
-    // was attempted: wait for the flush in progress, then run once more for
-    // anything enqueued meanwhile.
-    while (inFlight) await inFlight;
-    inFlight = runFlush();
-    try { await inFlight; } finally { inFlight = null; }
-  },
+    retryChange: async (operationId) => {
+      const box = taskChannel.state() ?? get().outbox;
+      if (!box) return;
+      const cmd = box.commands.find((c) => c.operationId === operationId);
+      const base = cmd ? (get().tasks.find((t) => t.id === cmd.entityId)?.updated_at ?? null) : null;
+      await taskChannel.retry(operationId, base);
+    },
 
-  retryChange: async (operationId) => {
-    const box = get().outbox;
-    if (!box) return;
-    const cmd = box.commands.find((c) => c.operationId === operationId);
-    // Over the version the screen last saw from the server.
-    const base = cmd ? (get().tasks.find((t) => t.id === cmd.entityId)?.updated_at ?? null) : null;
-    const next = retryCommand(box, operationId, base);
-    await storage.save(next);
-    set({ outbox: next, sync: summary(next) });
-    void get().flush();
-  },
+    discardChange: async (operationId) => {
+      await taskChannel.discard(operationId);
+      await get().fetchTasks();
+    },
 
-  discardChange: async (operationId) => {
-    const box = get().outbox;
-    if (!box) return;
-    const next = discardCommand(box, operationId);
-    await storage.save(next);
-    set({ outbox: next, sync: summary(next) });
-    await get().fetchTasks();
-  },
+    clearTombstones: async (ids) => {
+      if (get().outbox === null && taskChannel.state() !== null) {
+        taskChannel.reset();
+      }
+      await taskChannel.clearTombstones('task', ids);
+    },
 
-  clearTombstones: async (ids) => {
-    const box = await ensureOutbox();
-    if (!box) return;
-    const live = get().outbox ?? box;
-    const next = clearTombstonesIn(live, 'task', ids);
-    if (next === live) return;
-    set({ outbox: next, sync: summary(next) });
-    try { await storage.save(next); } catch { /* in memory is enough; written by the next save */ }
-  },
+    authRefreshed: async () => {
+      await taskChannel.authRefreshed();
+    },
 
-  authRefreshed: async () => {
-    const box = get().outbox;
-    if (box?.authBlocked) {
-      const next = clearAuthBlock(box);
-      try { await storage.save(next); } catch { /* in memory is enough to run now */ }
-      set({ outbox: next, sync: summary(next) });
-    }
-    void get().flush();
-  },
+    resetForAccount: () => {
+      taskChannel.reset();
+      set({ tasks: [], outbox: null, sync: summary(emptyOutbox('')), cursor: null, hasMore: false, error: null });
+    },
 
-  resetForAccount: () => {
-    set({ tasks: [], outbox: null, sync: summary(emptyOutbox('')), cursor: null, hasMore: false, error: null });
-  },
+    addTask: async (t) => {
+      const id = newOperationId();
+      const row = newTaskRow(id, t);
+      const box = await ensureOutbox();
+      if (!box) {
+        set({ error: 'Oturum bulunamadı.' });
+        return null;
+      }
+      const local = { ...(row as Task), user_id: box.userId };
+      const ok = await apply(
+        { entity: 'task', entityId: id, kind: 'create', payload: row as Record<string, unknown> },
+        (ts) => [local, ...ts],
+      );
+      return ok ? local : null;
+    },
 
-  addTask: async (t) => {
-    const id = newOperationId();
-    const row = newTaskRow(id, t);
-    const box = await ensureOutbox();
-    if (!box) { set({ error: 'Oturum bulunamadı.' }); return null; }
-    const local = { ...(row as Task), user_id: box.userId };
-    const ok = await apply({ entity: 'task', entityId: id, kind: 'create', payload: row as Record<string, unknown> }, (ts) => [local, ...ts]);
-    return ok ? local : null;
-  },
+    updateTask: async (id, patch) => {
+      const task = get().tasks.find((t) => t.id === id);
+      if (!task) return;
+      await apply(
+        { entity: 'task', entityId: id, kind: 'update', payload: patch as Record<string, unknown>, baseVersion: task.updated_at ?? null },
+        (ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+      );
+    },
 
-  updateTask: async (id, patch) => {
-    const task = get().tasks.find((t) => t.id === id);
-    if (!task) return;
-    await apply(
-      { entity: 'task', entityId: id, kind: 'update', payload: patch as Record<string, unknown>, baseVersion: task.updated_at ?? null },
-      (ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-    );
-  },
+    removeTask: async (id) => {
+      const children = get().tasks.filter((t) => t.parent_task_id === id);
+      const childOpIds: string[] = [];
+      for (const child of children) {
+        await apply({ entity: 'task', entityId: child.id, kind: 'delete' }, (ts) => ts.filter((t) => t.id !== child.id));
+        const queued = (taskChannel.state() ?? get().outbox)?.commands.find(
+          (c) => c.entity === 'task' && c.entityId === child.id && c.kind === 'delete',
+        );
+        if (queued) childOpIds.push(queued.operationId);
+      }
+      await apply(
+        { entity: 'task', entityId: id, kind: 'delete', ...(childOpIds.length > 0 ? { dependsOn: childOpIds } : {}) },
+        (ts) => ts.filter((t) => t.id !== id),
+      );
+    },
 
-  removeTask: async (id) => {
-    const children = get().tasks.filter((t) => t.parent_task_id === id);
-    const childOpIds: string[] = [];
-    for (const child of children) {
-      await apply({ entity: 'task', entityId: child.id, kind: 'delete' }, (ts) => ts.filter((t) => t.id !== child.id));
-      const queued = get().outbox?.commands.find((c) => c.entity === 'task' && c.entityId === child.id && c.kind === 'delete');
-      if (queued) childOpIds.push(queued.operationId);
-    }
-    await apply(
-      { entity: 'task', entityId: id, kind: 'delete', ...(childOpIds.length > 0 ? { dependsOn: childOpIds } : {}) },
-      (ts) => ts.filter((t) => t.id !== id),
-    );
-  },
+    toggleDone: async (id) => {
+      const task = get().tasks.find((t) => t.id === id);
+      if (!task) return;
+      const patch = completionPatch(!task.completed);
+      await apply(
+        { entity: 'task', entityId: id, kind: 'update', payload: patch as Record<string, unknown>, baseVersion: task.updated_at ?? null },
+        (ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+      );
+    },
 
-  toggleDone: async (id) => {
-    const task = get().tasks.find((t) => t.id === id);
-    if (!task) return;
-    // `completed`, `status` and `completed_at` describe one fact across three
-    // columns; the service owns keeping them consistent (`completionPatch`).
-    const patch = completionPatch(!task.completed);
-    await apply(
-      { entity: 'task', entityId: id, kind: 'update', payload: patch as Record<string, unknown>, baseVersion: task.updated_at ?? null },
-      (ts) => ts.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-    );
-  },
+    moveToList: async (id, list) => {
+      await get().updateTask(id, { list_type: list });
+    },
 
-  moveToList: async (id, list) => {
-    await get().updateTask(id, { list_type: list });
-  },
+    archiveTask: async (id) => {
+      await get().updateTask(id, { status: 'cancelled' });
+      set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
+    },
 
-  archiveTask: async (id) => {
-    await get().updateTask(id, { status: 'cancelled' });
-    set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
-  },
+    updateQuadrant: async (id, quadrant) => {
+      await get().updateTask(id, { quadrant });
+    },
 
-  updateQuadrant: async (id, quadrant) => {
-    await get().updateTask(id, { quadrant });
-  },
+    byList: (list) => {
+      return get().tasks.filter(
+        (t) => t.list_type === list && t.status !== 'cancelled' && !t.completed,
+      );
+    },
 
-  byList: (list) => {
-    return get().tasks.filter(
-      (t) => t.list_type === list && t.status !== 'cancelled' && !t.completed
-    );
-  },
+    overdue: () => {
+      const today = todayLocal();
+      return get().tasks.filter(
+        (t) => t.due_date && t.due_date < today && !t.completed && t.status !== 'cancelled',
+      );
+    },
 
-  overdue: () => {
-    const today = todayLocal();
-    return get().tasks.filter(
-      (t) => t.due_date && t.due_date < today && !t.completed && t.status !== 'cancelled'
-    );
-  },
+    dueToday: () => {
+      const today = todayLocal();
+      return get().tasks.filter(
+        (t) => t.due_date === today && !t.completed && t.status !== 'cancelled',
+      );
+    },
+  };
+});
 
-  dueToday: () => {
-    const today = todayLocal();
-    return get().tasks.filter(
-      (t) => t.due_date === today && !t.completed && t.status !== 'cancelled'
-    );
-  },
-};
+taskChannel.subscribe((next) => {
+  useTaskStore.setState({
+    outbox: next,
+    sync: summary(next ?? emptyOutbox('')),
+  });
+});
+
+outboxEngine.register('task', {
+  ...taskChannel,
+  flush: () => useTaskStore.getState().flush(),
+  retry: (operationId) => useTaskStore.getState().retryChange(operationId),
+  discard: (operationId) => useTaskStore.getState().discardChange(operationId),
 });
 
 // F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).

@@ -46,15 +46,73 @@ const sourcesIn = (dir: string, exts = ['.ts', '.tsx']): { path: string; code: s
 };
 
 const DB_CALL = /supabase\s*\.\s*from\s*\(/;
+const TRANSPORT_CALL = /supabase\s*\.\s*(auth|functions)\b|(?<![\w.])fetch\s*\(/;
+
+/**
+ * F46 (Stage H) — explicit, reasoned UI transport allowlist:
+ *  - Edge Function (`supabase.functions`): frozen to the 3 `generate-routine` screens (all under `withEdgeDeadline`).
+ *  - Auth boundary (`supabase.auth`): only `(auth)/*` screens and root `app/_layout.tsx` session listener.
+ *  - `app/screens/focus-points.tsx`: destructures zero-arg `fetch()` action from `useSubscriptionStore` (not HTTP `fetch(url)`).
+ */
+const ALLOWED_UI_TRANSPORT: Readonly<
+  Record<string, { reason: string; check: (code: string) => boolean }>
+> = {
+  'app/screens/ai-coach.tsx': {
+    reason: 'invokes generate-routine under withEdgeDeadline for direct routine generation',
+    check: (code) => code.includes('generate-routine') && !/(?<![\w.])fetch\s*\(|supabase\s*\.\s*auth\b/.test(code),
+  },
+  'app/screens/insights.tsx': {
+    reason: 'invokes generate-routine under withEdgeDeadline for weekly insight summary',
+    check: (code) => code.includes('generate-routine') && !/(?<![\w.])fetch\s*\(|supabase\s*\.\s*auth\b/.test(code),
+  },
+  'app/screens/journal-insights.tsx': {
+    reason: 'invokes generate-routine under withEdgeDeadline for journal theme synthesis',
+    check: (code) => code.includes('generate-routine') && !/(?<![\w.])fetch\s*\(|supabase\s*\.\s*auth\b/.test(code),
+  },
+  'app/(auth)/login.tsx': {
+    reason: 'auth sign-in screen calls supabase.auth directly',
+    check: (code) => !/supabase\s*\.\s*functions\b|(?<![\w.])fetch\s*\(/.test(code),
+  },
+  'app/(auth)/register.tsx': {
+    reason: 'auth registration screen calls supabase.auth directly',
+    check: (code) => !/supabase\s*\.\s*functions\b|(?<![\w.])fetch\s*\(/.test(code),
+  },
+  'app/(auth)/forgot-password.tsx': {
+    reason: 'password recovery screen calls supabase.auth directly',
+    check: (code) => !/supabase\s*\.\s*functions\b|(?<![\w.])fetch\s*\(/.test(code),
+  },
+  'app/(auth)/reset-password.tsx': {
+    reason: 'password reset screen calls supabase.auth directly',
+    check: (code) => !/supabase\s*\.\s*functions\b|(?<![\w.])fetch\s*\(/.test(code),
+  },
+  'app/_layout.tsx': {
+    reason: 'root session bootstrap and onAuthStateChange subscription',
+    check: (code) => !/supabase\s*\.\s*functions\b|(?<![\w.])fetch\s*\(/.test(code),
+  },
+  'app/screens/focus-points.tsx': {
+    reason: 'calls zero-arg fetch() selector action from useSubscriptionStore, never HTTP fetch(url)',
+    check: (code) =>
+      code.includes('useSubscriptionStore') &&
+      !/supabase\s*\.\s*(auth|functions)\b|(?<![\w.])fetch\s*\(\s*[^)\s]/.test(code),
+  },
+};
 
 describe('the stripper is doing its job (everything below depends on it)', () => {
   it('a documented call in a comment is not a call', () => {
-    const fixture = "// this used to be supabase.from('notes')\nconst x = 1;";
+    const fixture = [
+      "// this used to be supabase.from('notes') and supabase.auth.getUser() and fetch('https://x')",
+      'const x = 1;',
+    ].join('\n');
     expect(DB_CALL.test(stripComments(fixture))).toBe(false);
+    expect(TRANSPORT_CALL.test(stripComments(fixture))).toBe(false);
   });
 
   it('a real call is still a call', () => {
     expect(DB_CALL.test(stripComments("await supabase.from('notes').select('*');"))).toBe(true);
+    expect(TRANSPORT_CALL.test(stripComments('await supabase.auth.getSession();'))).toBe(true);
+    expect(TRANSPORT_CALL.test(stripComments("await supabase.functions.invoke('generate-routine');"))).toBe(true);
+    expect(TRANSPORT_CALL.test(stripComments("await fetch('https://example.com');"))).toBe(true);
+    expect(TRANSPORT_CALL.test(stripComments('await store.refetch();'))).toBe(false);
   });
 
   it('at least one store really does mention a call in prose — so stripping matters', () => {
@@ -75,14 +133,32 @@ describe('no store reaches the database directly', () => {
     const offenders = stores.filter((f) => DB_CALL.test(f.code)).map((f) => f.path);
     expect(offenders).toEqual([]);
   });
+
+  it('none of them calls supabase.auth, supabase.functions, or bare fetch (zero exceptions)', () => {
+    const offenders = stores.filter((f) => TRANSPORT_CALL.test(f.code)).map((f) => f.path);
+    expect(offenders).toEqual([]);
+  });
 });
 
 describe('no screen or component reaches the database directly', () => {
-  it('app/ and components/ are clean', () => {
+  it('app/ and components/ are clean of supabase.from', () => {
     const offenders = [...sourcesIn('app'), ...sourcesIn('components')]
       .filter((f) => DB_CALL.test(f.code))
       .map((f) => f.path);
     expect(offenders).toEqual([]);
+  });
+
+  it('app/ and components/ have no transport calls outside the reasoned ALLOWED_UI_TRANSPORT list', () => {
+    const uiFiles = [...sourcesIn('app'), ...sourcesIn('components')];
+    const unexpected: string[] = [];
+    for (const f of uiFiles) {
+      if (!TRANSPORT_CALL.test(f.code)) continue;
+      const allow = ALLOWED_UI_TRANSPORT[f.path];
+      if (!allow || !allow.check(f.code)) {
+        unexpected.push(f.path);
+      }
+    }
+    expect(unexpected).toEqual([]);
   });
 });
 

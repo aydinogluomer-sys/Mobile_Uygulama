@@ -12,8 +12,11 @@
  * gets dangerous: it must never fail the completion that triggered it, and
  * it must never outlive the account that registered it.
  */
+import { Platform } from 'react-native';
+import { hmacSha256Hex } from '../../lib/hmacSha256';
 import {
-  targetsFor, payloadFor, deliver, dispatch, validateWebhookUrl, resetWebhookCache,
+  targetsFor, payloadFor, deliver, dispatch, validateWebhookUrl, classifyHost,
+  SIGNING_SECRET_KEY, readSigningSecret, registerWebhook, resetWebhookCache,
   type WebhookRow,
 } from '../../services/webhookService';
 
@@ -171,5 +174,169 @@ describe('the registration cache', () => {
     const fetchImpl = jest.fn(async () => ({ ok: true, status: 200 })) as unknown as typeof fetch;
     const report = await dispatch('habit_completed', {}, { fetchImpl });
     expect(report.attempted).toBe(1);
+  });
+});
+
+describe('F46 (5.2-e) — SSRF / private-network URL validation & signed delivery', () => {
+  const originalOs = Platform.OS;
+  afterEach(() => {
+    Object.defineProperty(Platform, 'OS', { value: originalOs, configurable: true });
+  });
+
+  const REJECTED_PRIVATE = [
+    'https://localhost/x',
+    'https://sub.localhost/x',
+    'https://nas.local/x',
+    'https://svc.internal/x',
+    'https://box.lan/x',
+    'https://0.0.0.1/x',
+    'https://10.0.0.5/x',
+    'https://172.20.1.1/x',
+    'https://192.168.1.2/x',
+    'https://169.254.169.254/x',
+    'https://100.64.0.1/x',
+    'https://127.0.0.1/x',
+    'https://2130706433/x',
+    'https://0x7f.1/x',
+    'https://0177.0.0.1/x',
+    'https://[::1]/x',
+    'https://[fd00::1]/x',
+    'https://[fe80::1]/x',
+    'https://[::ffff:10.0.0.1]/x',
+  ];
+
+  it.each(REJECTED_PRIVATE)('(-) rejects private/loopback/link-local URL %s with calm Turkish guidance', (bad) => {
+    const r = validateWebhookUrl(bad);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toBe(
+        'Bu adres yalnızca kendi ağından erişilebilir. İnternetten ulaşılabilen bir https adresi gir.',
+      );
+    }
+  });
+
+  it.each([
+    'https://u:p@example.com/x',
+    'http://example.com/x',
+    '',
+    'https://example.com/ has space',
+    `https://example.com/${'a'.repeat(2040)}`,
+  ])('(-) rejects credentialed, non-https, whitespace, empty or >2048-char URL (%s)', (bad) => {
+    expect(validateWebhookUrl(bad).ok).toBe(false);
+  });
+
+  it.each([
+    'https://hooks.example.com/a',
+    'https://example.com:8443/hook?x=1',
+    'https://172.32.0.1/x',
+    'https://[2606:4700::1111]/x',
+  ])('(+) accepts public https URL %s', (good) => {
+    expect(validateWebhookUrl(good)).toEqual({ ok: true, url: good });
+  });
+
+  it('(+) classifyHost distinguishes public vs private vs invalid hosts directly', () => {
+    expect(classifyHost('hooks.example.com')).toBe('public');
+    expect(classifyHost('172.32.0.1')).toBe('public');
+    expect(classifyHost('172.16.0.1')).toBe('private');
+    expect(classifyHost('172.31.255.255')).toBe('private');
+    expect(classifyHost('999.1.1.1')).toBe('invalid');
+  });
+
+  it('(+) signs native deliveries with X-Aderyth-Signature: t=<unix>,v1=<hex>, strips SIGNING_SECRET_KEY, and omits custom headers on web', async () => {
+    const secret = '0123456789abcdef'.repeat(4);
+    const body = payloadFor('habit_completed', { habit_id: 'h1' }, new Date('2026-08-30T10:00:00Z'), 'wh1.habit_completed.h1|2026-08-30.w1');
+    const w = hook({
+      headers: {
+        Authorization: 'Bearer pub',
+        [SIGNING_SECRET_KEY]: secret,
+      },
+    });
+    expect(readSigningSecret(w)).toBe(secret);
+
+    Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
+    let capturedInit: RequestInit | undefined;
+    const nativeFetch = jest.fn(async (_u: string, init?: RequestInit) => {
+      capturedInit = init;
+      return { ok: true, status: 200 };
+    }) as unknown as typeof fetch;
+
+    const fixedMs = 1_756_548_000_999;
+    const res = await deliver(w, body, nativeFetch, {
+      attempts: 1,
+      now: () => fixedMs,
+      event: 'habit_completed',
+      deliveryId: 'wh1.habit_completed.h1|2026-08-30.w1',
+    });
+    expect(res).toEqual({ ok: true });
+    const hdrs = capturedInit?.headers as Record<string, string>;
+    expect(hdrs[SIGNING_SECRET_KEY]).toBeUndefined();
+    expect(hdrs.Authorization).toBe('Bearer pub');
+    expect(hdrs['X-Aderyth-Event']).toBe('habit_completed');
+    expect(hdrs['X-Aderyth-Delivery']).toBe('wh1.habit_completed.h1|2026-08-30.w1');
+
+    const rawSent = String(capturedInit?.body);
+    const expectedSig = `t=1756548000,v1=${hmacSha256Hex(secret, `1756548000.${rawSent}`)}`;
+    expect(hdrs['X-Aderyth-Signature']).toBe(expectedSig);
+
+    // Web: strips SIGNING_SECRET_KEY AND omits the three custom CORS-widening headers
+    Object.defineProperty(Platform, 'OS', { value: 'web', configurable: true });
+    let webInit: RequestInit | undefined;
+    const webFetch = jest.fn(async (_u: string, init?: RequestInit) => {
+      webInit = init;
+      return { ok: true, status: 200 };
+    }) as unknown as typeof fetch;
+    await deliver(w, body, webFetch, {
+      attempts: 1,
+      now: () => fixedMs,
+      event: 'habit_completed',
+      deliveryId: 'wh1.habit_completed.h1|2026-08-30.w1',
+    });
+    const webHdrs = webInit?.headers as Record<string, string>;
+    expect(webHdrs[SIGNING_SECRET_KEY]).toBeUndefined();
+    expect(webHdrs['X-Aderyth-Event']).toBeUndefined();
+    expect(webHdrs['X-Aderyth-Delivery']).toBeUndefined();
+    expect(webHdrs['X-Aderyth-Signature']).toBeUndefined();
+  });
+
+  it('(+) parses Retry-After in seconds and caps at 15 minutes (900_000 ms); refuses redirects', async () => {
+    const body = payloadFor('habit_completed', { habit_id: 'h1' });
+    const f120 = jest.fn(async () => ({
+      ok: false,
+      status: 429,
+      headers: { 'Retry-After': '120' },
+    })) as unknown as typeof fetch;
+    await expect(deliver(hook(), body, f120, { attempts: 1 })).resolves.toEqual({
+      ok: false,
+      error: 'HTTP 429',
+      retryAfterMs: 120_000,
+    });
+
+    const fHuge = jest.fn(async () => ({
+      ok: false,
+      status: 503,
+      headers: { get: (k: string) => (k.toLowerCase() === 'retry-after' ? '99999' : null) },
+    })) as unknown as typeof fetch;
+    await expect(deliver(hook(), body, fHuge, { attempts: 1 })).resolves.toEqual({
+      ok: false,
+      error: 'HTTP 503',
+      retryAfterMs: 900_000,
+    });
+
+    const fRedir = jest.fn(async () => ({
+      ok: false,
+      status: 302,
+    })) as unknown as typeof fetch;
+    await expect(deliver(hook(), body, fRedir, { attempts: 3, sleep: noSleep })).resolves.toEqual({
+      ok: false,
+      error: 'yönlendirme reddedildi',
+    });
+  });
+
+  it('(+) registerWebhook generates a 64-hex signingSecret and stores it under SIGNING_SECRET_KEY', async () => {
+    const reg = await registerWebhook({ url: 'https://hooks.example.com/in' });
+    expect(reg.ok).toBe(true);
+    if (reg.ok) {
+      expect(reg.signingSecret).toMatch(/^[0-9a-f]{64}$/);
+    }
   });
 });

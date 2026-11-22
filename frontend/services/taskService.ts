@@ -9,6 +9,7 @@
  * reads — and both are read, in different reports.
  */
 import type { Task } from '../lib/taskTypes';
+import { ymd } from '../lib/date';
 import {
   insertSplitTasks,
   deleteTask as repoDelete,
@@ -43,8 +44,8 @@ export async function setCompleted(id: string, completed: boolean) {
   // Only for a write the database accepted, and only in the completing
   // direction -- un-ticking a task is not a completion event.
   if (res.ok && completed) {
-    // F05 (REP-14): the title is the user's free text and does not leave for a third party; the id does
-    notify('task_completed', { task_id: id });
+    // F05/F46 (REP-14): the title is the user's free text and does not leave for a third party; the id does
+    notify('task_completed', { task_id: id }, { subjectKey: `${id}:${ymd(new Date())}` });
   }
   return res;
 }
@@ -85,15 +86,6 @@ export function newTaskRow(id: string, input: Partial<Task>, now: Date = new Dat
 }
 
 /**
- * Deliver one task command. Every branch is safe to repeat:
- *  create  23505 on the primary key = this very create already landed
- *  update  absolute values, checked against the version they were made on;
- *          a moved version is a CONFLICT (never applied over someone else's
- *          edit), a missing row is GONE
- *  delete  a row that is already gone counts as deleted
- * A completion that lands fires the same webhook `setCompleted` does.
- */
-/**
  * Does the server row already carry every value of the payload? Timestamps
  * are compared as instants (Postgres returns its own format).
  */
@@ -125,9 +117,6 @@ export async function deliverTaskCommand(cmd: OutboxCommand): Promise<DeliveryOu
     if (!res.ok) return classifyFailure(res);
     if (!res.data.exists) return { kind: 'gone' };
     if (!res.data.row) {
-      // The version moved. If the server already holds exactly these values,
-      // the move was THIS command landing before the app could record it (a
-      // crash, a lost response): it is applied, not a conflict with ourselves.
       const cur = await fetchTaskRow(cmd.entityId);
       if (!cur.ok) return classifyFailure(cur);
       if (!cur.data) return { kind: 'gone' };
@@ -135,7 +124,7 @@ export async function deliverTaskCommand(cmd: OutboxCommand): Promise<DeliveryOu
       return { kind: 'conflict', error: 'Bu görev başka bir yerde değiştirilmiş.' };
     }
     if ((cmd.payload as Partial<Task>).completed === true) {
-      notify('task_completed', { task_id: cmd.entityId });
+      notify('task_completed', { task_id: cmd.entityId }, { subjectKey: `${cmd.entityId}:${ymd(new Date())}` });
     }
     return { kind: 'applied', version: res.data.row.updated_at ?? null };
   }

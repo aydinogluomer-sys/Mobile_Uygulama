@@ -93,10 +93,11 @@ describe('flushOutbox', () => {
     expect(h.state.commands[0]).toMatchObject({ attempts: 1, lastError: 'boom' });
   });
 
-  it('an unknown entity is rejected, not sent', async () => {
+  it('an unknown entity is skipped (skippedUnknown), not rejected, spending zero attempts', async () => {
     const h = holder(withOps(A, ['a']));
-    await flushOutbox(h, {}, { currentUserId: async () => A, now });
-    expect(h.state.commands[0].lastError).toMatch(/no transport/);
+    const r = await flushOutbox(h, {}, { currentUserId: async () => A, now });
+    expect(r).toEqual({ sent: 0, stoppedBy: 'done', skippedUnknown: 1 });
+    expect(h.state.commands[0]).toMatchObject({ attempts: 0, status: 'pending' });
   });
 
   it('respects the per-flush limit', async () => {
