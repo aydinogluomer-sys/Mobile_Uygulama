@@ -40,6 +40,7 @@ import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusSe
 import { ChapterDivider, EmptyState, EmbeddedFiligree, EmblemMedallion, FormError } from '../../components/ui';
 import { DECOR, SCREEN_BANNERS } from '../../lib/visualAssets';
 import { reportError } from '../../lib/crashReporting';
+import { MAX_REFLECTION_CHARS } from '../../lib/inputLimits';
 
 const MONTHS_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
@@ -587,6 +588,7 @@ export default function MonthlyReviewScreen() {
                   placeholder={question.placeholder}
                   placeholderTextColor={colors.textFaint}
                   multiline
+                  maxLength={MAX_REFLECTION_CHARS}
                   value={answers[question.key] ?? ''}
                   onChangeText={(value) => {
                     setAnswers((current) => {
@@ -600,6 +602,11 @@ export default function MonthlyReviewScreen() {
                   }}
                   textAlignVertical="top"
                 />
+                {(answers[question.key]?.length ?? 0) > 1800 && (
+                  <Text style={s.charCounter} accessibilityLiveRegion="polite">
+                    {answers[question.key]?.length ?? 0}/{MAX_REFLECTION_CHARS}
+                  </Text>
+                )}
               </View>
             ))}
           </View>
@@ -713,6 +720,7 @@ const s = StyleSheet.create({
   questionCard: { marginBottom: 14 },
   questionLabel: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 8 },
   questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },
+  charCounter: { fontSize: 11, color: colors.textFaint, textAlign: 'right', marginTop: 4 },
   cloudErrorBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: hexA(colors.error, 0.45),

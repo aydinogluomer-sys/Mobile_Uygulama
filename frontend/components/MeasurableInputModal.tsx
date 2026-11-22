@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { Habit } from '../lib/supabase';
 // R01.03-a: the same add the screen's write uses, so the preview cannot disagree with what is saved.
 import { dayTotalAfterEntry } from '../services/habitLogService';
+import { isNumberInputPending, parseLocaleNumberOrNaN } from '../lib/localeNumber';
 
 interface Props {
   visible: boolean;
@@ -28,6 +29,7 @@ interface Props {
 
 export default function MeasurableInputModal({ visible, habit, currentValue, dayLabel, onClose, onConfirm }: Props) {
   const [input, setInput] = useState('');
+  const [focused, setFocused] = useState(true);
 
   if (!habit) return null;
 
@@ -39,9 +41,10 @@ export default function MeasurableInputModal({ visible, habit, currentValue, day
   // R01.03-a: the number typed here is ADDED to today's total; the total is
   // what gets saved. For a ceiling ("en çok 2"), 0 is a meaningful entry -- a
   // clean day -- so it is accepted; for a floor it would change nothing.
-  const parsed = parseFloat(input.replace(',', '.'));
+  const parsed = parseLocaleNumberOrNaN(input);
   const valid = !isNaN(parsed) && (ceiling ? parsed >= 0 : parsed > 0);
   const totalAfter = valid ? dayTotalAfterEntry(currentValue, parsed) : null;
+  const showFormatHint = focused && !isNumberInputPending(input) && isNaN(parsed);
 
   function handleConfirm() {
     if (valid) {
@@ -101,11 +104,18 @@ export default function MeasurableInputModal({ visible, habit, currentValue, day
             keyboardType="numeric"
             value={input}
             onChangeText={setInput}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             accessibilityLabel={dayLabel
               ? `${dayLabel} eklenecek miktar, ${unit}. O günkü toplam ${currentValue}.`
               : `Bugüne eklenecek miktar, ${unit}. Bugünkü toplam ${currentValue}.`}
             autoFocus
           />
+          {showFormatHint && (
+            <Text style={styles.hintWarning} accessibilityLiveRegion="polite">
+              Sayıyı rakamla yaz, örn. 2,5
+            </Text>
+          )}
           <Text style={styles.remaining} accessibilityLiveRegion="polite">
             {dayLabel
               ? totalAfter !== null
@@ -150,6 +160,9 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 16,
     color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 20,
+  },
+  hintWarning: {
+    fontSize: 12, color: colors.warning, marginTop: -12, marginBottom: 12,
   },
   actions: { flexDirection: 'row', gap: 12 },
   cancelBtn: {

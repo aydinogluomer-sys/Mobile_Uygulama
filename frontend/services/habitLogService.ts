@@ -23,6 +23,7 @@
  */
 import { notify } from './webhookService';
 import { LOG_TIMEZONE_ENABLED } from '../lib/featureGates';
+import { roundToScale } from '../lib/localeNumber';
 import type { Habit, HabitLog } from '../lib/supabase';
 import {
   adaptTrackingType,
@@ -158,7 +159,7 @@ export function completionFor(
 export function dayTotalAfterEntry(priorDayValue: number | null | undefined, entered: number): number {
   const prior = typeof priorDayValue === 'number' && Number.isFinite(priorDayValue) && priorDayValue > 0 ? priorDayValue : 0;
   const add = Number.isFinite(entered) && entered > 0 ? entered : 0;
-  return Math.round((prior + add) * 1e6) / 1e6;
+  return roundToScale(prior + add, 2);
 }
 
 /**

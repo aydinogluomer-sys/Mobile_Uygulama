@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { haptic } from '../lib/haptics';
+import { isNumberInputPending, parseLocaleNumber } from '../lib/localeNumber';
 /*
  * SCOPE (F23, GAP1-15): maliyet ve tasarruf, bırakma motivasyonudur; bütçe/harcama aracı DEĞİLDİR
  * (F14 finans modülü kalıcı iptal). Bu alanları başka ekrana, grafiğe, dışa aktarıma veya kategoriye taşıma.
@@ -134,16 +135,28 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
         ? 'Nefesini Sakince Tut (4 sn)…'
         : 'Ağzından Yavaşça Ver (6 sn)…';
 
+  const costRaw = newHabit.cost_per_day;
+  const parsedCost =
+    costRaw.trim() === '' ? 0 : parseLocaleNumber(costRaw, { min: 0, max: 1_000_000 });
+  const costInvalid = costRaw.trim() !== '' && parsedCost === null;
+  const showCostHint = costInvalid && !isNumberInputPending(costRaw);
+
+  const timeRaw = newHabit.time_wasted_per_day;
+  const parsedTime =
+    timeRaw.trim() === '' ? 0 : parseLocaleNumber(timeRaw, { integer: true, min: 0, max: 1440 });
+  const timeInvalid = timeRaw.trim() !== '' && parsedTime === null;
+  const showTimeHint = timeInvalid && !isNumberInputPending(timeRaw);
+
   const handleAddBadHabit = async () => {
     const name = newHabit.name.trim();
-    if (!name) return;
+    if (!name || costInvalid || timeInvalid) return;
 
     const res = await createBadHabit({
       name,
       description: newHabit.description.trim() || null,
       quitDate: new Date().toISOString(),
-      costPerDay: parseFloat(newHabit.cost_per_day) || 0,
-      timeWastedPerDay: parseInt(newHabit.time_wasted_per_day, 10) || 0,
+      costPerDay: parsedCost ?? 0,
+      timeWastedPerDay: parsedTime ?? 0,
     });
     if (!res.ok) {
       setError(res.error);
@@ -265,7 +278,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                 placeholder="Alışkanlık adı (örn: Sigara)"
                 placeholderTextColor={colors.textFaint}
                 value={newHabit.name}
-                onChangeText={(text) => setNewHabit({ ...newHabit, name: text })}
+                onChangeText={(text) => setNewHabit((prev) => ({ ...prev, name: text }))}
               />
 
               <TextInput
@@ -273,7 +286,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                 placeholder="Açıklama"
                 placeholderTextColor={colors.textFaint}
                 value={newHabit.description}
-                onChangeText={(text) => setNewHabit({ ...newHabit, description: text })}
+                onChangeText={(text) => setNewHabit((prev) => ({ ...prev, description: text }))}
                 multiline
               />
 
@@ -282,18 +295,28 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                 placeholder="Günlük maliyet (₺)"
                 placeholderTextColor={colors.textFaint}
                 value={newHabit.cost_per_day}
-                onChangeText={(text) => setNewHabit({ ...newHabit, cost_per_day: text })}
+                onChangeText={(text) => setNewHabit((prev) => ({ ...prev, cost_per_day: text }))}
                 keyboardType="numeric"
               />
+              {showCostHint && (
+                <Text style={styles.fieldHint} accessibilityLiveRegion="polite">
+                  Tutarı rakamla yaz, örn. 12,5
+                </Text>
+              )}
 
               <TextInput
                 style={styles.input}
                 placeholder="Günlük kaybedilen zaman (dakika)"
                 placeholderTextColor={colors.textFaint}
                 value={newHabit.time_wasted_per_day}
-                onChangeText={(text) => setNewHabit({ ...newHabit, time_wasted_per_day: text })}
+                onChangeText={(text) => setNewHabit((prev) => ({ ...prev, time_wasted_per_day: text }))}
                 keyboardType="numeric"
               />
+              {showTimeHint && (
+                <Text style={styles.fieldHint} accessibilityLiveRegion="polite">
+                  Dakikayı tam sayı yaz, örn. 30
+                </Text>
+              )}
 
               <View style={styles.modalButtons}>
                 <TouchableOpacity
@@ -515,6 +538,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: colors.warning,
+    marginTop: -6,
+    marginBottom: 10,
   },
   textArea: {
     height: 80,

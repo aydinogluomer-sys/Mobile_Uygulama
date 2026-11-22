@@ -26,6 +26,7 @@ import { useHabitStore } from '../store/habitStore';
 import { LIFE_AREAS } from '../store/lifeAreasStore';
 import { useWillpowerStore } from '../store/willpowerStore';
 import { decimalTR } from '../lib/chartText';
+import { isNumberInputPending, parseLocaleNumber } from '../lib/localeNumber';
 
 // DB sütun adlarına uygun form tipi
 type HabitFormData = Omit<Habit, 'id' | 'created_at' | 'user_id'>;
@@ -74,9 +75,39 @@ const DEFAULT_FORM: HabitFormData = {
   end_condition: null,
 };
 
+function evaluateGoalInput(
+  rawText: string,
+  trackingType: HabitFormData['tracking_type'],
+  direction: HabitFormData['target_direction'],
+): { value: number | null; error: string | null } {
+  if (trackingType !== 'numeric' && trackingType !== 'duration') {
+    return { value: null, error: null };
+  }
+  if (rawText.trim() === '') {
+    return { value: null, error: null };
+  }
+  const isDuration = trackingType === 'duration';
+  const parsed = parseLocaleNumber(rawText, { min: 0, integer: isDuration });
+  if (parsed === null) {
+    return {
+      value: null,
+      error: isNumberInputPending(rawText)
+        ? null
+        : isDuration
+          ? 'Dakikayı tam sayı yaz, örn. 20'
+          : 'Sayıyı rakamla yaz, örn. 2,5',
+    };
+  }
+  if ((direction ?? 'at_least') !== 'at_most' && parsed <= 0) {
+    return { value: parsed, error: "En az için hedef 0'dan büyük olmalı" };
+  }
+  return { value: parsed, error: null };
+}
+
 export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerState }: HabitOnboardingProps) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<HabitFormData>(DEFAULT_FORM);
+  const [goalText, setGoalTextState] = useState('');
   const [cueMode, setCueMode] = useState<'none' | 'habit' | 'note'>('none');
   const existingHabits = useHabitStore((s) => s.habits);
   const existingHabitsLoading = useHabitStore((s) => s.loading);
@@ -87,9 +118,20 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
   // tek-parametreli çağrıya düşülür.
   const activeHabits = existingHabits.filter((h) => h.status === 'active');
 
+  const goalCheck = evaluateGoalInput(goalText, form.tracking_type, form.target_direction);
+
+  function setGoalText(text: string) {
+    setGoalTextState(text);
+    setForm((prev) => {
+      const nextGoal = evaluateGoalInput(text, prev.tracking_type, prev.target_direction);
+      return { ...prev, daily_goal: nextGoal.value };
+    });
+  }
+
   function reset() {
     setStep(1);
     setForm(DEFAULT_FORM);
+    setGoalTextState('');
     setCueMode('none');
   }
 
@@ -131,12 +173,18 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
   function canProceed() {
     if (step === 1) return form.name.trim().length > 0;
     if (step === 2 && form.tracking_type === 'numeric') {
-      return !!(form.unit?.trim() && form.daily_goal && form.daily_goal > 0);
+      const validGoal =
+        form.daily_goal !== null &&
+        (form.target_direction === 'at_most' ? form.daily_goal >= 0 : form.daily_goal > 0);
+      return Boolean(form.unit?.trim()) && validGoal && goalCheck.error === null;
     }
     // Süre için birim sorulmaz — sabittir (DURATION_UNIT). Yalnız hedef dakika
     // gerekir; serbest metin birimden süre çıkarımı YAPILMAZ.
     if (step === 2 && form.tracking_type === 'duration') {
-      return !!(form.daily_goal && form.daily_goal > 0);
+      const validGoal =
+        form.daily_goal !== null &&
+        (form.target_direction === 'at_most' ? form.daily_goal >= 0 : form.daily_goal > 0);
+      return validGoal && goalCheck.error === null;
     }
     // R01.02-e: a schedule with no target (weekly with no day, a count of 0)
     // cannot leave step 3 -- see lib/frequencyForm.isFrequencyComplete.
@@ -210,7 +258,10 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
       <View style={styles.row}>
         <TouchableOpacity
           style={[styles.typeCard, form.tracking_type === 'boolean' && styles.typeCardSelected]}
-          onPress={() => setForm({ ...form, tracking_type: 'boolean', unit: null, daily_goal: null, target_direction: null })}
+          onPress={() => {
+            setGoalTextState('');
+            setForm({ ...form, tracking_type: 'boolean', unit: null, daily_goal: null, target_direction: null });
+          }}
           accessibilityRole="button"
           accessibilityState={{ selected: form.tracking_type === 'boolean' }}
           accessibilityLabel="Evet veya Hayır olarak takip et"
@@ -221,7 +272,10 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.typeCard, form.tracking_type === 'numeric' && styles.typeCardSelected]}
-          onPress={() => setForm({ ...form, tracking_type: 'numeric', unit: null, daily_goal: null, target_direction: 'at_least' })}
+          onPress={() => {
+            setGoalTextState('');
+            setForm({ ...form, tracking_type: 'numeric', unit: null, daily_goal: null, target_direction: 'at_least' });
+          }}
           accessibilityRole="button"
           accessibilityState={{ selected: form.tracking_type === 'numeric' }}
           accessibilityLabel="Sayısal miktar olarak takip et"
@@ -238,7 +292,10 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           // Süre kendi takip tipidir; birimi sabittir. Birimi kullanıcıya
           // yazdırıp metinden ("dakika"/"dk"/"minutes") çıkarım yapmak, bir
           // yazım hatasının alışkanlığı sessizce sayısala düşürmesi demekti.
-          onPress={() => setForm({ ...form, tracking_type: 'duration', unit: DURATION_UNIT, target_direction: 'at_least' })}
+          onPress={() => {
+            setGoalTextState('');
+            setForm({ ...form, tracking_type: 'duration', unit: DURATION_UNIT, daily_goal: null, target_direction: 'at_least' });
+          }}
           accessibilityRole="button"
           accessibilityState={{ selected: form.tracking_type === 'duration' }}
           accessibilityLabel="Süre olarak takip et"
@@ -253,7 +310,10 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           // durdum mu" ancak bırakılmak istenen bir alışkanlık için anlamlıdır.
           // Yine de ikisi ayrı alanlarda saklanır — 1. adımda davranış tipi
           // değiştirilebilir ve bu seçim onu geri almaz.
-          onPress={() => setForm({ ...form, tracking_type: 'abstinence', behavior_type: 'negative', unit: null, daily_goal: null, target_direction: null })}
+          onPress={() => {
+            setGoalTextState('');
+            setForm({ ...form, tracking_type: 'abstinence', behavior_type: 'negative', unit: null, daily_goal: null, target_direction: null });
+          }}
           accessibilityRole="button"
           accessibilityState={{ selected: form.tracking_type === 'abstinence' }}
           accessibilityLabel="Kaçınma olarak takip et"
@@ -272,7 +332,7 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
             placeholder="Örn: adım, sayfa, ml"
             placeholderTextColor={colors.textFaint}
             value={form.unit ?? ''}
-            onChangeText={(t) => setForm({ ...form, unit: t })}
+            onChangeText={(t) => setForm((prev) => ({ ...prev, unit: t }))}
           />
 
           <Text style={styles.label}>Hedef Miktar</Text>
@@ -281,21 +341,31 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
             placeholder="Örn: 10000"
             placeholderTextColor={colors.textFaint}
             keyboardType="numeric"
-            value={form.daily_goal?.toString() ?? ''}
-            onChangeText={(t) => setForm({ ...form, daily_goal: parseFloat(t) || null })}
+            accessibilityLabel="Hedef miktar"
+            value={goalText}
+            onChangeText={setGoalText}
           />
+          {goalCheck.error && (
+            <Text style={styles.fieldHint} accessibilityLiveRegion="polite">
+              {goalCheck.error}
+            </Text>
+          )}
 
           <Text style={styles.label}>Yön</Text>
           <View style={styles.row}>
             <TouchableOpacity
               style={[styles.dirBtn, form.target_direction === 'at_least' && styles.dirBtnSelected]}
-              onPress={() => setForm({ ...form, target_direction: 'at_least' })}
+              onPress={() => setForm((prev) => ({ ...prev, target_direction: 'at_least' }))}
+              accessibilityRole="button"
+              accessibilityState={{ selected: form.target_direction === 'at_least' }}
             >
               <Text style={styles.dirBtnText}>En az ↑</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.dirBtn, form.target_direction === 'at_most' && styles.dirBtnSelected]}
-              onPress={() => setForm({ ...form, target_direction: 'at_most' })}
+              onPress={() => setForm((prev) => ({ ...prev, target_direction: 'at_most' }))}
+              accessibilityRole="button"
+              accessibilityState={{ selected: form.target_direction === 'at_most' }}
             >
               <Text style={styles.dirBtnText}>En fazla ↓</Text>
             </TouchableOpacity>
@@ -311,21 +381,31 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
             placeholder="Örn: 20"
             placeholderTextColor={colors.textFaint}
             keyboardType="numeric"
-            value={form.daily_goal?.toString() ?? ''}
-            onChangeText={(t) => setForm({ ...form, daily_goal: parseInt(t, 10) || null })}
+            accessibilityLabel="Hedef süre"
+            value={goalText}
+            onChangeText={setGoalText}
           />
+          {goalCheck.error && (
+            <Text style={styles.fieldHint} accessibilityLiveRegion="polite">
+              {goalCheck.error}
+            </Text>
+          )}
 
           <Text style={styles.label}>Yön</Text>
           <View style={styles.row}>
             <TouchableOpacity
               style={[styles.dirBtn, form.target_direction === 'at_least' && styles.dirBtnSelected]}
-              onPress={() => setForm({ ...form, target_direction: 'at_least' })}
+              onPress={() => setForm((prev) => ({ ...prev, target_direction: 'at_least' }))}
+              accessibilityRole="button"
+              accessibilityState={{ selected: form.target_direction === 'at_least' }}
             >
               <Text style={styles.dirBtnText}>En az ↑</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.dirBtn, form.target_direction === 'at_most' && styles.dirBtnSelected]}
-              onPress={() => setForm({ ...form, target_direction: 'at_most' })}
+              onPress={() => setForm((prev) => ({ ...prev, target_direction: 'at_most' }))}
+              accessibilityRole="button"
+              accessibilityState={{ selected: form.target_direction === 'at_most' }}
             >
               <Text style={styles.dirBtnText}>En fazla ↓</Text>
             </TouchableOpacity>
@@ -749,6 +829,11 @@ export default function HabitOnboarding({ visible, onClose, onSubmit, willpowerS
           value={form.estimated_minutes ? String(form.estimated_minutes) : ''}
           onChangeText={(t) => setMinutes(parseInt(t, 10) || 0)}
         />
+        {form.estimated_minutes === 0 && (
+          <Text style={styles.minsInfo} accessibilityLiveRegion="polite">
+            Süre seçilmedi: yük en az 1 dk üzerinden hesaplanır
+          </Text>
+        )}
 
         {/* İrade maliyeti dökümü */}
         <View style={styles.costBreakdownCard}>
@@ -1017,6 +1102,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15,
     color: colors.white, marginBottom: 14, borderWidth: 1, borderColor: colors.border,
   },
+  fieldHint: { fontSize: 12, color: colors.warning, marginTop: -8, marginBottom: 12 },
+  minsInfo: { fontSize: 12, color: colors.textFaint, marginTop: -6, marginBottom: 6 },
   row: { flexDirection: 'row', gap: 12, marginBottom: 8 },
   typeCard: {
     flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: 16,

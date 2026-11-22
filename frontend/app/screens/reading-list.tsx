@@ -5,6 +5,7 @@ import {
   TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { confirm } from '../../lib/dialog';
+import { checkHttpUrl, MAX_URL_CHARS, URL_PROBLEM_TR } from '../../lib/inputLimits';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -73,6 +74,7 @@ export default function ReadingListScreen() {
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [url, setUrl] = useState('');
+  const [urlProblem, setUrlProblem] = useState<string | null>(null);
   const [type, setType] = useState<ReadingType>('book');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -87,12 +89,19 @@ export default function ReadingListScreen() {
 
   async function handleAdd() {
     if (!title.trim()) return;
-    const ok = await addItem({ title, author, type, url });
+    const urlCheck = checkHttpUrl(url);
+    if (!urlCheck.ok) {
+      setUrlProblem(URL_PROBLEM_TR[urlCheck.problem]);
+      return;
+    }
+    setUrlProblem(null);
+    const ok = await addItem({ title, author, type, url: urlCheck.url ?? undefined });
     if (!ok) {
       setSaveError(useReadingListStore.getState().error ?? 'Listeye eklenemedi. Yazdıkların burada duruyor, tekrar dene.');
       return;
     }
     setSaveError(null);
+    setUrlProblem(null);
     setTitle(''); setAuthor(''); setUrl(''); setType('book');
     setShowAdd(false);
   }
@@ -181,7 +190,7 @@ export default function ReadingListScreen() {
             }
             hint="Kitap, makale, video ya da podcast ekleyip buradan takip et."
             ctaLabel="Listeye ekle"
-            onCta={() => { setSaveError(null); setShowAdd(true); }}
+            onCta={() => { setSaveError(null); setUrlProblem(null); setShowAdd(true); }}
             color={STATUS_TABS.find((t) => t.key === activeTab)?.color}
           />
         ) : (
@@ -253,7 +262,7 @@ export default function ReadingListScreen() {
       {/* FAB */}
       <TouchableOpacity
         style={s.fab}
-        onPress={() => { setSaveError(null); setShowAdd(true); }}
+        onPress={() => { setSaveError(null); setUrlProblem(null); setShowAdd(true); }}
         accessibilityRole="button"
         accessibilityLabel="Okuma listesine yeni kayıt ekle"
       >
@@ -287,10 +296,19 @@ export default function ReadingListScreen() {
               placeholder="URL (opsiyonel)"
               placeholderTextColor={colors.textFaint}
               value={url}
-              onChangeText={setUrl}
+              onChangeText={(v) => {
+                setUrl(v);
+                if (urlProblem) setUrlProblem(null);
+              }}
               autoCapitalize="none"
               keyboardType="url"
+              maxLength={MAX_URL_CHARS}
             />
+            {urlProblem ? (
+              <Text style={s.urlHint} accessibilityLiveRegion="polite">
+                {urlProblem}
+              </Text>
+            ) : null}
 
             <Text style={s.fieldLabel}>TÜR</Text>
             <View style={s.typeRow}>
@@ -398,6 +416,7 @@ const s = StyleSheet.create({
   },
   sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 16 },
   input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 12 },
+  urlHint: { fontSize: 12, color: colors.warning, marginTop: -6, marginBottom: 10 },
   fieldLabel: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 8 },
   typeRow: { flexDirection: 'row', gap: 6, marginBottom: 20, flexWrap: 'wrap' },
   typeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border },

@@ -133,9 +133,10 @@ export function occurrencesPerWeek(freq: FrequencyConfig): number {
  * alone, which is not how a day's worth of habits actually competes for
  * attention.
  */
+export const MIN_DURATION_MINUTES = 1;
 const DURATION_REFERENCE_MINUTES = 90;
 function durationWeight(minutes: number): number {
-  const m = Math.max(0, minutes);
+  const m = Number.isFinite(minutes) ? Math.max(MIN_DURATION_MINUTES, minutes) : MIN_DURATION_MINUTES;
   return Math.log(1 + m) / Math.log(1 + DURATION_REFERENCE_MINUTES);
 }
 
@@ -358,7 +359,8 @@ export function makeupLoadPreview(params: {
 
 /** Which band a 0-100 load value falls in. Clamps out-of-range input. */
 export function bandFor(n: number): LoadBandKey {
-  const v = clamp(n, 0, 100);
+  if (!Number.isFinite(n)) return 'dusuk';
+  const v = clamp(Math.round(n), 0, 100);
   const band = LOAD_BANDS.find((b) => v >= b.min && v <= b.max);
   // Unreachable given LOAD_BANDS covers [0,100] with no gaps, but keeps the
   // function total instead of possibly-undefined.
