@@ -107,7 +107,7 @@ jest.mock('../../repositories/exportRepository', () => ({
     if (table === 'habit_logs') {
       return mockRepoState.habitLogsFail
         ? { ok: false, error: 'timeout' }
-        : { ok: true, data: { rows: [{ id: 'l1', habit_id: 'h1', completed_at: '2026-08-30', state: 'done' }], truncated: false } };
+        : { ok: true, data: { rows: [{ id: 'l1', habit_id: 'h1', completed_at: '2026-08-30', state: 'done', notes: 'sabah yürüyüşü notu' }], truncated: false } };
     }
     if (table === 'habits') return { ok: true, data: { rows: mockRepoState.habits, truncated: false } };
     if (table === 'webhooks') return { ok: true, data: { rows: mockRepoState.webhooks, truncated: false } };
@@ -189,9 +189,11 @@ describe('renderers', () => {
     expect(backupToSheets(b).map((s) => s.name)).not.toContain('notes');
   });
 
-  it('JSON round-trips', async () => {
+  it('JSON round-trips and preserves habit_logs.notes', async () => {
     const b = await buildBackup();
-    expect(JSON.parse(backupToJSON(b)).habits).toHaveLength(1);
+    const parsed = JSON.parse(backupToJSON(b));
+    expect(parsed.habits).toHaveLength(1);
+    expect(parsed.habit_logs[0].notes).toBe('sabah yürüyüşü notu');
   });
 
   it('renderBackup dispatches on format', async () => {

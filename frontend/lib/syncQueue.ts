@@ -32,6 +32,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Ymd } from './date';
+import { normalizeNote } from './habitNote';
 import { quarantineBlob } from './outboxStorage';
 
 /**
@@ -64,6 +65,8 @@ export type HabitLogIntent = {
    * user was, not where the phone is now. Absent on ops from older builds.
    */
   tz?: string;
+  /** F31 (PS-03): optional private single-line note attached to the log intent. */
+  note?: string | null;
 };
 
 export type SyncOpStatus = 'pending' | 'dead';
@@ -159,13 +162,21 @@ export function enqueue(
   opts: { id?: string; now?: number; userId?: string; priorState?: SyncOp['priorState'] } = {},
 ): { state: SyncQueueState; op: SyncOp } {
   const now = opts.now ?? Date.now();
+  const normalizedIntent: HabitLogIntent =
+    intent.note === undefined
+      ? intent
+      : { ...intent, note: normalizeNote(intent.note) ?? null };
   const idx = state.ops.findIndex((o) => o.habitId === habitId && o.date === date);
 
   if (idx >= 0) {
     const prior = state.ops[idx];
+    const collapsedIntent: HabitLogIntent =
+      normalizedIntent.note === undefined && prior.intent.note !== undefined
+        ? { ...normalizedIntent, note: prior.intent.note }
+        : normalizedIntent;
     const revived: SyncOp = {
       ...prior,
-      intent,
+      intent: collapsedIntent,
       attempts: 0,
       status: 'pending',
       lastError: undefined,
@@ -186,7 +197,7 @@ export function enqueue(
     id: opts.id ?? genId(habitId, date),
     habitId,
     date,
-    intent,
+    intent: normalizedIntent,
     attempts: 0,
     status: 'pending',
     seq: state.nextSeq,
@@ -388,6 +399,15 @@ function isValidOp(x: unknown): x is SyncOp {
   if (!o.intent || typeof o.intent !== 'object') return false;
   const intent = o.intent as Record<string, unknown>;
   if (!['done', 'partial', 'skip', 'miss'].includes(intent.state as string)) return false;
+  if ('note' in intent && intent.note !== undefined) {
+    if (intent.note === null) {
+      intent.note = null;
+    } else if (typeof intent.note === 'string') {
+      intent.note = normalizeNote(intent.note) ?? null;
+    } else {
+      delete intent.note;
+    }
+  }
   return true;
 }
 

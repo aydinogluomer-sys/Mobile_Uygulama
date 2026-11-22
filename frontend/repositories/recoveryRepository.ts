@@ -23,7 +23,7 @@
 import { supabase } from '../lib/supabase';
 import type { RecoveryPlan, RecoveryStatus, RecoveryStrategy } from '../lib/supabase';
 import { requireComplete, selectAllPages } from './pagedSelect';
-import { currentUserId, deleteOwned, updateOwned, insertOwnedWithId, updateOwnedVersioned, deleteOwnedIfPresent, type RepoResult } from './shared';
+import { currentUserId, isTransportFailure, deleteOwned, updateOwned, insertOwnedWithId, updateOwnedVersioned, deleteOwnedIfPresent, type RepoResult } from './shared';
 
 // All fifteen columns. The previous list stopped at `created_at` and
 // omitted the five the adapter used to drop, so a plan read back had no
@@ -110,6 +110,45 @@ export async function fetchPlannedRecoveryPlans(limit = 200): Promise<RepoResult
     .limit(Math.max(1, Math.min(limit, 1000)));
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as unknown as RecoveryPlan[] };
+}
+
+export type RecoveryPlanStateRow = {
+  id: string;
+  habit_id: string;
+  source_date: string;
+  target_date: string;
+  status: string;
+  completed_at: string | null;
+};
+
+/**
+ * F31 (PS-07): planned and completed recovery plans for a single habit since `since` —
+ * feeds `repairedSourceDates` (Kintsugi gold-vein overlay).
+ */
+export async function fetchRecoveryPlanStatesForHabit(params: {
+  habitId: string;
+  since: string;
+}): Promise<RepoResult<RecoveryPlanStateRow[]>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error, status } = await supabase
+    .from('recovery_plans')
+    .select('id,habit_id,source_date,target_date,status,completed_at')
+    .eq('user_id', u.userId)
+    .eq('habit_id', params.habitId)
+    .in('status', ['planned', 'completed'])
+    .gte('source_date', params.since)
+    .limit(500);
+  if (error) {
+    return {
+      ok: false,
+      error: error.message,
+      offline: isTransportFailure(status, error),
+      status,
+      code: error.code,
+    };
+  }
+  return { ok: true, data: data ?? [] };
 }
 
 // R02.03 — outbox delivery: a plan with a client-made id (re-delivery = 23505 = one plan).

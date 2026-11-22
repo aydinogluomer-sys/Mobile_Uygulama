@@ -8,7 +8,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useProfileStore } from '../../store/profileStore';
+import { useHabitStore } from '../../store/habitStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
+import { useHeatmapLogs } from '../../hooks/useHeatmapLogs';
 import { rankMeta, RANK_TIERS } from '../../lib/ranks';
 import XPDisplay from '../../components/XPDisplay';
 // R04.02 — device-wide reminder settings and the real permission state.
@@ -29,6 +31,9 @@ import {
 export default function ProfileScreen() {
   const router = useRouter();
   const { profile, badges, fetchProfile, fetchBadges, setUsername } = useProfileStore();
+  const habits = useHabitStore((st) => st.habits);
+  const heat = useHeatmapLogs();
+  const activeHabitCount = habits.filter((h) => h.status === 'active').length;
   const focusPoints = useSubscriptionStore((st) => st.focusPoints);
   const fetchSub = useSubscriptionStore((st) => st.fetch);
   const [name, setName] = useState('');
@@ -61,7 +66,13 @@ export default function ProfileScreen() {
       />
       <ScrollView contentContainerStyle={s.content}>
         <XPDisplay />
-        <YearlyHeatmap />
+        <YearlyHeatmap
+          rows={heat.rows}
+          status={heat.status}
+          error={heat.error}
+          onRetry={heat.reload}
+          capacity={activeHabitCount}
+        />
         <NotificationSettingsCard />
 
         {/* Rütbe kartı */}

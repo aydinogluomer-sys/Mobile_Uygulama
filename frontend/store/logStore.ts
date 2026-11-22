@@ -80,6 +80,7 @@ type LogStore = {
      * ceilings were expressible.
      */
     targetDirection?: 'at_least' | 'at_most';
+    note?: string | null;
   }) => Promise<LogResult>;
   getLogForHabit: (habitId: string, date?: Date | string) => HabitLog | undefined;
   getRemainingValue: (habitId: string, targetValue: number, date: Date) => number;
@@ -293,7 +294,7 @@ function buildOptimisticLog(
   // The patch still sends `xp`, which the trigger ignores; the value is left
   // in place because `xpFor` is also the offline-queue's intent record and
   // is asserted by its own tests.
-  const { xp: _serverOwned, ...displayable } = patch;
+  const { xp: _serverOwned, notes: _privateNote, ...displayable } = patch;
   if (priorLocal) return { ...priorLocal, ...displayable };
   return {
     id: `${LOCAL_ID_PREFIX}${habitId}|${dateStr}`,
@@ -681,7 +682,7 @@ export const useLogStore = create<LogStore>((set, get) => {
       set((s) => ({ logs: mergeDayLogs(s.logs, dateStr, rows, isProtected) }));
     },
 
-    logHabit: ({ habitId, date, state, value, targetValue, baseXp = 30, targetDirection }) => {
+    logHabit: ({ habitId, date, state, value, targetValue, baseXp = 30, targetDirection, note }) => {
       const dateStr = ymd(date);
       // F03 — a day outside the loggable window (today and the previous 14 days)
       // is refused HERE, before the optimistic row and before the queue: the
@@ -692,25 +693,29 @@ export const useLogStore = create<LogStore>((set, get) => {
       const key = `${habitId}|${dateStr}`;
       // R01.06 — the zone is captured now, at the tap, and queued with the intent.
       const tz = deviceTimeZone();
-      const intent: HabitLogIntent = { state, value, targetValue, baseXp, targetDirection, ...(tz ? { tz } : {}) };
-      const patch = toPatch(intent);
+      const intent: HabitLogIntent = {
+        state,
+        value,
+        targetValue,
+        baseXp,
+        targetDirection,
+        ...(tz ? { tz } : {}),
+        ...(note !== undefined ? { note } : {}),
+      };
 
-      // 1) Optimistic local update -- synchronous, no I/O. Plan §18: "local
-      //    optimistic state -> UI immediately updates", before any network.
+      // 1) Optimistic local update + queue collapse (preserves prior queued note if omitted).
       const priorLocal = get().getLogForHabit(habitId, dateStr);
+      const enq = enqueueOp(queueState, habitId, dateStr, intent, {
+        userId: queueOwnerId ?? undefined,
+        priorState: priorLocal?.state ?? null,
+      });
+      const patch = toPatch(enq.op.intent);
       const optimisticLog = buildOptimisticLog(habitId, dateStr, patch, priorLocal);
       const myGen = ++optimisticGenSeq;
       optimisticGen.set(key, myGen);
       set((s) => replaceLogForKey(s, habitId, dateStr, optimisticLog));
 
-      // 2) Enqueue the intent (collapses onto any pending op for this key --
-      //    see lib/syncQueue.ts's `enqueue` doc) and persist BEFORE
-      //    attempting the network call, so the intent is durable even if the
-      //    app is killed the instant after this tap.
-      const enq = enqueueOp(queueState, habitId, dateStr, intent, {
-        userId: queueOwnerId ?? undefined,
-        priorState: priorLocal?.state ?? null,
-      });
+      // 2) Persist collapsed queue BEFORE attempting the network call.
       queueState = enq.state;
       publishSyncCounts();
       // F05 (SYN-01): no owner yet (the app booted signed out): bind to the session first, then save

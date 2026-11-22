@@ -25,22 +25,29 @@
  * fit). Every tab/range below derives its view from that same in-memory log
  * array; switching ranges or tabs never re-fetches.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { confirm, notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 
+import { currentUser } from '../../lib/session';
 import { useHabitStore } from '../../store/habitStore';
 import type { Habit, FrequencyConfig } from '../../lib/supabase';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
-import { Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines, EditorialBanner } from '../../components/ui';
+import { Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines, EditorialBanner, Button } from '../../components/ui';
 import { AtmosphericScreenCanvas } from '../../components/spatial';
+import KintsugiYearGrid from '../../components/habits/KintsugiYearGrid';
+import HabitDayNote from '../../components/habits/HabitDayNote';
+import HabitColorPicker from '../../components/habits/HabitColorPicker';
 import { CANVASES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { haptic } from '../../lib/haptics';
 import { addDaysLocal, parseLocalDate, ymd, type Ymd } from '../../lib/date';
 import { habitCreatedDay } from '../../lib/habitCreatedDay';
+import { hueLabel } from '../../lib/habitColors';
+import { previewNote } from '../../lib/habitNote';
+import { buildHabitYearGrid, formatDayLongTR, formatDayShortTR } from '../../lib/yearGrid';
 import { isCountBasedSchedule, isEligibleOn } from '../../lib/habitSchedule';
 // KD-09 — the schedule is shown with the same sentence the form uses, and edited
 // with the same controls (one component, one set of pure transitions).
@@ -71,9 +78,18 @@ import {
   type Result,
 } from '../../lib/behaviorIntelligence';
 import { logsForHabit, type HabitDetailLogRow } from '../../services/habitService';
+import { saveLogNote } from '../../services/habitLogService';
+import { repairedSourceDates } from '../../services/recoveryService';
 import { LIFE_AREAS } from '../../store/lifeAreasStore';
 import { endConditionLabel } from '../../lib/triage';
 import { DOW_TR } from '../../lib/focusReport';
+
+const useSafeFocusEffect: typeof useFocusEffect =
+  typeof useFocusEffect === 'function'
+    ? useFocusEffect
+    : (effect) => {
+        useEffect(effect, [effect]);
+      };
 
 // ---------------------------------------------------------------------------
 // tabs
@@ -106,7 +122,7 @@ type CalendarDayState = 'full' | 'partial' | 'miss' | 'skip' | 'not_scheduled';
 const CALENDAR_STATE_COLORS: Record<CalendarDayState, string> = {
   full: colors.success,
   partial: colors.warning,
-  miss: colors.error,
+  miss: colors.textFaint,
   skip: colors.info,
   not_scheduled: colors.textGhost,
 };
@@ -224,8 +240,30 @@ function trendIcon(direction: 'improving' | 'declining' | 'flat'): keyof typeof 
 // ui/ primitives (plan: reuse ui/, do not invent new ones)
 // ---------------------------------------------------------------------------
 
-function InfoRow({ icon, label, value, onEdit, editLabel, editIcon = 'create-outline' }: {
+function CalNavBtn({
+  icon,
+  label,
+  onStep,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onStep: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onStep}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Ionicons name={icon} size={20} color={colors.textDim} />
+    </TouchableOpacity>
+  );
+}
+
+function InfoRow({ icon, label, value, colorDot, onEdit, editLabel, editIcon = 'create-outline' }: {
   icon: keyof typeof Ionicons.glyphMap; label: string; value: string;
+  colorDot?: string;
   /** KD-09 — when set, the row offers an edit button with this a11y label. */
   onEdit?: () => void; editLabel?: string;
   /** R01.05 — the button's glyph, when it is not an edit. */
@@ -234,7 +272,15 @@ function InfoRow({ icon, label, value, onEdit, editLabel, editIcon = 'create-out
   return (
     <View style={s.infoRow}>
       {/* süs ikonu — etiket/değer zaten okunuyor, ekran okuyucuda tekrar etmesin */}
-      <Ionicons name={icon} size={15} color={colors.textFaint} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+      {colorDot ? (
+        <View
+          style={[s.colorDot, { backgroundColor: colorDot }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
+      ) : (
+        <Ionicons name={icon} size={15} color={colors.textFaint} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+      )}
       <Text style={s.infoLabel}>{label}</Text>
       <Text style={s.infoValue} numberOfLines={1}>{value}</Text>
       {onEdit && (
@@ -297,11 +343,25 @@ export default function HabitDetailScreen() {
 
   const [logs, setLogs] = useState<HabitDetailLogRow[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
+  const [logsError, setLogsError] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
+  const [repaired, setRepaired] = useState<ReadonlySet<Ymd>>(() => new Set());
+  const [selectedDay, setSelectedDay] = useState<Ymd | null>(null);
+  const [noteEditing, setNoteEditing] = useState<Ymd | null>(null);
+  const [historyVisible, setHistoryVisible] = useState<number>(14);
+  const [colorOpen, setColorOpen] = useState(false);
+  const [colorDraft, setColorDraft] = useState<string | null>(null);
+  const [savingColor, setSavingColor] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>('genel');
   // KD-09 — the schedule draft while the editor is open; null = closed.
   const [freqDraft, setFreqDraft] = useState<FrequencyConfig | null>(null);
   const [savingFreq, setSavingFreq] = useState(false);
   const [rangeKey, setRangeKey] = useState<string>('30');
+
+  useEffect(() => {
+    void currentUser().then((u) => setUserId(u?.id ?? null));
+  }, []);
 
   const today = new Date();
   const todayYmd = ymd(today);
@@ -322,14 +382,58 @@ export default function HabitDetailScreen() {
       return;
     }
     setLoadingLogs(true);
+    setLogsError(false);
     logsForHabit({ habitId: habit.id, start: sinceYmd, end: todayYmd }).then((res) => {
       if (cancelled) return;
-      if (res.ok) setLogs(res.data);
+      if (res.ok) {
+        setLogs(res.data);
+        setLogsError(false);
+      } else {
+        setLogs([]);
+        setLogsError(true);
+      }
       setLoadingLogs(false);
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [habit?.id, sinceYmd, todayYmd]);
+  }, [habit?.id, sinceYmd, todayYmd, retryTick]);
+
+  const habitIdForFocus = habit?.id ?? null;
+  useSafeFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      if (!habitIdForFocus) {
+        setRepaired(new Set());
+        return;
+      }
+      void repairedSourceDates({ habitId: habitIdForFocus, since: sinceYmd }).then((res) => {
+        if (cancelled) return;
+        setRepaired(res.ok ? res.data : new Set());
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [habitIdForFocus, sinceYmd]),
+  );
+
+  const logIndex = useMemo(() => {
+    const idx = new Map<Ymd, HabitDetailLogRow>();
+    for (const l of logs) idx.set(l.completed_at.slice(0, 10), l);
+    return idx;
+  }, [logs]);
+
+  const yearModel = useMemo(() => {
+    if (!habit) return null;
+    return buildHabitYearGrid({
+      habit,
+      todayYmd,
+      createdYmd: sinceYmd,
+      cellFor: (d) => dayCellFor(habit, logIndex, d, todayYmd),
+      logStateOn: (day) => logIndex.get(day)?.state ?? null,
+      noteOn: (day) => Boolean(logIndex.get(day)?.notes),
+      repairedDates: repaired,
+    });
+  }, [habit, todayYmd, sinceYmd, logIndex, repaired]);
 
   // GEM-10 — strength and streaks walk up to 90 days / the whole history, so
   // they are memoised on the habit, its logs and the local DAY (`todayYmd`,
@@ -383,9 +487,6 @@ export default function HabitDetailScreen() {
   }
 
   // From here on `habit` is narrowed to `Habit` (non-null) for the rest of the render.
-
-  const logIndex = new Map<Ymd, HabitDetailLogRow>();
-  for (const l of logs) logIndex.set(l.completed_at.slice(0, 10), l); // last wins, same tie-break as behaviorIntelligence.buildLogIndex
 
   // F13 (DOM-06, DOM-07): schedule-aware strength (null = no data yet) and
   // streaks where an unlogged today is pending, from the memo above.
@@ -461,6 +562,51 @@ export default function HabitDetailScreen() {
     }
   }
 
+  async function handleSaveNote(
+    day: Ymd,
+    note: string | null,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (!habit) return { ok: false, error: 'Alışkanlık bulunamadı.' };
+    const res = await saveLogNote({ habitId: habit.id, dateStr: day, note });
+    if (res.ok) {
+      setLogs((prev) =>
+        prev.map((l) => (l.completed_at.slice(0, 10) === day ? { ...l, notes: res.notes } : l)),
+      );
+      setNoteEditing(null);
+      return { ok: true };
+    }
+    if (res.offline) {
+      return { ok: false, error: 'Çevrimdışıyken not kaydedilemez, bağlanınca tekrar dene.' };
+    }
+    if (res.code === 'no_row') {
+      return { ok: false, error: 'Bu gün için kayıt bulunamadı. Birkaç saniye sonra tekrar dene.' };
+    }
+    return { ok: false, error: res.error || 'Not kaydedilemedi. Bağlantını kontrol edip tekrar dene.' };
+  }
+
+  async function handleSaveColor() {
+    if (!habit || savingColor) return;
+    setSavingColor(true);
+    try {
+      const res = await updateHabit(habit.id, { color: colorDraft });
+      if (!res.ok) {
+        void notify('Kaydedilemedi', res.error);
+        return;
+      }
+      haptic.success();
+      setColorOpen(false);
+    } finally {
+      setSavingColor(false);
+    }
+  }
+
+  const historyRows = [...logIndex.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([day, row]) => ({ day, row }));
+  const visibleHistoryRows = historyRows.slice(0, historyVisible);
+  const remainingHistoryCount = Math.max(0, historyRows.length - visibleHistoryRows.length);
+  const selectedDayLog = selectedDay ? (logIndex.get(selectedDay) ?? null) : null;
+
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <AtmosphericScreenCanvas
@@ -530,6 +676,51 @@ export default function HabitDetailScreen() {
             </View>
             {!overallCompletion.ok && <Text style={s.reasonHint}>{insufficientText('rate', overallCompletion.reason)}</Text>}
 
+            <SectionHeader title="Yıl izi" variant="title" style={{ marginTop: space.lg }} />
+            <Card padding="md" style={s.yearCard}>
+              <KintsugiYearGrid
+                mode="habit"
+                model={yearModel}
+                accent={habit.color ?? colors.primary}
+                selected={selectedDay}
+                onSelect={(d) => {
+                  setSelectedDay(d);
+                  setNoteEditing(null);
+                }}
+                status={loadingLogs ? 'loading' : logsError ? 'error' : 'ready'}
+                onRetry={() => setRetryTick((n) => n + 1)}
+                repairedCount={yearModel?.summary.repaired ?? 0}
+              />
+              {!loadingLogs && !logsError && selectedDay && selectedDayLog && (
+                noteEditing === selectedDay ? (
+                  <HabitDayNote
+                    variant="inline"
+                    dayLabel={formatDayLongTR(selectedDay)}
+                    initial={selectedDayLog.notes ?? null}
+                    userId={userId}
+                    onDismiss={() => setNoteEditing(null)}
+                    onSave={(note) => handleSaveNote(selectedDay, note)}
+                  />
+                ) : (
+                  <View style={s.dayStrip}>
+                    {selectedDayLog.notes ? (
+                      <Text style={s.historyNote} numberOfLines={1}>
+                        {previewNote(selectedDayLog.notes, 60)}
+                      </Text>
+                    ) : null}
+                    <Button
+                      label={selectedDayLog.notes ? 'Notu düzenle' : 'Not ekle'}
+                      variant="ghost"
+                      size="md"
+                      onPress={() => setNoteEditing(selectedDay)}
+                      accessibilityLabel={selectedDayLog.notes ? 'Notu düzenle' : 'Not ekle'}
+                      style={s.stepperBtn}
+                    />
+                  </View>
+                )
+              )}
+            </Card>
+
             <SectionHeader title="Alışkanlık Bilgisi" variant="title" style={{ marginTop: space.lg }} />
             <Card padding="md">
               <InfoRow
@@ -564,6 +755,18 @@ export default function HabitDetailScreen() {
                   : 'Kapalı'}
                 onEdit={() => { void notificationAccess().then(setNotifAccess); setReminderOpen(true); }}
                 editLabel="Hatırlatıcıyı düzenle"
+              />
+              <InfoRow
+                icon="color-palette-outline"
+                colorDot={habit.color ?? colors.primary}
+                label="Renk"
+                value={hueLabel(habit.color)}
+                onEdit={() => {
+                  haptic.select();
+                  setColorDraft(habit.color ?? null);
+                  setColorOpen(true);
+                }}
+                editLabel="Rengi değiştir"
               />
               <InfoRow icon="compass-outline" label="Yaşam Alanı" value={area ? area.label : '—'} />
               <InfoRow icon="flash-outline" label="İrade Maliyeti" value={String(habit.willpower_cost)} />
@@ -626,29 +829,82 @@ export default function HabitDetailScreen() {
                 })}
               </ScrollView>
             )}
+
+            <SectionHeader title="Son kayıtlar" variant="title" style={{ marginTop: space.lg }} />
+            {loadingLogs ? (
+              <SkeletonLines count={3} />
+            ) : historyRows.length === 0 ? (
+              <EmptyState icon="document-text-outline" title="Henüz kayıt yok" compact />
+            ) : (
+              <Card padding="md" style={s.yearCard}>
+                {visibleHistoryRows.map(({ day, row }) => {
+                  const calState: CalendarDayState =
+                    row.state === 'done'
+                      ? 'full'
+                      : row.state === 'partial'
+                        ? 'partial'
+                        : row.state === 'skip'
+                          ? 'skip'
+                          : 'miss';
+                  const valText =
+                    isNumeric && row.value != null
+                      ? ` · ${row.value}${habit.unit ? ` ${habit.unit}` : ''}`
+                      : '';
+                  return (
+                    <View key={day} style={s.historyItemWrap}>
+                      <View style={s.historyRow}>
+                        <View style={s.historyRowMain}>
+                          <Text style={s.historyDateText}>
+                            {`${formatDayShortTR(day)} · ${STATE_LABELS[calState]}${valText}`}
+                          </Text>
+                          {row.notes ? (
+                            <Text style={s.historyNote} numberOfLines={1}>
+                              {previewNote(row.notes, 60)}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Button
+                          label={row.notes ? 'Notu düzenle' : 'Not ekle'}
+                          variant="ghost"
+                          size="md"
+                          onPress={() => setNoteEditing(noteEditing === day ? null : day)}
+                          accessibilityLabel={`${formatDayShortTR(day)} ${row.notes ? 'Notu düzenle' : 'Not ekle'}`}
+                          style={s.stepperBtn}
+                        />
+                      </View>
+                      {noteEditing === day && (
+                        <HabitDayNote
+                          variant="inline"
+                          dayLabel={formatDayLongTR(day)}
+                          initial={row.notes ?? null}
+                          userId={userId}
+                          onDismiss={() => setNoteEditing(null)}
+                          onSave={(note) => handleSaveNote(day, note)}
+                        />
+                      )}
+                    </View>
+                  );
+                })}
+                {remainingHistoryCount > 0 && (
+                  <Button
+                    label={`Daha fazla göster (${remainingHistoryCount})`}
+                    variant="tonal"
+                    size="md"
+                    onPress={() => setHistoryVisible((n) => n + 14)}
+                    accessibilityLabel={`Daha fazla göster (${remainingHistoryCount})`}
+                  />
+                )}
+              </Card>
+            )}
           </View>
         )}
 
         {tab === 'takvim' && (
           <View style={s.tabBody}>
             <View style={s.calNav}>
-              <TouchableOpacity
-                onPress={prevMonth}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Önceki ay"
-              >
-                <Ionicons name="chevron-back" size={20} color={colors.textDim} />
-              </TouchableOpacity>
+              <CalNavBtn icon="chevron-back" label="Önceki ay" onStep={prevMonth} />
               <Text style={s.calNavLabel}>{MONTHS_TR[calMonth]} {calYear}</Text>
-              <TouchableOpacity
-                onPress={nextMonth}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Sonraki ay"
-              >
-                <Ionicons name="chevron-forward" size={20} color={colors.textDim} />
-              </TouchableOpacity>
+              <CalNavBtn icon="chevron-forward" label="Sonraki ay" onStep={nextMonth} />
             </View>
 
             <View style={s.calDowRow}>
@@ -790,6 +1046,37 @@ export default function HabitDetailScreen() {
           return res;
         }}
       />
+
+      <Modal visible={colorOpen} transparent animationType="slide" onRequestClose={() => setColorOpen(false)}>
+        <View style={s.sheetOverlay}>
+          <View style={s.sheet}>
+            <Text style={s.sheetTitle}>Rengi değiştir</Text>
+            <ScrollView style={s.sheetBody} keyboardShouldPersistTaps="handled">
+              <HabitColorPicker value={colorDraft} onChange={setColorDraft} disabled={savingColor} />
+            </ScrollView>
+            <View style={s.sheetActions}>
+              <Button
+                label="Vazgeç"
+                variant="ghost"
+                size="md"
+                full
+                disabled={savingColor}
+                onPress={() => setColorOpen(false)}
+                accessibilityLabel="Vazgeç"
+              />
+              <Button
+                label={savingColor ? 'Kaydediliyor…' : 'Kaydet'}
+                variant="primary"
+                size="md"
+                full
+                disabled={savingColor}
+                onPress={() => { void handleSaveColor(); }}
+                accessibilityLabel="Rengi kaydet"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -876,4 +1163,52 @@ const s = StyleSheet.create({
   insightLabel: { fontSize: 13, color: colors.textDim, fontWeight: '600', flex: 1 },
   insightValue: { fontSize: 15, color: colors.text, fontWeight: '700' },
   insightReason: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+
+  colorDot: {
+    width: space.md,
+    height: space.md,
+    borderRadius: radius.pill,
+  },
+  yearCard: {
+    gap: space.sm,
+  },
+  yearSummary: {
+    ...font.caption,
+    color: colors.textDim,
+  },
+  dayStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.sm,
+  },
+  historyItemWrap: {
+    gap: space.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSubtle,
+    paddingBottom: space.xs,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.sm,
+  },
+  historyRowMain: {
+    flex: 1,
+    gap: space.xs,
+  },
+  historyDateText: {
+    ...font.bodySm,
+    color: colors.text,
+  },
+  historyNote: {
+    ...font.caption,
+    color: colors.textDim,
+    flex: 1,
+  },
+  stepperBtn: {
+    minWidth: space.hh + space.xs,
+    minHeight: space.hh + space.xs,
+  },
 });

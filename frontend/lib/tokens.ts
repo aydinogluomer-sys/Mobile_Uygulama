@@ -248,6 +248,28 @@ export function accentsFor(mode: ThemeMode): Record<AccentKey, AccentTheme> {
 
 export const DEFAULT_ACCENT: AccentKey = 'clay';
 
+// Alışkanlık kategorik renk paleti (F31 — Thefor F-7): koyu ve açık yüzeylerde >= 3.05:1 kontrast.
+export type HabitHue = {
+  readonly key: string;
+  readonly label: string;
+  readonly hex: string;
+};
+
+export const habitHues: readonly HabitHue[] = [
+  { key: 'mercan', label: 'Mercan', hex: '#d46e5e' },
+  { key: 'kehribar', label: 'Kehribar', hex: '#bd7c32' },
+  { key: 'hardal', label: 'Hardal', hex: '#a1892b' },
+  { key: 'zeytin', label: 'Zeytin', hex: '#749528' },
+  { key: 'yosun', label: 'Yosun', hex: '#2a9d50' },
+  { key: 'nane', label: 'Nane', hex: '#2a9d86' },
+  { key: 'gökyüzü', label: 'Gökyüzü', hex: '#3195b9' },
+  { key: 'mavi', label: 'Mavi', hex: '#628cd5' },
+  { key: 'indigo', label: 'İndigo', hex: '#8282de' },
+  { key: 'mor', label: 'Mor', hex: '#a576db' },
+  { key: 'orkide', label: 'Orkide', hex: '#d35acf' },
+  { key: 'gül', label: 'Gül', hex: '#d6668f' },
+] as const;
+
 // Gradient çiftleri (LinearGradient yoksa ilk renk solid kullanılır)
 export const gradients = {
   primary: ['#D97757', '#B85C38'] as const,
