@@ -1,6 +1,7 @@
 import { registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import type { OutboxCommand } from '../lib/outbox';
+import { JOURNAL_FETCH_LIMIT } from '../lib/yearPixels';
 import { coreOutbox } from '../services/coreOutbox';
 import {
   listJournalEntries as fetchJournalEntries,
@@ -23,6 +24,7 @@ export type JournalEntry = JournalEntryRow;
 type JournalStore = {
   entries: JournalEntry[];
   loading: boolean;
+  truncated: boolean;
   fetchEntries: () => Promise<void>;
   /** R07.01 — the outcome, so a failed save is never shown as saved. */
   saveEntry: (date: string, content: string, mood: number | null) => Promise<{ ok: true } | { ok: false; error: string }>;
@@ -71,6 +73,7 @@ function withPending(rows: JournalEntry[]): JournalEntry[] {
 export const useJournalStore = create<JournalStore>((set, get) => ({
   entries: [],
   loading: false,
+  truncated: false,
 
   fetchEntries: async () => {
     set({ loading: true });
@@ -78,7 +81,11 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
     const res = await fetchJournalEntries();
     if (!res.ok) { set((s) => ({ loading: false, entries: withPending(s.entries) })); return; }
     for (const e of res.data) serverContent.set(e.date, e.content ?? '');
-    set({ entries: withPending(res.data), loading: false });
+    set({
+      entries: withPending(res.data),
+      loading: false,
+      truncated: res.data.length >= JOURNAL_FETCH_LIMIT,
+    });
   },
 
   saveEntry: async (date, content, mood) => {

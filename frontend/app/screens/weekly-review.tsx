@@ -36,6 +36,12 @@ import {
   saveWeeklyReflection as upsertWeeklyReview,
 } from '../../services/reviewService';
 import { sessionsBetween } from '../../services/focusService';
+import TimeDistributionBar from '../../components/review/TimeDistributionBar';
+import {
+  buildTimeDistribution,
+  habitDurationMinutes,
+  type TimeDistribution,
+} from '../../lib/timeDistribution';
 
 function getWeekKey(date = new Date()) {
   return format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -158,11 +164,14 @@ export default function WeeklyReviewScreen() {
   const [autoMetrics, setAutoMetrics] = useState<AutoMetrics>(EMPTY_AUTO_METRICS);
   // R07.04 — amount/duration per measured habit, from the R01 engine.
   const [measured, setMeasured] = useState<MeasuredRow[]>([]);
+  const [weekTime, setWeekTime] = useState<TimeDistribution | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
   const targetDate = subWeeks(new Date(), weekOffset);
   const weekKey = getWeekKey(targetDate);
+  const currentWeekKeyRef = useRef(weekKey);
+  currentWeekKeyRef.current = weekKey;
   const { start, end } = getWeekRange(targetDate);
   const isCurrentWeek = weekOffset === 0;
   // R05.07 — routine sessions, from the summary each session stored when it finished.
@@ -199,7 +208,7 @@ export default function WeeklyReviewScreen() {
   useEffect(() => {
     void loaders.current.loadReview();
     void loaders.current.loadWeekMetrics();
-  }, [weekOffset, habits.length, tasks.length]);
+  }, [weekOffset, habits.length, tasks.length, routineHistory.length]);
 
   async function loadReview() {
     const user = await currentUser();
@@ -226,12 +235,15 @@ export default function WeeklyReviewScreen() {
   }
 
   async function loadWeekMetrics() {
+    const keyAtStart = weekKey;
     const user = await currentUser();
     if (!user) {
+      if (keyAtStart !== currentWeekKeyRef.current) return;
       setHabitCompletionRate(null);
       setFocusMinutes(0);
       setBadge(reportBadge({ habitRate: null, focusMinutes: 0, completedTasks: completedTasks.length }));
       setAutoMetrics(EMPTY_AUTO_METRICS);
+      setWeekTime(null);
       return;
     }
 
@@ -241,10 +253,26 @@ export default function WeeklyReviewScreen() {
       recoveryForPeriod({ start, end }),
     ]);
 
+    if (keyAtStart !== currentWeekKeyRef.current) return;
+
     const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end, { asOf: new Date() }) : null;
     const weekSessions = sessionsRes.ok ? sessionsRes.data : [];
     const minutes = focusMinutesFromSessions(weekSessions);
     const nextBadge = reportBadge({ habitRate: rate, focusMinutes: minutes, completedTasks: completedTasks.length });
+
+    const todayYmd = ymd(new Date());
+    const clampedEnd = end < todayYmd ? end : todayYmd;
+    const habitDur = logsRes.ok
+      ? habitDurationMinutes(habits, logsRes.data, { start, end: clampedEnd })
+      : null;
+    setWeekTime(
+      buildTimeDistribution({
+        focusMinutes: sessionsRes.ok ? minutes : null,
+        routineMinutes: routines.activeMinutes,
+        habitMinutes: habitDur ? habitDur.minutes : null,
+        excludedHabits: habitDur ? habitDur.excluded : 0,
+      }),
+    );
 
     setHabitCompletionRate(rate);
     setFocusMinutes(minutes);
@@ -415,6 +443,15 @@ export default function WeeklyReviewScreen() {
             <AutoMetricTile label="Aşırı Yüklenme Günü" value={`${autoMetrics.overloadDays} gün`} />
           </View>
         </View>
+
+        {weekTime && (
+          <View style={s.section}>
+            <TimeDistributionBar
+              distribution={weekTime}
+              weekLabel={isCurrentWeek ? 'Bu hafta' : 'O hafta'}
+            />
+          </View>
+        )}
 
         <ChapterDivider source={DECOR.dividerSundial} label="HAFTALIK ÖLÇÜM" />
         <MeasuredReportSection rows={measured} />
