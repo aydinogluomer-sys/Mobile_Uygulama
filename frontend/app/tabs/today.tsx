@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   useWindowDimensions,
   View,
@@ -66,6 +68,7 @@ import {
 } from '../../components/spatial';
 import { BENTO_ART, CANVASES, DECOR, TEXTURES } from '../../lib/visualAssets';
 import { isMeasurableTracking } from '../../lib/habitEngine';
+import { markNoteHintSeen, normalizeNote, NOTE_MAX_LENGTH, readNoteHintSeen } from '../../lib/habitNote';
 import { logsForPeriod, type ReviewLogRow } from '../../services/reviewService';
 import { bootstrapTodayScreen } from '../../services/todayBootstrapService';
 import type { Habit } from '../../lib/supabase';
@@ -173,6 +176,8 @@ export default function TodayScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [periodLogs, setPeriodLogs] = useState<ReviewLogRow[] | null>(null);
   const [lightDayPick, setLightDayPick] = useState<Set<string> | null>(null);
+  const [lightDayNote, setLightDayNote] = useState('');
+  const [lightDayHintVisible, setLightDayHintVisible] = useState(false);
   const [smallStartFor, setSmallStartFor] = useState<SmallStepParent | null>(null);
   const [lightDaySaving, setLightDaySaving] = useState(false);
   const [holidayOpen, setHolidayOpen] = useState(false);
@@ -181,10 +186,27 @@ export default function TodayScreen() {
   const [lowEnergyFilter, setLowEnergyFilter] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<PartGroupKey>>(EMPTY_GROUPS);
+  const lightDayOpen = lightDayPick !== null;
 
   useEffect(() => {
     setExpandedGroups(EMPTY_GROUPS);
   }, [clock.today]);
+
+  useEffect(() => {
+    if (!lightDayOpen) return;
+    let alive = true;
+    void currentUser().then(async (u) => {
+      if (!u || !alive) return;
+      const seen = await readNoteHintSeen(u.id);
+      if (!seen && alive) {
+        setLightDayHintVisible(true);
+        await markNoteHintSeen(u.id);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [lightDayOpen]);
 
   useEffect(() => {
     void currentUser().then((u) => {
@@ -450,12 +472,18 @@ export default function TodayScreen() {
     });
   }
 
+  function closeLightDaySheet() {
+    setLightDayPick(null);
+    setLightDayNote('');
+  }
+
   async function confirmLightDay() {
     if (!lightDayPick || lightDayPick.size === 0) return;
     setLightDaySaving(true);
+    const normalizedNote = normalizeNote(lightDayNote) ?? undefined;
     const failed: string[] = [];
     for (const id of lightDayPick) {
-      const res = await logHabit({ habitId: id, date: new Date(), state: 'skip' });
+      const res = await logHabit({ habitId: id, date: new Date(), state: 'skip', note: normalizedNote });
       if (!res.ok) failed.push(id);
     }
     setLightDaySaving(false);
@@ -466,7 +494,7 @@ export default function TodayScreen() {
       return;
     }
     haptic.success();
-    setLightDayPick(null);
+    closeLightDaySheet();
   }
 
   const hasContext = Boolean(!legacyNoticeSeen || afterBreak || holiday || setAsideHabits.length > 0);
@@ -951,8 +979,8 @@ export default function TodayScreen() {
         }}
       />
 
-      <Modal visible={lightDayPick !== null} transparent animationType="slide" onRequestClose={() => setLightDayPick(null)}>
-        <View style={s.sheetOverlay}>
+      <Modal visible={lightDayPick !== null} transparent animationType="slide" onRequestClose={closeLightDaySheet}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.sheetOverlay}>
           <View style={s.sheet}>
             <Text style={s.sheetTitle}>Bugün daha az yapabilirim</Text>
             <Text style={s.sheetBody}>{FLOW_COPY.lighten}</Text>
@@ -980,10 +1008,30 @@ export default function TodayScreen() {
                 );
               })}
             </ScrollView>
+            <View style={s.lightDayNoteWrap}>
+              {lightDayHintVisible && (
+                <Text style={s.sheetNote}>
+                  İstersen nedenini tek satırda yaz. Yalnız sen görürsün.
+                </Text>
+              )}
+              <TextInput
+                value={lightDayNote}
+                onChangeText={setLightDayNote}
+                placeholder="Kısa bir not (isteğe bağlı)"
+                placeholderTextColor={c.textFaint}
+                maxLength={NOTE_MAX_LENGTH}
+                returnKeyType="done"
+                accessibilityLabel="Hafif gün notu (isteğe bağlı)"
+                style={s.lightDayNoteInput}
+              />
+              <Text style={s.lightDayNoteSub}>
+                Bu not seçtiğin tüm alışkanlıklara eklenir.
+              </Text>
+            </View>
             <View style={s.sheetActions}>
               <TouchableOpacity
                 style={s.sheetCancel}
-                onPress={() => setLightDayPick(null)}
+                onPress={closeLightDaySheet}
                 accessibilityRole="button"
                 accessibilityLabel="Vazgeç"
               >
@@ -1001,7 +1049,7 @@ export default function TodayScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Akşam Kapanış Ritüeli (Shutdown Ritual) Modalı */}
@@ -1163,6 +1211,19 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   sheetTitle: { ...font.h2, color: c.text, marginBottom: space.sm },
   sheetBody: { ...font.bodySm, color: c.textDim, lineHeight: 19, marginBottom: space.sm },
   sheetNote: { ...font.caption, color: c.textFaint, lineHeight: 16, marginBottom: space.md },
+  lightDayNoteWrap: { marginTop: space.md, gap: space.xs },
+  lightDayNoteInput: {
+    ...font.bodySm,
+    color: c.text,
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.border,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    minHeight: 44,
+  },
+  lightDayNoteSub: { ...font.caption, color: c.textFaint },
   sheetActions: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
   sheetCancel: { flex: 1, paddingVertical: space.md, borderRadius: radius.md, alignItems: 'center', borderWidth: 1, borderColor: c.border, minHeight: 48, justifyContent: 'center' },
   sheetCancelText: { color: c.textDim, fontWeight: '600' },

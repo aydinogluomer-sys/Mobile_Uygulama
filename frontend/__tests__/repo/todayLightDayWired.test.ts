@@ -18,7 +18,7 @@ const src = stripComments(raw);
 describe('R03.02 — light day', () => {
   it('writes skip, for today, for the chosen habits only', () => {
     expect(src).toMatch(/for \(const id of lightDayPick\) \{/);
-    expect(src).toMatch(/await logHabit\(\{ habitId: id, date: new Date\(\), state: 'skip' \}\);/);
+    expect(src).toMatch(/await logHabit\(\{ habitId: id, date: new Date\(\), state: 'skip', note: normalizedNote \}\);/);
     // no other state is written from the light-day path
     const fn = src.slice(src.indexOf('async function confirmLightDay('), src.indexOf('return (', src.indexOf('async function confirmLightDay(')));
     expect(fn.match(/state: '/g)).toHaveLength(1);

@@ -48,6 +48,7 @@ query is unbounded; this does not.
 | `habitLogRepository.ts` | `fetchLogsForDate` | `habit_logs` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitLogRepository.ts` | `findHabitLog` | `habit_logs` | no | SINGLE_ROW | yes |
 | `habitLogRepository.ts` | `insertHabitLog` | `habit_logs` | no | WRITE | — |
+| `habitLogRepository.ts` | `updateLogNote` | `habit_logs` | no | WRITE | yes |
 | `habitPauseRepository.ts` | `fetchGoalVersions` | `habit_goal_versions` | yes | RANGE_PAGED | yes |
 | `habitPauseRepository.ts` | `fetchPauses` | `habit_pauses` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitPauseRepository.ts` | `insertPause` | `habit_pauses` | no | WRITE | — |
@@ -92,6 +93,7 @@ query is unbounded; this does not.
 | `readingListRepository.ts` | `insertReadingItem` | `reading_list` | no | WRITE | — |
 | `recoveryRepository.ts` | `fetchPlannedRecoveryPlans` | `recovery_plans` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `recoveryRepository.ts` | `fetchRecoveryPlansForReview` | `recovery_plans` | yes | RANGE_PAGED | yes |
+| `recoveryRepository.ts` | `fetchRecoveryPlanStatesForHabit` | `recovery_plans` | yes | DATE_WINDOW | yes |
 | `recoveryRepository.ts` | `insertRecoveryPlan` | `recovery_plans` | no | WRITE | — |
 | `reviewRepository.ts` | `fetchWeeklyReview` | `weekly_reviews` | no | SINGLE_ROW | yes |
 | `reviewRepository.ts` | `upsertWeeklyReview` | `weekly_reviews` | no | SINGLE_ROW | yes |
@@ -114,11 +116,11 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **103**
-- collection SELECTs: **43**
+- queries: **105**
+- collection SELECTs: **44**
 - KEYSET_PAGE: **7**
 - RANGE_PAGED: **14**
-- DATE_WINDOW: **0**
+- DATE_WINDOW: **1**
 - BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **2**
 - BOUNDED_DOMAIN_WINDOW: **16**

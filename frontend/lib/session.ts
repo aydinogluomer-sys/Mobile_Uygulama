@@ -77,15 +77,21 @@ export function getSessionBounded(timeoutMs: number = LOCAL_USER_TIMEOUT_MS): Pr
  * stored, a storage read that failed) -> null: a read that fails is "not signed in" as far as a
  * render guard is concerned, and it must not take the screen down.
  */
+function toLocalUser(u: { id: string; email?: string | null; created_at?: string | null }): LocalUser {
+  return u.created_at !== undefined
+    ? { id: u.id, email: u.email ?? null, createdAt: u.created_at }
+    : { id: u.id, email: u.email ?? null };
+}
+
 export async function currentUser(): Promise<LocalUser | null> {
   const b = await getSessionBounded();
   const user = b.session?.user;
-  if (user?.id) return { id: user.id, email: user.email ?? null, createdAt: user.created_at ?? null };
+  if (user?.id) return toLocalUser(user);
   if (b.rejected) return null;
   if (b.timedOut || isRetryableAuthError(b.error)) {
     const stored = await readStoredSession();
     const s = stored?.user;
-    if (s?.id) return { id: s.id, email: s.email ?? null, createdAt: s.created_at ?? null };
+    if (s?.id) return toLocalUser(s);
   }
   return null;
 }

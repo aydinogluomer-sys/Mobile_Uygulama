@@ -70,15 +70,15 @@ const literals = tsxFiles.flatMap((f) =>
   [...rawByFile.get(f)!.matchAll(HEX_RE)].map((m) => ({ f, hex: m[1] })),
 );
 
-// Exact post-F25 measured ceilings (ratchet may only move down)
+// Exact post-Wave-8B measured ceilings (ratchet may only move down)
 export const CEILINGS = {
-  QUOTED_HEX: 124,
-  RGBA_LITERAL: 77,
-  FONT_SIZE_LITERAL: 1103,
-  SPACING_LITERAL: 1618,
-  RADIUS_LITERAL: 537,
+  QUOTED_HEX: 118,
+  RGBA_LITERAL: 72,
+  FONT_SIZE_LITERAL: 1080,
+  SPACING_LITERAL: 1580,
+  RADIUS_LITERAL: 530,
   STATIC_COLORS_IMPORTERS: 118,
-  RAW_TOUCHABLES: 598,
+  RAW_TOUCHABLES: 585,
   LEGACY_TOKEN_USAGES: 62,
 } as const;
 
