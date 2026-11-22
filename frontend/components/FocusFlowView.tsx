@@ -33,6 +33,7 @@ import { useReducedMotion } from './seasonalMotion/useReducedMotion';
 
 
 import { haptic } from '../lib/haptics';
+import { useShallow } from 'zustand/react/shallow';
 import { useHabitStore } from '../store/habitStore';
 import { useTaskStore } from '../store/taskStore';
 import { useFocusStore } from '../store/focusStore';
@@ -124,9 +125,17 @@ export default function FocusFlowView({
   }, [breathAnim, reduceMotion]);
   const scrollRef = useRef<ScrollView | null>(null);
 
-  const { habits, fetchHabits, addHabit } = useHabitStore();
-  const { tasks } = useTaskStore();
-  const { sessionsCompleted, status: focusStatus, startSmallStep } = useFocusStore();
+  const { habits, fetchHabits, addHabit } = useHabitStore(
+    useShallow((s) => ({ habits: s.habits, fetchHabits: s.fetchHabits, addHabit: s.addHabit })),
+  );
+  const tasks = useTaskStore((s) => s.tasks);
+  const { sessionsCompleted, focusStatus, startSmallStep } = useFocusStore(
+    useShallow((s) => ({
+      sessionsCompleted: s.sessionsCompleted,
+      focusStatus: s.status,
+      startSmallStep: s.startSmallStep,
+    })),
+  );
 
   const [containerHeight, setContainerHeight] = useState<number>(640);
   const [selectedCategory, setSelectedCategory] = useState<FocusFlowCategoryKey>(initialCategory);

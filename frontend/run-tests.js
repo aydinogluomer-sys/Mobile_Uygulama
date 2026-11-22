@@ -119,7 +119,7 @@ test('drawerStore open/close/toggle', () => {
 
 // 5. Bugün ekranı
 console.log('\n☀️  5. Bugün Ekranı');
-const today = read('./app/tabs/today.tsx');
+const today = ['./app/tabs/today.tsx', './hooks/useTodayModel.ts', './components/today/HabitSection.tsx'].filter(exists).map(read).join('\n');
 test('Alışkanlık metrik kartı', () => today.includes('completedHabits') && today.includes('activeHabits'));
 test('Görev metrik kartı', () => today.includes('todayTasks') || today.includes('dueToday'));
 test('İrade bandı', () => today.includes('WillpowerBand') && today.includes('İrade'));

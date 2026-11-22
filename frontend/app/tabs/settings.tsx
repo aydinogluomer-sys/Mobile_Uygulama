@@ -51,6 +51,7 @@ import {
 import { CURRENT_FEATURES, UPCOMING_FEATURES, type FeatureHighlight } from '../../constants/features';
 import { reportError } from '../../lib/crashReporting';
 import { Chip, EditorialBanner, EmblemMedallion } from '../../components/ui';
+import TodayToolsSection from '../../components/settings/TodayToolsSection';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
@@ -422,6 +423,8 @@ export default function SettingsScreen() {
               </View>
             </View>
           </View>
+
+          <TodayToolsSection />
 
           <ChapterDivider source={DECOR.dividerSundial} label="VERİ KASASI & YEDEK" style={{ marginBottom: 18 }} />
 

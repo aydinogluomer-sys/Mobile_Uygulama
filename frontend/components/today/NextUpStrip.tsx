@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { colors, space, radius, font } from '../../lib/tokens';
 
@@ -13,7 +14,7 @@ export type NextUpItem = {
 };
 
 /** "Sırada" — yaklaşan görevlerin yatay sakin şeridi. Boşsa hiç render edilmez. */
-export default function NextUpStrip({ items, onPress }: { items: NextUpItem[]; onPress?: (id: string) => void }) {
+function NextUpStrip({ items, onPress }: { items: NextUpItem[]; onPress?: (id: string) => void }) {
   if (items.length === 0) return null;
   return (
     <View style={s.wrap}>
@@ -39,6 +40,8 @@ export default function NextUpStrip({ items, onPress }: { items: NextUpItem[]; o
     </View>
   );
 }
+
+export default memo(NextUpStrip);
 
 const s = StyleSheet.create({
   wrap: { marginTop: space.xxl, paddingTop: space.lg, borderTopWidth: 1, borderTopColor: colors.borderSubtle },

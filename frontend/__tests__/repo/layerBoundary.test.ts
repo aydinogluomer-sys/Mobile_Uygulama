@@ -94,6 +94,8 @@ const UI_ONLY = new Set([
   'routineRunnerStore.ts',
   // R07.02 — device-local only (AsyncStorage, per account) until migration 031.
   'moodStore.ts',
+  // F27 (NAV-13) — device-local progressive disclosure preferences (AsyncStorage, per account).
+  'disclosureStore.ts',
 ]);
 
 describe('services exist and hold real work', () => {

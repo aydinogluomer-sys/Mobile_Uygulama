@@ -42,7 +42,7 @@ import { authStorage } from './authStorage';
 import { AUTH_STORAGE_KEY } from './authStorageKey';
 import { boundSession, isRetryableAuthError, LOCAL_USER_TIMEOUT_MS, type BoundedSession } from './bootSession';
 
-export type LocalUser = { id: string; email: string | null };
+export type LocalUser = { id: string; email: string | null; createdAt?: string | null };
 export type { BoundedSession };
 export { isRetryableAuthError, LOCAL_USER_TIMEOUT_MS };
 
@@ -80,12 +80,12 @@ export function getSessionBounded(timeoutMs: number = LOCAL_USER_TIMEOUT_MS): Pr
 export async function currentUser(): Promise<LocalUser | null> {
   const b = await getSessionBounded();
   const user = b.session?.user;
-  if (user?.id) return { id: user.id, email: user.email ?? null };
+  if (user?.id) return { id: user.id, email: user.email ?? null, createdAt: user.created_at ?? null };
   if (b.rejected) return null;
   if (b.timedOut || isRetryableAuthError(b.error)) {
     const stored = await readStoredSession();
     const s = stored?.user;
-    if (s?.id) return { id: s.id, email: s.email ?? null };
+    if (s?.id) return { id: s.id, email: s.email ?? null, createdAt: s.created_at ?? null };
   }
   return null;
 }

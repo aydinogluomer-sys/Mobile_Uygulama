@@ -302,9 +302,9 @@ describe('AC-W08 — the sync badge exists, is exported, and is mounted', () => 
     // R02.03: the core outbox (journal, notes, recovery plans, focus sessions) joins the same badge.
     expect(tag![0]).toMatch(/pending=\{pendingSyncCount(?: \+ taskSync\.pending)?(?: \+ coreSync\.pending)?\}/);
     expect(tag![0]).toMatch(/dead=\{deadSyncCount(?: \+ taskSync\.dead \+ taskSync\.conflict)?(?: \+ coreSync\.dead \+ coreSync\.conflict)?\}/);
-    // …and those names come from the store, not from local state.
+    // …and those names come from the store (F27: through useShallow), not from local state.
     expect(today).toMatch(
-      /const \{[^}]*\bpendingSyncCount\b[^}]*\bdeadSyncCount\b[^}]*\} = useLogStore\(\);/,
+      /const \{[^}]*\bpendingSyncCount\b[^}]*\bdeadSyncCount\b[^}]*\} = useLogStore\(\s*useShallow\(/,
     );
   });
 

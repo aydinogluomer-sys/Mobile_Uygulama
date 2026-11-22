@@ -6,6 +6,7 @@
 jest.mock('../../lib/supabase', () => ({ supabase: {} }));
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { readSources } from '../helpers/readSources';
 import { stripComments } from '../helpers/sourceText';
 import { isMissingTable } from '../../repositories/habitPauseRepository';
 
@@ -55,7 +56,14 @@ describe('R01.05 — in-memory fields never reach a habits write', () => {
 });
 
 describe('R01.05 — screens', () => {
-  const today = code('app/tabs/today.tsx');
+  const today = stripComments(
+    readSources([
+      'app/tabs/today.tsx',
+      'hooks/useTodayModel.ts',
+      'lib/todaySelectors.ts',
+      'components/today/HabitSection.tsx',
+    ]),
+  );
   const detail = code('app/screens/habit-detail.tsx');
   const sheet = read('components/TimeOffSheet.tsx');
 

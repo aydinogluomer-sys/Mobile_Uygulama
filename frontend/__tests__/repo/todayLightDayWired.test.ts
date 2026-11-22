@@ -4,9 +4,15 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { readSources } from '../helpers/readSources';
 import { stripComments } from '../helpers/sourceText';
 
-const raw = readFileSync(join(__dirname, '..', '..', 'app/tabs/today.tsx'), 'utf8');
+const raw = readSources([
+  'app/tabs/today.tsx',
+  'hooks/useTodayModel.ts',
+  'lib/todaySelectors.ts',
+  'components/today/HabitSection.tsx',
+]);
 const src = stripComments(raw);
 
 describe('R03.02 — light day', () => {
