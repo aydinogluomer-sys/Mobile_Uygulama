@@ -11,16 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNoteStore, type Note } from '../../store/noteStore';
-import {
-  AtmosphericScreenCanvas,
-  EditorialBanner,
-  EmbeddedFiligree,
-  EmptyState,
-  FormError,
-  LoadErrorState,
-  Skeleton,
-  TexturedSurface,
-} from '../../components/ui';
+import { EditorialBanner, EmptyState, FormError, LoadErrorState, Skeleton, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { BENTO_ART, CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import ConflictChoice from '../../components/ConflictChoice';
@@ -429,10 +421,10 @@ const s = StyleSheet.create({
   },
   cardTitle: { fontSize: 13, fontWeight: '700', color: colors.white, marginBottom: 6 },
   cardContent: { fontSize: 13, color: colors.textDim, lineHeight: 18, flex: 1 },
-  cardDate: { fontSize: 10, color: colors.textGhost, marginTop: 8 },
+  cardDate: { fontSize: 10, color: colors.textFaint, marginTop: 8 },
 
   empty: { alignItems: 'center', paddingTop: 80, gap: 10 },
-  emptyText: { fontSize: 15, color: colors.textGhost },
+  emptyText: { fontSize: 15, color: colors.textFaint },
 
   fab: {
     position: 'absolute', right: 20, bottom: 20,

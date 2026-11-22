@@ -8,7 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusStore } from '../../store/focusStore';
-import { EmbeddedFiligree, FormError, ProgressRing } from '../../components/ui';
+import { FormError, ProgressRing } from '../../components/ui';
+import { EmbeddedFiligree } from '../../components/spatial';
 import { haptic } from '../../lib/haptics';
 import { colors, fontFamily, alphaHex, hexA } from '../../lib/tokens';
 import { DECOR, getFocusBackdrop } from '../../lib/visualAssets';
@@ -554,7 +555,7 @@ const s = StyleSheet.create({
   stepParent: { fontSize: 12, color: colors.textFaint },
   selectedTaskTitle: { flex: 1, fontSize: 14, color: colors.neutral200, fontWeight: '500' },
   pomodoroCount: { fontSize: 12, color: colors.textFaint },
-  noTaskHint: { fontSize: 13, color: colors.textGhost, marginBottom: 8 },
+  noTaskHint: { fontSize: 13, color: colors.textFaint, marginBottom: 8 },
   sessionCount: { fontSize: 12, color: colors.textFaint },
 
   controls: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 },
@@ -570,7 +571,7 @@ const s = StyleSheet.create({
   addTaskBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addTaskText: { fontSize: 13, fontWeight: '600' },
   emptyTasks: { alignItems: 'center', paddingVertical: 20 },
-  emptyTasksText: { fontSize: 13, color: colors.textGhost },
+  emptyTasksText: { fontSize: 13, color: colors.textFaint },
 
   taskRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

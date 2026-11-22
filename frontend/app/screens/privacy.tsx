@@ -31,13 +31,8 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { alphaHex, colors } from '../../lib/tokens';
-import {
-  AtmosphericScreenCanvas,
-  ChapterDivider,
-  EditorialBanner,
-  EmbeddedFiligree,
-  EmblemMedallion,
-} from '../../components/ui';
+import { EditorialBanner, EmblemMedallion } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 /** One heading plus its paragraphs. Keeps the body below readable as prose. */

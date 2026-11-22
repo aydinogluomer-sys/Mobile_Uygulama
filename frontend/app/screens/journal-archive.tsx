@@ -12,7 +12,8 @@ import { useJournalStore, JournalEntry } from '../../store/journalStore';
 import { moodMeta } from '../../lib/journalMoods';
 import { computeJournalStats } from '../../lib/journalStats';
 import { Image } from 'expo-image';
-import { AtmosphericScreenCanvas, ChapterDivider, EmptyState, EditorialBanner, EmbeddedFiligree, TexturedSurface } from '../../components/ui';
+import { EmptyState, EditorialBanner, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, getMoodSeal, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 // R07.03 — search and a month calendar over the same entries.
 import { searchEntries, monthGrid, shiftMonth } from '../../lib/journalBrowse';

@@ -18,7 +18,8 @@ import { insightBasis, insightFacts, insightPrompt } from '../../lib/journalInsi
 import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE, IN_PROGRESS_NOTE, retryWhileInProgress } from '../../lib/aiAttempt';
 import { decimalTR } from '../../lib/chartText';
 import { extractInvokeError } from '../../lib/aiInvoke';
-import { AtmosphericScreenCanvas, EmptyState, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { EmptyState, EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const PERIODS: { key: InsightPeriod; label: string }[] = [

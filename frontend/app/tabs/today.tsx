@@ -35,13 +35,13 @@ import ChecklistSheet from '../../components/ChecklistSheet';
 import { itemsOn } from '../../lib/habitChecklist';
 import { buildTodayNarrative } from '../../lib/todayNarrative';
 import { pickDailySparkItem } from '../../lib/focusFlowCatalog';
-import { colors, space, radius, font, hexA } from '../../lib/tokens';
+import { space, radius, font, hexA, onColor, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
 import { todayLocal, parseLocalDate, startOfWeekLocal, ymd } from '../../lib/date';
-import {
-  Card, SectionHeader, EmptyState, ProgressRing, IconCircle, WillpowerBand, SyncStatusBadge,
-  AtmosphericScreenCanvas, BentoVisualCard, ChapterDivider, EmbeddedFiligree, GoldMendShimmer,
-} from '../../components/ui';
+import { Card, SectionHeader, EmptyState, ProgressRing, IconCircle, WillpowerBand, SyncStatusBadge } from '../../components/ui';
+import { AtmosphericScreenCanvas, BentoVisualCard, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
+import { GoldMendShimmer } from '../../components/motion';
 
 import { BENTO_ART, CANVASES, DECOR, TEXTURES } from '../../lib/visualAssets';
 
@@ -244,12 +244,15 @@ function isoWeek(d: Date): number {
 const DAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 const MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
-const PRIORITY_COLOR: Record<string, string> = {
-  high: colors.error, medium: colors.warning, low: colors.success, none: colors.textGhost,
+const PRIORITY_TONE: Record<string, keyof Palette> = {
+  high: 'error', medium: 'warning', low: 'success', none: 'textGhost',
 };
 
 export default function TodayScreen() {
   const router = useRouter();
+  const c = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const priorityColor = (p: string): string => c[PRIORITY_TONE[p] ?? 'textGhost'];
   const { width } = useWindowDimensions();
   const pagePadding = width < 480 ? space.md : width < 900 ? space.lg : space.xl;
   const isWide = width >= 1180;
@@ -462,9 +465,9 @@ export default function TodayScreen() {
   };
 
   const nextUpItems: NextUpItem[] = [
-    ...overdueList.map((t) => ({ id: t.id, title: t.title, dueLabel: 'gecikmiş', dotColor: PRIORITY_COLOR[t.priority], overdue: true })),
-    ...todayTasks.map((t) => ({ id: t.id, title: t.title, dueLabel: 'bugün', dotColor: PRIORITY_COLOR[t.priority] })),
-    ...upcoming.map((t) => ({ id: t.id, title: t.title, dueLabel: dueLabel(t.due_date!), dotColor: PRIORITY_COLOR[t.priority] })),
+    ...overdueList.map((t) => ({ id: t.id, title: t.title, dueLabel: 'gecikmiş', dotColor: priorityColor(t.priority), overdue: true })),
+    ...todayTasks.map((t) => ({ id: t.id, title: t.title, dueLabel: 'bugün', dotColor: priorityColor(t.priority) })),
+    ...upcoming.map((t) => ({ id: t.id, title: t.title, dueLabel: dueLabel(t.due_date!), dotColor: priorityColor(t.priority) })),
   ].slice(0, 8);
 
   // Binary alışkanlık → yerinde tamamla; numerik → timeline'a yönlen.
@@ -527,8 +530,8 @@ export default function TodayScreen() {
         textureSource={TEXTURES.clay}
         scrim={0.62}
         scrollY={scrollY}
-        tintColor={colors.primary}
-        ambientMotion
+        tintColor={c.primary}
+        ambientMotion={!lowEnergyFilter}
       />
       <Animated.ScrollView
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: Platform.OS !== 'web' })}
@@ -536,7 +539,7 @@ export default function TodayScreen() {
         style={s.scroll}
         contentContainerStyle={[s.content, { paddingHorizontal: pagePadding }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
       >
         {/* Üst Başlık & Hızlı Erişim */}
         <View style={s.masthead}>
@@ -552,7 +555,7 @@ export default function TodayScreen() {
               accessibilityRole="button"
               accessibilityLabel="Günlüğü aç"
             >
-              <IconCircle icon="journal-outline" color={colors.accent} size={40} />
+              <IconCircle icon="journal-outline" color={c.accent} size={40} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push('/screens/profile' as any)}
@@ -560,7 +563,7 @@ export default function TodayScreen() {
               accessibilityRole="button"
               accessibilityLabel="Profili aç"
             >
-              <IconCircle icon="person-outline" color={colors.textDim} size={40} />
+              <IconCircle icon="person-outline" color={c.textDim} size={40} />
             </TouchableOpacity>
           </View>
         </View>
@@ -644,7 +647,7 @@ export default function TodayScreen() {
         />
         <View style={s.summaryPillRow}>
           <View style={s.summaryPill}>
-            <Ionicons name="sparkles" size={13} color={colors.accent} />
+            <Ionicons name="sparkles" size={13} color={c.accent} />
             <Text style={s.breakNote} accessibilityLabel={`${primary.hint}. ${summaryLine}`}>
               {primary.hint} · {summaryLine}
             </Text>
@@ -657,8 +660,8 @@ export default function TodayScreen() {
               accessibilityRole="button"
               accessibilityLabel="Düşük enerji filtresi: yalnız hafif alışkanlıkları öne çıkar"
             >
-              <Ionicons name="battery-half-outline" size={13} color={lowEnergyFilter ? colors.success : colors.textDim} />
-              <Text style={[s.calmModeChipText, lowEnergyFilter && { color: colors.success }]}>
+              <Ionicons name="battery-half-outline" size={13} color={lowEnergyFilter ? c.success : c.textDim} />
+              <Text style={[s.calmModeChipText, lowEnergyFilter && { color: c.success }]}>
                 Düşük Enerji Modu
               </Text>
             </TouchableOpacity>
@@ -669,7 +672,7 @@ export default function TodayScreen() {
               accessibilityRole="button"
               accessibilityLabel="Günü kapat: akşam kapanış ritüelini başlat"
             >
-              <Ionicons name="moon-outline" size={13} color={colors.accent} />
+              <Ionicons name="moon-outline" size={13} color={c.accent} />
               <Text style={s.calmModeChipText}>
                 Günü Kapat
               </Text>
@@ -690,12 +693,12 @@ export default function TodayScreen() {
             artSource={BENTO_ART.lowEnergyMoss}
             bleedMode="right-vignette"
             scrim={0.5}
-            accentColor={colors.success}
+            accentColor={c.success}
             padding="md"
             style={{ marginBottom: space.sm }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-              <Ionicons name="leaf" size={18} color={colors.success} />
+              <Ionicons name="leaf" size={18} color={c.success} />
               <View style={{ flex: 1 }}>
                 <Text style={s.lowEnergyTitle}>Yumuşak Ritim · Düşük Enerji Filtresi Açık</Text>
                 <Text style={s.breakNote}>Yalnızca hafif adımlar öne çıkarıldı; serilerin güvende.</Text>
@@ -717,7 +720,7 @@ export default function TodayScreen() {
             accessibilityRole="button"
             accessibilityLabel="Tümünü göster"
           >
-            <Ionicons name="layers-outline" size={14} color={activeSegment === 'all' ? colors.primary : colors.textDim} />
+            <Ionicons name="layers-outline" size={14} color={activeSegment === 'all' ? c.primary : c.textDim} />
             <Text style={[s.segmentText, activeSegment === 'all' && s.segmentTextActive]}>Tümü</Text>
           </TouchableOpacity>
 
@@ -727,7 +730,7 @@ export default function TodayScreen() {
             accessibilityRole="button"
             accessibilityLabel="Sadece ritüelleri göster"
           >
-            <Ionicons name="repeat-outline" size={14} color={activeSegment === 'habits' ? colors.primary : colors.textDim} />
+            <Ionicons name="repeat-outline" size={14} color={activeSegment === 'habits' ? c.primary : c.textDim} />
             <Text style={[s.segmentText, activeSegment === 'habits' && s.segmentTextActive]}>Ritüeller</Text>
             {remainingHabits > 0 && (
               <View style={s.badgePill}>
@@ -742,7 +745,7 @@ export default function TodayScreen() {
             accessibilityRole="button"
             accessibilityLabel="Sadece görevleri göster"
           >
-            <Ionicons name="checkbox-outline" size={14} color={activeSegment === 'tasks' ? colors.primary : colors.textDim} />
+            <Ionicons name="checkbox-outline" size={14} color={activeSegment === 'tasks' ? c.primary : c.textDim} />
             <Text style={[s.segmentText, activeSegment === 'tasks' && s.segmentTextActive]}>Görevler</Text>
             {pendingTasks.length > 0 && (
               <View style={s.badgePill}>
@@ -757,7 +760,7 @@ export default function TodayScreen() {
             accessibilityRole="button"
             accessibilityLabel="Denge ve rutini göster"
           >
-            <Ionicons name="compass-outline" size={14} color={activeSegment === 'balance' ? colors.primary : colors.textDim} />
+            <Ionicons name="compass-outline" size={14} color={activeSegment === 'balance' ? c.primary : c.textDim} />
             <Text style={[s.segmentText, activeSegment === 'balance' && s.segmentTextActive]}>Denge</Text>
           </TouchableOpacity>
         </View>
@@ -798,7 +801,7 @@ export default function TodayScreen() {
                       hint="Bir sonraki odak bloğunu planlayabilir veya günü kısa bir notla kapatabilirsin."
                       ctaLabel="Yeni adım ekle"
                       onCta={() => router.push('/tabs/tasks' as any)}
-                      color={colors.success}
+                      color={c.success}
                       compact
                     />
                   </Card>
@@ -813,11 +816,11 @@ export default function TodayScreen() {
                             accessibilityRole="button"
                             accessibilityLabel={`${t.title}, tamamlamak için dokun`}
                           >
-                            <View style={[s.taskDot, { borderColor: PRIORITY_COLOR[t.priority] }]} />
+                            <View style={[s.taskDot, { borderColor: priorityColor(t.priority) }]} />
                             <Text style={s.taskTitle} numberOfLines={1}>{t.title}</Text>
                             {t.due_date && (
                               <View style={[s.dueBadge, t.due_date < today && s.dueBadgeOverdue]}>
-                                <Text style={[s.taskDate, t.due_date < today && { color: colors.error }]}>
+                                <Text style={[s.taskDate, t.due_date < today && { color: c.error }]}>
                                   {t.due_date === today ? 'Bugün' : t.due_date}
                                 </Text>
                               </View>
@@ -830,7 +833,7 @@ export default function TodayScreen() {
                             accessibilityRole="button"
                             accessibilityLabel={`${t.title} için küçük başla`}
                           >
-                            <Ionicons name="play-circle-outline" size={22} color={colors.accent} />
+                            <Ionicons name="play-circle-outline" size={22} color={c.accent} />
                           </TouchableOpacity>
                         </View>
                       </Card>
@@ -851,9 +854,9 @@ export default function TodayScreen() {
                 <>
                   <Card padding="lg" onPress={() => router.push('/tabs/timeline' as any)}>
                     <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={118} opacity={0.18} />
-                    <GoldMendShimmer triggerKey={habitSummary.completed} color={colors.success} />
+                    <GoldMendShimmer triggerKey={habitSummary.completed} color={c.success} />
                     <View style={s.ringCard}>
-                      <ProgressRing progress={habitPct} size={64} stroke={7} color={colors.success}>
+                      <ProgressRing progress={habitPct} size={64} stroke={7} color={c.success}>
                         <Text style={s.ringPct}>{Math.round(habitPct * 100)}%</Text>
                       </ProgressRing>
                       <View style={{ flex: 1 }}>
@@ -862,7 +865,7 @@ export default function TodayScreen() {
                           {habitCopy.ringSub}
                         </Text>
                       </View>
-                      <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+                      <Ionicons name="chevron-forward" size={18} color={c.textFaint} />
                     </View>
                   </Card>
 
@@ -881,12 +884,12 @@ export default function TodayScreen() {
                         ).map((h) => {
                           const log = getLogForHabit(h.id);
                           const done = log?.state === 'done' || log?.state === 'partial';
-                          const col = h.color ?? colors.primary;
+                          const col = h.color ?? c.primary;
                           return (
                             <TouchableOpacity
                               key={h.id}
                               activeOpacity={0.75}
-                              style={[s.habitRow, done && { borderColor: hexA(colors.success, 0.4), backgroundColor: hexA(colors.success, 0.06) }]}
+                              style={[s.habitRow, done && { borderColor: hexA(c.success, 0.4), backgroundColor: hexA(c.success, 0.06) }]}
                               onPress={() => onHabitTap(h)}
                               accessibilityRole="checkbox"
                               accessibilityState={{ checked: done }}
@@ -894,15 +897,15 @@ export default function TodayScreen() {
                             >
                               <View style={[
                                 s.habitCheck,
-                                { borderColor: done ? colors.success : colors.borderStrong },
-                                done && { backgroundColor: colors.success },
+                                { borderColor: done ? c.success : c.borderStrong },
+                                done && { backgroundColor: c.success },
                               ]}>
                                 {done
-                                  ? <Ionicons name="checkmark" size={16} color={colors.white} />
+                                  ? <Ionicons name="checkmark" size={16} color={c.white} />
                                   : <Ionicons name={(h.icon ?? 'ellipse-outline') as any} size={15} color={col} />}
                               </View>
                               <Text style={[s.habitName, done && s.habitNameDone]} numberOfLines={1}>{h.name}</Text>
-                              <Ionicons name={done ? "checkmark-circle" : "ellipse-outline"} size={16} color={done ? colors.success : colors.textGhost} />
+                              <Ionicons name={done ? "checkmark-circle" : "ellipse-outline"} size={16} color={done ? c.success : c.textGhost} />
                             </TouchableOpacity>
                           );
                         })}
@@ -915,7 +918,7 @@ export default function TodayScreen() {
                             accessibilityRole="button"
                             accessibilityLabel="Bugün daha az yapabilirim. Bugünkü ritüellerden bazılarını kenara koy."
                           >
-                            <Ionicons name="leaf-outline" size={14} color={colors.accent} />
+                            <Ionicons name="leaf-outline" size={14} color={c.accent} />
                             <Text style={s.lightDayBtnText}>Bugün daha az yapabilirim</Text>
                           </TouchableOpacity>
                         )}
@@ -926,7 +929,7 @@ export default function TodayScreen() {
                             accessibilityRole="button"
                             accessibilityLabel="Tatil modu. Birkaç gün bütün alışkanlıklara ara ver."
                           >
-                            <Ionicons name="airplane-outline" size={14} color={colors.textDim} />
+                            <Ionicons name="airplane-outline" size={14} color={c.textDim} />
                             <Text style={s.lightDayBtnText}>Tatil modu</Text>
                           </TouchableOpacity>
                         )}
@@ -943,7 +946,7 @@ export default function TodayScreen() {
                         style={s.accordionHeader}
                       >
                         <SectionHeader title="BUGÜN HAFİFLETİLDİ" variant="overline" />
-                        <Ionicons name={showSetAside ? "chevron-up" : "chevron-down"} size={16} color={colors.textFaint} />
+                        <Ionicons name={showSetAside ? "chevron-up" : "chevron-down"} size={16} color={c.textFaint} />
                       </TouchableOpacity>
                       {showSetAside && (
                         <View style={{ gap: space.sm }}>
@@ -956,8 +959,8 @@ export default function TodayScreen() {
                               accessibilityRole="button"
                               accessibilityLabel={`${h.name}, bugün için kenara konuldu. Yine de yaptıysan dokun.`}
                             >
-                              <View style={[s.habitCheck, { borderColor: colors.borderStrong }]}>
-                                <Ionicons name="pause-outline" size={14} color={colors.textDim} />
+                              <View style={[s.habitCheck, { borderColor: c.borderStrong }]}>
+                                <Ionicons name="pause-outline" size={14} color={c.textDim} />
                               </View>
                               <Text style={s.habitName} numberOfLines={1}>{h.name}</Text>
                               <Text style={s.setAsideTag}>bugün kenarda</Text>
@@ -985,7 +988,7 @@ export default function TodayScreen() {
                         accessibilityRole="button"
                         accessibilityLabel="Tatili bugün bitir"
                       >
-                        <Ionicons name="play-outline" size={14} color={colors.textDim} />
+                        <Ionicons name="play-outline" size={14} color={c.textDim} />
                         <Text style={s.lightDayBtnText}>Tatili bugün bitir</Text>
                       </TouchableOpacity>
                     </Card>
@@ -1002,7 +1005,7 @@ export default function TodayScreen() {
                         <SectionHeader title="ARADA" variant="overline" />
                         <View style={s.counterBadge}>
                           <Text style={s.counterBadgeText}>{onBreakHabits.length}</Text>
-                          <Ionicons name={showOnBreak ? "chevron-up" : "chevron-down"} size={14} color={colors.textFaint} />
+                          <Ionicons name={showOnBreak ? "chevron-up" : "chevron-down"} size={14} color={c.textFaint} />
                         </View>
                       </TouchableOpacity>
                       {showOnBreak && (
@@ -1011,8 +1014,8 @@ export default function TodayScreen() {
                             const p = activePauseOn(h, todayDate);
                             return (
                               <View key={h.id} style={[s.habitRow, s.habitRowPeriodDone]} accessible accessibilityLabel={`${h.name}, arada${p?.end_date ? `, ${p.end_date} tarihine kadar` : ''}.`}>
-                                <View style={[s.habitCheck, { borderColor: colors.borderStrong }]}>
-                                  <Ionicons name="cafe-outline" size={14} color={colors.textDim} />
+                                <View style={[s.habitCheck, { borderColor: c.borderStrong }]}>
+                                  <Ionicons name="cafe-outline" size={14} color={c.textDim} />
                                 </View>
                                 <Text style={s.habitName} numberOfLines={1}>{h.name}</Text>
                                 <Text style={s.setAsideTag}>{p?.end_date ? `${p.end_date}'e kadar` : 'arada'}</Text>
@@ -1035,7 +1038,7 @@ export default function TodayScreen() {
                         <SectionHeader title="BU DÖNEM TAMAM" variant="overline" />
                         <View style={s.counterBadge}>
                           <Text style={s.counterBadgeText}>{periodDoneHabits.length}</Text>
-                          <Ionicons name={showPeriodDone ? "chevron-up" : "chevron-down"} size={14} color={colors.textFaint} />
+                          <Ionicons name={showPeriodDone ? "chevron-up" : "chevron-down"} size={14} color={c.textFaint} />
                         </View>
                       </TouchableOpacity>
                       {showPeriodDone && (
@@ -1049,8 +1052,8 @@ export default function TodayScreen() {
                               accessibilityRole="button"
                               accessibilityLabel={`${h.name}, ${periodDoneLabel(h)}. Yine de kaydetmek için dokun.`}
                             >
-                              <View style={[s.habitCheck, { borderColor: colors.success, backgroundColor: hexA(colors.success, 0.25) }]}>
-                                <Ionicons name="checkmark-done" size={14} color={colors.success} />
+                              <View style={[s.habitCheck, { borderColor: c.success, backgroundColor: hexA(c.success, 0.25) }]}>
+                                <Ionicons name="checkmark-done" size={14} color={c.success} />
                               </View>
                               <Text style={[s.habitName, s.habitNameDone]} numberOfLines={1}>{h.name}</Text>
                               <Text style={s.periodDoneTag}>{periodDoneLabel(h)}</Text>
@@ -1105,7 +1108,7 @@ export default function TodayScreen() {
                     <EmbeddedFiligree source={DECOR.cornerBlueprint} anchor="bottom-right" size={108} opacity={0.17} />
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                       <SectionHeader title="STRATEJİ & OKR" variant="overline" />
-                      <Ionicons name="chevron-forward" size={14} color={colors.textGhost} />
+                      <Ionicons name="chevron-forward" size={14} color={c.textGhost} />
                     </View>
                     <Text style={s.breakNote}>
                       Çeyreklik hedefler, Key Results ve vizyon ilerlemeni incele.
@@ -1168,8 +1171,8 @@ export default function TodayScreen() {
                     accessibilityState={{ checked: picked }}
                     accessibilityLabel={`${h.name} bugün için kenara konsun`}
                   >
-                    <View style={[s.habitCheck, { borderColor: picked ? colors.accent : colors.borderStrong }, picked && { backgroundColor: colors.accent }]}>
-                      {picked && <Ionicons name="checkmark" size={14} color={colors.white} />}
+                    <View style={[s.habitCheck, { borderColor: picked ? c.accent : c.borderStrong }, picked && { backgroundColor: c.accent }]}>
+                      {picked && <Ionicons name="checkmark" size={14} color={c.white} />}
                     </View>
                     <Text style={s.habitName} numberOfLines={1}>{h.name}</Text>
                   </TouchableOpacity>
@@ -1218,7 +1221,7 @@ export default function TodayScreen() {
               <View style={s.shutdownHeroScrim} />
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <Ionicons name="moon" size={20} color={colors.accent} />
+              <Ionicons name="moon" size={20} color={c.accent} />
               <Text style={[s.sheetTitle, { marginBottom: 0 }]}>Günü Kapat · Zihinsel Kapanış</Text>
             </View>
             <Text style={s.sheetBody}>
@@ -1237,12 +1240,12 @@ export default function TodayScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Kalan ritüelleri cezasız olarak bugünlük kenara koy"
                 >
-                  <Ionicons name="leaf-outline" size={18} color={colors.success} />
+                  <Ionicons name="leaf-outline" size={18} color={c.success} />
                   <View style={{ flex: 1 }}>
                     <Text style={s.shutdownOptionTitle}>Kalan {remainingHabits} ritüeli bugünlük hafiflet</Text>
                     <Text style={s.shutdownOptionSub}>Serilerin bozulmaz; bugün cezasız kapanır.</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+                  <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
                 </TouchableOpacity>
               )}
 
@@ -1255,12 +1258,12 @@ export default function TodayScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Günü tek cümlelik günlük yansımasıyla kapat"
               >
-                <Ionicons name="journal-outline" size={18} color={colors.accent} />
+                <Ionicons name="journal-outline" size={18} color={c.accent} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.shutdownOptionTitle}>1 Cümlelik Akşam Yansıması Yaz</Text>
                   <Text style={s.shutdownOptionSub}>Zihnindeki son düşünceleri kağıda bırak.</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+                <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1272,12 +1275,12 @@ export default function TodayScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Telafi kalkanını ve yarının planını incele"
               >
-                <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
+                <Ionicons name="shield-checkmark-outline" size={18} color={c.primary} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.shutdownOptionTitle}>Telafi & Yarın Pusulası</Text>
                   <Text style={s.shutdownOptionSub}>Kaçan adımları yarına veya iki güne böl.</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+                <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
               </TouchableOpacity>
             </View>
 
@@ -1296,22 +1299,22 @@ export default function TodayScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   // R01.06-b — dimmed, not hidden: the work is done, the habit is still there.
   habitRowPeriodDone: { opacity: 0.55 },
-  periodDoneTag: { fontSize: 11, color: colors.success, fontWeight: '600', marginLeft: 'auto' },
+  periodDoneTag: { fontSize: 11, color: c.success, fontWeight: '600', marginLeft: 'auto' },
   // R03.02
-  setAsideTag: { fontSize: 11, color: colors.textDim, fontWeight: '600', marginLeft: 'auto' },
-  lightDayBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: space.xs, paddingHorizontal: space.sm, borderRadius: radius.sm, backgroundColor: hexA(colors.surfaceAlt, 0.5) },
-  lightDayBtnText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
+  setAsideTag: { fontSize: 11, color: c.textDim, fontWeight: '600', marginLeft: 'auto' },
+  lightDayBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: space.xs, paddingHorizontal: space.sm, borderRadius: radius.sm, backgroundColor: hexA(c.surfaceAlt, 0.5) },
+  lightDayBtnText: { fontSize: 12, color: c.textDim, fontWeight: '600' },
   ritualActionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.md },
-  breakNote: { fontSize: 13, color: colors.textDim, lineHeight: 19 },
+  breakNote: { fontSize: 13, color: c.textDim, lineHeight: 19 },
   summaryPillRow: {
     gap: space.xs, marginTop: space.sm, marginBottom: space.sm,
   },
   summaryPill: {
     flexDirection: 'row', alignItems: 'center', gap: space.sm,
-    backgroundColor: hexA(colors.surfaceAlt, 0.7), paddingVertical: space.xs, paddingHorizontal: space.md,
+    backgroundColor: hexA(c.surfaceAlt, 0.7), paddingVertical: space.xs, paddingHorizontal: space.md,
     borderRadius: radius.full, alignSelf: 'flex-start',
   },
   calmModesRow: {
@@ -1320,49 +1323,49 @@ const s = StyleSheet.create({
   calmModeChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 11, paddingVertical: 6, borderRadius: radius.full,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
   },
   calmModeChipActive: {
-    borderColor: colors.success, backgroundColor: hexA(colors.success, 0.12),
+    borderColor: c.success, backgroundColor: hexA(c.success, 0.12),
   },
   calmModeChipText: {
-    fontSize: 11, fontWeight: '700', color: colors.textDim,
+    fontSize: 11, fontWeight: '700', color: c.textDim,
   },
   shutdownOptionCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: colors.surface, borderRadius: radius.md,
-    borderWidth: 1, borderColor: colors.border, padding: 12,
+    backgroundColor: c.surface, borderRadius: radius.md,
+    borderWidth: 1, borderColor: c.border, padding: 12,
   },
-  shutdownOptionTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
-  shutdownOptionSub: { fontSize: 11, color: colors.textDim, marginTop: 2 },
-  sheetOverlay: { flex: 1, backgroundColor: hexA(colors.black, 0.65), justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg },
-  sheetTitle: { ...font.title, fontSize: 18, color: colors.text, marginBottom: space.sm },
-  sheetBody: { fontSize: 13, color: colors.textDim, lineHeight: 19, marginBottom: space.sm },
-  sheetNote: { fontSize: 11, color: colors.textFaint, lineHeight: 16, marginBottom: space.md },
+  shutdownOptionTitle: { fontSize: 13, fontWeight: '700', color: c.text },
+  shutdownOptionSub: { fontSize: 11, color: c.textDim, marginTop: 2 },
+  sheetOverlay: { flex: 1, backgroundColor: hexA(c.black, 0.65), justifyContent: 'flex-end' },
+  sheet: { backgroundColor: c.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg },
+  sheetTitle: { ...font.title, fontSize: 18, color: c.text, marginBottom: space.sm },
+  sheetBody: { fontSize: 13, color: c.textDim, lineHeight: 19, marginBottom: space.sm },
+  sheetNote: { fontSize: 11, color: c.textFaint, lineHeight: 16, marginBottom: space.md },
   sheetActions: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
-  sheetCancel: { flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  sheetCancelText: { color: colors.textDim, fontWeight: '600' },
-  sheetSave: { flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', backgroundColor: colors.accent },
+  sheetCancel: { flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', borderWidth: 1, borderColor: c.border },
+  sheetCancelText: { color: c.textDim, fontWeight: '600' },
+  sheetSave: { flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', backgroundColor: c.accent },
   sheetSaveDisabled: { opacity: 0.4 },
-  sheetSaveText: { color: colors.white, fontWeight: '700' },
-  safe: { flex: 1, backgroundColor: colors.bg },
+  sheetSaveText: { color: onColor(c.accent), fontWeight: '700' },
+  safe: { flex: 1, backgroundColor: c.bg },
   scroll: { flex: 1 },
   content: { width: '100%', maxWidth: 1240, alignSelf: 'center', paddingVertical: space.lg, paddingBottom: 96 },
 
   masthead: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingBottom: space.md, marginBottom: space.lg,
-    borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
+    borderBottomWidth: 1, borderBottomColor: c.borderSubtle,
   },
   mastheadActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  productLabel: { ...font.overline, color: colors.primaryBright, marginBottom: 4 },
-  productHint: { ...font.bodySm, color: colors.textFaint },
+  productLabel: { ...font.overline, color: c.primaryBright, marginBottom: 4 },
+  productHint: { ...font.bodySm, color: c.textFaint },
 
   // Segmented control bar
   segmentedRow: {
     flexDirection: 'row', alignItems: 'center', gap: space.xs,
-    backgroundColor: colors.surfaceAlt, borderRadius: radius.full,
+    backgroundColor: c.surfaceAlt, borderRadius: radius.full,
     padding: space.xs, marginTop: space.lg, marginBottom: space.md,
   },
   segmentBtn: {
@@ -1370,16 +1373,16 @@ const s = StyleSheet.create({
     gap: 6, paddingVertical: space.sm, borderRadius: radius.full, minHeight: 40,
   },
   segmentBtnActive: {
-    backgroundColor: colors.surfaceHover,
-    shadowColor: colors.black, shadowOpacity: 0.25, shadowRadius: 4, elevation: 2,
+    backgroundColor: c.surfaceHover,
+    shadowColor: c.black, shadowOpacity: 0.25, shadowRadius: 4, elevation: 2,
   },
-  segmentText: { ...font.caption, color: colors.textFaint, fontWeight: '600' },
-  segmentTextActive: { color: colors.text, fontWeight: '700' },
+  segmentText: { ...font.caption, color: c.textFaint, fontWeight: '600' },
+  segmentTextActive: { color: c.text, fontWeight: '700' },
   badgePill: {
-    backgroundColor: colors.primary, borderRadius: radius.full,
+    backgroundColor: c.primary, borderRadius: radius.full,
     paddingHorizontal: 6, paddingVertical: 2, minWidth: 18, alignItems: 'center',
   },
-  badgeText: { fontSize: 10, color: colors.white, fontWeight: '700' },
+  badgeText: { fontSize: 10, color: onColor(c.primary), fontWeight: '700' },
 
   dashboardBody: { marginTop: space.sm, gap: space.lg },
   dashboardBodyWide: { flexDirection: 'row', alignItems: 'flex-start', gap: space.hh },
@@ -1388,31 +1391,31 @@ const s = StyleSheet.create({
   railColumnWide: { width: 340 },
   mainSection: { marginTop: 0 },
   sectionIntro: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: space.md, marginBottom: space.md },
-  sectionEyebrow: { ...font.overline, color: colors.textFaint, marginBottom: 4 },
-  sectionTitle: { ...font.title, color: colors.text },
-  sectionAction: { ...font.bodySm, color: colors.primaryBright, fontWeight: '700' },
+  sectionEyebrow: { ...font.overline, color: c.textFaint, marginBottom: 4 },
+  sectionTitle: { ...font.title, color: c.text },
+  sectionAction: { ...font.bodySm, color: c.primaryBright, fontWeight: '700' },
   moreLink: { paddingVertical: 4, paddingHorizontal: 6 },
 
   ringCard: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
-  ringPct: { ...font.metric, fontSize: 18, color: colors.success },
-  ringTitle: { ...font.h3, color: colors.text, marginBottom: 3 },
-  ringSub: { ...font.bodySm, color: colors.textFaint },
+  ringPct: { ...font.metric, fontSize: 18, color: c.success },
+  ringTitle: { ...font.h3, color: c.text, marginBottom: 3 },
+  ringSub: { ...font.bodySm, color: c.textFaint },
 
   wpHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.md },
-  wpHeadText: { ...font.h3, color: colors.text },
-  wpHeadHint: { ...font.caption, color: colors.textFaint },
+  wpHeadText: { ...font.h3, color: c.text },
+  wpHeadHint: { ...font.caption, color: c.textFaint },
 
   habitRow: {
     flexDirection: 'row', alignItems: 'center', gap: space.md,
-    backgroundColor: colors.surface, borderRadius: radius.md, padding: space.md,
-    borderWidth: 1, borderColor: colors.border, minHeight: 52,
+    backgroundColor: c.surface, borderRadius: radius.md, padding: space.md,
+    borderWidth: 1, borderColor: c.border, minHeight: 52,
   },
   habitCheck: {
     width: 32, height: 32, borderRadius: radius.sm, borderWidth: 2,
     alignItems: 'center', justifyContent: 'center',
   },
-  habitName: { flex: 1, ...font.body, color: colors.text },
-  habitNameDone: { color: colors.textFaint, textDecorationLine: 'line-through' },
+  habitName: { flex: 1, ...font.body, color: c.text },
+  habitNameDone: { color: c.textFaint, textDecorationLine: 'line-through' },
 
   accordionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -1420,23 +1423,23 @@ const s = StyleSheet.create({
   },
   counterBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: hexA(colors.surfaceAlt, 0.7), paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.full,
+    backgroundColor: hexA(c.surfaceAlt, 0.7), paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.full,
   },
-  counterBadgeText: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
+  counterBadgeText: { fontSize: 12, color: c.textFaint, fontWeight: '600' },
 
   taskRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44 },
   taskMain: { flexDirection: 'row', alignItems: 'center', gap: space.md, flex: 1, minHeight: 44 },
   taskDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
-  taskTitle: { flex: 1, ...font.body, color: colors.text },
+  taskTitle: { flex: 1, ...font.body, color: c.text },
   dueBadge: {
-    backgroundColor: hexA(colors.surfaceAlt, 0.8),
+    backgroundColor: hexA(c.surfaceAlt, 0.8),
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm,
   },
   dueBadgeOverdue: {
-    backgroundColor: hexA(colors.error, 0.15),
+    backgroundColor: hexA(c.error, 0.15),
   },
-  taskDate: { ...font.caption, color: colors.textFaint, fontWeight: '500' },
-  lowEnergyTitle: { fontSize: 13, fontWeight: '700', color: colors.success, marginBottom: 2 },
+  taskDate: { ...font.caption, color: c.textFaint, fontWeight: '500' },
+  lowEnergyTitle: { fontSize: 13, fontWeight: '700', color: c.success, marginBottom: 2 },
   shutdownHero: {
     height: 112,
     borderRadius: radius.md,
@@ -1444,11 +1447,11 @@ const s = StyleSheet.create({
     position: 'relative',
     marginBottom: space.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   shutdownHeroScrim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: hexA(colors.bgSunk, 0.34),
+    backgroundColor: hexA(c.bgSunk, 0.34),
   },
   sparkArt: {
     position: 'absolute',
@@ -1460,7 +1463,7 @@ const s = StyleSheet.create({
   },
   sparkArtScrim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: hexA(colors.surface, 0.56),
+    backgroundColor: hexA(c.surface, 0.56),
   },
   sparkCard: {
     overflow: 'hidden',
@@ -1468,7 +1471,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radius.lg,
     borderWidth: 1,
     paddingHorizontal: space.md,
@@ -1493,7 +1496,7 @@ const s = StyleSheet.create({
   },
   sparkTitle: {
     ...font.bodySm,
-    color: colors.text,
+    color: c.text,
     fontWeight: '600',
   },
   sparkWatchPill: {

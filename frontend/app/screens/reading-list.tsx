@@ -10,15 +10,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useReadingListStore, ReadingType, ReadingStatus, ReadingItem } from '../../store/readingListStore';
-import {
-  AtmosphericScreenCanvas,
-  EditorialBanner,
-  EmbeddedFiligree,
-  EmptyState,
-  FormError,
-  LoadErrorState,
-  Skeleton,
-} from '../../components/ui';
+import { EditorialBanner, EmptyState, FormError, LoadErrorState, Skeleton } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { BENTO_ART, CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 
@@ -368,8 +361,8 @@ const s = StyleSheet.create({
   content: { padding: 16, paddingBottom: 100 },
 
   empty: { alignItems: 'center', gap: 8, paddingTop: 60 },
-  emptyTitle: { fontSize: 16, color: colors.textGhost, fontWeight: '600' },
-  emptySub: { fontSize: 13, color: colors.textGhost },
+  emptyTitle: { fontSize: 16, color: colors.textFaint, fontWeight: '600' },
+  emptySub: { fontSize: 13, color: colors.textFaint },
 
   card: {
     flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',

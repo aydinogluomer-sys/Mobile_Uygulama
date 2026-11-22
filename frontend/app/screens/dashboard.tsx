@@ -1,5 +1,6 @@
 import { StyleSheet, View } from 'react-native';
-import { AtmosphericScreenCanvas, EditorialBanner } from '../../components/ui';
+import { EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas } from '../../components/spatial';
 import { CANVASES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import HabitListView from '../../components/HabitListView';

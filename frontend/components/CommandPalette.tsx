@@ -1,5 +1,5 @@
 import { colors, alphaHex } from '../lib/tokens';
-import { EmbeddedFiligree } from './ui';
+import { EmbeddedFiligree } from './spatial';
 import { DECOR } from '../lib/visualAssets';
 import { useState, useMemo, useEffect } from 'react';
 import {
@@ -215,7 +215,7 @@ export default function CommandPalette() {
       // The date is the entry's identity; the prose is the match context.
       label: `${e.date} — ${e.content.replace(/\s+/g, ' ').trim().slice(0, 60)}`,
       icon: 'journal-outline',
-      color: colors.primaryDeep,
+      color: colors.primary,
       route: '/screens/journal',
     }));
   }

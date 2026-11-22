@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { colors, hexA } from '../../lib/tokens';
 import { FOCUS_PRESETS, OVERLAY_LEVELS } from '../../lib/focusThemes';
-import { getFocusBackdrop } from '../../lib/visualAssets';
+import { getFocusSwatch } from '../../lib/visualAssets';
 
 type Props = {
   visible: boolean;
@@ -41,7 +41,7 @@ export default function FocusThemeModal({ visible, onClose, presetId, overlay, o
                   >
                     <View style={[s.swatch, { backgroundColor: p.bg }]}>
                       <Image
-                        source={getFocusBackdrop(p.id)}
+                        source={getFocusSwatch(p.id)}
                         style={StyleSheet.absoluteFill}
                         contentFit="cover"
                         cachePolicy="memory-disk"

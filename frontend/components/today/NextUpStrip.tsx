@@ -45,7 +45,7 @@ const s = StyleSheet.create({
   label: { ...font.overline, color: colors.textFaint, marginBottom: space.sm },
   strip: { gap: 0, alignItems: 'center', paddingRight: space.md },
   itemWrap: { flexDirection: 'row', alignItems: 'center' },
-  arrow: { color: colors.textGhost, fontSize: 14, marginHorizontal: space.sm },
+  arrow: { color: colors.textFaint, fontSize: 14, marginHorizontal: space.sm },
   item: {
     flexDirection: 'row', alignItems: 'center', gap: space.sm,
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,

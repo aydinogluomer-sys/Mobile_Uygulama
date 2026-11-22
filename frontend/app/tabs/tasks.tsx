@@ -15,7 +15,8 @@ import { todayLocal } from '../../lib/date';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import ADHDTaskSplitter from '../../components/ADHDTaskSplitter';
 import EisenhowerScreen from '../screens/eisenhower';
-import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree, EmblemMedallion } from '../../components/ui';
+import { EditorialBanner, EmblemMedallion } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, EMPTY_VIGNETTES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const TABS: { key: ListType | 'done'; label: string }[] = [
@@ -29,7 +30,7 @@ const PRIORITY_META: Record<TaskPriority, { color: string; label: string }> = {
   high: { color: colors.error, label: 'Yüksek' },
   medium: { color: colors.warning, label: 'Orta' },
   low: { color: colors.success, label: 'Düşük' },
-  none: { color: colors.textGhost, label: 'Yok' },
+  none: { color: colors.textFaint, label: 'Yok' },
 };
 
 export default function TasksScreen() {
@@ -430,7 +431,7 @@ const s = StyleSheet.create({
   },
   rowBody: { flex: 1 },
   rowTitle: { fontSize: 14, color: colors.text, marginBottom: 4 },
-  rowTitleDone: { textDecorationLine: 'line-through', color: colors.textGhost },
+  rowTitleDone: { textDecorationLine: 'line-through', color: colors.textFaint },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   priorityDot: { width: 6, height: 6, borderRadius: 3 },
   dueText: { fontSize: 11, color: colors.textFaint },
@@ -440,7 +441,7 @@ const s = StyleSheet.create({
   splitBtn: { padding: 4, marginRight: 2 },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 64, gap: 12 },
-  emptyText: { fontSize: 15, color: colors.textGhost },
+  emptyText: { fontSize: 15, color: colors.textFaint },
   emptyAdd: { marginTop: 8 },
   emptyAddText: { fontSize: 14, color: colors.accent },
 

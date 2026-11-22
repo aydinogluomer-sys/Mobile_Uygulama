@@ -1,7 +1,8 @@
 import { Platform, StyleSheet, View, type ImageSourcePropType, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, hexA, shadow } from '../../lib/tokens';
+import { hexA, shadow, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 
 type Props = {
   source: ImageSourcePropType;
@@ -23,6 +24,32 @@ const decorativeA11y =
         importantForAccessibility: 'no-hide-descendants' as const,
       } as const);
 
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    outer: {
+      borderWidth: 1.5,
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+    },
+    img: {
+      overflow: 'hidden',
+    },
+    lockBadge: {
+      position: 'absolute',
+      right: -2,
+      bottom: -2,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: c.surfaceAlt,
+      borderWidth: 1,
+      borderColor: c.borderStrong,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });
+
 /**
  * İrade rütbesi armaları (6 kademe) ve başarım madalyonları (10 rozet) için
  * koleksiyonluk kabartma madalyon sunumu.
@@ -31,10 +58,13 @@ export default function EmblemMedallion({
   source,
   size = 56,
   unlocked = true,
-  accentColor = colors.primary,
+  accentColor,
   accessibilityLabel,
   style,
 }: Props) {
+  const c = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const resolvedAccent = accentColor ?? c.primary;
   const described = Boolean(accessibilityLabel);
 
   return (
@@ -48,10 +78,10 @@ export default function EmblemMedallion({
           width: size,
           height: size,
           borderRadius: size / 2,
-          borderColor: unlocked ? hexA(accentColor, 0.55) : colors.border,
-          backgroundColor: colors.bgSunk,
+          borderColor: unlocked ? hexA(resolvedAccent, 0.55) : c.border,
+          backgroundColor: c.bgSunk,
         },
-        unlocked ? shadow.glow(accentColor) : null,
+        unlocked ? shadow.glow(resolvedAccent) : null,
         style,
       ]}
     >
@@ -73,35 +103,9 @@ export default function EmblemMedallion({
       ) : null}
       {!unlocked ? (
         <View style={s.lockBadge} pointerEvents="none">
-          <Ionicons name="lock-closed" size={Math.max(10, Math.round(size * 0.2))} color={colors.textDim} />
+          <Ionicons name="lock-closed" size={Math.max(10, Math.round(size * 0.2))} color={c.textDim} />
         </View>
       ) : null}
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  outer: {
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  img: {
-    overflow: 'hidden',
-  },
-  lockBadge: {
-    position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
-

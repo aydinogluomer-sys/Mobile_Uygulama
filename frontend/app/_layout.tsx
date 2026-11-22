@@ -21,7 +21,8 @@ import BootGate from '../components/BootGate';
 import { signOutCurrentAccount } from '../services/accountService';
 // F04 — one account boundary for everything account-scoped (stores, read cache, reminders, keys).
 import { endAccountScope } from '../lib/accountScope';
-import { colors } from '../lib/tokens';
+import { StatusBar } from 'expo-status-bar';
+import { useThemeColors, useThemeMode } from '../hooks/useThemeColors';
 import { useThemeStore } from '../store/themeStore';
 import { useNotionSessionStore } from '../store/notionSessionStore';
 import { useLogStore } from '../store/logStore';
@@ -80,6 +81,8 @@ function RootLayoutInner() {
   const router = useRouter();
   const segments = useSegments();
   const loadTheme = useThemeStore((s) => s.load);
+  const c = useThemeColors();
+  const mode = useThemeMode();
   const notionSession = useNotionSessionStore((s) => s.session);
   const hydrateNotionSession = useNotionSessionStore((s) => s.hydrate);
   // Plan §18 offline senkron yaşam döngüsü. Seçici (selector) ile alınıyor:
@@ -438,8 +441,8 @@ function RootLayoutInner() {
     // unmounting it would drop the user out of the new-password form.
     if (loading || !inPasswordRecovery) {
       return (
-        <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={colors.primary} />
+        <View style={{ flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={c.primary} />
         </View>
       );
     }
@@ -455,6 +458,7 @@ function RootLayoutInner() {
   // Sekme/grup değişimi ("başka bir yere gittim") doğru granülerlik.
   return (
     <>
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <ErrorBoundary context="root-navigator" resetKeys={[segments[0]]}>
         {/* R06.05 — covers the app-switcher preview when "hide titles" is on */}
         <PrivacyCover />

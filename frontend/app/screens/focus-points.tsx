@@ -42,13 +42,8 @@ import {
   PAID_SUBSCRIPTIONS_ENABLED,
   PAID_SUBSCRIPTIONS_DISABLED_REASON,
 } from '../../lib/featureGates';
-import {
-  AtmosphericScreenCanvas,
-  ChapterDivider,
-  EmbeddedFiligree,
-  EmblemMedallion,
-  TexturedSurface,
-} from '../../components/ui';
+import { EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 /** What a Focus Point is spent on, in the order a new user meets them. */

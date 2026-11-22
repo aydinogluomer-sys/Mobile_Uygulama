@@ -21,7 +21,8 @@ import { todayLocal } from '../../lib/date';
 import { haptic } from '../../lib/haptics';
 import AIRoutineModal from '../../components/AIRoutineModal';
 import FocusFlowView from '../../components/FocusFlowView';
-import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree, EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { EditorialBanner, EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { BENTO_ART, CANVASES, DECOR, getPackCover, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import {
   EXPLORE_CATEGORIES,
@@ -1473,7 +1474,7 @@ const s = StyleSheet.create({
   sectionHeader: {
     fontSize: 11,
     fontWeight: '800',
-    color: colors.textGhost,
+    color: colors.textFaint,
     letterSpacing: 1.2,
     marginBottom: space.sm,
   },
@@ -1662,7 +1663,7 @@ const s = StyleSheet.create({
   },
   moreStepsText: {
     fontSize: 9,
-    color: colors.textGhost,
+    color: colors.textFaint,
     fontWeight: '600',
     marginTop: 2,
   },
@@ -1677,7 +1678,7 @@ const s = StyleSheet.create({
   },
   collectionLoadText: {
     fontSize: 10,
-    color: colors.textGhost,
+    color: colors.textFaint,
     fontWeight: '600',
   },
 
@@ -1954,7 +1955,7 @@ const s = StyleSheet.create({
   modalBadgeText: {
     fontSize: 9,
     fontWeight: '800',
-    color: colors.textGhost,
+    color: colors.textFaint,
     letterSpacing: 1,
   },
   modalTitle: {
@@ -2013,7 +2014,7 @@ const s = StyleSheet.create({
   modalSectionLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: colors.textGhost,
+    color: colors.textFaint,
     letterSpacing: 1,
     marginBottom: 8,
   },

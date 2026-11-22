@@ -8,21 +8,14 @@
  *
  * Three deliberate properties:
  *
- *  1. **Reduce-motion is honoured.** The codebase already respects the OS
- *     setting (`components/seasonalMotion/useReducedMotion`), and a shimmer is
- *     exactly the kind of repeating animation that setting exists to stop. With
- *     reduce-motion on, the block renders static — still a useful shape hint,
- *     just not moving.
- *  2. **Native driver.** The shimmer animates `opacity` only, so it can run off
- *     the JS thread — which matters precisely when the JS thread is busy doing
- *     the fetch this skeleton is covering for.
- *  3. **Non-interactive.** A skeleton sits where real, tappable content will
- *     be. Without `pointerEvents="none"` it would swallow taps aimed at what is
- *     about to appear, and screen readers would announce a meaningless box.
+ *  1. **Reduce-motion is honoured.**
+ *  2. **Native driver.**
+ *  3. **Non-interactive.**
  */
 import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View, type DimensionValue, type ViewStyle } from 'react-native';
-import { colors, radius } from '../../lib/tokens';
+import { radius, type Palette } from '../../lib/tokens';
+import { useThemedStyles } from '../../hooks/useThemeColors';
 import { useReducedMotion } from '../seasonalMotion/useReducedMotion';
 
 type Props = {
@@ -33,7 +26,13 @@ type Props = {
   style?: ViewStyle;
 };
 
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    base: { backgroundColor: c.surface },
+  });
+
 export default function Skeleton({ width = '100%', height = 14, circle = false, style }: Props) {
+  const s = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
   const pulse = useRef(new Animated.Value(0.55)).current;
 
@@ -80,7 +79,3 @@ export function SkeletonLines({ count = 3, gap = 8 }: { count?: number; gap?: nu
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  base: { backgroundColor: colors.surface },
-});

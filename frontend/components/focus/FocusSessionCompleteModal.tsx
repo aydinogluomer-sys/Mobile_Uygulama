@@ -6,7 +6,7 @@ import { Image } from 'expo-image';
 import { currentUser } from '../../lib/session';
 import { colors, fontFamily, hexA } from '../../lib/tokens';
 import { DECOR, FOCUS_COMPLETE_GONG } from '../../lib/visualAssets';
-import { EmbeddedFiligree } from '../ui';
+import { EmbeddedFiligree } from '../spatial';
 import { CompletedSession, useFocusStore } from '../../store/focusStore';
 import { FocusSessionRow, inRange, summary, byTask, buckets, fmtDuration, fmtHours } from '../../lib/focusReport';
 import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
@@ -169,7 +169,7 @@ const s = StyleSheet.create({
   chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginBottom: 22 },
   chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 5 },
   chartBar: { width: '70%', maxWidth: 22, borderRadius: 3, minHeight: 2 },
-  chartLabel: { fontSize: 9, color: colors.textGhost, fontFamily: fontFamily.mono },
+  chartLabel: { fontSize: 9, color: colors.textFaint, fontFamily: fontFamily.mono },
 
   ttRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   ttName: { flex: 1.2, fontSize: 13, color: colors.textDim },

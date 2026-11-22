@@ -12,7 +12,8 @@ import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore, JournalEntry } from '../../store/journalStore';
 import { moodMeta } from '../../lib/journalMoods';
 import { Image } from 'expo-image';
-import { AtmosphericScreenCanvas, EmptyState, EmbeddedFiligree, TexturedSurface } from '../../components/ui';
+import { EmptyState, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, getMoodSeal, TEXTURES } from '../../lib/visualAssets';
 
 const DAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
@@ -207,7 +208,7 @@ const s = StyleSheet.create({
   navBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingVertical: 4, minWidth: 64 },
   navBtnOff: { opacity: 0.5 },
   navText: { fontSize: 14, fontWeight: '700', color: colors.warning },
-  navTextOff: { color: colors.textGhost },
+  navTextOff: { color: colors.textFaint },
   pageIndicator: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 30 },

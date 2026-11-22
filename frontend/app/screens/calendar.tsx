@@ -15,7 +15,7 @@ import SeasonalMotionPreview from '../../components/seasonalMotion/SeasonalMotio
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
 import GlassPanel from '../../components/ui/GlassPanel';
-import { EmbeddedFiligree } from '../../components/ui';
+import { EmbeddedFiligree } from '../../components/spatial';
 import { DECOR } from '../../lib/visualAssets';
 import { colors, hexA } from '../../lib/tokens';
 import { ymd } from '../../lib/date';

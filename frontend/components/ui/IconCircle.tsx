@@ -1,6 +1,7 @@
 import { View, ViewStyle, StyleProp, type AccessibilityProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, hexA } from '../../lib/tokens';
+import { radius, hexA } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 
 type Props = AccessibilityProps & {
   icon: keyof typeof Ionicons.glyphMap;
@@ -22,8 +23,10 @@ type Props = AccessibilityProps & {
  * bilgi taşıyor demektir; o durumda gizlenmez ve `image` rolüyle görünür olur.
  */
 export default function IconCircle({
-  icon, color = colors.primary, size = 42, iconSize, radiusKey = 'md', style, ...a11y
+  icon, color, size = 42, iconSize, radiusKey = 'md', style, ...a11y
 }: Props) {
+  const c = useThemeColors();
+  const resolvedColor = color ?? c.primary;
   const labelled = a11y.accessibilityLabel !== undefined || a11y['aria-label'] !== undefined;
 
   return (
@@ -35,13 +38,13 @@ export default function IconCircle({
       style={[
         {
           width: size, height: size, borderRadius: radius[radiusKey],
-          backgroundColor: hexA(color, 0.16),
+          backgroundColor: hexA(resolvedColor, 0.16),
           alignItems: 'center', justifyContent: 'center',
         },
         style,
       ]}
     >
-      <Ionicons name={icon} size={iconSize ?? Math.round(size * 0.5)} color={color} />
+      <Ionicons name={icon} size={iconSize ?? Math.round(size * 0.5)} color={resolvedColor} />
     </View>
   );
 }

@@ -314,7 +314,7 @@ const s = StyleSheet.create({
   boxTitle: {
     fontSize: 10,
     fontWeight: '800',
-    color: colors.textGhost,
+    color: colors.textFaint,
     letterSpacing: 1,
   },
   eventRowText: {

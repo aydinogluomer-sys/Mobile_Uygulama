@@ -1,6 +1,7 @@
 import { Platform, View, type AccessibilityProps } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { colors, hexA } from '../../lib/tokens';
+import { hexA } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 
 type Props = AccessibilityProps & {
   /** 0–1 arası ilerleme */
@@ -22,8 +23,10 @@ type Props = AccessibilityProps & {
  * `accessibilityLabel` verdiğinde `progressbar` rolü ve yüzde değeri alır.
  */
 export default function ProgressRing({
-  progress, size = 180, stroke = 10, color = colors.primary, trackColor, children, ...a11y
+  progress, size = 180, stroke = 10, color, trackColor, children, ...a11y
 }: Props) {
+  const palette = useThemeColors();
+  const resolvedColor = color ?? palette.primary;
   const p = Math.max(0, Math.min(1, progress));
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
@@ -59,12 +62,12 @@ export default function ProgressRing({
         {/* track */}
         <Circle
           cx={center} cy={center} r={r}
-          stroke={trackColor ?? hexA(color, 0.16)} strokeWidth={stroke} fill="none"
+          stroke={trackColor ?? hexA(resolvedColor, 0.16)} strokeWidth={stroke} fill="none"
         />
         {/* progress yayı — saat 12'den başlasın diye -90° döndür */}
         <Circle
           cx={center} cy={center} r={r}
-          stroke={color} strokeWidth={stroke} fill="none"
+          stroke={resolvedColor} strokeWidth={stroke} fill="none"
           strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
           transform={`rotate(-90 ${center} ${center})`}
         />

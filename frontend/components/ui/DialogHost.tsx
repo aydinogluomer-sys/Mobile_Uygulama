@@ -9,12 +9,57 @@ import {
   subscribeDialogs,
   type DialogRequest,
 } from '../../lib/dialog';
-import { colors, font, hexA, radius, space } from '../../lib/tokens';
+import { font, hexA, radius, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useReducedMotion } from '../seasonalMotion/useReducedMotion';
 import ActionSheet from './ActionSheet';
 import Button from './Button';
 
 registerAccountScoped({ name: 'dialogs', onReset: () => dismissAllDialogs() });
+
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    centerWrap: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: space.lg,
+    },
+    scrim: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      backgroundColor: hexA(c.black, 0.55),
+    },
+    card: {
+      width: '100%',
+      maxWidth: 420,
+      backgroundColor: c.bgElevated,
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: c.border,
+      padding: space.xl,
+      gap: space.md,
+    },
+    title: {
+      ...font.h2,
+      color: c.text,
+    },
+    message: {
+      ...font.body,
+      color: c.textDim,
+      lineHeight: 22,
+    },
+    actions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'flex-end',
+      gap: space.sm,
+      marginTop: space.xs,
+    },
+  });
 
 function DialogCard({
   req,
@@ -25,6 +70,9 @@ function DialogCard({
   reduce: boolean;
   maxBodyHeight: number;
 }): ReactElement {
+  const c = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+
   const cancel = () => {
     if (req.kind === 'confirm') settleDialog(req, false);
     else settleDialog(req);
@@ -68,7 +116,7 @@ function DialogCard({
                 <Button
                   label={req.cancelText}
                   variant="ghost"
-                  color={colors.textDim}
+                  color={c.textDim}
                   onPress={() => settleDialog(req, false)}
                 />
                 <Button
@@ -119,46 +167,3 @@ export default function DialogHost(): ReactElement | null {
   const maxBodyHeight = Math.max(160, Math.round((windowHeight || 640) * 0.5));
   return <DialogCard key={req.id} req={req} reduce={reduce} maxBodyHeight={maxBodyHeight} />;
 }
-
-const s = StyleSheet.create({
-  centerWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: space.lg,
-  },
-  scrim: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: hexA(colors.black, 0.55),
-  },
-  card: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: colors.bgElevated,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: space.xl,
-    gap: space.md,
-  },
-  title: {
-    ...font.h2,
-    color: colors.text,
-  },
-  message: {
-    ...font.body,
-    color: colors.textDim,
-    lineHeight: 22,
-  },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: space.sm,
-    marginTop: space.xs,
-  },
-});

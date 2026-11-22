@@ -232,7 +232,7 @@ const s = StyleSheet.create({
   rowMain: { minHeight: 40, justifyContent: 'center', paddingRight: 28 },
   rowTitle: { fontSize: 14, fontWeight: '600', color: colors.text },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  rowWhen: { fontSize: 11, color: colors.textGhost },
+  rowWhen: { fontSize: 11, color: colors.textFaint },
   badge: {
     borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2,
     backgroundColor: alphaHex(colors.primary, '22'), maxWidth: 140,
@@ -242,7 +242,7 @@ const s = StyleSheet.create({
   menu: { marginTop: 10, gap: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36 },
   menuText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
-  menuLabel: { fontSize: 11, color: colors.textGhost, marginTop: 2 },
+  menuLabel: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: {
     borderRadius: 999, borderWidth: 1, borderColor: colors.border,

@@ -23,7 +23,8 @@
  */
 import { Component, type ReactNode } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors, radius, space } from '../../lib/tokens';
+import { onColor, radius, space, type Palette } from '../../lib/tokens';
+import { useThemedStyles } from '../../hooks/useThemeColors';
 import { reportError } from '../../lib/crashReporting';
 
 type Props = {
@@ -37,6 +38,59 @@ type Props = {
 };
 
 type State = { error: Error | null };
+
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    wrap: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: space.xxl,
+      gap: space.md,
+      backgroundColor: c.bg,
+    },
+    title: { color: c.text, fontSize: 18, fontWeight: '600' },
+    body: { color: c.textDim, fontSize: 14, textAlign: 'center', lineHeight: 20 },
+    button: {
+      marginTop: space.sm,
+      paddingVertical: space.md,
+      paddingHorizontal: space.xl,
+      borderRadius: radius.md,
+      backgroundColor: c.primary,
+    },
+    buttonText: { color: onColor(c.primary), fontSize: 15, fontWeight: '600' },
+    debug: {
+      marginTop: space.lg,
+      color: c.textFaint,
+      fontSize: 11,
+      textAlign: 'center',
+    },
+  });
+
+function ErrorFallback({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  const s = useThemedStyles(makeStyles);
+  return (
+    <View style={s.wrap} accessibilityRole="alert">
+      <Text style={s.title}>Bir şeyler ters gitti</Text>
+      <Text style={s.body}>
+        Bu bölüm beklenmedik bir hatayla karşılaştı. Verilerin yerinde duruyor.
+      </Text>
+      <TouchableOpacity
+        style={s.button}
+        onPress={onRetry}
+        accessibilityRole="button"
+        accessibilityLabel="Tekrar dene"
+      >
+        <Text style={s.buttonText}>Tekrar dene</Text>
+      </TouchableOpacity>
+      {/* The message is shown in development only. In production it would be
+          a raw internal string in front of a user who cannot act on it, and
+          — per `scrubMessage`'s doc — error text is exactly where user
+          content leaks, so it does not belong on screen either. */}
+      {__DEV__ ? <Text style={s.debug}>{`${error.name}: ${error.message}`}</Text> : null}
+    </View>
+  );
+}
 
 export default class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
@@ -74,53 +128,6 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children;
     if (this.props.fallback) return this.props.fallback(this.retry);
 
-    return (
-      <View style={s.wrap} accessibilityRole="alert">
-        <Text style={s.title}>Bir şeyler ters gitti</Text>
-        <Text style={s.body}>
-          Bu bölüm beklenmedik bir hatayla karşılaştı. Verilerin yerinde duruyor.
-        </Text>
-        <TouchableOpacity
-          style={s.button}
-          onPress={this.retry}
-          accessibilityRole="button"
-          accessibilityLabel="Tekrar dene"
-        >
-          <Text style={s.buttonText}>Tekrar dene</Text>
-        </TouchableOpacity>
-        {/* The message is shown in development only. In production it would be
-            a raw internal string in front of a user who cannot act on it, and
-            — per `scrubMessage`'s doc — error text is exactly where user
-            content leaks, so it does not belong on screen either. */}
-        {__DEV__ ? <Text style={s.debug}>{`${error.name}: ${error.message}`}</Text> : null}
-      </View>
-    );
+    return <ErrorFallback error={error} onRetry={this.retry} />;
   }
 }
-
-const s = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: space.xxl,
-    gap: space.md,
-    backgroundColor: colors.bg,
-  },
-  title: { color: colors.text, fontSize: 18, fontWeight: '600' },
-  body: { color: colors.textDim, fontSize: 14, textAlign: 'center', lineHeight: 20 },
-  button: {
-    marginTop: space.sm,
-    paddingVertical: space.md,
-    paddingHorizontal: space.xl,
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-  },
-  buttonText: { color: colors.white, fontSize: 15, fontWeight: '600' },
-  debug: {
-    marginTop: space.lg,
-    color: colors.textFaint,
-    fontSize: 11,
-    textAlign: 'center',
-  },
-});

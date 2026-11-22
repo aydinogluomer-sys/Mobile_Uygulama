@@ -37,7 +37,8 @@ import {
 } from '../../lib/behaviorIntelligence';
 import { planFromRow } from '../../lib/recovery';
 import { sessionsBetween } from '../../services/focusService';
-import { ChapterDivider, EmptyState, EmbeddedFiligree, EmblemMedallion, FormError } from '../../components/ui';
+import { EmptyState, EmblemMedallion, FormError } from '../../components/ui';
+import { ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { DECOR, SCREEN_BANNERS } from '../../lib/visualAssets';
 import { reportError } from '../../lib/crashReporting';
 import { MAX_REFLECTION_CHARS } from '../../lib/inputLimits';
@@ -702,7 +703,7 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
   taskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 6 },
   taskTitle: { flex: 1, fontSize: 14, color: colors.textDim },
-  moreText: { fontSize: 12, color: colors.textGhost, paddingLeft: 4, marginTop: 4 },
+  moreText: { fontSize: 12, color: colors.textFaint, paddingLeft: 4, marginTop: 4 },
   habitRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   medal: { fontSize: 16, width: 22 },
   habitDot: { width: 8, height: 8, borderRadius: 4 },

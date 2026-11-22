@@ -1,7 +1,8 @@
 import { Platform, View, Text } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, space, radius, font, fontFamily, hexA } from '../../lib/tokens';
+import { space, radius, font, fontFamily, hexA } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { EMPTY_VIGNETTES, type EmptyAssetKey } from '../../lib/visualAssets';
 import Button from './Button';
 
@@ -31,8 +32,10 @@ type Props = {
 
 /** Sakin empty state — ikon kabı + başlık + alt metin + opsiyonel tek net CTA. */
 export default function EmptyState({
-  icon, title, hint, ctaLabel, onCta, color = colors.primary, compact, variant = 'default', illustration,
+  icon, title, hint, ctaLabel, onCta, color, compact, variant = 'default', illustration,
 }: Props) {
+  const c = useThemeColors();
+  const resolvedColor = color ?? c.primary;
   const artSize = compact ? 72 : 92;
 
   if (variant === 'editorial') {
@@ -48,8 +51,8 @@ export default function EmptyState({
               borderRadius: radius.xl,
               overflow: 'hidden',
               borderWidth: 1,
-              borderColor: hexA(color, 0.24),
-              backgroundColor: colors.surfaceAlt,
+              borderColor: hexA(resolvedColor, 0.24),
+              backgroundColor: c.surfaceAlt,
               marginBottom: space.xs,
             }}
           >
@@ -61,16 +64,16 @@ export default function EmptyState({
             />
           </View>
         )}
-        <Text style={{ fontFamily: fontFamily.serif, fontStyle: 'italic', fontSize: 19, color: colors.text, textAlign: 'center' }}>
+        <Text style={{ fontFamily: fontFamily.serif, fontStyle: 'italic', fontSize: 19, color: c.text, textAlign: 'center' }}>
           {title}
         </Text>
         {hint && (
-          <Text style={{ ...font.bodySm, color: colors.textFaint, textAlign: 'center', maxWidth: 300, lineHeight: 20 }}>
+          <Text style={{ ...font.bodySm, color: c.textFaint, textAlign: 'center', maxWidth: 300, lineHeight: 20 }}>
             {hint}
           </Text>
         )}
         {ctaLabel && onCta && (
-          <Button label={ctaLabel} onPress={onCta} variant="tonal" size="sm" icon="add" color={color} style={{ marginTop: space.sm }} />
+          <Button label={ctaLabel} onPress={onCta} variant="tonal" size="sm" icon="add" color={resolvedColor} style={{ marginTop: space.sm }} />
         )}
       </View>
     );
@@ -87,8 +90,8 @@ export default function EmptyState({
             borderRadius: radius.xl,
             overflow: 'hidden',
             borderWidth: 1,
-            borderColor: hexA(color, 0.26),
-            backgroundColor: hexA(color, 0.08),
+            borderColor: hexA(resolvedColor, 0.26),
+            backgroundColor: hexA(resolvedColor, 0.08),
           }}
         >
           <Image
@@ -102,7 +105,7 @@ export default function EmptyState({
         <View
           style={{
             width: compact ? 52 : 64, height: compact ? 52 : 64, borderRadius: radius.lg,
-            backgroundColor: hexA(color, 0.1), alignItems: 'center', justifyContent: 'center',
+            backgroundColor: hexA(resolvedColor, 0.1), alignItems: 'center', justifyContent: 'center',
           }}
         >
           {/* Süsleme: hemen altındaki başlık + ipucu metni durumu zaten anlatıyor;
@@ -110,21 +113,21 @@ export default function EmptyState({
           <Ionicons
             name={icon}
             size={compact ? 26 : 32}
-            color={hexA(color, 0.8)}
+            color={hexA(resolvedColor, 0.8)}
             {...decorativeA11y}
           />
         </View>
       )}
       <View style={{ alignItems: 'center', gap: 4 }}>
-        <Text style={{ ...font.title, fontSize: 20, color: colors.text }}>{title}</Text>
+        <Text style={{ ...font.title, fontSize: 20, color: c.text }}>{title}</Text>
         {hint && (
-          <Text style={{ ...font.bodySm, color: colors.textFaint, textAlign: 'center', maxWidth: 260, lineHeight: 19 }}>
+          <Text style={{ ...font.bodySm, color: c.textFaint, textAlign: 'center', maxWidth: 260, lineHeight: 19 }}>
             {hint}
           </Text>
         )}
       </View>
       {ctaLabel && onCta && (
-        <Button label={ctaLabel} onPress={onCta} variant="tonal" size="sm" icon="add" color={color} style={{ marginTop: space.xs }} />
+        <Button label={ctaLabel} onPress={onCta} variant="tonal" size="sm" icon="add" color={resolvedColor} style={{ marginTop: space.xs }} />
       )}
     </View>
   );

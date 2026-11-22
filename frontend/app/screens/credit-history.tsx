@@ -8,15 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { listTransactions } from '../../services/focusPointService';
-import {
-  AtmosphericScreenCanvas,
-  ChapterDivider,
-  EditorialBanner,
-  EmbeddedFiligree,
-  EmblemMedallion,
-  EmptyState,
-  Skeleton,
-} from '../../components/ui';
+import { EditorialBanner, EmblemMedallion, EmptyState, Skeleton } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 type Tx = {

@@ -11,7 +11,8 @@ import { INTEGRATION_CATEGORIES, type IntegrationCategory, type IntegrationItem 
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 import IntegrationItemCard from '../../components/IntegrationItemCard';
 import IntegrationDetailModal from '../../components/IntegrationDetailModal';
-import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { useNotionStore } from '../../store/notionStore';
 import { useGoogleCalendarStore } from '../../store/googleCalendarStore';
@@ -551,7 +552,7 @@ const s = StyleSheet.create({
     marginTop: 4, padding: 12, borderRadius: 10,
     backgroundColor: colors.coolBlack850, borderWidth: 1, borderColor: colors.borderSubtle,
   },
-  hintText: { flex: 1, fontSize: 12, color: colors.textGhost, lineHeight: 18 },
+  hintText: { flex: 1, fontSize: 12, color: colors.textFaint, lineHeight: 18 },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 },
@@ -613,7 +614,7 @@ const s = StyleSheet.create({
   errorText: { flex: 1, fontSize: 12, color: colors.error, lineHeight: 17 },
 
   // Obsidian
-  sectionLabel: { fontSize: 10, fontWeight: '700', color: colors.textGhost, letterSpacing: 1.2, marginTop: 4, marginBottom: 4 },
+  sectionLabel: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1.2, marginTop: 4, marginBottom: 4 },
   featureChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: colors.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
@@ -631,7 +632,7 @@ const s = StyleSheet.create({
   stepTitle: { fontSize: 14, fontWeight: '600', color: colors.text },
   stepDesc: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
   pathBox: { backgroundColor: colors.coolBlack950, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.borderSubtle },
-  pathLabel: { fontSize: 10, fontWeight: '700', color: colors.textGhost, letterSpacing: 1, marginBottom: 4 },
+  pathLabel: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 4 },
   pathValue: { fontSize: 13, fontFamily: 'monospace', color: colors.accent },
   docsBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

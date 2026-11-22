@@ -1,5 +1,6 @@
 import { colors, alphaHex, hexA } from '../../lib/tokens';
-import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { currentUser } from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
@@ -511,7 +512,7 @@ const s = StyleSheet.create({
   autoMetricLabel: { fontSize: 9.5, color: colors.textFaint, textAlign: 'center', lineHeight: 12 },
   taskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 6 },
   taskTitle: { flex: 1, fontSize: 14, color: colors.textDim },
-  moreText: { fontSize: 12, color: colors.textGhost, paddingLeft: 4, marginTop: 4 },
+  moreText: { fontSize: 12, color: colors.textFaint, paddingLeft: 4, marginTop: 4 },
   questionCard: { marginBottom: 14 },
   questionLabel: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 8 },
   questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },

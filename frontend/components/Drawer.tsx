@@ -499,7 +499,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  sectionHeader: { fontSize: 10, fontWeight: '700', color: colors.textGhost, letterSpacing: 1.2 },
+  sectionHeader: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1.2 },
   countPill: {
     backgroundColor: colors.surfaceAlt,
     borderRadius: 999,
@@ -637,7 +637,7 @@ const s = StyleSheet.create({
   },
 
   group: { marginBottom: 18 },
-  groupTitle: { fontSize: 10, fontWeight: '700', color: colors.textGhost, letterSpacing: 1.2, marginBottom: 6, paddingLeft: 6 },
+  groupTitle: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1.2, marginBottom: 6, paddingLeft: 6 },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -697,7 +697,7 @@ const s = StyleSheet.create({
   searchShortcut: {
     fontSize: 10,
     fontWeight: '700',
-    color: colors.textGhost,
+    color: colors.textFaint,
     backgroundColor: colors.surfaceAlt,
     paddingHorizontal: 6,
     paddingVertical: 2,

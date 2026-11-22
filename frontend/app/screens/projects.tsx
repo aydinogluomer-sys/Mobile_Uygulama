@@ -9,7 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useProjectStore, type Project } from '../../store/projectStore';
 import { useTaskStore } from '../../store/taskStore';
 import InlineComposer from '../../components/InlineComposer';
-import { AtmosphericScreenCanvas, EmptyState, FormError, LoadErrorState, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { EmptyState, FormError, LoadErrorState, EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import { colors, hexA } from '../../lib/tokens';
@@ -291,7 +292,7 @@ const s = StyleSheet.create({
   },
   badgeText: { fontSize: 12, color: colors.textDim },
   empty: { alignItems: 'center', paddingTop: 80, gap: 10 },
-  emptyText: { fontSize: 15, color: colors.textGhost },
+  emptyText: { fontSize: 15, color: colors.textFaint },
   emptyAdd: { marginTop: 8 },
   emptyAddText: { fontSize: 14, color: colors.accent },
   fab: {
@@ -328,7 +329,7 @@ const s = StyleSheet.create({
   progressPct: { fontSize: 13, color: colors.text, fontWeight: '700', fontVariant: ['tabular-nums'] },
   progressTrack: { height: 6, borderRadius: 3, backgroundColor: colors.borderSubtle, marginTop: 6, overflow: 'hidden' },
   progressFill: { height: 6, borderRadius: 3 },
-  detailEmpty: { fontSize: 13, color: colors.textGhost, textAlign: 'center', paddingVertical: 24 },
+  detailEmpty: { fontSize: 13, color: colors.textFaint, textAlign: 'center', paddingVertical: 24 },
   taskRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11,
     borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
@@ -338,5 +339,5 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   taskTitle: { flex: 1, fontSize: 14, color: colors.text },
-  taskTitleDone: { color: colors.textGhost, textDecorationLine: 'line-through' },
+  taskTitleDone: { color: colors.textFaint, textDecorationLine: 'line-through' },
 });

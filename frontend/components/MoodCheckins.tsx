@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
 import { colors, space, radius, hexA } from '../lib/tokens';
-import { EmbeddedFiligree } from './ui';
+import { EmbeddedFiligree } from './spatial';
 import { DECOR } from '../lib/visualAssets';
 import { useMoodStore } from '../store/moodStore';
 import { checkinLabel } from '../lib/moods';

@@ -8,7 +8,8 @@ import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useOKRStore, krProgress, objectiveProgress, type KeyResult, type OKR } from '../../store/okrStore';
-import { AtmosphericScreenCanvas, EmptyState, Skeleton, EditorialBanner, EmbeddedFiligree, EmblemMedallion } from '../../components/ui';
+import { EmptyState, Skeleton, EditorialBanner, EmblemMedallion } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const now = new Date();
@@ -329,7 +330,7 @@ const s = StyleSheet.create({
   empty: { alignItems: 'center', paddingTop: 70, gap: 8 },
   emptyText: { fontSize: 17, color: colors.textDim, fontWeight: '600' },
   emptyHint: { fontSize: 13, color: colors.textFaint, textAlign: 'center' },
-  tip: { fontSize: 11, color: colors.textGhost, textAlign: 'center', marginTop: 8 },
+  tip: { fontSize: 11, color: colors.textFaint, textAlign: 'center', marginTop: 8 },
 
   objCard: { backgroundColor: hexA(colors.surface, 0.92), borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 2, borderLeftColor: hexA(colors.warning, 0.42), marginBottom: 14, overflow: 'hidden', position: 'relative' },
   objHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },

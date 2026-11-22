@@ -21,13 +21,8 @@ import { currentStep, latestVersion, stepActiveMs, summarize, timeUp, validateSt
 import { isMeasurableTracking } from '../../lib/habitEngine';
 import { colors, space, radius, alphaHex, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import {
-  AtmosphericScreenCanvas,
-  ChapterDivider,
-  EditorialBanner,
-  EmbeddedFiligree,
-  EmblemMedallion,
-} from '../../components/ui';
+import { EditorialBanner, EmblemMedallion } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, FOCUS_COMPLETE_GONG, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const mmss = (ms: number) => {

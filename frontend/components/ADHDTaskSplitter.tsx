@@ -1,5 +1,6 @@
 import { colors, alphaHex } from '../lib/tokens';
-import { EmbeddedFiligree, TexturedSurface } from './ui';
+import { TexturedSurface } from './ui';
+import { EmbeddedFiligree } from './spatial';
 import { DECOR, TEXTURES } from '../lib/visualAssets';
 import React, { useState } from 'react';
 import {

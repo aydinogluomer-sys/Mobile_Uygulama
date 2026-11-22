@@ -1,6 +1,7 @@
 import { Text, TouchableOpacity, ActivityIndicator, ViewStyle, StyleProp, type AccessibilityProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, hexA, shadow, onColor } from '../../lib/tokens';
+import { radius, hexA, shadow, onColor } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAccent } from '../../lib/useAccent';
 
 type Variant = 'primary' | 'tonal' | 'secondary' | 'ghost' | 'danger';
@@ -40,20 +41,21 @@ export default function Button({
   label, onPress, variant = 'primary', size = 'md', icon,
   loading, disabled, color, full, style, ...a11y
 }: Props) {
+  const c = useThemeColors();
   const sz = SIZES[size];
   const accentTheme = useAccent();
   const accent = color ?? accentTheme.primary;
 
   let bg: string = 'transparent';
-  let fg: string = colors.white;
+  let fg: string = c.white;
   let border: string = 'transparent';
   let glow: ViewStyle | null = null;
 
   // R06.04 — the label colour is chosen for contrast on the fill (onColor).
   if (variant === 'primary') { bg = accentTheme.primary; fg = onColor(accentTheme.primary); glow = shadow.glow(accentTheme.primary); }
-  else if (variant === 'danger') { bg = colors.error; fg = onColor(colors.error); }
+  else if (variant === 'danger') { bg = c.error; fg = onColor(c.error); }
   else if (variant === 'tonal' || variant === 'secondary') { bg = hexA(accent, 0.14); fg = accent; border = hexA(accent, 0.28); }
-  else if (variant === 'ghost') { bg = 'transparent'; fg = accent; border = colors.border; }
+  else if (variant === 'ghost') { bg = 'transparent'; fg = accent; border = c.border; }
 
   const isDisabled = disabled || loading;
 

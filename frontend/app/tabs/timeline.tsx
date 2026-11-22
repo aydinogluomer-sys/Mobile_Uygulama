@@ -32,7 +32,8 @@ import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from 
 import { syncAllReminders } from '../../lib/notifications';
 import { colors, radius, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree, WillpowerBand, SectionHeader, EmptyState, FormError, ProgressBar } from '../../components/ui';
+import { EditorialBanner, WillpowerBand, SectionHeader, EmptyState, FormError, ProgressBar } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { CANVASES, DECOR, RITUAL_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { isMeasurableTracking } from '../../lib/habitEngine';
@@ -735,7 +736,7 @@ export default function TimelineScreen() {
             <TextInput
               style={styles.reasonInput}
               placeholder="Veya kendi nedenini yaz (opsiyonel)"
-              placeholderTextColor={colors.neutral600}
+              placeholderTextColor={colors.textFaint}
               value={DELETE_REASONS.includes(deleteReason) ? '' : deleteReason}
               onChangeText={setDeleteReason}
             />
@@ -860,13 +861,13 @@ const styles = StyleSheet.create({
   section: { paddingHorizontal: 12, paddingTop: 16 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, paddingHorizontal: 2 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.white, flex: 1 },
-  sectionCount: { fontSize: 13, color: colors.neutral500, fontWeight: '600' },
-  sectionHint: { fontSize: 12, color: colors.neutral500, marginBottom: 10, fontStyle: 'italic', paddingHorizontal: 2 },
+  sectionCount: { fontSize: 13, color: colors.textFaint, fontWeight: '600' },
+  sectionHint: { fontSize: 12, color: colors.textFaint, marginBottom: 10, fontStyle: 'italic', paddingHorizontal: 2 },
 
   empty: { alignItems: 'center', paddingVertical: 32, gap: 8 },
   emptySmall: { alignItems: 'center', paddingVertical: 16 },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: colors.white },
-  emptyHint: { fontSize: 13, color: colors.neutral500 },
+  emptyHint: { fontSize: 13, color: colors.textFaint },
 
   // Takip satırı (aktif)
   habitRow: {
@@ -879,7 +880,7 @@ const styles = StyleSheet.create({
   check: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: colors.coolBlack600, alignItems: 'center', justifyContent: 'center' },
   habitRowInfo: { flex: 1 },
   habitRowName: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 4 },
-  habitRowNameDone: { textDecorationLine: 'line-through', color: colors.neutral500 },
+  habitRowNameDone: { textDecorationLine: 'line-through', color: colors.textFaint },
   rowBadges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' },
   measurableRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
   measurableTrack: { flex: 1, height: 4, backgroundColor: colors.coolBlack700, borderRadius: 2, overflow: 'hidden' },
@@ -916,7 +917,7 @@ const styles = StyleSheet.create({
   remBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#8b5cf620', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   remBadgeText: { fontSize: 11, color: '#a78bfa', fontWeight: '600' },
   cueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  cueText: { fontSize: 12, color: colors.neutral500, flex: 1 },
+  cueText: { fontSize: 12, color: colors.textFaint, flex: 1 },
   stackingChainRow: {
     flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6,
     backgroundColor: hexA(colors.primary, 0.10), borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3,
@@ -1015,16 +1016,16 @@ const styles = StyleSheet.create({
   capStatRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
   capStat: { flex: 1, backgroundColor: colors.coolBlack900, borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.coolBlack700 },
   capStatVal: { fontSize: 20, fontWeight: '800', color: colors.white },
-  capStatLabel: { fontSize: 11, color: colors.neutral500, marginTop: 2 },
+  capStatLabel: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   capAdviceBox: {
     backgroundColor: colors.coolBlack900, borderRadius: 12, padding: 12, marginBottom: 14,
     borderWidth: 1, borderColor: colors.coolBlack700,
   },
   capAdviceFormula: { fontSize: 13, fontWeight: '700', color: '#f59e0b', marginBottom: 4 },
   capAdviceMsg: { fontSize: 12, color: colors.neutral400, lineHeight: 16 },
-  capListTitle: { fontSize: 11, fontWeight: '700', color: colors.neutral500, letterSpacing: 1, marginBottom: 10 },
+  capListTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
   capList: { maxHeight: 240 },
-  capEmpty: { fontSize: 13, color: colors.neutral500, textAlign: 'center', paddingVertical: 16 },
+  capEmpty: { fontSize: 13, color: colors.textFaint, textAlign: 'center', paddingVertical: 16 },
   capItem: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.coolBlack900, borderRadius: 12, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: colors.coolBlack700 },
   capItemIcon: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   capItemName: { flex: 1, fontSize: 14, color: colors.neutral200, fontWeight: '500' },
