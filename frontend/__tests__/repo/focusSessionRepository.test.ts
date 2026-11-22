@@ -23,7 +23,7 @@ jest.mock('../../lib/supabase', () => {
 
   function select(cols: string) {
     const eqFilters: Record<string, unknown> = {};
-    const rangeFilters: { col: string; op: 'gte' | 'lte'; val: unknown }[] = [];
+    const rangeFilters: { col: string; op: 'gte' | 'lte' | 'lt'; val: unknown }[] = [];
     const orders: { col: string; asc: boolean }[] = [];
     let limitN: number | null = null;
     let sliceRange: [number, number] | null = null;
@@ -32,6 +32,7 @@ jest.mock('../../lib/supabase', () => {
       eq(col: string, val: unknown) { eqFilters[col] = val; return q; },
       gte(col: string, val: unknown) { rangeFilters.push({ col, op: 'gte', val }); return q; },
       lte(col: string, val: unknown) { rangeFilters.push({ col, op: 'lte', val }); return q; },
+      lt(col: string, val: unknown) { rangeFilters.push({ col, op: 'lt', val }); return q; },
       order(col: string, opts?: { ascending?: boolean }) {
         orders.push({ col, asc: opts?.ascending ?? true });
         return q;
@@ -48,6 +49,7 @@ jest.mock('../../lib/supabase', () => {
             const v = r[f.col] as string;
             if (f.op === 'gte' && !(v >= (f.val as string))) return false;
             if (f.op === 'lte' && !(v <= (f.val as string))) return false;
+            if (f.op === 'lt' && !(v < (f.val as string))) return false;
           }
           return true;
         });
@@ -98,9 +100,11 @@ jest.mock('../../lib/supabase', () => {
 
 import {
   fetchFocusSessionsSince,
+  fetchFocusSessionsBetween,
   fetchAllFocusSessions,
   deleteAllFocusSessions,
 } from '../../repositories/focusSessionRepository';
+import { localDayStartIso } from '../../lib/date';
 
 beforeEach(() => {
   mockDb.rows = [];
@@ -124,6 +128,26 @@ describe('fetchFocusSessionsSince', () => {
     mockDb.user = null;
     const res = await fetchFocusSessionsSince({ sinceIso: '2026-07-01T00:00:00Z' });
     expect(res.ok).toBe(false);
+  });
+});
+
+describe('fetchFocusSessionsBetween', () => {
+  it('filters by half-open local-day UTC boundaries [startIso, endExclusiveIso)', async () => {
+    const startIso = localDayStartIso('2026-08-03')!;
+    const endExclusiveIso = localDayStartIso('2026-08-05')!;
+    mockDb.rows = [
+      { id: 'before', user_id: 'u1', task_id: null, task_title: null, mode: 'work', started_at: new Date(Date.parse(startIso) - 1000).toISOString(), ended_at: null, planned_seconds: 1500, completed_seconds: 1500, completed: true },
+      { id: 'inside', user_id: 'u1', task_id: null, task_title: null, mode: 'work', started_at: startIso, ended_at: null, planned_seconds: 1500, completed_seconds: 1500, completed: true },
+      { id: 'atEndExclusive', user_id: 'u1', task_id: null, task_title: null, mode: 'work', started_at: endExclusiveIso, ended_at: null, planned_seconds: 1500, completed_seconds: 1500, completed: true },
+    ];
+    const res = await fetchFocusSessionsBetween({ startYmd: '2026-08-03', endYmd: '2026-08-04' });
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.data.map((r) => r.id)).toEqual(['inside']);
+  });
+
+  it('rejects malformed or inverted date bounds', async () => {
+    expect((await fetchFocusSessionsBetween({ startYmd: '2026-02-30', endYmd: '2026-03-01' })).ok).toBe(false);
+    expect((await fetchFocusSessionsBetween({ startYmd: '2026-08-05', endYmd: '2026-08-04' })).ok).toBe(false);
   });
 });
 

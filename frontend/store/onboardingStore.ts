@@ -528,7 +528,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
     // A skipped flow still gets a real plan, from the documented safe
     // defaults rather than from a second code path.
     const effective: OnboardingAnswers = answers.pace ? answers : { ...SKIP_DEFAULT_ANSWERS, ...answers, pace: answers.pace ?? SKIP_DEFAULT_ANSWERS.pace };
-    const plan = buildStarterPlan(effective, { activeHabits: activeHabitLoadInputs() });
+    const plan = buildStarterPlan(effective, { activeHabits: activeHabitLoadInputs(), asOf: new Date() });
     set({
       plan,
       planReasons: explainPlan(effective, { habitCount: plan.habits.length, requestedMax: plan.requestedMax }),

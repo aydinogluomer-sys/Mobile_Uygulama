@@ -34,7 +34,7 @@ import {
   loadWeeklyReflection as fetchWeeklyReview,
   saveWeeklyReflection as upsertWeeklyReview,
 } from '../../services/reviewService';
-import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
+import { sessionsBetween } from '../../services/focusService';
 
 function getWeekKey(date = new Date()) {
   return format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -236,16 +236,12 @@ export default function WeeklyReviewScreen() {
 
     const [logsRes, sessionsRes, recoveryRes] = await Promise.all([
       logsForPeriod({ start, end }),
-      fetchFocusSessionsSince({ sinceIso: start }),
+      sessionsBetween({ startYmd: start, endYmd: end }),
       recoveryForPeriod({ start, end }),
     ]);
 
     const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end, { asOf: new Date() }) : null;
-    // `fetchFocusSessionsSince` has no upper bound -- clip to this week's `end`
-    // client-side, same window `fetchFocusSecondsForReview` used to filter server-side.
-    const weekSessions = sessionsRes.ok
-      ? sessionsRes.data.filter((sess: { started_at: string }) => sess.started_at <= `${end}T23:59:59`)
-      : [];
+    const weekSessions = sessionsRes.ok ? sessionsRes.data : [];
     const minutes = focusMinutesFromSessions(weekSessions);
     const nextBadge = reportBadge({ habitRate: rate, focusMinutes: minutes, completedTasks: completedTasks.length });
 

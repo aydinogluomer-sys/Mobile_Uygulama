@@ -64,7 +64,7 @@ import { WEEKDAY_PATTERN_WINDOW_DAYS } from '../../lib/completionMetric';
 import { DIGEST_PREAMBLE, INSUFFICIENT_COPY, insufficientText, type InsufficientKind } from '../../lib/metricCopy';
 import { extractInvokeError } from '../../lib/aiInvoke';
 import { loadReviewData, type ReviewLogRow } from '../../services/reviewService';
-import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
+import { sessionsBetween } from '../../services/focusService';
 import { DOW_TR } from '../../lib/focusReport';
 
 const HISTORY_WEEKS = 14; // >= the 12-week trend + 8-week fragility windows behaviorIntelligence.ts uses, with a buffer
@@ -296,7 +296,7 @@ export default function InsightsScreen() {
     try {
       const [reviewRes, sessionsRes] = await Promise.all([
         loadReviewData({ start: since, end: todayYmd }),
-        fetchFocusSessionsSince({ sinceIso: since }),
+        sessionsBetween({ startYmd: since, endYmd: todayYmd }),
       ]);
       if (!run.isCurrent()) return;
       // Habit logs and recovery come from ONE service call: a review
@@ -304,7 +304,7 @@ export default function InsightsScreen() {
       // failed) understates how much the user caught up.
       setLogs(reviewRes.ok ? reviewRes.data.logs : []);
       setRecoveryPlans(reviewRes.ok ? (reviewRes.data.recoveryPlans as never) : []);
-      setFocusSessions(sessionsRes.ok ? sessionsRes.data.filter((sess: { started_at: string }) => sess.started_at <= `${todayYmd}T23:59:59`) : []);
+      setFocusSessions(sessionsRes.ok ? sessionsRes.data : []);
     } finally {
       run.done();
       if (!opts.silent) setLoading(false);

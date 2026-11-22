@@ -39,7 +39,7 @@ function answers(patch: Partial<OnboardingAnswers>): OnboardingAnswers {
   return { ...EMPTY_ANSWERS, pace: 'balanced', ...patch };
 }
 
-const NO_LOAD = { activeHabits: [] };
+const NO_LOAD = { activeHabits: [], asOf: new Date(2026, 7, 4, 12, 0, 0) };
 
 // ---------------------------------------------------------------------------
 describe('AC-SP00 first-run planning has no external dependency', () => {
@@ -269,7 +269,11 @@ describe('AC-SP06 the ceiling outranks the pace card', () => {
     // assertion is about the trim, and deriving "nearly full" from fixture
     // load would make this test fail whenever `capacity.ts`'s v1 heuristic
     // constants are retuned — which is a different thing going wrong.
-    const plan = buildStarterPlan(answers({ pace: 'intensive' }), { activeHabits: [], ceiling: 12 });
+    const plan = buildStarterPlan(answers({ pace: 'intensive' }), {
+      activeHabits: [],
+      ceiling: 12,
+      asOf: new Date(2026, 7, 4, 12, 0, 0),
+    });
     expect(plan.habits.length).toBeLessThan(plan.requestedMax);
     expect(plan.trimmedByCapacity).toBe(true);
     expect(plan.projectedLoad).toBeLessThanOrEqual(12);

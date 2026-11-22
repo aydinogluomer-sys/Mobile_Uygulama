@@ -46,7 +46,10 @@ jest.mock('../../repositories/monthlyReviewRepository', () => ({
 // The rest of the service pulls in repositories that build a Supabase client.
 jest.mock('../../repositories/habitLogRepository', () => ({ fetchHabitLogsForReview: jest.fn() }));
 jest.mock('../../repositories/recoveryRepository', () => ({ fetchRecoveryPlansForReview: jest.fn() }));
-jest.mock('../../repositories/focusSessionRepository', () => ({ fetchFocusSessionsSince: jest.fn() }));
+jest.mock('../../repositories/focusSessionRepository', () => ({
+  fetchFocusSessionsSince: jest.fn(),
+  fetchFocusSessionsBetween: jest.fn(),
+}));
 jest.mock('../../repositories/reviewRepository', () => ({ fetchWeeklyReview: jest.fn(), upsertWeeklyReview: jest.fn() }));
 
 import {

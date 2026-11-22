@@ -2,6 +2,7 @@
  * `focus_sessions` reads/deletes.  (Phase 1 repository layer, plan §5 Rule 4)
  */
 import { supabase } from '../lib/supabase';
+import { localDayRangeIso } from '../lib/date';
 import type { FocusSessionRow } from '../lib/focusReport';
 import { requireComplete, selectAllPages } from './pagedSelect';
 import { currentUserId, RepoResult, insertOwnedWithId } from './shared';
@@ -27,6 +28,32 @@ export async function fetchFocusSessionsSince(params: {
       .select(REPORT_COLS)
       .eq('user_id', u.userId)
       .gte('started_at', params.sinceIso)
+      .order('started_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  return requireComplete(r, 'Odak seansları');
+}
+
+/**
+ * F15 (REP-10): Report-shaped columns in a half-open local-day window
+ * `[startYmd 00:00 local, endYmd + 1 day 00:00 local)`, newest first.
+ */
+export async function fetchFocusSessionsBetween(params: {
+  startYmd: string;
+  endYmd: string;
+}): Promise<RepoResult<FocusSessionRow[]>> {
+  const range = localDayRangeIso(params.startYmd, params.endYmd);
+  if (!range) return { ok: false, error: 'Geçersiz tarih aralığı.' };
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const r = await selectAllPages<FocusSessionRow>((from, to) =>
+    supabase
+      .from('focus_sessions')
+      .select(REPORT_COLS)
+      .eq('user_id', u.userId)
+      .gte('started_at', range.startIso)
+      .lt('started_at', range.endExclusiveIso)
       .order('started_at', { ascending: false })
       .order('id', { ascending: true })
       .range(from, to),

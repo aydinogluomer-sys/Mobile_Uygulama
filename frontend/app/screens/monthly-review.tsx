@@ -36,7 +36,7 @@ import {
   type Trend, type Result,
 } from '../../lib/behaviorIntelligence';
 import { planFromRow } from '../../lib/recovery';
-import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
+import { sessionsBetween } from '../../services/focusService';
 import { ChapterDivider, EmptyState, EmbeddedFiligree, EmblemMedallion, FormError } from '../../components/ui';
 import { DECOR, SCREEN_BANNERS } from '../../lib/visualAssets';
 import { reportError } from '../../lib/crashReporting';
@@ -270,7 +270,7 @@ export default function MonthlyReviewScreen() {
 
     const [logsRes, sessionsRes, recoveryRes] = await Promise.all([
       logsForPeriod({ start: wideStart, end }),
-      fetchFocusSessionsSince({ sinceIso: prevStart }),
+      sessionsBetween({ startYmd: prevStart, endYmd: end }),
       recoveryForPeriod({ start: prevStart, end }),
     ]);
 
@@ -278,10 +278,11 @@ export default function MonthlyReviewScreen() {
     setMeasured(logsRes.ok ? measuredRows(habits, logsRes.data, { start, end, asOf: new Date() }) : []);
     const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end, { asOf }) : null;
 
-    // `fetchFocusSessionsSince` has no upper bound -- clip to `end` client-side.
-    const allSessions = sessionsRes.ok ? sessionsRes.data.filter((sess: { started_at: string }) => sess.started_at <= `${end}T23:59:59`) : [];
-    const monthSessions = allSessions.filter((sess) => sess.started_at >= start);
-    const prevMonthSessions = allSessions.filter((sess) => sess.started_at >= prevStart);
+    const allSessions = sessionsRes.ok ? sessionsRes.data : [];
+    const monthSessions = allSessions.filter((sess) => ymdFromIso(sess.started_at) >= start);
+    const prevMonthSessions = allSessions.filter(
+      (sess) => ymdFromIso(sess.started_at) >= prevStart && ymdFromIso(sess.started_at) <= prevEnd,
+    );
     const minutes = focusMinutesFromSessions(monthSessions);
     const nextBadge = reportBadge({ habitRate: rate, focusMinutes: minutes, completedTasks: completedTasks.length });
 

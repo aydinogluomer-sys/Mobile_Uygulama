@@ -122,10 +122,16 @@ export type Ranking = {
   streak: number;
 };
 
+function resolveRankingClock(now: Date = new Date()): Date {
+  return now;
+}
+
 export function ranking(
   sessions: FocusSessionRow[],
-  opts: { streakSessions?: FocusSessionRow[]; now?: Date } = {},
+  optsOrNow: Date | { streakSessions?: FocusSessionRow[]; now?: Date } = new Date(),
 ): Ranking {
+  const opts = optsOrNow instanceof Date ? { now: optsOrNow } : optsOrNow;
+  const now = resolveRankingClock(opts.now);
   const tasks = byTask(sessions);
   const byDay: Record<string, number> = {};
   sessions.forEach((s) => { const k = ymdFromIso(s.started_at); byDay[k] = (byDay[k] || 0) + (s.completed_seconds || 0); });
@@ -137,7 +143,7 @@ export function ranking(
   // Seri: ardışık (en az 1 tamamlanan seans) günler. Seçili aralıktan BAĞIMSIZ: tüm geçmişten hesaplanır.
   const doneDays = new Set((opts.streakSessions ?? sessions).filter((s) => s.completed).map((s) => ymdFromIso(s.started_at)));
   let streak = 0;
-  const cur = new Date(opts.now ?? new Date()); cur.setHours(0, 0, 0, 0);
+  const cur = new Date(now); cur.setHours(0, 0, 0, 0);
   if (!doneDays.has(ymd(cur))) cur.setDate(cur.getDate() - 1);
   while (doneDays.has(ymd(cur))) { streak++; cur.setDate(cur.getDate() - 1); }
 

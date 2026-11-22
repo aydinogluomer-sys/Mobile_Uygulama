@@ -15,7 +15,9 @@
  *
  * That single mistake is the root of the date-cluster defects across habits,
  * tasks, focus, journal, life areas and deep work.  **No function in this
- * module may use `toISOString()` to derive a calendar date.**
+ * module may use `toISOString()` to derive a calendar date**; deriving a UTC
+ * instant *from* a local day boundary (`localDayStartIso` / `localDayRangeIso`)
+ * is the valid inverse for half-open server `timestamptz` queries.
  *
  * The mirror-image trap is parsing: `new Date('2026-08-04')` is specified to
  * parse as UTC midnight, so in a negative-offset zone it yields the day
@@ -175,6 +177,25 @@ export function daysBetweenLocal(a: Date, b: Date): number {
 /** True when both dates fall on the same local calendar day. */
 export function isSameLocalDay(a: Date, b: Date): boolean {
   return ymd(a) === ymd(b);
+}
+
+/** Yerel günün İLK anı (UTC ISO). Gerçek olmayan tarih için null. */
+export function localDayStartIso(day: Ymd): string | null {
+  const d = parseLocalDate(day);
+  return d ? d.toISOString() : null;
+}
+
+/** [startDay 00:00 yerel, endDay + 1 gün 00:00 yerel) -- üst sınır HARİÇ. start > end ya da geçersiz ise null. */
+export function localDayRangeIso(
+  startDay: Ymd,
+  endDay: Ymd,
+): { startIso: string; endExclusiveIso: string } | null {
+  const start = parseLocalDate(startDay);
+  const end = parseLocalDate(endDay);
+  if (!start || !end || startDay > endDay) return null;
+  const endExclusiveIso = localDayStartIso(ymd(addDaysLocal(end, 1)));
+  if (!endExclusiveIso) return null;
+  return { startIso: start.toISOString(), endExclusiveIso };
 }
 
 // ---------------------------------------------------------------------------

@@ -33,20 +33,22 @@ export function periodWindow(
   return { key: start, label: 'Bu hafta', match: (d) => d >= start && d <= end };
 }
 
-export function computeJournalStats(entries: JournalEntry[]): JournalStats {
+export function computeJournalStats(
+  entries: JournalEntry[],
+  now: Date = new Date(),
+): JournalStats {
   const total = entries.length;
   const aiCount = entries.filter((e) => e.ai_summary).length;
 
   const moods = entries.map((e) => e.mood).filter((m): m is number => m != null);
   const moodAvg = moods.length ? moods.reduce((a, b) => a + b, 0) / moods.length : null;
 
-  const now = new Date();
   const ym = ymLocal(now);
   const thisMonth = entries.filter((e) => e.date.startsWith(ym)).length;
 
   // Seri: bugünden geriye ardışık kayıtlı günler. Bugün boşsa dünden başla.
   const dateSet = new Set(entries.map((e) => e.date));
-  const cursor = new Date();
+  const cursor = new Date(now);
   if (!dateSet.has(ymd(cursor))) cursor.setDate(cursor.getDate() - 1);
   let streak = 0;
   while (dateSet.has(ymd(cursor))) {

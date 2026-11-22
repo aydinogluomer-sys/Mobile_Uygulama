@@ -13,7 +13,7 @@
 import { supabase } from '../lib/supabase';
 import { requireComplete, selectAllPages } from './pagedSelect';
 import { currentUserId, deleteOwned, type RepoResult } from './shared';
-import { ymd } from '../lib/date';
+import { addDaysLocal, ymd } from '../lib/date';
 import { parseManualMinutes } from '../lib/focusDuration';
 
 export type DeepWorkRow = {
@@ -27,11 +27,13 @@ export type DeepWorkRow = {
 
 const COLS = 'id,user_id,subject,duration_minutes,date,created_at';
 
-export async function fetchDeepWorkSince(days = 30): Promise<RepoResult<DeepWorkRow[]>> {
+export async function fetchDeepWorkSince(
+  days = 30,
+  now: Date = new Date(),
+): Promise<RepoResult<DeepWorkRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const since = new Date();
-  since.setDate(since.getDate() - Math.max(1, Math.min(days, 365)));
+  const since = addDaysLocal(now, -Math.max(1, Math.min(days, 365)));
   const r = await selectAllPages<DeepWorkRow>((from, to) =>
     supabase
       .from('deep_work_sessions')

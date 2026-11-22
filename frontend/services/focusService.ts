@@ -26,6 +26,7 @@ import {
 import {
   deleteAllFocusSessions,
   fetchAllFocusSessions,
+  fetchFocusSessionsBetween,
   fetchFocusSessionsSince,
 } from '../repositories/focusSessionRepository';
 import { coreOutbox } from './coreOutbox';
@@ -118,6 +119,10 @@ export async function completeWorkPhase(params: {
 /** Sessions since a date — the focus report and the completion modal. */
 export const sessionsSince = (params: Parameters<typeof fetchFocusSessionsSince>[0]) =>
   fetchFocusSessionsSince(params);
+
+/** F15: Sessions within a local-day range [startYmd, endYmd] (inclusive local days). */
+export const sessionsBetween = (params: Parameters<typeof fetchFocusSessionsBetween>[0]) =>
+  fetchFocusSessionsBetween(params);
 
 // Data export / clear, from the focus settings sheet.
 export const allSessions = () => fetchAllFocusSessions();
