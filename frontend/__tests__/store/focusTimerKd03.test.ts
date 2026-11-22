@@ -30,6 +30,7 @@ import {
   normaliseFocusSettings, type FocusSettings,
 } from '../../store/focusStore';
 import { resetAccountMemory } from '../../lib/accountScope';
+import { EMPTY_TALLY } from '../../lib/focusRitual';
 import { startClock, snapshotOf } from '../../lib/focusTimer';
 
 const SESSION_KEY = sessionKey('u1');
@@ -41,7 +42,8 @@ const at = (ms: number) => { now = T0 + ms; };
 function resetStore(settings: Partial<FocusSettings> = {}) {
   useFocusStore.setState({
     phase: 'work', status: 'idle', secondsLeft: 1500, sessionsCompleted: 0, sessionStartedAt: null,
-    clock: null, pausedAt: null, lastPartial: null, settings: { ...DEFAULT_SETTINGS, ...settings }, justCompleted: null,
+    clock: null, pausedAt: null, lastPartial: null, intent: null, interruptions: EMPTY_TALLY,
+    settings: { ...DEFAULT_SETTINGS, ...settings }, justCompleted: null,
     focusTasks: [], selectedTaskId: null, loadingTasks: false,
   });
 }

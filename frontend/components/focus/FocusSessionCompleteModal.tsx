@@ -4,10 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { currentUser } from '../../lib/session';
-import { colors, fontFamily, hexA } from '../../lib/tokens';
+import { colors, font, fontFamily, hexA, radius, space } from '../../lib/tokens';
 import { DECOR, FOCUS_COMPLETE_GONG } from '../../lib/visualAssets';
 import { EmbeddedFiligree } from '../spatial';
+import { Button } from '../ui';
 import { CompletedSession, useFocusStore } from '../../store/focusStore';
+import { FLOW_COPY } from '../../lib/flowCopy';
+import { acknowledgementFor, interruptionSummary, type IntentAnswer } from '../../lib/focusRitual';
 import { FocusSessionRow, inRange, summary, byTask, buckets, fmtDuration, fmtHours } from '../../lib/focusReport';
 import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
 
@@ -24,6 +27,13 @@ const CHART_H = 120;
 export default function FocusSessionCompleteModal({ visible, session, accent, onClose, onOpenReport }: Props) {
   const settings = useFocusStore((st) => st.settings);
   const [rows, setRows] = useState<FocusSessionRow[]>([]);
+  const [answer, setAnswer] = useState<IntentAnswer | null>(null);
+
+  useEffect(() => {
+    setAnswer(null);
+  }, [session?.sessionNumber, visible]);
+
+  const awayNote = interruptionSummary(session?.interruptions ?? 0);
 
   // Açılınca son 1 haftanın gerçek seanslarını çek (rapor mantığının aynısı)
   useEffect(() => {
@@ -64,6 +74,7 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
                 <Text style={s.sub} numberOfLines={1}>
                   {session?.taskTitle ? session.taskTitle : 'Odak seansı'} · {session ? fmtDuration(session.seconds) : ''}
                 </Text>
+                {awayNote ? <Text style={s.awayNote}>{awayNote}</Text> : null}
               </View>
               <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Tamamlandı penceresini kapat">
                 <Ionicons name="close" size={22} color={colors.textFaint} />
@@ -93,6 +104,46 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
                 </View>
               </>
             )}
+
+            {/* PS-11 — Odak öncesi niyet geri çağrısı */}
+            {session?.intent ? (
+              <View style={s.intentBox}>
+                <Text style={s.intentTitle}>{FLOW_COPY.intentRecallTitle}</Text>
+                <Text style={s.intentQuote}>{session.intent}</Text>
+                {answer === null ? (
+                  <>
+                    <Text style={s.intentAsk}>{FLOW_COPY.intentRecallAsk}</Text>
+                    <View style={s.intentAnswersRow}>
+                      <Button
+                        label={FLOW_COPY.intentAnswerYes}
+                        size="md"
+                        variant="secondary"
+                        color={accent}
+                        onPress={() => setAnswer('yes')}
+                      />
+                      <Button
+                        label={FLOW_COPY.intentAnswerPartly}
+                        size="md"
+                        variant="secondary"
+                        color={accent}
+                        onPress={() => setAnswer('partly')}
+                      />
+                      <Button
+                        label={FLOW_COPY.intentAnswerNo}
+                        size="md"
+                        variant="secondary"
+                        color={accent}
+                        onPress={() => setAnswer('no')}
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <Text style={s.intentAck} accessibilityLiveRegion="polite">
+                    {acknowledgementFor(answer)}
+                  </Text>
+                )}
+              </View>
+            ) : null}
 
             {/* GÖREVE GÖRE SÜRE — gerçek veri */}
             {tasks.length > 0 && (
@@ -158,6 +209,22 @@ const s = StyleSheet.create({
   badge: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 19, fontWeight: '800', color: colors.text },
   sub: { fontSize: 12.5, color: colors.textFaint, marginTop: 3 },
+  awayNote: { ...font.caption, color: colors.textDim, marginTop: space.xs },
+
+  intentBox: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: space.md,
+    marginBottom: space.lg,
+    gap: space.sm,
+  },
+  intentTitle: { ...font.overline, color: colors.textFaint },
+  intentQuote: { ...font.body, color: colors.text, fontWeight: '600' },
+  intentAsk: { ...font.bodySm, color: colors.textDim },
+  intentAnswersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  intentAck: { ...font.bodySm, color: colors.textDim },
 
   body: { paddingBottom: 16 },
   statRow: { flexDirection: 'row', gap: 10, marginBottom: 22 },

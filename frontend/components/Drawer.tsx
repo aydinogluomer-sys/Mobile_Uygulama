@@ -45,6 +45,7 @@ import { TEXTURES } from '../lib/visualAssets';
 import TexturedSurface from './ui/TexturedSurface';
 import IconButton from './ui/IconButton';
 import { useReducedMotion } from './seasonalMotion/useReducedMotion';
+import { useTimeoutRef } from '../hooks/useTimeoutRef';
 
 export const MAX_DRAWER_WIDTH = 310;
 const CLOSE_DURATION_MS = 310;
@@ -173,6 +174,8 @@ export default function Drawer() {
   const translateX = useRef(new Animated.Value(-panelWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const reduceMotion = useReducedMotion();
+  const navTimer = useTimeoutRef();
+  const searchTimer = useTimeoutRef();
   const [mounted, setMounted] = useState(isOpen);
   const [isEditingShortcuts, setIsEditingShortcuts] = useState(false);
 
@@ -237,12 +240,12 @@ export default function Drawer() {
 
   function handleNavigate(id: DestinationId) {
     close();
-    setTimeout(() => navigateTo(router, id), 100);
+    navTimer.set(() => navigateTo(router, id), 100);
   }
 
   function handleOpenSearch() {
     close();
-    setTimeout(() => openCmd(), 150);
+    searchTimer.set(() => openCmd(), 150);
   }
 
   if (!shouldRenderDrawer({ isOpen, mounted, platform: Platform.OS })) return null;

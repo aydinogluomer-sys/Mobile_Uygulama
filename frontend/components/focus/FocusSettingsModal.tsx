@@ -208,6 +208,13 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
                 hint="Açıksa süre, uygulamadan çıkınca durur. Kapalıyken süre arka planda da akar."
                 onToggle={() => onSave({ pauseInBackground: !st.pauseInBackground })}
               />
+              <Toggle
+                label="Başlamadan önce niyet sor"
+                value={st.intentPrompt}
+                accent={accent}
+                hint="Açıkken odak başlamadan önce bir nefes ve tek satırlık niyet sorulur; her zaman atlanabilir."
+                onToggle={() => onSave({ intentPrompt: !st.intentPrompt })}
+              />
             </>
           )}
 

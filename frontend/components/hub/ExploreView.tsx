@@ -17,6 +17,7 @@ import { useHabitStore } from '../../store/habitStore';
 import { useRoutineStore } from '../../store/routineStore';
 import { space, radius, font, alphaHex, hexA, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
+import { useTimeoutRef } from '../../hooks/useTimeoutRef';
 import { haptic } from '../../lib/haptics';
 import { navigateTo } from '../../lib/destinations';
 import { EditorialBanner, EmblemMedallion, TexturedSurface } from '../ui';
@@ -82,6 +83,7 @@ export default function ExploreView({ onOpenAiRoutine }: ExploreViewProps) {
   const [selectedCollection, setSelectedCollection] = useState<ExploreCollection | null>(null);
   const [addingHabitId, setAddingHabitId] = useState<string | null>(null);
   const [feedbackBanner, setFeedbackBanner] = useState<string | null>(null);
+  const bannerTimer = useTimeoutRef();
 
   useEffect(() => {
     fetchHabits();
@@ -154,9 +156,7 @@ export default function ExploreView({ onOpenAiRoutine }: ExploreViewProps) {
 
   function showBanner(msg: string) {
     setFeedbackBanner(msg);
-    setTimeout(() => {
-      setFeedbackBanner((cur) => (cur === msg ? null : cur));
-    }, 3500);
+    bannerTimer.set(() => setFeedbackBanner(null), 3500);
   }
 
   async function handleAddAtomicHabit(item: ExploreAtomicHabit) {

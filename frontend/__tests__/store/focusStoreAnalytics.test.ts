@@ -123,6 +123,7 @@ jest.mock('../../lib/analytics', () => ({
 
 import * as analytics from '../../lib/analytics';
 import type { AnalyticsEvent } from '../../lib/analytics';
+import { EMPTY_TALLY } from '../../lib/focusRitual';
 import { useFocusStore, DEFAULT_SETTINGS, type FocusSettings, type FocusTask } from '../../store/focusStore';
 
 const emit = (analytics as unknown as { emitEvent: jest.Mock }).emitEvent;
@@ -155,6 +156,8 @@ function resetStore(settings: Partial<FocusSettings> = {}) {
     smallStep: null,
     pausedAt: null,
     lastPartial: null,
+    intent: null,
+    interruptions: EMPTY_TALLY,
     settings: { ...DEFAULT_SETTINGS, ...settings },
     justCompleted: null,
     focusTasks: [],

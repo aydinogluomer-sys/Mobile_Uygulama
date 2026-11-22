@@ -95,7 +95,13 @@ export type FocusFeedItem = {
 
 export type FocusFeedEntry =
   | { entryKind: 'item'; key: string; item: FocusFeedItem; contentIndex: number }
-  | { entryKind: 'checkpoint'; key: string; watchedCount: number };
+  | { entryKind: 'checkpoint'; key: string; watchedCount: number }
+  | {
+      entryKind: 'closure';
+      key: 'closure-daily-cap';
+      seenCount: number;
+      action: FocusFeedItem | null;
+    };
 
 export const FOCUS_FLOW_ITEMS: FocusFeedItem[] = [
   // 1 — INFLOW INTERACTIVE: Task Paralysis & Procrastination
@@ -941,6 +947,97 @@ export function rankFocusFlowForUser(ctx: UserFocusContext): FocusFeedItem[] {
   return scored.map((s) => s.item);
 }
 
+export const FLOW_DAILY_CAP = 3;
+
+export function flowSeenKey(userId: string): string {
+  return `aderyth.focusFlow.seen.v1.${userId}`;
+}
+
+export function isCappedCategory(cat: FocusFlowCategoryKey): boolean {
+  return cat !== 'saved';
+}
+
+export type CappedFeed = {
+  items: FocusFeedItem[];
+  seenCount: number;
+  exhausted: boolean;
+};
+
+export function capFlowFeed(
+  items: readonly FocusFeedItem[],
+  seenIds: readonly string[],
+  cap = FLOW_DAILY_CAP,
+): CappedFeed {
+  const safeCap = Math.max(0, cap);
+  const uniqueSeen = [...new Set(seenIds.filter((id) => typeof id === 'string' && id.length > 0))];
+  const seenSet = new Set(uniqueSeen);
+  const budget = Math.max(0, safeCap - uniqueSeen.length);
+  const seenInItems = items.filter((item) => seenSet.has(item.id));
+  const unseenInItems = items.filter((item) => !seenSet.has(item.id)).slice(0, budget);
+  return {
+    items: [...seenInItems, ...unseenInItems],
+    seenCount: Math.min(uniqueSeen.length, safeCap),
+    exhausted: uniqueSeen.length >= safeCap,
+  };
+}
+
+export function pickClosureAction(
+  seenItems: readonly FocusFeedItem[],
+  existingHabitNames: ReadonlySet<string>,
+): FocusFeedItem | null {
+  for (let i = seenItems.length - 1; i >= 0; i -= 1) {
+    const item = seenItems[i];
+    if (item.cta.actionType !== 'add_atomic_habit') continue;
+    const atomic = findAtomicHabitById(item.cta.atomicHabitId);
+    if (!atomic) continue;
+    const norm = atomic.name.trim().toLocaleLowerCase('tr-TR');
+    if (existingHabitNames.has(norm)) continue;
+    return item;
+  }
+  return null;
+}
+
+export function parseFlowSeen(raw: string | null, today: string): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
+    const rec = parsed as Record<string, unknown>;
+    if (rec.day !== today || !Array.isArray(rec.ids)) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const id of rec.ids) {
+      if (typeof id === 'string' && id.length > 0 && !seen.has(id)) {
+        seen.add(id);
+        out.push(id);
+        if (out.length >= FLOW_DAILY_CAP) break;
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+export function addSeen(
+  ids: readonly string[],
+  id: string,
+  cap = FLOW_DAILY_CAP,
+): string[] {
+  const safeCap = Math.max(0, cap);
+  const trimmed = typeof id === 'string' ? id.trim() : '';
+  const unique: string[] = [];
+  for (const existing of ids) {
+    if (typeof existing === 'string' && existing.length > 0 && !unique.includes(existing)) {
+      unique.push(existing);
+    }
+  }
+  if (!trimmed) return unique.slice(0, safeCap);
+  if (unique.includes(trimmed)) return unique.slice(0, safeCap);
+  if (unique.length >= safeCap) return unique.slice(0, safeCap);
+  return [...unique, trimmed];
+}
+
 /**
  * Inserts an Anti-Doomscroll Action Checkpoint every `checkpointInterval` reels
  * (Inflow's 5-minute rule: prevent productivity content from turning into passive scrolling).
@@ -948,6 +1045,7 @@ export function rankFocusFlowForUser(ctx: UserFocusContext): FocusFeedItem[] {
 export function buildFeedEntries(
   items: FocusFeedItem[],
   checkpointInterval = 5,
+  closure: { seenCount: number; action: FocusFeedItem | null } | null = null,
 ): FocusFeedEntry[] {
   const out: FocusFeedEntry[] = [];
   items.forEach((item, index) => {
@@ -965,5 +1063,13 @@ export function buildFeedEntries(
       });
     }
   });
+  if (closure) {
+    out.push({
+      entryKind: 'closure',
+      key: 'closure-daily-cap',
+      seenCount: closure.seenCount,
+      action: closure.action,
+    });
+  }
   return out;
 }

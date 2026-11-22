@@ -96,6 +96,8 @@ const UI_ONLY = new Set([
   'moodStore.ts',
   // F27 (NAV-13) — device-local progressive disclosure preferences (AsyncStorage, per account).
   'disclosureStore.ts',
+  // F33 (GEM-07) — session-scoped day-stamped low-energy filter shared across Today and FocusFlow.
+  'lowEnergyStore.ts',
 ]);
 
 describe('services exist and hold real work', () => {
