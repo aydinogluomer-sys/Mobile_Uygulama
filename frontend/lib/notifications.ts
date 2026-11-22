@@ -1,4 +1,4 @@
-// Yerel bildirimler — expo-notifications. (R04)
+// Yerel bildirimler — expo-notifications. (R04 / F16 / F17)
 //
 // KD-04: her alışkanlık için takvimden bağımsız TEK bir DAILY tetik vardı.
 // Artık alışkanlık hatırlatıcıları `lib/reminderPlan.ts`'in planından gelen
@@ -11,11 +11,13 @@
 // kurmazlar: kayıtlı uzlaştırıcıdan bir uzlaştırma isterler. Uzlaştırıcı
 // `app/_layout.tsx`'te kaydedilir; kaydedilmemişse (testler) hiçbir şey olmaz.
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import type { Habit } from './supabase';
-import { parseTime, type PlannedReminder, type ReminderSettings } from './reminderPlan';
+import { REENTRY_KIND, parseTime, type PlannedReminder, type ReminderSettings } from './reminderPlan';
 import { CATEGORY_BINARY, CATEGORY_MEASURE, SNOOZE_MINUTES } from './notificationActions';
 import type { FocusPhase } from './focusTimer';
+
+export const REMINDERS_SUPPORTED: boolean = Platform.OS !== 'web';
 
 export const HABIT_CHANNEL = 'habit-reminders';
 export const FOCUS_CHANNEL = 'focus-timer';
@@ -26,15 +28,17 @@ export function focusEndKindOf(phase: FocusPhase): FocusEndKind {
   return phase === 'work' ? 'work' : 'break';
 }
 
-// Ön planda da bildirim gösterilsin
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-});
+// Ön planda da bildirim gösterilsin (GAP2-10: web'de kurulmaz)
+if (REMINDERS_SUPPORTED) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 let permissionAsked = false;
 let channelReady = false;
@@ -45,7 +49,7 @@ let channelReady = false;
  * device where permission was already granted the channel never existed.
  */
 export async function ensureChannel(): Promise<void> {
-  if (channelReady || Platform.OS !== 'android') return;
+  if (!REMINDERS_SUPPORTED || channelReady || Platform.OS !== 'android') return;
   try {
     await Notifications.setNotificationChannelAsync(HABIT_CHANNEL, {
       name: 'Alışkanlık Hatırlatıcıları',
@@ -61,6 +65,7 @@ export async function ensureChannel(): Promise<void> {
 }
 
 export async function ensurePermission(): Promise<boolean> {
+  if (!REMINDERS_SUPPORTED) return false;
   await ensureChannel();
   try {
     const settings = await Notifications.getPermissionsAsync();
@@ -76,11 +81,36 @@ export async function ensurePermission(): Promise<boolean> {
 
 /** Has the user granted notifications? Read only -- never prompts. */
 export async function hasPermission(): Promise<boolean> {
+  if (!REMINDERS_SUPPORTED) return false;
   try { return (await Notifications.getPermissionsAsync()).granted; } catch { return false; }
+}
+
+export type NotificationAccess = 'granted' | 'ask' | 'blocked' | 'unsupported';
+
+export async function notificationAccess(): Promise<NotificationAccess> {
+  if (!REMINDERS_SUPPORTED) return 'unsupported';
+  try {
+    const p = await Notifications.getPermissionsAsync();
+    if (p.granted) return 'granted';
+    return p.canAskAgain === false ? 'blocked' : 'ask';
+  } catch {
+    return 'ask';
+  }
+}
+
+export async function openNotificationSettings(): Promise<boolean> {
+  if (!REMINDERS_SUPPORTED) return false;
+  try {
+    await Linking.openSettings();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** R04.03 — the action buttons on a reminder. */
 export async function ensureCategories(): Promise<void> {
+  if (!REMINDERS_SUPPORTED) return;
   try {
     await Notifications.setNotificationCategoryAsync(CATEGORY_BINARY, [
       { identifier: 'done', buttonTitle: 'Tamamla', options: { opensAppToForeground: true } },
@@ -96,6 +126,7 @@ export async function ensureCategories(): Promise<void> {
 }
 
 export async function listScheduled(): Promise<{ identifier: string; data: Record<string, unknown> | null }[]> {
+  if (!REMINDERS_SUPPORTED) return [];
   try {
     const all = await Notifications.getAllScheduledNotificationsAsync();
     return all.map((n) => ({ identifier: n.identifier, data: (n.content?.data ?? null) as Record<string, unknown> | null }));
@@ -105,6 +136,7 @@ export async function listScheduled(): Promise<{ identifier: string; data: Recor
 }
 
 export async function cancelScheduled(ids: readonly string[]): Promise<void> {
+  if (!REMINDERS_SUPPORTED) return;
   await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
 }
 
@@ -114,6 +146,7 @@ export function reminderTitle(habitName: string, settings: Pick<ReminderSettings
 }
 
 export async function scheduleReminder(p: PlannedReminder, habit: Pick<Habit, 'name'>, measurable: boolean, settings: ReminderSettings): Promise<boolean> {
+  if (!REMINDERS_SUPPORTED) return false;
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -136,6 +169,7 @@ export async function scheduleReminder(p: PlannedReminder, habit: Pick<Habit, 'n
 
 /** R04.03 — snooze: the same reminder once more, SNOOZE_MINUTES from now. */
 export async function scheduleSnooze(habitId: string, day: string, title: string, measurable: boolean, now: Date = new Date()): Promise<void> {
+  if (!REMINDERS_SUPPORTED) return;
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -151,6 +185,36 @@ export async function scheduleSnooze(habitId: string, day: string, title: string
       },
     });
   } catch { /* sessiz geç */ }
+}
+
+export const REENTRY_ID = 'reminder-reentry';
+
+export async function scheduleReentryNudge(at: Date, now: number = Date.now()): Promise<boolean> {
+  if (!REMINDERS_SUPPORTED || at.getTime() <= now + 1000) return false;
+  await ensureChannel();
+  try {
+    await Notifications.scheduleNotificationAsync({
+      identifier: REENTRY_ID,
+      content: {
+        title: 'Hatırlatıcılar yenilenmeyi bekliyor',
+        body: "Aderyth'i açınca hatırlatıcılar yenilenir.",
+        data: { kind: REENTRY_KIND },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: at,
+        ...(Platform.OS === 'android' ? { channelId: HABIT_CHANNEL } : {}),
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function cancelReentryNudge(): Promise<void> {
+  if (!REMINDERS_SUPPORTED) return;
+  try { await Notifications.cancelScheduledNotificationAsync(REENTRY_ID); } catch { /* yoksay */ }
 }
 
 // ── Uzlaştırma isteği (eski adlar) ─────────────────────────────────────────
@@ -175,6 +239,7 @@ export async function syncAllReminders(_habits: Habit[]): Promise<void> { await 
 
 // ── Telafi hatırlatıcısı (tek seferlik, belirli gün+saat) ──────────────
 export async function cancelRecoveryReminder(planId: string): Promise<void> {
+  if (!REMINDERS_SUPPORTED) return;
   try {
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     await Promise.all(
@@ -193,6 +258,7 @@ export async function scheduleRecoveryReminder(
   targetDate: string,   // 'yyyy-MM-dd'
   time: string,         // 'HH:mm'
 ): Promise<void> {
+  if (!REMINDERS_SUPPORTED) return;
   await cancelRecoveryReminder(planId);
   const parsed = parseTime(time);
   if (!parsed) return;
@@ -241,6 +307,7 @@ export async function scheduleFocusEnd(p: {
   withSound: boolean;
   now?: number;
 }): Promise<boolean> {
+  if (!REMINDERS_SUPPORTED) return false;
   if (p.endsAtMs <= (p.now ?? Date.now()) + 1000) return false;
   if (!(await hasPermission())) return false;
   await ensureChannel();
@@ -265,6 +332,7 @@ export async function scheduleFocusEnd(p: {
 }
 
 export async function cancelFocusEnd(kind?: FocusEndKind): Promise<void> {
+  if (!REMINDERS_SUPPORTED) return;
   const kinds: FocusEndKind[] = kind ? [kind] : ['work', 'break'];
   await Promise.all(
     kinds.map(async (k) => {

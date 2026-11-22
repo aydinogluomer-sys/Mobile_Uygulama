@@ -51,7 +51,7 @@ import TimeOffSheet from '../../components/TimeOffSheet';
 import ChecklistEditor from '../../components/ChecklistEditor';
 // R04.02 — several times a day and a day group, per habit.
 import ReminderEditor from '../../components/ReminderEditor';
-import { hasPermission } from '../../lib/notifications';
+import { notificationAccess, type NotificationAccess } from '../../lib/notifications';
 import { reminderTimes } from '../../lib/reminderPlan';
 import { activePauseOn } from '../../lib/habitPauses';
 import { completionPercent, isMeasurableTracking } from '../../lib/habitEngine';
@@ -291,8 +291,8 @@ export default function HabitDetailScreen() {
   // R01.05 — this habit's current or upcoming break, and any holiday today.
   const [timeOffOpen, setTimeOffOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
-  const [notifPermission, setNotifPermission] = useState<boolean | null>(null);
-  useEffect(() => { void hasPermission().then(setNotifPermission); }, []);
+  const [notifAccess, setNotifAccess] = useState<NotificationAccess | null>(null);
+  useEffect(() => { void notificationAccess().then(setNotifAccess); }, []);
 
   const [logs, setLogs] = useState<HabitDetailLogRow[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
@@ -436,7 +436,8 @@ export default function HabitDetailScreen() {
     if (!habit || !freqDraft || !isFrequencyComplete(freqDraft)) return;
     setSavingFreq(true);
     try {
-      await updateHabit(habit.id, frequencyEditPatch(habit, freqDraft));
+      const res = await updateHabit(habit.id, frequencyEditPatch(habit, freqDraft));
+      if (!res.ok) throw new Error(res.error);
       haptic.success();
       setFreqDraft(null);
     } catch (e) {
@@ -558,9 +559,9 @@ export default function HabitDetailScreen() {
                 icon="notifications-outline"
                 label="Hatırlatıcı"
                 value={reminderTimes(habit).length > 0
-                  ? `${reminderTimes(habit).join(', ')}${notifPermission === false ? ' · izin kapalı' : ''}`
+                  ? `${reminderTimes(habit).join(', ')}${notifAccess === 'ask' || notifAccess === 'blocked' ? ' · izin kapalı' : ''}${notifAccess === 'unsupported' ? ' · bildirim yalnız mobilde' : ''}`
                   : 'Kapalı'}
-                onEdit={() => setReminderOpen(true)}
+                onEdit={() => { void notificationAccess().then(setNotifAccess); setReminderOpen(true); }}
                 editLabel="Hatırlatıcıyı düzenle"
               />
               <InfoRow icon="compass-outline" label="Yaşam Alanı" value={area ? area.label : '—'} />
@@ -764,9 +765,14 @@ export default function HabitDetailScreen() {
       {reminderOpen && (
         <ReminderEditor
           habit={habit}
-          permission={notifPermission}
+          permission={notifAccess === null ? null : notifAccess === 'granted'}
+          access={notifAccess}
           onClose={() => setReminderOpen(false)}
-          onSave={async (config) => { await updateHabit(habit.id, { reminders: config }); setReminderOpen(false); }}
+          onSave={async (config) => {
+            const res = await updateHabit(habit.id, { reminders: config });
+            if (res.ok) setReminderOpen(false);
+            return res;
+          }}
         />
       )}
 
