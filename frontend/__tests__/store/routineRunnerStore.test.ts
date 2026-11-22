@@ -31,7 +31,16 @@ beforeEach(async () => {
   mockLogCalls.length = 0;
   mockSession.user = { id: 'user-a', email: null };
   await AsyncStorage.clear();
-  useRoutineRunnerStore.setState({ userId: null, templates: [], session: null, logged: [], history: [], error: null });
+  useRoutineRunnerStore.setState({
+    userId: null,
+    templates: [],
+    session: null,
+    logged: [],
+    history: [],
+    activeTemplateId: null,
+    staleDismissed: [],
+    error: null,
+  });
   await st().hydrate();
 });
 

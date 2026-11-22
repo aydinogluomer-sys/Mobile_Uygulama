@@ -102,6 +102,15 @@ export type SessionSnapshot = {
 const PHASES: readonly FocusPhase[] = ['work', 'shortBreak', 'longBreak'];
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 
+export function isTimerClock(x: unknown): x is TimerClock {
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return false;
+  const c = x as Record<string, unknown>;
+  if (!isNum(c.plannedSeconds) || c.plannedSeconds < 0) return false;
+  if (!isNum(c.accumulatedMs) || c.accumulatedMs < 0) return false;
+  if (c.runningSince !== null && !isNum(c.runningSince)) return false;
+  return true;
+}
+
 export function snapshotOf(params: {
   phase: FocusPhase;
   clock: TimerClock;
@@ -138,9 +147,7 @@ export function parseSnapshot(raw: string | null): SessionSnapshot | null {
   if (!isNum(o.lastSeenAt)) return null;
   if (o.pausedAt !== undefined && !isNum(o.pausedAt)) return null;
   const c = o.clock;
-  if (!c || !isNum(c.plannedSeconds) || c.plannedSeconds <= 0) return null;
-  if (!isNum(c.accumulatedMs) || c.accumulatedMs < 0) return null;
-  if (c.runningSince !== null && !isNum(c.runningSince)) return null;
+  if (!isTimerClock(c) || c.plannedSeconds <= 0) return null;
   if (o.step !== undefined && !isSmallStep(o.step)) return null;
   return {
     ...(o.step !== undefined ? { step: o.step as SmallStep } : {}),
