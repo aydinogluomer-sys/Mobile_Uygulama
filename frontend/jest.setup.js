@@ -5,7 +5,7 @@
  * pinned zone the 00:30 and 23:30 cases would pass or fail according to where
  * the machine is, which is the opposite of a regression test.
  */
-process.env.TZ = 'Europe/Istanbul';
+process.env.TZ = process.env.TEST_TZ || 'Europe/Istanbul';
 if (!process.env.EXPO_PUBLIC_SUPABASE_URL) {
   process.env.EXPO_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
 }

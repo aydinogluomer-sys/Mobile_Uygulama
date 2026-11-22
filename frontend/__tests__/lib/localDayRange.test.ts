@@ -3,38 +3,7 @@
  * UTC instant intervals for local calendar day windows.
  */
 import { localDayRangeIso, localDayStartIso } from '../../lib/date';
-
-const TEST_ZONE = process.env.TEST_TZ || 'Europe/Istanbul';
-const IS_ISTANBUL = TEST_ZONE === 'Europe/Istanbul';
-const describeIstanbul: typeof describe = IS_ISTANBUL ? describe : describe.skip;
-
-function wallClockInZone(
-  instantMs: number,
-  zone: string,
-): { y: number; m: number; d: number; hh: number; mm: number; ss: number } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: zone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date(instantMs));
-  const map: Record<string, number> = {};
-  for (const p of parts) {
-    if (p.type !== 'literal') map[p.type] = Number(p.value);
-  }
-  return {
-    y: map.year,
-    m: map.month,
-    d: map.day,
-    hh: map.hour,
-    mm: map.minute,
-    ss: map.second,
-  };
-}
+import { describeIstanbul, TEST_ZONE, wallClockInZone } from '../helpers/zone';
 
 describe('localDayStartIso & localDayRangeIso (lib/date.ts)', () => {
   it('(+) localDayStartIso returns the exact first instant of the local calendar day', () => {

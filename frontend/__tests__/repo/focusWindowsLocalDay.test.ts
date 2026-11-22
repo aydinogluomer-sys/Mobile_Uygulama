@@ -79,11 +79,9 @@ jest.mock('../../lib/supabase', () => {
 
 import { localDayStartIso } from '../../lib/date';
 import { fetchFocusSessionsBetween } from '../../repositories/focusSessionRepository';
+import { describeIstanbul } from '../helpers/zone';
 
 const ROOT = join(__dirname, '..', '..');
-const TEST_ZONE = process.env.TEST_TZ || 'Europe/Istanbul';
-const IS_ISTANBUL = TEST_ZONE === 'Europe/Istanbul';
-const describeIstanbul: typeof describe = IS_ISTANBUL ? describe : describe.skip;
 
 function readCode(relPath: string): string {
   return stripComments(readFileSync(join(ROOT, relPath), 'utf8'));

@@ -10,10 +10,10 @@
  * noon and 23:59:30 local, across month ends, 29 February in leap and
  * non-leap years, New Year, and the EU DST-change days.
  *
- * Environment note: jest pins TZ=Europe/Istanbul (jest.setup.js), which has no
- * DST since 2016; the DST dates are here so a change to component-based date
- * arithmetic would surface as a day shift on them, not as a claim that a DST
- * zone was exercised.
+ * Environment note: default Jest runs pin TZ=Europe/Istanbul (no DST since 2016);
+ * real northern/southern DST zones (`America/New_York`, `Pacific/Auckland`, `UTC`)
+ * are exercised by `dstMatrix.test.ts` and `npm run test:tz` (which also runs this
+ * suite across all four zones).
  */
 jest.mock('../../lib/supabase', () => ({ supabase: { from: jest.fn(), auth: { getUser: jest.fn() } } }));
 

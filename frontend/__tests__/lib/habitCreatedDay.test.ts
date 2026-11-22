@@ -52,13 +52,20 @@ beforeEach(() => {
 });
 
 describe('habitCreatedDay & stampCreatedDay (lib/habitCreatedDay.ts)', () => {
-  it('(+) prefers valid created_day stamp over created_at UTC instant', () => {
+  it('(+) prefers valid created_day stamp over created_at UTC instant across both positive and negative offsets', () => {
     expect(CREATED_DAY_KEY).toBe('created_day');
     expect(readCreatedDayStamp({ created_day: '2026-08-01' })).toBe('2026-08-01');
     const fcStamped: FrequencyConfig = { kind: 'daily', interval_days: 3, created_day: '2026-08-01' };
+    // Created 02:00 Istanbul (2026-07-31 in UTC / New_York) AND created 23:00 New_York (2026-08-02 in UTC / Istanbul / Auckland):
     expect(
       habitCreatedDay({
         created_at: '2026-07-31T23:00:00.000Z',
+        frequency_config: fcStamped,
+      }),
+    ).toBe('2026-08-01');
+    expect(
+      habitCreatedDay({
+        created_at: '2026-08-02T03:00:00.000Z',
         frequency_config: fcStamped,
       }),
     ).toBe('2026-08-01');
@@ -82,18 +89,20 @@ describe('habitCreatedDay & stampCreatedDay (lib/habitCreatedDay.ts)', () => {
   });
 
   it('(-) ignores malformed or non-existent created_day stamps and falls back to created_at', () => {
+    // 09:00Z falls on 2026-08-10 across UTC-4 (05:00), UTC (09:00), UTC+3 (12:00), and UTC+12 (21:00).
+    const fallbackIso = '2026-08-10T09:00:00.000Z';
     for (const bad of ['2026-13-01', '2026-02-30', 'not-a-date', '', 20260801, {}, null, undefined]) {
       expect(readCreatedDayStamp({ created_day: bad })).toBeNull();
       expect(
         habitCreatedDay({
-          created_at: '2026-08-10T12:00:00.000Z',
+          created_at: fallbackIso,
           frequency_config: { created_day: bad },
         }),
       ).toBe('2026-08-10');
     }
     expect(
       habitCreatedDay({
-        created_at: '2026-08-10T12:00:00.000Z',
+        created_at: fallbackIso,
         frequency_config: null,
       }),
     ).toBe('2026-08-10');

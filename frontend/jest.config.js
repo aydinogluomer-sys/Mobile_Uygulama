@@ -1,10 +1,10 @@
 /**
- * jest-expo harness.  (task 1E-L1)
+ * jest-expo harness.  (task 1E-L1, F15 TST-06)
  *
- * TZ is pinned to Europe/Istanbul in jest.setup.js, NOT here, because it must
- * be set before any Date is constructed. A date test that passes only because
- * the machine happens to sit at UTC+3 proves nothing; pinning makes the
- * 00:30 / 23:30 cases mean the same thing on every machine and in CI.
+ * TZ defaults to Europe/Istanbul (overridable via TEST_TZ, e.g. `npm run test:tz`)
+ * in jest.globalSetup.js and jest.setup.js, NOT here, because it must be set
+ * before workers spawn and before any Date is constructed. Pinning makes the
+ * 00:30 / 23:30 and DST boundary cases mean the same thing on every machine and in CI.
  */
 module.exports = {
   preset: 'jest-expo',

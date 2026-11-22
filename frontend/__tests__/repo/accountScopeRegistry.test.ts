@@ -57,6 +57,7 @@ const KNOWN_UNSCOPED_KEYS: Record<string, string> = {
   habit_log_key_immutable: 'not a storage key: a server error token',
   EXPO_PUBLIC_SUPABASE_ANON_KEY: 'not a storage key: build-time public env variable name (lib/env.ts)',
   'config-missing': 'not a storage key: placeholder anon key when public env is missing (lib/env.ts)',
+  created_day: 'not a storage key: frequency_config jsonb property name for habit creation day (lib/habitCreatedDay.ts)',
 };
 
 // ---------------------------------------------------------------------------------------
@@ -123,8 +124,12 @@ describe('every store is registered or named device-level', () => {
   });
 
   it('registered names are unique', () => {
-    const names = registeredNames([...stores.map((s) => s.text), code('services/coreOutbox.ts')]);
-    expect(names.length).toBeGreaterThanOrEqual(27);
+    const names = registeredNames([
+      ...stores.map((s) => s.text),
+      code('services/coreOutbox.ts'),
+      code('services/timeZoneSyncService.ts'),
+    ]);
+    expect(names.length).toBeGreaterThanOrEqual(28);
     expect(names.filter((n, i) => names.indexOf(n) !== i)).toEqual([]);
   });
 

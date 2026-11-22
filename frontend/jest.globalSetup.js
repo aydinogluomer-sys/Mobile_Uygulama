@@ -27,5 +27,11 @@
  * effect, rather than either file's good intentions.
  */
 module.exports = () => {
-  process.env.TZ = 'Europe/Istanbul';
+  const zone = process.env.TEST_TZ || 'Europe/Istanbul';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+  } catch {
+    throw new Error(`TEST_TZ is not an IANA zone: ${zone}`);
+  }
+  process.env.TZ = zone;
 };

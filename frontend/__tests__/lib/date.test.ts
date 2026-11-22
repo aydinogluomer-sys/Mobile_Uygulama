@@ -13,12 +13,15 @@ import {
   ymd, todayLocal, parseLocalDate, startOfWeekLocal,
   weekStartYmd, addDaysLocal, daysBetweenLocal, isSameLocalDay, ymLocal, ymdFromIso,
 } from '../../lib/date';
+import { describeIstanbul, IS_ISTANBUL, TEST_ZONE } from '../helpers/zone';
 
 describe('TZ is pinned', () => {
-  it('runs under Europe/Istanbul', () => {
-    expect(process.env.TZ).toBe('Europe/Istanbul');
-    // UTC+3 in August. If this fails, every assertion below is meaningless.
-    expect(new Date(2026, 7, 4, 12, 0, 0).getTimezoneOffset()).toBe(-180);
+  it('runs under TEST_ZONE (Europe/Istanbul by default)', () => {
+    expect(process.env.TZ).toBe(TEST_ZONE);
+    if (IS_ISTANBUL) {
+      // UTC+3 in August. If this fails, every Istanbul-specific assertion below is meaningless.
+      expect(new Date(2026, 7, 4, 12, 0, 0).getTimezoneOffset()).toBe(-180);
+    }
   });
 });
 
@@ -32,10 +35,17 @@ describe('ymd', () => {
   });
 
   it('AC-D01 — at 00:30 local it is TODAY, not yesterday', () => {
-    // The defect: toISOString() here yields 2026-08-03T21:30Z -> "2026-08-03".
     const at0030 = new Date(2026, 7, 4, 0, 30, 0);
     expect(ymd(at0030)).toBe('2026-08-04');
-    expect(at0030.toISOString().slice(0, 10)).toBe('2026-08-03'); // the bug, pinned
+  });
+
+  describeIstanbul('AC-D01 (Europe/Istanbul UTC+3)', () => {
+    it('pins the UTC truncation defect at 00:30 Istanbul', () => {
+      // The defect: toISOString() here yields 2026-08-03T21:30Z -> "2026-08-03".
+      const at0030 = new Date(2026, 7, 4, 0, 30, 0);
+      expect(ymd(at0030)).toBe('2026-08-04');
+      expect(at0030.toISOString().slice(0, 10)).toBe('2026-08-03'); // the bug, pinned
+    });
   });
 
   it('at 23:30 local it is still today', () => {
@@ -175,11 +185,13 @@ describe('ymLocal', () => {
 });
 
 describe('ymdFromIso', () => {
-  it('maps a stored UTC instant onto the LOCAL day it happened', () => {
-    // 2026-08-03T22:00Z is 2026-08-04 01:00 in Istanbul.
-    expect(ymdFromIso('2026-08-03T22:00:00.000Z')).toBe('2026-08-04');
-    // The naive truncation gets this wrong, which is the whole point.
-    expect('2026-08-03T22:00:00.000Z'.split('T')[0]).toBe('2026-08-03');
+  describeIstanbul('Europe/Istanbul UTC+3 boundary', () => {
+    it('maps a stored UTC instant onto the LOCAL day it happened', () => {
+      // 2026-08-03T22:00Z is 2026-08-04 01:00 in Istanbul.
+      expect(ymdFromIso('2026-08-03T22:00:00.000Z')).toBe('2026-08-04');
+      // The naive truncation gets this wrong, which is the whole point.
+      expect('2026-08-03T22:00:00.000Z'.split('T')[0]).toBe('2026-08-03');
+    });
   });
 
   it('leaves an instant that does not cross the boundary alone', () => {

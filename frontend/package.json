@@ -9,6 +9,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "jest",
+    "test:tz": "node scripts/run-tz-matrix.js",
     "typecheck": "node --max-old-space-size=4096 node_modules/typescript/bin/tsc --noEmit",
     "typecheck:ci": "node --max-old-space-size=4096 node_modules/typescript/bin/tsc --noEmit -p tsconfig.ci.json",
     "lint:ci": "eslint . --ext .ts,.tsx --max-warnings=0",
