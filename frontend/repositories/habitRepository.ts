@@ -18,6 +18,8 @@
  * gets the same typed `RepoResult` convention every other repository uses,
  * instead of a second ad-hoc insert call site.
  */
+import { todayLocal } from '../lib/date';
+import { stampCreatedDay } from '../lib/habitCreatedDay';
 import { stripTimeOff } from '../lib/habitPauses';
 import { supabase } from '../lib/supabase';
 import type { Habit, FrequencyConfig } from '../lib/supabase';
@@ -74,6 +76,7 @@ export async function insertRoutineHabits(
   const u = await currentUserId();
   if (!u.ok) return u;
 
+  const today = todayLocal();
   const inserts = rows.map((r) => ({
     user_id: u.userId,
     name: r.name,
@@ -83,7 +86,7 @@ export async function insertRoutineHabits(
     unit: r.unit,
     daily_goal: r.daily_goal,
     target_direction: r.target_direction,
-    frequency_config: r.frequency_config,
+    frequency_config: stampCreatedDay(r.frequency_config, today),
     willpower_cost: r.willpower_cost,
     status: r.status,
     impact_level: 'medium' as const,
@@ -172,9 +175,10 @@ export async function insertHabit(
 ): Promise<RepoResult<Habit>> {
   const u = await currentUserId();
   if (!u.ok) return u;
+  const clean = stripTimeOff(habit);
   const { data, error } = await supabase
     .from('habits')
-    .insert({ ...stripTimeOff(habit), user_id: u.userId })
+    .insert({ ...clean, frequency_config: stampCreatedDay(clean.frequency_config, todayLocal()), user_id: u.userId })
     .select(HABIT_COLUMNS)
     .single();
   if (error) return { ok: false, error: error.message };

@@ -38,7 +38,8 @@ import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { AtmosphericScreenCanvas, Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines, EditorialBanner } from '../../components/ui';
 import { CANVASES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { haptic } from '../../lib/haptics';
-import { addDaysLocal, parseLocalDate, ymd, ymdFromIso, type Ymd } from '../../lib/date';
+import { addDaysLocal, parseLocalDate, ymd, type Ymd } from '../../lib/date';
+import { habitCreatedDay } from '../../lib/habitCreatedDay';
 import { isCountBasedSchedule, isEligibleOn } from '../../lib/habitSchedule';
 // KD-09 — the schedule is shown with the same sentence the form uses, and edited
 // with the same controls (one component, one set of pure transitions).
@@ -311,7 +312,7 @@ export default function HabitDetailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sinceYmd: Ymd = habit?.created_at ? ymdFromIso(habit.created_at) : todayYmd;
+  const sinceYmd: Ymd = (habit ? habitCreatedDay(habit) : null) ?? todayYmd;
 
   useEffect(() => {
     let cancelled = false;

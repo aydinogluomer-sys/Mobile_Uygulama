@@ -5,6 +5,7 @@ import { type FocusSessionRow } from './focusReport';
 import { isEligibleOn, scheduleKind, scheduledCompletionRate } from './habitSchedule';
 import { dayCredit, isCompletedState, judgeDay, type DayHabit, type DayLog } from './completionMetric';
 import { parseLocalDate, ymd } from './date';
+import { habitCreatedDay } from './habitCreatedDay';
 // R05.06 — the one seconds->minutes rule for focus time.
 import { secondsToMinutes } from './focusDuration';
 
@@ -129,7 +130,8 @@ function countBasedProgress(
   const from = parseLocalDate(start);
   const to = parseLocalDate(end);
   if (!from || !to) return null;
-  const since = habit.created_at ? parseLocalDate(ymd(new Date(habit.created_at))) : null;
+  const createdYmd = habitCreatedDay(habit);
+  const since = createdYmd ? parseLocalDate(createdYmd) : null;
   const r = scheduledCompletionRate(habit as Habit, logs, { from, to, since });
   return { dueDays: r.dueDays, doneDays: r.doneDays };
 }

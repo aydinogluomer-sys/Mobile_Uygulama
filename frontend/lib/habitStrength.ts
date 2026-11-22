@@ -22,8 +22,9 @@
  * this file, so there is no cycle.
  */
 import type { Habit, HabitLog } from './supabase';
-import { addDaysLocal, daysBetweenLocal, parseLocalDate, ymd, ymdFromIso } from './date';
+import { addDaysLocal, daysBetweenLocal, parseLocalDate, ymd } from './date';
 import { dayCredit, periodVerdict } from './completionMetric';
+import { habitCreatedDay } from './habitCreatedDay';
 import { isEligibleOn, periodStatus, scheduleKind } from './habitSchedule';
 
 export type HabitLogState = 'done' | 'partial' | 'miss' | 'skip';
@@ -287,7 +288,7 @@ export function habitStrengthFor(
 ): number | null {
   const asOf = opts?.asOf ?? new Date();
   const asOfYmd = ymd(asOf);
-  const createdYmd = ymdFromIso(habit.created_at) || null;
+  const createdYmd = habitCreatedDay(habit);
   if (createdYmd && createdYmd > asOfYmd) return null;
 
   const fullHabit = habit as Habit;

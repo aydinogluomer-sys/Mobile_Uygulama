@@ -110,8 +110,9 @@ import {
   type DayLog,
 } from './completionMetric';
 import { habitStrengthFor } from './habitStrength';
+import { habitCreatedDay } from './habitCreatedDay';
 import type { RecoveryPlanV2 } from './recovery';
-import { addDaysLocal, parseLocalDate, startOfWeekLocal, ymd, ymdFromIso, type Ymd } from './date';
+import { addDaysLocal, parseLocalDate, startOfWeekLocal, ymd, type Ymd } from './date';
 
 // F13 (INT-07) — the sample thresholds live in `completionMetric.ts` (one
 // place for BI and the digest); re-exported here for existing importers.
@@ -239,7 +240,8 @@ function isCountBased(habit: BIHabit): boolean {
 }
 
 function createdDate(habit: BIHabit): Date | null {
-  return habit.created_at ? parseLocalDate(ymdFromIso(habit.created_at)) : null;
+  const day = habitCreatedDay(habit);
+  return day ? parseLocalDate(day) : null;
 }
 
 /** The index back into rows for one habit -- what the canonical evaluator consumes. */
@@ -533,7 +535,7 @@ export function currentStreak(habit: BIHabit, logs: BILog[], asOf: Date = new Da
   // no due day to be missed. See `periodStreakBack` for the open-period rule.
   if (isCountBased(habit)) return periodStreakBack(habit, logs.filter((l) => l.habit_id === habit.id), asOf);
   const logIndex = buildLogIndex(logs.filter((l) => l.habit_id === habit.id));
-  const createdYmd = habit.created_at ? ymdFromIso(habit.created_at) : '';
+  const createdYmd = habitCreatedDay(habit) ?? '';
   let count = 0;
   let cursor = asOf;
   for (let i = 0; i < MAX_STREAK_LOOKBACK_DAYS; i++) {
@@ -580,8 +582,7 @@ export function currentStreak(habit: BIHabit, logs: BILog[], asOf: Date = new Da
  */
 export function longestStreak(habit: BIHabit, logs: BILog[], opts: { since?: Date; asOf?: Date } = {}): number {
   const asOf = opts.asOf ?? new Date();
-  const createdDate = habit.created_at ? parseLocalDate(ymdFromIso(habit.created_at)) : null;
-  const since = opts.since ?? createdDate ?? asOf;
+  const since = opts.since ?? createdDate(habit) ?? asOf;
   // R01.02-b — periods, not days, for count-based schedules (see `currentStreak`).
   if (isCountBased(habit)) return periodStreakLongest(habit, logs.filter((l) => l.habit_id === habit.id), since, asOf);
   const logIndex = buildLogIndex(logs.filter((l) => l.habit_id === habit.id));

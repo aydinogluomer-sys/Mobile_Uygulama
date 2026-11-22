@@ -17,7 +17,8 @@
  */
 
 import type { Habit, HabitLog, FrequencyConfig } from './supabase';
-import { ymd, ymdFromIso, parseLocalDate, addDaysLocal, daysBetweenLocal } from './date';
+import { ymd, parseLocalDate, addDaysLocal, daysBetweenLocal } from './date';
+import { habitCreatedDay } from './habitCreatedDay';
 import { scheduledCompletionRate, isWithinRange } from './habitSchedule';
 
 function clamp(n: number, min: number, max: number): number {
@@ -605,7 +606,8 @@ export function masteryStatus(
   logs: HabitLog[],
   { asOf = new Date() }: { asOf?: Date } = {}
 ): MasteryResult {
-  const createdDate = parseLocalDate(ymdFromIso(habit.created_at));
+  const createdYmd = habitCreatedDay(habit);
+  const createdDate = createdYmd ? parseLocalDate(createdYmd) : null;
   const asOfDate = parseLocalDate(ymd(asOf))!;
   const ageDays = createdDate ? daysBetweenLocal(createdDate, asOfDate) : 0;
 

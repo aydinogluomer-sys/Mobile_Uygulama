@@ -88,6 +88,8 @@ export type FrequencyConfig = {
   day?: number;
   /** R01.02 — 29 Şubat yıllık tarihi artık yıl olmayan yıllarda: 28 Şubat, 1 Mart ya da atla. 29 Şubat için ZORUNLU. */
   leap_day?: 'feb28' | 'mar1' | 'skip';
+  /** F15 (DOM-12) — yerel YYYY-MM-DD kurulum günü damgası; oluşturma anında depo katmanı yazar, şekle ait değildir. */
+  created_day?: string;
 };
 
 export type EndCondition = {
