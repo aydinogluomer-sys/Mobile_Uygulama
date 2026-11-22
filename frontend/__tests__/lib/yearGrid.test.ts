@@ -19,6 +19,7 @@ import type { HabitDetailLogRow } from '../../services/habitService';
 import { addDaysLocal, parseLocalDate, ymd, type Ymd } from '../../lib/date';
 import { dayCellFor } from '../../app/screens/habit-detail';
 import {
+  MONTH_SHORT_TR,
   YEAR_CELL_STATE_LABEL,
   YEAR_GRID_CELL,
   YEAR_GRID_GAP,
@@ -29,6 +30,7 @@ import {
   buildAggregateYearGrid,
   buildHabitYearGrid,
   cellAtPoint,
+  fitCellSize,
   gridContentWidth,
   nextSelectableDay,
   yearGridDayLabel,
@@ -367,5 +369,15 @@ describe('lib/yearGrid — DST & leap-year calendar integrity (4-zone TZ matrix)
         expect(monthLabels[c]).not.toBe(monthLabels[c - 1]);
       }
     }
+  });
+
+  it('(+) exports MONTH_SHORT_TR in exact 12-month Turkish order and clamps fitCellSize within [min, max]', () => {
+    expect(MONTH_SHORT_TR).toEqual([
+      'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz',
+      'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara',
+    ]);
+    expect(fitCellSize(100, 31, 3, 6, 14)).toBe(6);
+    expect(fitCellSize(338, 31, 3, 6, 14)).toBe(8);
+    expect(fitCellSize(900, 31, 3, 6, 14)).toBe(14);
   });
 });

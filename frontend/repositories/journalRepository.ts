@@ -31,10 +31,12 @@ export type JournalEntryRow = {
   created_at: string;
 };
 
-export const JOURNAL_ENTRY_COLUMNS = 'id,user_id,date,content,mood,ai_summary,created_at';
+export const JOURNAL_FETCH_LIMIT = 365;
+export const JOURNAL_ENTRY_COLUMNS = 'id,user_id,date,content,mood,created_at,ai_summary';
+export const COLS = JOURNAL_ENTRY_COLUMNS;
 
 /** Newest first, bounded to a year — the window the journal screen renders. */
-export async function fetchJournalEntries(limit = 365): Promise<RepoResult<JournalEntryRow[]>> {
+export async function fetchJournalEntries(limit = JOURNAL_FETCH_LIMIT): Promise<RepoResult<JournalEntryRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   const { data, error } = await supabase

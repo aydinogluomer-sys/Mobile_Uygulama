@@ -22,7 +22,7 @@ export const MONTH_SHORT_TR: readonly string[] = [
   'Ara',
 ];
 
-const MONTH_LONG_TR: readonly string[] = [
+export const MONTH_LONG_TR: readonly string[] = [
   'Ocak',
   'Şubat',
   'Mart',

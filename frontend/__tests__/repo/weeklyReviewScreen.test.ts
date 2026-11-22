@@ -129,3 +129,24 @@ describe('Weekly Review -- insufficient-data (Result.ok===false) handling', () =
     expect(/autoMetrics\.recoveryCompletion\.ok\s*\?[\s\S]{0,120}?:\s*autoMetrics\.recoveryCompletion\.reason/.test(screen)).toBe(true);
   });
 });
+
+describe('Weekly Review -- F32 PS-14 time distribution bar & no-fabricated-zero focus source', () => {
+  const screen = read(SCREEN_PATH);
+
+  it('imports TimeDistributionBar, buildTimeDistribution, and habitDurationMinutes and renders after AutoMetricTile grid', () => {
+    expect(/from\s+['"][^'"]*components\/review\/TimeDistributionBar['"]/.test(screen)).toBe(true);
+    expect(/from\s+['"][^'"]*lib\/timeDistribution['"]/.test(screen)).toBe(true);
+    expect(/buildTimeDistribution\s*\(/.test(screen)).toBe(true);
+    expect(/habitDurationMinutes\s*\(/.test(screen)).toBe(true);
+
+    const gridIdx = screen.lastIndexOf('<AutoMetricTile');
+    const barIdx = screen.indexOf('<TimeDistributionBar');
+    expect(gridIdx).toBeGreaterThan(0);
+    expect(barIdx).toBeGreaterThan(gridIdx);
+  });
+
+  it('passes null (never ?? 0 or : 0) for focusMinutes into buildTimeDistribution when sessionsRes fails', () => {
+    expect(/focusMinutes:\s*sessionsRes\.ok\s*\?\s*minutes\s*:\s*null/.test(screen)).toBe(true);
+    expect(/focusMinutes\s*\?\?\s*0/.test(screen)).toBe(false);
+  });
+});

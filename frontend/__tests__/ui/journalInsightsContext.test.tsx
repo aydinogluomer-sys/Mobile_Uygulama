@@ -36,6 +36,12 @@ jest.mock('../../store/subscriptionStore', () => {
   const useSubscriptionStore: any = (sel?: any) => (sel ? sel(state) : state);
   return { useSubscriptionStore };
 });
+jest.mock('../../store/moodStore', () => ({
+  useMoodStore: (sel?: any) => {
+    const s = { checkins: [], hydrate: jest.fn(async () => undefined) };
+    return sel ? sel(s) : s;
+  },
+}));
 
 import JournalInsightsScreen from '../../app/screens/journal-insights';
 
@@ -132,4 +138,17 @@ it('R09.06 — a lost answer says so, and the resend of the same records carries
   const ids = mockInvoke.mock.calls.map((c) => c[1].body.request_id);
   expect(ids[0]).toBe(ids[1]);
   expect(ids[2]).not.toBe(ids[1]);
+});
+
+it('F32 PS-12 — renders YearInPixels in yearly period and omits it in monthly period', async () => {
+  const r = await mount();
+  const tabs = r.root.findAll((n) => n.props?.accessibilityRole === 'tab' && typeof n.props.onPress === 'function', { deep: false });
+  // Switch to Yıllık (index 2)
+  await act(async () => { tabs[2].props.onPress(); });
+  expect(textOf(r)).toMatch(/2026 ruh hali/);
+  expect(textOf(r)).toMatch(/Bu cihazdaki check-in'ler ve tüm günlük kayıtların gösterilir\./);
+
+  // Switch to Aylık (index 1)
+  await act(async () => { tabs[1].props.onPress(); });
+  expect(textOf(r)).not.toMatch(/2026 ruh hali/);
 });
