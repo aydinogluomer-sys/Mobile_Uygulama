@@ -139,13 +139,24 @@ jest.mock('expo-speech', () => ({
 // matters about it: the transcript reaches the composer and stops there.
 let mockSpeechStart = jest.fn();
 let mockSpeechStop = jest.fn();
+let mockSpeechBlocked: boolean | undefined = undefined;
 let mockLastOnTranscript: ((t: string) => void) | null = null;
-jest.mock('../../hooks/useSpeechInput', () => ({
-  useSpeechInput: (onTranscript: (t: string) => void) => {
-    mockLastOnTranscript = onTranscript;
-    return { available: true, listening: false, error: null, start: mockSpeechStart, stop: mockSpeechStop };
-  },
-}));
+let mockLastSpeechOptions: { getBase?: () => { before: string; after: string }; maxLength?: number } | undefined;
+jest.mock('../../hooks/useSpeechInput', () => {
+  const actual = jest.requireActual('../../hooks/useSpeechInput');
+  return {
+    ...actual,
+    useSpeechInput: (
+      onTranscript: (t: string) => void,
+      options?: { getBase?: () => { before: string; after: string }; maxLength?: number },
+    ) => {
+      mockLastOnTranscript = onTranscript;
+      mockLastSpeechOptions = options;
+      const base = { available: true, listening: false, error: null, start: mockSpeechStart, stop: mockSpeechStop };
+      return mockSpeechBlocked === undefined ? base : { ...base, blocked: mockSpeechBlocked };
+    },
+  };
+});
 
 const HABITS = [
   { id: 'h1', name: 'Kitap Oku', status: 'active', behavior_type: 'positive', tracking_type: 'numeric', unit: 'dakika', daily_goal: 20, target_direction: 'at_least' },
@@ -284,6 +295,8 @@ beforeEach(() => {
   mockStopSpeak.mockClear();
   mockSpeechStart = jest.fn();
   mockSpeechStop = jest.fn();
+  mockSpeechBlocked = undefined;
+  mockLastSpeechOptions = undefined;
   routineState.proposalErrors = null;
   routineState.installError = null;
 });
@@ -659,5 +672,29 @@ describe('dictation', () => {
     expect(input.props.value).toBe('bugün kitap okudum');
     expect(mockInvoke).not.toHaveBeenCalled();
     expect(writeCount()).toBe(0);
+  });
+
+  it('tracks selection via getBase so dictation inserts without overwriting, and hides mic when blocked=true', async () => {
+    const tree = await render();
+    const input = tree.root.findAllByType(TextInput)[0];
+
+    await act(async () => {
+      input.props.onChangeText('Merhaba  dünya');
+      input.props.onSelectionChange?.({ nativeEvent: { selection: { start: 8, end: 8 } } });
+    });
+    expect(mockLastSpeechOptions?.maxLength).toBe(500);
+    expect(mockLastSpeechOptions?.getBase?.()).toEqual({ before: 'Merhaba ', after: ' dünya' });
+
+    // Legacy mock (blocked undefined) shows mic button
+    expect(buttonByLabel(tree, 'Sesli yanıt ver')).toBeDefined();
+    await act(async () => {
+      tree.unmount();
+    });
+    mounted = null;
+
+    // Permanently blocked permission hides mic button cleanly
+    mockSpeechBlocked = true;
+    const blockedTree = await render();
+    expect(buttonByLabel(blockedTree, 'Sesli yanıt ver')).toBeUndefined();
   });
 });

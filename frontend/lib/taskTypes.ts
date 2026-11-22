@@ -11,6 +11,11 @@ export type Task = {
   status: TaskStatus;
   priority: TaskPriority;
   due_date?: string | null;
+  time_block_start?: string | null;
+  time_block_end?: string | null;
+  estimated_minutes?: number | null;
+  parent_task_id?: string | null;
+  is_subtask?: boolean;
   project_id?: string | null;
   list_type: ListType;
   notes_text?: string | null;

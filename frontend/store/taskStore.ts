@@ -272,7 +272,17 @@ export const useTaskStore = create<TaskStore>((set, get) => {
   },
 
   removeTask: async (id) => {
-    await apply({ entity: 'task', entityId: id, kind: 'delete' }, (ts) => ts.filter((t) => t.id !== id));
+    const children = get().tasks.filter((t) => t.parent_task_id === id);
+    const childOpIds: string[] = [];
+    for (const child of children) {
+      await apply({ entity: 'task', entityId: child.id, kind: 'delete' }, (ts) => ts.filter((t) => t.id !== child.id));
+      const queued = get().outbox?.commands.find((c) => c.entity === 'task' && c.entityId === child.id && c.kind === 'delete');
+      if (queued) childOpIds.push(queued.operationId);
+    }
+    await apply(
+      { entity: 'task', entityId: id, kind: 'delete', ...(childOpIds.length > 0 ? { dependsOn: childOpIds } : {}) },
+      (ts) => ts.filter((t) => t.id !== id),
+    );
   },
 
   toggleDone: async (id) => {

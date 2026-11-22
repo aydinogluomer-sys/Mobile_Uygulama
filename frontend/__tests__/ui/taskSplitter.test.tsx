@@ -1,34 +1,17 @@
 /**
  * The ADHD task splitter: reachable, and the subtasks it produces are real
- * rows in `tasks`.
- *
- * ## What was wrong
- *
- * `lib/taskDecomposition.ts` (406 lines, 39 tests) and
- * `components/ADHDTaskSplitter.tsx` (496 lines) were complete and correct —
- * validation gate, preview step, explicit confirm, a repository write that
- * attaches `user_id` itself — and **imported by nothing**. `grep -rn
- * ADHDTaskSplitter app components` returned only the component's own file. A
- * fully tested engine with no entry point is not a feature; it is code the
- * user cannot reach, and its 39 green tests said nothing about that.
- *
- * ## Why this file writes through a storing fake
- *
- * "Modal opens" is the assertion that would have been easy and worthless. The
- * question is whether confirming a split puts rows in `tasks` owned by the
- * caller, carrying the parent's context. So the supabase fake here STORES —
- * the same one `crudContracts.test.ts` uses — and the assertions are about
- * the rows that ended up in the table, not about which functions were called.
+ * rows in `tasks` linked to their parent (`parent_task_id`, `is_subtask: true`).
  *
  * AC-T00  the tasks screen offers the split action on an open task
  * AC-T01  a completed task does not offer it
  * AC-T02  picking a duration previews WITHOUT writing anything
  * AC-T03  confirming writes subtasks to `tasks`, owned by the caller
- * AC-T04  the subtasks inherit the parent's list, priority, project and due date
+ * AC-T04  the subtasks inherit the parent's list, priority, project, due date, and parent_task_id
  * AC-T05  a write failure surfaces and nothing is reported as split
+ * AC-T06  archiveParent toggle (default ON) forwards { archiveParent } and archives parent in TasksScreen
  */
 import React from 'react';
-import { Text } from 'react-native';
+import { Switch, Text } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { createMockDb, makeSupabaseMock, type MockDb } from '../helpers/supabaseMock';
 
@@ -53,6 +36,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 const mockFetchTasks = jest.fn(async () => undefined);
+const mockArchiveTask = jest.fn(async () => undefined);
 const mockTasks = [
   {
     id: 'parent-1', user_id: 'u1', title: 'Rapor yaz', description: null,
@@ -71,6 +55,7 @@ jest.mock('../../store/taskStore', () => ({
     loadingMore: false, hasMore: false, loadMore: jest.fn(),
     fetchTasks: mockFetchTasks,
     addTask: jest.fn(), toggleDone: jest.fn(), removeTask: jest.fn(),
+    archiveTask: mockArchiveTask,
     byList: (l: string) => mockTasks.filter((t) => t.list_type === l && !t.completed),
   }),
 }));
@@ -100,16 +85,9 @@ afterEach(async () => {
   mockDb.idSeq = 0;
   mockDb.failNext = null;
   mockFetchTasks.mockClear();
+  mockArchiveTask.mockClear();
 });
 
-/**
- * Every pressable carrying an accessibility label.
- *
- * `deep: false` matters: a `TouchableOpacity` appears TWICE under `deep: true`
- * — once as the composite and once as the host view it renders, both carrying
- * the same props — so one button counted as two and the "exactly one split
- * action" assertion failed on a screen that was correct.
- */
 function labelled(tree: TestRenderer.ReactTestRenderer, label: string) {
   return tree.root.findAll(
     (n) => n.props?.accessibilityLabel === label && typeof n.props?.onPress === 'function',
@@ -123,15 +101,6 @@ function allText(tree: TestRenderer.ReactTestRenderer): string {
     .join(' | ');
 }
 
-/**
- * The pressable whose own subtree says `label`.
- *
- * The splitter's buttons carry no accessibility labels — they are
- * `TouchableOpacity`s wrapping `<Text>` — so a positional lookup was the
- * alternative, and it was wrong: the modal's close button is also a
- * label-less pressable and sorts FIRST, so "press the first option" pressed
- * Kapat and the test then asserted about a closed modal.
- */
 function pressableSaying(tree: TestRenderer.ReactTestRenderer, label: string) {
   const hit = tree.root.findAll(
     (n) => typeof n.props?.onPress === 'function',
@@ -144,13 +113,6 @@ function pressableSaying(tree: TestRenderer.ReactTestRenderer, label: string) {
   return hit;
 }
 
-/**
- * The task handed straight to the splitter.
- *
- * Deliberately NOT the screen's inbox fixture: the inheritance assertions are
- * only meaningful if the values differ from the screen's defaults, so this one
- * sits in a different list with a different priority.
- */
 const PARENT = {
   ...mockTasks[0], id: 'parent-2', list_type: 'this_week', priority: 'high',
 } as unknown as Task;
@@ -163,38 +125,44 @@ describe('AC-T00/T01 the entry point exists on the task itself', () => {
 
   it('a completed task does not', async () => {
     const tree = await render(<TasksScreen />);
-    // The archive tab holds the completed one; the action is not offered for
-    // it in any tab, so no label mentioning it exists at all.
     expect(labelled(tree, 'Biten iş görevini alt adımlara böl')).toHaveLength(0);
   });
 
-  it('pressing it mounts the splitter for that task', async () => {
+  it('pressing it mounts the splitter and confirming with default archiveParent archives the parent task', async () => {
     const tree = await render(<TasksScreen />);
     await act(async () => { labelled(tree, 'Rapor yaz görevini alt adımlara böl')[0].props.onPress(); });
-    // The splitter's own copy appears, carrying the parent task's title.
     expect(allText(tree)).toContain('Rapor yaz');
-    expect(mockDb.rows.tasks ?? []).toEqual([]);  // opening writes nothing
+    expect(mockDb.rows.tasks ?? []).toEqual([]);
+
+    await act(async () => { pressableSaying(tree, 'Pomodoro').props.onPress(); });
+    await act(async () => { await pressableSaying(tree, 'Onayla ve Ekle').props.onPress(); });
+
+    expect(mockArchiveTask).toHaveBeenCalledWith('parent-1');
+    expect(mockFetchTasks).toHaveBeenCalled();
   });
 });
 
 describe('the splitter itself', () => {
-  /** Runs the component to the preview phase for a given duration button. */
-  async function toPreview(onSplit = jest.fn()) {
+  async function toPreview(onSplit = jest.fn(), taskOverride: Task = PARENT) {
     const tree = await render(
-      <ADHDTaskSplitter task={PARENT} visible onClose={jest.fn()} onSplit={onSplit} />,
+      <ADHDTaskSplitter task={taskOverride} visible onClose={jest.fn()} onSplit={onSplit} />,
     );
     await act(async () => { pressableSaying(tree, 'Pomodoro').props.onPress(); });
     return { tree, onSplit };
   }
 
-  it('AC-T02 previewing writes nothing', async () => {
-    const { tree } = await toPreview();
+  it('AC-T02 previewing writes nothing, including on 140+ char parent titles', async () => {
+    const longTask = {
+      ...PARENT,
+      title: `${'Uzun kapsamlı dönem sonu değerlendirme raporu '.repeat(4)}hazırla`,
+    } as unknown as Task;
+    const { tree } = await toPreview(jest.fn(), longTask);
     expect(allText(tree)).toContain('Onayla ve Ekle');
     expect(mockDb.rows.tasks ?? []).toEqual([]);
     expect(mockDb.inserts).toEqual([]);
   });
 
-  it('AC-T03/T04 confirming persists subtasks owned by the caller, with the parent context', async () => {
+  it('AC-T03/T04/T06 confirming persists subtasks with parent_task_id + is_subtask and passes archiveParent=true by default', async () => {
     const { tree, onSplit } = await toPreview();
 
     await act(async () => { await pressableSaying(tree, 'Onayla ve Ekle').props.onPress(); });
@@ -203,22 +171,40 @@ describe('the splitter itself', () => {
     expect(written.length).toBeGreaterThan(1);
 
     for (const row of written) {
-      // Owner is attached by the repository, never taken from the caller.
       expect(row.user_id).toBe('u1');
       expect(row.completed).toBe(false);
       expect(row.status).toBe('pending');
-      // Parent context is inherited, so the subtasks land where the parent is.
       expect(row.priority).toBe('high');
       expect(row.due_date).toBe('2026-03-01');
       expect(row.project_id).toBe('proj-1');
       expect(row.list_type).toBe('this_week');
+      expect(row.parent_task_id).toBe('parent-2');
+      expect(row.is_subtask).toBe(true);
       expect(typeof row.title).toBe('string');
       expect((row.title as string).length).toBeGreaterThan(0);
     }
 
-    // The caller is handed the rows the database returned, not the proposal.
     expect(onSplit).toHaveBeenCalledTimes(1);
     expect(onSplit.mock.calls[0][0]).toHaveLength(written.length);
+    expect(onSplit.mock.calls[0][1]).toEqual({ archiveParent: true });
+    expect(allText(tree)).toContain('Ana görev arşive alındı; adımlar listende.');
+  });
+
+  it('AC-T06 toggling archiveParent Switch OFF passes { archiveParent: false }', async () => {
+    const { tree, onSplit } = await toPreview();
+    const sw = tree.root.findByType(Switch);
+    expect(sw.props.value).toBe(true);
+
+    await act(async () => {
+      sw.props.onValueChange(false);
+    });
+    await act(async () => {
+      await pressableSaying(tree, 'Onayla ve Ekle').props.onPress();
+    });
+
+    expect(onSplit).toHaveBeenCalledTimes(1);
+    expect(onSplit.mock.calls[0][1]).toEqual({ archiveParent: false });
+    expect(allText(tree)).toContain('Adımlar ana görevin yanında duruyor.');
   });
 
   it('AC-T05 a write failure is surfaced and nothing is claimed', async () => {

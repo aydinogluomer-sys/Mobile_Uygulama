@@ -42,7 +42,7 @@ import type { ProposalHabit } from '../../lib/routineProposal';
 import { useRoutineStore } from '../../store/routineStore';
 import { useLogStore } from '../../store/logStore';
 import { useCoachSend } from '../../hooks/useCoachSend';
-import { useSpeechInput } from '../../hooks/useSpeechInput';
+import { splitAtSelection, useSpeechInput } from '../../hooks/useSpeechInput';
 import { useAiConversationStore } from '../../store/aiConversationStore';
 import ConversationSheet from '../../components/coach/ConversationSheet';
 import { useProjectStore } from '../../store/projectStore';
@@ -134,6 +134,10 @@ export default function AICoachScreen() {
   }, [setMessages]);
 
   const [input, setInput] = useState('');
+  const inputRef = useRef('');
+  inputRef.current = input;
+  const selRef = useRef<{ start: number; end: number } | null>(null);
+  if (!input) selRef.current = null;
   const scrollRef = useRef<ScrollView>(null);
 
   // Günlüğe özetleme akışı
@@ -156,8 +160,11 @@ export default function AICoachScreen() {
   const clearGenerated = useRoutineStore((s) => s.clearGenerated);
   const logHabitWrite = useLogStore((s) => s.logHabit);
 
-  /** Dictation fills the composer. It never sends — see the hook's own doc. */
-  const speech = useSpeechInput(setInput);
+  /** Dictation fills the composer without overwriting existing text. It never sends — see the hook's own doc. */
+  const speech = useSpeechInput(setInput, {
+    getBase: () => splitAtSelection(inputRef.current, selRef.current),
+    maxLength: 500,
+  });
 
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Leaving this screen must silence it: a half-read answer continuing to play
@@ -648,7 +655,7 @@ export default function AICoachScreen() {
 
         {/* Input */}
         <View style={s.inputRow}>
-          {speech.available && (
+          {speech.available && !speech.blocked && (
             <TouchableOpacity
               style={[s.micBtn, speech.listening && s.micBtnActive]}
               onPress={() => (speech.listening ? speech.stop() : speech.start())}
@@ -671,6 +678,7 @@ export default function AICoachScreen() {
             placeholderTextColor={colors.textFaint}
             value={input}
             onChangeText={setInput}
+            onSelectionChange={(e) => { selRef.current = e.nativeEvent.selection; }}
             multiline
             maxLength={500}
             onSubmitEditing={() => void send()}
@@ -818,7 +826,7 @@ const s = StyleSheet.create({
   messagesContent: { padding: 16, gap: 10, paddingBottom: 8 },
 
   micBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 44, height: 44, borderRadius: 22,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
   },

@@ -1,5 +1,5 @@
 /**
- * Repository tests for `repositories/taskRepository.ts`.  (Phase 1)
+ * Repository tests for `repositories/taskRepository.ts`.  (Phase 1 + F30 parent link)
  */
 type PgError = { message: string; code?: string };
 
@@ -39,14 +39,16 @@ jest.mock('../../lib/supabase', () => {
 import { insertSplitTasks, type SplitTaskInput } from '../../repositories/taskRepository';
 
 const baseRow: SplitTaskInput = {
-  title: 'Rapor — Pomodoro',
-  description: '25 dk blok (1/3)',
+  title: 'Gerekenleri tek bir yere topla — Rapor',
+  description: '2 dk · ilk adım · 25 dk blok (1/3)',
   status: 'pending',
   priority: 'medium',
   due_date: null,
   project_id: null,
   list_type: 'inbox',
   completed: false,
+  parent_task_id: 'parent-1',
+  is_subtask: true,
 };
 
 beforeEach(() => {
@@ -57,15 +59,17 @@ beforeEach(() => {
 });
 
 describe('insertSplitTasks', () => {
-  it('inserts every row stamped with the current user id, not a caller-supplied one', async () => {
-    const res = await insertSplitTasks([baseRow, { ...baseRow, title: 'Rapor — Pomodoro 2' }]);
+  it('inserts every row stamped with the current user id and preserves parent_task_id + is_subtask', async () => {
+    const res = await insertSplitTasks([baseRow, { ...baseRow, title: 'İlk taslağı 10 dakikada çıkar — Rapor' }]);
     expect(res.ok).toBe(true);
     if (res.ok) {
       expect(res.data).toHaveLength(2);
       expect(res.data.every((t) => (t as any).user_id === 'u1')).toBe(true);
-      expect(res.data[0].title).toBe('Rapor — Pomodoro');
+      expect(res.data[0].title).toBe('Gerekenleri tek bir yere topla — Rapor');
+      expect(res.data[0].parent_task_id).toBe('parent-1');
+      expect(res.data[0].is_subtask).toBe(true);
     }
-    expect(mockDb.inserted.every((r) => r.user_id === 'u1')).toBe(true);
+    expect(mockDb.inserted.every((r) => r.user_id === 'u1' && r.parent_task_id === 'parent-1' && r.is_subtask === true)).toBe(true);
   });
 
   it('surfaces an insert error instead of swallowing it', async () => {

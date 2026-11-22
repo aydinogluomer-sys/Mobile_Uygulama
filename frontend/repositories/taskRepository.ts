@@ -26,6 +26,8 @@ export type SplitTaskInput = {
   project_id: string | null;
   list_type: Task['list_type'];
   completed: boolean;
+  parent_task_id: string | null;
+  is_subtask: boolean;
 };
 
 /**
@@ -75,6 +77,10 @@ export async function insertTask(input: Partial<Task>): Promise<RepoResult<Task>
       priority: input.priority ?? 'none',
       list_type: input.list_type ?? 'inbox',
       due_date: input.due_date ?? null,
+      time_block_start: input.time_block_start ?? null,
+      time_block_end: input.time_block_end ?? null,
+      parent_task_id: input.parent_task_id ?? null,
+      is_subtask: input.is_subtask ?? false,
       project_id: input.project_id ?? null,
       description: input.description ?? null,
       notes_text: input.notes_text ?? null,
@@ -89,9 +95,10 @@ export async function insertTask(input: Partial<Task>): Promise<RepoResult<Task>
 export async function updateTask(id: string, patch: Partial<Task>): Promise<RepoResult<Task>> {
   const u = await currentUserId();
   if (!u.ok) return u;
+  const { estimated_minutes: _est, ...dbPatch } = patch;
   return updateOwned<Task>({
     table: 'tasks', id, userId: u.userId,
-    patch: patch as Record<string, unknown>, columns: TASK_COLS,
+    patch: dbPatch as Record<string, unknown>, columns: TASK_COLS,
   });
 }
 
@@ -147,9 +154,10 @@ export async function insertTaskRow(row: Partial<Task> & { id: string }, expecte
   if (!u.ok) return u;
   const wrong = wrongAccount(expectedUserId, u.userId);
   if (wrong) return wrong;
+  const { estimated_minutes: _est, ...dbRow } = row;
   const { data, error, status } = await supabase
     .from('tasks')
-    .insert({ ...row, title: row.title ?? '', user_id: u.userId } as TableInsert<'tasks'>)
+    .insert({ ...dbRow, title: dbRow.title ?? '', user_id: u.userId } as TableInsert<'tasks'>)
     .select(TASK_COLS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
@@ -164,7 +172,8 @@ export async function updateTaskVersioned(
   if (!u.ok) return u;
   const wrong = wrongAccount(expectedUserId, u.userId);
   if (wrong) return wrong;
-  let q = supabase.from('tasks').update(patch as TableUpdate<'tasks'>).eq('id', id).eq('user_id', u.userId);
+  const { estimated_minutes: _est, ...dbPatch } = patch;
+  let q = supabase.from('tasks').update(dbPatch as TableUpdate<'tasks'>).eq('id', id).eq('user_id', u.userId);
   if (baseVersion !== null) q = q.eq('updated_at', baseVersion);
   const { data, error, status } = await q.select(TASK_COLS).maybeSingle();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
