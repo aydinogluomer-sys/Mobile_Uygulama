@@ -171,14 +171,17 @@ export async function fetchHabits(limit = 500): Promise<RepoResult<Habit[]>> {
 
 /** Creates one habit, attaching `user_id` here rather than from the caller. */
 export async function insertHabit(
-  habit: Omit<Habit, 'id' | 'created_at' | 'user_id'>,
+  rawHabit: Omit<Habit, 'id' | 'created_at' | 'user_id'>,
 ): Promise<RepoResult<Habit>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const clean = stripTimeOff(habit);
+  const habit = {
+    ...rawHabit,
+    frequency_config: stampCreatedDay(rawHabit.frequency_config, todayLocal()),
+  };
   const { data, error } = await supabase
     .from('habits')
-    .insert({ ...clean, frequency_config: stampCreatedDay(clean.frequency_config, todayLocal()), user_id: u.userId })
+    .insert({ ...stripTimeOff(habit), user_id: u.userId })
     .select(HABIT_COLUMNS)
     .single();
   if (error) return { ok: false, error: error.message };

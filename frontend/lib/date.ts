@@ -71,7 +71,7 @@ export function isValidTimeZone(zone: string | null | undefined): zone is string
   const trimmed = zone.trim();
   if (trimmed.length < 1 || trimmed.length > 64 || trimmed !== zone) return false;
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    new Intl.DateTimeFormat('tr-TR', { timeZone: zone });
     return true;
   } catch {
     return false;

@@ -28,6 +28,7 @@ query is unbounded; this does not.
 | `exportRepository.ts` | `fetchOwnProfileForExport` | `profiles` | no | SINGLE_ROW | yes |
 | `focusSessionRepository.ts` | `deleteAllFocusSessions` | `focus_sessions` | no | WRITE | yes |
 | `focusSessionRepository.ts` | `fetchAllFocusSessions` | `focus_sessions` | yes | RANGE_PAGED | yes |
+| `focusSessionRepository.ts` | `fetchFocusSessionsBetween` | `focus_sessions` | yes | RANGE_PAGED | yes |
 | `focusSessionRepository.ts` | `fetchFocusSessionsSince` | `focus_sessions` | yes | RANGE_PAGED | yes |
 | `focusTaskRepository.ts` | `fetchAllFocusTasks` | `focus_tasks` | yes | RANGE_PAGED | yes |
 | `focusTaskRepository.ts` | `fetchOpenFocusTasks` | `focus_tasks` | yes | BOUNDED_DOMAIN_WINDOW | yes |
@@ -112,10 +113,10 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **101**
-- collection SELECTs: **41**
+- queries: **102**
+- collection SELECTs: **42**
 - KEYSET_PAGE: **7**
-- RANGE_PAGED: **13**
+- RANGE_PAGED: **14**
 - DATE_WINDOW: **0**
 - BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **2**
