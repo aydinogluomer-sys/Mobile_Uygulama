@@ -100,7 +100,20 @@ export async function insertRoutineHabits(
     .from('habits')
     .insert(inserts)
     .select(HABIT_COLUMNS);
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    if (error.code === '23505' && installId) {
+      const existing = await supabase
+        .from('habits')
+        .select(HABIT_COLUMNS)
+        .eq('user_id', u.userId)
+        .eq('install_id', installId)
+        .limit(20);
+      if (!existing.error && Array.isArray(existing.data) && existing.data.length > 0) {
+        return { ok: true, data: existing.data as Habit[] };
+      }
+    }
+    return { ok: false, error: error.message };
+  }
   return { ok: true, data: (data ?? []) as Habit[] };
 }
 

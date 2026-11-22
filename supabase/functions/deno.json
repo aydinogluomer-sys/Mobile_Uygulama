@@ -1,0 +1,11 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "jsr:@supabase/supabase-js@2.119.2",
+    "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@0.39.0"
+  },
+  "tasks": {
+    "check": "deno check --frozen _shared/aiIdempotency.ts _shared/coachContractSchema.ts _shared/http.ts _shared/oauthState.ts _shared/redirectAllowlist.ts _shared/sseFrames.ts delete-account/index.ts delete-account/handler.ts generate-routine/index.ts generate-routine/handler.ts google-auth/index.ts notion-auth/index.ts notion-sync/index.ts spotify-auth/index.ts subscription-webhook/index.ts subscription-webhook/handler.ts",
+    "test": "deno test --frozen --no-prompt"
+  },
+  "lock": { "path": "./deno.lock" }
+}

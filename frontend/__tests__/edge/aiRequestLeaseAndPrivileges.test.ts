@@ -61,15 +61,14 @@ import {
   type SpendResult,
 } from '../../../supabase/functions/_shared/aiIdempotency';
 
+import { edgeSource } from '../helpers/edgeSource';
+
 const REPO = join(__dirname, '..', '..', '..');
 const MIGRATION = readFileSync(
   join(REPO, 'supabase', 'migrations', '024_ai_request_privileges_and_lease.sql'),
   'utf8',
 );
-const EDGE = readFileSync(
-  join(REPO, 'supabase', 'functions', 'generate-routine', 'index.ts'),
-  'utf8',
-);
+const EDGE = edgeSource('generate-routine');
 
 /** Everything the Edge Function alone may call. */
 const INTERNAL_FUNCTIONS = [
@@ -165,10 +164,10 @@ describe('CASE B — the client cannot fabricate a completion', () => {
   it('a missing service credential fails closed, before any charge or call', () => {
     const guard = EDGE.indexOf("if (!serviceKey)");
     const spend = EDGE.indexOf("admin.rpc('spend_focus_points_v2'");
-    const provider = EDGE.indexOf('new Anthropic(');
+    const provider = EDGE.indexOf('deps.makeAnthropic(');
     expect(guard).toBeGreaterThan(-1);
     expect(guard).toBeLessThan(spend);
-    expect(guard).toBeLessThan(provider);
+    expect(spend).toBeLessThan(provider);
   });
 
   it('the balance read stays on the user’s own, RLS-scoped client', () => {

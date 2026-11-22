@@ -5,10 +5,12 @@
  *   deno test supabase/functions/_shared/aiIdempotency_test.ts
  */
 import {
+  DAILY_LIMIT,
   fingerprintInput,
   INSUFFICIENT_CREDITS,
   REFUND_PENDING_NOTE,
   runIdempotentAiRequest,
+  TOO_MANY_IN_FLIGHT,
   type IdempotencyDeps,
 } from './aiIdempotency.ts';
 import {
@@ -260,5 +262,94 @@ Deno.test('oauthState and redirectAllowlist enforce HMAC uid binding and fail-cl
   const allow = parseAllowlist('*,atlas://notion-callback,https://aderyth.com/callback');
   assert(!isAllowedRedirect('https://evil.example.com/callback', allow), 'wildcard * dropped fail-closed');
   assert(isAllowedRedirect('atlas://notion-callback', allow), 'exact custom scheme allowed');
+});
+
+Deno.test('F21 (EDG-03, EDG-14): admit gate releases claim without charging on 429, skips non-claimed outcomes, and failAndRefund sanitizes dbError', async () => {
+  let releaseCalls = 0;
+  let spendCalls = 0;
+  let providerCalls = 0;
+  let admitCalls = 0;
+
+  const rejected = await runIdempotentAiRequest(
+    { requestId: 'req-cap-1', mode: 'coach', fingerprint: 'fp-cap', cost: 5 },
+    {
+      begin: async () => ({ kind: 'claimed' }),
+      admit: async () => {
+        admitCalls += 1;
+        return {
+          ok: false,
+          status: 429,
+          code: DAILY_LIMIT,
+          message: 'Bugün için AI istek sınırına ulaştın. Yarın yeniden dene; hiçbir ücret alınmadı.',
+        };
+      },
+      complete: async () => {},
+      fail: async () => {},
+      release: async () => { releaseCalls += 1; },
+      spend: async () => { spendCalls += 1; return { kind: 'charged', balance: 20 }; },
+      refund: async () => true,
+      expireLease: async () => {},
+      callProvider: async () => { providerCalls += 1; return { ok: true, payload: { reply: 'ok' } }; },
+      readBalance: async () => 20,
+      describeError: () => 'Güvenli hata',
+    },
+  );
+  assertEquals(rejected.status, 429, 'admit rejection -> 429');
+  assertEquals(rejected.body.code, DAILY_LIMIT, 'DAILY_LIMIT code');
+  assertEquals(admitCalls, 1, 'admit called once on claimed');
+  assertEquals(releaseCalls, 1, 'claim released once on admit rejection');
+  assertEquals(spendCalls, 0, 'spend never called on admit rejection');
+  assertEquals(providerCalls, 0, 'provider never called on admit rejection');
+
+  // Non-claimed begin outcomes must NEVER invoke admit
+  let nonClaimAdmitCalls = 0;
+  for (const outcome of [
+    { kind: 'replay', response: { reply: 'cached' } },
+    { kind: 'mismatch' },
+    { kind: 'in_progress' },
+    { kind: 'consumed', error: 'Önceki hata' },
+  ] as const) {
+    await runIdempotentAiRequest(
+      { requestId: 'req-non-claim', mode: 'coach', fingerprint: 'fp-nc', cost: 5 },
+      {
+        begin: async () => outcome,
+        admit: async () => {
+          nonClaimAdmitCalls += 1;
+          return { ok: false, status: 429, code: TOO_MANY_IN_FLIGHT, message: 'x' };
+        },
+        complete: async () => {},
+        fail: async () => {},
+        release: async () => {},
+        spend: async () => ({ kind: 'charged', balance: 20 }),
+        refund: async () => true,
+        expireLease: async () => {},
+        callProvider: async () => ({ ok: true, payload: {} }),
+        readBalance: async () => 20,
+        describeError: () => 'Güvenli hata',
+      },
+    );
+  }
+  assertEquals(nonClaimAdmitCalls, 0, 'replay/mismatch/in_progress/consumed never invoke admit');
+
+  // Provider exception must pass ONLY describeError(raw) to fail(), never raw message
+  let storedFailError = '';
+  const thrown = await runIdempotentAiRequest(
+    { requestId: 'req-sanitize-err', mode: 'coach', fingerprint: 'fp-err', cost: 5 },
+    {
+      begin: async () => ({ kind: 'claimed' }),
+      complete: async () => {},
+      fail: async ({ error }) => { storedFailError = error; },
+      release: async () => {},
+      spend: async () => ({ kind: 'charged', balance: 20 }),
+      refund: async () => true,
+      expireLease: async () => {},
+      callProvider: async () => { throw new Error('Anthropic 500 apiKey=sk-ant-SECRET-999'); },
+      readBalance: async () => 20,
+      describeError: () => 'AI servisi şu an yanıt veremedi, lütfen sonra tekrar deneyin.',
+    },
+  );
+  assertEquals(thrown.status, 500, 'provider throw -> 500');
+  assertEquals(storedFailError, 'AI servisi şu an yanıt veremedi, lütfen sonra tekrar deneyin.', 'fail receives sanitized error');
+  assert(!storedFailError.includes('sk-ant-SECRET-999'), 'raw secret never reaches fail');
 });
 

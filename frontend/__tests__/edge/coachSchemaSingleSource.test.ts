@@ -15,8 +15,9 @@ import {
   PERSISTABLE_TRACKING_TYPES,
   VALID_DIFFICULTIES,
 } from '../../lib/routineProposal';
+import { edgeSource } from '../helpers/edgeSource';
 
-describe('Item #6 — Coach Contract Schema Single-Source-of-Truth & SDK Upgrade', () => {
+describe('Item #6 & F21 — Coach Contract Schema Single-Source-of-Truth & SDK Pinning', () => {
   it('shared _shared/coachContractSchema bounds match client routineProposal.ts and coachActionsV2.ts byte-for-byte', () => {
     expect(COACH_SCHEMA_BOUNDS.MAX_HABIT_NAME_LENGTH).toBe(MAX_HABIT_NAME_LENGTH);
     expect(COACH_SCHEMA_BOUNDS.MAX_TITLE_LENGTH).toBe(MAX_TITLE_LENGTH);
@@ -37,14 +38,15 @@ describe('Item #6 — Coach Contract Schema Single-Source-of-Truth & SDK Upgrade
     expect(COACH_HABIT_SCHEMA.properties.estimated_minutes.maximum).toBe(MAX_ESTIMATED_MINUTES);
   });
 
-  it('generate-routine imports COACH_HABIT_SCHEMA from _shared/coachContractSchema.ts and uses upgraded @anthropic-ai/sdk', () => {
-    const edgeSrc = readFileSync(
-      join(__dirname, '..', '..', '..', 'supabase', 'functions', 'generate-routine', 'index.ts'),
-      'utf8',
-    );
+  it('generate-routine imports shared schema & sseFrames and deno.json pins @anthropic-ai/sdk', () => {
+    const edgeSrc = edgeSource('generate-routine');
+    const denoCfg = JSON.parse(
+      readFileSync(join(__dirname, '..', '..', '..', 'supabase', 'functions', 'deno.json'), 'utf8'),
+    ) as { imports?: Record<string, string> };
+
     expect(edgeSrc).toContain("from '../_shared/coachContractSchema.ts'");
-    expect(edgeSrc).toMatch(/npm:@anthropic-ai\/sdk@0\.3[0-9]\./);
+    expect(edgeSrc).toContain("from '../_shared/sseFrames.ts'");
+    expect(denoCfg.imports?.['@anthropic-ai/sdk']).toMatch(/^npm:@anthropic-ai\/sdk@0\.3\d\.\d+$/);
     expect(edgeSrc).toContain('text/event-stream');
   });
 });
-

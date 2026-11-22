@@ -124,7 +124,7 @@ type RoutineStore = {
   installing: boolean;
   installError: string | null;
   installed: boolean;
-  confirmInstall: () => Promise<boolean>;
+  confirmInstall: (installId?: string) => Promise<boolean>;
 };
 
 /**
@@ -413,7 +413,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
   // by a validated + capacity-evaluated result above. Capacity-gated:
   // `evaluation.toActivate` habits install as 'active', everything else
   // (`evaluation.toQueue`) installs as 'waiting' -- never force-activated.
-  confirmInstall: async () => {
+  confirmInstall: async (installId?: string) => {
     const { proposal, evaluation, installing, proposalSource, stagedIcons } = get();
     if (!proposal || !evaluation || installing) return false;
     // A pack's icons ride along; any other source has none to add.
@@ -427,6 +427,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       const result = await installProposal(
         proposal.habits.map((h) => (icons?.[h.name] ? { ...h, icon: icons[h.name] } : h)),
         evaluation.toActivate,
+        installId,
       );
       if (!result.ok) {
         set({ installing: false, installError: result.error });

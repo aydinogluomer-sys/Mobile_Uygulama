@@ -52,13 +52,13 @@ jest.mock('../../repositories/creditRepository', () => ({ fetchCreditTransaction
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { edgeSource } from '../helpers/edgeSource';
 import { stripComments } from '../helpers/sourceText';
 import { COST, newRequestId } from '../../services/focusPointService';
 
 const FUNCTIONS = join(__dirname, '..', '..', '..', 'supabase', 'functions');
-const EDGE = join(FUNCTIONS, 'generate-routine', 'index.ts');
 const ORCHESTRATOR = join(FUNCTIONS, '_shared', 'aiIdempotency.ts');
-const src = stripComments(readFileSync(EDGE, 'utf8'));
+const src = stripComments(edgeSource('generate-routine'));
 /** The file that now decides what runs, in what order, and how often. */
 const orch = stripComments(readFileSync(ORCHESTRATOR, 'utf8'));
 

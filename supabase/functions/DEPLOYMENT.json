@@ -38,7 +38,7 @@
       "slug": "delete-account",
       "deploy": true,
       "verifyJwt": true,
-      "note": "Store requirement: an account created in-app must be deletable in-app. Derives the account from the verified JWT and never reads the request body, so no caller can name anyone else; the service role is used only after that check. Deletion is one auth.admin.deleteUser call and the 47 ON DELETE CASCADE foreign keys do the rest."
+      "note": "Store requirement: an account created in-app must be deletable in-app. Derives the account from the verified JWT and never reads the request body, so no caller can name anyone else; the service role is used only after that check. Best-effort third-party token revocation (Google) runs first; then deletion is one auth.admin.deleteUser call and the 47 ON DELETE CASCADE foreign keys do the rest."
     },
     {
       "slug": "notion-auth",

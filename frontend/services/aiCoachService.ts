@@ -257,7 +257,16 @@ export async function runCoachTurn(input: CoachTurnInput): Promise<RepoResult<Co
   const assistantRow = await insertMessage({
     conversationId, role: 'assistant', content: reply, requestId: input.requestId,
   });
-  if (!assistantRow.ok) return assistantRow;
+  if (!assistantRow.ok) {
+    if (assistantRow.code === '42501') {
+      return {
+        ok: false,
+        error: 'Yanıt kaydedilemedi. Biraz sonra tekrar dene; ücret alındıysa süre dolunca iade edilir.',
+        code: '42501',
+      };
+    }
+    return assistantRow;
+  }
 
   // Validated from scratch no matter what the server already did, and a
   // rejected suggestion is simply dropped: the answer above was paid for and

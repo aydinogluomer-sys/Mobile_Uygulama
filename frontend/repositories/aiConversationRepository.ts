@@ -265,7 +265,7 @@ export async function insertMessage(input: {
         .maybeSingle();
       if (existing.data) return { ok: true, data: existing.data as MessageRow };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: error.message, code: error.code };
   }
   return { ok: true, data: data as MessageRow };
 }

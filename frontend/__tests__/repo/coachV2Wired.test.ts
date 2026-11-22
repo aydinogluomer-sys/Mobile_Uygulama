@@ -4,6 +4,7 @@
  */
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { edgeSource } from '../helpers/edgeSource';
 import { stripComments } from '../helpers/sourceText';
 import { V2_ACTION_TYPES } from '../../lib/coachActionsV2';
 
@@ -12,7 +13,7 @@ const raw = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 const code = (p: string) => stripComments(raw(p));
 
 describe('four places, one list', () => {
-  const edge = raw('../supabase/functions/generate-routine/index.ts');
+  const edge = edgeSource('generate-routine');
   const sql = raw('../supabase/migrations/032_coach_actions_v2.sql');
   const repo = code('repositories/aiConversationRepository.ts');
 

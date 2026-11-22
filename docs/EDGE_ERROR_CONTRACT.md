@@ -69,6 +69,23 @@ found by a test and closed before this shipped.
 `EDGE_TIMEOUT_MS` is 20s: past the slowest healthy AI generation, far short of
 where a user has given up.
 
+For SSE token streaming (`services/aiStreamService.ts`), `withStreamDeadline` in
+`lib/edgeCall.ts` enforces three distinct timers on one `AbortController` (plus
+optional caller `AbortSignal` cancellation on unmount / thread switch):
+- `STREAM_FIRST_BYTE_MS` = 20s (until response headers / first chunk arrive)
+- `STREAM_IDLE_MS` = 20s (maximum silence between SSE chunks, reset via `touch()`)
+- `STREAM_TOTAL_MS` = 90s (hard wall-clock ceiling for the entire streamed turn)
+
+### Structured error codes on `generate-routine` & `subscription-webhook` (F21)
+
+| Code | HTTP | Meaning | Client handling |
+|---|---|---|---|
+| `BAD_JSON` | 400 | Request body is empty, non-JSON, or non-object (`_shared/http.ts`; webhook returns `{ error: "bad_json" }`) | Definite refusal; attempt keeper marks answered |
+| `BODY_TOO_LARGE` | 413 | Request body exceeds byte cap (`65_536` bytes on `generate-routine`; `262_144` bytes on `subscription-webhook` -> `{ error: "too_large" }`) | Definite refusal; no Focus Point spent |
+| `BAD_MODE` | 400 | Unknown `mode` (not in `routine \| coach \| summarize \| insights`; never defaults silently to 25 FP `routine`) | Definite refusal before `ai_request_begin` / spend |
+| `DAILY_LIMIT` | 429 | Per-user rolling 24h cap (60 `succeeded`/`in_progress` AI requests) reached before spend | Lease released; zero FP spent; surfaced to user |
+| `TOO_MANY_IN_FLIGHT` | 429 | Per-user concurrent active lease cap (>2 unexpired `in_progress` rows) reached before spend | Lease released; zero FP spent; surfaced to user |
+
 ## The table
 
 `ok?` = non-2xx distinguished · `body?` = `{ error }` / `{ success:false }`
