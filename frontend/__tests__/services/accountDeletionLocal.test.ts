@@ -182,4 +182,39 @@ describe('F04 (SYN-07, SYN-08): deletion goes through the account registry', () 
     const remaining = await AsyncStorage.getAllKeys();
     expect(remaining).toEqual(['app_theme_dark']);
   });
+
+  it('F29 (STO-03): sweeps aderyth:day_close:v1:<uid> on confirmed deletion and preserves it when server deletion fails', async () => {
+    const { endAccountScope } = jest.requireActual('../../lib/accountScope') as typeof import('../../lib/accountScope');
+    const { dayCloseKey, saveDayClose } = jest.requireActual('../../lib/dayClose') as typeof import('../../lib/dayClose');
+    await saveDayClose('u1', {
+      v: 1,
+      date: '2026-11-02',
+      movedCount: 2,
+      easedCount: 1,
+      closedAt: '2026-11-02T22:00:00.000Z',
+    });
+    await endAccountScope('account_deleted', 'u1');
+    expect(await AsyncStorage.getItem(dayCloseKey('u1'))).toBeNull();
+
+    await saveDayClose('u1', {
+      v: 1,
+      date: '2026-11-02',
+      movedCount: 2,
+      easedCount: 1,
+      closedAt: '2026-11-02T22:00:00.000Z',
+    });
+    await AsyncStorage.setItem('app_theme_dark', '1');
+
+    // Negative: server refuses deletion -> dayClose record stays intact
+    mockAuth.invokeOk = false;
+    expect((await deleteAccount()).ok).toBe(false);
+    expect(await AsyncStorage.getItem(dayCloseKey('u1'))).not.toBeNull();
+
+    // Positive: server confirms deletion -> dayClose key is gone
+    mockAuth.invokeOk = true;
+    expect((await deleteAccount()).ok).toBe(true);
+    const keys = await AsyncStorage.getAllKeys();
+    expect(keys).not.toContain(dayCloseKey('u1'));
+    expect(keys).toEqual(['app_theme_dark']);
+  });
 });
