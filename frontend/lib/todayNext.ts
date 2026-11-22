@@ -16,6 +16,7 @@
  * the clock here. Paused counts as open (it is waiting to be resumed).
  */
 import { SESSION_MAX_AGE_MS } from './focusTimer';
+import { OVERDUE_CALM_LIMIT } from './todayNarrative';
 
 export const FOCUS_PAUSE_YIELD_MS = 30 * 60 * 1000;
 export const FOCUS_STALE_MS = SESSION_MAX_AGE_MS;
@@ -36,7 +37,7 @@ export type NextActionInput = {
   };
   routine: { status: 'running' | 'paused' | 'finished'; templateName: string; done: number; total: number } | null;
   recoveryToday: { id: string; habitName: string }[];
-  overdueTasks: { id: string; title: string }[];
+  overdueTasks: { id: string; title: string; minutes?: number | null }[];
   habitsToDo: { id: string; name: string }[];
   tasksToday: { id: string; title: string }[];
 };
@@ -54,6 +55,19 @@ export function focusForNext(
   const ageMs = Number.isFinite(parsedStart) ? Math.max(0, nowMs - parsedStart) : 0;
   const yielded = pausedForMs > FOCUS_PAUSE_YIELD_MS || ageMs > FOCUS_STALE_MS;
   return { status: f.status, title: f.title ?? null, yielded };
+}
+
+function pickCalmOverdue(items: NextActionInput['overdueTasks']): NextActionInput['overdueTasks'][number] | undefined {
+  if (items.length === 0) return undefined;
+  let best: NextActionInput['overdueTasks'][number] | undefined;
+  let bestMin = Number.POSITIVE_INFINITY;
+  for (const it of items) {
+    if (typeof it.minutes === 'number' && Number.isFinite(it.minutes) && it.minutes > 0 && it.minutes < bestMin) {
+      bestMin = it.minutes;
+      best = it;
+    }
+  }
+  return best ?? items[0];
 }
 
 export function nextActionable(i: NextActionInput): NextAction | null {
@@ -74,12 +88,23 @@ export function nextActionable(i: NextActionInput): NextAction | null {
   }
   const r = i.recoveryToday[0];
   if (r) return { kind: 'recovery', id: r.id, label: r.habitName, detail: 'Bugün için planladığın telafi' };
-  const o = i.overdueTasks[0];
-  if (o) return { kind: 'task', id: o.id, label: o.title, detail: 'Gecikmiş görev' };
-  const h = i.habitsToDo[0];
-  if (h) return { kind: 'habit', id: h.id, label: h.name, detail: 'Bugünün alışkanlığı' };
-  const t = i.tasksToday[0];
-  if (t) return { kind: 'task', id: t.id, label: t.title, detail: 'Bugünün görevi' };
+
+  if (i.overdueTasks.length > OVERDUE_CALM_LIMIT) {
+    const h = i.habitsToDo[0];
+    if (h) return { kind: 'habit', id: h.id, label: h.name, detail: 'Bugünün alışkanlığı' };
+    const t = i.tasksToday[0];
+    if (t) return { kind: 'task', id: t.id, label: t.title, detail: 'Bugünün görevi' };
+    const calm = pickCalmOverdue(i.overdueTasks);
+    if (calm) return { kind: 'task', id: calm.id, label: calm.title, detail: 'Birikmişten tek bir iş' };
+  } else {
+    const o = i.overdueTasks[0];
+    if (o) return { kind: 'task', id: o.id, label: o.title, detail: 'Gecikmiş görev' };
+    const h = i.habitsToDo[0];
+    if (h) return { kind: 'habit', id: h.id, label: h.name, detail: 'Bugünün alışkanlığı' };
+    const t = i.tasksToday[0];
+    if (t) return { kind: 'task', id: t.id, label: t.title, detail: 'Bugünün görevi' };
+  }
+
   if (open) {
     return {
       kind: 'focus',

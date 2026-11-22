@@ -13,8 +13,9 @@
  * Written BEFORE the fix and observed to fail, per R-01.
  */
 import type { Habit, HabitLog } from '../../lib/supabase';
+import { colors } from '../../lib/tokens';
 import {
-  habitAveragePercent, summarizeHabitProgress, calculateHabitCompletionRate,
+  habitAveragePercent, summarizeHabitProgress, calculateHabitCompletionRate, reportBadge,
 } from '../../lib/reportMetrics';
 
 type L = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
@@ -355,5 +356,19 @@ describe('R01.02-c — reportMetrics on every_n_days / date_range', () => {
     const logs = doneOn('w3', ['2026-08-04', '2026-08-06', '2026-08-09']);
     const [row] = summarizeHabitProgress([w3], logs, WEEK_START, WEEK_END);
     expect(row).toMatchObject({ completedDays: 3, possibleDays: 3, percent: 100 });
+  });
+});
+
+describe('F27 (INT-22) — reportBadge uses calm accent color instead of error red for bronze progress', () => {
+  it('assigns colors.accent (never colors.error) to Bronz Rapor Rozeti while keeping gold/silver/starter colors', () => {
+    const bronze = reportBadge({ habitRate: 25, focusMinutes: 20, completedTasks: 1 });
+    expect(bronze.level).toBe('bronze');
+    expect(bronze.label).toBe('Bronz Rapor Rozeti');
+    expect(bronze.color).toBe(colors.accent);
+    expect(bronze.color).not.toBe(colors.error);
+
+    expect(reportBadge({ habitRate: 90, focusMinutes: 200, completedTasks: 10 }).color).toBe(colors.warning);
+    expect(reportBadge({ habitRate: 70, focusMinutes: 100, completedTasks: 5 }).color).toBe(colors.textDim);
+    expect(reportBadge({ habitRate: 0, focusMinutes: 0, completedTasks: 0 }).color).toBe(colors.success);
   });
 });

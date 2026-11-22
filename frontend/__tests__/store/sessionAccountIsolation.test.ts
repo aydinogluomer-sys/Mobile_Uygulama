@@ -205,7 +205,7 @@ describe('the registry core', () => {
     for (const n of [
       'habit', 'goal', 'project', 'okr', 'readingList', 'lifeAreas', 'routine', 'profile', 'subscription', 'insights',
       'deepWork', 'notion', 'googleCalendar', 'spotify', 'willpower', 'task', 'mood', 'routineRunner', 'notionSession',
-      'journal', 'note', 'recovery', 'log', 'onboarding', 'focus', 'aiConversation', 'coreOutbox',
+      'journal', 'note', 'recovery', 'log', 'onboarding', 'focus', 'aiConversation', 'disclosure', 'coreOutbox',
     ]) expect({ n, registered: names.includes(n) }).toEqual({ n, registered: true });
   });
 

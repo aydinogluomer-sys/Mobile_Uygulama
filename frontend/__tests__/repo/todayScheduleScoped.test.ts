@@ -8,19 +8,20 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { codeLinesOf, readSources } from '../helpers/readSources';
 
 const root = join(__dirname, '..', '..');
 const read = (p: string) => readFileSync(join(root, p), 'utf8');
 
-/** Source with comment lines (`//`, ` *`, `/*`) dropped. */
-function codeLines(src: string): string[] {
-  return src.split(/\r?\n/).filter((l) => !/^\s*(\*|\/\/|\/\*)/.test(l));
-}
-
-const TODAY = 'app/tabs/today.tsx';
+const TODAY_SURFACE = [
+  'app/tabs/today.tsx',
+  'hooks/useTodayModel.ts',
+  'lib/todaySelectors.ts',
+  'components/today/HabitSection.tsx',
+] as const;
 
 describe('R01.06-a — today.tsx asks the schedule oracle', () => {
-  const code = codeLines(read(TODAY));
+  const code = codeLinesOf(readSources(TODAY_SURFACE));
 
   it('calls isEligibleOn on a real code line', () => {
     expect(code.some((l) => /\bisEligibleOn\s*\(\s*h\s*,\s*date\s*\)/.test(l))).toBe(true);
@@ -67,7 +68,7 @@ describe('R01.06-a — today.tsx asks the schedule oracle', () => {
 
 describe('R01.06-a — A7: nothing becomes unreachable', () => {
   it('habits.tsx still lists every active habit, unfiltered by schedule', () => {
-    const code = codeLines(read('app/tabs/habits.tsx'));
+    const code = codeLinesOf(read('app/tabs/habits.tsx'));
     expect(code.some((l) => /const activeHabits = habits\.filter\(\(h\) => h\.status === 'active'\);/.test(l))).toBe(true);
     expect(code.some((l) => /\bisEligibleOn\b|\bselectTodayHabits\b/.test(l))).toBe(false);
   });

@@ -235,7 +235,7 @@ export function reportBadge(params: {
   }
 
   if (rate > 0 || params.focusMinutes > 0 || params.completedTasks > 0) {
-    return { level: 'bronze', label: 'Bronz Rapor Rozeti', emoji: '🥉', color: colors.error };
+    return { level: 'bronze', label: 'Bronz Rapor Rozeti', emoji: '🥉', color: colors.accent };
   }
 
   return { level: 'bronze', label: 'Başlangıç Rapor Rozeti', emoji: '✨', color: colors.success };

@@ -161,3 +161,69 @@ describe('F16 (INT-10) — yielded focus sessions step aside until the queue is 
     ).toEqual({ status: 'idle' });
   });
 });
+
+describe('F27 (INT-22) — calm overdue ordering above OVERDUE_CALM_LIMIT', () => {
+  const makeOverdue = (n: number, withMinutes = false) =>
+    Array.from({ length: n }, (_, idx) => ({
+      id: `o${idx + 1}`,
+      title: `Gecikmiş ${idx + 1}`,
+      ...(withMinutes ? { minutes: idx === 3 ? 5 : 25 } : {}),
+    }));
+
+  it('keeps overdue first at threshold (<= 5)', () => {
+    const res = nextActionable({
+      ...empty,
+      overdueTasks: makeOverdue(5),
+      habitsToDo: [{ id: 'h1', name: 'Su iç' }],
+      tasksToday: [{ id: 't1', title: 'Bugün işi' }],
+    });
+    expect(res).toEqual({ kind: 'task', id: 'o1', label: 'Gecikmiş 1', detail: 'Gecikmiş görev' });
+  });
+
+  it('demotes > 5 overdue pile behind habitsToDo and tasksToday, while keeping focus/routine/recovery ahead', () => {
+    const base6: NextActionInput = {
+      ...empty,
+      overdueTasks: makeOverdue(6),
+      habitsToDo: [{ id: 'h1', name: 'Su iç' }],
+      tasksToday: [{ id: 't1', title: 'Bugün işi' }],
+    };
+
+    expect(
+      nextActionable({ ...base6, recoveryToday: [{ id: 'r1', habitName: 'Koşu' }] }),
+    ).toEqual({ kind: 'recovery', id: 'r1', label: 'Koşu', detail: 'Bugün için planladığın telafi' });
+
+    expect(nextActionable(base6)).toEqual({
+      kind: 'habit',
+      id: 'h1',
+      label: 'Su iç',
+      detail: 'Bugünün alışkanlığı',
+    });
+
+    expect(nextActionable({ ...base6, habitsToDo: [] })).toEqual({
+      kind: 'task',
+      id: 't1',
+      label: 'Bugün işi',
+      detail: 'Bugünün görevi',
+    });
+
+    expect(nextActionable({ ...base6, habitsToDo: [], tasksToday: [] })).toEqual({
+      kind: 'task',
+      id: 'o1',
+      label: 'Gecikmiş 1',
+      detail: 'Birikmişten tek bir iş',
+    });
+  });
+
+  it('picks the smallest minutes item from > 5 overdue tasks when minutes is provided', () => {
+    const res = nextActionable({
+      ...empty,
+      overdueTasks: makeOverdue(6, true),
+    });
+    expect(res).toEqual({
+      kind: 'task',
+      id: 'o4',
+      label: 'Gecikmiş 4',
+      detail: 'Birikmişten tek bir iş',
+    });
+  });
+});

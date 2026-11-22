@@ -48,6 +48,7 @@ const KNOWN_UNSCOPED_KEYS: Record<string, string> = {
   'focus.session.v1': 'prefix: the uid follows (F04)',
   'aderyth.coach.lastConversationId': 'prefix: the uid follows (F04)',
   'aderyth.deflected_urges_count': 'prefix: the uid follows (F04)',
+  'aderyth:disclosure:v1:': 'prefix: the uid follows (F27)',
   'today_bootstrap:v1:': 'prefix of a read-cache entry name',
   'goals:p1': 'read-cache entry name, stored under the user id',
   'life_areas:latest': 'read-cache entry name, stored under the user id',

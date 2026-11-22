@@ -34,11 +34,21 @@ function timeSub(hour: number, focusSessions: number): string {
   return 'Günü sakin bir kapanışla bitir.';
 }
 
+export const OVERDUE_CALM_LIMIT = 5;
+
 /** Önceliklendirme: gecikmiş > bugünkü görev > kalan alışkanlık > tamamlandı. */
 export function buildTodayNarrative(input: NarrativeInput): TodayNarrative {
   const { hour, overdueCount, todayTaskCount, remainingHabits, totalHabits, focusSessions } = input;
   const sub = timeSub(hour, focusSessions);
 
+  if (overdueCount > OVERDUE_CALM_LIMIT) {
+    return {
+      lead: 'Birikmiş işler var; ',
+      emphasis: 'bugün yalnız birini',
+      tail: ' seç.',
+      sub,
+    };
+  }
   if (overdueCount > 0) {
     return {
       lead: 'Bugün önce ',

@@ -59,6 +59,7 @@ jest.mock('../../store/recoveryStore', () => {
 
 import TodayScreen from '../../app/tabs/today';
 import { invalidateHabitsFetch, useHabitStore } from '../../store/habitStore';
+import { useDisclosureStore } from '../../store/disclosureStore';
 import { ymd, addDaysLocal } from '../../lib/date';
 
 const habit = (id: string, name: string) => ({
@@ -83,6 +84,7 @@ beforeEach(() => {
   useHabitStore.setState({ habits: [], pauses: [], goalVersions: [], timeOffAvailable: null, checklistItems: [], checklistChecks: [], checklistAvailable: null } as any);
   const { useFocusStore } = jest.requireActual('../../store/focusStore');
   useFocusStore.setState({ status: 'idle', smallStep: null, pausedAt: null, sessionStartedAt: null });
+  useDisclosureStore.setState(useDisclosureStore.getInitialState(), true);
   mockPush.mockClear();
   mockActionSheet.mockClear();
 });
@@ -139,6 +141,7 @@ it('a habit on a break is shown in ARADA, not as today\'s work', async () => {
 });
 
 it('each open task offers to start small; the routine card and holiday link are there', async () => {
+  useDisclosureStore.getState().setTool('routine', 'on');
   const r = await render();
   expect(r.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityLabel === 'Rapor yaz için küçük başla').length).toBe(1);
   expect(textOf(r)).toMatch(/RUTİN/);
@@ -208,7 +211,7 @@ it('R06.02: ONE dominant action on the hero; the rest one tap away; a short capa
   expect(mockActionSheet).toHaveBeenCalledTimes(1);
   const sheetArg = mockActionSheet.mock.calls[0][0] as { title?: string; options: { id: string; label: string }[] };
   const labels = sheetArg.options.map((o) => o.label);
-  expect(labels).toEqual(expect.arrayContaining(['Odağa geç', 'Haftayı değerlendir', 'Denge planı', 'Projeler', 'Notlar']));
+  expect(labels).toEqual(expect.arrayContaining(['Odağa geç', 'Günü kapat', 'Haftayı değerlendir', 'Denge planı', 'Projeler', 'Notlar']));
   expect(labels).not.toContain('Vazgeç');
   expect(mockPush).not.toHaveBeenCalled();
 

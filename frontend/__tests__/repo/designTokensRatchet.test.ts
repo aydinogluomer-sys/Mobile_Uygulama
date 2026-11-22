@@ -134,8 +134,8 @@ describe('designTokensRatchet (DSA-06, DSA-07, DSA-13)', () => {
     expect(legacyUsages).toBeLessThanOrEqual(CEILINGS.LEGACY_TOKEN_USAGES);
   });
 
-  it('(+) reference screens and all 29 first-wave themed files contain zero raw hex literals and zero static colors imports', () => {
-    for (const f of ['app/tabs/today.tsx', 'app/screens/recovery.tsx', 'app/screens/routine-runner.tsx']) {
+  it('(+) reference screens and all first-wave themed files contain zero raw hex literals and zero static colors imports', () => {
+    for (const f of ['app/tabs/today.tsx', 'components/today/HabitSection.tsx', 'components/settings/TodayToolsSection.tsx', 'app/screens/recovery.tsx', 'app/screens/routine-runner.tsx']) {
       expect(literals.filter((l) => l.f === f)).toEqual([]);
     }
 
