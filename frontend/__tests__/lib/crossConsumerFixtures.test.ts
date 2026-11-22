@@ -24,6 +24,8 @@ import { habitAveragePercent } from '../../lib/reportMetrics';
 import { recoveryBacklog } from '../../lib/recoveryBacklog';
 import { addDaysLocal, ymd, parseLocalDate } from '../../lib/date';
 import { selectTodayHabits } from '../../app/tabs/today';
+import { blocksOn, layoutDayStrip, nextBlockInfo } from '../../lib/nextBlock';
+import { planTaskReminders } from '../../lib/taskReminderPlan';
 
 function habit(id: string, fc: FrequencyConfig): Habit {
   return {
@@ -130,5 +132,40 @@ describe('R01.07 — additive schema: old rows count exactly as before', () => {
     const r = (logs: typeof old) => habitAveragePercent({ habits: [h], logs, start: '2026-03-23', end: '2026-03-29' });
     expect(r(withTz)).toBe(r(old));
     expect(r(old)).toBe(Math.round(100 / 7));
+  });
+});
+
+describe('F36 — (due_date, time_block_start) cross-consumer instant agreement', () => {
+  it.each(DATES)('NextUp, DayTimeStrip and planTaskReminders derive the identical start instant on %s', (ds) => {
+    const fixtureTask = {
+      id: `tb-${ds}`,
+      title: 'Zaman bloğu',
+      due_date: `${ds}T00:00:00+00:00`,
+      time_block_start: '15:30',
+      time_block_end: '16:15',
+      completed: false,
+      status: 'pending',
+      priority: 'medium' as const,
+    };
+
+    const blocks = blocksOn([fixtureTask], ds);
+    expect(blocks).toHaveLength(1);
+    const canonicalStartMs = blocks[0].start.getTime();
+
+    const strip = layoutDayStrip(blocks, at(ds, [12, 0, 0]));
+    const stripBlock = strip.items.find((i) => i.kind === 'block');
+    expect(stripBlock?.kind === 'block' && stripBlock.block.start.getTime()).toBe(canonicalStartMs);
+
+    const next = nextBlockInfo([fixtureTask], at(ds, [12, 0, 0]));
+    expect(next?.block.start.getTime()).toBe(canonicalStartMs);
+
+    const planned = planTaskReminders({
+      tasks: [fixtureTask],
+      settings: { quietStart: null, quietEnd: null, hideTitles: false },
+      support: { taskLeadMin: 30 },
+      now: at(ds, [12, 0, 0]),
+    });
+    expect(planned.reminders).toHaveLength(1);
+    expect(planned.reminders[0].at.getTime()).toBe(canonicalStartMs - 30 * 60_000);
   });
 });

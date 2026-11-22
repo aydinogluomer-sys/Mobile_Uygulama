@@ -297,6 +297,9 @@ export function planReminders(params: {
  * `{ kind: 'habit', key }` with `@epoch`; pre-F17 keys without `@` and pre-R04
  * DAILY triggers carrying only `{ habitId }` are `legacy-habit`; recovery
  * reminders, snoozes, re-entry nudges and focus-end alerts are `other`.
+ * F36 görev, akşam ve takip bildirimleri `kind` alanlarıyla `other` sınıfında kalır
+ * ve `lib/taskReminderPlan.ts` `reconcileTimeSupport` ile yönetilir; birleşim bilerek
+ * genişletilmez (F17 `others` sayımı ve `habitSlotBudget` buna dayanır).
  */
 export function classifyScheduled(data: Record<string, unknown> | null | undefined): { kind: 'habit' | 'legacy-habit' | 'other'; key: string | null } {
   if (!data) return { kind: 'other', key: null };
@@ -312,6 +315,9 @@ export function classifyScheduled(data: Record<string, unknown> | null | undefin
  * The reconcile diff: what to cancel (ours and no longer wanted, duplicates,
  * and every legacy DAILY habit trigger) and what to add. Recovery reminders,
  * snoozes and anything unrecognised are never touched.
+ * F36 görev, akşam ve takip bildirimleri `kind` alanlarıyla `other` sınıfında kalır
+ * ve `lib/taskReminderPlan.ts` `reconcileTimeSupport` ile yönetilir; birleşim bilerek
+ * genişletilmez (F17 `others` sayımı buna dayanır).
  */
 export function reconcile(
   scheduled: readonly { identifier: string; data: Record<string, unknown> | null | undefined }[],

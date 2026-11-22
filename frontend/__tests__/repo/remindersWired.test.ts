@@ -90,3 +90,25 @@ describe('notification actions', () => {
     expect(list[0]).toBe(`k${MAX_HANDLED + 9}`);
   });
 });
+
+describe('F36 time-support wiring', () => {
+  it('routes all three F36 schedulers to TIME_SUPPORT_CHANNEL on Android and stops follow-ups before scheduling snooze', () => {
+    const lib = code('lib/notifications.ts');
+    for (const fnName of ['scheduleTaskReminder', 'scheduleEveningClose', 'scheduleFollowUp']) {
+      const start = lib.indexOf(`export async function ${fnName}(`);
+      expect(start).toBeGreaterThan(-1);
+      const nextExport = lib.indexOf('export ', start + 10);
+      const slice = nextExport > -1 ? lib.slice(start, nextExport) : lib.slice(start);
+      expect(slice).toContain("Platform.OS === 'android' ? { channelId: TIME_SUPPORT_CHANNEL }");
+    }
+
+    const svc = code('services/reminderService.ts');
+    const snoozeIdx = svc.indexOf("case 'snooze':");
+    expect(snoozeIdx).toBeGreaterThan(-1);
+    const snoozeSlice = svc.slice(snoozeIdx, svc.indexOf('break;', snoozeIdx));
+    const stopIdx = snoozeSlice.indexOf('stopFollowUps(');
+    const schedIdx = snoozeSlice.indexOf('scheduleSnooze(');
+    expect(stopIdx).toBeGreaterThan(-1);
+    expect(schedIdx).toBeGreaterThan(stopIdx);
+  });
+});

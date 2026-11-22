@@ -7,6 +7,7 @@
 import { startOfWeekLocal, ymd } from './date';
 import { isPausedOn } from './habitPauses';
 import { isCountBasedSchedule, isEligibleOn, periodStatus, scheduleKind } from './habitSchedule';
+import { parseBlockTime } from './nextBlock';
 import type { Habit, HabitLog } from './supabase';
 
 export type PeriodLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
@@ -207,4 +208,11 @@ export function todayHabitCopy(summary: TodayHabitSummary, activeCount: number):
     metricSub: `${summary.remaining} adım kaldı`,
     ringSub: `${summary.completed}/${summary.total} tamamlandı`,
   };
+}
+
+/** F36 — Saatli bugünkü görevde Sırada çipi 'HH:mm', geçersiz/saatsiz ise 'bugün'. */
+export function todayTaskDueLabel(timeBlockStart: string | null | undefined): string {
+  const parsed = parseBlockTime(timeBlockStart);
+  if (!parsed) return 'bugün';
+  return `${String(parsed.hour).padStart(2, '0')}:${String(parsed.minute).padStart(2, '0')}`;
 }

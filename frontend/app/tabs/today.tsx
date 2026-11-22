@@ -75,6 +75,7 @@ import { isMeasurableTracking } from '../../lib/habitEngine';
 import { markNoteHintSeen, normalizeNote, NOTE_MAX_LENGTH, readNoteHintSeen } from '../../lib/habitNote';
 import { logsForPeriod, type ReviewLogRow } from '../../services/reviewService';
 import { bootstrapTodayScreen } from '../../services/todayBootstrapService';
+import { syncAllReminders } from '../../lib/notifications';
 import { navigateTo, type DestinationId } from '../../lib/destinations';
 import { useProjectStore } from '../../store/projectStore';
 import { quickAddToTaskInput } from '../../lib/taskQuickAdd';
@@ -462,6 +463,8 @@ export default function TodayScreen() {
     router.push('/tabs/tasks' as any);
   }, [router]);
 
+  const blockTasks = useMemo(() => todayTasks.filter((t) => !!t.time_block_start), [todayTasks]);
+
   const handleToggleGroup = useCallback((key: PartGroupKey) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
@@ -531,6 +534,9 @@ export default function TodayScreen() {
     useDisclosureStore.getState().markFirstClose(clock.today);
     setShutdownOpen(false);
     await closeFlow.finish(setAsideHabits.length);
+    if (typeof syncAllReminders === 'function') {
+      void syncAllReminders([]);
+    }
   }
 
   const hasContext = Boolean(!legacyNoticeSeen || afterBreak || holiday || setAsideHabits.length > 0);
@@ -713,7 +719,7 @@ export default function TodayScreen() {
             </BentoVisualCard>
           )}
 
-          <NextUpStrip items={nextUpItems} onPress={handleNextUpPress} />
+          <NextUpStrip items={nextUpItems} blockTasks={blockTasks} onPress={handleNextUpPress} />
         </View>
 
         {/* Bağlamsal 4. Blok — yalnız doluysa tek kapsayıcı */}

@@ -1,15 +1,41 @@
 /**
- * R04.02 / R04.05 / F17 — device-wide reminder settings: four-state permission
+ * R04.02 / R04.05 / F17 / F36 — device-wide reminder settings: four-state permission
  * status with OS Settings link (DOM-18), web progressive disclosure (GAP2-10),
  * same-day quiet deferral, Calm-Tech daily cap chips & honest reconcile summary
- * (DOM-15), and hiding habit names on the lock screen.
+ * (DOM-15), hiding habit names on the lock screen, and opt-in F36 time-blindness
+ * support (task lead, evening close, bounded follow-ups — all default OFF).
  */
 import { useEffect, useState } from 'react';
 import { AppState, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors, space, radius } from '../lib/tokens';
-import { notificationAccess, ensurePermission, openNotificationSettings, syncAllReminders, type NotificationAccess } from '../lib/notifications';
-import { getLastReconcileReport, loadReminderSettings, saveReminderSettings, type ReconcileReport } from '../services/reminderService';
-import { DEFAULT_REMINDER_SETTINGS, MAX_PER_DAY_CHOICES, type ReminderSettings } from '../lib/reminderPlan';
+import Chip from './ui/Chip';
+import {
+  notificationAccess,
+  ensurePermission,
+  openNotificationSettings,
+  syncAllReminders,
+  type NotificationAccess,
+} from '../lib/notifications';
+import {
+  getLastReconcileReport,
+  loadReminderSettings,
+  loadTimeSupportSettings,
+  saveReminderSettings,
+  saveTimeSupportSettings,
+  type ReconcileReport,
+} from '../services/reminderService';
+import {
+  DEFAULT_REMINDER_SETTINGS,
+  MAX_PER_DAY_CHOICES,
+  inQuietHours,
+  type ReminderSettings,
+} from '../lib/reminderPlan';
+import {
+  DEFAULT_TIME_SUPPORT_SETTINGS,
+  EVENING_TIME_CHOICES,
+  TASK_LEAD_CHOICES,
+  type TimeSupportSettings,
+} from '../lib/taskReminderPlan';
 
 const QUIET = [
   { key: 'off', label: 'Kapalı', start: null, end: null },
@@ -20,11 +46,15 @@ const QUIET = [
 export default function NotificationSettingsCard() {
   const [access, setAccess] = useState<NotificationAccess | null>(null);
   const [settings, setSettings] = useState<ReminderSettings>(DEFAULT_REMINDER_SETTINGS);
+  const [support, setSupport] = useState<TimeSupportSettings>(DEFAULT_TIME_SUPPORT_SETTINGS);
   const [report, setReport] = useState<ReconcileReport | null>(null);
 
   useEffect(() => {
     void notificationAccess().then(setAccess);
     void loadReminderSettings().then(setSettings);
+    if (typeof loadTimeSupportSettings === 'function') {
+      void loadTimeSupportSettings().then(setSupport);
+    }
     setReport(getLastReconcileReport());
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') {
@@ -41,6 +71,26 @@ export default function NotificationSettingsCard() {
     await syncAllReminders([]);
     setReport(getLastReconcileReport());
   }
+
+  async function updateSupport(next: TimeSupportSettings) {
+    const turningOn =
+      (next.taskLeadMin > 0 && support.taskLeadMin === 0) ||
+      (next.eveningClose && !support.eveningClose) ||
+      (next.followUp && !support.followUp);
+    setSupport(next);
+    if (typeof saveTimeSupportSettings === 'function') {
+      await saveTimeSupportSettings(next);
+    }
+    if (turningOn) {
+      await ensurePermission();
+      setAccess(await notificationAccess());
+    }
+    await syncAllReminders([]);
+    setReport(getLastReconcileReport());
+  }
+
+  const eveningInQuiet =
+    support.eveningClose && inQuietHours(support.eveningTime, settings);
 
   return (
     <View style={s.box}>
@@ -91,16 +141,15 @@ export default function NotificationSettingsCard() {
             {QUIET.map((q) => {
               const on = settings.quietStart === q.start && settings.quietEnd === q.end;
               return (
-                <TouchableOpacity
+                <Chip
                   key={q.key}
-                  style={[s.chip, on && s.chipOn]}
-                  onPress={() => update({ ...settings, quietStart: q.start, quietEnd: q.end })}
-                  accessibilityRole="button"
+                  label={q.label}
+                  selected={on}
                   accessibilityState={{ selected: on }}
+                  onPress={() => void update({ ...settings, quietStart: q.start, quietEnd: q.end })}
                   accessibilityLabel={`Sessiz saatler ${q.label}`}
-                >
-                  <Text style={s.chipText}>{q.label}</Text>
-                </TouchableOpacity>
+                  style={s.chip}
+                />
               );
             })}
           </View>
@@ -115,16 +164,15 @@ export default function NotificationSettingsCard() {
               const text = choice === 3 ? '3 (önerilen)' : choice === null ? 'Sınırsız' : String(choice);
               const a11yLabel = choice === null ? 'Günlük sınır yok' : `Günlük en çok ${choice} hatırlatıcı`;
               return (
-                <TouchableOpacity
+                <Chip
                   key={choice === null ? 'unlimited' : String(choice)}
-                  style={[s.chip, selected && s.chipOn]}
-                  onPress={() => update({ ...settings, maxPerDay: choice })}
-                  accessibilityRole="button"
+                  label={text}
+                  selected={selected}
                   accessibilityState={{ selected }}
+                  onPress={() => void update({ ...settings, maxPerDay: choice })}
                   accessibilityLabel={a11yLabel}
-                >
-                  <Text style={s.chipText}>{text}</Text>
-                </TouchableOpacity>
+                  style={s.chip}
+                />
               );
             })}
           </View>
@@ -152,7 +200,7 @@ export default function NotificationSettingsCard() {
 
           <TouchableOpacity
             style={s.toggleRow}
-            onPress={() => update({ ...settings, hideTitles: !settings.hideTitles })}
+            onPress={() => void update({ ...settings, hideTitles: !settings.hideTitles })}
             accessibilityRole="switch"
             accessibilityState={{ checked: settings.hideTitles }}
             accessibilityLabel="Kilit ekranında ve uygulama önizlemesinde içeriği gizle"
@@ -160,6 +208,86 @@ export default function NotificationSettingsCard() {
             <Text style={s.toggleText}>Kilit ekranında ve uygulama önizlemesinde içeriği gizle</Text>
             <Text style={[s.chipText, settings.hideTitles && { color: colors.accent }]}>{settings.hideTitles ? 'Açık' : 'Kapalı'}</Text>
           </TouchableOpacity>
+
+          <Text style={s.label}>ZAMAN DESTEĞİ (hepsi varsayılan kapalı)</Text>
+
+          <Text style={s.sub}>Saatli görevlerde erken hatırlat</Text>
+          <View style={s.row}>
+            {TASK_LEAD_CHOICES.map((lead) => {
+              const selected = support.taskLeadMin === lead;
+              const label = lead === 0 ? 'Kapalı' : `${lead} dk`;
+              const a11yLabel =
+                lead === 0
+                  ? 'Görev erken hatırlatıcısı Kapalı'
+                  : `Görevden ${lead} dakika önce hatırlat`;
+              return (
+                <Chip
+                  key={String(lead)}
+                  label={label}
+                  selected={selected}
+                  accessibilityState={{ selected }}
+                  onPress={() => void updateSupport({ ...support, taskLeadMin: lead })}
+                  accessibilityLabel={a11yLabel}
+                  style={s.chip}
+                />
+              );
+            })}
+          </View>
+
+          <TouchableOpacity
+            style={s.toggleRow}
+            onPress={() => void updateSupport({ ...support, eveningClose: !support.eveningClose })}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: support.eveningClose }}
+            accessibilityLabel="Akşam kapanış hatırlatıcısı"
+          >
+            <Text style={s.toggleText}>Akşam kapanış hatırlatıcısı</Text>
+            <Text style={[s.chipText, support.eveningClose && { color: colors.accent }]}>
+              {support.eveningClose ? 'Açık' : 'Kapalı'}
+            </Text>
+          </TouchableOpacity>
+
+          {support.eveningClose && (
+            <>
+              <View style={s.row}>
+                {EVENING_TIME_CHOICES.map((time) => {
+                  const selected = support.eveningTime === time;
+                  return (
+                    <Chip
+                      key={time}
+                      label={time}
+                      selected={selected}
+                      accessibilityState={{ selected }}
+                      onPress={() => void updateSupport({ ...support, eveningTime: time })}
+                      accessibilityLabel={`Akşam kapanış saati ${time}`}
+                      style={s.chip}
+                    />
+                  );
+                })}
+              </View>
+              {eveningInQuiet && (
+                <Text style={s.warn}>
+                  Bu saat sessiz saatlerine denk geliyor; bildirim gönderilmez.
+                </Text>
+              )}
+            </>
+          )}
+
+          <TouchableOpacity
+            style={s.toggleRow}
+            onPress={() => void updateSupport({ ...support, followUp: !support.followUp })}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: support.followUp }}
+            accessibilityLabel="Sınırlı takip"
+          >
+            <Text style={s.toggleText}>Sınırlı takip</Text>
+            <Text style={[s.chipText, support.followUp && { color: colors.accent }]}>
+              {support.followUp ? 'Açık' : 'Kapalı'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={s.sub}>
+            Bir alışkanlık hatırlatıcısına dokunmazsan en çok iki kez, 10 dk ve 30 dk arayla nazikçe tekrar eder. Sessiz saatlerde ve Odak sırasında asla.
+          </Text>
         </>
       )}
     </View>

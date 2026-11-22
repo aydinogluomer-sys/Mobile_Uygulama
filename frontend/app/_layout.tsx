@@ -28,11 +28,20 @@ import { useNotionSessionStore } from '../store/notionSessionStore';
 import { useLogStore } from '../store/logStore';
 // R02 — the task outbox is flushed on boot, on foreground and after a session refresh.
 import { useTaskStore } from '../store/taskStore';
+import { useFocusStore } from '../store/focusStore';
+import { expectedEndMs } from '../lib/focusTimer';
 // R04 — reminders follow the schedule; their buttons act once.
 import * as Notifications from 'expo-notifications';
 import { useHabitStore, whenHabitsLoaded } from '../store/habitStore';
 import { registerReminderReconciler, REMINDERS_SUPPORTED } from '../lib/notifications';
-import { createReconcileTrigger, reconcileReminders, handleReminderResponse, REPLAN_DEBOUNCE_MS } from '../services/reminderService';
+import {
+  bindTimeSupportUser,
+  createReconcileTrigger,
+  reconcileReminders,
+  handleReminderResponse,
+  REPLAN_DEBOUNCE_MS,
+  type TimeSupportContext,
+} from '../services/reminderService';
 import { hasReminderHabits } from '../lib/reminderPlan';
 import { syncProfileTimeZone } from '../services/timeZoneSyncService';
 import { resolveOnboardingRouting, useOnboardingStore } from '../store/onboardingStore';
@@ -319,14 +328,36 @@ function RootLayoutInner() {
   // F06: keyed on the user id -- an hourly token refresh no longer tears down and re-registers the
   // notification listeners and re-plans every reminder.
   useEffect(() => {
-    if (loading || !sessionUid || !REMINDERS_SUPPORTED) { registerReminderReconciler(null); return; }
+    if (loading || !sessionUid || !REMINDERS_SUPPORTED) { bindTimeSupportUser(null); registerReminderReconciler(null); return; }
+    bindTimeSupportUser(sessionUid);
+    let tasksHydrated = false;
     const habitsNow = () => { const s = useHabitStore.getState(); return s.habitsLoaded ? s.habits : null; };
-    const trigger = createReconcileTrigger({ run: () => reconcileReminders(habitsNow), delayMs: REPLAN_DEBOUNCE_MS });
+    const ctx: TimeSupportContext = {
+      tasks: () => {
+        const ts = useTaskStore.getState();
+        return ts.tasksLoaded || tasksHydrated || ts.tasks.length > 0 ? ts.tasks : null;
+      },
+      userId: () => sessionUid,
+      focus: () => {
+        const fs = useFocusStore.getState();
+        if (fs.status === 'idle') return { active: false, endsAt: null };
+        if (fs.status === 'running') {
+          const endMs = fs.clock ? expectedEndMs(fs.clock) : null;
+          const fallbackMs = fs.secondsLeft > 0 ? Date.now() + fs.secondsLeft * 1000 : null;
+          const resolved = endMs ?? fallbackMs;
+          return { active: true, endsAt: resolved !== null ? new Date(resolved) : null };
+        }
+        return { active: true, endsAt: null };
+      },
+    };
+    const trigger = createReconcileTrigger({ run: () => reconcileReminders(habitsNow, undefined, ctx), delayMs: REPLAN_DEBOUNCE_MS });
     const run = () => trigger.flushNow();
     registerReminderReconciler(run);
     void whenHabitsLoaded().then(() => trigger.flushNow());
     const unsubLogs = useLogStore.subscribe((s, prev) => { if (s.logs !== prev.logs && hasReminderHabits(useHabitStore.getState().habits)) trigger.schedule(); });
     const unsubHabits = useHabitStore.subscribe((s, prev) => { if (s.habits !== prev.habits && (hasReminderHabits(s.habits) || hasReminderHabits(prev.habits))) trigger.schedule(); });
+    const unsubTasks = useTaskStore.subscribe((s, prev) => { if (s.tasks !== prev.tasks || s.tasksLoaded !== prev.tasksLoaded) { if (s.tasks !== prev.tasks) tasksHydrated = true; trigger.schedule(); } });
+    const unsubFocus = useFocusStore.subscribe((s, prev) => { if (s.status !== prev.status) trigger.schedule(); });
     const appSub = AppState.addEventListener('change', (next: AppStateStatus) => { if (next === 'active') void trigger.flushNow(); });
     const deps = {
       get habits() { return useHabitStore.getState().habits; },
@@ -337,7 +368,7 @@ function RootLayoutInner() {
     };
     const respSub = Notifications.addNotificationResponseReceivedListener((r) => { void handleReminderResponse(r, deps); });
     void Notifications.getLastNotificationResponseAsync().then((r) => { if (r) void handleReminderResponse(r, deps); }).catch(() => undefined);
-    return () => { trigger.cancel(); unsubLogs(); unsubHabits(); appSub.remove(); respSub.remove(); registerReminderReconciler(null); };
+    return () => { trigger.cancel(); unsubLogs(); unsubHabits(); unsubTasks(); unsubFocus(); appSub.remove(); respSub.remove(); registerReminderReconciler(null); };
   }, [loading, sessionUid, router]);
 
   // F15 -- the device zone is reported once per session and again when the app returns to the
