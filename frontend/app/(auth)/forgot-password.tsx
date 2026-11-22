@@ -8,12 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { colors, space, radius, font, shadow, fontFamily } from '../../lib/tokens';
-import {
-  AtmosphericScreenCanvas,
-  Button,
-  EmbeddedFiligree,
-  EmblemMedallion,
-} from '../../components/ui';
+import { Button, EmblemMedallion } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
 import { recoveryErrorMessage } from '../../lib/authErrors';
@@ -243,7 +239,7 @@ const s = StyleSheet.create({
   changeText: { ...font.caption, color: colors.primaryBright },
   resendButton: { alignItems: 'center', paddingVertical: space.xs },
   resendText: { ...font.bodySm, color: colors.primaryBright, fontWeight: '600' },
-  resendTextDisabled: { color: colors.textGhost },
+  resendTextDisabled: { color: colors.textFaint },
   backBtn: { marginTop: space.xs, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   backText: { color: colors.textDim, fontSize: 14 },
 });

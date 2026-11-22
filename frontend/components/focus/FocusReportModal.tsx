@@ -301,7 +301,7 @@ const s = StyleSheet.create({
   chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginBottom: 22 },
   chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 5 },
   chartBar: { width: '70%', maxWidth: 22, borderRadius: 3, minHeight: 2 },
-  chartLabel: { fontSize: 9, color: colors.textGhost, fontFamily: fontFamily.mono },
+  chartLabel: { fontSize: 9, color: colors.textFaint, fontFamily: fontFamily.mono },
 
   ttRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   ttName: { flex: 1.2, fontSize: 13, color: colors.textDim },

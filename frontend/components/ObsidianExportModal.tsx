@@ -24,7 +24,7 @@ import {
 } from '../lib/obsidianMarkdown';
 import { todayLocal } from '../lib/date';
 import { haptic } from '../lib/haptics';
-import { EmbeddedFiligree } from './ui';
+import { EmbeddedFiligree } from './spatial';
 import { DECOR } from '../lib/visualAssets';
 
 interface ObsidianExportModalProps {
@@ -498,7 +498,7 @@ const s = StyleSheet.create({
   previewLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: colors.textGhost,
+    color: colors.textFaint,
     letterSpacing: 1,
   },
   charCount: {

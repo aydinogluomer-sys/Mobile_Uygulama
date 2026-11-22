@@ -14,14 +14,8 @@ import XPDisplay from '../../components/XPDisplay';
 // R04.02 — device-wide reminder settings and the real permission state.
 import NotificationSettingsCard from '../../components/NotificationSettingsCard';
 import YearlyHeatmap from '../../components/YearlyHeatmap';
-import {
-  AtmosphericScreenCanvas,
-  BentoVisualCard,
-  ChapterDivider,
-  EmbeddedFiligree,
-  EmblemMedallion,
-  TexturedSurface,
-} from '../../components/ui';
+import { EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, BentoVisualCard, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import {
   ACHIEVEMENT_BADGES,
   BENTO_ART,

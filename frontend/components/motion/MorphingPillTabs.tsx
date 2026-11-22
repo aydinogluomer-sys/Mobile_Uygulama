@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Animated,
   Platform,
@@ -12,12 +12,13 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font, hexA, radius, space } from '../../lib/tokens';
+import { font, hexA, onColor, radius, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
 import { useAccent } from '../../lib/useAccent';
 import { useReducedMotion } from '../seasonalMotion/useReducedMotion';
 
-const IS_TEST = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+const NATIVE = Platform.OS !== 'web';
 
 export type MorphingSegment<T extends string> = {
   key: T;
@@ -36,8 +37,74 @@ type Props<T extends string> = {
   style?: StyleProp<ViewStyle>;
 };
 
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    scrollOuter: {
+      backgroundColor: hexA(c.bgElevated, 0.88),
+      borderBottomWidth: 1,
+      borderBottomColor: c.borderSubtle,
+    },
+    scrollContent: {
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+    },
+    track: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      position: 'relative',
+      backgroundColor: hexA(c.surface, 0.86),
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: c.border,
+      padding: 3,
+      gap: 4,
+    },
+    trackFlex: {
+      width: '100%',
+    },
+    indicator: {
+      position: 'absolute',
+      top: 3,
+      bottom: 3,
+      left: 0,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      transformOrigin: 'left center',
+    },
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      paddingHorizontal: 13,
+      paddingVertical: Platform.OS === 'web' ? 7 : 6,
+      borderRadius: radius.pill,
+      zIndex: 1,
+    },
+    pillFlex: {
+      flex: 1,
+    },
+    label: {
+      ...font.bodySm,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    labelActive: {
+      fontWeight: '700',
+    },
+    badge: {
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: radius.pill,
+    },
+    badgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+    },
+  });
+
 /**
- * Yay fiziğiyle sekmeler arasında kayan aktif kapsüllü Awwwards sekme çubuğu.
+ * Yay fiziğiyle sekmeler arasında yerel sürücülü (`translateX` + `scaleX`) kayan aktif kapsüllü sekme çubuğu (GEM-09).
  */
 export default function MorphingPillTabs<T extends string>({
   segments,
@@ -47,40 +114,62 @@ export default function MorphingPillTabs<T extends string>({
   scrollable = false,
   style,
 }: Props<T>) {
+  const c = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const accent = useAccent();
   const reduceMotion = useReducedMotion();
-  const canAnimate = !IS_TEST && !reduceMotion;
+  const canAnimate = !reduceMotion;
 
   const [layouts, setLayouts] = useState<Record<string, { x: number; width: number }>>({});
+  const [baseW, setBaseW] = useState(0);
+  const baseWRef = useRef(0);
+  const lastTargetRef = useRef<{ x: number; width: number } | null>(null);
   const animX = useRef(new Animated.Value(0)).current;
-  const animW = useRef(new Animated.Value(0)).current;
-  const initialized = useRef(false);
+  const animScale = useRef(new Animated.Value(1)).current;
 
   const activeRect = layouts[value];
 
   useEffect(() => {
     if (!activeRect) return;
-    if (!canAnimate || !initialized.current) {
-      animX.setValue(activeRect.x);
-      animW.setValue(activeRect.width);
-      initialized.current = true;
+    const prev = lastTargetRef.current;
+    if (prev && Math.abs(prev.x - activeRect.x) < 0.5 && Math.abs(prev.width - activeRect.width) < 0.5) {
       return;
     }
+    lastTargetRef.current = activeRect;
+
+    const curBaseW = baseWRef.current;
+    if (!canAnimate || curBaseW <= 0) {
+      animX.setValue(activeRect.x);
+      animScale.setValue(1);
+      baseWRef.current = activeRect.width;
+      setBaseW(activeRect.width);
+      return;
+    }
+
     Animated.parallel([
       Animated.spring(animX, {
         toValue: activeRect.x,
         tension: 260,
         friction: 24,
-        useNativeDriver: false,
+        useNativeDriver: NATIVE,
       }),
-      Animated.spring(animW, {
-        toValue: activeRect.width,
+      Animated.spring(animScale, {
+        toValue: activeRect.width / curBaseW,
         tension: 260,
         friction: 24,
-        useNativeDriver: false,
+        useNativeDriver: NATIVE,
       }),
-    ]).start();
-  }, [activeRect, animW, animX, canAnimate]);
+    ]).start(({ finished }) => {
+      if (finished) {
+        baseWRef.current = activeRect.width;
+        setBaseW(activeRect.width);
+      }
+    });
+  }, [activeRect, animScale, animX, canAnimate]);
+
+  useLayoutEffect(() => {
+    if (baseW > 0) animScale.setValue(1);
+  }, [animScale, baseW]);
 
   function handleLayout(key: string, e: LayoutChangeEvent) {
     const { x, width } = e.nativeEvent.layout;
@@ -96,17 +185,19 @@ export default function MorphingPillTabs<T extends string>({
       ? { backgroundColor: accent.bright, borderColor: accent.bright }
       : { backgroundColor: hexA(accent.primary, 0.16), borderColor: accent.primary };
 
+  const filledInk = onColor(accent.bright);
+
   const pills = (
     <View style={[s.track, !scrollable && s.trackFlex]}>
-      {activeRect ? (
+      {activeRect && baseW > 0 ? (
         <Animated.View
           pointerEvents="none"
           style={[
             s.indicator,
             indicatorStyle,
             {
-              width: animW,
-              transform: [{ translateX: animX }],
+              width: baseW,
+              transform: [{ translateX: animX }, { scaleX: animScale }],
             },
           ]}
         />
@@ -117,11 +208,11 @@ export default function MorphingPillTabs<T extends string>({
         const fg =
           variant === 'filled'
             ? active
-              ? colors.bg
-              : colors.textDim
+              ? filledInk
+              : c.textDim
             : active
-            ? accent.primary
-            : colors.textDim;
+              ? accent.primary
+              : c.textDim;
 
         return (
           <TouchableOpacity
@@ -159,7 +250,7 @@ export default function MorphingPillTabs<T extends string>({
                   {
                     backgroundColor:
                       variant === 'filled' && active
-                        ? hexA(colors.bg, 0.2)
+                        ? hexA(filledInk, 0.2)
                         : hexA(accent.primary, 0.2),
                   },
                 ]}
@@ -167,7 +258,7 @@ export default function MorphingPillTabs<T extends string>({
                 <Text
                   style={[
                     s.badgeText,
-                    { color: variant === 'filled' && active ? colors.bg : accent.primary },
+                    { color: variant === 'filled' && active ? filledInk : accent.primary },
                   ]}
                 >
                   {seg.badgeCount}
@@ -196,68 +287,3 @@ export default function MorphingPillTabs<T extends string>({
 
   return <View style={style}>{pills}</View>;
 }
-
-const s = StyleSheet.create({
-  scrollOuter: {
-    backgroundColor: hexA(colors.bgElevated, 0.88),
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
-  },
-  scrollContent: {
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-  },
-  track: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    position: 'relative',
-    backgroundColor: hexA(colors.surface, 0.86),
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 3,
-    gap: 4,
-  },
-  trackFlex: {
-    width: '100%',
-  },
-  indicator: {
-    position: 'absolute',
-    top: 3,
-    bottom: 3,
-    left: 0,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingHorizontal: 13,
-    paddingVertical: Platform.OS === 'web' ? 7 : 6,
-    borderRadius: radius.pill,
-    zIndex: 1,
-  },
-  pillFlex: {
-    flex: 1,
-  },
-  label: {
-    ...font.bodySm,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  labelActive: {
-    fontWeight: '700',
-  },
-  badge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: radius.pill,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-});
-

@@ -7,17 +7,9 @@ import {
 import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  AnimatedMetricValue,
-  AtmosphericScreenCanvas,
-  ChapterDivider,
-  EditorialBanner,
-  EmbeddedFiligree,
-  FormError,
-  LoadErrorState,
-  listState,
-  Skeleton,
-} from '../../components/ui';
+import { EditorialBanner, FormError, LoadErrorState, listState, Skeleton } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
+import { AnimatedMetricValue } from '../../components/motion';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { useDeepWorkStore } from '../../store/deepWorkStore';
 import { todayLocal } from '../../lib/date';
@@ -303,7 +295,7 @@ const s = StyleSheet.create({
     backgroundColor: hexA(colors.surface, 0.9), borderRadius: 14, borderWidth: 1, borderColor: colors.border,
   },
   emptyText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
-  emptyHint: { fontSize: 12, color: colors.textGhost, textAlign: 'center' },
+  emptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
 
   modalBg: { flex: 1, backgroundColor: hexA(colors.black, 0.7), justifyContent: 'flex-end' },
   modalCard: { overflow: 'hidden', position: 'relative', backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: colors.border },

@@ -12,13 +12,8 @@ import { useTaskStore } from '../../store/taskStore';
 import { useDeepWorkStore } from '../../store/deepWorkStore';
 import { useJournalStore } from '../../store/journalStore';
 import { haptic } from '../../lib/haptics';
-import {
-  AtmosphericScreenCanvas,
-  ChapterDivider,
-  EmbeddedFiligree,
-  EmblemMedallion,
-  TexturedSurface,
-} from '../../components/ui';
+import { EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, getAchievementBadge, TEXTURES } from '../../lib/visualAssets';
 
 export type AchievementCategory = 'all' | 'habits' | 'streaks' | 'level' | 'focus';

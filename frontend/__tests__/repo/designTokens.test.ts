@@ -47,11 +47,10 @@ import { stripComments } from '../helpers/sourceText';
 const ROOT = join(__dirname, '..', '..');
 
 /**
- * `lib/tokens.ts` and `lib/theme.ts` DEFINE colours; every other module
- * consumes them. Tokenising inside a palette is circular, and doing it broke
- * `theme.ts`'s literal types the first time it was tried.
+ * `lib/tokens.ts` DEFINES colours (`palettes.dark` and `palettes.light`);
+ * every other module consumes them (`lib/theme.ts` was retired in F25).
  */
-const PALETTES = new Set(['lib/tokens.ts', 'lib/theme.ts']);
+const PALETTES = new Set(['lib/tokens.ts']);
 
 function tokenValues(): Map<string, string> {
   const src = readFileSync(join(ROOT, 'lib', 'tokens.ts'), 'utf8').replace(/\r\n/g, '\n');
@@ -115,7 +114,7 @@ describe('a colour that has a token is written as the token', () => {
 
   it('the palettes are exempt, and only the palettes', () => {
     // If this list grows, colours are being defined somewhere new.
-    expect([...PALETTES].sort()).toEqual(['lib/theme.ts', 'lib/tokens.ts']);
+    expect([...PALETTES].sort()).toEqual(['lib/tokens.ts']);
   });
 });
 

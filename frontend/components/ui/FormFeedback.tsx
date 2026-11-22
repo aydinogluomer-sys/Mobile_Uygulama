@@ -9,9 +9,26 @@
  * where the input is, nothing is lost.
  */
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, space, radius, hexA } from '../../lib/tokens';
+import { space, radius, hexA, type Palette } from '../../lib/tokens';
+import { useThemedStyles } from '../../hooks/useThemeColors';
+
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    error: { fontSize: 12, color: c.error, marginTop: space.xs },
+    preview: {
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: hexA(c.accent, 0.06),
+      borderRadius: radius.md,
+      padding: space.sm,
+      gap: 2,
+    },
+    previewLabel: { fontSize: 10, letterSpacing: 1, color: c.textFaint },
+    previewText: { fontSize: 13, color: c.textDim },
+  });
 
 export function FormError({ message }: { message: string | null | undefined }) {
+  const s = useThemedStyles(makeStyles);
   if (!message) return null;
   return (
     <Text style={s.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
@@ -21,6 +38,7 @@ export function FormError({ message }: { message: string | null | undefined }) {
 }
 
 export function FormPreview({ label = 'Önizleme', children }: { label?: string; children: React.ReactNode }) {
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.preview} accessibilityLabel={label}>
       <Text style={s.previewLabel}>{label.toLocaleUpperCase('tr-TR')}</Text>
@@ -28,10 +46,3 @@ export function FormPreview({ label = 'Önizleme', children }: { label?: string;
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  error: { fontSize: 12, color: colors.error, marginTop: space.xs },
-  preview: { borderWidth: 1, borderColor: colors.border, backgroundColor: hexA(colors.accent, 0.06), borderRadius: radius.md, padding: space.sm, gap: 2 },
-  previewLabel: { fontSize: 10, letterSpacing: 1, color: colors.textFaint },
-  previewText: { fontSize: 13, color: colors.textDim },
-});

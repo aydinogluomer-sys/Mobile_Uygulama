@@ -5,7 +5,7 @@
  * none), that nothing was deleted, and offers a retry.
  */
 import EmptyState from './EmptyState';
-import { colors } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 
 export type ListState = 'loading' | 'error' | 'no-results' | 'empty' | 'data';
 
@@ -19,6 +19,7 @@ export function listState(p: { loading: boolean; error: string | null | undefine
 }
 
 export default function LoadErrorState({ what, onRetry }: { what: string; onRetry: () => void }) {
+  const c = useThemeColors();
   return (
     <EmptyState
       icon="cloud-offline-outline"
@@ -27,7 +28,7 @@ export default function LoadErrorState({ what, onRetry }: { what: string; onRetr
       hint="Bağlantı ya da erişim sorunu — kayıtların silinmedi. Bağlantı gelince tekrar dene."
       ctaLabel="Tekrar dene"
       onCta={onRetry}
-      color={colors.warning}
+      color={c.warning}
     />
   );
 }

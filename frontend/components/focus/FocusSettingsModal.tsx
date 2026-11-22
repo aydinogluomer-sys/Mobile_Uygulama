@@ -417,7 +417,7 @@ const s = StyleSheet.create({
 
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle },
   rowLabel: { fontSize: 14, color: colors.textDim, flex: 1 },
-  rowHint: { fontSize: 11, color: colors.textGhost, marginTop: 2 },
+  rowHint: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   rowValue: { fontSize: 13, color: colors.textFaint, maxWidth: '60%' },
   note: { fontSize: 12.5, color: colors.textFaint, lineHeight: 18, marginBottom: 6, paddingVertical: 8 },
 

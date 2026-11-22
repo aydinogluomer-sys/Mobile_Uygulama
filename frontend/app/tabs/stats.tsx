@@ -18,10 +18,8 @@ import AreaRadar from '../../components/AreaRadar';
 import HabitListView from '../../components/HabitListView';
 import { colors, space, radius, font, hexA, fontFamily } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import {
-  AtmosphericScreenCanvas, Card, ChapterDivider, StatTile, SectionHeader, ProgressBar, ProgressRing, EmptyState, Button, EditorialBanner, EmbeddedFiligree,
-
-} from '../../components/ui';
+import { Card, StatTile, SectionHeader, ProgressBar, ProgressRing, EmptyState, Button, EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const { width } = Dimensions.get('window');
@@ -468,7 +466,7 @@ export default function StatsScreen() {
                   <Text style={s.areaLabel}>{a.label}</Text>
                   <Text style={s.areaCount}>{a.count > 0 ? `${a.count} alışkanlık` : 'yok'}</Text>
                   <ProgressBar progress={a.count / maxAreaCount} color={a.color} height={6} style={{ flex: 1 }} />
-                  <Text style={[s.areaPct, { color: a.activeCount > 0 ? a.color : colors.textGhost }]}>
+                  <Text style={[s.areaPct, { color: a.activeCount > 0 ? a.color : colors.textFaint }]}>
                     {a.activeCount > 0 ? `%${a.rate}` : '—'}
                   </Text>
                 </View>

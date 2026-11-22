@@ -45,7 +45,8 @@ import { useSpeechInput } from '../../hooks/useSpeechInput';
 import { useAiConversationStore } from '../../store/aiConversationStore';
 import ConversationSheet from '../../components/coach/ConversationSheet';
 import { useProjectStore } from '../../store/projectStore';
-import { AtmosphericScreenCanvas, EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas } from '../../components/spatial';
 import { BENTO_ART, CANVASES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 type Message = CoachMessage;
@@ -497,7 +498,7 @@ export default function AICoachScreen() {
               ) : (
                 <Ionicons name="book-outline" size={16} color={hasConversation ? '#ec4899' : colors.textGhost} />
               )}
-              <Text style={[s.headerBtnText, { color: hasConversation ? '#ec4899' : colors.textGhost }]}>Günlüğe</Text>
+              <Text style={[s.headerBtnText, { color: hasConversation ? '#ec4899' : colors.textFaint }]}>Günlüğe</Text>
             </TouchableOpacity>
           ),
         }}

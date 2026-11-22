@@ -11,17 +11,8 @@ import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useGoalStore, Goal, GoalKind } from '../../store/goalStore';
-import {
-  AtmosphericScreenCanvas,
-  EmptyState,
-  Skeleton,
-  FormError,
-  FormPreview,
-  LoadErrorState,
-  EditorialBanner,
-  EmbeddedFiligree,
-  EmblemMedallion,
-} from '../../components/ui';
+import { EmptyState, Skeleton, FormError, FormPreview, LoadErrorState, EditorialBanner, EmblemMedallion } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { goalProgress } from '../../lib/progressModel';
 
@@ -455,8 +446,8 @@ const s = StyleSheet.create({
     alignItems: 'center', gap: 8, padding: 40,
     backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginTop: 20,
   },
-  emptyText: { fontSize: 14, color: colors.textGhost, fontWeight: '600' },
-  emptyHint: { fontSize: 12, color: colors.textGhost, textAlign: 'center' },
+  emptyText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
+  emptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
 
   fab: {
     position: 'absolute', bottom: 24, right: 20,

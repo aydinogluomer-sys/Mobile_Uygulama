@@ -2,7 +2,8 @@ import type { ComponentProps, ReactElement } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, font, hexA, radius, space } from '../../lib/tokens';
+import { font, hexA, radius, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { DIALOG_DEFAULT_CANCEL } from '../../lib/dialog';
 
 export type ActionSheetItem = {
@@ -33,6 +34,82 @@ function isIoniconName(name: string): name is IoniconName {
   return !glyphMap || typeof glyphMap !== 'object' || name in glyphMap;
 }
 
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    backdropWrap: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    scrim: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      backgroundColor: hexA(c.black, 0.55),
+    },
+    sheet: {
+      width: '100%',
+      maxWidth: 560,
+      maxHeight: '80%',
+      alignSelf: 'center',
+      backgroundColor: c.bgElevated,
+      borderTopLeftRadius: radius.xl,
+      borderTopRightRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: c.border,
+      paddingTop: space.md,
+    },
+    header: {
+      paddingHorizontal: space.xl,
+      paddingBottom: space.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: c.borderSubtle,
+      gap: space.xs,
+    },
+    title: {
+      ...font.h3,
+      color: c.text,
+    },
+    message: {
+      ...font.bodySm,
+      color: c.textDim,
+      lineHeight: 19,
+    },
+    list: {
+      flexGrow: 0,
+    },
+    row: {
+      minHeight: 52,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.md,
+      paddingHorizontal: space.xl,
+      paddingVertical: space.md,
+    },
+    rowLabel: {
+      ...font.body,
+      flex: 1,
+    },
+    cancelDivider: {
+      borderTopWidth: 1,
+      borderTopColor: c.borderSubtle,
+      marginTop: space.xs,
+    },
+    cancelRow: {
+      minHeight: 52,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: space.xl,
+      paddingVertical: space.md,
+    },
+    cancelLabel: {
+      ...font.body,
+      fontWeight: '600',
+      color: c.textDim,
+    },
+  });
+
 export default function ActionSheet({
   visible,
   title,
@@ -44,6 +121,8 @@ export default function ActionSheet({
   onCancel,
 }: ActionSheetProps): ReactElement | null {
   const insets = useSafeAreaInsets();
+  const c = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   if (!visible) return null;
 
   return (
@@ -81,10 +160,10 @@ export default function ActionSheet({
               const isDisabled = item.disabled === true;
               const isDestructive = item.destructive === true;
               const fg = isDisabled
-                ? colors.textGhost
+                ? c.textGhost
                 : isDestructive
-                  ? colors.error
-                  : colors.text;
+                  ? c.error
+                  : c.text;
 
               return (
                 <TouchableOpacity
@@ -130,78 +209,3 @@ export default function ActionSheet({
     </Modal>
   );
 }
-
-const s = StyleSheet.create({
-  backdropWrap: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  scrim: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: hexA(colors.black, 0.55),
-  },
-  sheet: {
-    width: '100%',
-    maxWidth: 560,
-    maxHeight: '80%',
-    alignSelf: 'center',
-    backgroundColor: colors.bgElevated,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingTop: space.md,
-  },
-  header: {
-    paddingHorizontal: space.xl,
-    paddingBottom: space.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
-    gap: space.xs,
-  },
-  title: {
-    ...font.h3,
-    color: colors.text,
-  },
-  message: {
-    ...font.bodySm,
-    color: colors.textDim,
-    lineHeight: 19,
-  },
-  list: {
-    flexGrow: 0,
-  },
-  row: {
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    paddingHorizontal: space.xl,
-    paddingVertical: space.md,
-  },
-  rowLabel: {
-    ...font.body,
-    flex: 1,
-  },
-  cancelDivider: {
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSubtle,
-    marginTop: space.xs,
-  },
-  cancelRow: {
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: space.xl,
-    paddingVertical: space.md,
-  },
-  cancelLabel: {
-    ...font.body,
-    fontWeight: '600',
-    color: colors.textDim,
-  },
-});

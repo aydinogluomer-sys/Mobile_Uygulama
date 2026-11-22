@@ -29,7 +29,9 @@ import {
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import { Image } from 'expo-image';
-import { AtmosphericScreenCanvas, Card, ChapterDivider, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton, FormError, EditorialBanner, EmbeddedFiligree, GoldMendShimmer } from '../../components/ui';
+import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton, FormError, EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
+import { GoldMendShimmer } from '../../components/motion';
 import { BENTO_ART, CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { todayLocal } from '../../lib/date';
 import { logsForHabitsSince as fetchHabitLogsForHabitsSince } from '../../services/habitService';
@@ -923,5 +925,5 @@ const s = StyleSheet.create({
   switchKnob: { width: 16, height: 16, borderRadius: 8, backgroundColor: colors.white },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, backgroundColor: colors.bgElevated, borderRadius: radius.md, paddingHorizontal: space.md, height: 44, borderWidth: 1, borderColor: colors.border },
   timeInput: { flex: 1, color: colors.text, fontSize: 15 },
-  timeHint: { fontSize: 11, color: colors.textGhost },
+  timeHint: { fontSize: 11, color: colors.textFaint },
 });

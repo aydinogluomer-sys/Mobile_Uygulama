@@ -7,12 +7,8 @@ import * as Linking from 'expo-linking';
 import { supabase } from '../../lib/supabase';
 import { signOutLocal } from '../../services/accountService';
 import { colors, space, radius, font, shadow, fontFamily } from '../../lib/tokens';
-import {
-  AtmosphericScreenCanvas,
-  Button,
-  EmbeddedFiligree,
-  EmblemMedallion,
-} from '../../components/ui';
+import { Button, EmblemMedallion } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
 import PasswordToggle from '../../components/auth/PasswordToggle';

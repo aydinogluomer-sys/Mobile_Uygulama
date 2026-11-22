@@ -9,17 +9,37 @@ import { useThemeStore } from '../../store/themeStore';
 import Drawer from '../../components/Drawer';
 import CommandPalette from '../../components/CommandPalette';
 import OutboxStatusModal from '../../components/OutboxStatusModal';
-import { colors } from '../../lib/tokens';
+import { LIGHT_THEME_ENABLED } from '../../lib/featureGates';
+import { type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useAccent } from '../../lib/useAccent';
 
 function HamburgerButton() {
   const open = useDrawerStore((s) => s.open);
+  const c = useThemeColors();
   return (
     <TouchableOpacity onPress={open} style={{ marginLeft: 16 }} accessibilityRole="button" accessibilityLabel="Menüyü aç">
-      <Ionicons name="menu-outline" size={24} color={colors.textDim} />
+      <Ionicons name="menu-outline" size={24} color={c.textDim} />
     </TouchableOpacity>
   );
 }
+
+const makeHeaderStyles = (c: Palette) =>
+  StyleSheet.create({
+    row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginRight: 12 },
+    iconBtn: {
+      width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+    },
+    searchPill: {
+      flexDirection: 'row', alignItems: 'center', gap: 5, height: 32,
+      paddingHorizontal: 10, borderRadius: 8,
+      backgroundColor: c.surface, borderWidth: 1, borderColor: c.border,
+      maxWidth: 150,
+    },
+    searchText: { fontSize: 12, color: c.textFaint, flexShrink: 1 },
+    shortcut: { fontSize: 10, color: c.textFaint, marginLeft: 4 },
+  });
 
 /** Topbar sağ küme (HTML topbar paritesi): Odak modu · "Komut veya ara" · Tema toggle */
 function HeaderActions({ onOpenSync }: { onOpenSync: () => void }) {
@@ -27,6 +47,8 @@ function HeaderActions({ onOpenSync }: { onOpenSync: () => void }) {
   const router = useRouter();
   const isDark = useThemeStore((s) => s.isDark);
   const toggleTheme = useThemeStore((s) => s.toggle);
+  const c = useThemeColors();
+  const h = useThemedStyles(makeHeaderStyles);
   const accent = useAccent();
   const { width } = useWindowDimensions();
   const showSearch = width >= 720;
@@ -34,50 +56,37 @@ function HeaderActions({ onOpenSync }: { onOpenSync: () => void }) {
     <View style={h.row}>
       {/* Çevrimdışı Senkronizasyon & Outbox */}
       <TouchableOpacity style={h.iconBtn} onPress={onOpenSync} accessibilityRole="button" accessibilityLabel="Senkronizasyon durumunu aç">
-        <Ionicons name="cloud-done-outline" size={17} color={colors.textDim} />
+        <Ionicons name="cloud-done-outline" size={17} color={c.textDim} />
       </TouchableOpacity>
-      {/* Tema toggle */}
-      <TouchableOpacity style={h.iconBtn} onPress={toggleTheme} accessibilityRole="button" accessibilityLabel="Tema değiştir">
-        <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={18} color={accent.bright} />
-      </TouchableOpacity>
+      {/* Tema toggle — yalnız açık tema kapısı açıldığında görünür */}
+      {LIGHT_THEME_ENABLED ? (
+        <TouchableOpacity style={h.iconBtn} onPress={toggleTheme} accessibilityRole="button" accessibilityLabel="Tema değiştir">
+          <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={18} color={accent.bright} />
+        </TouchableOpacity>
+      ) : null}
       {/* Odak modu */}
       <TouchableOpacity style={h.iconBtn} onPress={() => router.push('/tabs/focus' as any)} accessibilityRole="button" accessibilityLabel="Odak modunu aç">
-        <Ionicons name="timer-outline" size={18} color={colors.textDim} />
+        <Ionicons name="timer-outline" size={18} color={c.textDim} />
       </TouchableOpacity>
       {/* Komut veya ara (Hem mobil hem masaüstünde erişilebilir) */}
       {showSearch ? (
         <TouchableOpacity style={h.searchPill} onPress={openCmd} accessibilityRole="button" accessibilityLabel="Komut paletini aç veya ara">
-          <Ionicons name="search-outline" size={15} color={colors.textFaint} />
+          <Ionicons name="search-outline" size={15} color={c.textFaint} />
           <Text style={h.searchText} numberOfLines={1}>Komut veya ara</Text>
           <Text style={h.shortcut}>⌘ K</Text>
         </TouchableOpacity>
       ) : (
         <TouchableOpacity style={h.iconBtn} onPress={openCmd} accessibilityRole="button" accessibilityLabel="Komut paletini aç veya ara">
-          <Ionicons name="search-outline" size={18} color={colors.textDim} />
+          <Ionicons name="search-outline" size={18} color={c.textDim} />
         </TouchableOpacity>
       )}
     </View>
   );
 }
 
-const h = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginRight: 12 },
-  iconBtn: {
-    width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-  },
-  searchPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5, height: 32,
-    paddingHorizontal: 10, borderRadius: 8,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-    maxWidth: 150,
-  },
-  searchText: { fontSize: 12, color: colors.textFaint, flexShrink: 1 },
-  shortcut: { fontSize: 10, color: colors.textGhost, marginLeft: 4 },
-});
-
 export default function TabLayout() {
   const inboxCount = useTaskStore((s) => s.tasks.filter((t) => t.list_type === 'inbox' && !t.completed).length);
+  const c = useThemeColors();
   const accent = useAccent();
   const [showOutboxModal, setShowOutboxModal] = useState(false);
 
@@ -90,36 +99,28 @@ export default function TabLayout() {
 
         The header's "Komut veya ara" pill (see `HeaderActions` above) calls
         `useCommandStore.open()`, which flips a flag that only this component
-        reads. Until this line existed the palette was never rendered by
-        anything, so the button set a flag nobody watched and visibly did
-        nothing — the search affordance on every screen was dead.
-
-        The tab layout is the right owner because it is the same component
-        that renders the button: mounting it inside a screen would give a
-        palette that only exists on that screen, and mounting it in the root
-        layout would put it above the auth stack, where there is no search
-        button and no session to search with.
+        reads.
       */}
       <CommandPalette />
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: accent.bright,
-          tabBarInactiveTintColor: colors.textFaint,
+          tabBarInactiveTintColor: c.textFaint,
           tabBarLabelStyle: { fontSize: 11, lineHeight: 14, fontWeight: '600', paddingBottom: 2 },
           tabBarStyle: {
-            backgroundColor: colors.bgElevated,
-            borderTopColor: colors.borderSubtle,
+            backgroundColor: c.bgElevated,
+            borderTopColor: c.borderSubtle,
             borderTopWidth: 1,
             height: Platform.OS === 'ios' ? 88 : 68,
             paddingBottom: Platform.OS === 'ios' ? 24 : 10,
             paddingTop: 6,
           },
           headerStyle: {
-            backgroundColor: colors.bgElevated,
-            borderBottomColor: colors.borderSubtle,
+            backgroundColor: c.bgElevated,
+            borderBottomColor: c.borderSubtle,
             borderBottomWidth: 1,
           },
-          headerTintColor: colors.text,
+          headerTintColor: c.text,
           headerTitleAlign: 'center',
           headerLeft: () => <HamburgerButton />,
           headerRight: () => <HeaderActions onOpenSync={() => setShowOutboxModal(true)} />,
@@ -174,13 +175,6 @@ export default function TabLayout() {
 
         {/*
           Hidden, NOT deleted.
-
-          `tasks`, `focus` and `stats` are now surfaces inside Plan and
-          İçgörüler, but every one of them is still a real route: the drawer
-          links to some of them, `today.tsx` pushes `/tabs/timeline`, and
-          `/tabs/habits?ai=true` is a deep link. Removing the routes to tidy
-          the tab bar would have turned each of those into a dead end, which
-          is the failure mode an IA change is most likely to introduce.
         */}
         <Tabs.Screen name="tasks" options={{ href: null, title: 'Görevler' }} />
         <Tabs.Screen name="focus" options={{ href: null, title: 'Odak' }} />

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   Animated,
   Platform,
@@ -8,7 +9,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { colors, hexA } from '../../lib/tokens';
+import { hexA, type Palette, type ThemeMode } from '../../lib/tokens';
+import { useThemeColors, useThemeMode, useThemedStyles } from '../../hooks/useThemeColors';
+import { useScreenActive } from '../../hooks/useScreenActive';
 import { useThemeStore } from '../../store/themeStore';
 import SeasonalMotion from '../seasonalMotion/SeasonalMotion';
 import { monthNameFromIndex } from '../seasonalMotion/config';
@@ -30,21 +33,43 @@ type Props = {
   /** İsteğe bağlı ikincil mikro-doku katmanı (`TEXTURES.*`). */
   textureSource?: ImageSourcePropType;
   textureOpacity?: number;
-  /** Görsel üzerindeki sıcak bazalt karartma yoğunluğu (WCAG AA >= 4.5:1 için varsayılan 0.58). */
+  /** Görsel üzerindeki sıcak bazalt/kâğıt karartma yoğunluğu (WCAG AA >= 4.5:1 için varsayılan 0.58). */
   scrim?: number;
   /** Kaydırma pozisyonuna bağlı mikro-paralaks için Animated.Value. */
   scrollY?: Animated.Value;
-  /** Üst köşe atmosferik ışık tonu (örn. `colors.primary`, `colors.warning`). */
+  /** Üst köşe atmosferik ışık tonu. */
   tintColor?: string;
   /** Mevsimsel ortam toz/ışık hareketi açık mı? */
   ambientMotion?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** Açıkça verilirse odak ve AppState kararını geçersiz kılar (test ve özel durumlar). */
+  active?: boolean;
 };
+
+export function effectiveScrim(scrim: number, mode: ThemeMode): number {
+  return mode === 'light' ? Math.max(0.9, scrim) : scrim;
+}
+
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    root: {
+      overflow: 'hidden',
+      backgroundColor: c.bg,
+    },
+    topGlow: {
+      position: 'absolute',
+      top: -120,
+      left: -80,
+      width: 380,
+      height: 320,
+      borderRadius: 220,
+    },
+  });
 
 /**
  * Katman 0 — Tam Ekran Atmosferik Sahne Tuali.
- * Yalnızca header'da görsel olması yerine tüm sayfa zeminini yaşayan,
- * kaydırmaya duyarlı paralakslı ve WCAG kontrast korumalı bir mekana dönüştürür.
+ * Odakta olmayan veya arka plandaki ekranlarda tam ekran görseli ve mevsimsel
+ * döngüyü düşürerek bellek ve çerçeve bütçesini korur (PRF-07, PRF-11).
  */
 export default function AtmosphericScreenCanvas({
   source,
@@ -55,10 +80,22 @@ export default function AtmosphericScreenCanvas({
   tintColor,
   ambientMotion = false,
   style,
+  active,
 }: Props) {
+  const c = useThemeColors();
+  const mode = useThemeMode();
+  const s = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
   const seasonalIntensity = useThemeStore((st) => st.seasonalMotion);
-  const canAnimate = !IS_TEST && !reduceMotion && Boolean(scrollY);
+  const screenActive = useScreenActive();
+  const isActive = active ?? (IS_TEST ? false : screenActive);
+  const shownBefore = useRef(false);
+
+  useEffect(() => {
+    if (isActive) shownBefore.current = true;
+  }, [isActive]);
+
+  const canAnimate = !IS_TEST && !reduceMotion && isActive && Boolean(scrollY);
 
   const parallaxStyle =
     canAnimate && scrollY
@@ -82,9 +119,17 @@ export default function AtmosphericScreenCanvas({
         }
       : undefined;
 
-  if (IS_TEST) {
-    return <View style={[StyleSheet.absoluteFill, s.root, style]} pointerEvents="none" />;
+  if (!isActive) {
+    return (
+      <View
+        style={[StyleSheet.absoluteFill, s.root, style]}
+        pointerEvents="none"
+        {...decorativeA11y}
+      />
+    );
   }
+
+  const transitionMs = IS_TEST || reduceMotion || shownBefore.current ? 0 : 280;
 
   return (
     <View style={[StyleSheet.absoluteFill, s.root, style]} pointerEvents="none" {...decorativeA11y}>
@@ -93,7 +138,7 @@ export default function AtmosphericScreenCanvas({
           source={source}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
-          transition={IS_TEST || reduceMotion ? 0 : 280}
+          transition={transitionMs}
           cachePolicy="memory-disk"
         />
       </Animated.View>
@@ -107,36 +152,21 @@ export default function AtmosphericScreenCanvas({
         />
       ) : null}
 
-      {/* Çift kademeli sıcak bazalt scrim — kartların ve metinlerin kontrastını garanti eder */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bg, scrim) }]} />
+      {/* Çift kademeli sıcak bazalt/kâğıt scrim — kartların ve metinlerin kontrastını garanti eder */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(c.bg, effectiveScrim(scrim, mode)) }]} />
 
       {tintColor ? (
         <View style={[s.topGlow, { backgroundColor: hexA(tintColor, 0.07) }]} />
       ) : null}
 
-      {ambientMotion && !IS_TEST ? (
+      {ambientMotion ? (
         <SeasonalMotion
           month={monthNameFromIndex(new Date().getMonth())}
           intensity={seasonalIntensity === 'off' ? 'off' : 'subtle'}
           reduceMotion={reduceMotion}
-          isVisible
+          isVisible={ambientMotion && isActive}
         />
       ) : null}
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  root: {
-    overflow: 'hidden',
-    backgroundColor: colors.bg,
-  },
-  topGlow: {
-    position: 'absolute',
-    top: -120,
-    left: -80,
-    width: 380,
-    height: 320,
-    borderRadius: 220,
-  },
-});

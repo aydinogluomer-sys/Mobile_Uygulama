@@ -1,22 +1,44 @@
+import { Appearance } from 'react-native';
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { dark, light, type Theme } from '../lib/theme';
-import { type AccentKey, DEFAULT_ACCENT, ACCENTS } from '../lib/tokens';
+import { LIGHT_THEME_ENABLED } from '../lib/featureGates';
+import {
+  ACCENTS,
+  DEFAULT_ACCENT,
+  resolveThemeMode,
+  type AccentKey,
+  type ThemeMode,
+} from '../lib/tokens';
 import type { SeasonalMotionIntensity } from '../components/seasonalMotion/types';
 import { DEFAULT_SEASONAL_MOTION_INTENSITY } from '../components/seasonalMotion/config';
 
-const STORAGE_KEY = 'app_theme_dark';
+const MODE_KEY = 'app_theme_mode';
+const LEGACY_DARK_KEY = 'app_theme_dark';
 const SEASONAL_KEY = 'app_seasonal_motion';
 const ACCENT_KEY = 'app_accent';
 
+function isAccentKey(v: string | null): v is AccentKey {
+  return v !== null && Object.prototype.hasOwnProperty.call(ACCENTS, v);
+}
+
+export function applyColorScheme(mode: ThemeMode): void {
+  try {
+    if (typeof Appearance?.setColorScheme === 'function') {
+      Appearance.setColorScheme(mode);
+    }
+  } catch {
+    // react-native-web veya desteklemeyen ortamlarda sessizce atla
+  }
+}
+
 type ThemeStore = {
   isDark: boolean;
-  theme: Theme;
   // Takvim arka planı mevsimsel ambient hareket yoğunluğu (contract §5, §13)
   seasonalMotion: SeasonalMotionIntensity;
   // Aksan rengi (clay/moss/slate/amber) — render-anında okunan yüzeylere uygulanır
   accent: AccentKey;
   toggle: () => void;
+  setDark: (v: boolean) => void;
   setSeasonalMotion: (v: SeasonalMotionIntensity) => void;
   setAccent: (a: AccentKey) => void;
   load: () => Promise<void>;
@@ -24,14 +46,19 @@ type ThemeStore = {
 
 export const useThemeStore = create<ThemeStore>((set, get) => ({
   isDark: true,
-  theme: dark,
   seasonalMotion: DEFAULT_SEASONAL_MOTION_INTENSITY,
   accent: DEFAULT_ACCENT,
 
+  setDark: (next) => {
+    set({ isDark: next });
+    const mode: ThemeMode = next ? 'dark' : 'light';
+    AsyncStorage.setItem(MODE_KEY, mode).catch(() => {});
+    applyColorScheme(resolveThemeMode(next, LIGHT_THEME_ENABLED));
+  },
+
   toggle: () => {
     const next = !get().isDark;
-    set({ isDark: next, theme: next ? dark : light });
-    AsyncStorage.setItem(STORAGE_KEY, next ? '1' : '0').catch(() => {});
+    get().setDark(next);
   },
 
   setSeasonalMotion: (v) => {
@@ -46,19 +73,22 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
 
   load: async () => {
     try {
-      const [val, sm, ac] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEY),
+      const [modeRaw, sm, ac] = await Promise.all([
+        AsyncStorage.getItem(MODE_KEY),
         AsyncStorage.getItem(SEASONAL_KEY),
         AsyncStorage.getItem(ACCENT_KEY),
+        AsyncStorage.removeItem(LEGACY_DARK_KEY).catch(() => {}),
       ]);
-      const isDark = val === null ? true : val === '1';
+      const isDark = modeRaw === 'light' ? false : true;
       const seasonalMotion = (sm === 'off' || sm === 'subtle' || sm === 'normal')
         ? sm
         : DEFAULT_SEASONAL_MOTION_INTENSITY;
-      const accent: AccentKey = (ac && ac in ACCENTS) ? (ac as AccentKey) : DEFAULT_ACCENT;
-      set({ isDark, theme: isDark ? dark : light, seasonalMotion, accent });
+      const accent: AccentKey = isAccentKey(ac) ? ac : DEFAULT_ACCENT;
+      set({ isDark, seasonalMotion, accent });
+      applyColorScheme(resolveThemeMode(isDark, LIGHT_THEME_ENABLED));
     } catch {
       // AsyncStorage hata verirse varsayılanlar (dark + subtle + clay)
+      applyColorScheme(resolveThemeMode(true, LIGHT_THEME_ENABLED));
     }
   },
 }));

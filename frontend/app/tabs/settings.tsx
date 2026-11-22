@@ -8,7 +8,6 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
-  Switch,
   Linking,
 } from 'react-native';
 import { confirm, notify } from '../../lib/dialog';
@@ -16,7 +15,9 @@ import { runDeleteAccountFlow } from '../../lib/deleteAccountFlow';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../../store/themeStore';
-import { colors, ACCENTS, type AccentKey, alphaHex } from '../../lib/tokens';
+import { accentsFor, alphaHex, hexA, onColor, type AccentKey, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemeMode, useThemedStyles } from '../../hooks/useThemeColors';
+import { useAccent } from '../../lib/useAccent';
 import type { SeasonalMotionIntensity } from '../../components/seasonalMotion/types';
 import {
   listWebhooks, registerWebhook, removeWebhook,
@@ -29,7 +30,7 @@ import { todayLocal } from '../../lib/date';
 import { deleteAccount, signOutCurrentAccount, unsentChangeCount } from '../../services/accountService';
 import { flushAllOutboxes } from '../../services/unifiedOutbox';
 import SignOutConfirmModal from '../../components/SignOutConfirmModal';
-import { PUBLIC_SITE_URLS_LIVE, PUBLIC_SITE_URLS } from '../../lib/featureGates';
+import { LIGHT_THEME_ENABLED, PUBLIC_SITE_URLS_LIVE, PUBLIC_SITE_URLS } from '../../lib/featureGates';
 import { useRouter } from 'expo-router';
 import BadHabitsTracker from '../../components/BadHabitsTracker';
 import { useOnboardingStore } from '../../store/onboardingStore';
@@ -49,7 +50,8 @@ import {
 } from '../../constants/integrations';
 import { CURRENT_FEATURES, UPCOMING_FEATURES, type FeatureHighlight } from '../../constants/features';
 import { reportError } from '../../lib/crashReporting';
-import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFiligree, EmblemMedallion } from '../../components/ui';
+import { Chip, EditorialBanner, EmblemMedallion } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const SEASONAL_OPTIONS: { v: SeasonalMotionIntensity; l: string }[] = [
@@ -58,12 +60,57 @@ const SEASONAL_OPTIONS: { v: SeasonalMotionIntensity; l: string }[] = [
   { v: 'normal', l: 'Normal' },
 ];
 
+function ThemeModeRow({ isDark, onSelectDark }: { isDark: boolean; onSelectDark: (dark: boolean) => void }) {
+  const c = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.motionBlock} accessibilityRole="radiogroup" accessibilityLabel="Tema modu">
+      <View style={styles.motionHead}>
+        <Ionicons
+          name={isDark ? 'moon-outline' : 'sunny-outline'}
+          size={18}
+          color={isDark ? c.accent : c.warning}
+        />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.themeLabel}>Tema modu</Text>
+          <Text style={styles.themeSubLabel}>Kâğıt tonlu, gündüz için</Text>
+        </View>
+      </View>
+      <View style={styles.segRow}>
+        <Chip
+          label="Koyu tema"
+          color={c.accent}
+          selected={isDark}
+          onPress={() => onSelectDark(true)}
+          accessibilityRole="radio"
+          style={[styles.segBtn, styles.themeRadioBtn, isDark && styles.segBtnOn]}
+        />
+        <Chip
+          label="Açık tema"
+          color={c.accent}
+          selected={!isDark}
+          onPress={() => onSelectDark(false)}
+          accessibilityRole="radio"
+          style={[styles.segBtn, styles.themeRadioBtn, !isDark && styles.segBtnOn]}
+        />
+      </View>
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
-  const { isDark, toggle: toggleTheme } = useThemeStore();
+  const c = useThemeColors();
+  const mode = useThemeMode();
+  const styles = useThemedStyles(makeStyles);
+  const accentTheme = useAccent();
+  const isDark = useThemeStore((st) => st.isDark);
+  const setDark = useThemeStore((st) => st.setDark);
   const seasonalMotion = useThemeStore((st) => st.seasonalMotion);
   const setSeasonalMotion = useThemeStore((st) => st.setSeasonalMotion);
   const accent = useThemeStore((st) => st.accent);
   const setAccent = useThemeStore((st) => st.setAccent);
+  const modeAccents = accentsFor(mode);
+
   const [showWebhookModal, setShowWebhookModal] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<IntegrationCategoryId | null>(
     null
@@ -77,15 +124,6 @@ export default function SettingsScreen() {
   const router = useRouter();
   const beginPersonalization = useOnboardingStore((s) => s.beginPersonalization);
 
-  /**
-   * Reopens the first-run flow on purpose.
-   *
-   * `beginPersonalization()` is what stops the router bouncing a finished
-   * user straight back out (see `app/_layout.tsx`). Re-running the flow ADDS
-   * a proposal the user must confirm; it never edits or deletes the habits
-   * they already have -- the plan screen writes through the same install
-   * pipeline, which only inserts.
-   */
   function openPersonalization() {
     beginPersonalization();
     router.push('/onboarding/needs');
@@ -109,8 +147,6 @@ export default function SettingsScreen() {
   const loadWebhooks = async () => {
     const res = await listWebhooks();
     if (!res.ok) {
-      // A failed read was previously swallowed into console.error, so the
-      // list rendered empty and read as "you have none registered".
       void notify('Hata', `Webhook'lar yüklenemedi: ${res.error}`);
       return;
     }
@@ -134,17 +170,10 @@ export default function SettingsScreen() {
       setExportingFormat(format);
       setExportNotice(null);
 
-      // Built on the device from this account's own repositories. The three
-      // endpoints this replaces read the entire database with no user filter
-      // on a service with no authentication, and the Excel/CSV pair were
-      // opened in the system browser -- see services/exportService.ts.
-      // R08 — the manifest names the account, so the file can be checked later.
       const me = await currentUser();
       const backup = await buildBackup(new Date(), { userId: me?.id ?? null });
       const notices: string[] = [];
 
-      // R08.02 — a collection cut at the row ceiling (MAX_ROWS) is said out loud too:
-      // such a file is refused by the restore check, so it must not look complete.
       if (!isBackupComplete(backup)) {
         if (backup.truncated.length > 0) {
           notices.push(
@@ -186,7 +215,6 @@ export default function SettingsScreen() {
       } else {
         void notify('Hata', 'Veriler dışa aktarılırken bir hata oluştu');
         setExportNotice('Veriler dışa aktarılırken bir hata oluştu.');
-        // R10.03 — through the scrubbing funnel, never raw to the device log.
         reportError(error, 'manual', 'export');
       }
     } finally {
@@ -203,19 +231,6 @@ export default function SettingsScreen() {
     }, 280);
   };
 
-  /**
-   * Delete the account, behind two deliberate taps.
-   *
-   * Two confirmations rather than one because the action is irreversible and
-   * the first tap is a menu row -- but no further than two, and no
-   * type-the-word ceremony: making deletion tedious is the dark pattern this
-   * requirement exists to prevent. The wording states plainly what goes and
-   * that it cannot be undone.
-   *
-   * Nothing is shown as done until `deleteAccount` returns ok; on success the
-   * session ends and the root layout routes to the signed-out state on its
-   * own, so this screen does not navigate.
-   */
   const deleteFlowRef = useRef(false);
   const handleDeleteAccount = async () => {
     if (deletingAccount || deleteFlowRef.current) return;
@@ -252,7 +267,7 @@ export default function SettingsScreen() {
   };
 
   const selectedCategory = selectedCategoryId
-    ? INTEGRATION_CATEGORIES.find((c) => c.id === selectedCategoryId) ?? null
+    ? INTEGRATION_CATEGORIES.find((cat) => cat.id === selectedCategoryId) ?? null
     : null;
 
   const renderFeatureItem = (item: FeatureHighlight) => (
@@ -296,11 +311,7 @@ export default function SettingsScreen() {
     title: string,
     subtitle: string,
     onPress: () => void,
-    // `string`, not the inferred literal type of the default. `colors` is
-    // declared `as const`, so `color = colors.accent` typed this parameter as
-    // the single value colors.accent and every other accent was a type error --
-    // invisible while every call site happened to pass the default.
-    color: string = colors.accent,
+    color: string = c.accent,
   ) => (
     <TouchableOpacity style={styles.settingItem} onPress={onPress}>
       <View style={styles.settingLeft}>
@@ -312,7 +323,7 @@ export default function SettingsScreen() {
           <Text style={styles.settingSubtitle}>{subtitle}</Text>
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+      <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
     </TouchableOpacity>
   );
 
@@ -322,7 +333,7 @@ export default function SettingsScreen() {
         source={CANVASES.treasuryVault}
         textureSource={TEXTURES.linen}
         scrim={0.64}
-        tintColor={colors.accent}
+        tintColor={c.accent}
       />
       <ScrollView style={styles.scrollView}>
         <View style={styles.content}>
@@ -332,7 +343,7 @@ export default function SettingsScreen() {
             eyebrow="SİSTEM & MAHREMİYET"
             title="Aderyth Ayarları"
             subtitle="Görünüm, yerel yedekleme ve hesap kontrol merkezi."
-            accentColor={colors.accent}
+            accentColor={c.accent}
             minHeight={94}
             style={{ marginBottom: 16 }}
             rightSlot={
@@ -340,7 +351,7 @@ export default function SettingsScreen() {
                 source={SCREEN_BANNERS.privacyVaultSeal}
                 size={44}
                 unlocked
-                accentColor={colors.accent}
+                accentColor={c.accent}
               />
             }
           />
@@ -350,32 +361,12 @@ export default function SettingsScreen() {
           {/* Görünüm */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Görünüm</Text>
-            <View style={styles.themeRow}>
-              <View style={styles.themeLeft}>
-                <Ionicons
-                  name={isDark ? 'moon-outline' : 'sunny-outline'}
-                  size={20}
-                  color={isDark ? colors.accent : colors.warning}
-                />
-                <View>
-                  <Text style={styles.themeLabel}>{isDark ? 'Koyu Tema' : 'Açık Tema'}</Text>
-                  <Text style={styles.themeSubLabel}>
-                    {isDark ? 'AMOLED dostu koyu arka plan' : 'Gündüz için açık arka plan'}
-                  </Text>
-                </View>
-              </View>
-              <Switch
-                value={isDark}
-                onValueChange={toggleTheme}
-                trackColor={{ false: colors.border, true: alphaHex(colors.accent, '40') }}
-                thumbColor={isDark ? colors.accent : colors.textDim}
-              />
-            </View>
+            {LIGHT_THEME_ENABLED ? <ThemeModeRow isDark={isDark} onSelectDark={setDark} /> : null}
 
             {/* Mevsimsel arka plan animasyonları (contract §13) */}
             <View style={styles.motionBlock}>
               <View style={styles.motionHead}>
-                <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
+                <Ionicons name="sparkles-outline" size={18} color={c.accent} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.themeLabel}>Arka plan animasyonları</Text>
                   <Text style={styles.themeSubLabel}>
@@ -402,7 +393,7 @@ export default function SettingsScreen() {
             {/* Aksan rengi (Atlas: clay/moss/slate/amber) */}
             <View style={styles.motionBlock}>
               <View style={styles.motionHead}>
-                <Ionicons name="color-palette-outline" size={18} color={ACCENTS[accent].primary} />
+                <Ionicons name="color-palette-outline" size={18} color={accentTheme.primary} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.themeLabel}>Aksan rengi</Text>
                   <Text style={styles.themeSubLabel}>
@@ -411,8 +402,8 @@ export default function SettingsScreen() {
                 </View>
               </View>
               <View style={styles.accentRow}>
-                {(Object.keys(ACCENTS) as AccentKey[]).map((k) => {
-                  const a = ACCENTS[k];
+                {(Object.keys(modeAccents) as AccentKey[]).map((k) => {
+                  const a = modeAccents[k];
                   const on = accent === k;
                   return (
                     <TouchableOpacity
@@ -422,7 +413,7 @@ export default function SettingsScreen() {
                       activeOpacity={0.8}
                     >
                       <View style={[styles.accentDot, { backgroundColor: a.primary }, on && styles.accentDotOn]}>
-                        {on && <Ionicons name="checkmark" size={16} color={colors.white} />}
+                        {on && <Ionicons name="checkmark" size={16} color={onColor(a.primary)} />}
                       </View>
                       <Text style={[styles.accentLabel, on && { color: a.primary, fontWeight: '700' }]}>{a.label}</Text>
                     </TouchableOpacity>
@@ -444,13 +435,6 @@ export default function SettingsScreen() {
               <Text style={styles.exportSubtitle}>
                 Power BI, Excel veya diğer analiz araçlarında kullanabilirsiniz
               </Text>
-              {/*
-                Said out loud, in the UI, because the alternative is letting
-                the word "yedek" imply a promise the app cannot keep. There is
-                no import path: a file produced here cannot be loaded back.
-                See services/exportService.ts for why a restore was not
-                written rather than written badly.
-              */}
               <Text style={styles.exportSubtitle}>
                 Bu tam bir yedek değildir — tam geri yükleme yoktur. JSON dosyası
                 aşağıda doğrulanıp eksik kayıtlar hesabına eklenebilir; alışkanlık
@@ -470,10 +454,10 @@ export default function SettingsScreen() {
                   disabled={exportingFormat !== null}
                 >
                   {exportingFormat === 'json' ? (
-                    <ActivityIndicator size="small" color={colors.accent} />
+                    <ActivityIndicator size="small" color={c.accent} />
                   ) : (
                     <>
-                      <Ionicons name="code-outline" size={20} color={colors.accent} />
+                      <Ionicons name="code-outline" size={20} color={c.accent} />
                       <Text style={styles.exportButtonText}>JSON</Text>
                     </>
                   )}
@@ -485,10 +469,10 @@ export default function SettingsScreen() {
                   disabled={exportingFormat !== null}
                 >
                   {exportingFormat === 'excel' ? (
-                    <ActivityIndicator size="small" color={colors.success} />
+                    <ActivityIndicator size="small" color={c.success} />
                   ) : (
                     <>
-                      <Ionicons name="document-outline" size={20} color={colors.success} />
+                      <Ionicons name="document-outline" size={20} color={c.success} />
                       <Text style={styles.exportButtonText}>Excel</Text>
                     </>
                   )}
@@ -500,10 +484,10 @@ export default function SettingsScreen() {
                   disabled={exportingFormat !== null}
                 >
                   {exportingFormat === 'csv' ? (
-                    <ActivityIndicator size="small" color={colors.warning} />
+                    <ActivityIndicator size="small" color={c.warning} />
                   ) : (
                     <>
-                      <Ionicons name="list-outline" size={20} color={colors.warning} />
+                      <Ionicons name="list-outline" size={20} color={c.warning} />
                       <Text style={styles.exportButtonText}>CSV</Text>
                     </>
                   )}
@@ -518,9 +502,7 @@ export default function SettingsScreen() {
               <CsvImportPanel />
             </View>
 
-            {/* DEMO-001B - sadece gelistirme derlemesinde. Kaynak koruma
-                lib/demoSeed.ts icindedir; bu yalnizca calismayacak bir
-                kontrolu kullaniciya gostermemek icin. */}
+            {/* DEMO-001B - sadece gelistirme derlemesinde. */}
             {__DEV__ && loadDemoSeed()?.isSeedingAllowed() === true && (
               <TouchableOpacity
                 style={[styles.settingItem, seedingDemo && styles.seedBtnDisabled]}
@@ -528,15 +510,15 @@ export default function SettingsScreen() {
                 disabled={seedingDemo}
               >
                 <View style={styles.settingLeft}>
-                  <View style={[styles.settingIcon, { backgroundColor: alphaHex(colors.success, '20') }]}>
-                    <Ionicons name="flask-outline" size={24} color={colors.success} />
+                  <View style={[styles.settingIcon, { backgroundColor: alphaHex(c.success, '20') }]}>
+                    <Ionicons name="flask-outline" size={24} color={c.success} />
                   </View>
                   <View style={styles.settingInfo}>
                     <Text style={styles.settingTitle}>Demo verileri doldur</Text>
                     <Text style={styles.settingSubtitle}>Test icin gorev, aliskanlik, gunluk ve odak verisi ekler</Text>
                   </View>
                 </View>
-                {seedingDemo ? <ActivityIndicator size="small" color={colors.success} /> : <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />}
+                {seedingDemo ? <ActivityIndicator size="small" color={c.success} /> : <Ionicons name="chevron-forward" size={20} color={c.textFaint} />}
               </TouchableOpacity>
             )}
           </View>
@@ -550,24 +532,15 @@ export default function SettingsScreen() {
               'Gizlilik Politikası',
               'Hangi verilerin saklanıyor ve neden',
               () => router.push('/screens/privacy'),
-              colors.info
+              c.info
             )}
 
-            {/*
-              Destek, YALNIZCA sayfa gerçekten yayındayken gösterilir.
-              `PUBLIC_SITE_URLS_LIVE` bugün false: aderyth.com açılıyor ama
-              /support 404 dönüyor (2026-09-08 tarihinde ölçüldü). Açılmayan
-              bir bağlantıyı ayarlara koymak, kullanıcıya görünür biçimde
-              başarısız olan bir düğme koymaktır -- bu sürümde kaldırdığımız
-              söz-verip-tutamama biçiminin ta kendisi. Sayfa yayına
-              girdiğinde tek satır: lib/featureGates.ts.
-            */}
             {PUBLIC_SITE_URLS_LIVE && renderSettingItem(
               'help-buoy-outline',
               'Destek',
               'Yardım, hesap ve teknik sorunlar',
               () => { Linking.openURL(PUBLIC_SITE_URLS.support).catch(() => {}); },
-              colors.teal
+              c.teal
             )}
 
             {/* F04 (NAV-02): signing out of THIS device, above the permanent deletion */}
@@ -581,15 +554,15 @@ export default function SettingsScreen() {
               accessibilityState={{ disabled: deletingAccount || signingOut, busy: signingOut }}
             >
               <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: alphaHex(colors.info, '20') }]}>
-                  <Ionicons name="log-out-outline" size={24} color={colors.info} />
+                <View style={[styles.settingIcon, { backgroundColor: alphaHex(c.info, '20') }]}>
+                  <Ionicons name="log-out-outline" size={24} color={c.info} />
                 </View>
                 <View style={styles.settingInfo}>
                   <Text style={styles.settingTitle}>Oturumu Kapat</Text>
                   <Text style={styles.settingSubtitle}>{accountEmail ?? 'Bu cihazdan çık'}</Text>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+              <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -602,19 +575,19 @@ export default function SettingsScreen() {
               accessibilityState={{ disabled: deletingAccount, busy: deletingAccount }}
             >
               <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: alphaHex(colors.error, '20') }]}>
-                  <Ionicons name="trash-outline" size={24} color={colors.error} />
+                <View style={[styles.settingIcon, { backgroundColor: alphaHex(c.error, '20') }]}>
+                  <Ionicons name="trash-outline" size={24} color={c.error} />
                 </View>
                 <View style={styles.settingInfo}>
-                  <Text style={[styles.settingTitle, { color: colors.error }]}>Hesabı Sil</Text>
+                  <Text style={[styles.settingTitle, { color: c.error }]}>Hesabı Sil</Text>
                   <Text style={styles.settingSubtitle}>
                     Hesabın ve verilerin kalıcı olarak silinir. Geri alınamaz.
                   </Text>
                 </View>
               </View>
               {deletingAccount
-                ? <ActivityIndicator size="small" color={colors.error} />
-                : <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />}
+                ? <ActivityIndicator size="small" color={c.error} />
+                : <Ionicons name="chevron-forward" size={20} color={c.textFaint} />}
             </TouchableOpacity>
           </View>
 
@@ -627,7 +600,7 @@ export default function SettingsScreen() {
               'Başlangıç tercihleri',
               'Hedeflerini, tempoyu ve hatırlatma tercihini güncelle',
               openPersonalization,
-              colors.primary
+              c.primary
             )}
           </View>
 
@@ -640,7 +613,7 @@ export default function SettingsScreen() {
               'Bıraktığım Alışkanlıklar',
               'Tasarruf ve ilerlemenizi görün',
               () => setShowBadHabitsTracker(true),
-              colors.error
+              c.error
             )}
 
             {renderSettingItem(
@@ -648,7 +621,7 @@ export default function SettingsScreen() {
               'Obsidian Markdown Aktarımı',
               'Alışkanlık ve notları Obsidian kasasına kopyala',
               () => setShowObsidianModal(true),
-              colors.accent
+              c.accent
             )}
 
             {renderSettingItem(
@@ -656,7 +629,7 @@ export default function SettingsScreen() {
               'Çevrimdışı Senkronizasyon',
               'Bekleyen yerel işlemleri ve sunucu bağlantısını incele',
               () => setShowOutboxModal(true),
-              colors.teal
+              c.teal
             )}
           </View>
 
@@ -721,7 +694,7 @@ export default function SettingsScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Webhook Ekle</Text>
               <TouchableOpacity onPress={() => setShowWebhookModal(false)}>
-                <Ionicons name="close" size={28} color={colors.textDim} />
+                <Ionicons name="close" size={28} color={c.textDim} />
               </TouchableOpacity>
             </View>
 
@@ -732,7 +705,7 @@ export default function SettingsScreen() {
             <TextInput
               style={styles.input}
               placeholder="https://hooks.n8n.cloud/webhook/..."
-              placeholderTextColor={colors.textFaint}
+              placeholderTextColor={c.textFaint}
               value={webhookUrl}
               onChangeText={setWebhookUrl}
               autoCapitalize="none"
@@ -759,7 +732,7 @@ export default function SettingsScreen() {
                         await loadWebhooks();
                       }}
                     >
-                      <Ionicons name="trash-outline" size={20} color={colors.error} />
+                      <Ionicons name="trash-outline" size={20} color={c.error} />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -806,7 +779,7 @@ export default function SettingsScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Geri"
               >
-                <Ionicons name="chevron-back" size={28} color={colors.textDim} />
+                <Ionicons name="chevron-back" size={28} color={c.textDim} />
               </TouchableOpacity>
               {selectedCategory ? (
                 <View style={styles.categoryModalHeaderText}>
@@ -873,340 +846,336 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  themeRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: colors.surface, borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  themeLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  themeLabel: { fontSize: 15, fontWeight: '600', color: colors.white },
-  themeSubLabel: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
-  motionBlock: {
-    backgroundColor: colors.surface, borderRadius: 12, padding: 14, marginTop: 12,
-    borderWidth: 1, borderColor: colors.border, gap: 12,
-  },
-  motionHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  segRow: { flexDirection: 'row', gap: 8 },
-  segBtn: {
-    flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 10,
-    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg,
-  },
-  segBtnOn: { backgroundColor: alphaHex(colors.accent, '22'), borderColor: colors.accent },
-  segText: { fontSize: 13, fontWeight: '700', color: colors.textFaint },
-  segTextOn: { color: colors.accent },
-  accentRow: { flexDirection: 'row', gap: 8 },
-  accentItem: { flex: 1, alignItems: 'center', gap: 6 },
-  accentDot: {
-    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: 'transparent',
-  },
-  accentDotOn: { borderColor: colors.text },
-  accentLabel: { fontSize: 12, fontWeight: '600', color: colors.textFaint },
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: colors.white,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textDim,
-    marginBottom: 24,
-  },
-  section: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.white,
-    marginBottom: 12,
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    overflow: 'hidden',
-    position: 'relative',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  settingIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  settingInfo: {
-    flex: 1,
-  },
-  settingTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.white,
-    marginBottom: 4,
-  },
-  settingSubtitle: {
-    fontSize: 13,
-    color: colors.textDim,
-  },
-  infoCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 20,
-    overflow: 'hidden',
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-  },
-  appName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.white,
-    marginBottom: 4,
-  },
-  appVersion: {
-    fontSize: 14,
-    color: colors.accent,
-    marginBottom: 12,
-  },
-  appDescription: {
-    fontSize: 14,
-    color: colors.textDim,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  featureSectionIntro: {
-    fontSize: 13,
-    color: colors.textDim,
-    marginBottom: 12,
-    lineHeight: 18,
-  },
-  featureCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    overflow: 'hidden',
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  featureGroupTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.white,
-    marginBottom: 8,
-  },
-  featureDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: 12,
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 10,
-  },
-  featureIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  featureInfo: {
-    flex: 1,
-  },
-  featureTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.white,
-    marginBottom: 2,
-  },
-  featureDescription: {
-    fontSize: 13,
-    color: colors.textDim,
-    lineHeight: 18,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    minHeight: '60%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.white,
-  },
-  modalDescription: {
-    fontSize: 14,
-    color: colors.textDim,
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  input: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    overflow: 'hidden',
-    position: 'relative',
-    fontSize: 14,
-    color: colors.white,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  webhookList: {
-    marginBottom: 20,
-  },
-  webhookListTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textDim,
-    marginBottom: 12,
-  },
-  webhookItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  webhookUrl: {
-    fontSize: 12,
-    color: colors.neutral300,
-    flex: 1,
-    marginRight: 8,
-  },
-  addButton: {
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    padding: 16,
-    overflow: 'hidden',
-    position: 'relative',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  addButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.white,
-  },
-  helpText: {
-    fontSize: 11,
-    color: colors.textFaint,
-    fontFamily: 'monospace',
-    backgroundColor: colors.surface,
-    padding: 12,
-    borderRadius: 8,
-    lineHeight: 16,
-  },
-  exportContainer: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    overflow: 'hidden',
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  exportTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.white,
-    marginBottom: 4,
-  },
-  exportSubtitle: {
-    fontSize: 13,
-    color: colors.textDim,
-    marginBottom: 16,
-  },
-  exportButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  exportButton: {
-    flex: 1,
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderWidth: 2,
-    borderColor: colors.border,
-  },
-  exportNotice: {
-    marginTop: 10,
-    fontSize: 12,
-    color: colors.textDim,
-    lineHeight: 17,
-  },
-  exportButtonLoading: {
-    opacity: 0.6,
-  },
-  exportButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.white,
-  },
-  seedBtnDisabled: {
-    opacity: 0.7,
-  },
-  categoryModalHeaderText: {
-    flex: 1,
-    marginHorizontal: 8,
-  },
-  categoryModalHeaderSpacer: {
-    width: 28,
-  },
-  categoryDetailScroll: {
-    flex: 1,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    themeLabel: { fontSize: 15, fontWeight: '600', color: c.text },
+    themeSubLabel: { fontSize: 12, color: c.textFaint, marginTop: 2 },
+    motionBlock: {
+      backgroundColor: c.surface, borderRadius: 12, padding: 14, marginTop: 12,
+      borderWidth: 1, borderColor: c.border, gap: 12,
+    },
+    motionHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    segRow: { flexDirection: 'row', gap: 8 },
+    segBtn: {
+      flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: 10,
+      borderWidth: 1, borderColor: c.border, backgroundColor: c.bg,
+    },
+    themeRadioBtn: { minHeight: 44 },
+    segBtnOn: { backgroundColor: alphaHex(c.accent, '22'), borderColor: c.accent },
+    segText: { fontSize: 13, fontWeight: '700', color: c.textFaint },
+    segTextOn: { color: c.accent },
+    accentRow: { flexDirection: 'row', gap: 8 },
+    accentItem: { flex: 1, alignItems: 'center', gap: 6 },
+    accentDot: {
+      width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 2, borderColor: 'transparent',
+    },
+    accentDotOn: { borderColor: c.text },
+    accentLabel: { fontSize: 12, fontWeight: '600', color: c.textFaint },
+    container: {
+      flex: 1,
+      backgroundColor: c.bg,
+    },
+    scrollView: {
+      flex: 1,
+    },
+    content: {
+      padding: 16,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    title: {
+      fontSize: 32,
+      fontWeight: 'bold',
+      color: c.text,
+      marginBottom: 4,
+    },
+    subtitle: {
+      fontSize: 16,
+      color: c.textDim,
+      marginBottom: 24,
+    },
+    section: {
+      marginBottom: 32,
+    },
+    sectionTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: c.text,
+      marginBottom: 12,
+    },
+    settingItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      padding: 16,
+      overflow: 'hidden',
+      position: 'relative',
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    settingLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    settingIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    settingInfo: {
+      flex: 1,
+    },
+    settingTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: c.text,
+      marginBottom: 4,
+    },
+    settingSubtitle: {
+      fontSize: 13,
+      color: c.textDim,
+    },
+    infoCard: {
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      padding: 20,
+      overflow: 'hidden',
+      position: 'relative',
+      borderWidth: 1,
+      borderColor: c.border,
+      alignItems: 'center',
+    },
+    appName: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: c.text,
+      marginBottom: 4,
+    },
+    appVersion: {
+      fontSize: 14,
+      color: c.accent,
+      marginBottom: 12,
+    },
+    appDescription: {
+      fontSize: 14,
+      color: c.textDim,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+    featureSectionIntro: {
+      fontSize: 13,
+      color: c.textDim,
+      marginBottom: 12,
+      lineHeight: 18,
+    },
+    featureCard: {
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      padding: 16,
+      overflow: 'hidden',
+      position: 'relative',
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    featureGroupTitle: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: c.text,
+      marginBottom: 8,
+    },
+    featureDivider: {
+      height: 1,
+      backgroundColor: c.border,
+      marginVertical: 12,
+    },
+    featureItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      paddingVertical: 10,
+    },
+    featureIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    featureInfo: {
+      flex: 1,
+    },
+    featureTitle: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: c.text,
+      marginBottom: 2,
+    },
+    featureDescription: {
+      fontSize: 13,
+      color: c.textDim,
+      lineHeight: 18,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: hexA(c.black, 0.7),
+      justifyContent: 'flex-end',
+    },
+    modalContent: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 24,
+      minHeight: '60%',
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    modalTitle: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: c.text,
+    },
+    modalDescription: {
+      fontSize: 14,
+      color: c.textDim,
+      marginBottom: 20,
+      lineHeight: 20,
+    },
+    input: {
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      padding: 16,
+      overflow: 'hidden',
+      position: 'relative',
+      fontSize: 14,
+      color: c.text,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    webhookList: {
+      marginBottom: 20,
+    },
+    webhookListTitle: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: c.textDim,
+      marginBottom: 12,
+    },
+    webhookItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: c.surface,
+      borderRadius: 8,
+      padding: 12,
+      marginBottom: 8,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    webhookUrl: {
+      fontSize: 12,
+      color: c.textDim,
+      flex: 1,
+      marginRight: 8,
+    },
+    addButton: {
+      backgroundColor: c.accent,
+      borderRadius: 12,
+      padding: 16,
+      overflow: 'hidden',
+      position: 'relative',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    addButtonText: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: onColor(c.accent),
+    },
+    helpText: {
+      fontSize: 11,
+      color: c.textFaint,
+      fontFamily: 'monospace',
+      backgroundColor: c.surface,
+      padding: 12,
+      borderRadius: 8,
+      lineHeight: 16,
+    },
+    exportContainer: {
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      padding: 16,
+      overflow: 'hidden',
+      position: 'relative',
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    exportTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: c.text,
+      marginBottom: 4,
+    },
+    exportSubtitle: {
+      fontSize: 13,
+      color: c.textDim,
+      marginBottom: 16,
+    },
+    exportButtons: {
+      flexDirection: 'row',
+      gap: 12,
+    },
+    exportButton: {
+      flex: 1,
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      paddingVertical: 16,
+      paddingHorizontal: 12,
+      borderWidth: 2,
+      borderColor: c.border,
+    },
+    exportNotice: {
+      marginTop: 10,
+      fontSize: 12,
+      color: c.textDim,
+      lineHeight: 17,
+    },
+    exportButtonLoading: {
+      opacity: 0.6,
+    },
+    exportButtonText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: c.text,
+    },
+    seedBtnDisabled: {
+      opacity: 0.7,
+    },
+    categoryModalHeaderText: {
+      flex: 1,
+      marginHorizontal: 8,
+    },
+    categoryModalHeaderSpacer: {
+      width: 28,
+    },
+    categoryDetailScroll: {
+      flex: 1,
+    },
+  });

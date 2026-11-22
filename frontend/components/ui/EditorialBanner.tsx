@@ -1,6 +1,7 @@
 import { Platform, StyleSheet, Text, View, type ImageSourcePropType, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
-import { colors, font, fontFamily, hexA, radius, space } from '../../lib/tokens';
+import { font, fontFamily, hexA, radius, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemeMode, useThemedStyles } from '../../hooks/useThemeColors';
 import { useReducedMotion } from '../seasonalMotion/useReducedMotion';
 
 type Props = {
@@ -31,9 +32,54 @@ const decorativeA11y =
         importantForAccessibility: 'no-hide-descendants' as const,
       } as const);
 
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    wrap: {
+      overflow: 'hidden',
+      position: 'relative',
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      justifyContent: 'center',
+    },
+    inner: {
+      paddingHorizontal: space.lg,
+      paddingVertical: space.lg,
+      gap: space.sm,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: space.md,
+    },
+    textCol: {
+      flex: 1,
+      gap: 4,
+    },
+    eyebrow: {
+      ...font.overline,
+    },
+    title: {
+      fontFamily: fontFamily.serif,
+      fontSize: 23,
+      lineHeight: 28,
+      color: c.text,
+      letterSpacing: -0.3,
+    },
+    subtitle: {
+      ...font.bodySm,
+      color: c.textDim,
+      lineHeight: 19,
+    },
+    rightWrap: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });
+
 /**
  * Alt ekranlar, ritüel blokları ve modül üst kısımları için editöryel atmosferik başlık kartı.
- * Arka plandaki illüstrasyonu sıcak koyu scrim katmanıyla yumuşatarak üstündeki serif/sans
+ * Arka plandaki illüstrasyonu sıcak scrim katmanıyla yumuşatarak üstündeki serif/sans
  * tipografinin her zaman net okunmasını sağlar.
  */
 export default function EditorialBanner({
@@ -41,7 +87,7 @@ export default function EditorialBanner({
   eyebrow,
   title,
   subtitle,
-  accentColor = colors.primary,
+  accentColor,
   scrim = 0.56,
   minHeight = 116,
   radiusKey = 'lg',
@@ -51,7 +97,12 @@ export default function EditorialBanner({
   children,
   style,
 }: Props) {
+  const c = useThemeColors();
+  const mode = useThemeMode();
+  const s = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
+  const resolvedAccent = accentColor ?? c.primary;
+  const resolvedScrim = mode === 'light' ? Math.max(0.84, scrim) : scrim;
 
   return (
     <View
@@ -60,7 +111,7 @@ export default function EditorialBanner({
         {
           minHeight,
           borderRadius: radius[radiusKey],
-          borderColor: hexA(accentColor, 0.26),
+          borderColor: hexA(resolvedAccent, 0.26),
         },
         style,
       ]}
@@ -74,7 +125,7 @@ export default function EditorialBanner({
             transition={reduceMotion ? 0 : 240}
             cachePolicy="memory-disk"
           />
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bgSunk, scrim) }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(c.bgSunk, resolvedScrim) }]} />
           {textureSource ? (
             <Image
               source={textureSource}
@@ -91,7 +142,7 @@ export default function EditorialBanner({
           <View style={s.headerRow}>
             <View style={s.textCol}>
               {eyebrow ? (
-                <Text style={[s.eyebrow, { color: accentColor }]}>{eyebrow}</Text>
+                <Text style={[s.eyebrow, { color: resolvedAccent }]}>{eyebrow}</Text>
               ) : null}
               {title ? <Text style={s.title}>{title}</Text> : null}
               {subtitle ? <Text style={s.subtitle}>{subtitle}</Text> : null}
@@ -104,48 +155,3 @@ export default function EditorialBanner({
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  wrap: {
-    overflow: 'hidden',
-    position: 'relative',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    justifyContent: 'center',
-  },
-  inner: {
-    paddingHorizontal: space.lg,
-    paddingVertical: space.lg,
-    gap: space.sm,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.md,
-  },
-  textCol: {
-    flex: 1,
-    gap: 4,
-  },
-  eyebrow: {
-    ...font.overline,
-  },
-  title: {
-    fontFamily: fontFamily.serif,
-    fontSize: 23,
-    lineHeight: 28,
-    color: colors.text,
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    ...font.bodySm,
-    color: colors.textDim,
-    lineHeight: 19,
-  },
-  rightWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
-

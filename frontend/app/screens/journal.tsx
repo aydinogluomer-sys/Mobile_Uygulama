@@ -19,7 +19,8 @@ import { draftDiffers, draftKey, extractTags, toggleListLine, wrapSelection, typ
 import MoodCheckins from '../../components/MoodCheckins';
 import ConflictChoice from '../../components/ConflictChoice';
 import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
-import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFiligree, TexturedSurface } from '../../components/ui';
+import { EditorialBanner, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, getMoodSeal, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const PROMPTS = [

@@ -9,13 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { colors, space, radius, font, shadow, fontFamily, hexA, alphaHex } from '../../lib/tokens';
-import {
-  AtmosphericScreenCanvas,
-  Button,
-  EditorialBanner,
-  EmbeddedFiligree,
-  TexturedSurface,
-} from '../../components/ui';
+import { Button, EditorialBanner, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
 import SignupPending from '../../components/auth/SignupPending';

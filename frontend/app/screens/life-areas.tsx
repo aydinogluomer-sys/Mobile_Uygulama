@@ -9,14 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { useLifeAreasStore, LIFE_AREAS, AreaKey } from '../../store/lifeAreasStore';
-import {
-  AtmosphericScreenCanvas,
-  ChapterDivider,
-  EditorialBanner,
-  EmbeddedFiligree,
-  FormError,
-  Skeleton,
-} from '../../components/ui';
+import { EditorialBanner, FormError, Skeleton } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import {
   CANVASES,
   DECOR,

@@ -7,7 +7,7 @@ import { Alert } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
-jest.mock('../../components/ui', () => ({ EmbeddedFiligree: () => null }));
+jest.mock('../../components/spatial', () => ({ EmbeddedFiligree: () => null }));
 jest.mock('../../lib/haptics', () => ({ haptic: { select: jest.fn(), success: jest.fn(), light: jest.fn() } }));
 
 const mockState = {

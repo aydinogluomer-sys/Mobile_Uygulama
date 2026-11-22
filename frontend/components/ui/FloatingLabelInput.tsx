@@ -9,7 +9,8 @@ import {
   ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font, space } from '../../lib/tokens';
+import { font, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useReducedMotion } from '../seasonalMotion/useReducedMotion';
 
 type Props = TextInputProps & {
@@ -25,36 +26,73 @@ type Props = TextInputProps & {
   error?: string;
 };
 
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: space.md,
+      paddingBottom: space.sm,
+      // No background, no border, no radius. The field is the text and the line
+      // beneath it.
+    },
+    inputSlot: {
+      flex: 1,
+      minHeight: 44,
+      justifyContent: 'flex-end',
+      position: 'relative',
+      paddingTop: 18,
+    },
+    label: {
+      position: 'absolute',
+      left: 0,
+      fontWeight: '500',
+      lineHeight: 16,
+      // Deliberately no backgroundColor: the notch it used to punch through the
+      // top border has nothing left to punch through.
+    },
+    input: {
+      color: c.text,
+      fontSize: 16,
+      padding: 0,
+      margin: 0,
+      includeFontPadding: false,
+      // Replaced by the accent baseline below, not simply removed.
+      outlineWidth: 0 as never,
+      outlineStyle: 'none' as never,
+      boxShadow: 'none' as never,
+    },
+    lineTrack: {
+      height: 1,
+      backgroundColor: c.border,
+      // `overflow: visible` is the default; the focus line sits exactly on top.
+    },
+    lineFocus: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      height: 1,
+    },
+    errorRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      marginTop: 6,
+    },
+    errorText: {
+      ...font.caption,
+      color: c.error,
+      flex: 1,
+      lineHeight: 17,
+    },
+  });
+
 /**
  * The auth text field.
  *
- * ## What this used to look like, and why it was wrong
- *
- * A 62px-tall rounded rectangle: `backgroundColor: colors.surface`,
- * `borderWidth: 1` on all four sides, `borderRadius`, and on focus a primary
- * border PLUS a tinted background PLUS a coloured shadow. Three simultaneous
- * changes to announce one thing. The label carried its own
- * `backgroundColor: colors.surface` so it could punch a notch through the top
- * border — a detail that only exists because the border exists.
- *
- * The result read as a generic web form dropped into a warm editorial app,
- * and it was the first thing anyone saw.
- *
- * ## What replaced it
- *
- * A single baseline. Idle it is a hairline in `colors.border`; focused it is
+ * A single baseline. Idle it is a hairline in `c.border`; focused it is
  * the accent. Nothing else moves.
- *
- * ## Why the focus line is an overlay, not a thicker border
- *
- * Animating `borderBottomWidth` from 1 to 2 reflows the field by a pixel on
- * every focus and blur, and a row of fields visibly twitches as the user tabs
- * through. The accent line is absolutely positioned over the hairline and
- * fades in, so the layout is identical in all three states.
- *
- * Removing the browser outline (`outlineWidth: 0`) is only defensible because
- * this replaces it: the accent baseline IS the focus indicator on web, not
- * merely a decoration on top of a removed one.
  */
 export default function FloatingLabelInput({
   label,
@@ -68,6 +106,8 @@ export default function FloatingLabelInput({
   style,
   ...props
 }: Props) {
+  const c = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [focused, setFocused] = useState(false);
   const fill = useRef(new Animated.Value(value ? 1 : 0)).current;
   const focusLine = useRef(new Animated.Value(0)).current;
@@ -92,8 +132,8 @@ export default function FloatingLabelInput({
   const top = fill.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
   const fontSize = fill.interpolate({ inputRange: [0, 1], outputRange: [15, 11] });
 
-  const labelColor = error ? colors.error : focused ? colors.primary : colors.textFaint;
-  const lineColor = error ? colors.error : colors.primary;
+  const labelColor = error ? c.error : focused ? c.primary : c.textFaint;
+  const lineColor = error ? c.error : c.primary;
 
   return (
     <View style={containerStyle}>
@@ -102,7 +142,7 @@ export default function FloatingLabelInput({
           <Ionicons
             name={icon}
             size={18}
-            color={error ? colors.error : focused ? colors.primary : colors.textFaint}
+            color={error ? c.error : focused ? c.primary : c.textFaint}
           />
         ) : null}
 
@@ -149,71 +189,10 @@ export default function FloatingLabelInput({
 
       {!!error && (
         <View style={s.errorRow}>
-          <Ionicons name="alert-circle" size={13} color={colors.error} />
+          <Ionicons name="alert-circle" size={13} color={c.error} />
           <Text style={s.errorText}>{error}</Text>
         </View>
       )}
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: space.md,
-    paddingBottom: space.sm,
-    // No background, no border, no radius. The field is the text and the line
-    // beneath it.
-  },
-  inputSlot: {
-    flex: 1,
-    minHeight: 44,
-    justifyContent: 'flex-end',
-    position: 'relative',
-    paddingTop: 18,
-  },
-  label: {
-    position: 'absolute',
-    left: 0,
-    fontWeight: '500',
-    lineHeight: 16,
-    // Deliberately no backgroundColor: the notch it used to punch through the
-    // top border has nothing left to punch through.
-  },
-  input: {
-    color: colors.text,
-    fontSize: 16,
-    padding: 0,
-    margin: 0,
-    includeFontPadding: false,
-    // Replaced by the accent baseline below, not simply removed.
-    outlineWidth: 0 as never,
-    outlineStyle: 'none' as never,
-    boxShadow: 'none' as never,
-  },
-  lineTrack: {
-    height: 1,
-    backgroundColor: colors.border,
-    // `overflow: visible` is the default; the focus line sits exactly on top.
-  },
-  lineFocus: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 1,
-  },
-  errorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 6,
-  },
-  errorText: {
-    ...font.caption,
-    color: colors.error,
-    flex: 1,
-    lineHeight: 17,
-  },
-});

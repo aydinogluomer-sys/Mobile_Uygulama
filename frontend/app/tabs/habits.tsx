@@ -27,7 +27,8 @@ import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from 
 import { isMeasurableTracking } from '../../lib/habitEngine';
 import { explainActivation } from '../../services/capacityService';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
-import { AtmosphericScreenCanvas, EditorialBanner, FormError, LoadErrorState } from '../../components/ui';
+import { EditorialBanner, FormError, LoadErrorState } from '../../components/ui';
+import { AtmosphericScreenCanvas } from '../../components/spatial';
 import { CANVASES, RITUAL_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 export default function HabitsScreen() {
@@ -709,7 +710,7 @@ const styles = StyleSheet.create({
   waitingWhy: { fontSize: 12, color: colors.textDim, marginTop: -6, marginBottom: 12, paddingHorizontal: 4 },
   empty: { alignItems: 'center', paddingVertical: 32 },
   emptyText: { fontSize: 15, color: colors.textFaint, marginBottom: 4 },
-  emptyHint: { fontSize: 12, color: colors.textGhost },
+  emptyHint: { fontSize: 12, color: colors.textFaint },
   habitCard: {
     backgroundColor: colors.surface, borderRadius: 14, padding: 14,
     marginBottom: 12, borderWidth: 1, borderColor: colors.border,
