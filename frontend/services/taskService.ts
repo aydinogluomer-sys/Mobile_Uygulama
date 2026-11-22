@@ -8,12 +8,11 @@
  * that reports itself two different ways depending on which column a query
  * reads — and both are read, in different reports.
  */
-import type { Task } from '../store/taskStore';
+import type { Task } from '../lib/taskTypes';
 import {
   insertSplitTasks,
   deleteTask as repoDelete,
   fetchTasksPage,
-  insertTask as repoInsert,
   searchTasks as repoSearch,
   updateTask as repoUpdate,
   insertTaskRow, updateTaskVersioned, deleteTaskIfPresent, fetchTaskRow,
@@ -25,8 +24,6 @@ import { notify } from './webhookService';
 
 export const listTasks = (cursor?: Cursor | null, limit?: number) => fetchTasksPage(cursor, limit);
 export const searchTasks = (q: string, limit?: number) => repoSearch(q, limit);
-export const createTask = (input: Partial<Task>) => repoInsert(input);
-export const patchTask = (id: string, patch: Partial<Task>) => repoUpdate(id, patch);
 export const removeTask = (id: string) => repoDelete(id);
 
 /**

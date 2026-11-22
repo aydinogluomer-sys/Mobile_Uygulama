@@ -23,7 +23,7 @@ import {
 import { handledKey, parseAction, rememberHandled, type ResponseLike } from '../lib/notificationActions';
 import { isMeasurableTracking } from '../lib/habitEngine';
 import { parseLocalDate, ymd } from '../lib/date';
-import { logsForPeriod } from './reviewService';
+import { fetchHabitLogsForReview } from '../repositories/habitLogRepository';
 import type { Habit, HabitLog } from '../lib/supabase';
 
 export const SETTINGS_KEY = 'reminders.settings.v1';
@@ -81,7 +81,7 @@ async function reconcileOnce(habits: readonly Habit[], now: Date): Promise<Recon
   const wantsAny = habits.some((h) => h.status === 'active' && h.reminders?.enabled);
   // Ask only when there is something to remind about; otherwise just read.
   const permission = wantsAny ? await ensurePermission() : await hasPermission();
-  const res = await logsForPeriod({ start: planLogsSince(now), end: ymd(now) });
+  const res = await fetchHabitLogsForReview({ start: planLogsSince(now), end: ymd(now) });
   const plan = planReminders({ habits, logs: res.ok ? (res.data as never) : null, settings, now });
   const quieted = habits.reduce((n, h) => {
     const r = h.reminders;

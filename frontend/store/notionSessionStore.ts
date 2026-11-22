@@ -1,10 +1,10 @@
 import { registerAccountScoped } from '../lib/accountScope';
-import { withEdgeDeadline } from '../lib/edgeCall';
+import { currentUser } from '../lib/session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
+import { callEdgeFunction } from '../services/edgeFunctions';
 
 /**
  * Per-account key.
@@ -21,13 +21,11 @@ import { supabase } from '../lib/supabase';
 const LEGACY_STORAGE_KEY = 'atlas_notion_login_session';
 
 async function storageKey(): Promise<string | null> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const uid = session?.user?.id;
+  const uid = (await currentUser())?.id;
   return uid ? `atlas_notion_login_session:${uid}` : null;
 }
 const OAUTH_TIMEOUT_MS = 2 * 60 * 1000; // 2 dakika
 
-const SUPABASE_FUNCTIONS_URL = process.env.EXPO_PUBLIC_SUPABASE_URL + '/functions/v1';
 const REDIRECT_URI = Linking.createURL('notion-callback');
 
 export type NotionLoginSession = {
@@ -84,16 +82,28 @@ export const useNotionSessionStore = create<NotionLoginStore>((set, get) => ({
   login: async () => {
     set({ loading: true, error: null });
     try {
-      const urlRes = await withEdgeDeadline('Notion oturumu', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`, { signal }));
-      const urlData = await urlRes.json();
+      const urlRes = await callEdgeFunction<{ url?: string; state?: string; error?: string }>('notion-auth', {
+        label: 'Notion oturumu',
+        action: 'url',
+        query: { redirect_uri: REDIRECT_URI },
+        auth: 'none',
+      });
+      const urlData = urlRes.body ?? {};
       if (!urlRes.ok || !urlData.url || !urlData.state) throw new Error(urlData.error ?? 'Notion bağlantı URL’i alınamadı');
 
+      const oauthUrl = urlData.url;
+      let oauthTimer: ReturnType<typeof setTimeout> | undefined;
       const result = await Promise.race([
-        WebBrowser.openAuthSessionAsync(urlData.url, REDIRECT_URI),
+        WebBrowser.openAuthSessionAsync(oauthUrl, REDIRECT_URI),
         new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Notion doğrulama zaman aşımına uğradı. Lütfen tekrar deneyin.')), OAUTH_TIMEOUT_MS);
+          oauthTimer = setTimeout(
+            () => reject(new Error('Notion doğrulama zaman aşımına uğradı. Lütfen tekrar deneyin.')),
+            OAUTH_TIMEOUT_MS,
+          );
         }),
-      ]);
+      ]).finally(() => {
+        if (oauthTimer !== undefined) clearTimeout(oauthTimer);
+      });
       if (result.type !== 'success') {
         set({ loading: false });
         return false;
@@ -110,14 +120,16 @@ export const useNotionSessionStore = create<NotionLoginStore>((set, get) => ({
       // istemci saldırganın kontrolündedir, dolayısıyla o kontrol koruma değil
       // dekordu. İmza, son kullanma ve uid bağı callback'te doğrulanır.
 
-      const callbackRes = await withEdgeDeadline('Notion oturumu', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=callback`, { signal,
+      const callbackRes = await callEdgeFunction<NotionAuthCallback>('notion-auth', {
+        label: 'Notion oturumu',
+        action: 'callback',
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, redirect_uri: REDIRECT_URI, state: returnedState }),
-      }));
-      const callbackData = (await callbackRes.json()) as NotionAuthCallback;
-      if (!callbackRes.ok || !callbackData.success) {
-        throw new Error(callbackData.error ?? 'Notion bağlantısı kurulamadı');
+        body: { code, redirect_uri: REDIRECT_URI, state: returnedState },
+        auth: 'none',
+      });
+      const callbackData = callbackRes.body;
+      if (!callbackRes.ok || !callbackData?.success) {
+        throw new Error(callbackData?.error ?? 'Notion bağlantısı kurulamadı');
       }
 
       const nextSession: NotionLoginSession = {

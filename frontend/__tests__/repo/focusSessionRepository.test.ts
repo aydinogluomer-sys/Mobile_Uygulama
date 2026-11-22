@@ -97,7 +97,6 @@ jest.mock('../../lib/supabase', () => {
 });
 
 import {
-  fetchFocusSecondsForReview,
   fetchFocusSessionsSince,
   fetchAllFocusSessions,
   deleteAllFocusSessions,
@@ -108,26 +107,6 @@ beforeEach(() => {
   mockDb.error = null;
   mockDb.user = { id: 'u1' };
   mockDb.deleteCalls = [];
-});
-
-describe('fetchFocusSecondsForReview', () => {
-  it('returns completed_seconds for the range, scoped to the current user', async () => {
-    mockDb.rows = [
-      { user_id: 'u1', started_at: '2026-08-04T10:00:00', completed_seconds: 1200 },
-      { user_id: 'u1', started_at: '2026-07-01T10:00:00', completed_seconds: 999 }, // out of range
-      { user_id: 'u2', started_at: '2026-08-04T10:00:00', completed_seconds: 500 }, // other user
-    ];
-    const res = await fetchFocusSecondsForReview({ start: '2026-08-01', end: '2026-08-07' });
-    expect(res.ok).toBe(true);
-    if (res.ok) expect(res.data).toEqual([{ completed_seconds: 1200 }]);
-  });
-
-  it('surfaces an error instead of swallowing it', async () => {
-    mockDb.error = { message: 'boom' };
-    const res = await fetchFocusSecondsForReview({ start: '2026-08-01', end: '2026-08-07' });
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error).toBe('boom');
-  });
 });
 
 describe('fetchFocusSessionsSince', () => {

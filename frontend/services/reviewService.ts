@@ -7,14 +7,27 @@
  * repositories it happened to need, which is why the AI Coach screen imported
  * two repositories directly.
  */
+import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 import { fetchHabitLogsForReview, type ReviewLogRow } from '../repositories/habitLogRepository';
 import { fetchRecoveryPlansForReview } from '../repositories/recoveryRepository';
-import { fetchFocusSessionsSince } from '../repositories/focusSessionRepository';
-import { fetchWeeklyReview, upsertWeeklyReview } from '../repositories/reviewRepository';
+import { fetchWeeklyReview, upsertWeeklyReview, type WeeklyReviewInput } from '../repositories/reviewRepository';
 import { fetchMonthlyReview, upsertMonthlyReview } from '../repositories/monthlyReviewRepository';
+import type { RepoResult } from '../repositories/shared';
 import { currentUser } from '../lib/session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RecoveryPlan } from '../lib/supabase';
+
+function emitAnalytics(name: AnalyticsEventName, props: Record<string, unknown>): void {
+  try {
+    emitEvent(buildEvent(name, props));
+  } catch {
+    /* §22: an analytics failure is never a product failure. */
+  }
+}
+
+function answered(v: string | null): boolean {
+  return typeof v === 'string' && v.trim().length > 0;
+}
 
 export type { ReviewLogRow };
 export type ReviewWindow = { start: string; end: string };
@@ -44,37 +57,23 @@ export async function loadReviewData(
 }
 
 
-/**
- * The same window, plus focus minutes — what the weekly and monthly review
- * screens render.
- *
- * Focus is fetched but NOT required: a review without focus data is still a
- * useful review, whereas a review missing habit logs or recovery would
- * understate the period. The distinction is deliberate and is why this does
- * not simply `Promise.all` everything and fail on any error.
- */
-export async function loadPeriodReview(
-  window: ReviewWindow,
-): Promise<
-  | { ok: true; data: ReviewData & { focusSeconds: number } }
-  | { ok: false; error: string }
-> {
-  const core = await loadReviewData(window);
-  if (!core.ok) return core;
-
-  const focus = await fetchFocusSessionsSince({ sinceIso: `${window.start}T00:00:00.000Z` });
-  const focusSeconds = focus.ok
-    ? focus.data.reduce((sum, f) => sum + (f.completed_seconds || 0), 0)
-    : 0;
-
-  return { ok: true, data: { ...core.data, focusSeconds } };
-}
-
 /** The user's saved reflections for one week. */
 export const loadWeeklyReflection = (params: Parameters<typeof fetchWeeklyReview>[0]) =>
   fetchWeeklyReview(params);
-export const saveWeeklyReflection = (params: Parameters<typeof upsertWeeklyReview>[0]) =>
-  upsertWeeklyReview(params);
+
+export async function saveWeeklyReflection(params: WeeklyReviewInput): Promise<RepoResult<void>> {
+  const res = await upsertWeeklyReview(params);
+  if (!res.ok) return res;
+  if (res.data.created) {
+    emitAnalytics('weekly_review_completed', {
+      week_key: params.weekKey,
+      has_wins: answered(params.wins),
+      has_challenges: answered(params.challenges),
+      has_next_week: answered(params.next_week),
+    });
+  }
+  return { ok: true, data: undefined };
+}
 
 
 /**

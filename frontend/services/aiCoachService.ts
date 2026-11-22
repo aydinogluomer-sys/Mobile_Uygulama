@@ -35,16 +35,16 @@
  */
 import {
   fetchConversationsPage, createConversation, renameConversation,
-  setConversationProject, deleteConversation, fetchConversation,
+  setConversationProject, fetchConversation,
   fetchMessagesPage, insertMessage, fetchPendingAction, insertAction,
   resolveAction, updateActionPayload, MAX_TITLE_LENGTH, MESSAGE_PAGE_SIZE,
-  type ConversationRow, type MessageRow, type ActionRow,
+  type ConversationRow, type MessageRow, type ActionRow, type MessageCursor,
 } from '../repositories/aiConversationRepository';
 import { validateCoachActions, type CoachAction } from '../lib/coachActions';
 import type { Cursor, Page, RepoResult } from '../repositories/shared';
 
 export { MAX_TITLE_LENGTH, MESSAGE_PAGE_SIZE };
-export type { ConversationRow, MessageRow, ActionRow };
+export type { ConversationRow, MessageRow, ActionRow, MessageCursor };
 
 /** A model proposal that has been persisted and is awaiting the user's word. */
 export type StagedAction = { row: ActionRow; action: CoachAction };
@@ -121,7 +121,7 @@ export async function openThread(
 /** The page before `before`, oldest-first, ready to prepend. */
 export async function olderMessages(
   conversationId: string,
-  before: string,
+  before: MessageCursor,
 ): Promise<RepoResult<{ messages: MessageRow[]; hasMore: boolean }>> {
   const page = await fetchMessagesPage(conversationId, before, MESSAGE_PAGE_SIZE);
   if (!page.ok) return page;
@@ -145,10 +145,6 @@ export function renameThread(id: string, title: string): Promise<RepoResult<Conv
  */
 export function setThreadProject(id: string, projectId: string | null): Promise<RepoResult<ConversationRow>> {
   return setConversationProject(id, projectId);
-}
-
-export function deleteThread(id: string): Promise<RepoResult<true>> {
-  return deleteConversation(id);
 }
 
 /**

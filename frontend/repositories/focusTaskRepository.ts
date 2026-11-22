@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 import { requireComplete, selectAllPages } from './pagedSelect';
 import { currentUserId, deleteOwned, updateOwned, type RepoResult } from './shared';
 
-/** The focus_tasks columns the focus service reads (the full Row also has selected, color, updated_at). */
+/** The focus_tasks columns the focus service reads, plus optional export-only columns (selected, color, updated_at). */
 export type FocusTaskRow = Pick<
   TableRow<'focus_tasks'>,
   | 'id'
@@ -17,7 +17,11 @@ export type FocusTaskRow = Pick<
   | 'completed_pomodoros'
   | 'total_focus_seconds'
   | 'created_at'
->;
+> &
+  Partial<Pick<TableRow<'focus_tasks'>, 'selected' | 'color' | 'updated_at'>>;
+
+export const FOCUS_TASK_COLUMNS =
+  'id,user_id,title,completed,selected,estimated_pomodoros,completed_pomodoros,total_focus_seconds,color,created_at,updated_at';
 
 /**
  * Every column, oldest task first -- source for `FocusSettingsModal`'s full
@@ -29,7 +33,7 @@ export async function fetchAllFocusTasks(): Promise<RepoResult<FocusTaskRow[]>> 
   const r = await selectAllPages<FocusTaskRow>((from, to) =>
     supabase
       .from('focus_tasks')
-      .select('*')
+      .select(FOCUS_TASK_COLUMNS)
       .eq('user_id', u.userId)
       .order('created_at', { ascending: true })
       .order('id', { ascending: true })
@@ -57,7 +61,7 @@ export async function insertFocusTask(input: {
       estimated_pomodoros: Math.max(1, Math.round(input.estimatedPomodoros ?? 1)),
       completed: false,
     })
-    .select('*')
+    .select(FOCUS_TASK_COLUMNS)
     .single();
   if (error) return { ok: false, error: error.message };
   return { ok: true, data };
@@ -67,7 +71,7 @@ export async function completeFocusTask(id: string): Promise<RepoResult<FocusTas
   const u = await currentUserId();
   if (!u.ok) return u;
   return updateOwned<FocusTaskRow>({
-    table: 'focus_tasks', id, userId: u.userId, patch: { completed: true },
+    table: 'focus_tasks', id, userId: u.userId, patch: { completed: true }, columns: FOCUS_TASK_COLUMNS,
   });
 }
 
@@ -91,6 +95,7 @@ export async function setFocusTaskProgress(input: {
       completed_pomodoros: Math.max(0, Math.round(input.completedPomodoros)),
       total_focus_seconds: Math.max(0, Math.round(input.totalFocusSeconds)),
     },
+    columns: FOCUS_TASK_COLUMNS,
   });
 }
 
@@ -100,7 +105,7 @@ export async function fetchOpenFocusTasks(limit = 100): Promise<RepoResult<Focus
   if (!u.ok) return u;
   const { data, error } = await supabase
     .from('focus_tasks')
-    .select('*')
+    .select(FOCUS_TASK_COLUMNS)
     .eq('user_id', u.userId)
     .eq('completed', false)
     .order('created_at', { ascending: true })

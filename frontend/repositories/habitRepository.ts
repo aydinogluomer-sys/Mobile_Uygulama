@@ -21,6 +21,7 @@
 import { stripTimeOff } from '../lib/habitPauses';
 import { supabase } from '../lib/supabase';
 import type { Habit, FrequencyConfig } from '../lib/supabase';
+import { likeContains } from './likePattern';
 import { SERVER_MAX_ROWS } from './pagedSelect';
 import { currentUserId, deleteOwned, updateOwned, type RepoResult } from './shared';
 
@@ -182,17 +183,16 @@ export async function insertHabit(
 
 /** Server-side name search — see `taskRepository.searchTasks` for why. */
 export async function searchHabits(query: string, limit = 8): Promise<RepoResult<Habit[]>> {
+  const pattern = likeContains(query);
+  if (pattern === null) return { ok: true, data: [] };
   const u = await currentUserId();
   if (!u.ok) return u;
-  const term = query.trim();
-  if (!term) return { ok: true, data: [] };
-  const safe = term.replace(/[,()%]/g, ' ');
   const { data, error } = await supabase
     .from('habits')
     .select(HABIT_COLUMNS)
     .eq('user_id', u.userId)
     .not('status', 'eq', 'archived')
-    .ilike('name', `%${safe}%`)
+    .ilike('name', pattern)
     .order('created_at', { ascending: false })
     .limit(Math.min(limit, 25));
   if (error) return { ok: false, error: error.message };

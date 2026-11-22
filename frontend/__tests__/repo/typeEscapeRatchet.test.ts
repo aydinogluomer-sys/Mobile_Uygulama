@@ -118,13 +118,13 @@ function ratchetProblems(
 
 const ROOT = join(__dirname, '..', '..');
 
-// Locked to exact post-Wave-3 production measurement (baseline: asAny 138 -> 135 after F20, asUnknownAs 62 -> 50, asNever 20 -> 17, colonAny 6 -> 5, genericAny 1, tsDirective 0, eslintDisable 14).
+// Locked to exact post-F12 production measurement (F12 removed genericAny <any> from spotifyStore.ts: 1 -> 0).
 const CEILINGS: Readonly<EscapeCounts> = {
   asAny: 135,
   asUnknownAs: 50,
   asNever: 17,
   colonAny: 5,
-  genericAny: 1,
+  genericAny: 0,
   tsDirective: 0,
   eslintDisable: 14,
 };
@@ -139,7 +139,7 @@ const LAYER_CEILINGS: Readonly<Record<'repositories' | 'store', Partial<EscapeCo
     asUnknownAs: 1,
     asNever: 0,
     colonAny: 0,
-    genericAny: 1,
+    genericAny: 0,
   },
 };
 

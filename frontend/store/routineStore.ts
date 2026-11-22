@@ -1,10 +1,10 @@
 import { registerAccountScoped } from '../lib/accountScope';
 import { createLatest } from '../lib/latestOnly';
-import { withEdgeDeadline } from '../lib/edgeCall';
+import { isSignedIn } from '../lib/session';
 import { newRequestId } from '../services/focusPointService';
 import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE, IN_PROGRESS_NOTE, retryWhileInProgress } from '../lib/aiAttempt';
 import { create } from 'zustand';
-import { supabase, Routine } from '../lib/supabase';
+import type { Routine } from '../lib/supabase';
 import { useSubscriptionStore } from './subscriptionStore';
 import { useHabitStore } from './habitStore';
 import {
@@ -18,7 +18,11 @@ import {
   type ProposalCompletion,
 } from '../lib/routineProposal';
 import { findRoutinePack, packIcons, packToProposal, type RoutinePackKey } from '../lib/routinePacks';
-import { installProposal, listRoutines as repoFetchRoutines } from '../services/routineService';
+import {
+  installProposal,
+  listRoutines as repoFetchRoutines,
+  requestRoutineGeneration,
+} from '../services/routineService';
 import type { HabitLoadInput } from '../lib/capacity';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 
@@ -198,42 +202,38 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
     try {
       // R09.06 -- a resend of the same prompt after a lost answer reuses the id (one charge).
       // Oturum kontrolü
-      const { data: { session } } = await supabase.auth.getSession();
+      const signedIn = await isSignedIn();
       if (!run.isCurrent()) return;
-      if (!session) {
+      if (!signedIn) {
         set({ generateError: 'Bu özelliği kullanmak için giriş yapman gerekiyor.', generating: false });
         return;
       }
 
       const requestId = routineAttempt.begin(prompt);
-      const outcome = await retryWhileInProgress(
-        () => withEdgeDeadline('AI rutin', (signal) =>
-          supabase.functions.invoke('generate-routine', {
-            signal,
-            body: { prompt, request_id: requestId },
-          })),
+      const reply = await requestRoutineGeneration(prompt, requestId, (call, opts) =>
+        retryWhileInProgress(call, opts),
       );
       if (!run.isCurrent()) return;
-      const { data, error } = outcome;
 
-      if (error && isNoAnswer(error)) {
+      if (reply.kind === 'no_answer') {
         set({ generateError: NO_ANSWER_NOTE, generating: false });
         return;
       }
-      if (outcome.stillInProgress) { set({ generateError: IN_PROGRESS_NOTE, generating: false }); return; }
+      const stillInProgress = reply.kind === 'in_progress';
+      if (stillInProgress) {
+        set({ generateError: IN_PROGRESS_NOTE, generating: false });
+        return;
+      }
       routineAttempt.answered();
-      if (error) {
-        // FunctionsHttpError içinden sunucunun döndürdüğü mesajı çek
-        let msg = 'Bir hata oluştu, tekrar deneyin.';
-        const body = outcome.errorInfo;
-        if (body?.msg) msg = body.msg;
-        if (typeof body?.balance === 'number') useSubscriptionStore.getState().setBalance(body.balance);
-        set({ generateError: msg, generating: false });
+      if (reply.kind === 'refused') {
+        if (typeof reply.balance === 'number') useSubscriptionStore.getState().setBalance(reply.balance);
+        set({ generateError: reply.message, generating: false });
         return;
       }
 
+      const data = reply.data;
       if (data?.error) {
-        set({ generateError: data.error, generating: false });
+        set({ generateError: String(data.error), generating: false });
         return;
       }
 

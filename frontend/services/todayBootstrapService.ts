@@ -34,7 +34,8 @@ import {
 import { habitMutationEpoch, useHabitStore } from '../store/habitStore';
 import { useLogStore } from '../store/logStore';
 import { useRecoveryStore } from '../store/recoveryStore';
-import { useTaskStore, type Task } from '../store/taskStore';
+import type { Task } from '../lib/taskTypes';
+import { useTaskStore } from '../store/taskStore';
 import { useWillpowerStore } from '../store/willpowerStore';
 import { coreOutbox } from './coreOutbox';
 

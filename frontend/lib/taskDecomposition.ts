@@ -78,7 +78,7 @@
  * ever reads `title`/`description` off a validated subtask.
  */
 import type { ValidationError } from './routineProposal';
-import type { Task } from '../store/taskStore';
+import type { Task } from '../lib/taskTypes';
 
 // ---------------------------------------------------------------------------
 // Schema constants -- every bound a validator rejection below cites.

@@ -233,7 +233,7 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
     const run = threadLatest.begin();
     set({ loadingMessages: true });
     try {
-      const res = await olderMessages(forId, oldest.created_at);
+      const res = await olderMessages(forId, { createdAt: oldest.created_at, id: oldest.id });
       if (!run.isCurrent() || get().activeId !== forId) return;
       if (!res.ok) { set({ loadingMessages: false, error: res.error }); return; }
       set((s) => ({

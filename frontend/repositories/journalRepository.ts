@@ -13,6 +13,7 @@
  */
 import type { TableInsert, TableUpdate } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
+import { likeContains } from './likePattern';
 import { currentUserId, isTransportFailure, wrongAccountFor, type RepoResult } from './shared';
 
 export const JOURNAL_CAS_MISMATCH = 'CAS_MISMATCH';
@@ -30,7 +31,7 @@ export type JournalEntryRow = {
   created_at: string;
 };
 
-const COLS = '*';
+export const JOURNAL_ENTRY_COLUMNS = 'id,user_id,date,content,mood,ai_summary,created_at';
 
 /** Newest first, bounded to a year — the window the journal screen renders. */
 export async function fetchJournalEntries(limit = 365): Promise<RepoResult<JournalEntryRow[]>> {
@@ -38,7 +39,7 @@ export async function fetchJournalEntries(limit = 365): Promise<RepoResult<Journ
   if (!u.ok) return u;
   const { data, error } = await supabase
     .from('journal_entries')
-    .select(COLS)
+    .select(JOURNAL_ENTRY_COLUMNS)
     .eq('user_id', u.userId)
     .order('date', { ascending: false })
     .limit(Math.max(1, Math.min(limit, 1000)));
@@ -53,24 +54,22 @@ export async function fetchJournalEntries(limit = 365): Promise<RepoResult<Journ
  * filter is explicit here for the same reason it is on `fetchJournalEntries`:
  * RLS is the backstop, not the only scope.
  *
- * `%` is stripped along with the `or()` delimiters — without it a lone `%`
- * typed into the palette becomes a wildcard matching every entry the user has
- * ever written, which is not what someone searching for a percent sign meant.
+ * Pattern escaping (`\`, `%`, `_`) and PostgREST delimiter sanitization go
+ * through `repositories/likePattern.ts` (`likeContains`).
  */
 export async function searchJournalEntries(
   query: string,
   limit = 8,
 ): Promise<RepoResult<JournalEntryRow[]>> {
+  const pattern = likeContains(query);
+  if (pattern === null) return { ok: true, data: [] };
   const u = await currentUserId();
   if (!u.ok) return u;
-  const term = query.trim();
-  if (!term) return { ok: true, data: [] };
-  const safe = term.replace(/[,()%]/g, ' ');
   const { data, error } = await supabase
     .from('journal_entries')
-    .select(COLS)
+    .select(JOURNAL_ENTRY_COLUMNS)
     .eq('user_id', u.userId)
-    .ilike('content', `%${safe}%`)
+    .ilike('content', pattern)
     .order('date', { ascending: false })
     .limit(Math.max(1, Math.min(limit, 50)));
   if (error) return { ok: false, error: error.message };
@@ -82,7 +81,7 @@ export async function fetchJournalEntry(date: string): Promise<RepoResult<Journa
   if (!u.ok) return u;
   const { data, error, status } = await supabase
     .from('journal_entries')
-    .select(COLS)
+    .select(JOURNAL_ENTRY_COLUMNS)
     .eq('user_id', u.userId)
     .eq('date', date)
     .maybeSingle();
@@ -126,7 +125,7 @@ export async function upsertJournalEntry(
       const { data, error, status } = await supabase
         .from('journal_entries')
         .insert(row)
-        .select(COLS)
+        .select(JOURNAL_ENTRY_COLUMNS)
         .single();
       if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
       return { ok: true, data: data as unknown as JournalEntryRow };
@@ -140,7 +139,7 @@ export async function upsertJournalEntry(
       .eq('user_id', u.userId)
       .eq('date', input.date)
       .eq('content', guard.baseContent)
-      .select(COLS)
+      .select(JOURNAL_ENTRY_COLUMNS)
       .maybeSingle();
     if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
     if (!data) return { ok: false, error: 'Bu günün kaydı başka bir yerde değişti.', status: 409, code: JOURNAL_CAS_MISMATCH };
@@ -150,7 +149,7 @@ export async function upsertJournalEntry(
   const { data, error, status } = await supabase
     .from('journal_entries')
     .upsert(row, { onConflict: 'user_id,date' })
-    .select(COLS)
+    .select(JOURNAL_ENTRY_COLUMNS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: data as unknown as JournalEntryRow };

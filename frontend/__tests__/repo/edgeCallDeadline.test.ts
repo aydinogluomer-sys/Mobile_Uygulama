@@ -122,9 +122,11 @@ describe('every edge call site goes through it', () => {
   });
 
   it('finds them (scanner sanity)', () => {
-    // The audit counted 19. If this drops to zero the assertions below would
-    // pass while checking nothing.
-    expect(sites.length).toBeGreaterThanOrEqual(15);
+    // F12: 15 store call sites consolidated into `services/edgeFunctions.ts` (21 -> 8 sites:
+    // 3 screens + accountService 1 + aiStreamService 2 + edgeFunctions 2).
+    // Threshold lowered deliberately and pinned to the central transport service.
+    expect(sites.length).toBeGreaterThanOrEqual(6);
+    expect(sites.some((s) => s.rel === 'services/edgeFunctions.ts')).toBe(true);
   });
 
   it('none is issued without a deadline', () => {

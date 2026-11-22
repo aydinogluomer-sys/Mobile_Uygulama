@@ -25,8 +25,6 @@
 import {
   fetchBadHabitsPage,
   insertBadHabit,
-  updateBadHabit,
-  deleteBadHabit,
   type BadHabitRow,
 } from '../repositories/badHabitRepository';
 import type { Cursor } from '../repositories/shared';
@@ -79,8 +77,3 @@ export const listBadHabits = (cursor?: Cursor | null, limit?: number) =>
 
 export const createBadHabit = (input: Parameters<typeof insertBadHabit>[0]) =>
   insertBadHabit(input);
-
-export const patchBadHabit = (id: string, patch: Parameters<typeof updateBadHabit>[1]) =>
-  updateBadHabit(id, patch);
-
-export const removeBadHabit = (id: string) => deleteBadHabit(id);

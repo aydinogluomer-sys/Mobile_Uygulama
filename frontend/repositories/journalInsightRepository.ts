@@ -8,6 +8,9 @@
 import { supabase } from '../lib/supabase';
 import { currentUserId, type RepoResult } from './shared';
 
+export const JOURNAL_INSIGHT_COLUMNS =
+  'id,user_id,period,period_key,content,entry_count,created_at,updated_at';
+
 export async function fetchJournalInsight<T>(
   period: string,
   key: string,
@@ -16,7 +19,7 @@ export async function fetchJournalInsight<T>(
   if (!u.ok) return u;
   const { data, error } = await supabase
     .from('journal_insights')
-    .select('*')
+    .select(JOURNAL_INSIGHT_COLUMNS)
     .eq('user_id', u.userId)
     .eq('period', period)
     .eq('period_key', key)
@@ -46,7 +49,7 @@ export async function upsertJournalInsight<T>(input: {
       },
       { onConflict: 'user_id,period,period_key' },
     )
-    .select('*')
+    .select(JOURNAL_INSIGHT_COLUMNS)
     .single();
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: data as T };

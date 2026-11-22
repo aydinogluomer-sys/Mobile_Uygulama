@@ -131,12 +131,23 @@ jest.mock('../../repositories/aiConversationRepository', () => ({
     data: mockDb.conversations.find((c) => c.id === id && c.user_id === mockDb.user) ?? null,
   }),
 
-  fetchMessagesPage: async (conversationId: string, before: string | null, limit: number) => {
+  fetchMessagesPage: async (
+    conversationId: string,
+    before: { createdAt: string; id: string } | null,
+    limit: number,
+  ) => {
     const rows = mockDb.messages
       .filter((m) => m.conversation_id === conversationId && m.user_id === mockDb.user)
-      .filter((m) => (before ? m.created_at < before : true))
+      .filter((m) =>
+        before
+          ? m.created_at < before.createdAt || (m.created_at === before.createdAt && m.id < before.id)
+          : true,
+      )
       .slice()
-      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+      .sort((a, b) => {
+        if (a.created_at !== b.created_at) return a.created_at < b.created_at ? 1 : -1;
+        return a.id < b.id ? 1 : -1;
+      });
     const hasMore = rows.length > limit;
     return { ok: true, data: { rows: hasMore ? rows.slice(0, limit) : rows, hasMore } };
   },

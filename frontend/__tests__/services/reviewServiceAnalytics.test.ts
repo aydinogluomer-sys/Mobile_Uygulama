@@ -1,9 +1,9 @@
 /**
- * §22 analytics emission -- `repositories/reviewRepository.ts` /
- * `weekly_review_completed`.  (Phase 4)
+ * §22 analytics emission -- `services/reviewService.ts` /
+ * `weekly_review_completed`.  (Phase 4, moved to service layer in F12 REP-18)
  *
  * Behavioural, following `__tests__/store/*Analytics.test.ts`: the real
- * repository function runs against a stateful fake of `weekly_reviews`, the
+ * service + repository path runs against a stateful fake of `weekly_reviews`, the
  * REAL `buildEvent` privacy filter runs, and every assertion is made on the
  * event object that actually reaches the sink.
  *
@@ -103,7 +103,7 @@ jest.mock('../../lib/analytics', () => ({
 
 import * as analytics from '../../lib/analytics';
 import { ANALYTICS_EVENTS, buildEvent, type AnalyticsEvent } from '../../lib/analytics';
-import { upsertWeeklyReview } from '../../repositories/reviewRepository';
+import { saveWeeklyReflection as upsertWeeklyReview } from '../../services/reviewService';
 
 const emit = (analytics as unknown as { emitEvent: jest.Mock }).emitEvent;
 

@@ -10,7 +10,7 @@
 import type { ChecklistCheck, ChecklistItem } from '../lib/habitChecklist';
 import type { GoalVersion, PauseInterval } from '../lib/habitPauses';
 import { supabase, type Habit, type HabitLog, type RecoveryPlan, type WillpowerState } from '../lib/supabase';
-import type { Task } from '../store/taskStore';
+import type { Task } from '../lib/taskTypes';
 import type { ReviewLogRow } from './habitLogRepository';
 import { currentUserId, isTransportFailure } from './shared';
 

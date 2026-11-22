@@ -1,9 +1,10 @@
 // Supabase functions.invoke hatasından sunucunun gerçek mesajını/kodunu çıkarır.
 // AI Coach ve günlük içgörüleri paylaşır.
 export async function extractInvokeError(
-  error: unknown
+  error: unknown,
+  fallbackMessage = 'Yanıt alınamadı, tekrar deneyin.',
 ): Promise<{ msg: string; code?: string; balance?: number }> {
-  let msg = 'Yanıt alınamadı, tekrar deneyin.';
+  let msg = fallbackMessage;
   let code: string | undefined;
   let balance: number | undefined;
   try {

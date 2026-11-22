@@ -90,12 +90,16 @@ describe('fetchWeeklyReview', () => {
 });
 
 describe('upsertWeeklyReview', () => {
-  it('writes the row scoped to the current user with the onConflict key', async () => {
+  it('writes the row scoped to the current user with the onConflict key and reports created=true on first save, created=false on edit', async () => {
     const res = await upsertWeeklyReview({ weekKey: '2026-08-03', wins: 'a', challenges: 'b', next_week: 'c' });
-    expect(res.ok).toBe(true);
+    expect(res).toEqual({ ok: true, data: { created: true } });
     expect(mockDb.upserts).toEqual([
       { user_id: 'u1', week_key: '2026-08-03', wins: 'a', challenges: 'b', next_week: 'c' },
     ]);
+
+    mockDb.rows.push({ id: 'r1', user_id: 'u1', week_key: '2026-08-03', wins: 'a', challenges: 'b', next_week: 'c' });
+    const editRes = await upsertWeeklyReview({ weekKey: '2026-08-03', wins: 'a2', challenges: 'b', next_week: 'c' });
+    expect(editRes).toEqual({ ok: true, data: { created: false } });
   });
 
   it('surfaces an upsert error instead of swallowing it', async () => {

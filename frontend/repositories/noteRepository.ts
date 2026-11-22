@@ -16,6 +16,7 @@
  * only ever searched the page that happened to be loaded.
  */
 import { supabase } from '../lib/supabase';
+import { orIlike } from './likePattern';
 import {
   currentUserId, deleteOwned, fetchPage, updateOwned,
   insertOwnedWithId, updateOwnedVersioned, fetchOwnedRow, deleteOwnedIfPresent,
@@ -99,18 +100,15 @@ export const deleteNoteIfPresent = (id: string, expectedUserId?: string) => dele
  * keeping the result bounded.
  */
 export async function searchNotes(query: string, limit = 50): Promise<RepoResult<NoteRow[]>> {
+  const orFilter = orIlike(['title', 'content'], query);
+  if (orFilter === null) return { ok: true, data: [] };
   const u = await currentUserId();
   if (!u.ok) return u;
-  const term = query.trim();
-  if (!term) return { ok: true, data: [] };
-  // Escape PostgREST's `or()` delimiters so a comma or paren in the query
-  // cannot be read as filter syntax.
-  const safe = term.replace(/[,()]/g, ' ');
   const { data, error } = await supabase
     .from('notes')
     .select(COLS)
     .eq('user_id', u.userId)
-    .or(`title.ilike.%${safe}%,content.ilike.%${safe}%`)
+    .or(orFilter)
     .order('updated_at', { ascending: false })
     .limit(Math.min(limit, 100));
   if (error) return { ok: false, error: error.message };

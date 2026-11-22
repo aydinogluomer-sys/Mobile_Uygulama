@@ -102,12 +102,25 @@ const matches = (row: MockRow, filters: Record<string, unknown>) =>
   Object.entries(filters).every(([k, v]) =>
     k.startsWith('!') ? row[k.slice(1)] !== v : row[k] === v);
 
-/** `%term%` against one column, case-insensitively — PostgREST's `ilike`. */
+/** PostgreSQL ILIKE: % = herhangi bir dizi, _ = tek karakter, \x = x'in kendisi; büyük/küçük harf duyarsız, tam eşleşme. */
 function ilikeMatch(row: MockRow, col: string, pattern: string): boolean {
-  const needle = String(pattern).replace(/%/g, '').toLowerCase();
-  if (!needle) return true;
   const value = row[col];
-  return typeof value === 'string' && value.toLowerCase().includes(needle);
+  if (typeof value !== 'string') return false;
+  let src = '^';
+  for (let i = 0; i < pattern.length; i += 1) {
+    const ch = pattern[i];
+    if (ch === '\\' && i + 1 < pattern.length) {
+      i += 1;
+      src += pattern[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    } else if (ch === '%') {
+      src += '[\\s\\S]*';
+    } else if (ch === '_') {
+      src += '[\\s\\S]';
+    } else {
+      src += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+  }
+  return new RegExp(`${src}$`, 'i').test(value);
 }
 
 /**

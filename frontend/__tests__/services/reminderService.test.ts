@@ -27,7 +27,9 @@ jest.mock('../../lib/notifications', () => ({
   scheduleSnooze: jest.fn(async (habitId: string, day: string) => { mockOS.snoozes.push({ habitId, day }); }),
   reminderTitle: (n: string) => n,
 }));
-jest.mock('../../services/reviewService', () => ({ logsForPeriod: jest.fn(async () => ({ ok: true, data: [] })) }));
+jest.mock('../../repositories/habitLogRepository', () => ({
+  fetchHabitLogsForReview: jest.fn(async () => ({ ok: true, data: [] })),
+}));
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reconcileReminders, handleReminderResponse, HANDLED_KEY } from '../../services/reminderService';

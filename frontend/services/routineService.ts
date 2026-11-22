@@ -16,6 +16,8 @@
  * The store keeps `generating` / `installing` / the staged proposal, which
  * are what the screen renders.
  */
+import { isNoAnswer, retryWhileInProgress, type InvokeOutcome, type RetryOutcome } from '../lib/aiAttempt';
+import { extractInvokeError } from '../lib/aiInvoke';
 import { computeWillpowerCost } from '../lib/triage';
 import type { FrequencyConfig, Habit } from '../lib/supabase';
 import {
@@ -23,6 +25,7 @@ import {
   type InstallHabitRow,
 } from '../repositories/habitRepository';
 import { fetchRoutines as repoFetchRoutines } from '../repositories/routineRepository';
+import { invokeEdgeFunction } from './edgeFunctions';
 
 /** The user's saved routines. Bounded in the repository. */
 export const listRoutines = <T,>() => repoFetchRoutines<T>();
@@ -121,4 +124,42 @@ export async function installProposal(
   const rows = buildInstallRows(habits, toActivate);
   const res = await insertRoutineHabits(rows, installId);
   return res.ok ? { ok: true, habits: res.data } : { ok: false, error: res.error };
+}
+
+export type RoutineGenerationReply =
+  | { kind: 'no_answer' }
+  | { kind: 'in_progress' }
+  | { kind: 'refused'; message: string; balance?: number }
+  | { kind: 'answered'; data: Record<string, unknown> | null };
+
+const ROUTINE_ERROR_FALLBACK = 'Bir hata oluştu, tekrar deneyin.';
+
+export async function requestRoutineGeneration(
+  prompt: string,
+  requestId: string,
+  runRetry: <T>(
+    call: () => Promise<InvokeOutcome<T>>,
+    opts?: { fallbackMessage?: string },
+  ) => Promise<RetryOutcome<T>> = retryWhileInProgress,
+): Promise<RoutineGenerationReply> {
+  try {
+    const outcome = await runRetry(
+      () =>
+        invokeEdgeFunction<Record<string, unknown>>('generate-routine', {
+          label: 'AI rutin',
+          body: { prompt, request_id: requestId },
+        }),
+      { fallbackMessage: ROUTINE_ERROR_FALLBACK },
+    );
+    if (outcome.error && isNoAnswer(outcome.error)) return { kind: 'no_answer' };
+    if (outcome.stillInProgress) return { kind: 'in_progress' };
+    if (outcome.error) {
+      const info = outcome.errorInfo ?? (await extractInvokeError(outcome.error, ROUTINE_ERROR_FALLBACK));
+      return { kind: 'refused', message: info.msg, balance: info.balance };
+    }
+    return { kind: 'answered', data: outcome.data };
+  } catch (e) {
+    if (isNoAnswer(e)) return { kind: 'no_answer' };
+    throw e;
+  }
 }

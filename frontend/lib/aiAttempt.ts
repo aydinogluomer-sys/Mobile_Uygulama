@@ -78,7 +78,12 @@ export type RetryOutcome<T> = InvokeOutcome<T> & {
 
 export async function retryWhileInProgress<T>(
   call: () => Promise<InvokeOutcome<T>>,
-  opts: { delaysMs?: readonly number[]; sleep?: (ms: number) => Promise<void>; isCancelled?: () => boolean } = {},
+  opts: {
+    delaysMs?: readonly number[];
+    sleep?: (ms: number) => Promise<void>;
+    isCancelled?: () => boolean;
+    fallbackMessage?: string;
+  } = {},
 ): Promise<RetryOutcome<T>> {
   const delays = opts.delaysMs ?? REQUEST_IN_PROGRESS_RETRY_DELAYS_MS;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
@@ -86,7 +91,7 @@ export async function retryWhileInProgress<T>(
     const out = await call();
     if (!out.error) return { ...out, stillInProgress: false, errorInfo: null };
     if (isNoAnswer(out.error)) return { ...out, stillInProgress: false, errorInfo: null };
-    const info = await extractInvokeError(out.error);
+    const info = await extractInvokeError(out.error, opts.fallbackMessage);
     if (info.code !== REQUEST_IN_PROGRESS_CODE) return { ...out, stillInProgress: false, errorInfo: info };
     if (attempt >= delays.length || opts.isCancelled?.()) return { ...out, stillInProgress: true, errorInfo: info };
     await sleep(delays[attempt]);

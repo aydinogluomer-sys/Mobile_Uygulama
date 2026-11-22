@@ -61,6 +61,11 @@ const CONV_COLS = 'id,user_id,title,project_id,created_at,updated_at,last_messag
 const MSG_COLS = 'id,conversation_id,user_id,role,content,request_id,created_at';
 const ACTION_COLS = 'id,conversation_id,assistant_message_id,user_id,action_type,payload,status,created_at,resolved_at';
 
+export type MessageCursor = { createdAt: string; id: string };
+
+const MESSAGE_CURSOR_TS_RE = /^\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2})$/;
+const MESSAGE_CURSOR_ID_RE = /^[0-9a-f-]{36}$/i;
+
 /** Titles are metadata, not prose — bounded to match the DB CHECK. */
 export const MAX_TITLE_LENGTH = 200;
 /** One page of a conversation. Enough to fill a screen and scroll a little. */
@@ -179,11 +184,17 @@ export async function fetchConversation(id: string): Promise<RepoResult<Conversa
  */
 export async function fetchMessagesPage(
   conversationId: string,
-  before?: string | null,
+  before?: MessageCursor | null,
   limit: number = MESSAGE_PAGE_SIZE,
 ): Promise<RepoResult<{ rows: MessageRow[]; hasMore: boolean }>> {
   const u = await currentUserId();
   if (!u.ok) return u;
+
+  if (before) {
+    if (!MESSAGE_CURSOR_TS_RE.test(before.createdAt) || !MESSAGE_CURSOR_ID_RE.test(before.id)) {
+      return { ok: false, error: 'Geçersiz sayfa imleci.' };
+    }
+  }
 
   const capped = Math.max(1, Math.min(limit, 100));
   let q = supabase
@@ -195,7 +206,9 @@ export async function fetchMessagesPage(
     .order('id', { ascending: false })
     .limit(capped + 1);
 
-  if (before) q = q.lt('created_at', before);
+  if (before) {
+    q = q.or(`created_at.lt.${before.createdAt},and(created_at.eq.${before.createdAt},id.lt.${before.id})`);
+  }
 
   const { data, error } = await q;
   if (error) return { ok: false, error: error.message };
@@ -246,6 +259,7 @@ export async function insertMessage(input: {
       const existing = await supabase
         .from('ai_messages').select(MSG_COLS)
         .eq('conversation_id', input.conversationId)
+        .eq('user_id', u.userId)
         .eq('request_id', input.requestId)
         .eq('role', input.role)
         .maybeSingle();

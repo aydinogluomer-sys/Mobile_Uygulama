@@ -106,11 +106,6 @@ export const completePlan = (id: string) => queuePlanChange(id, 'update', { stat
 export const skipPlan = (id: string) => queuePlanChange(id, 'update', { status: 'cancelled', completed_at: null });
 export const removePlan = (id: string) => queuePlanChange(id, 'delete');
 
-/** True when a plan's target day has passed without completion. */
-export function isOverdue(plan: Pick<RecoveryPlan, 'target_date' | 'status'>, today: string): boolean {
-  return plan.status === 'planned' && plan.target_date < today;
-}
-
 /**
  * Does a make-up for this habit need an AMOUNT from the user?
  *

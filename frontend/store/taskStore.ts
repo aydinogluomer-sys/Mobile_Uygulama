@@ -17,30 +17,8 @@ import {
 import { asyncStorageOutbox, type OutboxStorage } from '../lib/outboxStorage';
 import { flushOutbox } from '../services/outboxRunner';
 import { currentUser } from '../lib/session';
-
-export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
-export type TaskPriority = 'high' | 'medium' | 'low' | 'none';
-export type ListType = 'inbox' | 'this_week' | 'someday';
-
-export type QuadrantType = 'UI' | 'NI' | 'UN' | 'NN' | null;
-
-export type Task = {
-  id: string;
-  user_id: string;
-  title: string;
-  description?: string | null;
-  status: TaskStatus;
-  priority: TaskPriority;
-  due_date?: string | null;
-  project_id?: string | null;
-  list_type: ListType;
-  notes_text?: string | null;
-  completed: boolean;
-  completed_at?: string | null;
-  quadrant?: QuadrantType;
-  created_at: string;
-  updated_at?: string | null;
-};
+import type { Task, ListType, QuadrantType } from '../lib/taskTypes';
+export type { TaskStatus, TaskPriority, ListType, QuadrantType, Task } from '../lib/taskTypes';
 
 type TaskStore = {
   tasks: Task[];

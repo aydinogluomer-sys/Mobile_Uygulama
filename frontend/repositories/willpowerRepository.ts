@@ -16,6 +16,8 @@ import { currentUserId, type RepoResult } from './shared';
 
 export type WillpowerStateRow = TableRow<'willpower_state'>;
 
+export const WILLPOWER_STATE_COLUMNS = 'user_id,state_date,daily_budget,used,focus_capacity,active_count';
+
 const DEFAULTS = { daily_budget: 15, used: 0, focus_capacity: 3, active_count: 0 };
 
 /** Today's row, creating it with the standard budget if the day is new. */
@@ -27,7 +29,7 @@ export async function fetchOrCreateWillpowerState(
 
   const existing = await supabase
     .from('willpower_state')
-    .select('*')
+    .select(WILLPOWER_STATE_COLUMNS)
     .eq('user_id', u.userId)
     .eq('state_date', date)
     .maybeSingle();
@@ -37,7 +39,7 @@ export async function fetchOrCreateWillpowerState(
   const created = await supabase
     .from('willpower_state')
     .upsert({ user_id: u.userId, state_date: date, ...DEFAULTS })
-    .select('*')
+    .select(WILLPOWER_STATE_COLUMNS)
     .single();
   if (created.error) return { ok: false, error: created.error.message };
   return { ok: true, data: created.data };
@@ -54,7 +56,7 @@ export async function updateWillpowerState(
     .update(patch)
     .eq('user_id', u.userId)
     .eq('state_date', date)
-    .select('*')
+    .select(WILLPOWER_STATE_COLUMNS)
     .maybeSingle();
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: 'İrade durumu bulunamadı.' };
