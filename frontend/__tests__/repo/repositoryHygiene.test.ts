@@ -36,6 +36,7 @@ import {
 } from '../../repositories/focusSessionRepository';
 import {
   FOCUS_TASK_COLUMNS,
+  FOCUS_TASK_PROGRESS_COLUMNS,
   fetchAllFocusTasks,
 } from '../../repositories/focusTaskRepository';
 import { JOURNAL_INSIGHT_COLUMNS } from '../../repositories/journalInsightRepository';
@@ -157,6 +158,7 @@ describe('1. REP-16 — Açık sütun listeleri, canlı şema uyumu ve paralel s
     { exportName: 'LIFE_AREA_LOG_COLUMNS', value: LIFE_AREA_LOG_COLUMNS, table: 'life_area_logs' },
     { exportName: 'WILLPOWER_STATE_COLUMNS', value: WILLPOWER_STATE_COLUMNS, table: 'willpower_state' },
     { exportName: 'FOCUS_TASK_COLUMNS', value: FOCUS_TASK_COLUMNS, table: 'focus_tasks', fullTable: true },
+    { exportName: 'FOCUS_TASK_PROGRESS_COLUMNS', value: FOCUS_TASK_PROGRESS_COLUMNS, table: 'focus_tasks' },
     { exportName: 'FOCUS_SESSION_EXPORT_COLUMNS', value: FOCUS_SESSION_EXPORT_COLUMNS, table: 'focus_sessions', fullTable: true },
   ];
 
@@ -300,6 +302,7 @@ describe('3. REP-19 — Ölü dışa aktarımlar silinmiş, korunanlar yerinde',
     'createTask',
     'patchTask',
     'insertFocusSession',
+    'setFocusTaskProgress',
     'fetchFocusSecondsForReview',
     'ReviewFocusSecondsRow',
   ] as const;

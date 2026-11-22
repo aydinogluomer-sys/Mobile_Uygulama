@@ -130,10 +130,10 @@ describe('services exist and hold real work', () => {
     { service: 'taskService.ts', rule: 'completed / status / completed_at stay consistent',
       anchors: ['status: completed ?', 'completed_at: completed ?'] },
     { service: 'focusService.ts', rule: 'a task is credited only for a session the database accepted',
-      // R02.03: the session now goes through the core outbox; "accepted" is
-      // `delivered` (the command left the outbox in this call), not `session.ok`
-      // (which only means it was kept on the device).
-      anchors: ['if (!delivered)', 'sessionRecorded: false', 'setFocusTaskProgress('] },
+      // R02.03 / F16: the session goes through the core outbox (which credits on
+      // first server delivery); `focusService` reads fresh progress only after
+      // `delivered` to decide auto-completion.
+      anchors: ['if (!delivered)', 'sessionRecorded: false', 'fetchFocusTaskProgress('] },
     // The three below have no store: settings.tsx and BadHabitsTracker.tsx
     // use them directly. That is still inside the contract -- the rule the
     // UI must not break is reaching PAST a service to a repository.

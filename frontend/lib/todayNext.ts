@@ -15,6 +15,11 @@
  * Pure: everything it needs is passed in; nothing is fetched or derived from
  * the clock here. Paused counts as open (it is waiting to be resumed).
  */
+import { SESSION_MAX_AGE_MS } from './focusTimer';
+
+export const FOCUS_PAUSE_YIELD_MS = 30 * 60 * 1000;
+export const FOCUS_STALE_MS = SESSION_MAX_AGE_MS;
+
 export type NextAction =
   | { kind: 'focus'; label: string; detail: string }
   | { kind: 'routine'; label: string; detail: string }
@@ -23,7 +28,12 @@ export type NextAction =
   | { kind: 'habit'; id: string; label: string; detail: string };
 
 export type NextActionInput = {
-  focus: { status: 'idle' | 'running' | 'paused'; title?: string | null };
+  focus: {
+    status: 'idle' | 'running' | 'paused';
+    title?: string | null;
+    /** F16 — sırayı bırakmış (uzun duraklama veya eski oturum). */
+    yielded?: boolean;
+  };
   routine: { status: 'running' | 'paused' | 'finished'; templateName: string; done: number; total: number } | null;
   recoveryToday: { id: string; habitName: string }[];
   overdueTasks: { id: string; title: string }[];
@@ -31,8 +41,24 @@ export type NextActionInput = {
   tasksToday: { id: string; title: string }[];
 };
 
+export function focusForNext(
+  f: { status: 'idle' | 'running' | 'paused'; title?: string | null; pausedAt: number | null; startedAtIso: string | null },
+  nowMs: number,
+): NextActionInput['focus'] {
+  if (f.status === 'idle') return { status: 'idle' };
+  const pausedForMs =
+    f.status === 'paused' && typeof f.pausedAt === 'number' && Number.isFinite(f.pausedAt)
+      ? Math.max(0, nowMs - f.pausedAt)
+      : 0;
+  const parsedStart = typeof f.startedAtIso === 'string' ? Date.parse(f.startedAtIso) : Number.NaN;
+  const ageMs = Number.isFinite(parsedStart) ? Math.max(0, nowMs - parsedStart) : 0;
+  const yielded = pausedForMs > FOCUS_PAUSE_YIELD_MS || ageMs > FOCUS_STALE_MS;
+  return { status: f.status, title: f.title ?? null, yielded };
+}
+
 export function nextActionable(i: NextActionInput): NextAction | null {
-  if (i.focus.status !== 'idle') {
+  const open = i.focus.status !== 'idle';
+  if (open && !i.focus.yielded) {
     return {
       kind: 'focus',
       label: i.focus.title ? `Odak: ${i.focus.title}` : 'Odak oturumu',
@@ -54,6 +80,13 @@ export function nextActionable(i: NextActionInput): NextAction | null {
   if (h) return { kind: 'habit', id: h.id, label: h.name, detail: 'Bugünün alışkanlığı' };
   const t = i.tasksToday[0];
   if (t) return { kind: 'task', id: t.id, label: t.title, detail: 'Bugünün görevi' };
+  if (open) {
+    return {
+      kind: 'focus',
+      label: i.focus.title ? `Odak: ${i.focus.title}` : 'Odak oturumu',
+      detail: 'Yarım kalan oturum var — istersen bitir ya da bırak',
+    };
+  }
   return null;
 }
 

@@ -12,7 +12,8 @@ import {
   toCSV, toExcelXML, sessionsSheet, FocusSessionRow,
   ExportFmt, EXPORT_META, webDownload,
 } from '../../lib/focusReport';
-import { FocusSettings, DEFAULT_SETTINGS } from '../../store/focusStore';
+import { FocusSettings, DEFAULT_SETTINGS, FOCUS_SETTING_BOUNDS } from '../../store/focusStore';
+import { ensurePermission } from '../../lib/notifications';
 import { todayLocal } from '../../lib/date';
 import {
   allSessions as fetchAllFocusSessions,
@@ -136,6 +137,13 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
     showFlash('Odak ayarları varsayılana döndürüldü.');
   }
 
+  async function toggleNotify() {
+    if (st.notifyOnFinish) { onSave({ notifyOnFinish: false }); return; }
+    const ok = await ensurePermission();
+    if (!ok) { showFlash('Bildirim izni kapalı. Bitiş bildirimi için cihaz ayarlarından izin ver.'); return; }
+    onSave({ notifyOnFinish: true });
+  }
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
@@ -173,18 +181,25 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
               <SegBlock label="Saat formatı" value={st.hourFormat} accent={accent}
                 options={[{ v: '24h', l: '24 saat' }, { v: '12h', l: '12 saat' }]}
                 onChange={(v) => onSave({ hourFormat: v as FocusSettings['hourFormat'] })} />
-              <Toggle label="Bitince bildirim" value={st.notifyOnFinish} accent={accent} onToggle={() => onSave({ notifyOnFinish: !st.notifyOnFinish })} />
+              <Toggle label="Bitince bildirim" value={st.notifyOnFinish} accent={accent} onToggle={() => { void toggleNotify(); }} />
             </>
           )}
 
           {tab === 'timer' && (
             <>
-              <Stepper label="Çalışma (dk)" value={st.workMinutes} min={1} max={120} step={5} accent={accent} onChange={(v) => onSave({ workMinutes: v })} />
-              <Stepper label="Kısa mola (dk)" value={st.shortBreakMinutes} min={1} max={60} step={1} accent={accent} onChange={(v) => onSave({ shortBreakMinutes: v })} />
-              <Stepper label="Uzun mola (dk)" value={st.longBreakMinutes} min={1} max={60} step={1} accent={accent} onChange={(v) => onSave({ longBreakMinutes: v })} />
-              <Stepper label="Uzun mola aralığı" value={st.longBreakInterval} min={2} max={12} step={1} accent={accent} onChange={(v) => onSave({ longBreakInterval: v })} />
+              <Stepper label="Çalışma (dk)" value={st.workMinutes} min={FOCUS_SETTING_BOUNDS.workMinutes[0]} max={FOCUS_SETTING_BOUNDS.workMinutes[1]} step={5} accent={accent} onChange={(v) => onSave({ workMinutes: v })} />
+              <Stepper label="Kısa mola (dk)" value={st.shortBreakMinutes} min={FOCUS_SETTING_BOUNDS.shortBreakMinutes[0]} max={FOCUS_SETTING_BOUNDS.shortBreakMinutes[1]} step={1} accent={accent} onChange={(v) => onSave({ shortBreakMinutes: v })} />
+              <Stepper label="Uzun mola (dk)" value={st.longBreakMinutes} min={FOCUS_SETTING_BOUNDS.longBreakMinutes[0]} max={FOCUS_SETTING_BOUNDS.longBreakMinutes[1]} step={1} accent={accent} onChange={(v) => onSave({ longBreakMinutes: v })} />
+              <Stepper label="Uzun mola aralığı" value={st.longBreakInterval} min={FOCUS_SETTING_BOUNDS.longBreakInterval[0]} max={FOCUS_SETTING_BOUNDS.longBreakInterval[1]} step={1} accent={accent} onChange={(v) => onSave({ longBreakInterval: v })} />
               <Toggle label="Molaları otomatik başlat" value={st.autoStartBreaks} accent={accent} onToggle={() => onSave({ autoStartBreaks: !st.autoStartBreaks })} />
               <Toggle label="Pomodoroları otomatik başlat" value={st.autoStartPomodoros} accent={accent} onToggle={() => onSave({ autoStartPomodoros: !st.autoStartPomodoros })} />
+              <Toggle
+                label="Uygulamadan çıkınca duraklat"
+                value={st.pauseInBackground}
+                accent={accent}
+                hint="Açıksa süre, uygulamadan çıkınca durur. Kapalıyken süre arka planda da akar."
+                onToggle={() => onSave({ pauseInBackground: !st.pauseInBackground })}
+              />
             </>
           )}
 
@@ -210,7 +225,7 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
           {tab === 'sounds' && (
             <>
               <Toggle label="Bitince titreşim" value={st.soundOnFinish} accent={accent} onToggle={() => onSave({ soundOnFinish: !st.soundOnFinish })} />
-              <Toggle label="Bitince bildirim" value={st.notifyOnFinish} accent={accent} onToggle={() => onSave({ notifyOnFinish: !st.notifyOnFinish })} />
+              <Toggle label="Bitince bildirim" value={st.notifyOnFinish} accent={accent} onToggle={() => { void toggleNotify(); }} />
             </>
           )}
 
@@ -309,11 +324,23 @@ function Stepper({ label, value, min, max, step, accent, onChange }: {
     <View style={s.row}>
       <Text style={s.rowLabel}>{label}</Text>
       <View style={s.stepper}>
-        <TouchableOpacity style={s.stepBtn} onPress={() => onChange(Math.max(min, value - step))}>
+        <TouchableOpacity
+          style={s.stepBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`${label} azalt`}
+          onPress={() => onChange(Math.max(min, value - step))}
+        >
           <Ionicons name="remove" size={16} color={colors.textDim} />
         </TouchableOpacity>
         <Text style={[s.stepValue, { color: accent }]}>{value}</Text>
-        <TouchableOpacity style={s.stepBtn} onPress={() => onChange(Math.min(max, value + step))}>
+        <TouchableOpacity
+          style={s.stepBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`${label} artır`}
+          onPress={() => onChange(Math.min(max, value + step))}
+        >
           <Ionicons name="add" size={16} color={colors.textDim} />
         </TouchableOpacity>
       </View>
@@ -330,7 +357,15 @@ function Toggle({ label, value, accent, onToggle, hint }: {
         <Text style={s.rowLabel}>{label}</Text>
         {hint ? <Text style={s.rowHint}>{hint}</Text> : null}
       </View>
-      <TouchableOpacity style={[s.toggle, value ? { backgroundColor: accent } : { backgroundColor: colors.border }]} onPress={onToggle} activeOpacity={0.8}>
+      <TouchableOpacity
+        style={[s.toggle, value ? { backgroundColor: accent } : { backgroundColor: colors.border }]}
+        onPress={onToggle}
+        activeOpacity={0.8}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: value }}
+        accessibilityLabel={label}
+        hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+      >
         <View style={[s.knob, value && { transform: [{ translateX: 18 }] }]} />
       </TouchableOpacity>
     </View>

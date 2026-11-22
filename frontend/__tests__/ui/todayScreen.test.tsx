@@ -81,8 +81,42 @@ beforeEach(() => {
   (globalThis as any).__pauses = [{ id: 'p1', habit_id: 'h2', kind: 'pause', start_date: today, end_date: ymd(addDaysLocal(new Date(), 3)) }];
   (globalThis as any).__tasks = [{ id: 't1', user_id: 'u1', title: 'Rapor yaz', status: 'pending', priority: 'none', list_type: 'inbox', due_date: today, completed: false, created_at: today }];
   useHabitStore.setState({ habits: [], pauses: [], goalVersions: [], timeOffAvailable: null, checklistItems: [], checklistChecks: [], checklistAvailable: null } as any);
+  const { useFocusStore } = jest.requireActual('../../store/focusStore');
+  useFocusStore.setState({ status: 'idle', smallStep: null, pausedAt: null, sessionStartedAt: null });
   mockPush.mockClear();
   mockActionSheet.mockClear();
+});
+
+it('F16 (INT-10): a focus session paused > 30m yields Today hero to due work, while a 5m pause stays first', async () => {
+  const { useFocusStore } = jest.requireActual('../../store/focusStore');
+  const step = { title: 'İlk paragraf', minutes: 5, parent: { kind: 'task' as const, id: 't1', title: 'Rapor yaz' } };
+
+  await act(async () => {
+    useFocusStore.setState({
+      status: 'paused',
+      smallStep: step,
+      pausedAt: Date.now() - 31 * 60_000,
+      sessionStartedAt: new Date(Date.now() - 40 * 60_000).toISOString(),
+    });
+  });
+  const r1 = await render();
+  expect(r1.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityLabel === 'Başla: Yürüyüş')).toHaveLength(1);
+  await act(async () => { r1.unmount(); });
+
+  await act(async () => {
+    useFocusStore.setState({
+      status: 'paused',
+      smallStep: step,
+      pausedAt: Date.now() - 5 * 60_000,
+      sessionStartedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    });
+  });
+  const r2 = await render();
+  expect(r2.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityLabel === 'Devam et: Odak: İlk paragraf')).toHaveLength(1);
+  await act(async () => {
+    r2.unmount();
+    useFocusStore.setState({ status: 'idle', smallStep: null, pausedAt: null, sessionStartedAt: null });
+  });
 });
 
 async function render() {
