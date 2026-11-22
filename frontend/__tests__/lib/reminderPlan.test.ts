@@ -413,3 +413,25 @@ describe('DOM-14 — shouldRecordHandled', () => {
     for (const o of no) expect(shouldRecordHandled(o)).toBe(false);
   });
 });
+
+describe('F36 birlikte yaşam', () => {
+  it('keeps task-reminder, evening-close and follow-up in other class so habit reconcile never cancels them and habitSlotBudget reserves room', () => {
+    expect(classifyScheduled({ kind: 'task-reminder', key: 'k' }).kind).toBe('other');
+    expect(classifyScheduled({ kind: 'evening-close', key: 'k' }).kind).toBe('other');
+    expect(classifyScheduled({ kind: 'follow-up', key: 'k' }).kind).toBe('other');
+
+    const f36Only = [
+      { identifier: 't1', data: { kind: 'task-reminder', key: 't:1' } },
+      { identifier: 'e1', data: { kind: 'evening-close', key: 'e:1' } },
+      { identifier: 'f1', data: { kind: 'follow-up', key: 'f:1' } },
+    ];
+    expect(reconcile(f36Only, [])).toEqual({ cancel: [], add: [] });
+
+    const mixed = [
+      ...f36Only,
+      { identifier: 'hab1', data: { kind: 'habit', key: 'h:h1:2026-10-05:08:00@1000' } },
+    ];
+    expect(reconcile(mixed, [])).toEqual({ cancel: ['hab1'], add: [] });
+    expect(habitSlotBudget(15)).toBe(42);
+  });
+});

@@ -35,6 +35,7 @@ type TaskStore = {
   authRefreshed: () => Promise<void>;
   /** Signed out / switched account: drop this account's tasks from memory (its outbox stays saved under its key). */
   resetForAccount: () => void;
+  tasksLoaded: boolean;
   loading: boolean;
   loadingMore: boolean;
   hasMore: boolean;
@@ -136,6 +137,7 @@ export const useTaskStore = create<TaskStore>((set, get) => {
 
   return {
   tasks: [],
+  tasksLoaded: false,
   outbox: null,
   sync: summary(emptyOutbox('')),
   loading: false,
@@ -160,6 +162,7 @@ export const useTaskStore = create<TaskStore>((set, get) => {
         set({
           // Unsent changes stay visible over a refetch until they are delivered, over the LIVE outbox.
           tasks: live ? overlay(live, 'task', res.data.rows) : res.data.rows,
+          tasksLoaded: true,
           cursor: res.data.nextCursor,
           hasMore: res.data.hasMore,
           loading: false,
@@ -249,7 +252,7 @@ export const useTaskStore = create<TaskStore>((set, get) => {
   },
 
   resetForAccount: () => {
-    set({ tasks: [], outbox: null, sync: summary(emptyOutbox('')), cursor: null, hasMore: false, error: null });
+    set({ tasks: [], tasksLoaded: false, outbox: null, sync: summary(emptyOutbox('')), cursor: null, hasMore: false, error: null });
   },
 
   addTask: async (t) => {

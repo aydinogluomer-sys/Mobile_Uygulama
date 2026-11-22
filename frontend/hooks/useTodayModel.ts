@@ -32,6 +32,7 @@ import {
   setAsideIds,
   summarizeTodayHabits,
   todayHabitCopy,
+  todayTaskDueLabel,
   type HabitGroup,
   type PartGroupKey,
   type PeriodLogRow,
@@ -302,7 +303,7 @@ export function useTodayModel(input: TodayModelInput): TodayModel {
       ...todayTasks.map((t) => ({
         id: t.id,
         title: t.title,
-        dueLabel: 'bugün',
+        dueLabel: todayTaskDueLabel(t.time_block_start),
         dotColor: priorityColor(t.priority),
       })),
       ...upcoming.map((t) => ({

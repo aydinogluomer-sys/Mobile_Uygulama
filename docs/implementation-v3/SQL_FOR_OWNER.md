@@ -267,6 +267,14 @@ select has_function_privilege('anon', 'public.purge_ai_retention()', 'execute') 
        has_function_privilege('anon', 'public.cleanup_old_ai_calls()', 'execute') as anon_cleanup,
        has_function_privilege('authenticated', 'public.cleanup_old_ai_calls()', 'execute') as auth_cleanup;  -- f, f, t, f, f
 select * from public.xp_drift();
+
+-- 2.18 (F36 / OD-22) tasks.time_block_start değer biçimi dağılımı (salt-okunur; ajan çalıştırmaz)
+select time_block_start, count(*)
+from public.tasks
+where time_block_start is not null
+group by 1
+order by 2 desc
+limit 20;
 ```
 
 ## 3. BLOCKED / ÖN SORGU — tanımı repoda olmayan ya da 040 öncesi denetlenecek nesneler (yalnız okuma sorguları)

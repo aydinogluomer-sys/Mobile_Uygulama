@@ -15,12 +15,20 @@ import { Linking, Platform } from 'react-native';
 import type { Habit } from './supabase';
 import { REENTRY_KIND, parseTime, type PlannedReminder, type ReminderSettings } from './reminderPlan';
 import { CATEGORY_BINARY, CATEGORY_MEASURE, SNOOZE_MINUTES } from './notificationActions';
+import {
+  TIME_SUPPORT_COPY,
+  TIME_SUPPORT_KIND,
+  type PlannedEvening,
+  type PlannedFollowUp,
+  type PlannedTaskReminder,
+} from './taskReminderPlan';
 import type { FocusPhase } from './focusTimer';
 
 export const REMINDERS_SUPPORTED: boolean = Platform.OS !== 'web';
 
 export const HABIT_CHANNEL = 'habit-reminders';
 export const FOCUS_CHANNEL = 'focus-timer';
+export const TIME_SUPPORT_CHANNEL = 'time-support';
 export const FOCUS_END_KIND = 'focus-end';
 export type FocusEndKind = 'work' | 'break';
 export const focusEndId = (kind: FocusEndKind): string => `${FOCUS_END_KIND}-${kind}`;
@@ -59,6 +67,10 @@ export async function ensureChannel(): Promise<void> {
       name: 'Odak Bitişi',
       importance: Notifications.AndroidImportance.DEFAULT,
       vibrationPattern: [0, 200, 120, 200],
+    });
+    await Notifications.setNotificationChannelAsync(TIME_SUPPORT_CHANNEL, {
+      name: 'Zaman desteği',
+      importance: Notifications.AndroidImportance.DEFAULT,
     });
     channelReady = true;
   } catch { /* yeniden denenir */ }
@@ -185,6 +197,83 @@ export async function scheduleSnooze(habitId: string, day: string, title: string
       },
     });
   } catch { /* sessiz geç */ }
+}
+
+export async function scheduleTaskReminder(
+  p: PlannedTaskReminder,
+  settings: Pick<ReminderSettings, 'hideTitles'>,
+): Promise<boolean> {
+  if (!REMINDERS_SUPPORTED) return false;
+  await ensureChannel();
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: settings.hideTitles ? TIME_SUPPORT_COPY.taskTitleHidden : p.title.slice(0, 80),
+        body: settings.hideTitles
+          ? TIME_SUPPORT_COPY.taskBodyHidden
+          : TIME_SUPPORT_COPY.taskBody(p.leadMin, p.startLabel),
+        data: { kind: TIME_SUPPORT_KIND.task, key: p.key, taskId: p.taskId, day: p.day },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: p.at,
+        ...(Platform.OS === 'android' ? { channelId: TIME_SUPPORT_CHANNEL } : {}),
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function scheduleEveningClose(p: PlannedEvening): Promise<boolean> {
+  if (!REMINDERS_SUPPORTED) return false;
+  await ensureChannel();
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: TIME_SUPPORT_COPY.eveningTitle,
+        body: TIME_SUPPORT_COPY.eveningBody,
+        data: { kind: TIME_SUPPORT_KIND.evening, key: p.key, day: p.day },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: p.at,
+        ...(Platform.OS === 'android' ? { channelId: TIME_SUPPORT_CHANNEL } : {}),
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function scheduleFollowUp(
+  p: PlannedFollowUp,
+  habit: Pick<Habit, 'name'>,
+  measurable: boolean,
+  settings: Pick<ReminderSettings, 'hideTitles'>,
+): Promise<boolean> {
+  if (!REMINDERS_SUPPORTED) return false;
+  await ensureChannel();
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: reminderTitle(habit.name, settings),
+        body: TIME_SUPPORT_COPY.followUpBody,
+        data: { kind: TIME_SUPPORT_KIND.followUp, key: p.key, habitId: p.habitId, day: p.day, n: p.n },
+        categoryIdentifier: measurable ? CATEGORY_MEASURE : CATEGORY_BINARY,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: p.at,
+        ...(Platform.OS === 'android' ? { channelId: TIME_SUPPORT_CHANNEL } : {}),
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export const REENTRY_ID = 'reminder-reentry';
