@@ -12,6 +12,12 @@ jest.setTimeout(30_000);
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 jest.mock('react-native-safe-area-context', () => ({ SafeAreaView: ({ children }: any) => children }));
 const mockPush = jest.fn();
+const mockActionSheet = jest.fn<Promise<string | null>, [unknown]>(async () => null);
+jest.mock('../../lib/dialog', () => ({
+  actionSheet: (arg: unknown) => mockActionSheet(arg),
+  confirm: jest.fn(async () => false),
+  notify: jest.fn(async () => undefined),
+}));
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }), useLocalSearchParams: () => ({}), Stack: Object.assign(() => null, { Screen: () => null }) }));
 jest.mock('../../lib/supabase', () => ({ supabase: {} }));
 jest.mock('../../lib/session', () => ({ currentUser: jest.fn(async () => ({ id: 'u1', email: null })) }));
@@ -76,6 +82,7 @@ beforeEach(() => {
   (globalThis as any).__tasks = [{ id: 't1', user_id: 'u1', title: 'Rapor yaz', status: 'pending', priority: 'none', list_type: 'inbox', due_date: today, completed: false, created_at: today }];
   useHabitStore.setState({ habits: [], pauses: [], goalVersions: [], timeOffAvailable: null, checklistItems: [], checklistChecks: [], checklistAvailable: null } as any);
   mockPush.mockClear();
+  mockActionSheet.mockClear();
 });
 
 async function render() {
@@ -153,8 +160,6 @@ it('R03.07: the day after a holiday, Today says how to come back', async () => {
 });
 
 it('R06.02: ONE dominant action on the hero; the rest one tap away; a short capacity line', async () => {
-  const { Alert } = jest.requireActual('react-native');
-  const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   const r = await render();
   const heroButtons = r.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityRole === 'button'
     && /^(Başla|Devam et)/.test(n.props?.accessibilityLabel ?? ''));
@@ -163,11 +168,24 @@ it('R06.02: ONE dominant action on the hero; the rest one tap away; a short capa
   for (const old of ['Odağa geç', 'Haftayı değerlendir', 'Denge planı']) {
     expect(r.root.findAll((n) => typeof n.type === 'string' && n.props?.accessibilityLabel === old)).toHaveLength(0);
   }
-  // ...and reachable from "Diğer", with projects and notes kept
+  // ...and reachable from "Diğer" via actionSheet, with projects and notes kept (never Vazgeç inside options)
   const more = r.root.findAll((n) => n.props?.accessibilityLabel === 'Diğer' && typeof n.props.onPress === 'function')[0];
-  await act(async () => { more.props.onPress(); });
-  const options = (alertSpy.mock.calls[0][2] as { text: string }[]).map((o) => o.text);
-  expect(options).toEqual(expect.arrayContaining(['Odağa geç', 'Haftayı değerlendir', 'Denge planı', 'Projeler', 'Notlar']));
+  await act(async () => { await more.props.onPress(); });
+  expect(mockActionSheet).toHaveBeenCalledTimes(1);
+  const sheetArg = mockActionSheet.mock.calls[0][0] as { title?: string; options: { id: string; label: string }[] };
+  const labels = sheetArg.options.map((o) => o.label);
+  expect(labels).toEqual(expect.arrayContaining(['Odağa geç', 'Haftayı değerlendir', 'Denge planı', 'Projeler', 'Notlar']));
+  expect(labels).not.toContain('Vazgeç');
+  expect(mockPush).not.toHaveBeenCalled();
+
+  mockActionSheet.mockResolvedValueOnce('notes');
+  await act(async () => { await more.props.onPress(); });
+  expect(mockPush).toHaveBeenCalledWith('/screens/notes');
+
+  mockPush.mockClear();
+  mockActionSheet.mockResolvedValueOnce(null);
+  await act(async () => { await more.props.onPress(); });
+  expect(mockPush).not.toHaveBeenCalled();
+
   expect(textOf(r)).toMatch(/1 alışkanlık, 1 görev kaldı/);
-  alertSpy.mockRestore();
 });

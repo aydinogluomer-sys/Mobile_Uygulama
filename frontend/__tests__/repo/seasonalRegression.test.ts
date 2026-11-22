@@ -244,7 +244,7 @@ const RAW_ENTITY_IN_JS_STRING: RegExp[] = [
   // entity inside a quoted string argument to a call that is unambiguously
   // JS-string territory (dialog / log / thrown error) -- never JSX, never
   // decoded.
-  /(?:Alert\.alert|console\.(?:log|warn|error|info)|throw new Error|new Error)\([^)]*?['"][^'"\n]*&(?:quot|apos|amp);[^'"\n]*['"]/,
+  /(?:Alert\.alert|\bnotify|\bconfirm|\bactionSheet|console\.(?:log|warn|error|info)|throw new Error|new Error)\([^)]*?['"][^'"\n]*&(?:quot|apos|amp);[^'"\n]*['"]/,
 ];
 
 function entityViolations(): string[] {
@@ -279,6 +279,8 @@ describe('W1 regression guard -- no HTML entity ever lands inside a JS string/te
     expect(flags("<Text>{'Merhaba &quot; Dünya'}</Text>")).toBe(true);
     expect(flags('title={"A &quot; B"}')).toBe(true);
     expect(flags('Alert.alert("Başlık", "İçerik &quot; metni")')).toBe(true);
+    expect(flags('void notify("Başlık", "İçerik &quot; metni")')).toBe(true);
+    expect(flags("void notify('Başlık', 'İçerik')")).toBe(false);
   });
 
   it('scans a non-trivial number of files', () => {

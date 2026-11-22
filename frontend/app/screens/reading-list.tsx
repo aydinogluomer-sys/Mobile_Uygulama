@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Modal, KeyboardAvoidingView, Platform,
-  Alert,
 } from 'react-native';
+import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -97,18 +97,11 @@ export default function ReadingListScreen() {
     setShowAdd(false);
   }
 
-  function handleDelete(item: ReadingItem) {
-    Alert.alert('Sil', `"${item.title}" listeden kaldırılsın mı?`, [
-      { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Sil',
-        style: 'destructive',
-        onPress: async () => {
-          const ok = await removeItem(item.id);
-          setActionError(ok ? null : (useReadingListStore.getState().error ?? 'Kayıt listeden kaldırılamadı.'));
-        },
-      },
-    ]);
+  async function handleDelete(item: ReadingItem) {
+    if (await confirm({ title: 'Sil', message: `"${item.title}" listeden kaldırılsın mı?`, confirmText: 'Sil', destructive: true })) {
+      const ok = await removeItem(item.id);
+      setActionError(ok ? null : (useReadingListStore.getState().error ?? 'Kayıt listeden kaldırılamadı.'));
+    }
   }
 
   function nextStatus(current: ReadingStatus): ReadingStatus {

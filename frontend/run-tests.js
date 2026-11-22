@@ -168,7 +168,7 @@ const rl = read('./app/screens/reading-list.tsx');
 test('3 status tab', () => rl.includes('want_to_read') && rl.includes('reading') && rl.includes('completed'));
 test('5 tür (book/article/video/podcast/other)', () => ['book','article','video','podcast','other'].every(t => rl.includes(t)));
 test('StarRating bileşeni', () => rl.includes('StarRating'));
-test('Alert silme onayı', () => rl.includes('Alert') && rl.includes('Sil'));
+test('Silme onayı (platform-güvenli diyalog)', () => rl.includes('confirm(') && rl.includes('Sil') && !/\bAlert\.alert/.test(rl));
 test('FAB ekle butonu', () => rl.includes('fab'));
 const rls = read('./store/readingListStore.ts');
 test('readingListStore metodları', () => ['fetchItems','addItem','updateStatus','updateRating','removeItem'].every(m => rls.includes(m)));

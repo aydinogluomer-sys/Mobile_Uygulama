@@ -26,7 +26,8 @@
  * array; switching ranges or tabs never re-fetches.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import { confirm, notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
@@ -438,7 +439,7 @@ export default function HabitDetailScreen() {
       haptic.success();
       setFreqDraft(null);
     } catch (e) {
-      Alert.alert('Kaydedilemedi', e instanceof Error ? e.message : 'Sıklık güncellenemedi.');
+      void notify('Kaydedilemedi', e instanceof Error ? e.message : 'Sıklık güncellenemedi.');
     } finally {
       setSavingFreq(false);
     }
@@ -450,17 +451,11 @@ export default function HabitDetailScreen() {
   ) ?? null;
   const holidayToday = activePauseOn({ pause_intervals: pauses.filter((p) => p.habit_id === null) }, today);
 
-  function confirmEndBreak(pauseId: string) {
-    Alert.alert('Arayı bitir', 'Bu alışkanlık bugünden itibaren yeniden takvimine döner.', [
-      { text: 'Vazgeç', style: 'cancel' },
-      {
-        text: 'Bitir',
-        onPress: async () => {
-          const res = await endTimeOff(pauseId);
-          if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
-        },
-      },
-    ]);
+  async function confirmEndBreak(pauseId: string) {
+    if (await confirm({ title: 'Arayı bitir', message: 'Bu alışkanlık bugünden itibaren yeniden takvimine döner.', confirmText: 'Bitir' })) {
+      const res = await endTimeOff(pauseId);
+      if (!res.ok) void notify('Kaydedilemedi', res.error);
+    }
   }
 
   return (

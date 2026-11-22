@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Modal, KeyboardAvoidingView, Platform, Alert,
+  TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore, type Task, type ListType, type TaskPriority } from '../../store/taskStore';
@@ -89,11 +90,10 @@ export default function TasksScreen() {
     await fetchTasks();
   }
 
-  function confirmDelete(t: Task) {
-    Alert.alert('Görevi Sil', `"${t.title}" silinsin mi?`, [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => removeTask(t.id) },
-    ]);
+  async function confirmDelete(t: Task) {
+    if (await confirm({ title: 'Görevi Sil', message: `"${t.title}" silinsin mi?`, confirmText: 'Sil', destructive: true })) {
+      await removeTask(t.id);
+    }
   }
 
   return (

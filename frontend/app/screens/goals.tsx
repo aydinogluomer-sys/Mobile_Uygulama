@@ -5,8 +5,9 @@ import OKRScreen from './okr';
 import LifeAreasScreen from './life-areas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Modal, TextInput, Alert,
+  Modal, TextInput,
 } from 'react-native';
+import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useGoalStore, Goal, GoalKind } from '../../store/goalStore';
@@ -145,11 +146,10 @@ export default function GoalsScreen() {
     setModal(false);
   }
 
-  function handleDelete(id: string) {
-    Alert.alert('Sil', 'Bu hedef silinsin mi?', [
-      { text: 'İptal' },
-      { text: 'Sil', style: 'destructive', onPress: () => removeGoal(id) },
-    ]);
+  async function handleDelete(id: string) {
+    if (await confirm({ title: 'Sil', message: 'Bu hedef silinsin mi?', confirmText: 'Sil', destructive: true })) {
+      await removeGoal(id);
+    }
   }
 
   const QUICK_PCT = [0, 25, 50, 75, 100];

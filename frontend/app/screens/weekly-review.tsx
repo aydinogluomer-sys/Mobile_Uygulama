@@ -3,7 +3,8 @@ import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFilig
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { currentUser } from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, startOfWeek, endOfWeek, subWeeks, eachDayOfInterval } from 'date-fns';
@@ -310,7 +311,7 @@ export default function WeeklyReviewScreen() {
 
       setSavedAt(format(new Date(), 'dd.MM.yyyy'));
     } catch (error) {
-      Alert.alert('Hata', error instanceof Error ? error.message : 'Kayıt başarısız');
+      void notify('Hata', error instanceof Error ? error.message : 'Kayıt başarısız');
     } finally {
       setSaving(false);
     }

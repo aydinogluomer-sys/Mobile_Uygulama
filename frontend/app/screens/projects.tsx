@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Modal, KeyboardAvoidingView, Platform, Alert,
+  TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useProjectStore, type Project } from '../../store/projectStore';
@@ -49,18 +50,15 @@ export default function ProjectsScreen() {
     setShowAdd(false);
   }
 
-  function confirmArchive(p: Project) {
-    Alert.alert('Projeyi Arşivle', `"${p.name}" arşivlensin mi? Proje listeden kalkar; görevlerin silinmez.`, [
-      { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Arşivle',
-        style: 'default',
-        onPress: async () => {
-          const ok = await removeProject(p.id);
-          setActionError(ok ? null : (useProjectStore.getState().error ?? 'Proje arşivlenemedi.'));
-        },
-      },
-    ]);
+  async function confirmArchive(p: Project) {
+    if (await confirm({
+      title: 'Projeyi Arşivle',
+      message: `"${p.name}" arşivlensin mi? Proje listeden kalkar; görevlerin silinmez.`,
+      confirmText: 'Arşivle',
+    })) {
+      const ok = await removeProject(p.id);
+      setActionError(ok ? null : (useProjectStore.getState().error ?? 'Proje arşivlenemedi.'));
+    }
   }
 
   const taskCount = (pid: string) => tasks.filter((t) => t.project_id === pid && !t.completed).length;

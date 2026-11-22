@@ -2,8 +2,9 @@ import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Modal, Alert,
+  TextInput, Modal,
 } from 'react-native';
+import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -153,17 +154,12 @@ export default function DeepWorkScreen() {
                   <Text style={[s.sessionDuration, { color: colors.teal }]}>{formatMins(sess.duration_minutes)}</Text>
                   <TouchableOpacity
                     style={s.deleteBtn}
-                    onPress={() => Alert.alert('Sil', 'Bu seans silinsin mi?', [
-                      { text: 'İptal' },
-                      {
-                        text: 'Sil',
-                        style: 'destructive',
-                        onPress: async () => {
-                          const ok = await removeSession(sess.id);
-                          setActionError(ok ? null : (useDeepWorkStore.getState().error ?? 'Seans silinemedi.'));
-                        },
-                      },
-                    ])}
+                    onPress={async () => {
+                      if (await confirm({ title: 'Sil', message: 'Bu seans silinsin mi?', confirmText: 'Sil', destructive: true })) {
+                        const ok = await removeSession(sess.id);
+                        setActionError(ok ? null : (useDeepWorkStore.getState().error ?? 'Seans silinemedi.'));
+                      }
+                    }}
                     accessibilityRole="button"
                     accessibilityLabel={`${sess.subject} seansını sil`}
                   >

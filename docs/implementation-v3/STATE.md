@@ -1896,3 +1896,36 @@ owner_decision: OD-07 2026-11-21 Kırılgan metin guard'larının davranış tes
 - **Birleştirilen dallar:** `faz/F11-canli-tipler-ve-drift` (`8dd2c8b4`), `faz/F19-outbox-dogrulugu` (`afcd6339`), `faz/F20-disa-aktarim-ve-yedek` (`1e14458a`) — `0` birleştirme çakışması.
 - **Birleştirme kapısı entegrasyonları:** `restoreService.ts` içine F19 `RESTORE_OUTBOX_ENTITY` + `releaseRestored` tombstone temizliği ve `restoreService.test.ts` testi bağlandı; `typeEscapeRatchet.test.ts` tavanı F20'nin temizlediği 3 `as any` sonrası `138 -> 135` olarak düşürüldü (`exportService.collectAllNotes` kaçışsız tiplendi); `pagedSelect.selectAllPages` jenerik dönüş uyumu, `capacitySingleSourceOfTruth.test.ts` (`backupFormat` `NOT_BACKED_UP` tekil dışlama kilidi) ve `QUERY_BOUNDING_MATRIX.md` senkronizasyonu tamamlandı.
 - **Nihai seri kapılar:** `typecheck:ci` `exit=0`; `lint:ci` `exit=0` (0 uyarı); `node run-tests.js` **147/147** `exit=0`; tam `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB` **347/347 suite · 4773/4773 test** yeşil (Wave 2'deki 333/4594'ten +14 suite, +179 test); Wave 3 toplam mutasyon **39/39 KILLED** (kümülatif **99/99**); `git diff --check` `exit=0`.
+
+### F12 (2026-11-22) — `c552b2cb` (`faz/F12-katman-ve-sorgu-hijyeni`)
+
+- **Durum:** DONE (arayüz değişikliği yok). **Kapsanan bulgular:** STO-17, REP-16, REP-17, REP-18, REP-19, REP-20.
+- **Özet değişiklikler:**
+  - Yeni modüller ve guard'lar: `frontend/services/edgeFunctions.ts` (`callEdgeFunction`, `invokeEdgeFunction`, `EdgeSessionError`), `frontend/lib/taskTypes.ts` (sıfır içe aktarımlı `Task` tipleri), `frontend/repositories/likePattern.ts` (`SEARCH_TERM_MAX_LENGTH = 100`, `normalizeSearchTerm`, `likeContains`, `orIlike`), `storeNoDirectTransport.test.ts`, `searchEscaping.test.ts`, `repositoryHygiene.test.ts`.
+  - `routineStore`, `spotifyStore` (`<any>` kaldırıldı -> `genericAny: 0`), `googleCalendarStore`, `notionStore`, `notionSessionStore` (`oauthTimer` temizliği dahil) içindeki doğrudan `supabase.auth`, `supabase.functions.invoke` ve `fetch` çağrıları `services/edgeFunctions.ts` ve `lib/session.ts` katmanına taşındı.
+  - `reviewRepository` içinden analitik bağımlılığı `reviewService.saveWeeklyReflection`'a taşındı (`reviewServiceAnalytics.test.ts`); `focusPointService.ts` tek fiyat kaynağına (`COST = ACTION_COST`) bağlandı; 12 ölü dışa aktarım temizlendi (`setCompleted` F05 `webhookDispatchOnce.test.ts` referansı nedeniyle korundu); `aiConversationRepository` bileşik `(createdAt, id)` sayfa imleci ve `23505` dalında `.eq('user_id', u.userId)` savunma derinliği eklendi; 7 repository'de açık `<TABLE>_COLUMNS` sabitleri ve 5 arama repository'sinde `likePattern` kaçışı etkinleştirildi.
+- **Mutasyon kanıtı:** 23(a)–23(d) -> **4/4 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F23 (2026-11-22) — `730c563c` (`faz/F23-kapsam-ve-gizlilik-hijyeni`)
+
+- **Durum:** DONE (görsel QA sahipte). `OWNER DECISION OD-06 (2026-11-21)` onaylı (`"Ev & Evrak Düzeni"`). **Kapsanan bulgular:** GAP1-05, GAP1-15, NAV-20, EDG-18, GAP2-11.
+- **Özet değişiklikler:**
+  - `GOAL_LABELS.finance` (`lib/onboarding.ts`) ve `EXPLORE_ORDER_LABEL` (`lib/exploreCatalog.ts`) `"Ev & Evrak Düzeni"` olarak güncellendi; `exploreCatalog.ts` `fromPack(...)` + `fitsCapacity` (`canActivate`) tek hakikat kaynağına bağlandı (`exploreCatalog.test.ts`, `exploreCatalogScope.test.ts`).
+  - `hub.tsx`, `BadHabitsTracker.tsx`, `IntegrationDetailModal.tsx` (yerel `https:` adres doğrulaması; dış servise test olayı gönderilmediğinin açık beyanı), `todayNarrative.ts`, `routinePacks.ts` kapsam/vaat hijyeni tamamlandı.
+  - `privacy.tsx` ve `journal-insights.tsx` üzerinde üçüncü taraf AI sağlayıcıları (`Anthropic` ve `Google Gemini`) açıkça beyan edildi (`GAP1-05`: `fingerprintInput` SHA-256 özetleme doğrulandı; canlı veri saklama süresi vaadi `044` + `pg_cron` canlıya alınana dek F21'de tutuldu).
+  - `lib/analytics.ts` kapalı `ANALYTICS_ENUMS` sözlüğü ve `analyticsNoFreeText.test.ts` sıkılaştırması eklendi.
+- **Mutasyon kanıtı:** M01–M10 -> **10/10 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F24 (2026-11-22) — `f8d427e1` (`faz/F24-platformlar-arasi-diyalog`)
+
+- **Durum:** DONE (görsel QA sahipte). **Kapsanan bulgular:** GAP2-01, GAP1-04, GAP2-02, GAP2-03, NAV-03.
+- **Özet değişiklikler:**
+  - Yeni modüller: `frontend/lib/dialog.ts` (`confirm`, `notify`, `actionSheet`, kuyruklu web/Android akışı, `registerAccountScoped({ name: 'dialogs' })`), `frontend/components/ui/DialogHost.tsx`, `frontend/components/ui/ActionSheet.tsx` (`maxHeight: '80%'` kaydırılabilir liste, `Escape` ve arka plan kapatma, 44x44 pt hedefler, `useReducedMotion`), `frontend/lib/deleteAccountFlow.ts` ve 4 yeni test paketi (`dialogWeb.test.tsx`, `dialogNative.test.ts`, `deleteAccountFlow.test.ts`, `noAlertOutsideDialog.test.ts`).
+  - `app/_layout.tsx` köküne `<DialogHost />` bağlandı; 18 üretim dosyasındaki 46 `Alert.alert` çağrısı (`today.tsx` Android `Daha Fazla` `actionSheet` menüsü ve `MORE_MENU_ROUTES` ile `-5` `as any` düşüşü dahil) `confirm`/`notify`/`actionSheet` katmanına taşındı; `eslint.config.js` `no-restricted-syntax` kuralıyla `lib/dialog.ts` dışındaki tüm ham diyalog çağrıları yasaklandı.
+- **Mutasyon kanıtı:** M01–M10 -> **10/10 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### Wave 4 Seri Birleştirme Kapısı (2026-11-22)
+
+- **Birleştirilen dallar:** `faz/F12-katman-ve-sorgu-hijyeni` (`c552b2cb`), `faz/F23-kapsam-ve-gizlilik-hijyeni` (`730c563c`), `faz/F24-platformlar-arasi-diyalog` (`f8d427e1`).
+- **Birleştirme kapısı entegrasyonları:** `IntegrationDetailModal.tsx` içindeki 4 `Alert.alert` çağrısı `notify()` akışına geçirildi ve `eslint.config.js` ile `noAlertOutsideDialog.test.ts` içindeki geçici Wave 4 istisnası kaldırıldı; `typeEscapeRatchet.test.ts` tavanları (`asAny: 130`, `genericAny: 0`) birleştirildi; `ActionSheet.tsx` ve `DialogHost.tsx` içindeki RN 0.85 `StyleSheet` arka plan katmanı açık `position: 'absolute'` koordinatlarına çevrildi; `onboarding.test.ts` (`OD-06`) ve `staleResponseGuards.test.ts` (`F12` mikro-görev zinciri) hizalandı; `QUERY_BOUNDING_MATRIX.md` güncellendi.
+- **Nihai seri kapılar:** `typecheck:ci` `exit=0`; `lint:ci` `exit=0` (0 uyarı); `node run-tests.js` **147/147** `exit=0`; tam `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB` **356/356 suite · 4905/4905 test** yeşil (Wave 3'teki 347/4773'ten +9 suite, +132 test); Wave 4 toplam mutasyon **24/24 KILLED** (kümülatif **123/123**); `git diff --check` `exit=0`.

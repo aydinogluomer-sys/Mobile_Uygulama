@@ -574,8 +574,9 @@ describe('staleResponseGuards — F18 store consistency', () => {
       const second = useRoutineStore.getState().generateRoutine('Farklı metin çift dokunuş');
 
       await second;
-      await Promise.resolve();
-      await Promise.resolve();
+      for (let i = 0; i < 10; i += 1) {
+        await Promise.resolve();
+      }
       expect(mockInvoke).toHaveBeenCalledTimes(1);
 
       // Account switches while generation is in flight: User A's balance & proposal must NOT land in User B

@@ -16,7 +16,7 @@ query is unbounded; this does not.
 | `aiConversationRepository.ts` | `insertAction` | `ai_conversation_actions` | no | WRITE | — |
 | `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | SINGLE_ROW | yes |
 | `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | WRITE | — |
-| `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | SINGLE_ROW | — |
+| `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | SINGLE_ROW | yes |
 | `aiConversationRepository.ts` | `resolveAction` | `ai_conversation_actions` | no | WRITE | yes |
 | `aiConversationRepository.ts` | `updateActionPayload` | `ai_conversation_actions` | no | WRITE | yes |
 | `badHabitRepository.ts` | `fetchBadHabitsPage` | `bad_habits` | yes | KEYSET_PAGE | yes |
@@ -28,9 +28,7 @@ query is unbounded; this does not.
 | `exportRepository.ts` | `fetchOwnProfileForExport` | `profiles` | no | SINGLE_ROW | yes |
 | `focusSessionRepository.ts` | `deleteAllFocusSessions` | `focus_sessions` | no | WRITE | yes |
 | `focusSessionRepository.ts` | `fetchAllFocusSessions` | `focus_sessions` | yes | RANGE_PAGED | yes |
-| `focusSessionRepository.ts` | `fetchFocusSecondsForReview` | `focus_sessions` | yes | RANGE_PAGED | yes |
 | `focusSessionRepository.ts` | `fetchFocusSessionsSince` | `focus_sessions` | yes | RANGE_PAGED | yes |
-| `focusSessionRepository.ts` | `insertFocusSession` | `focus_sessions` | no | WRITE | — |
 | `focusTaskRepository.ts` | `fetchAllFocusTasks` | `focus_tasks` | yes | RANGE_PAGED | yes |
 | `focusTaskRepository.ts` | `fetchOpenFocusTasks` | `focus_tasks` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `focusTaskRepository.ts` | `insertFocusTask` | `focus_tasks` | no | WRITE | — |
@@ -114,10 +112,10 @@ query is unbounded; this does not.
 
 ## Totals
 
-- queries: **103**
-- collection SELECTs: **42**
+- queries: **101**
+- collection SELECTs: **41**
 - KEYSET_PAGE: **7**
-- RANGE_PAGED: **14**
+- RANGE_PAGED: **13**
 - DATE_WINDOW: **0**
 - BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **2**

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity, TextInput,
-  ScrollView, Alert, Switch,
+  ScrollView, Switch,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, alphaHex, radius, space, font } from '../lib/tokens';
+import { notify } from '../lib/dialog';
 import { haptic } from '../lib/haptics';
 import type { IntegrationItem } from '../constants/integrations';
 
@@ -64,7 +65,7 @@ export default function IntegrationDetailModal({
     };
     await AsyncStorage.setItem(storageKey, JSON.stringify(payload));
     setIsConfigured(true);
-    Alert.alert('✅ Entegrasyon Kaydedildi', `${item?.title} entegrasyon ayarları başarıyla cihazınıza kaydedildi.`);
+    void notify('✅ Entegrasyon Kaydedildi', `${item?.title} entegrasyon ayarları başarıyla cihazınıza kaydedildi.`);
   }
 
   function handleTestTrigger() {
@@ -80,12 +81,12 @@ export default function IntegrationDetailModal({
       }
     }
     if (validHttps) {
-      Alert.alert(
+      void notify(
         'Adres kontrol edildi',
         'Adres geçerli görünüyor. Bu sürümde ayarların yalnız bu cihazda saklanır; dış servise test olayı gönderilmez.',
       );
     } else {
-      Alert.alert(
+      void notify(
         'Adres geçerli görünmüyor',
         'https ile başlayan tam bir adres gir.',
       );
@@ -99,7 +100,7 @@ export default function IntegrationDetailModal({
     setIsConfigured(false);
     setApiKey('');
     setWebhookUrl('');
-    Alert.alert('Bağlantı Kesildi', `${item?.title} ayarları temizlendi.`);
+    void notify('Bağlantı Kesildi', `${item?.title} ayarları temizlendi.`);
   }
 
   return (

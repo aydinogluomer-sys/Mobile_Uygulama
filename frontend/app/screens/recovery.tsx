@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
-  Modal, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+  Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subDays, addDays } from 'date-fns';
@@ -241,7 +242,7 @@ export default function RecoveryScreen() {
     const [y, mo, d] = date.split('-').map(Number);
     const res = await logHabit({ habitId, date: new Date(y, mo - 1, d), state: 'done' });
     if (!res.ok) {
-      Alert.alert('Kaydedilemedi', res.error);
+      void notify('Kaydedilemedi', res.error);
       setLoggingId(null);
       return;
     }
@@ -368,7 +369,7 @@ export default function RecoveryScreen() {
       writeLog: (input) => logHabit(input),
     });
     if (!res.ok) {
-      Alert.alert('Kaydedilemedi', res.error);
+      void notify('Kaydedilemedi', res.error);
       return;
     }
     await refreshSets();
@@ -399,7 +400,7 @@ export default function RecoveryScreen() {
         enteredValue: entered,
         priorDayValue: prior,
       });
-      if (!res.ok) { Alert.alert('Kaydedilemedi', res.error); return; }
+      if (!res.ok) { void notify('Kaydedilemedi', res.error); return; }
       await refreshSets();
       if (plan.target_date === today) await fetchLogsForDate(today);
       setMakeupTarget(null);
@@ -417,7 +418,7 @@ export default function RecoveryScreen() {
       targetValue: intent.targetValue,
       targetDirection: intent.targetDirection,
     });
-    if (!res.ok) { Alert.alert('Kaydedilemedi', res.error); setLoggingId(null); return; }
+    if (!res.ok) { void notify('Kaydedilemedi', res.error); setLoggingId(null); return; }
     await refreshSets();
     if (date === today) await fetchLogsForDate(today);
     setLoggingId(null);

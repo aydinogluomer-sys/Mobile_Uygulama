@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,12 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
-  Alert,
   ActivityIndicator,
   Switch,
   Linking,
 } from 'react-native';
+import { confirm, notify } from '../../lib/dialog';
+import { runDeleteAccountFlow } from '../../lib/deleteAccountFlow';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../../store/themeStore';
@@ -110,7 +111,7 @@ export default function SettingsScreen() {
     if (!res.ok) {
       // A failed read was previously swallowed into console.error, so the
       // list rendered empty and read as "you have none registered".
-      Alert.alert('Hata', `Webhook'lar yüklenemedi: ${res.error}`);
+      void notify('Hata', `Webhook'lar yüklenemedi: ${res.error}`);
       return;
     }
     setWebhooks(res.data);
@@ -119,13 +120,13 @@ export default function SettingsScreen() {
   const handleAddWebhook = async () => {
     const res = await registerWebhook({ url: webhookUrl });
     if (!res.ok) {
-      Alert.alert('Hata', res.error);
+      void notify('Hata', res.error);
       return;
     }
     setWebhookUrl('');
     setShowWebhookModal(false);
     await loadWebhooks();
-    Alert.alert('Başarılı', 'Webhook eklendi!');
+    void notify('Başarılı', 'Webhook eklendi!');
   };
 
   const handleExportData = async (format: ExportFormat) => {
@@ -149,14 +150,14 @@ export default function SettingsScreen() {
           notices.push(
             `Şu bölümler ${MAX_ROWS.toLocaleString('tr-TR')} kayıt sınırında kesildi: ${backup.truncated.join(', ')}. Bu dosya geri yükleme için kullanılamaz.`,
           );
-          Alert.alert(
+          void notify(
             'Dışa aktarım tam değil',
             `Şu bölümler ${MAX_ROWS.toLocaleString('tr-TR')} kayıt sınırında kesildi: ${backup.truncated.join(', ')}. Bu dosya geri yükleme için kullanılamaz; paylaşılan metin hangi bölümlerin eksik olduğunu yazıyor.`,
           );
         }
         if (backup.failed.length > 0) {
           notices.push(`Şu bölümler okunamadı: ${backup.failed.map((f) => f.collection).join(', ')}.`);
-          Alert.alert(
+          void notify(
             'Dışa aktarım eksik',
             `Şu bölümler okunamadı: ${backup.failed.map((f) => f.collection).join(', ')}.\n\n` +
               'Yine de paylaşabilirsiniz; dosya hangi bölümlerin eksik olduğunu yazıyor.',
@@ -183,7 +184,7 @@ export default function SettingsScreen() {
       if (error instanceof Error && error.message === 'DOWNLOAD_UNAVAILABLE') {
         setExportNotice('Tarayıcın dosya indirmeyi engelledi; indirme iznini kontrol et.');
       } else {
-        Alert.alert('Hata', 'Veriler dışa aktarılırken bir hata oluştu');
+        void notify('Hata', 'Veriler dışa aktarılırken bir hata oluştu');
         setExportNotice('Veriler dışa aktarılırken bir hata oluştu.');
         // R10.03 — through the scrubbing funnel, never raw to the device log.
         reportError(error, 'manual', 'export');
@@ -215,45 +216,21 @@ export default function SettingsScreen() {
    * session ends and the root layout routes to the signed-out state on its
    * own, so this screen does not navigate.
    */
-  const handleDeleteAccount = () => {
-    if (deletingAccount) return;
-    // R02.06 — unsent work is never deleted without the user being told.
-    const unsent = unsentChangeCount();
-    const unsentLine = unsent > 0 ? `\n\nBu cihazda henüz sunucuya gönderilmemiş ${unsent} değişiklik var; hesapla birlikte bunlar da silinecek.` : '';
-    Alert.alert(
-      'Hesabını Sil',
-      'Hesabın ve Aderyth\'te saklanan kişisel verilerin silinecek: alışkanlıkların, kayıtların, görevlerin, notların, günlüğün, hedeflerin, odak seansların ve AI Koç sohbetlerin.' + unsentLine + '\n\nBu işlem geri alınamaz.',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Devam Et',
-          style: 'destructive',
-          onPress: () => {
-            Alert.alert(
-              'Emin misin?',
-              'Son onay. Hesabın kalıcı olarak silinecek ve verilerin geri getirilemeyecek.',
-              [
-                { text: 'Vazgeç', style: 'cancel' },
-                {
-                  text: 'Hesabımı Sil',
-                  style: 'destructive',
-                  onPress: async () => {
-                    setDeletingAccount(true);
-                    const res = await deleteAccount();
-                    setDeletingAccount(false);
-                    if (!res.ok) {
-                      Alert.alert('Hesap silinemedi', res.error);
-                    }
-                    // On success there is nothing to show: the session is gone
-                    // and the app is already on its way to the login screen.
-                  },
-                },
-              ],
-            );
-          },
-        },
-      ],
-    );
+  const deleteFlowRef = useRef(false);
+  const handleDeleteAccount = async () => {
+    if (deletingAccount || deleteFlowRef.current) return;
+    deleteFlowRef.current = true;
+    try {
+      await runDeleteAccountFlow({
+        unsent: unsentChangeCount(),
+        confirm,
+        notify,
+        deleteAccount,
+        onBusy: setDeletingAccount,
+      });
+    } finally {
+      deleteFlowRef.current = false;
+    }
   };
 
   const handleSeedDemoData = async () => {
@@ -262,12 +239,12 @@ export default function SettingsScreen() {
     try {
       setSeedingDemo(true);
       const result = await demo.seedDemoData();
-      Alert.alert(
-        'Demo veri hazir',
-        `Projeler: +${result.projects}\nGorevler: +${result.tasks}\nAliskanliklar: +${result.habits}\nLoglar: +${result.logs}\nOdak gorevleri: +${result.focusTasks}\nTelafi planlari: +${result.recoveryPlans}\nGunluk girdileri: +${result.journalEntries}`
+      void notify(
+        'Demo veri hazır',
+        `Projeler: +${result.projects}\nGörevler: +${result.tasks}\nAlışkanlıklar: +${result.habits}\nLoglar: +${result.logs}\nOdak görevleri: +${result.focusTasks}\nTelafi planları: +${result.recoveryPlans}\nGünlük girdileri: +${result.journalEntries}`,
       );
     } catch (error) {
-      Alert.alert('Hata', 'Demo verileri eklenirken bir hata olustu.');
+      void notify('Hata', 'Demo verileri eklenirken bir hata oluştu.');
       reportError(error, 'manual', 'demo-seed');
     } finally {
       setSeedingDemo(false);
@@ -776,7 +753,7 @@ export default function SettingsScreen() {
                       onPress={async () => {
                         const res = await removeWebhook(webhook.id);
                         if (!res.ok) {
-                          Alert.alert('Hata', res.error);
+                          void notify('Hata', res.error);
                           return;
                         }
                         await loadWebhooks();

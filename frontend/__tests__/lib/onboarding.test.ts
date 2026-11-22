@@ -175,8 +175,9 @@ describe('AC-OB04 "Neden bu plan?" is derived, not invented', () => {
   });
 
   it('cites the chosen goals by their Turkish labels', () => {
+    // OWNER DECISION OD-06 (2026-11-21): GOAL_LABELS.finance = 'Ev & Evrak Düzeni'.
     const lines = explainPlan({ ...EMPTY_ANSWERS, goals: ['sleep', 'finance'] }, full);
-    expect(lines.join(' ')).toContain('Uyku ve Finans');
+    expect(lines.join(' ')).toContain('Uyku ve Ev & Evrak Düzeni');
   });
 
   it('says nothing at all when nothing was answered', () => {

@@ -4,7 +4,8 @@
  * steps they actually had.
  */
 import { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import { confirm } from '../lib/dialog';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, space, radius } from '../lib/tokens';
 import { FormError } from './ui/FormFeedback';
@@ -33,11 +34,11 @@ export default function ChecklistEditor({ habitId }: { habitId: string }) {
     setError(null);
   }
 
-  function archive(id: string, name: string) {
-    Alert.alert('Adımı kaldır', `"${name}" bugünden sonra listede olmaz; geçmiş günler etkilenmez.`, [
-      { text: 'Vazgeç', style: 'cancel' },
-      { text: 'Kaldır', onPress: async () => { const r = await archiveChecklistItem(id); if (!r.ok) setError(r.error); } },
-    ]);
+  async function archive(id: string, name: string) {
+    if (await confirm({ title: 'Adımı kaldır', message: `"${name}" bugünden sonra listede olmaz; geçmiş günler etkilenmez.`, confirmText: 'Kaldır' })) {
+      const r = await archiveChecklistItem(id);
+      if (!r.ok) setError(r.error);
+    }
   }
 
   return (
