@@ -1,8 +1,10 @@
+import { LIGHT_THEME_ENABLED } from './featureGates';
 import { useThemeStore } from '../store/themeStore';
-import { ACCENTS, type AccentTheme } from './tokens';
+import { accentsFor, resolveThemeMode, type AccentTheme } from './tokens';
 
-/** Geçerli aksan temasını döndürür (themeStore.accent → ACCENTS). Render-anında okunur. */
+/** Geçerli aksan temasını döndürür (themeStore.accent → accentsFor). Render-anında okunur. */
 export function useAccent(): AccentTheme {
   const accent = useThemeStore((s) => s.accent);
-  return ACCENTS[accent];
+  const isDark = useThemeStore((s) => s.isDark);
+  return accentsFor(resolveThemeMode(isDark, LIGHT_THEME_ENABLED))[accent];
 }

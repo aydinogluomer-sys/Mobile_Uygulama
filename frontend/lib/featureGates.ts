@@ -249,3 +249,15 @@ export const COACH_ACTIONS_V2_ENABLED = false;
  * this on also covers ops queued before the flip.
  */
 export const LOG_TIMEZONE_ENABLED = false;
+
+/**
+ * F25 (DSA-01) — açık tema yayın-hazırlık kapısı.
+ *
+ * FALSE: statik `colors` içe aktaran dosya sayısı `INTENTIONALLY_DARK`
+ * listesine inene dek; açılış koşulunu `lightThemeGate.test.ts` zorlar; bu
+ * bayrak bir kapsam kapısı değil mühendislik yayın bayrağıdır, ama `true`
+ * yapmak bu fazın DIŞINDA, ayrı bir commit ve açık sahip onayıdır (açık soru
+ * j), o commit `lightThemeGate.test.ts` ile Ayarlar ve başlık yüzeylerini
+ * birlikte günceller.
+ */
+export const LIGHT_THEME_ENABLED = false;

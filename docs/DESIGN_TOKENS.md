@@ -1,131 +1,67 @@
-# Design tokens — what moved, and what is left to decide
+# Design Tokens — Palettes, Contrast, Legacy Retirement, and Light-Theme Gate
 
-## Where it stood
+## 1. Single Source of Truth (`frontend/lib/tokens.ts`)
 
-1572 hex literals across 56 files, against a `lib/tokens.ts` that already
-defined the palette. The audit recorded this as "1727 hex → 1728", i.e. a year
-of drift with no movement.
+`frontend/lib/tokens.ts` is the **sole** palette definition in the repository (`frontend/lib/theme.ts` was deleted in F25). `designTokens.test.ts` enforces `PALETTES = new Set(['lib/tokens.ts'])` so no parallel colour dictionary can reappear.
 
-## What was done
+Two complete semantic palettes live side by side in `lib/tokens.ts`:
 
-**1139 literals in 51 files were replaced with the token that already held
-that exact colour.** Not a redesign and not a judgement call — 961 were
-byte-identical to a token, and another 178 were the short spelling of one
-(`#fff` is `#ffffff` is `colors.white`).
+- `palettes.dark` (`export const colors = ...`): warm near-black editorial palette (`bg: '#15140F'`, `surface: '#1D1C17'`, `text: '#EDEAE0'`, `primary: '#D97757'`).
+- `palettes.light`: warm archival paper palette (`bg: '#F7F3EA'`, `surface: '#FBF9F3'`, `text: '#1C1A14'`, `primary: '#A44425'`).
+- `ACCENTS` & `ACCENTS_LIGHT` (`accentsFor(mode)`): runtime-selectable `clay`, `moss`, `slate`, and `amber` accent themes tuned for both modes (`onColor(theme.primary)` reaches >= 4.5:1 across all eight combinations).
 
-The claim that matters is that nothing looks different, so it was checked
-rather than asserted. For all 50 changed files the ordered sequence of colour
-expressions was extracted from `HEAD` and from the working tree, every
-`colors.<name>` resolved back to its hex, and the two sequences compared:
+## 2. Release Gate (`LIGHT_THEME_ENABLED`)
 
-```
-files compared        : 50
-colour terms compared : 1690
-FILES THAT CHANGED A COLOUR: 0
-```
+To prevent shipping a half-migrated UI where the top bar and tab bar render in light mode while unmigrated screens stay dark, user-facing theme controls are gated behind `LIGHT_THEME_ENABLED` in `frontend/lib/featureGates.ts` (`false` in F25):
 
-Comments are stripped before comparing. An earlier run of the same check
-reported one difference, which turned out to be a doc comment that mentioned
-`colors.accent` — the checker was counting prose as a rendered colour.
+- While `LIGHT_THEME_ENABLED === false`:
+  - `resolveThemeMode(isDark, LIGHT_THEME_ENABLED)` always resolves `'dark'`.
+  - Placebo toggles in `app/tabs/settings.tsx` (`ThemeModeRow`) and `app/tabs/_layout.tsx` (`"Tema değiştir"`) are hidden, and `"AMOLED dostu"` copy is removed.
+  - `themeStore` persists device preference under `app_theme_mode` (`'dark' | 'light'`), cleans up legacy `app_theme_dark`, and synchronises OS chrome via `Appearance.setColorScheme('dark')` and root `<StatusBar style={mode === 'dark' ? 'light' : 'dark'} />`.
+- Opening condition (`frontend/__tests__/repo/lightThemeGate.test.ts`):
+  - `LIGHT_THEME_ENABLED` may only flip to `true` in a dedicated owner-approved commit once every static `colors` importer under `app/` and `components/` has migrated to `useThemeColors()` or been explicitly allow-listed in `INTENTIONALLY_DARK`.
 
-### Two files deliberately untouched
+## 3. Dynamic Theme Migration Pattern
 
-`lib/tokens.ts` and `lib/theme.ts` DEFINE colours. Tokenising inside a palette
-is circular, and the first attempt proved it concretely: rewriting
-`text: '#ffffff'` to `text: colors.white` in `theme.ts` changed the inferred
-literal type and broke `themeStore`'s `Theme | undefined` assignment.
+**Rule: no new or migrated screen/component may statically import `colors` from `lib/tokens.ts`.**
 
-### One type error the change exposed
+```tsx
+import { StyleSheet, Text, View } from 'react-native';
+import { space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 
-`app/tabs/settings.tsx` had
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    box: { backgroundColor: c.surface, padding: space.md, borderColor: c.border, borderWidth: 1 },
+  });
 
-```ts
-const renderSettingItem = (…, color = colors.accent) => …
-```
-
-`colors` is declared `as const`, so the parameter's inferred type was the
-single literal `"#D97757"` — every other accent was a type error waiting for
-the first call site that passed one. Widened to `string`.
-
-## The second pass: 385 -> 181, and a taxonomy instead of a ceiling
-
-The paragraph that used to sit here said the remaining 385 were "colours the
-design system has no word for" and that naming them would be "the same hex
-with more steps". That is a good argument for some of them and an excuse for
-the rest, and the two were never separated. So they were enumerated one at a
-time — file, line, hex — and split by what the colour is FOR:
-
-**181 were semantic UI chrome, and are now tokens:**
-
-| group | examples | count | now |
-|-------|----------|-------|-----|
-| Tailwind greys | `#6b7280` `#9ca3af` `#e5e7eb` | 32 | `colors.neutral200`…`neutral600` |
-| Cool near-blacks | `#2a2a2a` `#1a1a1a` `#111` `#0f0f0f` | 36 | `colors.coolBlack600`…`coolBlack950` |
-| Alphas of existing tokens | `#d9775720` `#c76a6a30` `#87a67830` | 90 | `alphaHex(colors.accent, '20')` |
-| Journal "paper" surfaces | `#211C18` `#3A3026` `#A88E6A` `#E3DDD0` | 13 | `colors.paperSurface` / `paperBorder` / `paperLabel` / `paperText` |
-| Selected-state tints | `#1a1f2e` `#1f1515` `#1f3d33` | 8 | `colors.selectedTint*` |
-| One-offs | `#0a0a0a` `#e0a458` | 2 | `colors.coolBlack950`, `colors.amberSoft` |
-
-The names are not inventions, which was the whole objection: `#9ca3af` **is**
-Tailwind `gray-400`, and the paper and selection tints are named for the role
-they were already playing at every call site.
-
-**181 are not UI chrome, and are exempt — but now by category, not by tally:**
-
-| category | what it is | count |
-|---|---|---|
-| `category-hue` | one colour per life area / triage level / mood / project chip | 79 |
-| `category-tint` | the same hues at an alpha, for chip backgrounds | 29 |
-| `illustration` | `components/seasonalMotion/particles.ts` | 30 |
-| `theme-palette` | `lib/focusThemes.ts` — one bg/card/accent triple per theme | 24 |
-| `third-party-brand` | Spotify `#1db954`, Notion `#f97316`, Google `#4285f4` | 13 |
-| `heatmap-scale` | `app/tabs/stats.tsx`'s intensity ramp | 6 |
-
-A categorical palette picks things APART. Naming `#ec4899` `success` or
-`warning` would be worse than leaving it alone, and that is why these are not
-a backlog.
-
-### Nothing was restyled
-
-Same check as the first pass, on the 30 files this one changed: every
-`colors.*` resolved back to its hex, `alphaHex(colors.accent, '20')` back to
-`#d9775720`, and the ordered colour sequence compared against `HEAD`.
-
-```
-files compared        : 30
-colour terms compared : 1325
-FILES THAT CHANGED A COLOUR: 0
+export default function ExampleCard() {
+  const c = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  return (
+    <View style={s.box}>
+      <Text style={{ color: c.text }}>Merhaba</Text>
+    </View>
+  );
+}
 ```
 
-`alphaHex` exists rather than reusing `hexA` for exactly this reason: `hexA`
-emits `rgba(217, 119, 87, 0.125)`, a different string and a slightly different
-value from `#D9775720`. Swapping ninety literals for it would have been a
-silent restyle wearing a refactor's clothes.
+- `makeStyles` must live at module scope so `useThemedStyles` memoizes `[c, factory]` across re-renders without recreating stylesheets unless `ThemeMode` changes.
+- Surface text uses `c.text` / `c.textDim` / `c.textFaint` — never `c.white` (reserved for dark fills, or prefer `onColor(fillHex)`).
+- Module-scope tone tables map to `keyof Palette` (e.g. `{ warn: 'warning' }`) and resolve `c[tone]` inside render.
+- First-wave migrated files (29 files: all 23 `components/ui/*.tsx` primitives, `AtmosphericScreenCanvas.tsx`, `MorphingPillTabs.tsx`, `app/_layout.tsx`, `app/tabs/_layout.tsx`, `app/tabs/settings.tsx`, `app/tabs/today.tsx`) enforce zero static `colors` imports and zero raw hex literals.
 
-### What is still a design decision
+## 4. WCAG 2.1 AA Contrast Policy (`contrastAA.test.ts`)
 
-Whether the legacy neutral ramp should collapse into `textDim` / `textFaint` /
-`bg` / `bgSunk`. That one changes pixels and belongs to a designer. Naming the
-colours does not answer it — it makes it possible to ask, with a grep instead
-of an archaeology session.
+Every palette mode enforces measured WCAG 2.1 contrast ratios:
 
-## What keeps it from sliding back
+- **Body & secondary text (`text`, `textDim`, `textFaint`)**: `>= 4.5:1` on all four surfaces (`bg`, `surface`, `surfaceAlt`, `surfaceHover`). Dark `textFaint` is `#9A978C` (4.57:1 on `surfaceHover`).
+- **Semantic status & brand (`primary`, `success`, `warning`, `error`, `info`)**: `>= 4.5:1` on `bg` and `>= 3.0:1` on elevated/hover card surfaces.
+- **Non-text UI chrome (`textGhost`, `borderStrong`)**: `>= 3.0:1` on `bg`/`surface`. `textGhost` (`#737165` dark / `#7F796A` light) is strictly non-text (icons, dividers, disabled chrome) and **forbidden** as readable text or input placeholder (`contrastAA.test.ts` scans `app/` and `components/`).
+- **Atmospheric canvas scrim**: `effectiveScrim(scrim, 'light')` clamps to `>= 0.90` so `textFaint` maintains `>= 4.5:1` even over dark photography.
 
-`frontend/__tests__/repo/designTokens.test.ts`:
+## 5. Retirement of Legacy Ramps & Monotonic Ratchets
 
-- **no file spells out a hex the token table already names** — the 1139 + 181
-  cannot return one edit at a time. Mutation-checked: putting `'#9ca3af'` back
-  into a screen turns it red, naming the file and the token it should use.
-- **no semantic UI colour is left as a bare literal** — the category that is
-  not allowed to have members. This is the assertion that replaced "the count
-  does not grow" as the real gate: a new grey, surface or border written as a
-  hex fails the build and is named in the failure.
-- **the remaining literals are exactly the exempt kinds** — the six counts
-  above are asserted exactly, so a category's population cannot drift without
-  somebody writing down why.
-- **the untokened count does not grow** (ceiling 181, down from 385), and
-  **the ceiling is not stale by a wide margin** — if the real number drops, the
-  cap must be lowered in the commit that earned it.
-
-The mutation check plants both failures at once — a re-hardcoded token and a
-brand-new unexplained colour — and four of the eight assertions go red.
+- `neutral600` has been deleted; `LEGACY_TOKEN_KEYS` (`neutral200..500`, `coolBlack950..600`) are frozen for backward compatibility only and bound to a monotonic downward ceiling in `designTokensRatchet.test.ts`.
+- `components/ui/index.ts` exports UI primitives only; spatial (`AtmosphericScreenCanvas`, `EmbeddedFiligree`, `BentoVisualCard`, `ChapterDivider`) and motion (`StaggeredReveal`, `MorphingPillTabs`, `AnimatedMetricValue`, `GoldMendShimmer`) live exclusively under `components/spatial` and `components/motion`.
+- `designTokensRatchet.test.ts` locks monotonic downward ceilings on static `colors` importers, quoted hex literals, `rgba(`, `fontSize` literals, spacing literals, border-radius literals, raw touchables (`TouchableOpacity`/`Pressable`/`TouchableWithoutFeedback`/`TouchableHighlight`), and `LEGACY_TOKEN_KEYS`.
