@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { rendersKey } from '../helpers/catalog';
 import { stripComments } from '../helpers/sourceText';
 
 const ROOT = join(__dirname, '..', '..');
@@ -36,8 +37,20 @@ describe('F37 — reflection, energy suggestion, and time capsule repository wir
     expect(setCalls).toEqual(['!lowEnergyFilter, clock.today']);
 
     // Calm modes row keeps exact same two chips and adds zero new raw TouchableOpacity around it
-    expect(todaySrc).toContain('accessibilityLabel="Düşük enerji filtresi: yalnız hafif alışkanlıkları öne çıkar"');
-    expect(todaySrc).toContain('accessibilityLabel="Günü kapat: akşam kapanış ritüelini başlat"');
+    expect(
+      rendersKey(
+        todaySrc,
+        'today.calm.lowEnergy.a11y',
+        'Düşük enerji filtresi: yalnız hafif alışkanlıkları öne çıkar',
+      ),
+    ).toBe(true);
+    expect(
+      rendersKey(
+        todaySrc,
+        'today.calm.dayClose.a11y',
+        'Günü kapat: akşam kapanış ritüelini başlat',
+      ),
+    ).toBe(true);
     const calmSlice = todaySrc.slice(
       todaySrc.indexOf('s.calmModesRow'),
       todaySrc.indexOf('<NextUpStrip'),

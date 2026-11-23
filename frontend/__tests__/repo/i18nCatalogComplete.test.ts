@@ -472,12 +472,16 @@ export function validateCatalogJson(rawJson: string): string[] {
 }
 
 export const MIGRATED_FILES: readonly string[] = [
+  'app/tabs/today.tsx',
   'lib/todayNarrative.ts',
   'components/today/TodayHero.tsx',
   'components/today/MetricGrid.tsx',
   'components/today/NextUpStrip.tsx',
   'components/today/RecoveryRailCard.tsx',
   'components/today/DayCloseTasks.tsx',
+  'components/today/DayCloseMood.tsx',
+  'components/today/DayCloseEcho.tsx',
+  'components/today/HabitSection.tsx',
   'app/tabs/timeline.tsx',
   'components/habits/HabitMgmtCard.tsx',
   'components/HabitListView.tsx',
@@ -496,6 +500,9 @@ export const MIGRATED_FILES: readonly string[] = [
  * AST so stale entries fail the guard immediately.
  */
 export const ALLOWED_RAW: Readonly<Record<string, readonly string[]>> = {
+  'app/tabs/today.tsx': [
+    '`/screens/focus-flow?item=${dailySpark.item.id}`',
+  ],
   'components/focus/FocusReportModal.tsx': [
     '`odak-raporu-${todayLocal()}.${ext}`',
     'CSV',

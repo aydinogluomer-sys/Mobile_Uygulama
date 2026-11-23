@@ -6,6 +6,7 @@
 jest.mock('../../lib/supabase', () => ({ supabase: {} }));
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { rendersKey } from '../helpers/catalog';
 import { readSources } from '../helpers/readSources';
 import { stripComments } from '../helpers/sourceText';
 import { isMissingTable } from '../../repositories/habitPauseRepository';
@@ -69,8 +70,8 @@ describe('R01.05 — screens', () => {
 
   it('Today: a habit on a break is not today\'s work, and is shown apart', () => {
     expect(today).toMatch(/&& !isPausedOn\(h, date\)\s*&& \(isEligibleOn\(h, date\) \|\| isScheduleAmbiguous\(h\)\)/);
-    expect(today).toMatch(/title="ARADA"/);
-    expect(today).toMatch(/title="TATİL MODU"/);
+    expect(rendersKey(today, 'today.onBreak.overline', 'ARADA')).toBe(true);
+    expect(rendersKey(today, 'today.holiday.overline', 'TATİL MODU')).toBe(true);
     expect(today).toMatch(/addTimeOff\(null, draft\)/);
   });
 

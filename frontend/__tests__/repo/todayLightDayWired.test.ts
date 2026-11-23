@@ -4,6 +4,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { rendersKey } from '../helpers/catalog';
 import { readSources } from '../helpers/readSources';
 import { stripComments } from '../helpers/sourceText';
 
@@ -40,11 +41,17 @@ describe('R03.02 — light day', () => {
     expect(raw).toMatch(/\{FLOW_COPY\.lighten\}/);
     expect(copy).toMatch(/hedeflerin ve takvimin değişmez/);
     expect(copy).toMatch(/serin bozulmaz — ama bugün uzamaz da/);
-    expect(raw).toMatch(/Bir sağlık ölçümü ya da kesin bir irade bütçesi değildir\./);
+    expect(
+      rendersKey(
+        src,
+        'today.lightDay.capacityNote',
+        'Kapasite; alışkanlıklarının zorluğu, süresi ve sıklığından tahmin edilen bir sayıdır. Bir sağlık ölçümü ya da kesin bir irade bütçesi değildir.',
+      ),
+    ).toBe(true);
   });
 
   it('set-aside habits stay visible and tappable', () => {
-    expect(src).toMatch(/title="BUGÜN HAFİFLETİLDİ"/);
+    expect(rendersKey(src, 'today.setAside.overline', 'BUGÜN HAFİFLETİLDİ')).toBe(true);
     expect(src).toMatch(/setAsideHabits\.map\(\(h\) => \(/);
   });
 });
