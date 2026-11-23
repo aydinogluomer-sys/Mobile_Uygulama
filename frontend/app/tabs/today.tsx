@@ -46,6 +46,10 @@ import OutboxIssues from '../../components/OutboxIssues';
 import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
 import { BUILT_IN_TEMPLATES, suggestTemplate } from '../../lib/routineRunner';
 import { isLowEnergyOn, useLowEnergyStore } from '../../store/lowEnergyStore';
+import { useMoodStore } from '../../store/moodStore';
+import { ENERGY_COPY, lowEnergySuggested } from '../../lib/moods';
+import { useTimeCapsules } from '../../hooks/useTimeCapsules';
+import TimeCapsuleCard from '../../components/recovery/TimeCapsuleCard';
 import type { SmallStepParent } from '../../lib/smallStart';
 import TimeOffSheet from '../../components/TimeOffSheet';
 import ChecklistSheet from '../../components/ChecklistSheet';
@@ -208,6 +212,13 @@ export default function TodayScreen() {
   const [activeSegment, setActiveSegment] = useState<'all' | 'habits' | 'tasks' | 'balance'>('all');
   const lowEnergyFilter = useLowEnergyStore((st) => isLowEnergyOn(st, clock.today));
   const setLowEnergy = useLowEnergyStore((st) => st.set);
+  const moodCheckins = useMoodStore((st) => st.checkins);
+  const energySuggested = useMemo(
+    () => lowEnergySuggested(moodCheckins, today),
+    [moodCheckins, today],
+  );
+  const caps = useTimeCapsules();
+  const [capsuleMoment, setCapsuleMoment] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const closeFlow = useDayClose(shutdownOpen);
   const lightDayFromCloseRef = useRef(false);
@@ -215,7 +226,12 @@ export default function TodayScreen() {
   const lightDayOpen = lightDayPick !== null;
 
   useEffect(() => {
+    void useMoodStore.getState().hydrate();
+  }, [clock.today]);
+
+  useEffect(() => {
     setExpandedGroups(EMPTY_GROUPS);
+    setCapsuleMoment(false);
   }, [clock.today]);
 
   useEffect(() => {
@@ -527,6 +543,7 @@ export default function TodayScreen() {
       return;
     }
     haptic.success();
+    setCapsuleMoment(true);
     closeLightDaySheet();
   }
 
@@ -551,7 +568,14 @@ export default function TodayScreen() {
     }
   }
 
-  const hasContext = Boolean(!legacyNoticeSeen || afterBreak || holiday || setAsideHabits.length > 0);
+  const eligibleCapsuleItem = caps.eligible;
+  const hasContext = Boolean(
+    !legacyNoticeSeen ||
+      afterBreak ||
+      holiday ||
+      setAsideHabits.length > 0 ||
+      (capsuleMoment && eligibleCapsuleItem),
+  );
   const hasAnyShelfTool = showBalance || showRoutine || showStrategy;
 
   return (
@@ -693,7 +717,8 @@ export default function TodayScreen() {
                   setLowEnergy(!lowEnergyFilter, clock.today);
                 }}
                 accessibilityLabel="Düşük enerji filtresi: yalnız hafif alışkanlıkları öne çıkar"
-                style={s.calmChip}
+                accessibilityHint={energySuggested && !lowEnergyFilter ? ENERGY_COPY.suggest : undefined}
+                style={[s.calmChip, energySuggested && !lowEnergyFilter && s.calmModeChipSuggested]}
               />
 
               {clock.hour >= 17 && (
@@ -710,6 +735,9 @@ export default function TodayScreen() {
                 />
               )}
             </View>
+            {energySuggested && !lowEnergyFilter && (
+              <Text style={s.breakNote}>{ENERGY_COPY.suggest}</Text>
+            )}
           </View>
 
           {lowEnergyFilter && (
@@ -766,6 +794,17 @@ export default function TodayScreen() {
 
             {setAsideHabits.length > 0 && (
               <SetAsideCard habits={setAsideHabits} onHabitTap={onHabitTap} />
+            )}
+
+            {capsuleMoment && eligibleCapsuleItem && (
+              <TimeCapsuleCard
+                capsule={eligibleCapsuleItem}
+                onRead={() => {
+                  void caps.open(eligibleCapsuleItem.id);
+                  setCapsuleMoment(false);
+                }}
+                onLater={() => setCapsuleMoment(false)}
+              />
             )}
           </View>
         )}
@@ -1261,6 +1300,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   calmChip: {
     borderRadius: radius.full,
     minHeight: 44,
+  },
+  calmModeChipSuggested: {
+    borderColor: c.accent,
   },
   contextBlock: {
     gap: space.md,

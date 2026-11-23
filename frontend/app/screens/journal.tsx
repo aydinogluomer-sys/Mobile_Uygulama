@@ -18,6 +18,9 @@ import { currentUser } from '../../lib/session';
 import { draftDiffers, draftKey, extractTags, toggleListLine, wrapSelection, type JournalDraft } from '../../lib/journalText';
 // R07.02 — several check-ins a day, with the user's own moods.
 import MoodCheckins from '../../components/MoodCheckins';
+import ReflectionTemplate from '../../components/journal/ReflectionTemplate';
+import TimeCapsuleComposer from '../../components/journal/TimeCapsuleComposer';
+import { appendBlock } from '../../lib/reflectionTemplate';
 import ConflictChoice from '../../components/ConflictChoice';
 import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
 import { EditorialBanner, TexturedSurface } from '../../components/ui';
@@ -214,6 +217,7 @@ export default function JournalScreen() {
               </View>
             )}
             <Text style={s.promptText}>{randomPrompt}</Text>
+            <ReflectionTemplate onInsert={(text) => edit(appendBlock(content, text), mood)} />
             {draftRestored && (
               <Text style={s.draftNote} accessibilityRole="alert">Kaydedilmemiş taslağın geri yüklendi.</Text>
             )}
@@ -258,6 +262,8 @@ export default function JournalScreen() {
               <Text style={s.saveBtnText}>Kaydet</Text>
             )}
           </TouchableOpacity>
+
+          <TimeCapsuleComposer />
 
           {/* AI İçgörüleri — dönem butonları */}
           <View style={s.insightsCard}>

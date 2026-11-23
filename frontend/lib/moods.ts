@@ -19,12 +19,15 @@
  */
 import { MOODS } from './journalMoods';
 
+export type MoodEnergy = 'low' | 'high';
+
 export type MoodDefinition = {
   id: string;
   name: string;
   icon: string;
   /** 1..5: what the comparison cards average. */
   valence: number;
+  energy?: MoodEnergy;
   builtIn: boolean;
   archived: boolean;
 };
@@ -38,6 +41,7 @@ export type MoodCheckin = {
   /** Snapshots: what the mood was called and how it was valued AT the check-in. */
   label: string;
   valence: number;
+  energy?: MoodEnergy;
   intensity: 1 | 2 | 3;
   note?: string;
 };
@@ -57,7 +61,14 @@ export function allMoods(custom: readonly MoodDefinition[]): MoodDefinition[] {
 
 export type DefinitionCheck = { ok: true; def: MoodDefinition } | { ok: false; reason: string };
 
-export function validateDefinition(input: { id: string; name: string; icon: string; valence: number }, existing: readonly MoodDefinition[]): DefinitionCheck {
+export function normaliseEnergy(raw: unknown): MoodEnergy | undefined {
+  return raw === 'low' || raw === 'high' ? raw : undefined;
+}
+
+export function validateDefinition(
+  input: { id: string; name: string; icon: string; valence: number; energy?: unknown },
+  existing: readonly MoodDefinition[],
+): DefinitionCheck {
   const name = input.name.trim();
   if (!name || name.length > 24) return { ok: false, reason: 'Duygu adı 1–24 karakter olmalı.' };
   const icon = input.icon.trim();
@@ -65,7 +76,19 @@ export function validateDefinition(input: { id: string; name: string; icon: stri
   if (!Number.isInteger(input.valence) || input.valence < 1 || input.valence > 5) return { ok: false, reason: 'Değer 1 ile 5 arasında olmalı.' };
   const clash = allMoods(existing).some((m) => m.id !== input.id && m.name.toLocaleLowerCase('tr') === name.toLocaleLowerCase('tr'));
   if (clash) return { ok: false, reason: 'Bu adda bir duygu zaten var.' };
-  return { ok: true, def: { id: input.id, name, icon, valence: input.valence, builtIn: false, archived: false } };
+  const energy = normaliseEnergy(input.energy);
+  return {
+    ok: true,
+    def: {
+      id: input.id,
+      name,
+      icon,
+      valence: input.valence,
+      ...(energy ? { energy } : {}),
+      builtIn: false,
+      archived: false,
+    },
+  };
 }
 
 /** Rename / re-icon / re-value a custom mood. Same id; past check-ins keep their snapshots. */
@@ -73,11 +96,25 @@ export function editDefinition(list: readonly MoodDefinition[], def: MoodDefinit
   return list.map((d) => (d.id === def.id && !d.builtIn ? { ...def, builtIn: false } : d));
 }
 
-export function makeCheckin(def: MoodDefinition, params: { id: string; at: Date; day: string; intensity: 1 | 2 | 3; note?: string }): MoodCheckin {
+export function makeCheckin(
+  def: MoodDefinition,
+  params: { id: string; at: Date; day: string; intensity: 1 | 2 | 3; note?: string; energy?: MoodEnergy | null },
+): MoodCheckin {
   const note = params.note?.trim();
+  const energy =
+    params.energy === null
+      ? undefined
+      : (normaliseEnergy(params.energy) ?? normaliseEnergy(def.energy));
   return {
-    id: params.id, at: params.at.toISOString(), day: params.day, moodId: def.id,
-    label: def.name, valence: def.valence, intensity: params.intensity, ...(note ? { note: note.slice(0, 280) } : {}),
+    id: params.id,
+    at: params.at.toISOString(),
+    day: params.day,
+    moodId: def.id,
+    label: def.name,
+    valence: def.valence,
+    ...(energy ? { energy } : {}),
+    intensity: params.intensity,
+    ...(note ? { note: note.slice(0, 280) } : {}),
   };
 }
 
@@ -105,3 +142,42 @@ export function dailyMoods(checkins: readonly MoodCheckin[], journal: readonly {
 }
 
 export const MAX_CHECKINS = 2000;
+
+export const MOOD_ENERGY_LABEL: Readonly<Record<MoodEnergy, string>> = {
+  low: 'düşük enerji',
+  high: 'yüksek enerji',
+};
+
+export function withEnergy(c: MoodCheckin, energy: MoodEnergy | null): MoodCheckin {
+  const clean = energy === null ? undefined : normaliseEnergy(energy);
+  const { energy: _prev, ...rest } = c;
+  return clean ? { ...rest, energy: clean } : rest;
+}
+
+/** Energy of the latest (largest ISO `at`) check-in on `day` that carries an energy value. */
+export function latestEnergyOn(checkins: readonly MoodCheckin[], day: string): MoodEnergy | undefined {
+  let bestAt: string | null = null;
+  let bestEnergy: MoodEnergy | undefined;
+  for (const c of checkins) {
+    if (c.day !== day) continue;
+    const e = normaliseEnergy(c.energy);
+    if (!e) continue;
+    if (bestAt === null || c.at > bestAt) {
+      bestAt = c.at;
+      bestEnergy = e;
+    }
+  }
+  return bestEnergy;
+}
+
+export function lowEnergySuggested(checkins: readonly MoodCheckin[], day: string): boolean {
+  return latestEnergyOn(checkins, day) === 'low';
+}
+
+export const ENERGY_COPY = {
+  ask: 'Enerjin nasıl?',
+  low: 'Düşük',
+  high: 'Yüksek',
+  skip: 'Geç',
+  suggest: "Enerjin düşük görünüyor. İstersen Düşük Enerji Modu'nu açabilirsin.",
+} as const;
