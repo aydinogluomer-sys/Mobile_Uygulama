@@ -86,8 +86,9 @@ import { navigateTo, type DestinationId } from '../../lib/destinations';
 import { useProjectStore } from '../../store/projectStore';
 import { quickAddToTaskInput } from '../../lib/taskQuickAdd';
 import type { Habit } from '../../lib/supabase';
+import { isoWeekNumber } from '../../lib/date';
+import { fmt, t } from '../../lib/i18n';
 import {
-  isoWeek,
   periodWindowStart,
   type PartGroupKey,
 } from '../../lib/todaySelectors';
@@ -105,9 +106,6 @@ export {
   summarizeTodayHabits,
   todayHabitCopy,
 } from '../../lib/todaySelectors';
-
-const DAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
-const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
 const PRIORITY_TONE: Record<string, keyof Palette> = {
   high: 'error',
@@ -156,7 +154,7 @@ export default function TodayScreen() {
     const templates = [...BUILT_IN_TEMPLATES, ...runnerUserTemplates];
     const sug = suggestTemplate(templates, clock.hour, runnerActiveTemplateId);
     if (!sug) return null;
-    return templates.find((t) => t.id === sug.templateId)?.name ?? null;
+    return templates.find((tpl) => tpl.id === sug.templateId)?.name ?? null;
   }, [runnerSession, runnerUserTemplates, clock.hour, runnerActiveTemplateId]);
 
   const { fetchLogsForDate, getLogForHabit, logHabit, pendingSyncCount, deadSyncCount } = useLogStore(
@@ -367,21 +365,21 @@ export default function TodayScreen() {
       const done = log?.state === 'done' || log?.state === 'partial';
       haptic.success();
       const res = await logHabit({ habitId: h.id, date: new Date(), state: done ? 'miss' : 'done' });
-      if (!res.ok) void notify('Kaydedilemedi', res.error);
+      if (!res.ok) void notify(t('today.saveFailed'), res.error);
     },
     [checklistItems, getLogForHabit, logHabit, router, today],
   );
 
   const openMoreMenu = useCallback(async () => {
     const options: DialogOption[] = [
-      ...(nowAction?.kind !== 'focus' ? [{ id: 'focus', label: 'Odağa geç', icon: 'timer-outline' }] : []),
-      { id: 'shutdown', label: 'Günü kapat', icon: 'moon-outline' },
-      { id: 'weekly', label: 'Haftayı değerlendir', icon: 'calendar-outline' },
-      { id: 'recovery', label: 'Denge planı', icon: 'leaf-outline' },
-      { id: 'projects', label: 'Projeler', icon: 'folder-outline' },
-      { id: 'notes', label: 'Notlar', icon: 'document-text-outline' },
+      ...(nowAction?.kind !== 'focus' ? [{ id: 'focus', label: t('today.more.focus'), icon: 'timer-outline' }] : []),
+      { id: 'shutdown', label: t('today.more.dayClose'), icon: 'moon-outline' },
+      { id: 'weekly', label: t('today.more.weeklyReview'), icon: 'calendar-outline' },
+      { id: 'recovery', label: t('today.more.recovery'), icon: 'leaf-outline' },
+      { id: 'projects', label: t('today.more.projects'), icon: 'folder-outline' },
+      { id: 'notes', label: t('today.more.notes'), icon: 'document-text-outline' },
     ];
-    const picked = await actionSheet({ title: 'Diğer', options });
+    const picked = await actionSheet({ title: t('today.more.title'), options });
     if (picked === 'shutdown') {
       setShutdownOpen(true);
       return;
@@ -407,7 +405,13 @@ export default function TodayScreen() {
   );
 
   const eyebrow = useMemo(
-    () => `${DAYS[todayDate.getDay()]}, ${todayDate.getDate()} ${MONTHS[todayDate.getMonth()]} · ${isoWeek(todayDate)}. hafta`,
+    () =>
+      t('today.hero.eyebrow', {
+        weekday: fmt.date(todayDate, 'weekdayShort'),
+        day: todayDate.getDate(),
+        month: fmt.date(todayDate, 'monthLong'),
+        week: isoWeekNumber(todayDate),
+      }),
     [todayDate],
   );
 
@@ -433,7 +437,7 @@ export default function TodayScreen() {
         onPress: () => (nowAction ? openNowAction(nowAction) : router.push('/tabs/focus' as any)),
       },
       {
-        label: 'Diğer',
+        label: t('today.more.title'),
         icon: 'ellipsis-horizontal' as const,
         variant: 'ghost' as const,
         onPress: openMoreMenu,
@@ -446,30 +450,33 @@ export default function TodayScreen() {
     if (!showMetrics) return null;
     return [
       {
-        eyebrow: 'Açık görev',
+        eyebrow: t('today.metrics.tasks.eyebrow'),
         value: String(todayTasks.length + overdueList.length),
-        sub: overdueList.length > 0 ? `${overdueList.length} gecikmiş · ${todayTasks.length} bugün` : `${todayTasks.length} görev bugün`,
+        sub:
+          overdueList.length > 0
+            ? t('today.metrics.tasks.subOverdue', { overdue: overdueList.length, today: todayTasks.length })
+            : t('today.metrics.tasks.subToday', { count: todayTasks.length }),
         tone: 'mute',
         onPress: () => router.push('/tabs/tasks' as any),
       },
       {
-        eyebrow: 'Odak · bugün',
+        eyebrow: t('today.metrics.focus.eyebrow'),
         value: sessionsCompleted > 0 ? String(sessionsCompleted) : '—',
-        sub: sessionsCompleted > 0 ? 'odak seansı tamamlandı' : 'ilk seansını başlat',
+        sub: sessionsCompleted > 0 ? t('today.metrics.focus.subDone') : t('today.metrics.focus.subIdle'),
         tone: sessionsCompleted > 0 ? 'accent' : 'mute',
         onPress: () => router.push('/tabs/focus' as any),
       },
       {
-        eyebrow: 'Alışkanlık',
+        eyebrow: t('today.metrics.habits.eyebrow'),
         value: `${Math.round(habitPct * 100)}%`,
         sub: habitCopy.metricSub,
         tone: habitSummary.total > 0 && remainingHabits === 0 ? 'ok' : 'mute',
         onPress: () => router.push('/tabs/timeline' as any),
       },
       {
-        eyebrow: 'Telafi',
+        eyebrow: t('today.metrics.recovery.eyebrow'),
         value: plannedRecovery > 0 ? String(plannedRecovery) : '—',
-        sub: plannedRecovery > 0 ? 'planlı telafi var' : 'denge korunuyor',
+        sub: plannedRecovery > 0 ? t('today.metrics.recovery.subPlanned') : t('today.metrics.recovery.subCalm'),
         tone: plannedRecovery > 0 ? 'warn' : 'mute',
         onPress: () => navigateTo(router, 'recovery'),
       },
@@ -491,7 +498,7 @@ export default function TodayScreen() {
     router.push('/tabs/tasks' as any);
   }, [router]);
 
-  const blockTasks = useMemo(() => todayTasks.filter((t) => !!t.time_block_start), [todayTasks]);
+  const blockTasks = useMemo(() => todayTasks.filter((task) => !!task.time_block_start), [todayTasks]);
 
   const handleToggleGroup = useCallback((key: PartGroupKey) => {
     setExpandedGroups((prev) => {
@@ -505,7 +512,7 @@ export default function TodayScreen() {
   const handleEndHoliday = useCallback(async () => {
     if (!holiday) return;
     const res = await endTimeOff(holiday.id);
-    if (!res.ok) void notify('Kaydedilemedi', res.error);
+    if (!res.ok) void notify(t('today.saveFailed'), res.error);
   }, [endTimeOff, holiday]);
 
   function toggleLightDay(id: string) {
@@ -538,7 +545,7 @@ export default function TodayScreen() {
     setLightDaySaving(false);
     if (failed.length > 0) {
       const names = habits.filter((h) => failed.includes(h.id)).map((h) => h.name).join(', ');
-      void notify('Bir kısmı kaydedilemedi', names);
+      void notify(t('today.lightDay.partialSaveFailed'), names);
       setLightDayPick(new Set(failed));
       return;
     }
@@ -577,6 +584,9 @@ export default function TodayScreen() {
       (capsuleMoment && eligibleCapsuleItem),
   );
   const hasAnyShelfTool = showBalance || showRoutine || showStrategy;
+  const completeTaskA11y = (title: string) => t('today.tasks.complete.a11y', { title });
+  const smallStartTaskA11y = (title: string) => t('today.tasks.smallStart.a11y', { title });
+  const dueTodayLabel = t('today.tasks.dueToday');
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -599,8 +609,8 @@ export default function TodayScreen() {
         {/* Üst Başlık & Hızlı Erişim */}
         <View style={s.masthead}>
           <View>
-            <Text style={s.productLabel}>ADERYTH / GÜNLÜK PUSULA</Text>
-            <Text style={s.productHint}>Ritmini gör, sıradaki doğru adımı seç.</Text>
+            <Text style={s.productLabel}>{t('today.masthead.overline')}</Text>
+            <Text style={s.productHint}>{t('today.masthead.hint')}</Text>
           </View>
           <View style={s.mastheadActions}>
             <SyncStatusBadge pending={pendingSyncCount + taskSync.pending + coreSync.pending} dead={deadSyncCount + taskSync.dead + taskSync.conflict + coreSync.dead + coreSync.conflict} />
@@ -608,7 +618,7 @@ export default function TodayScreen() {
               onPress={() => navigateTo(router, 'journal')}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel="Günlüğü aç"
+              accessibilityLabel={t('today.masthead.journal.a11y')}
             >
               <IconCircle icon="journal-outline" color={c.accent} size={40} />
             </TouchableOpacity>
@@ -616,7 +626,7 @@ export default function TodayScreen() {
               onPress={() => navigateTo(router, 'profile')}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel="Profili aç"
+              accessibilityLabel={t('today.masthead.profile.a11y')}
             >
               <IconCircle icon="person-outline" color={c.textDim} size={40} />
             </TouchableOpacity>
@@ -636,7 +646,7 @@ export default function TodayScreen() {
               router.push(`/screens/focus-flow?item=${dailySpark.item.id}` as any);
             }}
             accessibilityRole="button"
-            accessibilityLabel="Günün Odak Akışını İzle"
+            accessibilityLabel={t('today.spark.watch.a11y')}
           >
             <View
               style={StyleSheet.absoluteFill}
@@ -671,7 +681,7 @@ export default function TodayScreen() {
                 style={[s.sparkEyebrow, { color: dailySpark.item.accentColor }]}
                 numberOfLines={1}
               >
-                🔥 ODAK AKIŞI · {dailySpark.reasonTag}
+                {t('today.spark.eyebrow', { reason: dailySpark.reasonTag })}
               </Text>
               <Text style={s.sparkTitle} numberOfLines={1}>
                 {dailySpark.item.hookTitle}
@@ -684,7 +694,7 @@ export default function TodayScreen() {
               ]}
             >
               <Text style={[s.sparkWatchText, { color: dailySpark.item.accentColor }]}>
-                {dailySpark.item.durationSec} sn →
+                {t('today.spark.duration', { seconds: dailySpark.item.durationSec })}
               </Text>
             </View>
           </TouchableOpacity>
@@ -708,7 +718,7 @@ export default function TodayScreen() {
 
             <View style={s.calmModesRow}>
               <Chip
-                label="Düşük Enerji Modu"
+                label={t('today.calm.lowEnergy')}
                 icon="battery-half-outline"
                 color={lowEnergyFilter ? c.success : c.textDim}
                 selected={lowEnergyFilter}
@@ -716,21 +726,21 @@ export default function TodayScreen() {
                   haptic.select();
                   setLowEnergy(!lowEnergyFilter, clock.today);
                 }}
-                accessibilityLabel="Düşük enerji filtresi: yalnız hafif alışkanlıkları öne çıkar"
+                accessibilityLabel={t('today.calm.lowEnergy.a11y')}
                 accessibilityHint={energySuggested && !lowEnergyFilter ? ENERGY_COPY.suggest : undefined}
                 style={[s.calmChip, energySuggested && !lowEnergyFilter && s.calmModeChipSuggested]}
               />
 
               {clock.hour >= 17 && (
                 <Chip
-                  label="Günü Kapat"
+                  label={t('today.calm.dayClose')}
                   icon="moon-outline"
                   color={c.accent}
                   onPress={() => {
                     haptic.select();
                     setShutdownOpen(true);
                   }}
-                  accessibilityLabel="Günü kapat: akşam kapanış ritüelini başlat"
+                  accessibilityLabel={t('today.calm.dayClose.a11y')}
                   style={s.calmChip}
                 />
               )}
@@ -752,8 +762,8 @@ export default function TodayScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
                 <Ionicons name="leaf" size={18} color={c.success} />
                 <View style={{ flex: 1 }}>
-                  <Text style={s.lowEnergyTitle}>Yumuşak Ritim · Düşük Enerji Filtresi Açık</Text>
-                  <Text style={s.breakNote}>Yalnızca hafif adımlar öne çıkarıldı; serilerin güvende.</Text>
+                  <Text style={s.lowEnergyTitle}>{t('today.lowEnergy.title')}</Text>
+                  <Text style={s.breakNote}>{t('today.lowEnergy.body')}</Text>
                 </View>
               </View>
             </BentoVisualCard>
@@ -767,12 +777,10 @@ export default function TodayScreen() {
           <View testID="today-block-context" style={s.contextBlock}>
             {!legacyNoticeSeen && (
               <Card padding="lg">
-                <Text style={s.breakNote}>
-                  Bugün sadeleşti. Kartları Ayarlar &gt; Araçlar bölümünden geri açabilirsin.
-                </Text>
+                <Text style={s.breakNote}>{t('today.legacyNotice.body')}</Text>
                 <View style={s.legacyNoticeBtnWrap}>
                   <Button
-                    label="Tamam"
+                    label={t('today.legacyNotice.ok')}
                     variant="ghost"
                     size="sm"
                     onPress={dismissLegacyNotice}
@@ -783,7 +791,7 @@ export default function TodayScreen() {
 
             {afterBreak && (
               <Card padding="lg" accessibilityLabel={`${FLOW_COPY.afterBreakTitle}. ${FLOW_COPY.afterBreak}`}>
-                <SectionHeader title={FLOW_COPY.afterBreakTitle.toLocaleUpperCase('tr-TR')} variant="overline" />
+                <SectionHeader title={fmt.upper(FLOW_COPY.afterBreakTitle)} variant="overline" />
                 <Text style={s.breakNote}>{FLOW_COPY.afterBreak}</Text>
               </Card>
             )}
@@ -813,7 +821,7 @@ export default function TodayScreen() {
         {showMetrics && metrics && (
           <>
             <MetricGrid metrics={metrics} />
-            <ChapterDivider source={DECOR.dividerSundial} label="GÜNÜN ÇALIŞMA TEZGAHI" />
+            <ChapterDivider source={DECOR.dividerSundial} label={t('today.workbench.overline')} />
           </>
         )}
 
@@ -824,20 +832,20 @@ export default function TodayScreen() {
               style={[s.segmentBtn, effectiveSegment === 'all' && s.segmentBtnActive]}
               onPress={() => { haptic.select(); setActiveSegment('all'); }}
               accessibilityRole="button"
-              accessibilityLabel="Tümünü göster"
+              accessibilityLabel={t('today.segments.all.a11y')}
             >
               <Ionicons name="layers-outline" size={14} color={effectiveSegment === 'all' ? c.primary : c.textDim} />
-              <Text style={[s.segmentText, effectiveSegment === 'all' && s.segmentTextActive]}>Tümü</Text>
+              <Text style={[s.segmentText, effectiveSegment === 'all' && s.segmentTextActive]}>{t('today.segments.all')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[s.segmentBtn, effectiveSegment === 'habits' && s.segmentBtnActive]}
               onPress={() => { haptic.select(); setActiveSegment('habits'); }}
               accessibilityRole="button"
-              accessibilityLabel="Sadece ritüelleri göster"
+              accessibilityLabel={t('today.segments.habits.a11y')}
             >
               <Ionicons name="repeat-outline" size={14} color={effectiveSegment === 'habits' ? c.primary : c.textDim} />
-              <Text style={[s.segmentText, effectiveSegment === 'habits' && s.segmentTextActive]}>Ritüeller</Text>
+              <Text style={[s.segmentText, effectiveSegment === 'habits' && s.segmentTextActive]}>{t('today.segments.habits')}</Text>
               {remainingHabits > 0 && (
                 <View style={s.badgePill}>
                   <Text style={s.badgeText}>{remainingHabits}</Text>
@@ -849,10 +857,10 @@ export default function TodayScreen() {
               style={[s.segmentBtn, effectiveSegment === 'tasks' && s.segmentBtnActive]}
               onPress={() => { haptic.select(); setActiveSegment('tasks'); }}
               accessibilityRole="button"
-              accessibilityLabel="Sadece görevleri göster"
+              accessibilityLabel={t('today.segments.tasks.a11y')}
             >
               <Ionicons name="checkbox-outline" size={14} color={effectiveSegment === 'tasks' ? c.primary : c.textDim} />
-              <Text style={[s.segmentText, effectiveSegment === 'tasks' && s.segmentTextActive]}>Görevler</Text>
+              <Text style={[s.segmentText, effectiveSegment === 'tasks' && s.segmentTextActive]}>{t('today.segments.tasks')}</Text>
               {pendingTasks.length > 0 && (
                 <View style={s.badgePill}>
                   <Text style={s.badgeText}>{pendingTasks.length}</Text>
@@ -865,10 +873,10 @@ export default function TodayScreen() {
                 style={[s.segmentBtn, effectiveSegment === 'balance' && s.segmentBtnActive]}
                 onPress={() => { haptic.select(); setActiveSegment('balance'); }}
                 accessibilityRole="button"
-                accessibilityLabel="Denge ve rutini göster"
+                accessibilityLabel={t('today.segments.balance.a11y')}
               >
                 <Ionicons name="compass-outline" size={14} color={effectiveSegment === 'balance' ? c.primary : c.textDim} />
-                <Text style={[s.segmentText, effectiveSegment === 'balance' && s.segmentTextActive]}>Denge</Text>
+                <Text style={[s.segmentText, effectiveSegment === 'balance' && s.segmentTextActive]}>{t('today.segments.balance')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -917,27 +925,27 @@ export default function TodayScreen() {
               <View style={s.mainSection}>
                 <View style={s.sectionIntro}>
                   <View>
-                    <Text style={s.sectionEyebrow}>BUGÜN · {pendingTasks.length}</Text>
-                    <Text style={s.sectionTitle}>Masadakiler</Text>
+                    <Text style={s.sectionEyebrow}>{t('today.tasks.eyebrow', { count: pendingTasks.length })}</Text>
+                    <Text style={s.sectionTitle}>{t('today.tasks.title')}</Text>
                   </View>
                   <Button
-                    label="Tümü →"
+                    label={t('today.seeAll')}
                     variant="ghost"
                     size="sm"
                     onPress={() => router.push('/tabs/tasks' as any)}
-                    accessibilityLabel="Tüm görevleri aç"
+                    accessibilityLabel={t('today.tasks.openAll.a11y')}
                   />
                 </View>
                 <OutboxIssues />
                 <View style={{ marginBottom: space.sm }}>
                   <InlineComposer
-                    placeholder="Bugün için hızlı bir adım ekle…"
+                    placeholder={t('today.tasks.composerPlaceholder')}
                     quickAdd={{ projects: quickProjects }}
                     voice
-                    onSubmit={async (t, quick) => {
+                    onSubmit={async (text, quick) => {
                       await addTask(
                         quickAddToTaskInput(
-                          t,
+                          text,
                           quick,
                           { priority: 'none', list_type: 'inbox', due_date: today, project_id: null },
                           today,
@@ -951,9 +959,9 @@ export default function TodayScreen() {
                     <EmptyState
                       variant="editorial"
                       icon="checkmark-circle-outline"
-                      title="Bugünün açık döngüsü kalmadı."
-                      hint="Bir sonraki odak bloğunu planlayabilir veya günü kısa bir notla kapatabilirsin."
-                      ctaLabel="Yeni adım ekle"
+                      title={t('today.tasks.empty.title')}
+                      hint={t('today.tasks.empty.hint')}
+                      ctaLabel={t('today.tasks.empty.cta')}
                       onCta={() => router.push('/tabs/tasks' as any)}
                       color={c.success}
                       compact
@@ -968,14 +976,14 @@ export default function TodayScreen() {
                             style={s.taskMain}
                             onPress={() => { haptic.light(); void toggleDone(t.id); }}
                             accessibilityRole="button"
-                            accessibilityLabel={`${t.title}, tamamlamak için dokun`}
+                            accessibilityLabel={completeTaskA11y(t.title)}
                           >
                             <View style={[s.taskDot, { borderColor: priorityColor(t.priority) }]} />
                             <Text style={s.taskTitle} numberOfLines={1}>{t.title}</Text>
                             {t.due_date && (
                               <View style={[s.dueBadge, t.due_date < today && s.dueBadgeOverdue]}>
                                 <Text style={[s.taskDate, t.due_date < today && { color: c.error }]}>
-                                  {t.due_date === today ? 'Bugün' : t.due_date}
+                                  {t.due_date === today ? dueTodayLabel : t.due_date}
                                 </Text>
                               </View>
                             )}
@@ -985,7 +993,7 @@ export default function TodayScreen() {
                             onPress={() => setSmallStartFor({ kind: 'task', id: t.id, title: t.title })}
                             hitSlop={8}
                             accessibilityRole="button"
-                            accessibilityLabel={`${t.title} için küçük başla`}
+                            accessibilityLabel={smallStartTaskA11y(t.title)}
                           >
                             <Ionicons name="play-circle-outline" size={22} color={c.accent} />
                           </TouchableOpacity>
@@ -1008,7 +1016,7 @@ export default function TodayScreen() {
                   activeOpacity={0.8}
                   onPress={() => navigateTo(router, 'profile')}
                   accessibilityRole="button"
-                  accessibilityLabel="Profil ve deneyim puanını aç"
+                  accessibilityLabel={t('today.balance.xp.a11y')}
                 >
                   <XPDisplay />
                 </TouchableOpacity>
@@ -1016,8 +1024,8 @@ export default function TodayScreen() {
                 {wp && (
                   <Card padding="lg" onPress={() => router.push('/tabs/timeline' as any)}>
                     <View style={s.wpHead}>
-                      <Text style={s.wpHeadText}>İrade dengesi</Text>
-                      <Text style={s.wpHeadHint}>günlük bütçe</Text>
+                      <Text style={s.wpHeadText}>{t('today.willpower.title')}</Text>
+                      <Text style={s.wpHeadHint}>{t('today.willpower.hint')}</Text>
                     </View>
                     <WillpowerBand wp={wp} />
                   </Card>
@@ -1034,13 +1042,17 @@ export default function TodayScreen() {
             {showRoutine && (
               <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => router.push('/screens/routine-runner' as any)}>
                 <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={108} opacity={0.16} />
-                <SectionHeader title="RUTİN" variant="overline" />
+                <SectionHeader title={t('today.routine.overline')} variant="overline" />
                 <Text style={s.breakNote}>
                   {runnerSession && runnerSession.status !== 'finished'
-                    ? `${runnerSession.templateName} sürüyor · ${Object.keys(runnerSession.results).length}/${runnerSession.steps.length} — devam et`
+                    ? t('today.routine.active', {
+                        name: runnerSession.templateName,
+                        done: Object.keys(runnerSession.results).length,
+                        total: runnerSession.steps.length,
+                      })
                     : suggestedRoutineName
-                      ? `Şimdi: ${suggestedRoutineName} rutinini adım adım başlat.`
-                      : 'Sabah, akşam ya da çalışma rutinini adım adım başlat.'}
+                      ? t('today.routine.suggested', { name: suggestedRoutineName })
+                      : t('today.routine.idle')}
                 </Text>
               </Card>
             )}
@@ -1049,12 +1061,10 @@ export default function TodayScreen() {
               <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => navigateTo(router, 'okr')}>
                 <EmbeddedFiligree source={DECOR.cornerBlueprint} anchor="bottom-right" size={108} opacity={0.17} />
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.xs }}>
-                  <SectionHeader title="STRATEJİ & OKR" variant="overline" />
+                  <SectionHeader title={t('today.strategy.overline')} variant="overline" />
                   <Ionicons name="chevron-forward" size={14} color={c.textGhost} />
                 </View>
-                <Text style={s.breakNote}>
-                  Çeyreklik hedefler, Key Results ve vizyon ilerlemeni incele.
-                </Text>
+                <Text style={s.breakNote}>{t('today.strategy.body')}</Text>
               </Card>
             )}
           </View>
@@ -1089,12 +1099,9 @@ export default function TodayScreen() {
       <Modal visible={lightDayPick !== null} transparent animationType="slide" onRequestClose={closeLightDaySheet}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.sheetOverlay}>
           <View style={s.sheet}>
-            <Text style={s.sheetTitle}>Bugün daha az yapabilirim</Text>
+            <Text style={s.sheetTitle}>{t('today.lightDay.title')}</Text>
             <Text style={s.sheetBody}>{FLOW_COPY.lighten}</Text>
-            <Text style={s.sheetNote}>
-              Kapasite; alışkanlıklarının zorluğu, süresi ve sıklığından tahmin edilen bir sayıdır.
-              Bir sağlık ölçümü ya da kesin bir irade bütçesi değildir.
-            </Text>
+            <Text style={s.sheetNote}>{t('today.lightDay.capacityNote')}</Text>
             <ScrollView style={{ maxHeight: 320 }} accessibilityRole="list">
               {lightDayCandidates.map((h) => {
                 const picked = lightDayPick?.has(h.id) ?? false;
@@ -1105,7 +1112,7 @@ export default function TodayScreen() {
                     onPress={() => toggleLightDay(h.id)}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: picked }}
-                    accessibilityLabel={`${h.name} bugün için kenara konsun`}
+                    accessibilityLabel={t('today.lightDay.pick.a11y', { name: h.name })}
                   >
                     <View style={[s.habitCheck, { borderColor: picked ? c.accent : c.borderStrong }, picked && { backgroundColor: c.accent }]}>
                       {picked && <Ionicons name="checkmark" size={14} color={c.white} />}
@@ -1117,42 +1124,38 @@ export default function TodayScreen() {
             </ScrollView>
             <View style={s.lightDayNoteWrap}>
               {lightDayHintVisible && (
-                <Text style={s.sheetNote}>
-                  İstersen nedenini tek satırda yaz. Yalnız sen görürsün.
-                </Text>
+                <Text style={s.sheetNote}>{t('today.lightDay.noteHint')}</Text>
               )}
               <TextInput
                 value={lightDayNote}
                 onChangeText={setLightDayNote}
-                placeholder="Kısa bir not (isteğe bağlı)"
+                placeholder={t('today.lightDay.notePlaceholder')}
                 placeholderTextColor={c.textFaint}
                 maxLength={NOTE_MAX_LENGTH}
                 returnKeyType="done"
-                accessibilityLabel="Hafif gün notu (isteğe bağlı)"
+                accessibilityLabel={t('today.lightDay.note.a11y')}
                 style={s.lightDayNoteInput}
               />
-              <Text style={s.lightDayNoteSub}>
-                Bu not seçtiğin tüm alışkanlıklara eklenir.
-              </Text>
+              <Text style={s.lightDayNoteSub}>{t('today.lightDay.noteSub')}</Text>
             </View>
             <View style={s.sheetActions}>
               <TouchableOpacity
                 style={s.sheetCancel}
                 onPress={closeLightDaySheet}
                 accessibilityRole="button"
-                accessibilityLabel="Vazgeç"
+                accessibilityLabel={t('common.cancel')}
               >
-                <Text style={s.sheetCancelText}>Vazgeç</Text>
+                <Text style={s.sheetCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.sheetSave, (!lightDayPick || lightDayPick.size === 0 || lightDaySaving) && s.sheetSaveDisabled]}
                 onPress={confirmLightDay}
                 disabled={!lightDayPick || lightDayPick.size === 0 || lightDaySaving}
                 accessibilityRole="button"
-                accessibilityLabel="Seçilenleri bugün için kenara koy"
+                accessibilityLabel={t('today.lightDay.confirm.a11y')}
                 accessibilityState={{ disabled: !lightDayPick || lightDayPick.size === 0 || lightDaySaving }}
               >
-                <Text style={s.sheetSaveText}>{lightDaySaving ? 'Kaydediliyor…' : 'Kenara koy'}</Text>
+                <Text style={s.sheetSaveText}>{lightDaySaving ? t('today.lightDay.saving') : t('today.lightDay.confirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1182,11 +1185,14 @@ export default function TodayScreen() {
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.xs }}>
                 <Ionicons name="moon" size={20} color={c.accent} />
-                <Text style={s.shutdownTitle}>Günü Kapat · Zihinsel Kapanış</Text>
+                <Text style={s.shutdownTitle}>{t('today.shutdown.title')}</Text>
               </View>
               <Text style={s.sheetBody}>
-                Bugün {completedHabits.length}/{habitSummary.total} ritüel ve {sessionsCompleted} odak seansı tamamladın.
-                Açık kalan döngüleri yarına devredip zihnini dinlenme moduna alabilirsin.
+                {t('today.shutdown.summary', {
+                  done: completedHabits.length,
+                  total: habitSummary.total,
+                  sessions: sessionsCompleted,
+                })}
               </Text>
 
               <DayCloseMood value={closeFlow.mood} onChoose={closeFlow.chooseMood} />
@@ -1212,12 +1218,14 @@ export default function TodayScreen() {
                       setLightDayPick(new Set(lightDayCandidates.map((h) => h.id)));
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel="Kalan ritüelleri cezasız olarak bugünlük kenara koy"
+                    accessibilityLabel={t('today.shutdown.lighten.a11y')}
                   >
                     <Ionicons name="leaf-outline" size={18} color={c.success} />
                     <View style={{ flex: 1 }}>
-                      <Text style={s.shutdownOptionTitle}>Kalan {remainingHabits} ritüeli bugünlük hafiflet</Text>
-                      <Text style={s.shutdownOptionSub}>Serilerin bozulmaz; bugün cezasız kapanır.</Text>
+                      <Text style={s.shutdownOptionTitle}>
+                        {t('today.shutdown.lighten.title', { count: remainingHabits })}
+                      </Text>
+                      <Text style={s.shutdownOptionSub}>{t('today.shutdown.lighten.sub')}</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
                   </TouchableOpacity>
@@ -1230,12 +1238,12 @@ export default function TodayScreen() {
                     navigateTo(router, 'journal');
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Günü tek cümlelik günlük yansımasıyla kapat"
+                  accessibilityLabel={t('today.shutdown.journal.a11y')}
                 >
                   <Ionicons name="journal-outline" size={18} color={c.accent} />
                   <View style={{ flex: 1 }}>
-                    <Text style={s.shutdownOptionTitle}>1 Cümlelik Akşam Yansıması Yaz</Text>
-                    <Text style={s.shutdownOptionSub}>Zihnindeki son düşünceleri kağıda bırak.</Text>
+                    <Text style={s.shutdownOptionTitle}>{t('today.shutdown.journal.title')}</Text>
+                    <Text style={s.shutdownOptionSub}>{t('today.shutdown.journal.sub')}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
                 </TouchableOpacity>
@@ -1247,12 +1255,12 @@ export default function TodayScreen() {
                     navigateTo(router, 'recovery');
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Telafi kalkanını ve yarının planını incele"
+                  accessibilityLabel={t('today.shutdown.recovery.a11y')}
                 >
                   <Ionicons name="shield-checkmark-outline" size={18} color={c.primary} />
                   <View style={{ flex: 1 }}>
-                    <Text style={s.shutdownOptionTitle}>Telafi & Yarın Pusulası</Text>
-                    <Text style={s.shutdownOptionSub}>Kaçan adımları yarına veya iki güne böl.</Text>
+                    <Text style={s.shutdownOptionTitle}>{t('today.shutdown.recovery.title')}</Text>
+                    <Text style={s.shutdownOptionSub}>{t('today.shutdown.recovery.sub')}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
                 </TouchableOpacity>
@@ -1263,9 +1271,9 @@ export default function TodayScreen() {
               style={[s.sheetSave, s.shutdownFinishBtn]}
               onPress={onFinishClose}
               accessibilityRole="button"
-              accessibilityLabel="Bugünlük bitti, ekranı kapat"
+              accessibilityLabel={t('today.shutdown.finish.a11y')}
             >
-              <Text style={s.sheetSaveText}>Bugünlük Bitti · İyi Dinlenmeler ✨</Text>
+              <Text style={s.sheetSaveText}>{t('today.shutdown.finish')}</Text>
             </TouchableOpacity>
           </View>
         </View>

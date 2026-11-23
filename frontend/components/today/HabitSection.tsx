@@ -9,6 +9,7 @@ import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { isMeasurableTracking } from '../../lib/habitEngine';
 import { activePauseOn } from '../../lib/habitPauses';
 import { haptic } from '../../lib/haptics';
+import { t } from '../../lib/i18n';
 import type { Habit } from '../../lib/supabase';
 import {
   periodDoneLabel,
@@ -96,7 +97,11 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
         onPress={() => onHabitTap(h)}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
-        accessibilityLabel={`${h.name}${isMeasurableTracking(h.tracking_type) ? ', değer gir' : ''}`}
+        accessibilityLabel={
+          isMeasurableTracking(h.tracking_type)
+            ? t('today.rituals.measurable.a11y', { name: h.name })
+            : h.name
+        }
       >
         <View
           style={[
@@ -139,7 +144,7 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
               <Text style={s.ringPct}>{Math.round(habitSummary.pct * 100)}%</Text>
             </ProgressRing>
             <View style={{ flex: 1 }}>
-              <Text style={s.ringTitle}>Bugünün ritüelleri</Text>
+              <Text style={s.ringTitle}>{t('today.rituals.ringTitle')}</Text>
               <Text style={s.ringSub}>{habitCopy.ringSub}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={c.textFaint} />
@@ -150,9 +155,9 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
       {todayHabits.length > 0 ? (
         <Card padding="lg">
           <SectionHeader
-            title="RİTÜELLER · BUGÜN"
+            title={t('today.rituals.overline')}
             variant="overline"
-            actionLabel="Tümü →"
+            actionLabel={t('today.seeAll')}
             onAction={onOpenTimeline}
           />
           {!showRing && <Text style={s.calmSub}>{habitCopy.ringSub}</Text>}
@@ -162,7 +167,7 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
               {flatRows.map(renderHabitRow)}
               {flatHiddenCount > 0 && (
                 <Button
-                  label={`Tümü (${flatHiddenCount} daha) →`}
+                  label={t('today.rituals.seeAllMore', { count: flatHiddenCount })}
                   variant="ghost"
                   size="sm"
                   onPress={onOpenTimeline}
@@ -176,7 +181,6 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
                 if (filtered.length === 0) return null;
                 const visible = isWide ? filtered.slice(0, WIDE_GROUP_LIMIT) : filtered;
                 const hiddenCount = filtered.length - visible.length;
-                const actionVerb = group.open ? 'kapatmak için dokun' : 'açmak için dokun';
 
                 return (
                   <View key={group.key} style={s.groupWrap}>
@@ -189,12 +193,31 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
                       }}
                       accessibilityRole="button"
                       accessibilityState={{ expanded: group.open }}
-                      accessibilityLabel={`${group.label}, ${filtered.length} ritüel, ${group.doneCount} tamamlandı, ${actionVerb}`}
+                      accessibilityLabel={
+                        group.open
+                          ? t('today.rituals.group.open.a11y', {
+                              label: group.label,
+                              total: filtered.length,
+                              done: group.doneCount,
+                            })
+                          : t('today.rituals.group.closed.a11y', {
+                              label: group.label,
+                              total: filtered.length,
+                              done: group.doneCount,
+                            })
+                      }
                     >
                       <Text style={s.groupSummaryText}>
                         {group.open
-                          ? `${group.label} · ${group.doneCount}/${filtered.length}`
-                          : `${group.label} · ${filtered.length} ritüel`}
+                          ? t('today.rituals.group.openSummary', {
+                              label: group.label,
+                              done: group.doneCount,
+                              total: filtered.length,
+                            })
+                          : t('today.rituals.group.closedSummary', {
+                              label: group.label,
+                              count: filtered.length,
+                            })}
                       </Text>
                       <Ionicons
                         name={group.open ? 'chevron-up' : 'chevron-down'}
@@ -207,7 +230,7 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
                         {visible.map(renderHabitRow)}
                         {hiddenCount > 0 && (
                           <Button
-                            label={`Tümü (${hiddenCount} daha) →`}
+                            label={t('today.rituals.seeAllMore', { count: hiddenCount })}
                             variant="ghost"
                             size="sm"
                             onPress={onOpenTimeline}
@@ -230,10 +253,10 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
                   onOpenLightDay();
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Bugün daha az yapabilirim. Bugünkü ritüellerden bazılarını kenara koy."
+                accessibilityLabel={t('today.lightDay.trigger.a11y')}
               >
                 <Ionicons name="leaf-outline" size={14} color={c.accent} />
-                <Text style={s.lightDayBtnText}>Bugün daha az yapabilirim</Text>
+                <Text style={s.lightDayBtnText}>{t('today.lightDay.title')}</Text>
               </TouchableOpacity>
             )}
             {!holidayActive && (
@@ -244,10 +267,10 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
                   onOpenHoliday();
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Tatil modu. Birkaç gün bütün alışkanlıklara ara ver."
+                accessibilityLabel={t('today.holiday.trigger.a11y')}
               >
                 <Ionicons name="airplane-outline" size={14} color={c.textDim} />
-                <Text style={s.lightDayBtnText}>Tatil modu</Text>
+                <Text style={s.lightDayBtnText}>{t('today.holiday.trigger')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -255,7 +278,7 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
       ) : (
         !showRing && (
           <Card padding="lg" onPress={onOpenTimeline}>
-            <SectionHeader title="RİTÜELLER · BUGÜN" variant="overline" />
+            <SectionHeader title={t('today.rituals.overline')} variant="overline" />
             <Text style={s.breakNote}>{habitCopy.ringSub}</Text>
           </Card>
         )
@@ -269,9 +292,9 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
             style={s.accordionHeader}
             accessibilityRole="button"
             accessibilityState={{ expanded: showOnBreak }}
-            accessibilityLabel={`Arada olan ${onBreakHabits.length} alışkanlık`}
+            accessibilityLabel={t('today.onBreak.header.a11y', { count: onBreakHabits.length })}
           >
-            <SectionHeader title="ARADA" variant="overline" />
+            <SectionHeader title={t('today.onBreak.overline')} variant="overline" />
             <View style={s.counterBadge}>
               <Text style={s.counterBadgeText}>{onBreakHabits.length}</Text>
               <Ionicons
@@ -290,7 +313,11 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
                     key={h.id}
                     style={[s.habitRow, s.habitRowPeriodDone]}
                     accessible
-                    accessibilityLabel={`${h.name}, arada${p?.end_date ? `, ${p.end_date} tarihine kadar` : ''}.`}
+                    accessibilityLabel={
+                      p?.end_date
+                        ? t('today.onBreak.rowUntil.a11y', { name: h.name, date: p.end_date })
+                        : t('today.onBreak.row.a11y', { name: h.name })
+                    }
                   >
                     <View style={[s.habitCheck, { borderColor: c.borderStrong }]}>
                       <Ionicons name="cafe-outline" size={14} color={c.textDim} />
@@ -299,7 +326,7 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
                       {h.name}
                     </Text>
                     <Text style={s.setAsideTag}>
-                      {p?.end_date ? `${p.end_date}'e kadar` : 'arada'}
+                      {p?.end_date ? t('today.onBreak.tagUntil', { date: p.end_date }) : t('today.onBreak.tag')}
                     </Text>
                   </View>
                 );
@@ -317,9 +344,9 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
             style={s.accordionHeader}
             accessibilityRole="button"
             accessibilityState={{ expanded: showPeriodDone }}
-            accessibilityLabel={`Bu dönem tamamlanan ${periodDoneHabits.length} alışkanlık`}
+            accessibilityLabel={t('today.periodDone.header.a11y', { count: periodDoneHabits.length })}
           >
-            <SectionHeader title="BU DÖNEM TAMAM" variant="overline" />
+            <SectionHeader title={t('today.periodDone.overline')} variant="overline" />
             <View style={s.counterBadge}>
               <Text style={s.counterBadgeText}>{periodDoneHabits.length}</Text>
               <Ionicons
@@ -338,7 +365,10 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
                   style={[s.habitRow, s.habitRowPeriodDone]}
                   onPress={() => onHabitTap(h)}
                   accessibilityRole="button"
-                  accessibilityLabel={`${h.name}, ${periodDoneLabel(h)}. Yine de kaydetmek için dokun.`}
+                  accessibilityLabel={t('today.periodDone.row.a11y', {
+                    name: h.name,
+                    label: periodDoneLabel(h),
+                  })}
                 >
                   <View
                     style={[
@@ -367,20 +397,21 @@ export function HolidayCard(props: { endDate: string | null; onEnd: () => Promis
   const s = useThemedStyles(makeStyles);
   return (
     <Card padding="lg">
-      <SectionHeader title="TATİL MODU" variant="overline" />
+      <SectionHeader title={t('today.holiday.overline')} variant="overline" />
       <Text style={s.breakNote}>
-        {props.endDate ? `${props.endDate} tarihine kadar` : 'Sen bitirene kadar'} bütün alışkanlıklar arada:
-        hesaba girmez, seriler köprü kurar, hatırlatıcı gelmez.
+        {props.endDate
+          ? t('today.holiday.bodyUntil', { date: props.endDate })
+          : t('today.holiday.bodyOpen')}
       </Text>
       <View style={s.holidayActionWrap}>
         <TouchableOpacity
           style={s.lightDayBtn}
           onPress={props.onEnd}
           accessibilityRole="button"
-          accessibilityLabel="Tatili bugün bitir"
+          accessibilityLabel={t('today.holiday.endToday')}
         >
           <Ionicons name="play-outline" size={14} color={c.textDim} />
-          <Text style={s.lightDayBtnText}>Tatili bugün bitir</Text>
+          <Text style={s.lightDayBtnText}>{t('today.holiday.endToday')}</Text>
         </TouchableOpacity>
       </View>
     </Card>
@@ -404,9 +435,9 @@ export function SetAsideCard(props: {
         style={s.accordionHeader}
         accessibilityRole="button"
         accessibilityState={{ expanded: showSetAside }}
-        accessibilityLabel={`Bugün hafifletilen ${setAsideHabits.length} alışkanlık`}
+        accessibilityLabel={t('today.setAside.header.a11y', { count: setAsideHabits.length })}
       >
-        <SectionHeader title="BUGÜN HAFİFLETİLDİ" variant="overline" />
+        <SectionHeader title={t('today.setAside.overline')} variant="overline" />
         <Ionicons
           name={showSetAside ? 'chevron-up' : 'chevron-down'}
           size={16}
@@ -422,7 +453,7 @@ export function SetAsideCard(props: {
               style={[s.habitRow, s.habitRowPeriodDone]}
               onPress={() => props.onHabitTap?.(h)}
               accessibilityRole="button"
-              accessibilityLabel={`${h.name}, bugün için kenara konuldu. Yine de yaptıysan dokun.`}
+              accessibilityLabel={t('today.setAside.row.a11y', { name: h.name })}
             >
               <View style={[s.habitCheck, { borderColor: c.borderStrong }]}>
                 <Ionicons name="pause-outline" size={14} color={c.textDim} />
@@ -430,7 +461,7 @@ export function SetAsideCard(props: {
               <Text style={s.habitName} numberOfLines={1}>
                 {h.name}
               </Text>
-              <Text style={s.setAsideTag}>bugün kenarda</Text>
+              <Text style={s.setAsideTag}>{t('today.setAside.tag')}</Text>
             </TouchableOpacity>
           ))}
         </View>
