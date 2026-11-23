@@ -114,7 +114,7 @@ jobs:
         run: npx jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB --coverage
 
       - name: Test count floor (guards against a silently shrunken roots/testMatch)
-        run: test "$(npx jest --ci --listTests | wc -l)" -ge 451
+        run: test "$(npx jest --ci --listTests | wc -l)" -ge 462
 
       - name: Structural gate (run-tests.js)
         run: node run-tests.js

@@ -2123,3 +2123,62 @@ owner_decision: OD-07 2026-11-21 Kırılgan metin guard'larının davranış tes
   - `run-tz-matrix.js` `13 -> 15` pakete genişletildi (`+nextBlock`, `+taskReminderPlan` -> 4 bölgede **60/60**).
   - Monoton tavanlar aşağı kilitlendi: `designTokensRatchet` `RGBA_LITERAL: 70 -> 36` (`-34`), `FONT_SIZE_LITERAL: 954 -> 934` (`-20`), `SPACING_LITERAL: 1386 -> 1374` (`-12`), `RADIUS_LITERAL: 467 -> 465` (`-2`), `STATIC_COLORS_IMPORTERS: 113 -> 111` (`-2`), `RAW_TOUCHABLES: 564 -> 563` (`-1`), `LEGACY_TOKEN_USAGES: 61 -> 59` (`-2`); `TOUCHABLE_CEILINGS` `noLabel: 114 -> 113`.
 - **Nihai seri kapılar:** `typecheck:ci` `exit=0`; `lint:ci` `exit=0` (0 uyarı); `node run-tests.js` **147/147** `exit=0`; 4-bölge `test:tz` **60/60** `exit=0`; tam `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB` **466/466 suite · 5671/5671 test** yeşil (Wave 9'daki 439/5482'den +27 suite, +189 test); Wave 10 toplam mutasyon **40/40 KILLED** (kümülatif **305/305**); `git diff --check` `exit=0`.
+
+### F37 (2026-11-23) — `cd724ca7` (`faz/F37-ruh-hali-bdt-zaman-kapsulu`)
+
+- **Durum:** DONE (`db: false`, yeni bağımlılık veya `featureGates` değişikliği yok). **Kapsanan mekanikler:** PS-07, PS-16, PS-18 (gün içi çoklu ruh hali/enerji kontrolleri, klinik olmayan BDT düşünce yansıma şablonu ve gelecekteki kendine zaman kapsülü).
+- **Özet değişiklikler:**
+  - `frontend/lib/moods.ts` + `store/moodStore.ts` + `components/MoodCheckins.tsx` (isteğe bağlı `energy: 1..5 | null`, gün içi birden fazla kontrol noktası, hesap-kapsamlı depolama), `frontend/lib/reflectionTemplate.ts` + `components/journal/ReflectionTemplate.tsx` (klinik/tanısal terim içermeyen 3 adımlı BDT yansıma iskelesi) ve `frontend/lib/timeCapsule.ts` + `hooks/useTimeCapsules.ts` + `components/journal/{TimeCapsuleCard,TimeCapsuleComposer}.tsx` (4 saat diliminde DST-güvenli açılış tarihi kontrolü, `journal.tsx`, `recovery.tsx` ve `today.tsx` entegrasyonları).
+- **Mutasyon kanıtı:** M01–M08 -> **8/8 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F44 + F44-B1a (2026-11-23) — `6b9bda33` + `1366a30e` (`faz/F44-i18n-cekirdek-ve-katalog` + `faz/F44B-today-katalog`)
+
+- **Durum:** DONE (`OD-07` onaylı; `db: false`, üçüncü taraf i18n bağımlılığı yok). **Kapsanan bulgular:** DSA-11, TST-05, BLD-18.
+- **Özet değişiklikler:**
+  - `frontend/lib/date.ts` (`isoWeekNumber`), sıfır bağımlılıklı ICU alt kümesi ve önbellekli `'tr-TR'` `Intl` biçimlendiricileri içeren `frontend/lib/i18n.ts` (`t`, `pluralTr`, `fmt`, Türkçe iyelik/hal eki ve ünsüz yumuşaması koruyucuları), `frontend/lib/chartText.ts`, `frontend/locales/tr.json` (**487** sıralı anahtar) ve TypeScript AST tabanlı `i18nCatalogComplete.test.ts` tamlık bekçisi.
+  - İlk dalga 18 yüzeyin tamamı (`app/tabs/today.tsx`, `components/today/{TodayHero,MetricGrid,NextUpStrip,RecoveryRailCard,HabitSection,DayCloseTasks,DayCloseMood,DayCloseEcho}.tsx`, `lib/todayNarrative.ts`, `app/tabs/timeline.tsx`, `components/habits/HabitMgmtCard.tsx`, `components/HabitListView.tsx`, `app/tabs/focus.tsx`, `components/focus/{FocusSettingsModal,FocusReportModal,FocusSessionCompleteModal}.tsx`, `app/tabs/settings.tsx`, `components/settings/{SettingRow,AccountSection}.tsx`) kataloğa taşındı; `run-tests.js` (`ADERYTH — YAPISAL KAPI`, `maxBuffer: 67108864`, `rendersKey`, `147/147`) ve metin bekçileri katalog anahtarlarına bağlandı.
+- **Mutasyon kanıtı:** M01–M12 -> **12/12 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F48 (2026-11-23) — `a093fd17` (`faz/F48-test-altyapisi-ve-ratchet`)
+
+- **Durum:** DONE (`OD-07` onaylı; `@testing-library/react-native@13.3.3`, `yaml@^2.9.1`, `sql.js@1.15.2` devDependencies eklendi, prod ağacında `0` kritik açık). **Kapsanan bulgular:** TST-01, TST-04, TST-06..TST-11, TST-14, TST-17..TST-20, BLD-15, BLD-16, DOC-01.
+- **Özet değişiklikler:**
+  - RNTL test koşum takımı (`__tests__/helpers/renderWithProviders.tsx`) ve 7 Wave-1 UI test göçü (`todayScreen.test.tsx` `act()` uyarıları sıfırlandı, `jest.afterEnv.js` + `actWarningDebt.ts`); gerçek WASM SQLite motorlu `sqliteAdapter.ts` (`sql.js`), `secureStoreFake.ts` ve `unmockedNativeModule.ts`.
+  - `jest.config.js` (`passWithNoTests` kaldırıldı, `clearMocks: true`, `setupFilesAfterEnv`, 5 kritik modülde `collectCoverageFrom` + ölçülen taban `coverageThreshold`), `.github/workflows/ci.yml` (`--coverage`, `Test count floor -ge 462`, 3 DST bölgeli `tz-matrix`), `ciWorkflowStructure.test.ts` (gerçek YAML ayrıştırıcılı CI bekçisi), `compilerLintRatchet.test.ts` + `eslint-suppressions.json` (`BASELINE_TOTAL = 192`), `moduleTestCoverageMap.test.ts`, `testDebtRatchets.test.ts`, `migrationStatusConsistency.test.ts` ve `todayBootstrapContract.test.ts`.
+- **Mutasyon kanıtı:** M01–M10 -> **10/10 KILLED** (`sha256` geri yükleme doğrulandı).
+
+### F49 evidence (2026-11-24) — `d64e9bc3` (`F49` Web Playwright E2E Kalite Kapısı)
+
+- **Durum:** DONE (`@playwright/test@1.65.1`; `db: false`, hiçbir ertelenmiş `featureGates.ts` bayrağı açılmadı; Maestro / gerçek cihaz E2E `OD-12`'de kayıtlı). **Kapsanan bulgular:** GAP2-04, GAP2-12, BLD-05, BLD-19.
+- **E1 keşif çıktısı ve derleme kanıtı:**
+  - Hermetik web derlemesi (`EXPO_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 EXPO_PUBLIC_SUPABASE_ANON_KEY=e2e-anon-key npx expo export --platform web`): `exit=0`, `2886` modül, `dist/_expo/static/js/web/entry-*.js` (`6.3 MB`) + `fetch-*.js` (`770 B`) + `204` varlık; `127.0.0.1:54321` satır içi gömülmesi `dist/_expo/static/js/web/entry-*.js` içinde doğrulandı (`sqliteDriver.ts` F00 sınırı korundu, `localReadCache.ts` `WEB CONTRACT` başlığı eklendi, WASM/Worker hatası yok).
+  - `tsconfig.ci.json` paritesi: `types/expo.d.ts` (`/// <reference types="expo/types" />`) izlemeye alındı, `expo-env.d.ts` `exclude` listesine eklendi; `expo-env.d.ts` varken (`exit=0`) ve geçici olarak kaldırıldığında (`exit=0`) özdeş tip denetimi kanıtlandı (`ciTsconfigParity.test.ts`).
+  - Rota sabitleri ve web paket incelemesi: `routeLiterals.test.ts` (`>= 60` üretim rotası `app/` altında çözülür) ve `webBundleImports.test.ts` + `fixtures/webImportReview.json` (`99` incelenen native/plugin içe aktarıcı, `app.json` `expo.web.lang === "tr"`).
+- **E3/E4 `unhandled()` geçmişi ve çalışma zamanında yakalanıp düzeltilen 3 gerçek web kusuru:**
+  - İlk duman koşusunda yakalanan emülatör/ağ sözleşmesi farkları (`unhandled` geçmişi -> nihai `[]`): (1) `habitRepository.fetchHabits` `.not('status', 'eq', 'archived')` sorgusu için PostgREST `not.<op>` (`status=not.eq.archived`) desteği eklendi; (2) `pagedSelect.selectAllPages` için HTTP `Range` (`0-499`) ve `Prefer: resolution=ignore-duplicates` (`willpower_state`) desteği eklendi; (3) RPC adları `set_profile_time_zone` ve `get_or_init_subscription` olarak hizalandı.
+  - Playwright E2E'nin gerçek Chromium çalışma zamanında yakalayıp kapattığı 3 üretim kusuru:
+    1. `components/today/HabitSection.tsx`: `react-native-web` 0.21 `createDOMProps` `accessibilityState.checked` yerine yalnız `aria-checked` okuduğundan alışkanlık satırına `aria-checked={done}` eklendi (`false -> true` geçişi ekran okuyucu ağacında doğrulandı).
+    2. `components/ui/DialogHost.tsx`: fade animasyonu sırasında odak modal dışındayken `Escape` tuşunun diyaloğu kapatması için web `window` `keydown` dinleyicisi eklendi.
+    3. `services/localBackupService.ts`: paylaşımlı tarayıcı `window.localStorage` içine düz metin tam hesap yedeği yazılmaması (`Platform.OS === 'web'` koruması) ve çıkış sonrası uçuş içi yazmayı önleyen `accountEpoch()` kontrolü eklendi.
+- **Playwright duman ve görsel QA kanıtı:**
+  - `mobile-375` + `reduced-motion-375`: **17/17 aktif test PASS** (`1` kasıtlı skip, `52.6s`, `exit=0`), her test sonunda `blocked = []`, `pageErrors = []`, `nativeDialogs = []`, `emulator.unhandled() = []`.
+  - `tablet-768` + `desktop-1366`: **16/16 aktif test PASS** (`2` kasıtlı skip, `exit=0`).
+  - Görsel QA ve erişilebilirlik: `375x812` (`mobile-375`), `768x1024` (`tablet-768`) ve `1366x900` (`desktop-1366`) görünüm boyutlarında Giriş, Bugün, Ayarlar ve Onay Diyaloğu ekran görüntüleri (`f49_qa_<viewport>_<surface>.png`) üretildi; `320x640` yeniden akış ve Chromium `document.body.style.zoom = '2'` (`%200` yakınlaştırma) yatay taşmasız (`scrollWidth <= innerWidth + 2`) doğrulandı; tüm E2E seçicileri `getByRole` / `getByLabel` üzerinden ekran okuyucu ağacını doğruladı.
+  - CI işi: `.github/workflows/ci.yml` içine 40-hex SHA sabitli `web-e2e` işi eklendi (`ciGatesWired.test.ts` + `ciWorkflowStructure.test.ts` yeşil; ilk uzak GitHub Actions koşusu `OD-21` push adımında sahipte).
+- **Mutasyon tablosu (`M1..M8` — tümü bayt-bayt geri yüklendi ve son temiz E2E koşusu `17/17` yeşil doğrulandı):**
+  - `M1` (`app/_layout.tsx` `<DialogHost />` silindi) -> Playwright duman test 4 KIRMIZI (`exit=1`) — **KILLED**.
+  - `M2` (`lib/accountScope.ts` `habit`/`todayBootstrap` sıfırlaması atlandı) -> Playwright duman test 6 KIRMIZI (`exit=1`) — **KILLED**.
+  - `M3` (`services/__m3_unreviewed_sqlite.ts` incelenmemiş `expo-sqlite` içe aktarımı) -> `webBundleImports.test.ts` KIRMIZI (`exit=1`) — **KILLED**.
+  - `M4` (`app/screens/notes.tsx` yeniden adlandırıldı) -> `routeLiterals.test.ts` KIRMIZI (`exit=1`) — **KILLED**.
+  - `M5` (`ci.yml` `web-e2e` `continue-on-error: true`) -> `ciWorkflowStructure.test.ts` KIRMIZI (`exit=1`) — **KILLED**.
+  - `M6` (`frontend/types/expo.d.ts` silindi) -> `ciTsconfigParity.test.ts` KIRMIZI (`exit=1`) — **KILLED**.
+  - `M7` (`app/(auth)/login.tsx` dış `fonts.googleapis.com` isteği) -> Playwright duman test 1 `blocked` KIRMIZI (`exit=1`) — **KILLED**.
+  - `M8` (`app.json` `web.lang` silindi) -> `webBundleImports.test.ts` KIRMIZI (`exit=1`) VE Playwright duman test 1 KIRMIZI (`exit=1`) — **KILLED**.
+
+### Wave 11 Seri Birleştirme ve Kapanış Kapısı (2026-11-24 — Tüm Onaylı Yol Haritası Tamamlandı)
+
+- **Birleştirilen fazlar:** `F37` (`cd724ca7`), `F44` (`6b9bda33`), `F48` (`a093fd17`), `F44-B1a` (`1366a30e` / `84e6838d`), `F49` (`d64e9bc3`).
+- **Aşağı çekilen monoton tavanlar ve kilitlenen eşikler:**
+  - `designTokensRatchet`: `FONT_SIZE_LITERAL: 934 -> 926` (`-8`), `SPACING_LITERAL: 1374 -> 1366` (`-8`), `STATIC_COLORS_IMPORTERS: 111 -> 110` (`-1`).
+  - `testDebt.baseline.json` (`turkishCopyAssertions` düşüşü), `untestedModules.baseline.json` (`F37`/`F44`/`F49` yeni testli modülleri), `ci.yml` `Test count floor` (`451 -> 462`), `run-tz-matrix.js` (`15 -> 17` paket × 4 bölge = **68/68**) ve `jest.config.js` 5 kritik modül `coverageThreshold` tabanları (`lines: 95..100%`, `branches: 86..94%`) kilitlendi.
+- **Nihai seri kapılar:** `typecheck:ci` `exit=0`; `lint:ci` `exit=0` (0 uyarı); `node run-tests.js` **147/147** `exit=0`; 4-bölge `test:tz` **68/68** `exit=0`; tam `jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB --coverage` **487/487 suite · 5783/5783 test** yeşil (taban `F07` 289/4230'dan **+198 suite, +1553 test**); Playwright Web E2E (`mobile-375`, `reduced-motion-375`, `tablet-768`, `desktop-1366`) yeşil; `expo-doctor` `exit=0`; Deno 2 Edge `check` + `test` `exit=0`; Wave 11 toplam mutasyon **38/38 KILLED** (Wave `0–11` kümülatif **343/343 KILLED — %100**); `git diff --check` `exit=0`.

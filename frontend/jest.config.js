@@ -43,4 +43,11 @@ module.exports = {
   ],
   coverageReporters: ['text-summary', 'json-summary'],
   coverageDirectory: '<rootDir>/coverage',
+  coverageThreshold: {
+    './lib/date.ts': { lines: 98, functions: 100, statements: 97, branches: 94 },
+    './lib/habitSchedule.ts': { lines: 100, functions: 100, statements: 97, branches: 94 },
+    './lib/outbox.ts': { lines: 95, functions: 96, statements: 95, branches: 86 },
+    './services/outboxRunner.ts': { lines: 100, functions: 100, statements: 97, branches: 94 },
+    './repositories/shared.ts': { lines: 98, functions: 100, statements: 90, branches: 87 },
+  },
 };

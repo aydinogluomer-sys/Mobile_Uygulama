@@ -139,6 +139,8 @@ function makeHabit(id: string, name: string): Habit {
 }
 
 describe('staleResponseGuards — F18 store consistency', () => {
+  jest.setTimeout(15_000);
+
   beforeEach(async () => {
     jest.clearAllMocks();
     mockSessionUserId = 'u1';
@@ -485,10 +487,16 @@ describe('staleResponseGuards — F18 store consistency', () => {
       const g1 = deferred<{ ok: true; data: { rows: Goal[]; nextCursor: null; hasMore: boolean } }>();
       const g2 = deferred<{ ok: true; data: { rows: Goal[]; nextCursor: null; hasMore: boolean } }>();
 
-      mockFetchGoalsPage.mockImplementationOnce(() => g1.promise).mockImplementationOnce(() => g2.promise);
+      const g1Started = deferred<void>();
+      mockFetchGoalsPage
+        .mockImplementationOnce(() => {
+          g1Started.resolve();
+          return g1.promise;
+        })
+        .mockImplementationOnce(() => g2.promise);
 
       const p1 = useGoalStore.getState().loadGoals();
-      await new Promise((r) => setTimeout(r, 0));
+      await g1Started.promise;
       const p2 = useGoalStore.getState().loadGoals();
 
       const freshGoal: Goal = {
