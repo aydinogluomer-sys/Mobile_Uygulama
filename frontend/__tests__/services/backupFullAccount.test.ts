@@ -85,7 +85,9 @@ describe('export', () => {
 
   it('device data: this account\'s settings and local data, never sessions, queues or other accounts', async () => {
     await AsyncStorage.multiSet([
-      ['moods.v1.u1', JSON.stringify({ v: 1, checkins: [{ id: 'c' }] })],
+      ['moods.v1.u1', JSON.stringify({ v: 1, checkins: [{ id: 'c', energy: 'low' }] })],
+      ['aderyth:time_capsules:v1:u1', JSON.stringify({ v: 1, items: [{ id: 'tc1', text: 'Not', day: '2026-10-07', createdAt: '2026-10-07T09:00:00.000Z' }] })],
+      ['aderyth:time_capsules:v1:u2', JSON.stringify({ v: 1, items: [{ id: 'tc2', text: 'Başka hesap', day: '2026-10-07', createdAt: '2026-10-07T09:00:00.000Z' }] })],
       ['routine.v1.u1', JSON.stringify({ v: 1, history: [] })],
       // F04: focus settings are per user; the old unscoped key and another account's key stay out
       ['focus.settings.v1.u1', JSON.stringify({ work: 25 })],
@@ -100,7 +102,7 @@ describe('export', () => {
       ['focus.session.v1.u1', '{}'],
     ]);
     const b = await buildBackup(new Date(), { userId: 'u1' });
-    expect(b.device.map((d) => d.key)).toEqual(['focus.settings.v1.u1', 'journal.draft.v1.u1.2026-10-08', 'moods.v1.u1', 'routine.v1.u1']);
+    expect(b.device.map((d) => d.key)).toEqual(['aderyth:time_capsules:v1:u1', 'focus.settings.v1.u1', 'journal.draft.v1.u1.2026-10-08', 'moods.v1.u1', 'routine.v1.u1']);
     expect(JSON.stringify(b)).not.toMatch(/SECRET/);
   });
 });

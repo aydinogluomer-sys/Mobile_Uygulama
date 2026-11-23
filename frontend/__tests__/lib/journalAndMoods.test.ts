@@ -8,6 +8,7 @@ import {
 } from '../../lib/journalText';
 import {
   BUILT_IN_MOODS, legacyMoodId, validateDefinition, editDefinition, makeCheckin, checkinLabel, dailyMoods, allMoods,
+  latestEnergyOn, lowEnergySuggested, withEnergy,
   type MoodDefinition,
 } from '../../lib/moods';
 import { moodHabitRelation, relationSentence, MIN_DAYS, MIN_PER_GROUP } from '../../lib/moodHabitRelation';
@@ -86,6 +87,30 @@ describe('R07.02 — moods with identity', () => {
     const out = dailyMoods([k('2026-10-07', 2), k('2026-10-07', 4)], [{ date: '2026-10-07', mood: 1 }, { date: '2026-10-06', mood: 5 }]);
     expect(out.find((d) => d.date === '2026-10-07')?.mood).toBe(3);
     expect(out.find((d) => d.date === '2026-10-06')?.mood).toBe(5);
+  });
+  it('F37 — latestEnergyOn picks newest energized check-in of that day; lowEnergySuggested & dailyMoods behave cleanly', () => {
+    const cLowEarly = makeCheckin(custom, { id: 'e1', at: new Date('2026-10-07T08:00:00.000Z'), day: '2026-10-07', intensity: 2, energy: 'low' });
+    const cNoEnergyLater = makeCheckin(custom, { id: 'e2', at: new Date('2026-10-07T11:00:00.000Z'), day: '2026-10-07', intensity: 2 });
+    const cHighLater = makeCheckin(custom, { id: 'e3', at: new Date('2026-10-07T15:00:00.000Z'), day: '2026-10-07', intensity: 2, energy: 'high' });
+    const cOtherDayLow = makeCheckin(custom, { id: 'e4', at: new Date('2026-10-06T20:00:00.000Z'), day: '2026-10-06', intensity: 2, energy: 'low' });
+
+    // Newer check-in without energy does not erase earlier energy on the same day
+    expect(latestEnergyOn([cNoEnergyLater, cLowEarly], '2026-10-07')).toBe('low');
+    expect(lowEnergySuggested([cNoEnergyLater, cLowEarly], '2026-10-07')).toBe(true);
+
+    // Later high energy overrides earlier low energy regardless of array order
+    expect(latestEnergyOn([cLowEarly, cHighLater, cNoEnergyLater], '2026-10-07')).toBe('high');
+    expect(lowEnergySuggested([cLowEarly, cHighLater, cNoEnergyLater], '2026-10-07')).toBe(false);
+
+    // Other day's low energy or no energy -> false
+    expect(lowEnergySuggested([cOtherDayLow, cNoEnergyLater], '2026-10-07')).toBe(false);
+    expect(lowEnergySuggested([], '2026-10-07')).toBe(false);
+
+    // withEnergy(c, null) strips energy without mutating input; dailyMoods ignores energy
+    const stripped = withEnergy(cLowEarly, null);
+    expect('energy' in stripped).toBe(false);
+    expect(cLowEarly.energy).toBe('low');
+    expect(dailyMoods([cLowEarly, cHighLater], [])).toEqual(dailyMoods([stripped, withEnergy(cHighLater, null)], []));
   });
 });
 

@@ -217,4 +217,30 @@ describe('F04 (SYN-07, SYN-08): deletion goes through the account registry', () 
     expect(keys).not.toContain(dayCloseKey('u1'));
     expect(keys).toEqual(['app_theme_dark']);
   });
+
+  it('F37: sweeps aderyth:time_capsules:v1:<uid> and moods.v1.<uid> (with energy) on confirmed deletion and keeps them when refused', async () => {
+    await AsyncStorage.setItem(
+      'aderyth:time_capsules:v1:u1',
+      JSON.stringify({ v: 1, items: [{ id: 'c1', text: 'Sabret', day: '2026-11-01', createdAt: '2026-11-01T10:00:00.000Z' }] }),
+    );
+    await AsyncStorage.setItem(
+      'moods.v1.u1',
+      JSON.stringify({ v: 1, definitions: [], checkins: [{ id: 'm1', at: '2026-11-02T09:00:00.000Z', day: '2026-11-02', moodId: 'builtin-2', label: 'Yorgun', valence: 2, intensity: 2, energy: 'low' }] }),
+    );
+    await AsyncStorage.setItem('app_theme_dark', '1');
+
+    // Negative: server refuses deletion -> local capsule and mood keys remain intact
+    mockAuth.invokeOk = false;
+    expect((await deleteAccount()).ok).toBe(false);
+    expect(await AsyncStorage.getItem('aderyth:time_capsules:v1:u1')).not.toBeNull();
+    expect(await AsyncStorage.getItem('moods.v1.u1')).not.toBeNull();
+
+    // Positive: server confirms deletion -> both keys are removed
+    mockAuth.invokeOk = true;
+    expect((await deleteAccount()).ok).toBe(true);
+    const keys = await AsyncStorage.getAllKeys();
+    expect(keys).not.toContain('aderyth:time_capsules:v1:u1');
+    expect(keys).not.toContain('moods.v1.u1');
+    expect(keys).toEqual(['app_theme_dark']);
+  });
 });

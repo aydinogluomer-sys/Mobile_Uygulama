@@ -40,6 +40,8 @@ import { completePlanWithMakeup, makeupNeedsValue, makeupSuggestedValue } from '
 // the state then comes from the value, exactly as the timeline does (R01.03-a).
 import { measuredEntryFor } from '../../services/habitLogService';
 import MeasurableInputModal from '../../components/MeasurableInputModal';
+import { useTimeCapsules } from '../../hooks/useTimeCapsules';
+import TimeCapsuleCard from '../../components/recovery/TimeCapsuleCard';
 
 // Telafi gününü hesaplayan hızlı seçenekler (date-picker dep yok)
 function nextSaturdayOffset(): number {
@@ -77,6 +79,9 @@ export default function RecoveryScreen() {
   const { habits, fetchHabits } = useHabitStore();
   const { fetchLogsForDate, logHabit } = useLogStore();
   const { plans, fetchPlans, addPlan, skipPlan, deletePlan, planForHabit, recoveryOptionsFor } = useRecoveryStore();
+  const caps = useTimeCapsules();
+  const [capsuleLater, setCapsuleLater] = useState(false);
+  const eligibleCapsuleItem = caps.eligible;
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [streaks, setStreaks] = useState<StreakMap>({});
@@ -484,6 +489,18 @@ export default function RecoveryScreen() {
 
         </View>
 
+        {eligibleCapsuleItem && !capsuleLater && (
+          <View style={s.capsuleWrap}>
+            <TimeCapsuleCard
+              capsule={eligibleCapsuleItem}
+              onRead={() => {
+                void caps.open(eligibleCapsuleItem.id);
+              }}
+              onLater={() => setCapsuleLater(true)}
+            />
+          </View>
+        )}
+
         {/* Özet şerit */}
         <View style={s.summaryStrip}>
           <Card padding="md" style={s.stripCard}>
@@ -844,6 +861,7 @@ const s = StyleSheet.create({
   content: { padding: space.xl, paddingBottom: space.hh },
 
   hero: { alignItems: 'center', gap: 8, marginBottom: space.lg },
+  capsuleWrap: { marginBottom: space.lg },
   heroTitle: { ...font.title, color: colors.text },
   heroSub: { ...font.bodySm, color: colors.textFaint, textAlign: 'center', maxWidth: 280, lineHeight: 19 },
 
