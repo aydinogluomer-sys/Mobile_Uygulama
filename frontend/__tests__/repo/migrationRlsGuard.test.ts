@@ -16,6 +16,7 @@
  */
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { readMigrationStatuses } from '../helpers/migrationStatus';
 
 const DIR = join(__dirname, '..', '..', '..', 'supabase', 'migrations');
 const README = readFileSync(join(DIR, 'README.md'), 'utf8');
@@ -96,9 +97,17 @@ it('the one exemption is a real, applied, pre-028 forward migration (it cannot g
   }
 });
 
-it.each(NEW)('%s is marked and listed NOT APPLIED', (f) => {
-  expect(readFileSync(join(DIR, f), 'utf8')).toMatch(/STATUS: WRITTEN, NOT APPLIED/);
-  expect(README).toContain(`\`${f}\` | **NOT APPLIED**`);
+// OD-07 / F48 C9: lifecycle consistency (NOT APPLIED vs APPLIED) is verified
+// against README.md and live_schema.sql by migrationStatusConsistency.test.ts
+// so applying 028+ never breaks this security guard.
+const STATUS_BY_FILE = new Map(
+  readMigrationStatuses(DIR, join(DIR, 'README.md')).map((s) => [s.file, s]),
+);
+it.each(NEW)('%s carries an explicit lifecycle status matching README.md', (f) => {
+  const s = STATUS_BY_FILE.get(f);
+  expect(s).toBeDefined();
+  expect(s?.header).not.toBe('UNMARKED');
+  expect(s?.header).toBe(s?.readmeRow);
 });
 
 // 036 and 040 (privilege hygiene) narrow access, which needs forms the blanket

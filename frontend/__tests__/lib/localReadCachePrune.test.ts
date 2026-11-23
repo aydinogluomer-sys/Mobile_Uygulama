@@ -1,98 +1,9 @@
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('expo-sqlite', () => require('../helpers/sqliteAdapter').createExpoSqliteModule());
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
-
-type StoredRow = {
-  user_id: string;
-  cache_key: string;
-  payload: string;
-  updated_at: number;
-};
-
-const mockSqliteState = {
-  rows: new Map<string, StoredRow>(),
-  failSelect: false,
-  openCalls: 0,
-};
-
-jest.mock('expo-sqlite', () => ({
-  openDatabaseAsync: jest.fn(async () => {
-    mockSqliteState.openCalls += 1;
-    return {
-      execAsync: jest.fn(async (sql: string) => {
-        if (/DELETE\s+FROM\s+read_cache\s*;?\s*$/i.test(sql.trim())) {
-          mockSqliteState.rows.clear();
-        }
-      }),
-      closeAsync: jest.fn(async () => undefined),
-      runAsync: jest.fn(async (sql: string, params: unknown[] = []) => {
-        if (/INSERT\s+OR\s+REPLACE\s+INTO\s+read_cache/i.test(sql)) {
-          const [user_id, cache_key, payload, updated_at] = params as [string, string, string, number];
-          mockSqliteState.rows.set(`${user_id}::${cache_key}`, { user_id, cache_key, payload, updated_at });
-          return { changes: 1, lastInsertRowId: 1 };
-        }
-        if (/DELETE\s+FROM\s+read_cache\s+WHERE\s+updated_at\s*<\s*\?\s+AND\s+user_id\s*=\s*\?/i.test(sql)) {
-          const [cutoff, user_id] = params as [number, string];
-          let changes = 0;
-          for (const [k, row] of mockSqliteState.rows.entries()) {
-            if (row.user_id === user_id && row.updated_at < cutoff) {
-              mockSqliteState.rows.delete(k);
-              changes += 1;
-            }
-          }
-          return { changes, lastInsertRowId: 0 };
-        }
-        if (/DELETE\s+FROM\s+read_cache\s+WHERE\s+substr\(cache_key/i.test(sql)) {
-          const len = params[0] as number;
-          const prefix = params[1] as string;
-          const user_id = params[2] as string;
-          const keep = params[6] as number;
-          const matching = [...mockSqliteState.rows.values()]
-            .filter((r) => r.user_id === user_id && r.cache_key.slice(0, len) === prefix)
-            .sort((a, b) => b.updated_at - a.updated_at);
-          const keepKeys = new Set(matching.slice(0, keep).map((r) => r.cache_key));
-          let changes = 0;
-          for (const r of matching) {
-            if (!keepKeys.has(r.cache_key)) {
-              mockSqliteState.rows.delete(`${user_id}::${r.cache_key}`);
-              changes += 1;
-            }
-          }
-          return { changes, lastInsertRowId: 0 };
-        }
-        if (/DELETE\s+FROM\s+read_cache\s+WHERE\s+user_id\s*=\s*\?\s+AND\s+cache_key\s*=\s*\?/i.test(sql)) {
-          const [user_id, cache_key] = params as [string, string];
-          return { changes: mockSqliteState.rows.delete(`${user_id}::${cache_key}`) ? 1 : 0, lastInsertRowId: 0 };
-        }
-        if (/DELETE\s+FROM\s+read_cache\s+WHERE\s+user_id\s*=\s*\?/i.test(sql)) {
-          const [user_id] = params as [string];
-          let changes = 0;
-          for (const [k, r] of mockSqliteState.rows.entries()) {
-            if (r.user_id === user_id) {
-              mockSqliteState.rows.delete(k);
-              changes += 1;
-            }
-          }
-          return { changes, lastInsertRowId: 0 };
-        }
-        return { changes: 0, lastInsertRowId: 0 };
-      }),
-      getFirstAsync: jest.fn(async (sql: string, params: unknown[] = []) => {
-        if (mockSqliteState.failSelect) throw new Error('sqlite read disabled');
-        if (/substr\(cache_key,\s*1,\s*\?\)\s*=\s*\?\s+ORDER\s+BY\s+updated_at\s+DESC\s+LIMIT\s+1/i.test(sql)) {
-          const [user_id, len, prefix] = params as [string, number, string];
-          const best = [...mockSqliteState.rows.values()]
-            .filter((r) => r.user_id === user_id && r.cache_key.slice(0, len) === prefix)
-            .sort((a, b) => b.updated_at - a.updated_at)[0];
-          return best ? { cache_key: best.cache_key, payload: best.payload, updated_at: best.updated_at } : null;
-        }
-        const [user_id, cache_key] = params as [string, string];
-        const hit = mockSqliteState.rows.get(`${user_id}::${cache_key}`);
-        return hit ? { payload: hit.payload, updated_at: hit.updated_at } : null;
-      }),
-    };
-  }),
-}));
-
 import {
   READ_CACHE_MEMORY_MAX,
   clearReadCacheMemory,
@@ -101,8 +12,11 @@ import {
   pruneReadCache,
   setCachedSnapshot,
 } from '../../lib/localReadCache';
+import type { ExpoSqliteFakeModule } from '../helpers/sqliteAdapter';
 
-describe('localReadCachePrune — SYN-21 & GAP2-12', () => {
+const sqliteFake = SQLite as unknown as ExpoSqliteFakeModule;
+
+describe('localReadCachePrune — SYN-21 & GAP2-12 (real sql.js engine)', () => {
   const originalOS = Platform.OS;
   let now = 1_700_000_000_000;
   let nowSpy: jest.SpyInstance<number, []>;
@@ -110,9 +24,8 @@ describe('localReadCachePrune — SYN-21 & GAP2-12', () => {
   beforeEach(async () => {
     clearReadCacheMemory();
     await AsyncStorage.clear();
-    mockSqliteState.rows.clear();
-    mockSqliteState.failSelect = false;
-    mockSqliteState.openCalls = 0;
+    sqliteFake.__resetForTests();
+    sqliteFake.openDatabaseAsync.mockClear();
     now = 1_700_000_000_000;
     nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
     Object.defineProperty(Platform, 'OS', { value: 'ios', configurable: true });
@@ -171,8 +84,8 @@ describe('localReadCachePrune — SYN-21 & GAP2-12', () => {
       await setCachedSnapshot('u1', `k-${i}`, { i });
     }
 
-    // Disable SQLite reads (and AsyncStorage has nothing because native write succeeded): only L1 answers
-    mockSqliteState.failSelect = true;
+    // Close & drop the underlying SQLite DB without clearing L1 memoryCache so only L1 can answer
+    sqliteFake.__resetForTests();
     expect(await getCachedSnapshot('u1', 'k-0')).toBeNull();
     expect(await getCachedSnapshot('u1', 'k-49')).toBeNull();
     expect((await getCachedSnapshot<{ i: number }>('u1', 'k-249'))?.data).toEqual({ i: 249 });
@@ -185,7 +98,7 @@ describe('localReadCachePrune — SYN-21 & GAP2-12', () => {
       now += 1_000;
       await setCachedSnapshot('u-web', `today_bootstrap:v1:2026-11-0${d}`, { d });
     }
-    expect(mockSqliteState.openCalls).toBe(0);
+    expect(sqliteFake.openDatabaseAsync).not.toHaveBeenCalled();
 
     await pruneReadCache('u-web', {
       maxAgeMs: 30 * 86_400_000,
@@ -197,7 +110,7 @@ describe('localReadCachePrune — SYN-21 & GAP2-12', () => {
     const latest = await getLatestSnapshot<{ d: number }>('u-web', 'today_bootstrap:v1:');
     expect(latest?.key).toBe('today_bootstrap:v1:2026-11-05');
     expect(latest?.data).toEqual({ d: 5 });
-    expect(mockSqliteState.openCalls).toBe(0);
+    expect(sqliteFake.openDatabaseAsync).not.toHaveBeenCalled();
   });
 
   it('loads expo-sqlite lazily on first native DB access rather than at module import time, and preserves native round-trip (negative case)', async () => {
@@ -206,14 +119,8 @@ describe('localReadCachePrune — SYN-21 & GAP2-12', () => {
     jest.resetModules();
     jest.doMock('expo-sqlite', () => {
       factoryEvaluated = true;
-      return {
-        openDatabaseAsync: jest.fn(async () => ({
-          execAsync: jest.fn(async () => undefined),
-          closeAsync: jest.fn(async () => undefined),
-          runAsync: jest.fn(async () => ({ changes: 1, lastInsertRowId: 1 })),
-          getFirstAsync: jest.fn(async () => ({ payload: '{"ok":true}', updated_at: 123 })),
-        })),
-      };
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require('../helpers/sqliteAdapter').createExpoSqliteModule();
     });
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports

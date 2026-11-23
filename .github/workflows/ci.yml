@@ -111,7 +111,10 @@ jobs:
       # reproducible in isolation. A hosted runner has more headroom, but the
       # same cliff is there and a gate that goes red at random is not a gate.
       - name: Unit tests (jest --ci)
-        run: npx jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB
+        run: npx jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB --coverage
+
+      - name: Test count floor (guards against a silently shrunken roots/testMatch)
+        run: test "$(npx jest --ci --listTests | wc -l)" -ge 451
 
       - name: Structural gate (run-tests.js)
         run: node run-tests.js
@@ -136,6 +139,36 @@ jobs:
 
       - name: Doctor
         run: npx expo-doctor
+
+  tz-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        zone: [America/New_York, Pacific/Auckland, UTC]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup Node (.nvmrc)
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Align npm with packageManager (npm@11.16.0)
+        run: npm install -g npm@11.16.0
+
+      - name: Install dependencies (npm ci)
+        run: npm ci
+
+      - name: Timezone matrix suites in ${{ matrix.zone }}
+        run: node scripts/run-tz-matrix.js ${{ matrix.zone }}
 
   edge-deno-verify:
     runs-on: ubuntu-latest

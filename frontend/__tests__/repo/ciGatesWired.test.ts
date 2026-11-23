@@ -60,7 +60,7 @@ export function parseCheckTaskTargets(checkCommand: string): string[] {
     .sort();
 }
 
-describe('Item #7, F08 & F21 (BLD-04, BLD-05, GAP2-04, EDG-10, BLD-06, TST-02) — CI/CD Hardening & Deno Task Parity', () => {
+describe('F08 & F21 (BLD-04, BLD-05, GAP2-04, EDG-10, BLD-06, TST-02) — CI/CD Hardening & Deno Task Parity', () => {
   const ci = readFileSync(CI_YML, 'utf8');
   const rel = readFileSync(RELEASE_YML, 'utf8');
 

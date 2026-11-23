@@ -13,17 +13,14 @@
  * for reasons (a wrong export shape, a hook-vs-class mistake) that only
  * rendering reveals.
  *
- * This is the first `.test.tsx` in the repo. It uses `react-test-renderer`,
- * which the toolchain already provides, rather than adding a component-testing
- * dependency for a single suite.
- *
  * React logs caught boundary errors to `console.error` by design; that noise is
  * silenced per-test so a genuine unexpected console error stays visible.
  */
+import React from 'react';
 import { Text } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
 import ErrorBoundary from '../../components/ui/ErrorBoundary';
 import { setCrashSink, type CrashReport } from '../../lib/crashReporting';
+import { renderWithProviders, screen, type RenderedScreen } from '../helpers/renderWithProviders';
 
 function Boom({ explode }: { explode: boolean }): React.ReactElement {
   if (explode) throw new Error('render exploded');
@@ -41,57 +38,45 @@ afterEach(() => {
   setCrashSink(null);
 });
 
-/**
- * All rendered text, flattened — the honest way to ask "what does the user
- * see?".
- *
- * Walks the serialised output rather than `root.findAllByType(Text)`: the
- * latter returns test INSTANCES whose `children` are more instances, not the
- * strings, so it silently yields `''` for every assertion — a helper that
- * makes every `toContain` fail and every `not.toContain` pass. That asymmetry
- * is worth the comment: the same bug in a suite full of negative assertions
- * would have gone green.
- */
-function textOf(tree: TestRenderer.ReactTestRenderer): string {
+function textOf(tree: RenderedScreen): string {
   const out: string[] = [];
-  const walk = (node: TestRenderer.ReactTestRendererJSON | string | null): void => {
+  const walk = (node: unknown): void => {
     if (node == null) return;
     if (typeof node === 'string') {
       out.push(node);
       return;
     }
-    (node.children ?? []).forEach(walk);
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (typeof node === 'object' && 'children' in (node as { children?: unknown })) {
+      const children = (node as { children?: unknown[] | null }).children;
+      (children ?? []).forEach(walk);
+    }
   };
-  const json = tree.toJSON();
-  (Array.isArray(json) ? json : [json]).forEach(walk);
+  walk(tree.toJSON());
   return out.join(' ');
 }
 
 describe('ErrorBoundary', () => {
   it('renders children untouched when nothing throws', () => {
-    // The counter-assertion: a boundary that always showed its fallback would
-    // pass every "catches the throw" test below.
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(
-        <ErrorBoundary>
-          <Boom explode={false} />
-        </ErrorBoundary>,
-      );
-    });
+    const tree = renderWithProviders(
+      <ErrorBoundary>
+        <Boom explode={false} />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText('alive')).toBeTruthy();
     expect(textOf(tree)).toContain('alive');
     expect(textOf(tree)).not.toContain('ters gitti');
   });
 
   it('catches a render throw and shows the fallback instead of unmounting', () => {
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(
-        <ErrorBoundary>
-          <Boom explode />
-        </ErrorBoundary>,
-      );
-    });
+    const tree = renderWithProviders(
+      <ErrorBoundary>
+        <Boom explode />
+      </ErrorBoundary>,
+    );
     const text = textOf(tree);
     expect(text).toContain('Bir şeyler ters gitti');
     expect(text).toContain('Tekrar dene');
@@ -101,13 +86,11 @@ describe('ErrorBoundary', () => {
   it('reports the caught error through the crash funnel', () => {
     const seen: CrashReport[] = [];
     setCrashSink((r) => seen.push(r));
-    act(() => {
-      TestRenderer.create(
-        <ErrorBoundary context="today">
-          <Boom explode />
-        </ErrorBoundary>,
-      );
-    });
+    renderWithProviders(
+      <ErrorBoundary context="today">
+        <Boom explode />
+      </ErrorBoundary>,
+    );
     expect(seen).toHaveLength(1);
     expect(seen[0].source).toBe('render');
     expect(seen[0].context).toBe('today');
@@ -115,60 +98,43 @@ describe('ErrorBoundary', () => {
   });
 
   it('recovers when resetKeys change — the boundary must not latch forever', () => {
-    // The failure this guards against is worse than the crash: navigate away
-    // and back, and a latched boundary still shows the fallback because the
-    // boundary above the navigator never re-rendered.
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(
-        <ErrorBoundary resetKeys={['a']}>
-          <Boom explode />
-        </ErrorBoundary>,
-      );
-    });
+    const tree = renderWithProviders(
+      <ErrorBoundary resetKeys={['a']}>
+        <Boom explode />
+      </ErrorBoundary>,
+    );
     expect(textOf(tree)).toContain('ters gitti');
 
-    act(() => {
-      tree.update(
-        <ErrorBoundary resetKeys={['b']}>
-          <Boom explode={false} />
-        </ErrorBoundary>,
-      );
-    });
+    tree.rerender(
+      <ErrorBoundary resetKeys={['b']}>
+        <Boom explode={false} />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText('alive')).toBeTruthy();
     expect(textOf(tree)).toContain('alive');
   });
 
   it('does NOT reset when resetKeys are unchanged', () => {
-    // Without this, a `componentDidUpdate` that cleared the error on every
-    // update would pass the recovery test above and then re-render the broken
-    // subtree on every parent render — an infinite throw/catch loop.
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(
-        <ErrorBoundary resetKeys={['a']}>
-          <Boom explode />
-        </ErrorBoundary>,
-      );
-    });
-    act(() => {
-      tree.update(
-        <ErrorBoundary resetKeys={['a']}>
-          <Boom explode={false} />
-        </ErrorBoundary>,
-      );
-    });
+    const tree = renderWithProviders(
+      <ErrorBoundary resetKeys={['a']}>
+        <Boom explode />
+      </ErrorBoundary>,
+    );
+    tree.rerender(
+      <ErrorBoundary resetKeys={['a']}>
+        <Boom explode={false} />
+      </ErrorBoundary>,
+    );
     expect(textOf(tree)).toContain('ters gitti');
   });
 
   it('renders a custom fallback when one is supplied', () => {
-    let tree!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      tree = TestRenderer.create(
-        <ErrorBoundary fallback={() => <Text>özel yedek</Text>}>
-          <Boom explode />
-        </ErrorBoundary>,
-      );
-    });
+    const tree = renderWithProviders(
+      <ErrorBoundary fallback={() => <Text>özel yedek</Text>}>
+        <Boom explode />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByText('özel yedek')).toBeTruthy();
     expect(textOf(tree)).toContain('özel yedek');
   });
 });

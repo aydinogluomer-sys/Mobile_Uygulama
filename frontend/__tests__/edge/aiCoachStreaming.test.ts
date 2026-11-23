@@ -36,7 +36,7 @@ function makeSseResponse(chunks: string[], status = 200): Response {
   });
 }
 
-describe('Item #6 & F21 (TST-13) — AI Coach SSE Token Streaming, Byte-Offset Fuzzing & Wire Contract', () => {
+describe('F21 (TST-13) — AI Coach SSE Token Streaming, Byte-Offset Fuzzing & Wire Contract', () => {
   const originalFetch = global.fetch;
 
   afterEach(() => {

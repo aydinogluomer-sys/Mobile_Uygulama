@@ -19,6 +19,9 @@
  * Red baseline (constitution B.4): this file was run against the pre-F06 `lib/authStorage.ts`
  * first and recorded red (see docs/implementation-v3/STATE.md, F06).
  */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('expo-secure-store', () => require('../helpers/secureStoreFake').createSecureStoreModule());
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';

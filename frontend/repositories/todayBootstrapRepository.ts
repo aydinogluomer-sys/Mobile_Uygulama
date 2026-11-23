@@ -14,6 +14,24 @@ import type { Task } from '../lib/taskTypes';
 import type { ReviewLogRow } from './habitLogRepository';
 import { currentUserId, isTransportFailure } from './shared';
 
+export const TODAY_BOOTSTRAP_KEYS = [
+  'today',
+  'habits',
+  'today_logs',
+  'period_logs',
+  'tasks',
+  'willpower',
+  'recovery_plans',
+  'time_off_available',
+  'pauses',
+  'goal_versions',
+  'checklist_available',
+  'checklist_items',
+  'checklist_checks',
+] as const;
+
+export type TodayBootstrapKey = (typeof TODAY_BOOTSTRAP_KEYS)[number];
+
 export type TodayBootstrapPayload = {
   userId: string;
   today: string;
