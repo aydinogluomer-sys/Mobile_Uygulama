@@ -1,7 +1,15 @@
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('expo-secure-store', () => require('../helpers/secureStoreFake').createSecureStoreModule());
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
-import { __resetAuthStorageForTests, authStorage, splitIntoUtf8Chunks, toSecureKey } from '../../lib/authStorage';
+import {
+  __resetAuthStorageForTests,
+  authStorage,
+  splitIntoUtf8Chunks,
+  toSecureKey,
+} from '../../lib/authStorage';
 
 // F06 (SYN-09): the expectations follow the atomic schema -- a pointer (`<key>.__ptr`) written last,
 // the parts of a generation (`<key>.__g<N>_<i>`), the previous generation kept as a fallback. The
@@ -34,9 +42,11 @@ describe('authStorage (hardware-backed SecureStore adapter)', () => {
     const calls = (SecureStore.setItemAsync as jest.Mock).mock.calls;
     expect(calls.length).toBeGreaterThan(0);
     for (const [, value, options] of calls) {
-      expect(options).toEqual(expect.objectContaining({
-        keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-      }));
+      expect(options).toEqual(
+        expect.objectContaining({
+          keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+        }),
+      );
       expect(utf8(String(value))).toBeLessThanOrEqual(2048);
     }
     expect(await SecureStore.getItemAsync(`${key}.__ptr`)).not.toBeNull();
@@ -115,6 +125,19 @@ describe('authStorage (hardware-backed SecureStore adapter)', () => {
     expect(await authStorage.getItem(key)).toBe('web-session');
 
     await authStorage.removeItem(key);
-    expect(await authStorage.getItem(key)).toBeNull();
+    expect(await AsyncStorage.getItem(key)).toBeNull();
+  });
+
+  it('(-) splitIntoUtf8Chunks never emits a >2048-byte chunk, and SecureStore rejects raw 2049-byte writes', async () => {
+    const adversarial = 'ğ🔥şİ'.repeat(800) + 'a'.repeat(2049);
+    const chunks = splitIntoUtf8Chunks(adversarial);
+    expect(chunks.length).toBeGreaterThan(2);
+    for (const chunk of chunks) {
+      expect(utf8(chunk)).toBeLessThanOrEqual(2048);
+    }
+
+    await expect(SecureStore.setItemAsync('raw.over.limit', 'x'.repeat(2049))).rejects.toThrow(
+      /larger than 2048 bytes/,
+    );
   });
 });

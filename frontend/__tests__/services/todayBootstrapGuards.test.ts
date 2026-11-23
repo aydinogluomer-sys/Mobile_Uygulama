@@ -1,41 +1,11 @@
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('expo-sqlite', () => require('../helpers/sqliteAdapter').createExpoSqliteModule());
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SQLite from 'expo-sqlite';
 import { resetAccountMemory } from '../../lib/accountScope';
 import * as localReadCache from '../../lib/localReadCache';
 import { coreOutbox } from '../../services/coreOutbox';
-
-jest.mock('expo-sqlite', () => {
-  const rows = new Map<string, { user_id: string; cache_key: string; payload: string; updated_at: number }>();
-  return {
-    openDatabaseAsync: jest.fn(async () => ({
-      execAsync: jest.fn(async (sql: string) => {
-        if (/DELETE\s+FROM\s+read_cache\s*;?\s*$/i.test(sql.trim())) rows.clear();
-      }),
-      closeAsync: jest.fn(async () => undefined),
-      runAsync: jest.fn(async (sql: string, params: unknown[] = []) => {
-        if (/INSERT\s+OR\s+REPLACE\s+INTO\s+read_cache/i.test(sql)) {
-          const [user_id, cache_key, payload, updated_at] = params as [string, string, string, number];
-          rows.set(`${user_id}::${cache_key}`, { user_id, cache_key, payload, updated_at });
-          return { changes: 1, lastInsertRowId: 1 };
-        }
-        return { changes: 0, lastInsertRowId: 0 };
-      }),
-      getFirstAsync: jest.fn(async (sql: string, params: unknown[] = []) => {
-        if (/substr\(cache_key,\s*1,\s*\?\)\s*=\s*\?\s+ORDER\s+BY\s+updated_at\s+DESC\s+LIMIT\s+1/i.test(sql)) {
-          const [user_id, len, prefix] = params as [string, number, string];
-          const best = [...rows.values()]
-            .filter((r) => r.user_id === user_id && r.cache_key.slice(0, len) === prefix)
-            .sort((a, b) => b.updated_at - a.updated_at)[0];
-          return best ? { cache_key: best.cache_key, payload: best.payload, updated_at: best.updated_at } : null;
-        }
-        const [user_id, cache_key] = params as [string, string];
-        const hit = rows.get(`${user_id}::${cache_key}`);
-        return hit ? { payload: hit.payload, updated_at: hit.updated_at } : null;
-      }),
-    })),
-    __resetForTests: () => rows.clear(),
-  };
-});
 
 function deferred<T>() {
   let resolve!: (v: T) => void;

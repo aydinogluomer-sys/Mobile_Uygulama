@@ -1,3 +1,6 @@
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('expo-sqlite', () => require('../helpers/sqliteAdapter').createExpoSqliteModule());
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SQLite from 'expo-sqlite';
 import { createMockDb, makeSupabaseMock, type MockDb } from '../helpers/supabaseMock';

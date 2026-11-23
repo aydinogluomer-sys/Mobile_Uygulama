@@ -16,8 +16,18 @@ import {
   VALID_DIFFICULTIES,
 } from '../../lib/routineProposal';
 import { edgeSource } from '../helpers/edgeSource';
+import { stripComments } from '../helpers/sourceText';
 
-describe('Item #6 & F21 — Coach Contract Schema Single-Source-of-Truth & SDK Pinning', () => {
+export function isSupportedAnthropicSdkSpec(spec: string | undefined): boolean {
+  if (!spec) return false;
+  const m = /^npm:@anthropic-ai\/sdk@(\d+)\.(\d+)\.(\d+)$/.exec(spec);
+  if (!m) return false;
+  const major = Number(m[1]);
+  const minor = Number(m[2]);
+  return major >= 1 || (major === 0 && minor >= 30);
+}
+
+describe('F21 — Coach Contract Schema Single-Source-of-Truth & SDK Pinning', () => {
   it('shared _shared/coachContractSchema bounds match client routineProposal.ts and coachActionsV2.ts byte-for-byte', () => {
     expect(COACH_SCHEMA_BOUNDS.MAX_HABIT_NAME_LENGTH).toBe(MAX_HABIT_NAME_LENGTH);
     expect(COACH_SCHEMA_BOUNDS.MAX_TITLE_LENGTH).toBe(MAX_TITLE_LENGTH);
@@ -38,15 +48,22 @@ describe('Item #6 & F21 — Coach Contract Schema Single-Source-of-Truth & SDK P
     expect(COACH_HABIT_SCHEMA.properties.estimated_minutes.maximum).toBe(MAX_ESTIMATED_MINUTES);
   });
 
-  it('generate-routine imports shared schema & sseFrames and deno.json pins @anthropic-ai/sdk', () => {
-    const edgeSrc = edgeSource('generate-routine');
+  it('generate-routine imports shared schema & sseFrames and deno.json pins @anthropic-ai/sdk (>= 0.30.0)', () => {
+    const edgeCode = stripComments(edgeSource('generate-routine'));
     const denoCfg = JSON.parse(
       readFileSync(join(__dirname, '..', '..', '..', 'supabase', 'functions', 'deno.json'), 'utf8'),
     ) as { imports?: Record<string, string> };
 
-    expect(edgeSrc).toContain("from '../_shared/coachContractSchema.ts'");
-    expect(edgeSrc).toContain("from '../_shared/sseFrames.ts'");
-    expect(denoCfg.imports?.['@anthropic-ai/sdk']).toMatch(/^npm:@anthropic-ai\/sdk@0\.3\d\.\d+$/);
-    expect(edgeSrc).toContain('text/event-stream');
+    expect(edgeCode).toContain("from '../_shared/coachContractSchema.ts'");
+    expect(edgeCode).toContain("from '../_shared/sseFrames.ts'");
+    expect(isSupportedAnthropicSdkSpec(denoCfg.imports?.['@anthropic-ai/sdk'])).toBe(true);
+    expect(edgeCode).toContain('text/event-stream');
+
+    // Benign minor/major upgrades stay green; unpinned or <0.30 specs fail
+    expect(isSupportedAnthropicSdkSpec('npm:@anthropic-ai/sdk@0.40.0')).toBe(true);
+    expect(isSupportedAnthropicSdkSpec('npm:@anthropic-ai/sdk@1.0.0')).toBe(true);
+    expect(isSupportedAnthropicSdkSpec('npm:@anthropic-ai/sdk@0.29.9')).toBe(false);
+    expect(isSupportedAnthropicSdkSpec('npm:@anthropic-ai/sdk@^0.39.0')).toBe(false);
+    expect(stripComments('// text/event-stream\nconst x = 1;')).not.toContain('text/event-stream');
   });
 });

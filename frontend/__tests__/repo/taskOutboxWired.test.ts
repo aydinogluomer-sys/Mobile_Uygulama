@@ -69,9 +69,13 @@ describe('R02 — visibility', () => {
 describe('R02 — repository backstop', () => {
   it('each outbox write refuses a session that is not the command\'s account', () => {
     const repo = code('repositories/taskRepository.ts');
-    expect((repo.match(/const wrong = wrongAccount\(expectedUserId, u\.userId\);\s*if \(wrong\) return wrong;/g) ?? []).length).toBe(3);
+    const expectedFns = repo.match(/export (?:async )?function \w+\([^)]*expectedUserId/g) ?? [];
+    expect(expectedFns.length).toBeGreaterThan(0);
+    const guardSites =
+      repo.match(/const wrong = wrongAccount\(expectedUserId, u\.userId\);\s*if \(wrong\) return wrong;/g) ?? [];
+    expect(guardSites).toHaveLength(expectedFns.length);
     const svc = code('services/taskService.ts');
-    expect((svc.match(/cmd\.userId\)/g) ?? []).length).toBe(3);
+    expect(svc.match(/cmd\.userId\)/g) ?? []).toHaveLength(expectedFns.length);
   });
 });
 

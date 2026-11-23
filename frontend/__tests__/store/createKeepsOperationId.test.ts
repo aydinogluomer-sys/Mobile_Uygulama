@@ -6,6 +6,7 @@
  * SAME id and replays into a single server row via 23505 recovery.
  */
 /* eslint-disable @typescript-eslint/no-require-imports -- jest.mock factories are hoisted above imports */
+jest.mock('expo-sqlite', () => require('../helpers/sqliteAdapter').createExpoSqliteModule());
 jest.mock('../../lib/session', () => require('../helpers/fakeCoreServer').session);
 jest.mock('../../repositories/goalRepository', () => require('../helpers/fakeCoreServer').goalRepo);
 jest.mock('../../repositories/projectRepository', () => require('../helpers/fakeCoreServer').projectRepo);

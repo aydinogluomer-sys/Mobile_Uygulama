@@ -4,7 +4,6 @@
  */
 import React from 'react';
 import { FlatList, TextInput } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
 
 const mockStoredRecents: { raw: string | null } = { raw: null };
 
@@ -59,19 +58,23 @@ jest.mock('../../store/drawerStore', () => ({
 import CommandPalette from '../../components/CommandPalette';
 import { routeKeyOf, type DestinationHref } from '../../lib/destinations';
 import { useCommandStore } from '../../store/commandStore';
-
-type Json = TestRenderer.ReactTestRendererJSON;
+import {
+  act,
+  fireEvent,
+  renderWithProviders,
+  type RenderedScreen,
+} from '../helpers/renderWithProviders';
 
 jest.setTimeout(30_000);
 jest.useFakeTimers();
 
-const mounted: TestRenderer.ReactTestRenderer[] = [];
+const mounted: RenderedScreen[] = [];
 
-async function render(): Promise<TestRenderer.ReactTestRenderer> {
-  let tree!: TestRenderer.ReactTestRenderer;
-  await act(async () => {
-    tree = TestRenderer.create(<CommandPalette />);
+async function render(): Promise<RenderedScreen> {
+  const tree = renderWithProviders(<CommandPalette />, {
+    userEventOptions: { advanceTimers: jest.advanceTimersByTime },
   });
+  await act(async () => {});
   mounted.push(tree);
   return tree;
 }
@@ -87,25 +90,28 @@ afterEach(async () => {
   mockSearch.mockReset();
 });
 
-function textOf(tree: TestRenderer.ReactTestRenderer): string {
+function textOf(tree: RenderedScreen): string {
   const out: string[] = [];
-  const walk = (n: Json | string | null): void => {
+  const walk = (n: any): void => {
     if (n == null) return;
     if (typeof n === 'string') {
       out.push(n);
       return;
     }
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
     (n.children ?? []).forEach(walk);
   };
-  const json = tree.toJSON();
-  (Array.isArray(json) ? json : [json]).forEach(walk);
+  walk(tree.toJSON());
   return out.join(' ');
 }
 
-async function type(tree: TestRenderer.ReactTestRenderer, q: string) {
-  const input = tree.root.findAllByType(TextInput)[0];
+async function type(tree: RenderedScreen, q: string) {
+  const input = tree.UNSAFE_getAllByType(TextInput)[0];
   await act(async () => {
-    input.props.onChangeText(q);
+    fireEvent.changeText(input, q);
   });
 }
 
@@ -123,18 +129,18 @@ type Row = {
   target?: DestinationHref | string;
 };
 
-function rows(tree: TestRenderer.ReactTestRenderer): Row[] {
-  return tree.root.findAllByType(FlatList)[0].props.data as Row[];
+function rows(tree: RenderedScreen): Row[] {
+  return tree.UNSAFE_getAllByType(FlatList)[0].props.data as Row[];
 }
 
-function renderRowElement(tree: TestRenderer.ReactTestRenderer, label: string) {
-  const list = tree.root.findAllByType(FlatList)[0];
+function renderRowElement(tree: RenderedScreen, label: string) {
+  const list = tree.UNSAFE_getAllByType(FlatList)[0];
   const item = (list.props.data as Row[]).find((r) => r.label === label);
   if (!item) throw new Error(`no row labelled ${JSON.stringify(label)}`);
   return list.props.renderItem({ item, index: 0, separators: undefined });
 }
 
-async function pressRow(tree: TestRenderer.ReactTestRenderer, label: string) {
+async function pressRow(tree: RenderedScreen, label: string) {
   const element = renderRowElement(tree, label);
   await act(async () => {
     element.props.onPress();
