@@ -5,6 +5,8 @@
  * before counting a copy as complete.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import { accountEpoch } from '../lib/accountScope';
 import { verifyBackupText } from '../lib/backupFormat';
 import {
   EMPTY_STATUS,
@@ -37,23 +39,29 @@ export type LocalBackupResult =
 
 /** Make a copy now. Success is recorded only for a complete copy that was written and read back. */
 export async function runLocalBackup(now: Date = new Date()): Promise<LocalBackupResult> {
+  const startEpoch = accountEpoch();
   const me = await currentUser();
-  if (!me) return { ok: false, error: 'Oturum yok.', status: EMPTY_STATUS };
+  if (!me || startEpoch !== accountEpoch()) return { ok: false, error: 'Oturum yok.', status: EMPTY_STATUS };
   const prev = await loadLocalBackupStatus(me.id);
   const attempt = now.toISOString();
   let currentSlots = prev.slots;
   const fail = async (error: string): Promise<LocalBackupResult> => {
     const status = { ...prev, slots: currentSlots, lastAttemptAt: attempt, lastError: error };
-    try {
-      await AsyncStorage.setItem(statusKey(me.id), JSON.stringify(status));
-    } catch {
-      /* status is best effort */
+    if (startEpoch === accountEpoch()) {
+      try {
+        await AsyncStorage.setItem(statusKey(me.id), JSON.stringify(status));
+      } catch {
+        /* status is best effort */
+      }
     }
     return { ok: false, error, status };
   };
   const key = slotKey(me.id, attempt);
   try {
     const backup = await buildBackup(now, { userId: me.id });
+    if (startEpoch !== accountEpoch()) {
+      return { ok: false, error: 'Oturum değişti.', status: prev };
+    }
     const text = JSON.stringify(backup);
     const bytes = utf8Bytes(text);
     if (bytes > LOCAL_BACKUP_MAX_BYTES) {
@@ -95,8 +103,9 @@ export async function runLocalBackup(now: Date = new Date()): Promise<LocalBacku
   }
 }
 
-/** On app open: a copy if one is due. Never in the background. */
+/** On app open: a copy if one is due. Never in the background, and never into shared browser localStorage on web. */
 export async function maybeRunDailyLocalBackup(now: Date = new Date()): Promise<LocalBackupResult | null> {
+  if (Platform.OS === 'web') return null;
   const me = await currentUser();
   if (!me) return null;
   const status = await loadLocalBackupStatus(me.id);

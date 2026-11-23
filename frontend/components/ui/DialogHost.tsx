@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore, type ReactElement } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { registerAccountScoped } from '../../lib/accountScope';
 import {
   dismissAllDialogs,
@@ -77,6 +77,22 @@ function DialogCard({
     if (req.kind === 'confirm') settleDialog(req, false);
     else settleDialog(req);
   };
+
+  useEffect(() => {
+    const win = (globalThis as { window?: { addEventListener?: (t: string, fn: (e: { key?: string; preventDefault?: () => void }) => void) => void; removeEventListener?: (t: string, fn: (e: { key?: string; preventDefault?: () => void }) => void) => void } }).window;
+    if (Platform.OS !== 'web' || typeof win?.addEventListener !== 'function') return;
+    const onKeyDown = (e: { key?: string; preventDefault?: () => void }) => {
+      if (e.key === 'Escape') {
+        e.preventDefault?.();
+        if (req.kind === 'confirm') settleDialog(req, false);
+        else settleDialog(req);
+      }
+    };
+    win.addEventListener('keydown', onKeyDown);
+    return () => {
+      win.removeEventListener?.('keydown', onKeyDown);
+    };
+  }, [req]);
 
   return (
     <Modal

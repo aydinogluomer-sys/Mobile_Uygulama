@@ -27,9 +27,11 @@
 // WITHOUT typed routes. Typed routes stay a local developer nicety, never a
 // load-bearing input to the gate.
 //
-// Maintenance note: `include` is overridden wholesale rather than inherited,
-// so a new entry added to `tsconfig.json`'s `include` must be mirrored here.
+// Maintenance note: `include` and `exclude` are declared explicitly so gitignored
+// `expo-env.d.ts`, `dist/`, `playwright-report/`, and `test-results/` never alter CI parity;
+// tracked `types/expo.d.ts` supplies `expo/types` identically in local and CI builds.
 {
   "extends": "./tsconfig.json",
-  "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts"]
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "**/node_modules", "dist", "build", "expo-env.d.ts", "playwright-report", "test-results"]
 }

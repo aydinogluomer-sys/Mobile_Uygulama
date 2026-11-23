@@ -58,4 +58,8 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# Playwright E2E artifacts (F49)
+playwright-report/
+test-results/
+
 app-example

@@ -1,0 +1,596 @@
+[
+  {
+    "pkg": "@sentry/react-native",
+    "file": "lib/sentryClient.ts",
+    "guard": "web-supported",
+    "reason": "Sentry SDK tarayıcı/RN birleşik taşıyıcısını kullanır ve DSN yoksa sessiz no-op kalır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "app/(auth)/login.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "app/(auth)/register.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "app/screens/ai-coach.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "app/screens/journal-reader.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "app/screens/journal.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "app/screens/life-areas.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "app/screens/notes.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "app/screens/reading-list.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "app/screens/recovery.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "app/tabs/focus.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "app/tabs/today.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/AreaRadar.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/focus/FocusSessionCompleteModal.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/focus/FocusThemeModal.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/focusFlow/FlowClosurePage.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/focusFlow/FocusFlowPage.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/FocusFlowView.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/hub/ExploreView.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/hub/ToolsView.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/journal/ArchiveRow.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/MonthBackground.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/onboarding/OnboardingScaffold.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/seasonalMotion/SeasonalMotionPreview.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/spatial/AtmosphericScreenCanvas.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/spatial/BentoVisualCard.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/spatial/ChapterDivider.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/spatial/EmbeddedFiligree.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/today/TodayHero.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/ui/EditorialBanner.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/ui/EmblemMedallion.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/ui/EmptyState.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/ui/GlassPanel.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-image",
+    "file": "components/ui/TexturedSurface.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Image web üzerinde yerel <img> tabanlı resmi uygulama taşır."
+  },
+  {
+    "pkg": "expo-notifications",
+    "file": "app/_layout.tsx",
+    "guard": "platform-check",
+    "reason": "Çağrılar REMINDERS_SUPPORTED (Platform.OS !== web) kapısı arkasındadır."
+  },
+  {
+    "pkg": "expo-notifications",
+    "file": "lib/notifications.ts",
+    "guard": "platform-check",
+    "reason": "Çağrılar REMINDERS_SUPPORTED (Platform.OS !== web) kapısı arkasındadır."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/_layout.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/(auth)/_layout.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/(auth)/forgot-password.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/(auth)/login.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/(auth)/register.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/(auth)/reset-password.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/+not-found.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/index.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/onboarding/_layout.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/onboarding/needs.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/onboarding/plan.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/onboarding/preferences.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/_layout.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/ai-coach.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/calendar.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/dashboard.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/eisenhower.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/focus-flow.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/focus-points.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/habit-detail.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/journal-archive.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/journal-insights.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/journal-reader.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/journal.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/monthly-review.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/privacy.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/profile.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/screens/routine-runner.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/tabs/_layout.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/tabs/focus.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/tabs/habits.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/tabs/insights.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/tabs/settings.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/tabs/stats.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/tabs/timeline.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "app/tabs/today.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/AIRoutineModal.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/coach/CoachActionCardV2.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/CommandPalette.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/Drawer.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/focus/FocusSettingsModal.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/FocusFlowView.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/HabitListView.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/hub/ExploreView.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/hub/ToolsView.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/NextActionPicker.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/settings/AccountSection.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "components/today/NextUpStrip.tsx",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "hooks/useFocusParam.ts",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "hooks/useHeatmapLogs.ts",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "hooks/useRefreshOnFocus.ts",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "hooks/useScreenActive.ts",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "hooks/useTabParams.ts",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-router",
+    "file": "hooks/useTimeCapsules.ts",
+    "guard": "web-supported",
+    "reason": "Expo Router web/native evrensel navigasyon katmanı (Metro web destekli)."
+  },
+  {
+    "pkg": "expo-secure-store",
+    "file": "lib/authStorage.ts",
+    "guard": "platform-check",
+    "reason": "Çağrılar Platform.OS !== web kontrolü arkasındadır; web depolaması localStorage kullanır."
+  },
+  {
+    "pkg": "expo-speech-recognition",
+    "file": "hooks/useSpeechInput.ts",
+    "guard": "platform-check",
+    "reason": "Çağrılar Platform.OS kontrolü ve Web Speech API yedeği arkasındadır."
+  },
+  {
+    "pkg": "expo-sqlite",
+    "file": "lib/sqliteDriver.native.ts",
+    "guard": "web-stub",
+    "reason": "Yalnız native sınırı lib/sqliteDriver.native.ts içindedir; web derlemesi lib/sqliteDriver.ts null dikişini çözer."
+  },
+  {
+    "pkg": "expo-status-bar",
+    "file": "app/_layout.tsx",
+    "guard": "web-supported",
+    "reason": "Expo StatusBar web ortamında güvenli boş bileşen (no-op) döner."
+  },
+  {
+    "pkg": "expo-web-browser",
+    "file": "app/_layout.tsx",
+    "guard": "web-supported",
+    "reason": "Web üzerinde popup/pencere eşdeğerini sağlar (maybeCompleteAuthSession / openAuthSessionAsync)."
+  },
+  {
+    "pkg": "expo-web-browser",
+    "file": "store/googleCalendarStore.ts",
+    "guard": "web-supported",
+    "reason": "Web üzerinde popup/pencere eşdeğerini sağlar (maybeCompleteAuthSession / openAuthSessionAsync)."
+  },
+  {
+    "pkg": "expo-web-browser",
+    "file": "store/notionSessionStore.ts",
+    "guard": "web-supported",
+    "reason": "Web üzerinde popup/pencere eşdeğerini sağlar (maybeCompleteAuthSession / openAuthSessionAsync)."
+  },
+  {
+    "pkg": "expo-web-browser",
+    "file": "store/notionStore.ts",
+    "guard": "web-supported",
+    "reason": "Web üzerinde popup/pencere eşdeğerini sağlar (maybeCompleteAuthSession / openAuthSessionAsync)."
+  },
+  {
+    "pkg": "expo-web-browser",
+    "file": "store/spotifyStore.ts",
+    "guard": "web-supported",
+    "reason": "Web üzerinde popup/pencere eşdeğerini sağlar (maybeCompleteAuthSession / openAuthSessionAsync)."
+  }
+]

@@ -1,3 +1,4 @@
+// WEB CONTRACT (F49 / GAP2-12): imported in the web bundle; SQLite is reached solely via lib/sqliteDriver.ts (returns null on web) and native branches stay behind isNativePlatform() / Platform.OS !== 'web' (proven by webBundleImports.test.ts and sqliteWebBoundary.test.ts).
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 // expo-sqlite is reached only through the platform seam: importing it here

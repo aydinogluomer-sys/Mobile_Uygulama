@@ -31,7 +31,16 @@ const REQUIRED_VERIFY_STEPS: readonly string[] = [
 ];
 
 export function missingVerifySteps(ciYaml: string): string[] {
-  return REQUIRED_VERIFY_STEPS.filter((step) => !ciYaml.includes(step));
+  const lf = ciYaml.replace(/\r\n?/g, '\n');
+  const start = lf.indexOf('  verify:');
+  const nextJobOffset = start > -1 ? lf.slice(start + 9).search(/\n {2}[a-z0-9_-]+:/) : -1;
+  const verifySection =
+    start > -1
+      ? nextJobOffset > -1
+        ? lf.slice(start, start + 9 + nextJobOffset)
+        : lf.slice(start)
+      : lf;
+  return REQUIRED_VERIFY_STEPS.filter((step) => !verifySection.includes(step));
 }
 
 export function expectedDenoCheckTargets(functionsDir: string): string[] {
@@ -160,5 +169,19 @@ describe('F08 & F21 (BLD-04, BLD-05, GAP2-04, EDG-10, BLD-06, TST-02) — CI/CD 
     expect(unpinnedUses('      - uses: actions/checkout@v5\n')).toEqual(['actions/checkout@v5']);
     const withoutWeb = ci.replace('npx expo export --platform web', 'echo skipped');
     expect(missingVerifySteps(withoutWeb)).toEqual(['npx expo export --platform web']);
+  });
+});
+
+describe('Web E2E gate (F49)', () => {
+  const ci = readFileSync(CI_YML, 'utf8');
+
+  it('(+) defines web-e2e job with hermetic export, chromium install, and mobile-375 + reduced-motion-375 projects', () => {
+    expect(ci).toContain('web-e2e:');
+    expect(ci).toContain('npx expo export --platform web');
+    expect(ci).toContain('playwright install --with-deps chromium');
+    expect(ci).toContain('e2e/playwright.config.ts');
+    expect(ci).toContain('--project=mobile-375');
+    expect(ci).toContain('--project=reduced-motion-375');
+    expect(unpinnedUses(ci.replace(/\r\n?/g, '\n'))).toEqual([]);
   });
 });

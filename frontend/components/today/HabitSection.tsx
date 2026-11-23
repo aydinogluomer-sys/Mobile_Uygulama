@@ -97,6 +97,7 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
         onPress={() => onHabitTap(h)}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
+        aria-checked={done}
         accessibilityLabel={
           isMeasurableTracking(h.tracking_type)
             ? t('today.rituals.measurable.a11y', { name: h.name })

@@ -203,4 +203,18 @@ describe('F48 C5/C6 (TST-06, TST-10) — Parsed CI Workflow Structure & TZ Matri
       'supabase/functions/yeni/index.ts',
     ]);
   });
+
+  describe('web-e2e job (F49)', () => {
+    it('(+) runs active hermetic web export and Playwright mobile-375 + reduced-motion-375 smoke', () => {
+      const webJob = wf.jobs['web-e2e'];
+      expect(webJob).toBeDefined();
+      expect(webJob.env?.EXPO_PUBLIC_SUPABASE_URL).toBe('http://127.0.0.1:54321');
+      const activeText = runText(webJob);
+      expect(activeText).toContain('npx expo export --platform web');
+      expect(activeText).toContain('npx playwright install --with-deps chromium');
+      expect(activeText).toContain('npx playwright test -c e2e/playwright.config.ts');
+      expect(activeText).toContain('--project=mobile-375');
+      expect(activeText).toContain('--project=reduced-motion-375');
+    });
+  });
 });

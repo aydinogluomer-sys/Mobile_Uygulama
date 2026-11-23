@@ -19,6 +19,7 @@ import { runDeleteAccountFlow } from '../../lib/deleteAccountFlow';
 import { actionSheet, confirm, dismissAllDialogs, getCurrentDialog, notify } from '../../lib/dialog';
 
 const mockRegister = registerAccountScoped as unknown as jest.Mock<void, [RegisteredScope]>;
+const registeredAtImport: RegisteredScope[] = mockRegister.mock.calls.map(([arg]) => arg);
 
 function textOf(r: TestRenderer.ReactTestRenderer): string {
   const out: string[] = [];
@@ -408,8 +409,10 @@ describe('DialogHost & ActionSheet on Web (F24: AC-D01..AC-D09)', () => {
   });
 
   it('AC-D08: registers "dialogs" in accountScope and cancels open dialogs when onReset("signed_out") runs', async () => {
-    expect(mockRegister).toHaveBeenCalledWith(expect.objectContaining({ name: 'dialogs' }));
-    const entry = mockRegister.mock.calls.find(([arg]) => arg.name === 'dialogs')?.[0];
+    expect(registeredAtImport).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'dialogs' })]),
+    );
+    const entry = registeredAtImport.find((arg) => arg.name === 'dialogs');
     expect(entry).toBeDefined();
     expect(typeof entry?.onReset).toBe('function');
 
