@@ -6,6 +6,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import { catalog } from '../helpers/catalog';
 
 const ROOT = path.join(__dirname, '../..');
 const files: string[] = [];
@@ -17,14 +18,35 @@ const walk = (d: string) => {
 };
 walk('app'); walk('components');
 
+export function findPlainToUpperCaseOffenders(src: string, label: string): string[] {
+  return [...src.matchAll(/([\w.$]+|\))\s*\.toUpperCase\(\)/g)]
+    .filter((m) => !/^(fmt|format)$/.test(m[1]))
+    .map((m) => `${label}: ${m[0]}`);
+}
+
 it('the locale matters', () => {
   expect('Ekim'.toUpperCase()).toBe('EKIM');
   expect('Ekim'.toLocaleUpperCase('tr-TR')).toBe('EKİM');
 });
 
-it('UI code uppercases Turkish text with the tr-TR locale', () => {
-  const offenders = files.flatMap((f) => [...fs.readFileSync(path.join(ROOT, f), 'utf8').matchAll(/([\w.$]+)\.toUpperCase\(\)/g)]
-    .filter((m) => !/^(fmt|format)$/.test(m[1]))
-    .map((m) => `${f}: ${m[0]}`));
+it('UI code uppercases Turkish text with the tr-TR locale (including call receivers like t(...).toUpperCase())', () => {
+  const offenders = files.flatMap((f) =>
+    findPlainToUpperCaseOffenders(fs.readFileSync(path.join(ROOT, f), 'utf8'), f),
+  );
   expect(offenders).toEqual([]);
+
+  // Negative check: t('x').toUpperCase() is caught while format.toUpperCase() stays allowed
+  expect(findPlainToUpperCaseOffenders("t('today.rituals.overline').toUpperCase()", 'synthetic.tsx')).toEqual([
+    'synthetic.tsx: ).toUpperCase()',
+  ]);
+  expect(findPlainToUpperCaseOffenders('format.toUpperCase()', 'synthetic.tsx')).toEqual([]);
+});
+
+it('every *.overline value in locales/tr.json is already tr-TR uppercase', () => {
+  const overlineEntries = Object.entries(catalog).filter(([k]) => k.endsWith('.overline'));
+  expect(overlineEntries.length).toBeGreaterThan(0);
+  const bad = overlineEntries
+    .filter(([, v]) => v !== v.toLocaleUpperCase('tr-TR'))
+    .map(([k, v]) => `${k}: ${v}`);
+  expect(bad).toEqual([]);
 });

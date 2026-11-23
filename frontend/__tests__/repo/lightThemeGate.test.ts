@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { FIRST_WAVE_THEMED } from '../helpers/firstWaveThemed';
+import { catalog, rendersKey } from '../helpers/catalog';
 import { stripComments } from '../helpers/sourceText';
 import { LIGHT_THEME_ENABLED } from '../../lib/featureGates';
 
@@ -67,8 +68,9 @@ describe('F25 (DSA-01) — light theme release gate and first-wave migration fen
     const settings = stripComments(readFileSync(join(ROOT, 'app/tabs/settings.tsx'), 'utf8'));
     expect(settings).toMatch(/\{\s*LIGHT_THEME_ENABLED\s*\?\s*<ThemeModeRow\b/);
     expect(settings).not.toContain('AMOLED dostu');
-    expect(settings).toContain('Koyu tema');
-    expect(settings).toContain('Açık tema');
+    expect(Object.values(catalog).some((v) => v.includes('AMOLED dostu'))).toBe(false);
+    expect(rendersKey(settings, 'settings.theme.dark', 'Koyu tema')).toBe(true);
+    expect(rendersKey(settings, 'settings.theme.light', 'Açık tema')).toBe(true);
     expect(settings).toContain('accessibilityRole="radio"');
 
     const tabsLayout = stripComments(readFileSync(join(ROOT, 'app/tabs/_layout.tsx'), 'utf8'));

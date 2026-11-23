@@ -52,6 +52,7 @@ jest.mock('../../lib/supabase', () => ({
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { rendersKey } from '../helpers/catalog';
 import { isSeedingAllowed, seedDemoData } from '../../lib/demoSeed';
 
 declare const global: { __DEV__: boolean };
@@ -100,11 +101,12 @@ describe('AC-S05 -- the UI entry point is guarded too', () => {
       join(__dirname, '..', '..', 'app', 'tabs', 'settings.tsx'), 'utf8');
 
     // The row exists; it must not be reachable unconditionally.
-    expect(src).toContain('Demo verileri doldur');
+    expect(rendersKey(src, 'settings.dev.seed.label', 'Demo verileri doldur')).toBe(true);
 
     const guardIdx = src.indexOf('isSeedingAllowed()');
-    const rowIdx = src.indexOf('Demo verileri doldur');
+    const rowIdx = src.indexOf("'settings.dev.seed.label'");
     expect(guardIdx).toBeGreaterThan(-1);
+    expect(rowIdx).toBeGreaterThan(-1);
     expect(guardIdx).toBeLessThan(rowIdx);
   });
 });

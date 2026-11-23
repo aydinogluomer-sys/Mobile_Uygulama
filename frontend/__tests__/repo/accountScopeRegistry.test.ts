@@ -16,6 +16,7 @@
  */
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { rendersKey } from '../helpers/catalog';
 import { stripComments } from '../helpers/sourceText';
 
 const FRONTEND = join(__dirname, '..', '..');
@@ -221,8 +222,12 @@ describe('every account boundary goes through the registry', () => {
     ].join('\n');
     expect(settings).toContain('signOutCurrentAccount');
     expect(settings).toContain('<SignOutConfirmModal');
-    expect(settings.indexOf('Oturumu Kapat')).toBeGreaterThan(-1);
-    expect(settings.indexOf('Oturumu Kapat')).toBeLessThan(settings.indexOf('Hesabı Sil'));
+    expect(rendersKey(settings, 'settings.account.signOut.label', 'Oturumu Kapat')).toBe(true);
+    expect(rendersKey(settings, 'settings.account.delete.label', 'Hesabı Sil')).toBe(true);
+    expect(settings.indexOf("'settings.account.signOut.label'")).toBeGreaterThan(-1);
+    expect(settings.indexOf("'settings.account.signOut.label'")).toBeLessThan(
+      settings.indexOf("'settings.account.delete.label'"),
+    );
     const modal = code('components/SignOutConfirmModal.tsx');
     expect(modal).not.toMatch(/Alert\.alert/);
     expect(modal).toContain('accessibilityViewIsModal');

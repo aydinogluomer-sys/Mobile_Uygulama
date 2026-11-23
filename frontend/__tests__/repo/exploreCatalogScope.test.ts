@@ -17,6 +17,7 @@ import {
   EXPLORE_COLLECTIONS,
 } from '../../lib/exploreCatalog';
 import { GOAL_IDS, GOAL_LABELS } from '../../lib/onboarding';
+import { catalog, rendersKey } from '../helpers/catalog';
 import { stripComments } from '../helpers/sourceText';
 
 const FRONTEND = join(__dirname, '..', '..');
@@ -146,6 +147,11 @@ describe('B. Kaynaksız klinik ve nörobilim iddiaları yok (F15, Thefor F-2)', 
         hits.push(`atomic:${item.id}: ${item.whyItWorks}`);
       }
     }
+    for (const [k, v] of Object.entries(catalog)) {
+      if (CLINICAL.test(v)) {
+        hits.push(`locales/tr.json[${k}]: ${v}`);
+      }
+    }
     expect(hits).toEqual([]);
   });
 });
@@ -160,6 +166,7 @@ describe('C. Rakip marka adları kullanıcı yüzeyinde yok (PS-04)', () => {
     'lib/routinePacks.ts',
     'lib/onboarding.ts',
     'app/(auth)/login.tsx',
+    'locales/tr.json',
   ] as const;
 
   it('negatif kontrol — COMPETITOR tarayıcısı Inflow adını yakalar ve hedef dosyalar doludur', () => {
@@ -298,7 +305,10 @@ describe('H. Doğrulanamayan vaat ve sahte gönderim metinleri temizlendi (NAV-2
   it('todayNarrative.ts suçluluk üreten seriyi koru ifadesini içermez', () => {
     const narrative = stripComments(read('lib', 'todayNarrative.ts'));
     expect(narrative).not.toContain('seriyi koru');
-    expect(narrative).toContain('seni bekliyor; hazır olduğunda başla.');
+    expect(Object.values(catalog).some((v) => v.includes('seriyi koru'))).toBe(false);
+    expect(
+      rendersKey(narrative, 'today.narrative.habits.tail', ' seni bekliyor; hazır olduğunda başla.'),
+    ).toBe(true);
   });
 
   it('IntegrationDetailModal.tsx sahte test olayı gönderildi iddiası veya ağ çağrısı içermez', () => {

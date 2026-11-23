@@ -55,6 +55,7 @@ function uiSources(): { path: string; text: string }[] {
   walk(join(FRONTEND, 'app'), 'app');
   walk(join(FRONTEND, 'components'), 'components');
   out.push({ path: 'lib/destinations.ts', text: read('lib', 'destinations.ts') });
+  out.push({ path: 'locales/tr.json', text: read('locales', 'tr.json') });
   return out;
 }
 
@@ -100,6 +101,14 @@ describe('FREE MVP — no production surface promises a purchase', () => {
       .filter((f) => f.path !== 'app/screens/focus-points.tsx') // its doc comment quotes them
       .flatMap((f) => banned.filter((b) => f.text.includes(b)).map((b) => `${f.path}: ${b}`));
     expect(offenders).toEqual([]);
+  });
+
+  it('locales/tr.json is included in uiSources() and synthetic paid-tier catalog copy is caught', () => {
+    expect(UI.map((f) => f.path)).toContain('locales/tr.json');
+    const banned = ['Abone Ol', 'Test modu', 'EN POPÜLER', 'Üyeliği Yükselt'];
+    const fakeSource = { path: 'locales/tr.json', text: '{"settings.cta": "Plus — Abone Ol"}' };
+    const caught = banned.filter((b) => fakeSource.text.includes(b)).map((b) => `${fakeSource.path}: ${b}`);
+    expect(caught).toEqual(['locales/tr.json: Abone Ol']);
   });
 
   it('the Focus Points screen states the free position and names no price', () => {

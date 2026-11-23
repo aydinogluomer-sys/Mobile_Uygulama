@@ -4,6 +4,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { rendersKey } from '../helpers/catalog';
 import { stripComments } from '../helpers/sourceText';
 
 const read = (p: string) => readFileSync(join(__dirname, '..', '..', p), 'utf8');
@@ -34,8 +35,10 @@ describe('R03.03 — wiring', () => {
   });
 
   it('the focus screen shows the step and its task apart', () => {
-    expect(focus).toMatch(/KÜÇÜK ADIM · \{smallStep\.minutes\} dk/);
-    expect(focus).toMatch(/Asıl iş: \{smallStep\.parent\.title\} — bu adım onu tamamlamaz/);
+    expect(rendersKey(focus, 'focus.smallStep.eyebrow', 'KÜÇÜK ADIM · {minutes} dk')).toBe(true);
+    expect(focus).toMatch(/t\(\s*['"]focus\.smallStep\.eyebrow['"]\s*,\s*\{\s*minutes:\s*smallStep\.minutes\s*\}\s*\)/);
+    expect(rendersKey(focus, 'focus.smallStep.parent', 'Asıl iş: {title} — bu adım onu tamamlamaz')).toBe(true);
+    expect(focus).toMatch(/t\(\s*['"]focus\.smallStep\.parent['"]\s*,\s*\{\s*title:\s*smallStep\.parent\.title\s*\}\s*\)/);
   });
 
   it('the sheet says what the step does not do', () => {

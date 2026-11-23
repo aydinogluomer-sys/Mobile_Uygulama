@@ -4,6 +4,7 @@ import { font, space, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { PUBLIC_SITE_URLS_LIVE, PUBLIC_SITE_URLS } from '../../lib/featureGates';
 import { navigateTo } from '../../lib/destinations';
+import { t } from '../../lib/i18n';
 import SettingRow from './SettingRow';
 
 export type AccountSectionProps = {
@@ -27,12 +28,12 @@ export default function AccountSection({
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Hesap</Text>
+      <Text style={styles.sectionTitle}>{t('settings.account.title')}</Text>
 
       <SettingRow
         icon="shield-checkmark-outline"
-        label="Gizlilik Politikası"
-        hint="Hangi verilerin saklanıyor ve neden"
+        label={t('settings.account.privacy.label')}
+        hint={t('settings.account.privacy.hint')}
         tone={c.info}
         onPress={() => navigateTo(router, 'privacy')}
       />
@@ -40,8 +41,8 @@ export default function AccountSection({
       {PUBLIC_SITE_URLS_LIVE && (
         <SettingRow
           icon="help-buoy-outline"
-          label="Destek"
-          hint="Yardım, hesap ve teknik sorunlar"
+          label={t('settings.account.support.label')}
+          hint={t('settings.account.support.hint')}
           tone={c.teal}
           onPress={() => {
             Linking.openURL(PUBLIC_SITE_URLS.support).catch(() => {});
@@ -52,25 +53,25 @@ export default function AccountSection({
       {/* F04 (NAV-02): signing out of THIS device, above the permanent deletion */}
       <SettingRow
         icon="log-out-outline"
-        label="Oturumu Kapat"
-        hint={email ?? 'Bu cihazdan çık'}
+        label={t('settings.account.signOut.label')}
+        hint={email ?? t('settings.account.signOut.fallbackHint')}
         tone={c.info}
         disabled={deletingAccount || signingOut}
         busy={signingOut}
-        accessibilityLabel="Oturumu kapat"
-        accessibilityHint="Hesabını bu cihazdan çıkarır"
+        accessibilityLabel={t('settings.account.signOut.a11y')}
+        accessibilityHint={t('settings.account.signOutHint.a11y')}
         onPress={onSignOut}
       />
 
       <SettingRow
         icon="trash-outline"
-        label="Hesabı Sil"
-        hint="Hesabın ve verilerin kalıcı olarak silinir. Geri alınamaz."
+        label={t('settings.account.delete.label')}
+        hint={t('settings.account.delete.hint')}
         destructive
         disabled={deletingAccount}
         busy={deletingAccount}
-        accessibilityLabel="Hesabı sil"
-        accessibilityHint="Hesabını ve kişisel verilerini kalıcı olarak siler"
+        accessibilityLabel={t('settings.account.delete.a11y')}
+        accessibilityHint={t('settings.account.deleteHint.a11y')}
         onPress={onDeleteAccount}
       />
     </View>

@@ -160,6 +160,21 @@ export function weekStartYmd(d: Date = new Date()): Ymd {
   return ymd(startOfWeekLocal(d));
 }
 
+/**
+ * ISO-8601 week number (1..53) of `d`'s LOCAL calendar day.
+ *
+ * Reads local `getFullYear`/`getMonth`/`getDate` so 00:30 and 23:30 on the same
+ * local date always agree; uses `Date.UTC` solely as a DST-immune integer day
+ * counter (23- and 25-hour days never skew the 86_400_000 division).
+ */
+export function isoWeekNumber(d: Date): number {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil(((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+}
+
 /** `n` days from `d`, preserving local midnight. Negative `n` goes back. */
 export function addDaysLocal(d: Date, n: number): Date {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
