@@ -19,13 +19,53 @@ import SeasonalMotionPreview from '../../components/seasonalMotion/SeasonalMotio
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
 import GlassPanel from '../../components/ui/GlassPanel';
+import { Button, Chip, SheetModal } from '../../components/ui';
 import { EmbeddedFiligree } from '../../components/spatial';
 import { DECOR } from '../../lib/visualAssets';
-import { hexA, type Palette } from '../../lib/tokens';
+import { font, hexA, radius, space, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { ymd } from '../../lib/date';
+import {
+  buildDayPlanPreview,
+  formatMinutesToHm,
+  parseHmToMinutes,
+  type FixedPlanBlock,
+} from '../../lib/dayPlanPreview';
+import { newOperationId } from '../../lib/outbox';
+import {
+  preserveDraftOnFailure,
+  resolveScreenState,
+  type ScreenStateDescriptor,
+} from '../../lib/screenStateContract';
+import {
+  commitDayPlan,
+  undoDayPlanCommit,
+  type DayPlanCommitDeps,
+  type DayPlanCommitReceipt,
+} from '../../services/dayPlanCommitService';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+export type CalendarTimePreset = {
+  readonly id: string;
+  readonly label: string;
+  readonly start: string | null;
+  readonly end: string | null;
+};
+
+export const CALENDAR_TIME_PRESETS: readonly CalendarTimePreset[] = [
+  { id: '09:00-09:30', label: '09:00–09:30', start: '09:00', end: '09:30' },
+  { id: '11:00-11:30', label: '11:00–11:30', start: '11:00', end: '11:30' },
+  { id: '14:00-14:30', label: '14:00–14:30', start: '14:00', end: '14:30' },
+  { id: '16:00-16:30', label: '16:00–16:30', start: '16:00', end: '16:30' },
+  { id: '19:00-19:30', label: '19:00–19:30', start: '19:00', end: '19:30' },
+  { id: 'clear', label: 'Saati kaldır', start: null, end: null },
+];
+
+export type CalendarScreenProps = {
+  fixedBlocks?: readonly FixedPlanBlock[];
+  commitDeps?: DayPlanCommitDeps;
+};
 
 const DAYS_SHORT = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -40,7 +80,10 @@ function getFirstDayOfMonth(year: number, month: number) {
   return day === 0 ? 6 : day - 1; // Pazartesi = 0
 }
 
-export default function CalendarScreen() {
+export default function CalendarScreen({
+  fixedBlocks: externalFixedBlocks,
+  commitDeps,
+}: CalendarScreenProps = {}) {
   const colors = useThemeColors();
   const s = useThemedStyles(makeStyles);
   const headerHeight = useHeaderHeight();
@@ -52,6 +95,14 @@ export default function CalendarScreen() {
   const [month, setMonth] = useState(today.getMonth());
   const [selected, setSelected] = useState(ymd(today));
   const [showMotionPreview, setShowMotionPreview] = useState(false);
+
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(CALENDAR_TIME_PRESETS[0].id);
+  const [committingTime, setCommittingTime] = useState(false);
+  const [undoingTime, setUndoingTime] = useState(false);
+  const [panelFeedback, setPanelFeedback] = useState<ScreenStateDescriptor | null>(null);
+  const [bannerState, setBannerState] = useState<ScreenStateDescriptor | null>(null);
+  const [lastReceipt, setLastReceipt] = useState<DayPlanCommitReceipt | null>(null);
 
   const { tasks, fetchTasks } = useTaskStore(
     useShallow((st) => ({ tasks: st.tasks, fetchTasks: st.fetchTasks })),
@@ -131,9 +182,214 @@ export default function CalendarScreen() {
     return tasks.some((t) => t.due_date?.startsWith(d));
   }
 
-  const selectedTasks = tasks.filter((t) => t.due_date?.startsWith(selected) && !t.completed);
-  const untimedSelected = selectedTasks.filter((t) => selectedBlocks.every((b) => b.id !== t.id));
+  const selectedTasks = useMemo(
+    () => tasks.filter((t) => t.due_date?.startsWith(selected) && !t.completed && t.status !== 'cancelled'),
+    [tasks, selected],
+  );
+  const untimedSelected = useMemo(
+    () => selectedTasks.filter((t) => selectedBlocks.every((b) => b.id !== t.id)),
+    [selectedTasks, selectedBlocks],
+  );
   const selectedHabitLogs = habits.filter((h) => h.status === 'active');
+
+  const editingTask = useMemo(
+    () => (editingTaskId ? selectedTasks.find((t) => t.id === editingTaskId) ?? null : null),
+    [editingTaskId, selectedTasks],
+  );
+
+  const chosenPreset = useMemo(
+    () =>
+      CALENDAR_TIME_PRESETS.find((p) => p.id === selectedPresetId) ??
+      CALENDAR_TIME_PRESETS[0],
+    [selectedPresetId],
+  );
+
+  function openTimeEditor(taskId: string) {
+    const target = selectedTasks.find((t) => t.id === taskId);
+    if (!target) return;
+    const matched = CALENDAR_TIME_PRESETS.find(
+      (p) =>
+        p.start !== null &&
+        p.start === (target.time_block_start ?? null) &&
+        p.end === (target.time_block_end ?? null),
+    );
+    setSelectedPresetId(matched ? matched.id : CALENDAR_TIME_PRESETS[0].id);
+    setPanelFeedback(null);
+    setEditingTaskId(target.id);
+  }
+
+  function closeTimeEditor() {
+    if (committingTime) return;
+    setEditingTaskId(null);
+    setPanelFeedback(null);
+  }
+
+  const slotPreview = useMemo(() => {
+    if (!editingTask) return null;
+
+    const peerFixedBlocks: FixedPlanBlock[] = selectedBlocks
+      .filter((b) => b.id !== editingTask.id)
+      .map((b) => {
+        const startMin = parseHmToMinutes(b.startLabel) ?? 9 * 60;
+        const endTime = b.endLabel ?? formatMinutesToHm(Math.min(1439, startMin + 30));
+        return {
+          id: b.id,
+          title: b.title,
+          local_day: selected,
+          start_time: b.startLabel,
+          end_time: endTime,
+          locked: true,
+          source: 'internal_fixed',
+        };
+      });
+
+    const combinedFixedBlocks: FixedPlanBlock[] = [
+      ...(externalFixedBlocks ?? []),
+      ...peerFixedBlocks,
+    ];
+
+    const candidateTasks = tasks.map((t) =>
+      t.id === editingTask.id
+        ? {
+            ...t,
+            due_date: selected,
+            time_block_start: chosenPreset.start,
+            time_block_end: chosenPreset.end,
+          }
+        : t,
+    );
+
+    const preview = buildDayPlanPreview({
+      userId: editingTask.user_id || 'local-user',
+      localDayKey: selected,
+      nowLocalMinutes: 8 * 60,
+      generatedAtIso: `${selected}T08:00:00.000Z`,
+      protectedRef: null,
+      fixedBlocks: combinedFixedBlocks,
+      tasks: candidateTasks,
+      habits,
+      todayLogs: [],
+      remainingCapacityMinutes: 480,
+    });
+
+    const change =
+      preview.changes.find(
+        (c) => c.sourceRef.entity === 'task' && c.sourceRef.id === editingTask.id,
+      ) ?? null;
+
+    const conflictingBlock =
+      change?.conflictingFixedBlockId
+        ? combinedFixedBlocks.find((fb) => fb.id === change.conflictingFixedBlockId) ?? null
+        : null;
+
+    return {
+      preview,
+      change,
+      conflictingBlock,
+    };
+  }, [editingTask, selectedBlocks, externalFixedBlocks, selected, tasks, chosenPreset, habits]);
+
+  async function handleApplyTimeChange() {
+    if (!editingTask || committingTime) return;
+    setCommittingTime(true);
+    setPanelFeedback(null);
+
+    try {
+      const executionDayKey = commitDeps?.now ? ymd(commitDeps.now()) : ymd(new Date());
+      const res = await commitDayPlan(
+        {
+          operationId: newOperationId(),
+          localDayKey: executionDayKey,
+          items: [
+            {
+              itemId: `time-block:${editingTask.id}`,
+              entity: 'task',
+              targetId: editingTask.id,
+              title: editingTask.title,
+              expectedVersion: editingTask.updated_at ?? null,
+              action: 'update_time_block',
+              taskPatch: {
+                time_block_start: chosenPreset.start,
+                time_block_end: chosenPreset.end,
+              },
+              priorTaskSnapshot: {
+                due_date: editingTask.due_date ?? null,
+                list_type: editingTask.list_type,
+                time_block_start: editingTask.time_block_start ?? null,
+                time_block_end: editingTask.time_block_end ?? null,
+              },
+            },
+          ],
+        },
+        commitDeps,
+      );
+
+      const firstItem = res.results[0];
+      const succeeded = res.overall === 'committed' || res.overall === 'pending';
+      const draftDecision = preserveDraftOnFailure(selectedPresetId, {
+        ok: succeeded,
+        status: firstItem?.status,
+      });
+
+      if (!draftDecision.shouldClearInput) {
+        setSelectedPresetId(draftDecision.draft);
+        setPanelFeedback(
+          resolveScreenState({
+            authReady: true,
+            loading: false,
+            hasCachedData: true,
+            itemCount: selectedTasks.length,
+            syncStatus: firstItem?.status ?? 'retryable',
+            error: firstItem?.error
+              ? {
+                  retryable: firstItem.status === 'retryable',
+                  message: firstItem.error,
+                }
+              : null,
+          }),
+        );
+        return;
+      }
+
+      setLastReceipt(res.receipt);
+      setBannerState(
+        resolveScreenState({
+          authReady: true,
+          loading: false,
+          hasCachedData: true,
+          itemCount: selectedTasks.length,
+          syncStatus: res.overall === 'pending' ? 'pending' : 'committed',
+        }),
+      );
+      setEditingTaskId(null);
+    } finally {
+      setCommittingTime(false);
+    }
+  }
+
+  async function handleUndoTimeChange() {
+    if (!lastReceipt || undoingTime) return;
+    setUndoingTime(true);
+    try {
+      const undoRes = await undoDayPlanCommit(lastReceipt, commitDeps);
+      setLastReceipt(null);
+      if (undoRes.overall === 'conflict') {
+        setBannerState(
+          resolveScreenState({
+            authReady: true,
+            loading: false,
+            hasCachedData: true,
+            itemCount: selectedTasks.length,
+            syncStatus: 'conflict',
+          }),
+        );
+      } else {
+        setBannerState(null);
+      }
+    } finally {
+      setUndoingTime(false);
+    }
+  }
 
   return (
     <View style={s.root}>
@@ -207,17 +463,75 @@ export default function CalendarScreen() {
                 <Text style={s.sectionTitle} accessibilityRole="header">
                   {selected === todayStr ? 'BUGÜN' : selected} — GÖREVLER
                 </Text>
+
+                {bannerState !== null && (
+                  <View
+                    testID="calendar-time-feedback"
+                    style={s.feedbackBanner}
+                    accessibilityRole={bannerState.accessibilityRole}
+                    accessibilityLiveRegion={bannerState.liveRegion}
+                  >
+                    <Ionicons
+                      name={bannerState.nonColorIcon as IoniconName}
+                      size={16}
+                      color={bannerState.kind === 'conflict' ? colors.warning : colors.accent}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    />
+                    <Text style={s.feedbackText}>{bannerState.headline}</Text>
+                    {lastReceipt !== null && (
+                      <Button
+                        label="Geri al"
+                        variant="ghost"
+                        size="sm"
+                        icon="arrow-undo-outline"
+                        loading={undoingTime}
+                        testID="calendar-time-undo"
+                        accessibilityLabel="Geri al"
+                        onPress={handleUndoTimeChange}
+                      />
+                    )}
+                  </View>
+                )}
+
                 {selectedTasks.length === 0 ? (
                   <Text style={s.noItem}>Bu gün için görev yok</Text>
                 ) : (
                   <>
                     {selectedBlocks.length > 0 && (
-                      <DayTimeStrip blocks={selectedBlocks} now={selected === todayStr ? nowTick : null} />
+                      <>
+                        <DayTimeStrip blocks={selectedBlocks} now={selected === todayStr ? nowTick : null} />
+                        {selectedBlocks.map((b) => (
+                          <View key={`timed-${b.id}`} style={s.timedActionRow}>
+                            <Text style={s.timedActionMeta} numberOfLines={1}>
+                              {b.endLabel ? `${b.startLabel}–${b.endLabel}` : b.startLabel} · {b.title}
+                            </Text>
+                            <Chip
+                              label="Saati değiştir"
+                              icon="time-outline"
+                              size="sm"
+                              color={colors.accent}
+                              testID={`calendar-change-time-${b.id}`}
+                              accessibilityLabel={`${b.title} saatini değiştir`}
+                              onPress={() => openTimeEditor(b.id)}
+                            />
+                          </View>
+                        ))}
+                      </>
                     )}
                     {untimedSelected.map((t) => (
                       <View key={t.id} style={s.item}>
                         <View style={[s.priorityDot, { backgroundColor: t.priority === 'high' ? colors.error : t.priority === 'medium' ? colors.warning : colors.success }]} />
                         <Text style={s.itemText}>{t.title}</Text>
+                        <Chip
+                          label="Saati değiştir"
+                          icon="time-outline"
+                          size="sm"
+                          color={colors.accent}
+                          testID={`calendar-change-time-${t.id}`}
+                          accessibilityLabel={`${t.title} saatini değiştir`}
+                          onPress={() => openTimeEditor(t.id)}
+                        />
                       </View>
                     ))}
                   </>
@@ -243,6 +557,107 @@ export default function CalendarScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      <SheetModal
+        visible={editingTask !== null}
+        onClose={closeTimeEditor}
+        accessibilityLabel="Saati değiştir paneli"
+      >
+        {editingTask !== null && (
+          <View testID="calendar-time-adjust-panel" style={s.adjustPanel}>
+            <Text style={s.adjustOverline}>SAAT BLOĞU DÜZENLE</Text>
+            <Text style={s.adjustTitle} numberOfLines={2}>
+              {editingTask.title}
+            </Text>
+
+            <View style={s.slotGrid}>
+              {CALENDAR_TIME_PRESETS.map((preset) => (
+                <Chip
+                  key={preset.id}
+                  label={preset.label}
+                  icon={preset.start ? 'time-outline' : 'close-circle-outline'}
+                  color={colors.accent}
+                  selected={selectedPresetId === preset.id}
+                  testID={`calendar-time-slot-${preset.id}`}
+                  onPress={() => setSelectedPresetId(preset.id)}
+                />
+              ))}
+            </View>
+
+            {slotPreview !== null && (
+              <View testID="calendar-time-preview" style={s.previewBox}>
+                <Text style={s.previewLabel}>
+                  {chosenPreset.start
+                    ? `Seçilen saat: ${chosenPreset.label}`
+                    : 'Seçilen saat: Saatsiz (saat bloğu kaldırılır)'}
+                </Text>
+                {slotPreview.conflictingBlock !== null ? (
+                  <View
+                    testID="calendar-time-overlap-warning"
+                    accessibilityRole="alert"
+                    accessibilityLiveRegion="polite"
+                    style={s.overlapRow}
+                  >
+                    <Ionicons
+                      name="warning-outline"
+                      size={16}
+                      color={colors.warning}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    />
+                    <Text style={s.overlapText}>
+                      {`Bu aralık «${slotPreview.conflictingBlock.title}» (${slotPreview.conflictingBlock.start_time}–${slotPreview.conflictingBlock.end_time}) bloğuyla çakışıyor.`}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={s.previewSub}>
+                    {slotPreview.change?.displayReason ?? 'Kalan kapasiteye çakışmadan yerleşir.'}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {panelFeedback !== null && (
+              <View
+                testID="calendar-time-panel-error"
+                accessibilityRole={panelFeedback.accessibilityRole}
+                accessibilityLiveRegion={panelFeedback.liveRegion}
+                style={s.overlapRow}
+              >
+                <Ionicons
+                  name={panelFeedback.nonColorIcon as IoniconName}
+                  size={16}
+                  color={colors.error}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                />
+                <Text style={s.errorText}>
+                  {`${panelFeedback.headline} · ${panelFeedback.detail}`}
+                </Text>
+              </View>
+            )}
+
+            <View style={s.adjustActions}>
+              <Button
+                label="Vazgeç"
+                variant="secondary"
+                color={colors.textDim}
+                onPress={closeTimeEditor}
+                testID="calendar-time-cancel"
+                style={s.adjustBtn}
+              />
+              <Button
+                label="Saati kaydet"
+                variant="primary"
+                loading={committingTime}
+                onPress={handleApplyTimeChange}
+                testID="calendar-time-commit"
+                style={s.adjustBtnPrimary}
+              />
+            </View>
+          </View>
+        )}
+      </SheetModal>
 
       {/* DEV: mevsimsel hareket önizleme (yalnızca geliştirme) */}
       {__DEV__ && (
@@ -327,6 +742,96 @@ const makeStyles = (colors: Palette) =>
     },
     priorityDot: { width: 8, height: 8, borderRadius: 4 },
     itemText: { fontSize: 14, color: colors.text, flex: 1 },
+
+    timedActionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: space.sm,
+      marginBottom: space.sm,
+      paddingHorizontal: space.xs,
+    },
+    timedActionMeta: {
+      ...font.caption,
+      color: colors.textDim,
+      flex: 1,
+    },
+    feedbackBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: space.sm,
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      marginBottom: space.md,
+    },
+    feedbackText: {
+      ...font.caption,
+      color: colors.text,
+      flex: 1,
+    },
+    adjustPanel: {
+      gap: space.md,
+    },
+    adjustOverline: {
+      ...font.overline,
+      color: colors.textDim,
+    },
+    adjustTitle: {
+      ...font.h3,
+      color: colors.text,
+    },
+    slotGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: space.sm,
+    },
+    previewBox: {
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: space.md,
+      gap: space.xs,
+    },
+    previewLabel: {
+      ...font.bodySm,
+      color: colors.text,
+    },
+    previewSub: {
+      ...font.caption,
+      color: colors.textDim,
+    },
+    overlapRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+    },
+    overlapText: {
+      ...font.caption,
+      color: colors.warning,
+      flex: 1,
+    },
+    errorText: {
+      ...font.caption,
+      color: colors.error,
+      flex: 1,
+    },
+    adjustActions: {
+      flexDirection: 'row',
+      gap: space.md,
+      marginTop: space.xs,
+    },
+    adjustBtn: {
+      flex: 1,
+    },
+    adjustBtnPrimary: {
+      flex: 2,
+    },
 
     devBtn: {
       position: 'absolute', right: 14, bottom: 24, width: 40, height: 40, borderRadius: 20,
