@@ -17,6 +17,7 @@ type Props = AccessibilityProps & {
   selected?: boolean;
   onPress?: () => void;
   size?: 'sm' | 'md';
+  testID?: string;
   style?: StyleProp<ViewStyle>;
 };
 

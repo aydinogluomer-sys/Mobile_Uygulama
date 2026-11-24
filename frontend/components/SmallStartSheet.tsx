@@ -14,10 +14,8 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import {
   SHRINK_MINUTE_STEPS,
   deterministicSuggestionId,
@@ -37,11 +35,11 @@ import {
 } from '../lib/smallStart';
 import { describeEstimateSource } from '../lib/taskDuration';
 import type { Task } from '../lib/taskTypes';
-import { hexA, onColor, radius, space, type Palette } from '../lib/tokens';
+import { font, hexA, radius, space, type Palette } from '../lib/tokens';
 import { TEXTURES } from '../lib/visualAssets';
 import { useSpeechInput } from '../hooks/useSpeechInput';
 import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
-import { TexturedSurface } from './ui';
+import { Button, Chip, IconButton, TexturedSurface } from './ui';
 
 export interface SmallStartSheetProps {
   parent: SmallStepParent | null;
@@ -325,14 +323,13 @@ export default function SmallStartSheet({
             <Text style={s.title} accessibilityRole="header">
               Küçük başla
             </Text>
-            <TouchableOpacity
+            <IconButton
+              icon="close"
+              size={20}
+              color={colors.textFaint}
+              label="Kapat"
               onPress={onClose}
-              style={s.iconTouch}
-              accessibilityRole="button"
-              accessibilityLabel="Kapat"
-            >
-              <Ionicons name="close" size={20} color={colors.textFaint} />
-            </TouchableOpacity>
+            />
           </View>
 
           <ScrollView
@@ -358,22 +355,17 @@ export default function SmallStartSheet({
                     accessibilityLabel="Hızlı konu veya görev"
                   />
                   {showMic && (
-                    <TouchableOpacity
+                    <IconButton
                       testID="small-start-dictate"
-                      style={s.iconTouch}
+                      icon={speech.listening ? 'stop-circle-outline' : 'mic-outline'}
+                      size={20}
+                      color={speech.listening ? colors.accent : colors.textDim}
+                      label={speech.listening ? 'Dinlemeyi durdur' : 'Sesle yaz'}
                       onPress={() => {
                         if (speech.listening) speech.stop();
                         else void speech.start();
                       }}
-                      accessibilityRole="button"
-                      accessibilityLabel={speech.listening ? 'Dinlemeyi durdur' : 'Sesle yaz'}
-                    >
-                      <Ionicons
-                        name={speech.listening ? 'stop-circle-outline' : 'mic-outline'}
-                        size={20}
-                        color={speech.listening ? colors.accent : colors.textDim}
-                      />
-                    </TouchableOpacity>
+                    />
                   )}
                 </View>
                 {speech.error ? <Text style={s.hint}>{speech.error}</Text> : null}
@@ -385,18 +377,13 @@ export default function SmallStartSheet({
                 <Text style={s.clarificationQuestion}>{CLARIFICATION_QUESTION}</Text>
                 <View style={s.chips}>
                   {effectiveCandidates.map((cand) => (
-                    <TouchableOpacity
+                    <Chip
                       key={cand.id}
                       testID={`small-start-candidate-${cand.id}`}
-                      style={s.chip}
+                      label={cand.title}
                       onPress={() => handleSelectCandidate(cand)}
-                      accessibilityRole="button"
                       accessibilityLabel={`${cand.title} görevini seç`}
-                    >
-                      <Text style={s.chipText} numberOfLines={1}>
-                        {cand.title}
-                      </Text>
-                    </TouchableOpacity>
+                    />
                   ))}
                 </View>
               </View>
@@ -439,50 +426,48 @@ export default function SmallStartSheet({
             <Text style={s.label}>SÜRE</Text>
             <View style={s.chips}>
               {SMALL_STEP_MINUTES.map((m) => (
-                <TouchableOpacity
+                <Chip
                   key={m}
                   testID={`small-start-min-${m}`}
-                  style={[s.chip, draft.minutes === m && s.chipOn]}
+                  label={`${m} dk`}
+                  color={colors.accent}
+                  selected={draft.minutes === m}
                   onPress={() => {
                     setDraft((d) => ({ ...d, minutes: m }));
                     setError(null);
                   }}
-                  accessibilityRole="button"
                   accessibilityLabel={`${m} dakika`}
-                  accessibilityState={{ selected: draft.minutes === m }}
-                >
-                  <Text style={[s.chipText, draft.minutes === m && s.chipTextOn]}>{m} dk</Text>
-                </TouchableOpacity>
+                />
               ))}
             </View>
 
             {showSecondaryActions && (
               <View style={s.secondaryRow}>
-                <TouchableOpacity
+                <Button
                   testID="small-start-shrink"
-                  style={s.secondaryBtn}
+                  label="Daha küçük yap"
+                  variant="ghost"
+                  size="sm"
+                  icon="contract-outline"
+                  color={colors.accent}
                   onPress={handleShrink}
-                  accessibilityRole="button"
                   accessibilityLabel="Daha küçük yap"
-                >
-                  <Ionicons name="contract-outline" size={15} color={colors.accent} />
-                  <Text style={s.secondaryBtnText}>Daha küçük yap</Text>
-                </TouchableOpacity>
+                />
 
                 {onSwap && (
-                  <TouchableOpacity
+                  <Button
                     testID="small-start-swap"
-                    style={s.secondaryBtn}
+                    label="Değiştir"
+                    variant="ghost"
+                    size="sm"
+                    icon="swap-horizontal-outline"
+                    color={colors.textDim}
                     onPress={() => {
                       setError(null);
                       onSwap();
                     }}
-                    accessibilityRole="button"
                     accessibilityLabel="Öneriyi değiştir"
-                  >
-                    <Ionicons name="swap-horizontal-outline" size={15} color={colors.textDim} />
-                    <Text style={s.secondaryBtnText}>Değiştir</Text>
-                  </TouchableOpacity>
+                  />
                 )}
               </View>
             )}
@@ -498,18 +483,16 @@ export default function SmallStartSheet({
             )}
           </ScrollView>
 
-          <TouchableOpacity
+          <Button
             testID="small-start-submit"
-            style={[s.cta, !ready && s.ctaOff]}
-            onPress={handleStart}
+            label={`${draft.minutes} dk başlat`}
+            icon="play"
+            size="md"
             disabled={!ready}
-            accessibilityRole="button"
+            onPress={handleStart}
             accessibilityLabel={`${draft.minutes} dakika başlat`}
-            accessibilityState={{ disabled: !ready }}
-          >
-            <Ionicons name="play" size={16} color={onColor(colors.accent)} />
-            <Text style={s.ctaText}>{draft.minutes} dk başlat</Text>
-          </TouchableOpacity>
+            style={s.cta}
+          />
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -528,7 +511,7 @@ const makeStyles = (colors: Palette) =>
       borderTopLeftRadius: radius.lg,
       borderTopRightRadius: radius.lg,
       padding: space.lg,
-      gap: 6,
+      gap: space.xs,
       overflow: 'hidden',
       position: 'relative',
       maxHeight: '88%',
@@ -542,22 +525,16 @@ const makeStyles = (colors: Palette) =>
       alignItems: 'center',
       marginBottom: space.xs,
     },
-    iconTouch: {
-      minWidth: 44,
-      minHeight: 44,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    title: { fontSize: 18, fontWeight: '700', color: colors.text },
+    title: { ...font.h2, color: colors.text },
     calmNote: {
-      fontSize: 13,
+      ...font.bodySm,
       color: colors.textDim,
       lineHeight: 18,
       marginBottom: space.xs,
     },
     captureBlock: {
       marginBottom: space.xs,
-      gap: 4,
+      gap: space.xs,
     },
     captureRow: {
       flexDirection: 'row',
@@ -573,8 +550,8 @@ const makeStyles = (colors: Palette) =>
     },
     captureInput: {
       flex: 1,
+      ...font.bodySm,
       color: colors.text,
-      fontSize: 14,
       paddingVertical: space.sm,
     },
     clarificationBox: {
@@ -587,19 +564,17 @@ const makeStyles = (colors: Palette) =>
       gap: space.sm,
     },
     clarificationQuestion: {
-      fontSize: 13,
+      ...font.bodySm,
       fontWeight: '600',
       color: colors.text,
     },
     label: {
-      fontSize: 10,
-      letterSpacing: 1,
+      ...font.overline,
       color: colors.textFaint,
-      fontWeight: '700',
       marginTop: space.sm,
-      marginBottom: 2,
+      marginBottom: space.xs,
     },
-    parent: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
+    parent: { ...font.bodySm, color: colors.textDim, fontWeight: '600' },
     reasonBox: {
       marginTop: space.sm,
       padding: space.md,
@@ -607,83 +582,42 @@ const makeStyles = (colors: Palette) =>
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      gap: 4,
+      gap: space.xs,
     },
     reasonLabel: {
-      fontSize: 11,
-      fontWeight: '700',
+      ...font.overline,
       color: colors.accent,
     },
     reasonBody: {
-      fontSize: 13,
+      ...font.bodySm,
       color: colors.text,
       lineHeight: 18,
     },
     estimateNote: {
-      fontSize: 12,
+      ...font.caption,
       color: colors.textFaint,
       lineHeight: 16,
     },
     input: {
+      ...font.body,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radius.md,
       padding: space.md,
       color: colors.text,
-      fontSize: 15,
       minHeight: 44,
     },
-    hint: { fontSize: 12, color: colors.textFaint, lineHeight: 17, marginTop: 4 },
-    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: 4 },
-    chip: {
-      minHeight: 44,
-      paddingVertical: 8,
-      paddingHorizontal: 14,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    chipOn: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
-    chipText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
-    chipTextOn: { color: colors.text },
+    hint: { ...font.caption, color: colors.textFaint, lineHeight: 17, marginTop: space.xs },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.xs },
     secondaryRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: space.sm,
       marginTop: space.sm,
     },
-    secondaryBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      minHeight: 44,
-      paddingHorizontal: space.md,
-      paddingVertical: space.xs,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-    },
-    secondaryBtnText: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    note: { fontSize: 12, color: colors.textDim, lineHeight: 17, marginTop: space.sm },
-    error: { fontSize: 12, color: colors.error, marginTop: 4 },
+    note: { ...font.caption, color: colors.textDim, lineHeight: 17, marginTop: space.sm },
+    error: { ...font.caption, color: colors.error, marginTop: space.xs },
     cta: {
       marginTop: space.md,
-      minHeight: 48,
-      flexDirection: 'row',
-      gap: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.accent,
-      borderRadius: radius.md,
-      paddingVertical: 14,
     },
-    ctaOff: { opacity: 0.4 },
-    ctaText: { color: onColor(colors.accent), fontWeight: '700', fontSize: 15 },
   });

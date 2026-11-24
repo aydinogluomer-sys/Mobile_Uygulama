@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { alphaHex, font, hexA, radius, space, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
-import { EditorialBanner } from '../../components/ui';
+import { Button, EditorialBanner, IconButton } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { currentUser } from '../../lib/session';
@@ -513,24 +513,25 @@ export default function WeeklyReviewScreen() {
             <Text style={s.heroDates}>{start} - {end}</Text>
           </View>
           <View style={s.weekNav}>
-            <TouchableOpacity
+            <IconButton
+              icon="chevron-back"
+              size={18}
+              color={colors.textDim}
+              compact
+              label="Önceki hafta"
               onPress={() => setWeekOffset((offset) => offset + 1)}
               style={s.navBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Önceki hafta"
-            >
-              <Ionicons name="chevron-back" size={18} color={colors.textDim} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setWeekOffset((offset) => Math.max(0, offset - 1))}
-              style={[s.navBtn, isCurrentWeek && s.navBtnDisabled]}
+            />
+            <IconButton
+              icon="chevron-forward"
+              size={18}
+              color={isCurrentWeek ? colors.textGhost : colors.textDim}
+              compact
               disabled={isCurrentWeek}
-              accessibilityRole="button"
-              accessibilityLabel="Sonraki hafta"
-              accessibilityState={{ disabled: isCurrentWeek }}
-            >
-              <Ionicons name="chevron-forward" size={18} color={isCurrentWeek ? colors.textGhost : colors.textDim} />
-            </TouchableOpacity>
+              label="Sonraki hafta"
+              onPress={() => setWeekOffset((offset) => Math.max(0, offset - 1))}
+              style={s.navBtn}
+            />
           </View>
         </View>
 
@@ -613,22 +614,21 @@ export default function WeeklyReviewScreen() {
                     ? `"${currentAdjustment.label}" görevi gelecek hafta için eklendi`
                     : currentAdjustment.label}
                 </Text>
-                <TouchableOpacity
+                <Button
                   testID="weekly-undo-adjustment"
-                  style={s.undoAdjustBtn}
+                  label={undoingAdjustment ? 'Geri alınıyor...' : 'Öneriyi geri al'}
+                  variant="tonal"
+                  size="sm"
+                  icon="arrow-undo-outline"
+                  color={colors.warning}
+                  disabled={undoingAdjustment}
+                  loading={undoingAdjustment}
                   onPress={() => {
                     void handleUndoAdjustment();
                   }}
-                  disabled={undoingAdjustment}
-                  accessibilityRole="button"
                   accessibilityLabel="Öneriyi geri al"
-                  accessibilityState={{ disabled: undoingAdjustment, busy: undoingAdjustment }}
-                >
-                  <Ionicons name="arrow-undo-outline" size={15} color={colors.warning} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-                  <Text style={s.undoAdjustBtnText}>
-                    {undoingAdjustment ? 'Geri alınıyor...' : 'Öneriyi geri al'}
-                  </Text>
-                </TouchableOpacity>
+                  style={s.alignStart}
+                />
               </View>
             ) : isCurrentWeek ? (
               quickAdjustOpen ? (
@@ -650,46 +650,46 @@ export default function WeeklyReviewScreen() {
                     <Text style={s.quickAdjustErrorText}>{quickAdjustError}</Text>
                   )}
                   <View style={s.quickAdjustBtnRow}>
-                    <TouchableOpacity
+                    <Button
                       testID="weekly-cancel-adjustment"
-                      style={s.quickAdjustSecondaryBtn}
+                      label="Vazgeç"
+                      variant="ghost"
+                      size="sm"
+                      color={colors.textDim}
                       onPress={() => {
                         setQuickAdjustOpen(false);
                         setQuickAdjustError(null);
                       }}
-                      accessibilityRole="button"
                       accessibilityLabel="Küçük ayar seçiminden vazgeç"
-                    >
-                      <Text style={s.quickAdjustSecondaryBtnText}>Vazgeç</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
+                    />
+                    <Button
                       testID="weekly-apply-adjustment"
-                      style={s.quickAdjustPrimaryBtn}
+                      label={savingQuickAdjust ? 'Ekleniyor...' : 'Ayarı uygula'}
+                      variant="tonal"
+                      size="sm"
+                      color={colors.teal}
+                      full
+                      disabled={savingQuickAdjust}
+                      loading={savingQuickAdjust}
                       onPress={() => {
                         void handleApplyQuickAdjustment();
                       }}
-                      disabled={savingQuickAdjust}
-                      accessibilityRole="button"
                       accessibilityLabel="Küçük ayarı gelecek hafta için uygula"
-                      accessibilityState={{ disabled: savingQuickAdjust, busy: savingQuickAdjust }}
-                    >
-                      <Text style={s.quickAdjustPrimaryBtnText}>
-                        {savingQuickAdjust ? 'Ekleniyor...' : 'Ayarı uygula'}
-                      </Text>
-                    </TouchableOpacity>
+                    />
                   </View>
                 </View>
               ) : (
-                <TouchableOpacity
+                <Button
                   testID="weekly-jump-to-adjustment"
-                  style={s.jumpAdjustBtn}
+                  label="Küçük bir ayar belirle"
+                  variant="tonal"
+                  size="sm"
+                  icon="options-outline"
+                  color={colors.teal}
                   onPress={handleJumpToAdjustment}
-                  accessibilityRole="button"
                   accessibilityLabel="Gelecek hafta için küçük bir ayar belirle"
-                >
-                  <Ionicons name="options-outline" size={16} color={colors.teal} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-                  <Text style={s.jumpAdjustBtnText}>Küçük bir ayar belirle</Text>
-                </TouchableOpacity>
+                  style={s.alignStart}
+                />
               )
             ) : (
               <Text style={s.insightPrevOutcome}>Bu hafta için seçilmiş bir küçük ayar yok.</Text>
@@ -802,77 +802,55 @@ export default function WeeklyReviewScreen() {
 
 const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, paddingBottom: 40 },
-  hero: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
-  heroIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: alphaHex(colors.teal, '20'), alignItems: 'center', justifyContent: 'center' },
-  heroTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
-  heroDates: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
-  weekNav: { flexDirection: 'row', gap: 4 },
-  navBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  navBtnDisabled: { opacity: 0.3 },
-  metricsRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
-  metric: { flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
-  metricValue: { fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 4 },
-  metricLabel: { fontSize: 10, color: colors.textFaint, textAlign: 'center', lineHeight: 14 },
-  badgeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: hexA(colors.surface, 0.92), borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 24, overflow: 'hidden', position: 'relative' },
-  badgeEmoji: { fontSize: 20 },
-  badgeTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
-  badgeDesc: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
-  autoMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  autoMetricTile: { width: '31.5%', backgroundColor: colors.surface, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', marginBottom: 8 },
-  autoMetricValue: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 3 },
-  autoMetricLabel: { fontSize: 9.5, color: colors.textFaint, textAlign: 'center', lineHeight: 12 },
-  taskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 6 },
-  taskTitle: { flex: 1, fontSize: 14, color: colors.textDim },
-  moreText: { fontSize: 12, color: colors.textFaint, paddingLeft: 4, marginTop: 4 },
-  questionCard: { marginBottom: 14 },
-  questionLabel: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 8 },
-  questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.text, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.teal, borderRadius: 14, paddingVertical: 15, marginTop: 8 },
+  content: { padding: space.xl, paddingBottom: space.hh },
+  hero: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.xl },
+  heroIcon: { width: 48, height: 48, borderRadius: radius.lg, backgroundColor: alphaHex(colors.teal, '20'), alignItems: 'center', justifyContent: 'center' },
+  heroTitle: { ...font.h2, color: colors.text },
+  heroDates: { ...font.caption, color: colors.textFaint, marginTop: space.xs },
+  weekNav: { flexDirection: 'row', gap: space.xs },
+  navBtn: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  metricsRow: { flexDirection: 'row', gap: space.sm, marginBottom: space.lg },
+  metric: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+  metricValue: { ...font.h2, color: colors.text, marginBottom: space.xs },
+  metricLabel: { ...font.caption, color: colors.textFaint, textAlign: 'center', lineHeight: 14 },
+  badgeCard: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: hexA(colors.surface, 0.92), borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.border, marginBottom: space.xxl, overflow: 'hidden', position: 'relative' },
+  badgeEmoji: { ...font.h2 },
+  badgeTitle: { ...font.bodySm, fontWeight: '700', color: colors.text },
+  badgeDesc: { ...font.caption, color: colors.textFaint, marginTop: space.xs },
+  section: { marginBottom: space.xxl },
+  sectionTitle: { ...font.overline, color: colors.textFaint, marginBottom: space.sm },
+  autoMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  autoMetricTile: { width: '31.5%', backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.sm, borderWidth: 1, borderColor: colors.border, alignItems: 'center', marginBottom: space.sm },
+  autoMetricValue: { ...font.body, fontWeight: '700', color: colors.text, marginBottom: space.xs },
+  autoMetricLabel: { ...font.caption, color: colors.textFaint, textAlign: 'center', lineHeight: 12 },
+  taskItem: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: colors.surface, borderRadius: radius.md, padding: space.md, borderWidth: 1, borderColor: colors.border, marginBottom: space.xs },
+  taskTitle: { flex: 1, ...font.bodySm, color: colors.textDim },
+  moreText: { ...font.caption, color: colors.textFaint, paddingLeft: space.xs, marginTop: space.xs },
+  questionCard: { marginBottom: space.md },
+  questionLabel: { ...font.bodySm, color: colors.text, fontWeight: '600', marginBottom: space.sm },
+  questionInput: { ...font.bodySm, backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.md, color: colors.text, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, backgroundColor: colors.teal, borderRadius: radius.lg, paddingVertical: space.lg, marginTop: space.sm },
   saveBtnLoading: { opacity: 0.7 },
-  saveBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
-  savedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: alphaHex(colors.success, '10'), borderRadius: 12, padding: 12, borderWidth: 1, borderColor: alphaHex(colors.success, '30') },
-  savedBadgeText: { fontSize: 13, color: colors.success },
-  insightActionCard: { backgroundColor: colors.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 24, gap: 10 },
-  insightBlock: { gap: 6 },
-  insightSubhead: { fontSize: 13, fontWeight: '700', color: colors.text },
-  insightInsufficientText: { fontSize: 13, color: colors.textDim, lineHeight: 19 },
-  insightBodyText: { fontSize: 13, color: colors.text, lineHeight: 19 },
-  insightCorrelationText: { fontSize: 11.5, color: colors.textFaint, lineHeight: 17 },
-  insightDivider: { height: 1, backgroundColor: colors.border, marginVertical: 2 },
-  insightPrevOutcome: { fontSize: 12, color: colors.textDim, lineHeight: 17 },
-  currentAdjustWrap: { gap: 8, marginTop: 2 },
-  insightChosenText: { fontSize: 13, color: colors.text, lineHeight: 18 },
-  undoAdjustBtn: {
-    minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, borderRadius: 10, backgroundColor: hexA(colors.warning, 0.12),
-    borderWidth: 1, borderColor: hexA(colors.warning, 0.35),
-  },
-  undoAdjustBtnText: { fontSize: 13, fontWeight: '600', color: colors.warning },
-  jumpAdjustBtn: {
-    minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, borderRadius: 10, backgroundColor: alphaHex(colors.teal, '18'),
-    borderWidth: 1, borderColor: alphaHex(colors.teal, '40'), marginTop: 2,
-  },
-  jumpAdjustBtnText: { fontSize: 13, fontWeight: '700', color: colors.teal },
-  quickAdjustComposer: { gap: 8, marginTop: 4 },
+  saveBtnText: { ...font.h3, fontWeight: '700', color: colors.white },
+  savedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs, backgroundColor: alphaHex(colors.success, '10'), borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: alphaHex(colors.success, '30') },
+  savedBadgeText: { ...font.bodySm, color: colors.success },
+  insightActionCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: colors.border, marginBottom: space.xxl, gap: space.sm },
+  insightBlock: { gap: space.xs },
+  insightSubhead: { ...font.bodySm, fontWeight: '700', color: colors.text },
+  insightInsufficientText: { ...font.bodySm, color: colors.textDim, lineHeight: 19 },
+  insightBodyText: { ...font.bodySm, color: colors.text, lineHeight: 19 },
+  insightCorrelationText: { ...font.caption, color: colors.textFaint, lineHeight: 17 },
+  insightDivider: { height: 1, backgroundColor: colors.border, marginVertical: space.xs },
+  insightPrevOutcome: { ...font.caption, color: colors.textDim, lineHeight: 17 },
+  currentAdjustWrap: { gap: space.sm, marginTop: space.xs },
+  insightChosenText: { ...font.bodySm, color: colors.text, lineHeight: 18 },
+  alignStart: { alignSelf: 'flex-start' },
+  quickAdjustComposer: { gap: space.sm, marginTop: space.xs },
   quickAdjustInput: {
-    minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.border,
-    backgroundColor: colors.bgElevated, paddingHorizontal: 12, paddingVertical: 8,
-    fontSize: 13, color: colors.text,
+    minHeight: 44, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.bgElevated, paddingHorizontal: space.md, paddingVertical: space.sm,
+    ...font.bodySm, color: colors.text,
   },
-  quickAdjustErrorText: { fontSize: 12, color: colors.error },
-  quickAdjustBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  quickAdjustSecondaryBtn: {
-    minHeight: 44, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  quickAdjustSecondaryBtnText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
-  quickAdjustPrimaryBtn: {
-    minHeight: 44, flex: 1, paddingHorizontal: 14, borderRadius: 10, backgroundColor: colors.teal,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  quickAdjustPrimaryBtnText: { fontSize: 13, color: colors.white, fontWeight: '700' },
+  quickAdjustErrorText: { ...font.caption, color: colors.error },
+  quickAdjustBtnRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
 });

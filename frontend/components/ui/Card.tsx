@@ -19,6 +19,7 @@ type Props = AccessibilityProps & {
   selected?: boolean;
   accent?: string;
   onPress?: () => void;
+  testID?: string;
   style?: StyleProp<ViewStyle>;
 };
 

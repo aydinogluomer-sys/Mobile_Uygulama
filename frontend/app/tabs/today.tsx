@@ -1445,14 +1445,14 @@ export default function TodayScreen() {
 
               <View style={{ gap: space.sm, marginVertical: space.md }}>
                 {remainingHabits > 0 && (
-                  <TouchableOpacity
+                  <Card
+                    padding="md"
                     style={s.shutdownOptionCard}
                     onPress={() => {
                       lightDayFromCloseRef.current = true;
                       setShutdownOpen(false);
                       setLightDayPick(new Set(lightDayCandidates.map((h) => h.id)));
                     }}
-                    accessibilityRole="button"
                     accessibilityLabel={t('today.shutdown.lighten.a11y')}
                   >
                     <Ionicons name="leaf-outline" size={18} color={c.success} />
@@ -1463,16 +1463,16 @@ export default function TodayScreen() {
                       <Text style={s.shutdownOptionSub}>{t('today.shutdown.lighten.sub')}</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
-                  </TouchableOpacity>
+                  </Card>
                 )}
 
-                <TouchableOpacity
+                <Card
+                  padding="md"
                   style={s.shutdownOptionCard}
                   onPress={() => {
                     setShutdownOpen(false);
                     navigateTo(router, 'journal');
                   }}
-                  accessibilityRole="button"
                   accessibilityLabel={t('today.shutdown.journal.a11y')}
                 >
                   <Ionicons name="journal-outline" size={18} color={c.accent} />
@@ -1481,15 +1481,15 @@ export default function TodayScreen() {
                     <Text style={s.shutdownOptionSub}>{t('today.shutdown.journal.sub')}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
-                </TouchableOpacity>
+                </Card>
 
-                <TouchableOpacity
+                <Card
+                  padding="md"
                   style={s.shutdownOptionCard}
                   onPress={() => {
                     setShutdownOpen(false);
                     setReplanOpen(true);
                   }}
-                  accessibilityRole="button"
                   accessibilityLabel={t('today.shutdown.replan.a11y')}
                 >
                   <Ionicons name="git-branch-outline" size={18} color={c.accent} />
@@ -1498,15 +1498,15 @@ export default function TodayScreen() {
                     <Text style={s.shutdownOptionSub}>{t('today.shutdown.replan.sub')}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
-                </TouchableOpacity>
+                </Card>
 
-                <TouchableOpacity
+                <Card
+                  padding="md"
                   style={s.shutdownOptionCard}
                   onPress={() => {
                     setShutdownOpen(false);
                     navigateTo(router, 'recovery');
                   }}
-                  accessibilityRole="button"
                   accessibilityLabel={t('today.shutdown.recovery.a11y')}
                 >
                   <Ionicons name="shield-checkmark-outline" size={18} color={c.primary} />
@@ -1515,7 +1515,7 @@ export default function TodayScreen() {
                     <Text style={s.shutdownOptionSub}>{t('today.shutdown.recovery.sub')}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
-                </TouchableOpacity>
+                </Card>
               </View>
             </ScrollView>
 

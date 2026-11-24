@@ -953,30 +953,30 @@ export default function RecoveryScreen() {
 
             {replanStep === 'closed' && (
               <View style={s.replanClosedActions}>
-                <TouchableOpacity
+                <Button
                   testID="recovery-open-replan"
-                  style={s.replanPrimaryBtn}
+                  label="Günü toparla"
+                  icon="sparkles-outline"
+                  size="sm"
+                  color={colors.warning}
+                  variant="tonal"
                   onPress={openReplanFlow}
-                  accessibilityRole="button"
                   accessibilityLabel="Günü toparla akışını başlat"
-                >
-                  <Ionicons name="sparkles-outline" size={16} color={colors.bg} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-                  <Text style={s.replanPrimaryBtnText}>Günü toparla</Text>
-                </TouchableOpacity>
+                />
 
                 {canUndoReplan && (
-                  <TouchableOpacity
+                  <Button
                     testID="recovery-replan-undo"
-                    style={s.replanSecondaryBtn}
-                    onPress={handleUndoReplan}
+                    label="Geri al"
+                    icon="arrow-undo-outline"
+                    variant="ghost"
+                    size="sm"
+                    color={colors.warning}
                     disabled={replanUndoing}
-                    accessibilityRole="button"
+                    loading={replanUndoing}
+                    onPress={handleUndoReplan}
                     accessibilityLabel="Son gün planı değişikliğini geri al"
-                    accessibilityState={{ disabled: replanUndoing, busy: replanUndoing }}
-                  >
-                    <Ionicons name="arrow-undo-outline" size={16} color={colors.warning} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-                    <Text style={[s.replanSecondaryBtnText, { color: colors.warning }]}>Geri al</Text>
-                  </TouchableOpacity>
+                  />
                 )}
 
                 {replanUndoFeedback && (
@@ -1000,15 +1000,11 @@ export default function RecoveryScreen() {
                 )}
 
                 <View accessibilityRole="radiogroup" accessibilityLabel="Bugün korunacak odak seçimi" style={s.replanOptionList}>
-                  <TouchableOpacity
+                  <Card
                     testID="recovery-replan-protect-none"
-                    style={[
-                      s.replanRadioRow,
-                      replanProtectedRef === null && {
-                        borderColor: colors.warning,
-                        backgroundColor: hexA(colors.warning, 0.1),
-                      },
-                    ]}
+                    padding="sm"
+                    selected={replanProtectedRef === null}
+                    accent={colors.warning}
                     onPress={() => {
                       haptic.select();
                       setReplanProtectedRef(null);
@@ -1016,6 +1012,7 @@ export default function RecoveryScreen() {
                     accessibilityRole="radio"
                     accessibilityLabel="Hiçbiri — tüm açık işleri kalan kapasiteye göre değerlendir"
                     accessibilityState={{ checked: replanProtectedRef === null, selected: replanProtectedRef === null }}
+                    style={s.replanRadioRow}
                   >
                     <Ionicons
                       name={replanProtectedRef === null ? 'radio-button-on' : 'radio-button-off'}
@@ -1025,22 +1022,18 @@ export default function RecoveryScreen() {
                       importantForAccessibility="no-hide-descendants"
                     />
                     <Text style={s.replanRadioTitle}>Hiçbiri (tümünü kapasiteye göre dengele)</Text>
-                  </TouchableOpacity>
+                  </Card>
 
                   {protectableTasks.map((task) => {
                     const selected =
                       replanProtectedRef?.entity === 'task' && replanProtectedRef.id === task.id;
                     return (
-                      <TouchableOpacity
+                      <Card
                         key={`task:${task.id}`}
                         testID={`recovery-replan-protect-task-${task.id}`}
-                        style={[
-                          s.replanRadioRow,
-                          selected && {
-                            borderColor: colors.warning,
-                            backgroundColor: hexA(colors.warning, 0.1),
-                          },
-                        ]}
+                        padding="sm"
+                        selected={selected}
+                        accent={colors.warning}
                         onPress={() => {
                           haptic.select();
                           setReplanProtectedRef({ entity: 'task', id: task.id });
@@ -1048,6 +1041,7 @@ export default function RecoveryScreen() {
                         accessibilityRole="radio"
                         accessibilityLabel={`Görev koru: ${task.title}`}
                         accessibilityState={{ checked: selected, selected }}
+                        style={s.replanRadioRow}
                       >
                         <Ionicons
                           name={selected ? 'radio-button-on' : 'radio-button-off'}
@@ -1060,7 +1054,7 @@ export default function RecoveryScreen() {
                           <Text style={s.replanRadioTitle} numberOfLines={1}>{task.title}</Text>
                           <Text style={s.replanRadioMeta}>Görev</Text>
                         </View>
-                      </TouchableOpacity>
+                      </Card>
                     );
                   })}
 
@@ -1068,16 +1062,12 @@ export default function RecoveryScreen() {
                     const selected =
                       replanProtectedRef?.entity === 'habit' && replanProtectedRef.id === habit.id;
                     return (
-                      <TouchableOpacity
+                      <Card
                         key={`habit:${habit.id}`}
                         testID={`recovery-replan-protect-habit-${habit.id}`}
-                        style={[
-                          s.replanRadioRow,
-                          selected && {
-                            borderColor: colors.warning,
-                            backgroundColor: hexA(colors.warning, 0.1),
-                          },
-                        ]}
+                        padding="sm"
+                        selected={selected}
+                        accent={colors.warning}
                         onPress={() => {
                           haptic.select();
                           setReplanProtectedRef({ entity: 'habit', id: habit.id });
@@ -1085,6 +1075,7 @@ export default function RecoveryScreen() {
                         accessibilityRole="radio"
                         accessibilityLabel={`Alışkanlık koru: ${habit.name}`}
                         accessibilityState={{ checked: selected, selected }}
+                        style={s.replanRadioRow}
                       >
                         <Ionicons
                           name={selected ? 'radio-button-on' : 'radio-button-off'}
@@ -1097,30 +1088,31 @@ export default function RecoveryScreen() {
                           <Text style={s.replanRadioTitle} numberOfLines={1}>{habit.name}</Text>
                           <Text style={s.replanRadioMeta}>Rutin</Text>
                         </View>
-                      </TouchableOpacity>
+                      </Card>
                     );
                   })}
                 </View>
 
                 <View style={s.replanFooterRow}>
-                  <TouchableOpacity
+                  <Button
                     testID="recovery-replan-close"
-                    style={s.replanSecondaryBtn}
+                    label="Vazgeç"
+                    variant="ghost"
+                    size="sm"
+                    color={colors.textDim}
                     onPress={closeReplanFlow}
-                    accessibilityRole="button"
                     accessibilityLabel="Günü toparla akışını kapat"
-                  >
-                    <Text style={s.replanSecondaryBtnText}>Vazgeç</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  />
+                  <Button
                     testID="recovery-replan-to-preview"
-                    style={[s.replanPrimaryBtn, { flex: 1 }]}
+                    label="Gör →"
+                    variant="tonal"
+                    size="sm"
+                    color={colors.warning}
+                    full
                     onPress={proceedToReplanPreview}
-                    accessibilityRole="button"
                     accessibilityLabel="Önizleme adımına geç"
-                  >
-                    <Text style={s.replanPrimaryBtnText}>Gör →</Text>
-                  </TouchableOpacity>
+                  />
                 </View>
               </View>
             )}
@@ -1210,16 +1202,12 @@ export default function RecoveryScreen() {
                           {ch.availableActions.map((act) => {
                             const active = ch.action === act;
                             return (
-                              <TouchableOpacity
+                              <Chip
                                 key={act}
                                 testID={`recovery-replan-action-${ch.sourceRef.entity}-${ch.sourceRef.id}-${act}`}
-                                style={[
-                                  s.replanActionPill,
-                                  active && {
-                                    borderColor: colors.primaryBright,
-                                    backgroundColor: hexA(colors.primaryBright, 0.14),
-                                  },
-                                ]}
+                                label={replanActionLabel(act)}
+                                color={colors.primaryBright}
+                                selected={active}
                                 onPress={() =>
                                   handleReplanOverride(
                                     replanPreviewInput,
@@ -1231,16 +1219,7 @@ export default function RecoveryScreen() {
                                 accessibilityRole="radio"
                                 accessibilityLabel={`${ch.sourceRef.title}: ${replanActionLabel(act)}`}
                                 accessibilityState={{ checked: active, selected: active }}
-                              >
-                                <Text
-                                  style={[
-                                    s.replanActionPillText,
-                                    active && { color: colors.primaryBright, fontWeight: '700' },
-                                  ]}
-                                >
-                                  {replanActionLabel(act)}
-                                </Text>
-                              </TouchableOpacity>
+                              />
                             );
                           })}
                         </View>
@@ -1252,55 +1231,54 @@ export default function RecoveryScreen() {
                 {replanStaleMessage && (
                   <View testID="recovery-replan-stale-banner" style={s.replanStaleBox}>
                     <Text style={s.replanStaleText}>{replanStaleMessage}</Text>
-                    <TouchableOpacity
+                    <Button
                       testID="recovery-replan-refresh-preview"
-                      style={s.replanSecondaryBtn}
+                      label="Önizlemeyi yenile"
+                      variant="ghost"
+                      size="sm"
+                      color={colors.warning}
                       onPress={refreshReplanPreview}
-                      accessibilityRole="button"
                       accessibilityLabel="Güncel verilerle önizlemeyi yenile"
-                    >
-                      <Text style={s.replanSecondaryBtnText}>Önizlemeyi yenile</Text>
-                    </TouchableOpacity>
+                    />
                   </View>
                 )}
 
                 <View style={s.replanFooterRow}>
-                  <TouchableOpacity
+                  <Button
                     testID="recovery-replan-back"
-                    style={s.replanSecondaryBtn}
+                    label="Geri"
+                    variant="ghost"
+                    size="sm"
+                    color={colors.textDim}
                     onPress={() => {
                       haptic.light();
                       setReplanStep('protect');
                     }}
-                    accessibilityRole="button"
                     accessibilityLabel="Koru adımına geri dön"
-                  >
-                    <Text style={s.replanSecondaryBtnText}>Geri</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  />
+                  <Button
                     testID="recovery-replan-close"
-                    style={s.replanSecondaryBtn}
+                    label="Kapat"
+                    variant="ghost"
+                    size="sm"
+                    color={colors.textDim}
                     onPress={closeReplanFlow}
-                    accessibilityRole="button"
                     accessibilityLabel="Değişiklik yapmadan kapat"
-                  >
-                    <Text style={s.replanSecondaryBtnText}>Kapat</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  />
+                  <Button
                     testID="recovery-replan-confirm"
-                    style={[s.replanPrimaryBtn, { flex: 1 }]}
+                    label={replanCommitting ? 'Uygulanıyor...' : 'Uygula'}
+                    variant="tonal"
+                    size="sm"
+                    color={colors.warning}
+                    full
+                    disabled={replanCommitting}
+                    loading={replanCommitting}
                     onPress={() => {
                       void handleApplyReplan(replanPreview);
                     }}
-                    disabled={replanCommitting}
-                    accessibilityRole="button"
                     accessibilityLabel="Seçilen gün planını uygula"
-                    accessibilityState={{ disabled: replanCommitting, busy: replanCommitting }}
-                  >
-                    <Text style={s.replanPrimaryBtnText}>
-                      {replanCommitting ? 'Uygulanıyor...' : 'Uygula'}
-                    </Text>
-                  </TouchableOpacity>
+                  />
                 </View>
               </View>
             )}
@@ -1327,41 +1305,37 @@ export default function RecoveryScreen() {
 
                 {(replanCommitResult.overall === 'partial' ||
                   replanCommitResult.retryableItemIds.length > 0) && (
-                  <TouchableOpacity
+                  <Button
                     testID="recovery-replan-retry-failed"
-                    style={s.replanSecondaryBtn}
+                    label={replanRetrying ? 'Yeniden deneniyor...' : 'Başarısızları yeniden dene'}
+                    variant="ghost"
+                    size="sm"
+                    icon="refresh-outline"
+                    color={colors.primaryBright}
+                    disabled={replanRetrying}
+                    loading={replanRetrying}
                     onPress={() => {
                       void handleRetryFailedReplan();
                     }}
-                    disabled={replanRetrying}
-                    accessibilityRole="button"
                     accessibilityLabel="Yalnızca başarısız maddeleri yeniden dene"
-                    accessibilityState={{ disabled: replanRetrying, busy: replanRetrying }}
-                  >
-                    <Ionicons name="refresh-outline" size={16} color={colors.primaryBright} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-                    <Text style={[s.replanSecondaryBtnText, { color: colors.primaryBright }]}>
-                      {replanRetrying ? 'Yeniden deneniyor...' : 'Başarısızları yeniden dene'}
-                    </Text>
-                  </TouchableOpacity>
+                  />
                 )}
 
                 {canUndoReplan && (
-                  <TouchableOpacity
+                  <Button
                     testID="recovery-replan-undo"
-                    style={s.replanSecondaryBtn}
+                    label={replanUndoing ? 'Geri alınıyor...' : 'Geri al'}
+                    variant="ghost"
+                    size="sm"
+                    icon="arrow-undo-outline"
+                    color={colors.warning}
+                    disabled={replanUndoing}
+                    loading={replanUndoing}
                     onPress={() => {
                       void handleUndoReplan();
                     }}
-                    disabled={replanUndoing}
-                    accessibilityRole="button"
                     accessibilityLabel="Uygulanan gün planı değişikliklerini geri al"
-                    accessibilityState={{ disabled: replanUndoing, busy: replanUndoing }}
-                  >
-                    <Ionicons name="arrow-undo-outline" size={16} color={colors.warning} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-                    <Text style={[s.replanSecondaryBtnText, { color: colors.warning }]}>
-                      {replanUndoing ? 'Geri alınıyor...' : 'Geri al'}
-                    </Text>
-                  </TouchableOpacity>
+                  />
                 )}
 
                 {replanUndoFeedback && (
@@ -1371,15 +1345,16 @@ export default function RecoveryScreen() {
                 )}
 
                 <View style={s.replanFooterRow}>
-                  <TouchableOpacity
+                  <Button
                     testID="recovery-replan-close"
-                    style={[s.replanSecondaryBtn, { flex: 1 }]}
+                    label="Tamam"
+                    variant="ghost"
+                    size="sm"
+                    color={colors.textDim}
+                    full
                     onPress={closeReplanFlow}
-                    accessibilityRole="button"
                     accessibilityLabel="Günü toparla özetini kapat"
-                  >
-                    <Text style={s.replanSecondaryBtnText}>Tamam</Text>
-                  </TouchableOpacity>
+                  />
                 </View>
               </View>
             )}
@@ -1833,44 +1808,32 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   // U05 & P04 — Günü toparla kartı
   replanCardWrap: { marginBottom: space.lg },
   replanHeadRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  replanEyebrow: { ...font.overline, color: colors.warning, marginBottom: 2 },
+  replanEyebrow: { ...font.overline, color: colors.warning, marginBottom: space.xs },
   replanTitle: { ...font.body, color: colors.text, fontWeight: '700' },
-  replanSub: { ...font.bodySm, color: colors.textDim, marginTop: 3, lineHeight: 18 },
+  replanSub: { ...font.bodySm, color: colors.textDim, marginTop: space.xs, lineHeight: 18 },
   replanClosedActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm, marginTop: space.md },
-  replanPrimaryBtn: {
-    minHeight: 44, paddingHorizontal: space.lg, borderRadius: radius.md,
-    backgroundColor: colors.warning, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs,
-  },
-  replanPrimaryBtnText: { ...font.bodySm, color: colors.bg, fontWeight: '700' },
-  replanSecondaryBtn: {
-    minHeight: 44, paddingHorizontal: space.md, borderRadius: radius.md,
-    backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.border,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs,
-  },
-  replanSecondaryBtnText: { ...font.bodySm, color: colors.textDim, fontWeight: '600' },
   replanFeedbackText: { ...font.bodySm, color: colors.textDim, width: '100%', marginTop: space.xs },
   replanStepBox: { marginTop: space.md, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.border, gap: space.md },
   replanStepLabel: { ...font.overline, color: colors.textFaint },
   replanStepHint: { ...font.bodySm, color: colors.textDim, lineHeight: 18 },
-  replanLockedHint: { fontSize: 12, color: colors.info, lineHeight: 17 },
+  replanLockedHint: { ...font.caption, color: colors.info, lineHeight: 17 },
   replanOptionList: { gap: space.sm },
   replanRadioRow: {
     minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm,
-    paddingHorizontal: space.md, paddingVertical: space.sm,
-    borderRadius: radius.md, backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
   },
   replanRadioTitle: { ...font.bodySm, color: colors.text, fontWeight: '600' },
-  replanRadioMeta: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
+  replanRadioMeta: { ...font.caption, color: colors.textFaint, marginTop: space.xs },
   replanFooterRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
   replanSummaryBox: {
     padding: space.md, borderRadius: radius.md, backgroundColor: colors.bgElevated,
-    borderWidth: 1, borderColor: colors.border, gap: 4,
+    borderWidth: 1, borderColor: colors.border, gap: space.xs,
   },
   replanLoadValue: { ...font.body, color: colors.text, fontWeight: '700' },
   replanLoadMeta: { ...font.bodySm, color: colors.textDim },
-  replanLoadNote: { fontSize: 11, color: colors.textFaint, lineHeight: 16 },
+  replanLoadNote: { ...font.caption, color: colors.textFaint, lineHeight: 16 },
   replanGroupBox: { gap: space.sm },
-  replanGroupTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, color: colors.textFaint },
+  replanGroupTitle: { ...font.overline, color: colors.textFaint },
   replanLockedItemRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: space.sm,
     padding: space.sm, borderRadius: radius.sm, backgroundColor: colors.bgElevated,
@@ -1878,18 +1841,12 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   },
   replanChangeCard: {
     padding: space.md, borderRadius: radius.md, backgroundColor: colors.bgElevated,
-    borderWidth: 1, borderColor: colors.border, gap: 6,
+    borderWidth: 1, borderColor: colors.border, gap: space.xs,
   },
   replanItemTitle: { ...font.bodySm, color: colors.text, fontWeight: '600' },
-  replanItemReason: { fontSize: 12, color: colors.textDim, lineHeight: 17 },
-  replanP04Note: { fontSize: 11, color: colors.info, lineHeight: 16 },
-  replanActionPills: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs, marginTop: 4 },
-  replanActionPill: {
-    minHeight: 44, paddingHorizontal: space.md, borderRadius: radius.sm,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  replanActionPillText: { fontSize: 12, color: colors.textDim },
+  replanItemReason: { ...font.caption, color: colors.textDim, lineHeight: 17 },
+  replanP04Note: { ...font.caption, color: colors.info, lineHeight: 16 },
+  replanActionPills: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs, marginTop: space.xs },
   replanStaleBox: {
     padding: space.md, borderRadius: radius.md, backgroundColor: hexA(colors.warning, 0.1),
     borderWidth: 1, borderColor: hexA(colors.warning, 0.4), gap: space.sm,

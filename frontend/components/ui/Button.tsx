@@ -24,6 +24,7 @@ type Props = AccessibilityProps & {
   disabled?: boolean;
   color?: string; // tonal/ghost için accent rengi
   full?: boolean;
+  testID?: string;
   style?: StyleProp<ViewStyle>;
 };
 

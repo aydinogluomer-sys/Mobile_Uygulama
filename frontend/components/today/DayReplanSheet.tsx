@@ -18,11 +18,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Button, Card, Chip, IconButton } from '../ui';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { parseLocalDate, type Ymd } from '../../lib/date';
 import { dueDayOf } from '../../lib/dayClose';
@@ -45,7 +45,7 @@ import { newOperationId } from '../../lib/outbox';
 import type { SmallStepParent } from '../../lib/smallStart';
 import type { Habit, HabitLog, RecoveryPlan } from '../../lib/supabase';
 import type { Task } from '../../lib/taskTypes';
-import { font, hexA, onColor, radius, space, type Palette } from '../../lib/tokens';
+import { font, hexA, radius, space, type Palette } from '../../lib/tokens';
 import {
   commitDayPlan,
   retryFailedDayPlanItems,
@@ -602,15 +602,14 @@ export default function DayReplanSheet({
                     : 'Günün yeni ritmi'}
               </Text>
             </View>
-            <TouchableOpacity
+            <IconButton
               testID="replan-close-btn"
-              style={s.iconBtn}
+              icon="close"
+              size={20}
+              color={c.textFaint}
+              label="Kapat"
               onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Kapat"
-            >
-              <Ionicons name="close" size={20} color={c.textFaint} />
-            </TouchableOpacity>
+            />
           </View>
 
           <ScrollView
@@ -625,13 +624,15 @@ export default function DayReplanSheet({
                 </Text>
 
                 <View accessibilityRole="radiogroup" accessibilityLabel="Bugün korunacak iş seçimi" style={s.radioList}>
-                  <TouchableOpacity
+                  <Card
                     testID="replan-protect-none"
-                    style={[s.radioRow, protectedRef === null && s.radioRowSelected]}
+                    padding="md"
+                    selected={protectedRef === null}
+                    accent={c.accent}
                     onPress={() => setProtectedRef(null)}
                     accessibilityRole="radio"
-                    accessibilityState={{ selected: protectedRef === null }}
                     accessibilityLabel="Hiçbiri (hepsini hafiflet)"
+                    style={s.radioRow}
                   >
                     <Ionicons
                       name={protectedRef === null ? 'radio-button-on' : 'radio-button-off'}
@@ -642,7 +643,7 @@ export default function DayReplanSheet({
                       <Text style={s.radioTitle}>Hiçbiri (hepsini hafiflet)</Text>
                       <Text style={s.radioSub}>Kalan işleri kapasiteye göre küçült veya yarına aktar</Text>
                     </View>
-                  </TouchableOpacity>
+                  </Card>
 
                   {protectCandidates.map((cand) => {
                     const selected =
@@ -650,14 +651,16 @@ export default function DayReplanSheet({
                       protectedRef.entity === cand.entity &&
                       protectedRef.id === cand.id;
                     return (
-                      <TouchableOpacity
+                      <Card
                         key={`${cand.entity}:${cand.id}`}
                         testID={`replan-protect-${cand.entity}-${cand.id}`}
-                        style={[s.radioRow, selected && s.radioRowSelected]}
+                        padding="md"
+                        selected={selected}
+                        accent={c.accent}
                         onPress={() => setProtectedRef({ entity: cand.entity, id: cand.id })}
                         accessibilityRole="radio"
-                        accessibilityState={{ selected }}
                         accessibilityLabel={`${cand.title} (${cand.badge})`}
+                        style={s.radioRow}
                       >
                         <Ionicons
                           name={selected ? 'radio-button-on' : 'radio-button-off'}
@@ -670,7 +673,7 @@ export default function DayReplanSheet({
                           </Text>
                           <Text style={s.radioSub}>{cand.badge}</Text>
                         </View>
-                      </TouchableOpacity>
+                      </Card>
                     );
                   })}
                 </View>
@@ -777,21 +780,18 @@ export default function DayReplanSheet({
                           {ch.availableActions.map((act) => {
                             const active = ch.action === act;
                             return (
-                              <TouchableOpacity
+                              <Chip
                                 key={act}
                                 testID={`replan-action-${ch.sourceRef.entity}-${ch.sourceRef.id}-${act}`}
-                                style={[s.actionPill, active && s.actionPillActive]}
+                                label={ACTION_LABELS[act]}
+                                color={c.accent}
+                                selected={active}
                                 onPress={() =>
                                   handleSelectOverride(ch.sourceRef.entity, ch.sourceRef.id, act)
                                 }
                                 accessibilityRole="radio"
-                                accessibilityState={{ selected: active }}
                                 accessibilityLabel={`${ch.sourceRef.title}: ${ACTION_LABELS[act]}`}
-                              >
-                                <Text style={[s.actionPillText, active && s.actionPillTextActive]}>
-                                  {ACTION_LABELS[act]}
-                                </Text>
-                              </TouchableOpacity>
+                              />
                             );
                           })}
                         </View>
@@ -819,15 +819,13 @@ export default function DayReplanSheet({
                           .join(', ')}
                       </Text>
                     )}
-                    <TouchableOpacity
+                    <Button
                       testID="replan-refresh-btn"
-                      style={s.primaryBtn}
+                      label="Önizlemeyi yenile"
+                      size="md"
                       onPress={handleRefreshPreview}
-                      accessibilityRole="button"
                       accessibilityLabel="Önizlemeyi yenile"
-                    >
-                      <Text style={s.primaryBtnText}>Önizlemeyi yenile</Text>
-                    </TouchableOpacity>
+                    />
                   </View>
                 )}
 
@@ -879,19 +877,16 @@ export default function DayReplanSheet({
                             </View>
                           );
                         })}
-                        <TouchableOpacity
+                        <Button
                           testID="replan-retry-failed-btn"
-                          style={[s.primaryBtn, submitting && s.btnDisabled]}
+                          label="Yalnız kalanları yeniden dene"
+                          size="md"
+                          disabled={submitting}
                           onPress={() => {
                             void handleRetryFailed();
                           }}
-                          disabled={submitting}
-                          accessibilityRole="button"
                           accessibilityLabel="Yalnız kalanları yeniden dene"
-                          accessibilityState={{ disabled: submitting }}
-                        >
-                          <Text style={s.primaryBtnText}>Yalnız kalanları yeniden dene</Text>
-                        </TouchableOpacity>
+                        />
                       </View>
                     )}
 
@@ -911,15 +906,13 @@ export default function DayReplanSheet({
                               {titleByItemId.get(r.itemId) ?? titleByItemId.get(r.targetId) ?? r.targetId}
                             </Text>
                           ))}
-                        <TouchableOpacity
+                        <Button
                           testID="replan-refresh-btn"
-                          style={s.primaryBtn}
+                          label="Önizlemeyi yenile"
+                          size="md"
                           onPress={handleRefreshPreview}
-                          accessibilityRole="button"
                           accessibilityLabel="Önizlemeyi yenile"
-                        >
-                          <Text style={s.primaryBtnText}>Önizlemeyi yenile</Text>
-                        </TouchableOpacity>
+                        />
                       </View>
                     )}
 
@@ -930,20 +923,19 @@ export default function DayReplanSheet({
                     )}
 
                     {canUndo && (
-                      <TouchableOpacity
+                      <Button
                         testID="replan-undo-btn"
-                        style={[s.secondaryBtn, submitting && s.btnDisabled]}
+                        label="Geri al"
+                        variant="ghost"
+                        size="md"
+                        icon="arrow-undo-outline"
+                        color={c.text}
+                        disabled={submitting}
                         onPress={() => {
                           void handleUndo();
                         }}
-                        disabled={submitting}
-                        accessibilityRole="button"
                         accessibilityLabel="Değişiklikleri geri al"
-                        accessibilityState={{ disabled: submitting }}
-                      >
-                        <Ionicons name="arrow-undo-outline" size={16} color={c.text} />
-                        <Text style={s.secondaryBtnText}>Geri al</Text>
-                      </TouchableOpacity>
+                      />
                     )}
 
                     {undoResult && (
@@ -967,19 +959,19 @@ export default function DayReplanSheet({
                     )}
 
                     {smallStepCandidate && onStartSmallStep && (
-                      <TouchableOpacity
+                      <Button
                         testID="replan-start-small-btn"
-                        style={s.secondaryBtn}
+                        label="5 dk küçük adımla başla"
+                        variant="tonal"
+                        size="md"
+                        icon="play-outline"
+                        color={c.accent}
                         onPress={() => {
                           onStartSmallStep(smallStepCandidate, SHRINK_STEP_MINUTES);
                           onClose();
                         }}
-                        accessibilityRole="button"
                         accessibilityLabel={`${smallStepCandidate.title} için 5 dakika küçük adımla başla`}
-                      >
-                        <Ionicons name="play-outline" size={16} color={c.accent} />
-                        <Text style={s.secondaryBtnText}>5 dk küçük adımla başla</Text>
-                      </TouchableOpacity>
+                      />
                     )}
                   </View>
                 )}
@@ -990,64 +982,62 @@ export default function DayReplanSheet({
           <View style={s.footerRow}>
             {step === 'protect' && (
               <>
-                <TouchableOpacity
+                <Button
                   testID="replan-cancel-btn"
-                  style={s.secondaryFooterBtn}
+                  label="Kapat"
+                  variant="ghost"
+                  size="md"
+                  color={c.textDim}
+                  full
                   onPress={onClose}
-                  accessibilityRole="button"
                   accessibilityLabel="Kapat"
-                >
-                  <Text style={s.secondaryBtnText}>Kapat</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                />
+                <Button
                   testID="replan-next-preview-btn"
-                  style={s.primaryFooterBtn}
+                  label="Devam et: Planı gör"
+                  size="md"
+                  full
                   onPress={handleGoToPreview}
-                  accessibilityRole="button"
                   accessibilityLabel="Devam et: Planı gör"
-                >
-                  <Text style={s.primaryBtnText}>Devam et: Planı gör</Text>
-                </TouchableOpacity>
+                />
               </>
             )}
 
             {step === 'preview' && (
               <>
-                <TouchableOpacity
+                <Button
                   testID="replan-back-btn"
-                  style={s.secondaryFooterBtn}
+                  label="Geri"
+                  variant="ghost"
+                  size="md"
+                  color={c.textDim}
+                  full
                   onPress={() => setStep('protect')}
-                  accessibilityRole="button"
                   accessibilityLabel="Geri"
-                >
-                  <Text style={s.secondaryBtnText}>Geri</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                />
+                <Button
                   testID="replan-apply-btn"
-                  style={[s.primaryFooterBtn, submitting && s.btnDisabled]}
+                  label={submitting ? 'Uygulanıyor…' : 'Uygula'}
+                  size="md"
+                  full
+                  disabled={submitting}
                   onPress={() => {
                     void handleCommit();
                   }}
-                  disabled={submitting}
-                  accessibilityRole="button"
                   accessibilityLabel="Uygula"
-                  accessibilityState={{ disabled: submitting }}
-                >
-                  <Text style={s.primaryBtnText}>{submitting ? 'Uygulanıyor…' : 'Uygula'}</Text>
-                </TouchableOpacity>
+                />
               </>
             )}
 
             {step === 'apply' && (
-              <TouchableOpacity
+              <Button
                 testID="replan-done-btn"
-                style={s.primaryFooterBtn}
+                label="Tamam"
+                size="md"
+                full
                 onPress={onClose}
-                accessibilityRole="button"
                 accessibilityLabel="Tamam"
-              >
-                <Text style={s.primaryBtnText}>Tamam</Text>
-              </TouchableOpacity>
+              />
             )}
           </View>
         </View>
@@ -1079,7 +1069,7 @@ const makeStyles = (c: Palette) =>
     stepEyebrow: {
       ...font.overline,
       color: c.accent,
-      marginBottom: 2,
+      marginBottom: space.xs,
     },
     title: {
       ...font.h2,
@@ -1089,12 +1079,6 @@ const makeStyles = (c: Palette) =>
       ...font.bodySm,
       color: c.textDim,
       lineHeight: 20,
-    },
-    iconBtn: {
-      minWidth: 44,
-      minHeight: 44,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
     sectionGap: {
       gap: space.md,
@@ -1107,15 +1091,6 @@ const makeStyles = (c: Palette) =>
       alignItems: 'center',
       gap: space.md,
       minHeight: 52,
-      padding: space.md,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: c.border,
-      backgroundColor: c.surface,
-    },
-    radioRowSelected: {
-      borderColor: c.accent,
-      backgroundColor: c.surfaceAlt,
     },
     radioTitle: {
       ...font.bodySm,
@@ -1125,7 +1100,7 @@ const makeStyles = (c: Palette) =>
     radioSub: {
       ...font.caption,
       color: c.textDim,
-      marginTop: 2,
+      marginTop: space.xs,
     },
     loadCard: {
       padding: space.md,
@@ -1133,7 +1108,7 @@ const makeStyles = (c: Palette) =>
       borderWidth: 1,
       borderColor: c.border,
       backgroundColor: c.surface,
-      gap: 4,
+      gap: space.xs,
     },
     loadHeaderRow: {
       flexDirection: 'row',
@@ -1148,7 +1123,7 @@ const makeStyles = (c: Palette) =>
     loadNumbersRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
+      gap: space.xs,
     },
     loadValue: {
       ...font.h3,
@@ -1176,7 +1151,7 @@ const makeStyles = (c: Palette) =>
       borderWidth: 1,
       borderColor: c.border,
       backgroundColor: c.surface,
-      gap: 6,
+      gap: space.xs,
     },
     itemTopRow: {
       flexDirection: 'row',
@@ -1191,7 +1166,7 @@ const makeStyles = (c: Palette) =>
     },
     timePill: {
       paddingHorizontal: space.sm,
-      paddingVertical: 2,
+      paddingVertical: space.xs,
       borderRadius: radius.sm,
       backgroundColor: c.surfaceAlt,
     },
@@ -1218,31 +1193,7 @@ const makeStyles = (c: Palette) =>
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: space.xs,
-      marginTop: 4,
-    },
-    actionPill: {
-      minHeight: 44,
-      paddingHorizontal: space.md,
-      paddingVertical: space.xs,
-      borderRadius: radius.full,
-      borderWidth: 1,
-      borderColor: c.border,
-      backgroundColor: c.bgElevated,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    actionPillActive: {
-      borderColor: c.accent,
-      backgroundColor: c.surfaceAlt,
-    },
-    actionPillText: {
-      ...font.caption,
-      fontWeight: '600',
-      color: c.textDim,
-    },
-    actionPillTextActive: {
-      color: c.text,
-      fontWeight: '700',
+      marginTop: space.xs,
     },
     alertCard: {
       padding: space.md,
@@ -1292,63 +1243,11 @@ const makeStyles = (c: Palette) =>
     },
     undoReportBox: {
       paddingTop: space.xs,
-      gap: 4,
-    },
-    primaryBtn: {
-      minHeight: 48,
-      paddingHorizontal: space.md,
-      paddingVertical: space.sm,
-      borderRadius: radius.md,
-      backgroundColor: c.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    primaryBtnText: {
-      ...font.bodySm,
-      fontWeight: '700',
-      color: onColor(c.accent),
-    },
-    secondaryBtn: {
-      minHeight: 44,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
       gap: space.xs,
-      paddingHorizontal: space.md,
-      paddingVertical: space.sm,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: c.border,
-      backgroundColor: c.bgElevated,
-    },
-    secondaryBtnText: {
-      ...font.bodySm,
-      fontWeight: '600',
-      color: c.text,
     },
     footerRow: {
       flexDirection: 'row',
       gap: space.sm,
       marginTop: space.xs,
-    },
-    secondaryFooterBtn: {
-      flex: 1,
-      minHeight: 48,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: c.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    primaryFooterBtn: {
-      flex: 1,
-      minHeight: 48,
-      borderRadius: radius.md,
-      backgroundColor: c.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    btnDisabled: {
-      opacity: 0.45,
     },
   });
