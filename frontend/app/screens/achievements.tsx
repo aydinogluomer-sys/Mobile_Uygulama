@@ -14,7 +14,8 @@ import { useTaskStore } from '../../store/taskStore';
 import { useDeepWorkStore } from '../../store/deepWorkStore';
 import { useJournalStore } from '../../store/journalStore';
 import { haptic } from '../../lib/haptics';
-import { EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { buildCalmEffortSummary } from '../../lib/calmProgress';
+import { Card, Chip, EmblemMedallion, TexturedSurface } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, getAchievementBadge, TEXTURES } from '../../lib/visualAssets';
 
@@ -218,6 +219,16 @@ export default function AchievementsScreen() {
   const unlockedCount = achievements.filter((a) => a.unlocked).length;
   const progressPercent = Math.round((unlockedCount / achievements.length) * 100);
   const vitrineWidth = width >= 980 ? '31.8%' : '48.2%';
+  const calmEffort = useMemo(
+    () =>
+      buildCalmEffortSummary({
+        logs,
+        completedTasksCount: tasks.filter((t) => t.completed).length,
+        focusSessionsCount: sessions.length,
+        skippedOrLightenedCount: logs.filter((l) => l.state === 'skip').length,
+      }),
+    [logs, tasks, sessions],
+  );
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -250,6 +261,43 @@ export default function AchievementsScreen() {
             <View style={[s.progressBarFill, { width: `${progressPercent}%` }]} />
           </View>
         </View>
+
+        {/* U13 — Sürdürülen Çaba & Sakin Dönüş Kartı */}
+        <Card
+          testID="achievements-calm-effort-card"
+          radiusKey="lg"
+          padding="md"
+          style={s.calmEffortCard}
+        >
+          <View style={s.calmEffortHeader}>
+            <Ionicons name="leaf-outline" size={18} color={colors.success} />
+            <Text style={s.calmEffortTitle}>{calmEffort.headline}</Text>
+          </View>
+          <View style={s.calmEffortChips}>
+            <Chip
+              size="sm"
+              icon="checkmark-done-outline"
+              color={colors.success}
+              label={`${calmEffort.preservedHabitCompletions} korunan adım`}
+            />
+            <Chip
+              size="sm"
+              icon="refresh-outline"
+              color={colors.primary}
+              label={`${calmEffort.calmReturnCount} sakin dönüş`}
+            />
+            {calmEffort.completedTasksCount + calmEffort.focusSessionsCount > 0 ? (
+              <Chip
+                size="sm"
+                icon="sparkles-outline"
+                color={colors.info}
+                label={`${calmEffort.completedTasksCount} görev · ${calmEffort.focusSessionsCount} odak`}
+              />
+            ) : null}
+          </View>
+          <Text style={s.calmEffortBody}>{calmEffort.returnCopy}</Text>
+          <Text style={s.calmEffortAssurance}>{calmEffort.assuranceCopy}</Text>
+        </Card>
 
         {/* Kategori Filtreleri */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
@@ -400,6 +448,32 @@ const makeStyles = (colors: Palette) =>
       height: '100%',
       backgroundColor: colors.warning,
       borderRadius: radius.full,
+    },
+
+    calmEffortCard: {
+      gap: space.sm,
+    },
+    calmEffortHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+    },
+    calmEffortTitle: {
+      ...font.h3,
+      color: colors.text,
+    },
+    calmEffortChips: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: space.sm,
+    },
+    calmEffortBody: {
+      ...font.bodySm,
+      color: colors.textDim,
+    },
+    calmEffortAssurance: {
+      ...font.caption,
+      color: colors.textFaint,
     },
 
     filterRow: {
