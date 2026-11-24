@@ -142,3 +142,83 @@ Observations that are not blockers, recorded so nobody rediscovers them:
 5. Complete Data Safety and App Privacy from `PRIVACY_DECLARATION_MATRIX.md`.
 6. Paste `REVIEWER_NOTES.md`, replacing the credential placeholders in the
    console rather than in the repository.
+
+## Public URL vs In-App Link Gate Separation (Y03 / Y13)
+
+Store console URL entry, in-app external web links, and live authentication /
+account-deletion verification are governed as three sequential, independent
+gates so an unpublished webpage never ships as a broken in-app button:
+
+- [ ] [GATE-URL-CONSOLE] Harici HTTPS sayfaları (`https://aderyth.com/privacy`,
+      `https://aderyth.com/support`, `https://aderyth.com/delete-account`)
+      canlıda yayında, placeholder (`{{...}}`) içermiyor ve `HTTP 200` dönüyor
+      (Mağaza konsolu girişi için önkoşul — `OWNER`).
+- [ ] [GATE-URL-INAPP] Yukarıdaki 3 URL `HTTP 200` doğrulandıktan SONRA ayrı PR
+      ile `frontend/lib/featureGates.ts` içindeki `PUBLIC_SITE_URLS_LIVE = true`
+      çevrildi ve uygulama içi bağlantılar yalnız doğrulanmış sayfaları açıyor
+      (`REL + OWNER`; `docs/implementation-v3/OWNER_ROLLOUT_QUICKSTART.md` ile
+      aynı beklenti — bu PR açılana dek repoda `PUBLIC_SITE_URLS_LIVE = false`
+      kalır ve uygulama içi gizlilik ekranı `app/screens/privacy.tsx` ile
+      doğrudan `delete-account` akışı dış web sayfalarından bağımsız çalışır).
+- [ ] [GATE-AUTH-RECOVERY-DELETE] Üretim SMTP parola sıfırlama bağlantısı
+      (`resetPasswordForEmail` + Supabase Auth Redirect URL izin listesi) ve
+      uygulama içi `delete-account` → Auth/DB cascade (`auth.admin.deleteUser`
+      üzerinden 47 `ON DELETE CASCADE` FK) → yerel cache/outbox temizliği
+      (`endAccountScope('account_deleted', userId)` + `AsyncStorage` süpürmesi)
+      → yeni hesap izolasyonu izinli test hesabıyla uçtan uca doğrulandı
+      (`OWNER + QA`).
+
+## Candidate Reproducibility & Canary Halt Chain (Y09)
+
+### Candidate Reproducibility Chain Template
+
+Every store candidate must record an unbroken provenance chain from source
+commit to store track; **any** change to commit, lockfile, build profile, or
+signed binary digest constitutes a **new release candidate** and invalidates
+prior QA sign-off:
+
+```text
+git_sha
+  -> frontend/package-lock.json SHA-256 + supabase/functions/deno.lock SHA-256
+  -> GitHub Actions CI run URI (all required jobs green on git_sha)
+  -> EAS Build ID (profile: production)
+  -> Signed .aab / .ipa SHA-256
+  -> App Store TestFlight build ID / Google Play Internal Testing track ID
+```
+
+| Chain Link | Required Evidence | Rule |
+|---|---|---|
+| `git_sha` | Full 40-char commit SHA on release branch | Must match CI run and EAS build commit |
+| Lockfile digests | `frontend/package-lock.json` SHA-256 + `supabase/functions/deno.lock` SHA-256 | Any dependency lock drift creates a new candidate |
+| CI run URI | GitHub Actions workflow run URL | `typecheck`, `lint`, Jest, Deno edge, and DB migration gates green |
+| EAS Build ID | UUID from `eas build --profile production` | `production` profile only; no local/dev overrides |
+| Signed binary digest | `.aab` SHA-256 (Android) / `.ipa` SHA-256 (iOS) | Verified offline before upload; different artifact = new candidate |
+| Store track ID | App Store TestFlight / Play Internal Testing track release ID | Promoted to wider tracks only from this exact digest |
+
+### Canary Halt & Rollback Protocol
+
+- **Decision & Execution Owner:** `OWNER / Release Lead` (single authority to
+  halt staged rollout, freeze track promotion, and authorize rollback).
+- **Mandatory Halt Triggers (any single trigger halts rollout immediately):**
+  1. **XP Ledger Drift (`xp_drift() > 0`):** `SELECT count(*) FROM public.xp_drift()`
+     returns any row (`> 0`) before, during, or after rollout.
+  2. **Account Isolation Breach:** Cross-user data visibility in RLS,
+     `accountScope` memory/read-cache bleed, or unsent outbox replay across
+     accounts after sign-out / `delete-account`.
+  3. **Duplicate Billing / Unrefunded Failed AI Request:** More than one net
+     Focus Point debit for a single `request_id`, or a failed `ai_requests` row
+     without a matching `request_id || ':refund'` compensation.
+  4. **Crash-Free Rate Below Threshold:** Production crash-free sessions/users
+     in Sentry drop below the release gate threshold on the active canary build.
+- **Immediate Halt & Recovery Actions (`OWNER / Release Lead`):**
+  1. Halt staged rollout in Play Console / remove build from TestFlight external
+     testing; do **not** promote Internal Testing / TestFlight to production.
+  2. Keep gated flags closed (`PUBLIC_SITE_URLS_LIVE = false`,
+     `COACH_ACTIONS_V2_ENABLED = false`) or revert the flag-flip PR immediately.
+  3. If a `028..044` DB migration is implicated, execute reverse-order SQL
+     rollback strictly from `supabase/rollbacks/` with
+     `SET aderyth.rollback_confirm = 'NNN';` per
+     `docs/implementation-v3/OWNER_ROLLOUT_QUICKSTART.md` and re-verify
+     `xp_drift() = 0`.
+  4. Ship any fix only as a **new candidate** with a fresh `git_sha` → lockfile
+     SHA-256 → CI URI → EAS Build ID → `.aab`/`.ipa` SHA-256 chain.
