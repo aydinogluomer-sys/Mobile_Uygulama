@@ -103,17 +103,9 @@ SELECT aderyth_test.res('T08b4_rank_other_user_returns_empty',
   (SELECT count(*) FROM public.get_user_rank('08000000-0000-4000-8000-000000000002')) = 0,
   'get_user_rank returns 0 rows for another user id');
 
-SELECT aderyth_test.res('T08b5_rank_own_user_returns_exact_standing',
-  r.cnt = 1
-  AND r.rk = 1 + (
-    SELECT count(*) FROM public.profiles o
-     WHERE coalesce(o.total_xp, 0) > (SELECT coalesce(total_xp, 0) FROM public.profiles WHERE id = '08000000-0000-4000-8000-000000000001')
-  ),
-  format('rows=%s rank=%s', r.cnt, r.rk))
-  FROM (
-    SELECT count(*) AS cnt, max(rank) AS rk
-      FROM public.get_user_rank('08000000-0000-4000-8000-000000000001')
-  ) r;
+SELECT set_config('aderyth.t08_cnt', count(*)::text, true),
+       set_config('aderyth.t08_rk', coalesce(max(rank), -1)::text, true)
+  FROM public.get_user_rank('08000000-0000-4000-8000-000000000001');
 
 SELECT set_config('request.jwt.claim.sub', '', true);
 DO $t08b6$
@@ -143,6 +135,13 @@ BEGIN
 END $t08b6$;
 
 RESET ROLE;
+SELECT aderyth_test.res('T08b5_rank_own_user_returns_exact_standing',
+  current_setting('aderyth.t08_cnt')::bigint = 1
+  AND current_setting('aderyth.t08_rk')::bigint = 1 + (
+    SELECT count(*) FROM public.profiles o
+     WHERE coalesce(o.total_xp, 0) > (SELECT coalesce(total_xp, 0) FROM public.profiles WHERE id = '08000000-0000-4000-8000-000000000001')
+  ),
+  format('rows=%s rank=%s', current_setting('aderyth.t08_cnt'), current_setting('aderyth.t08_rk')));
 SET LOCAL ROLE anon;
 DO $t08b3$
 DECLARE
