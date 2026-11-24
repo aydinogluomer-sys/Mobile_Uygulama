@@ -1,16 +1,113 @@
 import { useEffect, useMemo, useState, type ComponentProps } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { font, hexA, radius, space, type Palette } from '../../lib/tokens';
+import { font, hexA, onColor, radius, space, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
+import { ICON_BUTTON_MIN, IconButton } from '../../components/ui';
 import OnboardingScaffold from '../../components/onboarding/OnboardingScaffold';
 import { ONBOARDING_ART } from '../../lib/visualAssets';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import { DAYPART_LABELS, GOAL_LABELS, PACE_LABELS } from '../../lib/onboarding';
+import { useFocusStore } from '../../store/focusStore';
+import { DAYPART_LABELS, GOAL_LABELS, PACE_LABELS, type GoalId } from '../../lib/onboarding';
 import { DAYPART_ORDER } from '../../lib/starterPlan';
+import { pickStarterQuickStep, type RoutinePackKey } from '../../lib/routinePacks';
+import { deterministicSuggestionId } from '../../lib/actionSuggestion';
+import { deriveSplitSteps, shortTopic } from '../../lib/taskDecomposition';
+import { MAX_STEP_TITLE, validateSmallStep, type SmallStepParent } from '../../lib/smallStart';
+import { todayLocal } from '../../lib/date';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+const QUICK_START_MINUTES = 5;
+
+function resolveStarterPackKey(goals: readonly GoalId[]): RoutinePackKey {
+  for (const goal of goals) {
+    if (goal === 'focus_productivity') return 'deep-work';
+    if (goal === 'sleep') return 'sleep-reset';
+    if (goal === 'daily_order' || goal === 'finance' || goal === 'learning') {
+      return 'everyday-foundations';
+    }
+    if (goal === 'health_energy' || goal === 'mental_wellbeing') {
+      return 'morning-reset';
+    }
+  }
+  return 'morning-reset';
+}
+
+function deriveOwnTaskFirstStep(rawTitle: string): string {
+  const cleaned = rawTitle.trim().replace(/\s+/g, ' ');
+  if (!cleaned) return '';
+  const step = deriveSplitSteps(cleaned)[0];
+  const topic = shortTopic(cleaned, 60);
+  const combined = topic.length > 0 ? `${step} — ${topic}` : step;
+  if (combined.length <= MAX_STEP_TITLE) return combined;
+  const shortened = shortTopic(combined, MAX_STEP_TITLE);
+  return shortened.length > 0 ? shortened : combined.slice(0, MAX_STEP_TITLE).trim();
+}
+
+type QuickActionButtonProps = {
+  testID: string;
+  label: string;
+  accessibilityLabel: string;
+  icon: IoniconName;
+  variant: 'primary' | 'secondary';
+  disabled?: boolean;
+  expanded?: boolean;
+  onPress: () => void;
+};
+
+function QuickActionButton({
+  testID,
+  label,
+  accessibilityLabel,
+  icon,
+  variant,
+  disabled = false,
+  expanded,
+  onPress,
+}: QuickActionButtonProps) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const fg = variant === 'primary' ? onColor(colors.primary) : colors.primaryBright;
+
+  return (
+    <TouchableOpacity
+      testID={testID}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={
+        expanded === undefined
+          ? { disabled }
+          : { disabled, expanded }
+      }
+      style={[
+        s.quickActionBtn,
+        variant === 'primary' ? s.quickActionPrimary : s.quickActionSecondary,
+        disabled && s.quickActionDisabled,
+      ]}
+    >
+      <Ionicons
+        name={icon}
+        size={16}
+        color={fg}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+      <Text
+        style={[
+          s.quickActionLabel,
+          variant === 'primary' ? s.quickActionLabelPrimary : s.quickActionLabelSecondary,
+        ]}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 /**
  * Step 3 — the plan, before anything is written.
@@ -38,6 +135,7 @@ export default function OnboardingPlanScreen() {
   const plan = useOnboardingStore((s) => s.plan);
   const planReasons = useOnboardingStore((s) => s.planReasons);
   const answers = useOnboardingStore((s) => s.answers);
+  const ownerId = useOnboardingStore((s) => s.ownerId);
   const generatePlan = useOnboardingStore((s) => s.generatePlan);
   const installPlan = useOnboardingStore((s) => s.installPlan);
   const installing = useOnboardingStore((s) => s.installing);
@@ -50,6 +148,8 @@ export default function OnboardingPlanScreen() {
   /** Names the user removed from the preview. Local until install. */
   const [dropped, setDropped] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState(false);
+  const [ownTaskOpen, setOwnTaskOpen] = useState(false);
+  const [ownTaskInput, setOwnTaskInput] = useState('');
 
   // Arriving here directly (a reload on web, a deep link) with no plan in
   // memory regenerates it rather than showing an empty screen. Deterministic,
@@ -80,6 +180,78 @@ export default function OnboardingPlanScreen() {
   );
 
   const totalMinutes = kept.reduce((sum, h) => sum + h.estimated_minutes, 0);
+
+  const quickStep = useMemo(
+    () => pickStarterQuickStep(resolveStarterPackKey(answers.goals)),
+    [answers.goals],
+  );
+
+  const trimmedOwnTask = ownTaskInput.trim().replace(/\s+/g, ' ');
+  const derivedFirstStep = useMemo(
+    () => deriveOwnTaskFirstStep(trimmedOwnTask),
+    [trimmedOwnTask],
+  );
+  const ownStepValid = useMemo(() => {
+    if (!trimmedOwnTask) return false;
+    return validateSmallStep(
+      { kind: 'task', id: 'onboarding-draft', title: trimmedOwnTask },
+      { title: derivedFirstStep, minutes: QUICK_START_MINUTES },
+    ).ok;
+  }, [trimmedOwnTask, derivedFirstStep]);
+
+  function handleTrySampleStep() {
+    const localDayKey = todayLocal();
+    const suggestionId = deterministicSuggestionId({
+      userId: ownerId,
+      localDayKey,
+      kind: 'start_small',
+      sourceEntity: 'starter_pack',
+      sourceId: quickStep.packKey,
+      stepTitle: quickStep.firstStepTitle,
+    });
+    const parent: SmallStepParent = {
+      kind: 'task',
+      id: `starter:${quickStep.packKey}`,
+      title: quickStep.habitName,
+    };
+    const started = useFocusStore.getState().startSmallStep(parent, {
+      title: quickStep.firstStepTitle,
+      minutes: QUICK_START_MINUTES,
+      suggestionId,
+    });
+    if (started) {
+      router.push('/tabs/focus');
+    }
+  }
+
+  function handleStartOwnStep() {
+    if (!trimmedOwnTask) return;
+    const localDayKey = todayLocal();
+    const suggestionId = deterministicSuggestionId({
+      userId: ownerId,
+      localDayKey,
+      kind: 'start_small',
+      sourceEntity: 'draft',
+      sourceId: 'onboarding-draft',
+      stepTitle: derivedFirstStep,
+    });
+    const parent: SmallStepParent = {
+      kind: 'task',
+      id: 'onboarding-draft',
+      title: trimmedOwnTask,
+    };
+    const draft = {
+      title: derivedFirstStep,
+      minutes: QUICK_START_MINUTES,
+      suggestionId,
+    };
+    const check = validateSmallStep(parent, draft);
+    if (!check.ok) return;
+    const started = useFocusStore.getState().startSmallStep(parent, draft);
+    if (started) {
+      router.push('/tabs/focus');
+    }
+  }
 
   async function handleInstall() {
     if (kept.length === 0) return;
@@ -190,6 +362,78 @@ export default function OnboardingPlanScreen() {
       onSecondary={() => setEditing((v) => !v)}
       error={installError}
     >
+      <View testID="onboarding-quick-start-card" style={s.quickCard}>
+        <Text style={s.quickTitle} accessibilityRole="header">
+          Kurulumu beklemeden tek adımla dene
+        </Text>
+
+        <View style={s.quickPreviewBox}>
+          <Ionicons name="sparkles-outline" size={16} color={colors.primary} />
+          <Text testID="onboarding-sample-step-preview" style={s.quickPreviewText}>
+            {`${quickStep.firstStepTitle} · ${quickStep.estimatedMinutes} dk`}
+          </Text>
+        </View>
+
+        <QuickActionButton
+          testID="onboarding-try-sample-step"
+          label="Örnek adımı dene (5 dk)"
+          accessibilityLabel={`Örnek adımı dene, 5 dakika: ${quickStep.firstStepTitle}`}
+          icon="play-outline"
+          variant="primary"
+          onPress={handleTrySampleStep}
+        />
+
+        <QuickActionButton
+          testID="onboarding-add-own-task-toggle"
+          label="Kendi işimi ekle"
+          accessibilityLabel="Kendi işimi ekle"
+          icon={ownTaskOpen ? 'chevron-up-outline' : 'add-circle-outline'}
+          variant="secondary"
+          expanded={ownTaskOpen}
+          onPress={() => setOwnTaskOpen((v) => !v)}
+        />
+
+        {ownTaskOpen && (
+          <View style={s.ownTaskBlock}>
+            <TextInput
+              testID="onboarding-own-task-input"
+              style={s.ownInput}
+              value={ownTaskInput}
+              onChangeText={setOwnTaskInput}
+              placeholder="Örn. Teklifi hazırla"
+              placeholderTextColor={colors.textFaint}
+              maxLength={MAX_STEP_TITLE}
+              returnKeyType="done"
+              onSubmitEditing={handleStartOwnStep}
+              accessibilityRole="none"
+              accessibilityLabel="Kendi işini yaz"
+            />
+            {trimmedOwnTask.length > 0 && (
+              <Text testID="onboarding-own-step-preview" style={s.ownPreview}>
+                {`${derivedFirstStep} · ${QUICK_START_MINUTES} dk`}
+              </Text>
+            )}
+            <QuickActionButton
+              testID="onboarding-start-own-step"
+              label="5 dk ilk adımla başla"
+              accessibilityLabel={
+                ownStepValid
+                  ? `5 dakika ilk adımla başla: ${derivedFirstStep}`
+                  : '5 dakika ilk adımla başla'
+              }
+              icon="flash-outline"
+              variant="primary"
+              disabled={!ownStepValid}
+              onPress={handleStartOwnStep}
+            />
+          </View>
+        )}
+
+        <Text testID="onboarding-deferred-permission-note" style={s.deferredPermissionNote}>
+          Bildirim izni şimdi istenmez; ilk adımı deneyimledikten sonra istersen açabilirsin.
+        </Text>
+      </View>
+
       <View style={s.summaryRow}>
         <View style={s.summaryCell}>
           <Text style={s.eyebrow}>ODAK ALANLARIN</Text>
@@ -220,14 +464,14 @@ export default function OnboardingPlanScreen() {
                 </Text>
               </View>
               {editing && (
-                <TouchableOpacity
+                <IconButton
+                  compact
+                  icon="close-circle-outline"
+                  size={20}
+                  color={colors.textFaint}
+                  label={`${habit.name} alışkanlığını plandan çıkar`}
                   onPress={() => setDropped((prev) => new Set(prev).add(habit.name))}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${habit.name} alışkanlığını plandan çıkar`}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons name="close-circle-outline" size={20} color={colors.textFaint} />
-                </TouchableOpacity>
+                />
               )}
             </View>
           ))}
@@ -273,6 +517,66 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     backgroundColor: hexA(colors.success, 0.10),
   },
   recoveryText: { ...font.bodySm, color: colors.textDim, flex: 1, lineHeight: 20 },
+
+  quickCard: {
+    gap: space.md,
+    padding: space.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: hexA(colors.primary, 0.28),
+  },
+  quickTitle: { ...font.h3, color: colors.text },
+  quickPreviewBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
+    backgroundColor: hexA(colors.primary, 0.08),
+  },
+  quickPreviewText: { ...font.bodySm, color: colors.textDim, flex: 1, lineHeight: 20 },
+  quickActionBtn: {
+    minHeight: ICON_BUTTON_MIN,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+    borderRadius: radius.md,
+  },
+  quickActionPrimary: {
+    backgroundColor: colors.primary,
+  },
+  quickActionSecondary: {
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  quickActionDisabled: {
+    opacity: 0.45,
+  },
+  quickActionLabel: { ...font.bodySm, fontWeight: '700' },
+  quickActionLabelPrimary: { color: onColor(colors.primary) },
+  quickActionLabelSecondary: { color: colors.primaryBright },
+  ownTaskBlock: {
+    gap: space.sm,
+  },
+  ownInput: {
+    ...font.body,
+    minHeight: ICON_BUTTON_MIN,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    color: colors.text,
+  },
+  ownPreview: { ...font.caption, color: colors.textDim, lineHeight: 18 },
+  deferredPermissionNote: { ...font.caption, color: colors.textFaint, lineHeight: 18 },
 
   summaryRow: { flexDirection: 'row', gap: space.lg },
   summaryCell: { flex: 1, gap: 4 },
