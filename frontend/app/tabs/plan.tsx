@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SegmentedTabs, { type Segment } from '../../components/SegmentedTabs';
-import { colors, radius, alphaHex } from '../../lib/tokens';
+import { radius, alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
 import { useTabParam } from '../../hooks/useTabParams';
 import TasksScreen from './tasks';
@@ -41,6 +42,8 @@ const SEGMENTS: readonly Segment<PlanGroup>[] = [
 ];
 
 export default function PlanScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const { value: tabParam, stamp } = useTabParam(PLAN_TABS);
   const [group, setGroup] = useState<PlanGroup>(() => {
     if (tabParam === 'goals' || tabParam === 'life_areas' || tabParam === 'okr') return 'strategy';
@@ -53,9 +56,11 @@ export default function PlanScreen() {
   const [stratSub, setStratSub] = useState<StrategySub>(() =>
     tabParam === 'goals' || tabParam === 'life_areas' || tabParam === 'okr' ? tabParam : 'goals',
   );
+  const paramSyncKey = `${tabParam ?? ''}|${stamp ?? ''}`;
+  const [lastParamSyncKey, setLastParamSyncKey] = useState(paramSyncKey);
 
-  useEffect(() => {
-    if (!tabParam) return;
+  if (lastParamSyncKey !== paramSyncKey) {
+    setLastParamSyncKey(paramSyncKey);
     if (tabParam === 'tasks' || tabParam === 'projects' || tabParam === 'focus') {
       setGroup('execution');
       setExecSub(tabParam);
@@ -65,7 +70,7 @@ export default function PlanScreen() {
     } else if (tabParam === 'calendar') {
       setGroup('calendar');
     }
-  }, [tabParam, stamp]);
+  }
 
   return (
     <View style={s.root}>
@@ -141,7 +146,7 @@ export default function PlanScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   contextBar: {
     flexDirection: 'row',

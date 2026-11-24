@@ -1,5 +1,5 @@
 import { Stack } from 'expo-router';
-import { colors } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 
 /**
  * The authenticated first-run group.
@@ -17,6 +17,7 @@ import { colors } from '../../lib/tokens';
  * fire against itself.
  */
 export default function OnboardingLayout() {
+  const colors = useThemeColors();
   return (
     <Stack
       screenOptions={{

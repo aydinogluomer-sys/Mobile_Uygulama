@@ -1,7 +1,8 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font, space } from '../../lib/tokens';
+import { font, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import OnboardingScaffold from '../../components/onboarding/OnboardingScaffold';
 import { ONBOARDING_ART } from '../../lib/visualAssets';
 import SelectableTile from '../../components/onboarding/SelectableTile';
@@ -27,6 +28,8 @@ import {
  */
 export default function OnboardingPreferencesScreen() {
   const router = useRouter();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const answers = useOnboardingStore((s) => s.answers);
   const setPace = useOnboardingStore((s) => s.setPace);
   const toggleDaypart = useOnboardingStore((s) => s.toggleDaypart);
@@ -158,7 +161,7 @@ export default function OnboardingPreferencesScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   section: { gap: space.md },
   sectionTitle: { ...font.h2, color: colors.text },
   sectionHint: { ...font.bodySm, color: colors.textFaint, marginTop: -4 },

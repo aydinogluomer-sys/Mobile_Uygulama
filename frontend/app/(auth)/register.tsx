@@ -8,7 +8,8 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
 import { supabase } from '../../lib/supabase';
-import { colors, space, radius, font, shadow, fontFamily, hexA, alphaHex } from '../../lib/tokens';
+import { space, radius, font, shadow, fontFamily, hexA, alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { Button, EditorialBanner, TexturedSurface } from '../../components/ui';
 import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
@@ -38,6 +39,8 @@ export { signupErrorMessage } from '../../lib/authErrors';
 export default function RegisterScreen() {
   const { width } = useWindowDimensions();
   const isSplit = width >= 860;
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [phase, setPhase] = useState<Phase>('form');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -158,7 +161,11 @@ export default function RegisterScreen() {
         error={resendError}
       />
       <Link href="/(auth)/login" asChild>
-        <TouchableOpacity style={s.primaryLinkBtn}>
+        <TouchableOpacity
+          style={s.primaryLinkBtn}
+          accessibilityRole="link"
+          accessibilityLabel="Girişe dön"
+        >
           <Text style={s.primaryLinkText}>Girişe dön</Text>
           <Ionicons name="arrow-forward" size={16} color={colors.primaryBright} />
         </TouchableOpacity>
@@ -248,7 +255,11 @@ export default function RegisterScreen() {
         </Text>
 
         <Link href="/(auth)/login" asChild>
-          <TouchableOpacity style={s.linkBtn} accessibilityRole="link">
+          <TouchableOpacity
+            style={s.linkBtn}
+            accessibilityRole="link"
+            accessibilityLabel="Zaten hesabın var mı? Giriş yap"
+          >
             <Text style={s.linkText}>Zaten hesabın var mı? <Text style={s.linkHighlight}>Giriş yap</Text></Text>
           </TouchableOpacity>
         </Link>
@@ -315,7 +326,7 @@ export default function RegisterScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 36 },
 

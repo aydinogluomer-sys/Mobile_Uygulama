@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import SegmentedTabs, { type Segment } from '../../components/SegmentedTabs';
 import ObsidianExportModal from '../../components/ObsidianExportModal';
-import { colors, radius, alphaHex } from '../../lib/tokens';
+import { radius, alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { navigateTo } from '../../lib/destinations';
 import { useTabParam } from '../../hooks/useTabParams';
 import StatsScreen from './stats';
@@ -56,6 +57,8 @@ const REPORT_SEGMENTS: readonly { key: ReportTab; label: string }[] = [
 
 export default function InsightsHubScreen() {
   const router = useRouter();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const { value: mainParam, stamp } = useTabParam(INSIGHTS_MAIN_TABS, 'tab');
   const { value: subParam } = useTabParam(INSIGHTS_SUB_TABS, 'sub');
 
@@ -68,11 +71,14 @@ export default function InsightsHubScreen() {
   );
   const [showObsidianModal, setShowObsidianModal] = useState(false);
 
-  useEffect(() => {
+  const paramSyncKey = `${mainParam ?? ''}|${subParam ?? ''}|${stamp ?? ''}`;
+  const [lastParamSyncKey, setLastParamSyncKey] = useState(paramSyncKey);
+  if (lastParamSyncKey !== paramSyncKey) {
+    setLastParamSyncKey(paramSyncKey);
     if (mainParam) setMainTab(mainParam);
     if (isReportTab(subParam)) setReportTab(subParam);
     if (isJournalTab(subParam)) setJournalTab(subParam);
-  }, [mainParam, subParam, stamp]);
+  }
 
   return (
     <View style={s.root}>
@@ -144,7 +150,7 @@ export default function InsightsHubScreen() {
               accessibilityRole="button"
               accessibilityLabel="Obsidian Markdown olarak dışa aktar"
             >
-              <Ionicons name="document-text-outline" size={12} color="#8b5cf6" />
+              <Ionicons name="document-text-outline" size={12} color={colors.info} />
               <Text style={s.obsidianPillText}>Obsidian</Text>
             </TouchableOpacity>
           </ScrollView>
@@ -196,7 +202,7 @@ export default function InsightsHubScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   subBarContainer: {
     backgroundColor: colors.bgElevated,
@@ -238,14 +244,14 @@ const s = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: radius.full,
-    backgroundColor: alphaHex('#8b5cf6', '16'),
+    backgroundColor: alphaHex(colors.info, '16'),
     borderWidth: 1,
-    borderColor: alphaHex('#8b5cf6', '40'),
+    borderColor: alphaHex(colors.info, '40'),
   },
   obsidianPillText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#8b5cf6',
+    color: colors.info,
   },
   coachTopStrip: {
     flexDirection: 'row',

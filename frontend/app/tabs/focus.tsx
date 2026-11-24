@@ -8,11 +8,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useShallow } from 'zustand/react/shallow';
 import { useFocusStore } from '../../store/focusStore';
 import { FormError, IconButton, ProgressRing } from '../../components/ui';
 import { EmbeddedFiligree } from '../../components/spatial';
 import { haptic } from '../../lib/haptics';
-import { colors, fontFamily, alphaHex, hexA } from '../../lib/tokens';
+import { fontFamily, alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { DECOR, getFocusBackdrop } from '../../lib/visualAssets';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { spokenDuration, useTimerAnnouncements } from '../../hooks/useTimerAnnouncements';
@@ -33,27 +35,55 @@ import { t } from '../../lib/i18n';
 
 const IS_TEST = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
-const PHASE_COLORS: Record<string, string> = {
-  work: colors.primary,
-  shortBreak: colors.success,
-  longBreak: colors.info,
+const PHASE_COLOR_KEYS: Record<'work' | 'shortBreak' | 'longBreak', keyof Palette> = {
+  work: 'primary',
+  shortBreak: 'success',
+  longBreak: 'info',
 };
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
 
 export default function FocusScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const {
     phase, status, secondsLeft, sessionsCompleted, selectedTaskId,
     focusTasks, settings, justCompleted, clock, smallStep,
     start, pause, reset, setPhase,
     fetchFocusTasks, addFocusTask, removeFocusTask, completeFocusTask, selectTask,
     updateSettings, loadSettings, restoreSession, clearJustCompleted,
-  } = useFocusStore();
+  } = useFocusStore(
+    useShallow((st) => ({
+      phase: st.phase,
+      status: st.status,
+      secondsLeft: st.secondsLeft,
+      sessionsCompleted: st.sessionsCompleted,
+      selectedTaskId: st.selectedTaskId,
+      focusTasks: st.focusTasks,
+      settings: st.settings,
+      justCompleted: st.justCompleted,
+      clock: st.clock,
+      smallStep: st.smallStep,
+      start: st.start,
+      pause: st.pause,
+      reset: st.reset,
+      setPhase: st.setPhase,
+      fetchFocusTasks: st.fetchFocusTasks,
+      addFocusTask: st.addFocusTask,
+      removeFocusTask: st.removeFocusTask,
+      completeFocusTask: st.completeFocusTask,
+      selectTask: st.selectTask,
+      updateSettings: st.updateSettings,
+      loadSettings: st.loadSettings,
+      restoreSession: st.restoreSession,
+      clearJustCompleted: st.clearJustCompleted,
+    })),
+  );
   const lastPartial = useFocusStore((st) => st.lastPartial);
   const pendingAway = useFocusStore((st) => st.interruptions.pendingAwayMs);
 
   const reduceMotion = useReducedMotion();
-  const haloAnim = useRef(new Animated.Value(0)).current;
+  const [haloAnim] = useState(() => new Animated.Value(0));
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -85,7 +115,8 @@ export default function FocusScreen() {
   const [lastIntent, setLastIntent] = useState<string | null>(null);
 
   const activePreset = FOCUS_PRESETS.find((p) => p.id === settings.presetId) ?? FOCUS_PRESETS[0];
-  const phaseColor = activePreset.id === 'default' ? PHASE_COLORS[phase] : activePreset.accent;
+  const phaseColorKey = PHASE_COLOR_KEYS[phase as keyof typeof PHASE_COLOR_KEYS] ?? 'primary';
+  const phaseColor = activePreset.id === 'default' ? colors[phaseColorKey] : activePreset.accent;
 
   const customDurations = {
     work: settings.workMinutes * 60,
@@ -158,13 +189,11 @@ export default function FocusScreen() {
       return;
     }
     setAddTaskError(null);
+    setStartHint('');
     setNewTaskTitle('');
     setNewTaskPomodoros(1);
     setShowAddTask(false);
   }
-
-  // Seçim yapılınca uyarıyı temizle
-  useEffect(() => { if (selectedTaskId) setStartHint(''); }, [selectedTaskId]);
 
   function beginSession(text: string | null) {
     setShowIntent(false);
@@ -268,7 +297,7 @@ export default function FocusScreen() {
               return (
                 <TouchableOpacity
                   key={p}
-                  style={[s.phaseBtn, active && { backgroundColor: phaseColor + '22', borderColor: phaseColor }]}
+                  style={[s.phaseBtn, active && { backgroundColor: alphaHex(phaseColor, '22'), borderColor: phaseColor }]}
                   onPress={() => { haptic.select(); setPhase(p); }}
                   accessibilityRole="tab"
                   accessibilityLabel={PHASE_LABELS[p]}
@@ -315,7 +344,7 @@ export default function FocusScreen() {
         </View>
 
         {/* Timer kartı */}
-        <View style={[s.timerCard, { backgroundColor: activePreset.cardBg, borderColor: phaseColor + '40' }]}>
+        <View style={[s.timerCard, { backgroundColor: activePreset.cardBg, borderColor: alphaHex(phaseColor, '40') }]}>
           {/* Ring progress — gerçek SVG yay */}
           <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={142} opacity={0.14} />
           <View style={s.ringWrap}>
@@ -360,13 +389,13 @@ export default function FocusScreen() {
 
           {/* R03.03 — a small step shows itself and its task, kept apart */}
           {smallStep ? (
-            <View style={[s.selectedTask, { borderColor: phaseColor + '40', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }]}>
+            <View style={[s.selectedTask, { borderColor: alphaHex(phaseColor, '40'), flexDirection: 'column', alignItems: 'flex-start', gap: 2 }]}>
               <Text style={s.stepEyebrow}>{t('focus.smallStep.eyebrow', { minutes: smallStep.minutes })}</Text>
               <Text style={s.selectedTaskTitle} numberOfLines={2}>{smallStep.title}</Text>
               <Text style={s.stepParent} numberOfLines={1}>{t('focus.smallStep.parent', { title: smallStep.parent.title })}</Text>
             </View>
           ) : selectedTask ? (
-            <View style={[s.selectedTask, { borderColor: phaseColor + '40' }]}>
+            <View style={[s.selectedTask, { borderColor: alphaHex(phaseColor, '40') }]}>
               <View style={[s.selectedTaskDot, { backgroundColor: phaseColor }]} />
               <Text style={s.selectedTaskTitle} numberOfLines={1}>{selectedTask.title}</Text>
               <Text style={s.pomodoroCount}>
@@ -439,7 +468,7 @@ export default function FocusScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-              {startHint ? <Text style={s.startHint}>{startHint}</Text> : null}
+              {startHint && !selectedTaskId ? <Text style={s.startHint}>{startHint}</Text> : null}
             </>
           );
         })()}
@@ -472,7 +501,7 @@ export default function FocusScreen() {
             focusTasks.map((task) => {
               const isSelected = selectedTaskId === task.id;
               return (
-                <View key={task.id} style={[s.taskRow, { backgroundColor: activePreset.cardBg }, isSelected && { borderColor: phaseColor + '60' }]}>
+                <View key={task.id} style={[s.taskRow, { backgroundColor: activePreset.cardBg }, isSelected && { borderColor: alphaHex(phaseColor, '60') }]}>
                   <TouchableOpacity
                     style={s.taskCheck}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -494,7 +523,10 @@ export default function FocusScreen() {
 
                   <TouchableOpacity
                     style={s.taskBody}
-                    onPress={() => selectTask(isSelected ? null : task.id)}
+                    onPress={() => {
+                      selectTask(isSelected ? null : task.id);
+                      if (!isSelected) setStartHint('');
+                    }}
                     accessibilityRole="button"
                     accessibilityLabel={t('focus.topic.item.a11y', {
                       title: task.title,
@@ -503,7 +535,7 @@ export default function FocusScreen() {
                     })}
                     accessibilityState={{ selected: isSelected }}
                   >
-                    <Text style={[s.taskTitle, isSelected && { color: colors.white, fontWeight: '600' }]} numberOfLines={1}>
+                    <Text style={[s.taskTitle, isSelected && { color: colors.text, fontWeight: '600' }]} numberOfLines={1}>
                       {task.title}
                     </Text>
                     <View style={s.taskMeta}>
@@ -552,7 +584,7 @@ export default function FocusScreen() {
               {[1,2,3,4,5].map((n) => (
                 <TouchableOpacity
                   key={n}
-                  style={[s.pomBtn, newTaskPomodoros === n && { backgroundColor: phaseColor + '30', borderColor: phaseColor }]}
+                  style={[s.pomBtn, newTaskPomodoros === n && { backgroundColor: alphaHex(phaseColor, '30'), borderColor: phaseColor }]}
                   onPress={() => setNewTaskPomodoros(n)}
                   accessibilityRole="radio"
                   accessibilityLabel={t('focus.pomodoroCount', { count: n })}
@@ -634,7 +666,7 @@ export default function FocusScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1 },
 
   topBar: {
@@ -679,13 +711,13 @@ const s = StyleSheet.create({
   phaseRow: { flex: 1, flexDirection: 'row', gap: 6 },
   phaseBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
   phaseBtnText: { fontSize: 12, fontWeight: '600' },
-  settingsBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.coolBlack800, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  settingsBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
 
   presetsRow: { marginBottom: 16, maxHeight: 38 },
   presetsContent: { gap: 8 },
   presetChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: colors.coolBlack800, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6,
+    backgroundColor: colors.surface, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6,
     borderWidth: 1, borderColor: colors.border,
   },
   presetDot: { width: 8, height: 8, borderRadius: 4 },
@@ -707,7 +739,7 @@ const s = StyleSheet.create({
     borderWidth: 6, borderTopColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: 'transparent',
   },
   timerInner: { alignItems: 'center', gap: 4 },
-  timerText: { fontFamily: fontFamily.mono, fontSize: 48, fontWeight: '500', letterSpacing: -2, fontVariant: ['tabular-nums'] as any },
+  timerText: { fontFamily: fontFamily.mono, fontSize: 48, fontWeight: '500', letterSpacing: -2, fontVariant: ['tabular-nums'] },
   phaseLabel: { fontSize: 13, color: colors.textFaint },
 
   selectedTask: {
@@ -718,7 +750,7 @@ const s = StyleSheet.create({
   // R03.03
   stepEyebrow: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint },
   stepParent: { fontSize: 12, color: colors.textFaint },
-  selectedTaskTitle: { flex: 1, fontSize: 14, color: colors.neutral200, fontWeight: '500' },
+  selectedTaskTitle: { flex: 1, fontSize: 14, color: colors.text, fontWeight: '500' },
   pomodoroCount: { fontSize: 12, color: colors.textFaint },
   noTaskHint: { fontSize: 13, color: colors.textFaint, marginBottom: 8 },
   sessionCount: { fontSize: 12, color: colors.textFaint },
@@ -750,12 +782,12 @@ const s = StyleSheet.create({
   pomDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.border },
   taskDelete: { padding: 4 },
 
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.coolBlack800, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, borderWidth: 1, borderColor: colors.border },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 16 },
+  overlay: { flex: 1, backgroundColor: hexA(colors.black, 0.8), justifyContent: 'flex-end' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, borderWidth: 1, borderColor: colors.border },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 },
   settingsHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   settingsField: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  input: { backgroundColor: colors.bgElevated, borderRadius: 12, padding: 14, fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
+  input: { backgroundColor: colors.bgElevated, borderRadius: 12, padding: 14, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
   fieldLabel: { fontSize: 12, color: colors.textFaint, fontWeight: '600', marginBottom: 8, letterSpacing: 0.5, flex: 1 },
   pomRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
   pomBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border },

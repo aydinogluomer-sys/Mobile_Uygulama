@@ -125,7 +125,6 @@ function RootLayoutInner() {
 
   useEffect(() => {
     let alive = true;
-    setBootStalled(false);
     // F06 (NAV-04): a boot that hangs (a captive network, a storage read that never answers) ends
     // in a visible "Tekrar dene" after 12 s instead of an endless spinner.
     const watchdog = setTimeout(() => { if (alive) setBootStalled(true); }, BOOT_WATCHDOG_MS);
@@ -364,7 +363,7 @@ function RootLayoutInner() {
       get habits() { return useHabitStore.getState().habits; },
       whenHabitsReady: () => whenHabitsLoaded(),
       logHabit: (p: { habitId: string; date: Date; state: 'done' | 'partial' | 'skip' | 'miss' }) => useLogStore.getState().logHabit(p),
-      openMeasure: () => router.push('/tabs/timeline' as never),
+      openMeasure: () => router.push('/tabs/timeline'),
       reconcile: run,
     };
     const respSub = Notifications.addNotificationResponseReceivedListener((r) => { void handleReminderResponse(r, deps); });
@@ -408,7 +407,7 @@ function RootLayoutInner() {
   // F22 (NAV-06): computed in the component body (not inside the effect) because the
   // spinner below needs it too: recovery screens keep the navigator mounted while the
   // onboarding row is read.
-  const segmentPath = segments as unknown as string[];
+  const segmentPath: readonly string[] = segments;
   const inAuthGroup = segmentPath[0] === '(auth)';
   const inPasswordRecovery = inAuthGroup && (
     segmentPath[1] === 'forgot-password' || segmentPath[1] === 'reset-password'
@@ -464,7 +463,17 @@ function RootLayoutInner() {
    * aştıysa "Tekrar dene"; sonra bu kapı; en son spinner.
    */
   if (SUPABASE_CONFIG_ERROR) return <BootGate variant="config" detail={SUPABASE_CONFIG_ERROR} />;
-  if (loading && bootStalled) return <BootGate variant="stalled" onRetry={() => setBootAttempt((n) => n + 1)} />;
+  if (loading && bootStalled) {
+    return (
+      <BootGate
+        variant="stalled"
+        onRetry={() => {
+          setBootStalled(false);
+          setBootAttempt((n) => n + 1);
+        }}
+      />
+    );
+  }
   if (!!session && onboardingHydration === 'error') {
     return (
       <OnboardingGate
