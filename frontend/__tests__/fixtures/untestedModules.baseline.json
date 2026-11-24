@@ -9,7 +9,6 @@
   "lib/focusThemes.ts",
   "lib/monthBackgrounds.ts",
   "lib/ranks.ts",
-  "lib/sentryClient.ts",
   "lib/spotifyFocus.ts",
   "lib/sqliteDriver.native.ts",
   "lib/taskTypes.ts",

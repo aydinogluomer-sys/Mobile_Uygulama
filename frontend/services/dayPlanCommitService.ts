@@ -342,8 +342,9 @@ async function executeTaskMutation(
     : () => undefined;
 
   try {
-    await useTaskStore.getState().updateTask(item.targetId, patch);
-    await useTaskStore.getState().flush();
+    const taskStore = useTaskStore.getState();
+    await taskStore.updateTask(item.targetId, patch);
+    await taskStore.flush();
   } finally {
     unsub();
   }
@@ -1147,8 +1148,9 @@ async function undoTaskEntry(
     : () => undefined;
 
   try {
-    await useTaskStore.getState().updateTask(entry.targetId, restorePatch);
-    await useTaskStore.getState().flush();
+    const taskStore = useTaskStore.getState();
+    await taskStore.updateTask(entry.targetId, restorePatch);
+    await taskStore.flush();
   } finally {
     unsub();
   }

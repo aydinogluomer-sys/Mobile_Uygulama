@@ -1307,7 +1307,7 @@ export default function RecoveryScreen() {
                   replanCommitResult.retryableItemIds.length > 0) && (
                   <Button
                     testID="recovery-replan-retry-failed"
-                    label={replanRetrying ? 'Yeniden deneniyor...' : 'Başarısızları yeniden dene'}
+                    label={replanRetrying ? 'Yeniden deneniyor...' : 'Kalanları yeniden dene'}
                     variant="ghost"
                     size="sm"
                     icon="refresh-outline"
@@ -1317,7 +1317,7 @@ export default function RecoveryScreen() {
                     onPress={() => {
                       void handleRetryFailedReplan();
                     }}
-                    accessibilityLabel="Yalnızca başarısız maddeleri yeniden dene"
+                    accessibilityLabel="Yalnızca kalan maddeleri yeniden dene"
                   />
                 )}
 

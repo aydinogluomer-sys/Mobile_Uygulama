@@ -77,7 +77,7 @@ type ZonedInstantParts = {
 
 function projectInstantToZone(ms: number, zone: string): ZonedInstantParts | null {
   try {
-    const parts = new Intl.DateTimeFormat('en-CA', {
+    const parts = new Intl.DateTimeFormat('tr-TR', {
       timeZone: zone,
       year: 'numeric',
       month: '2-digit',
