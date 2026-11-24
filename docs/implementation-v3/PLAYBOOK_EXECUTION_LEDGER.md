@@ -74,22 +74,22 @@ Durum etiketleri: `GEÇTİ` (doğrulandı), `KISMİ` (altyapı var, hedef fazda 
 |---|---|---|---|---|---|---|---|---|---|---|
 | `Y08` | F0 | P0 | LEAD | yenilendi | `docs/implementation-v3/PLAYBOOK_EXECUTION_LEDGER.md`, `R11_CORE_CLOSURE.md`, `acceptanceReport.test.ts` | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
 | `P02` | F0 | P1 | PRODUCT | yenilendi | `docs/implementation-v3/R11_USER_ROUNDS_PLAN.md`, `playbookFixtures.ts`, `playbookBaselineFixtures.test.ts` | `GEÇTİ` | `GEÇTİ` | `N/R` | `N/R` | `N/R` |
-| `Y01` | F1 | P0 | DATA | canlı kanıtı açık | `docs/implementation-v3/SQL_FOR_OWNER.md`, `tools/verify-owner-rollout-readiness.mjs`, `ownerRolloutReadiness.test.ts` | `KISMİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
-| `Y02` | F1 | P0 | DATA | kısmi | `docs/implementation-v3/OWNER_ROLLOUT_QUICKSTART.md` (`042` vs `039` eski/yeni istemci matrisi) | `KISMİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
-| `Y03` | F1 | P0 | REL | canlı kanıtı açık | `docs/store/RELEASE_CHECKLIST.md`, `storeMetadataLinks.test.ts` | `KISMİ` | `GEÇTİ` | `BLOKE` | `BLOKE` | `BLOKE` |
-| `Y06` | F1 | P0 | DATA | kısmi | `supabase/rollbacks/README.md`, `SQL_FOR_OWNER.md` (kayıplı rollback vs ileri düzeltme RPO/RTO matrisi) | `KISMİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
-| `Y07` | F1 | P0 | AI | kısmi | `supabase/migrations/044_ai_messages_and_retention.sql`, `AI_RETENTION_AND_PROVIDER_CONTRACT.md` | `KISMİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
-| `Y09` | F1 | P0 | REL | kısmi | `.github/workflows/ci.yml`, `eas.json`, `RELEASE_CHECKLIST.md` (`SHA -> lockfile -> artifact` zinciri) | `KISMİ` | `GEÇTİ` | `BLOKE` | `BLOKE` | `BLOKE` |
-| `Y10` | F1 | P0 | DATA | mevcut (CI) / canlı açık | `supabase/tests/run.sh`, `.github/workflows/ci.yml#db-migrations-verify` | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
-| `Y11` | F1 | P0 | SYNC | kısmi | `supabase/migrations/027_account_deletion_cascade.sql`, `backupService.ts`, iki hesap silme/outbox yalıtım testi | `KISMİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
-| `Y13` | F1 | P0 | REL | kısmi | `docs/store/RELEASE_CHECKLIST.md`, `frontend/lib/featureGates.ts` (`PUBLIC_SITE_URLS_LIVE` ayrımı) | `KISMİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
-| `E04` | F2 | P1 | PRODUCT | kısmi | `frontend/lib/dayBoundaryContract.ts`, `dayClose.ts`, `timeZoneSync.test.ts` | `KISMİ` | `GEÇTİ` | `N/R` | `N/R` | `BLOKE` |
-| `E05` | F2 | P1 | SYNC | kısmi | `frontend/lib/outboxStorage.ts`, `coreOutbox.ts`, büyük kuyruk/kesinti/hesap yalıtım kanıtı | `KISMİ` | `GEÇTİ` | `N/R` | `N/R` | `N/R` |
-| `E06` | F2 | P1 | SYNC | kısmi | `frontend/services/unifiedOutbox.ts`, `frontend/lib/syncOutcomes.ts` (`pending/committed/conflict/retryable/permanent`) | `KISMİ` | `GEÇTİ` | `N/R` | `N/R` | `N/R` |
-| `E08` | F2 | P1 | DATA | kısmi | `frontend/services/todayBootstrapService.ts`, `taskRepository.ts` (eksik şema vs yetki vs ağ ayrımı) | `KISMİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
-| `E09` | F2 | P1 | PRODUCT | mevcut / doğrulama | `frontend/lib/habitSchedule.ts`, `habitPeriod.test.ts` (`haftada 3`, hedef sürümü, ara verme, undo etkisi) | `KISMİ` | `GEÇTİ` | `N/R` | `N/R` | `N/R` |
-| `E10` | F2 | P1 | PRODUCT | kısmi | `frontend/lib/capacity.ts`, `capacity.test.ts` (yük `0-100` vs atomik irade vs XP vs FP ayrımı) | `KISMİ` | `GEÇTİ` | `N/R` | `N/R` | `N/R` |
-| `E19` | F2 | P1 | DATA+SYNC | yeni | `045_task_estimated_minutes.sql`, `taskRepository.ts`, `taskDuration.ts` | `YENİ` | `N/R` | `BLOKE` | `N/R` | `BLOKE` |
+| `Y01` | F1 | P0 | DATA | repo+CI tamam / canlı açık | `docs/implementation-v3/SQL_FOR_OWNER.md` (§10), `tools/verify-owner-rollout-readiness.mjs`, `ownerRolloutReadiness.test.ts` | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
+| `Y02` | F1 | P0 | DATA | tamamlandı | `docs/implementation-v3/OWNER_ROLLOUT_QUICKSTART.md`, `SQL_FOR_OWNER.md` (§11 `042`/`039`/`045` eski-yeni istemci matrisi) | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
+| `Y03` | F1 | P0 | REL | repo kapısı tamam / konsol açık | `docs/store/RELEASE_CHECKLIST.md`, `f1ReleaseAndAiContract.test.ts` | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `BLOKE` | `BLOKE` |
+| `Y06` | F1 | P0 | DATA | tamamlandı | `supabase/rollbacks/README.md`, `SQL_FOR_OWNER.md` (§12 kayıplı rollback vs ileri düzeltme RPO/RTO matrisi) | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
+| `Y07` | F1 | P0 | AI | tamamlandı | `supabase/migrations/044_ai_messages_and_retention.sql`, `AI_RETENTION_AND_PROVIDER_CONTRACT.md`, `f1ReleaseAndAiContract.test.ts` | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
+| `Y09` | F1 | P0 | REL | tamamlandı | `.github/workflows/ci.yml`, `RELEASE_CHECKLIST.md` (`SHA -> lockfile -> artifact` zinciri), `f1ReleaseAndAiContract.test.ts` | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `BLOKE` | `BLOKE` |
+| `Y10` | F1 | P0 | DATA | tamamlandı (CI) / staging açık | `supabase/tests/run.sh`, `supabase/tests/13_task_estimated_minutes_045.sql` | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
+| `Y11` | F1 | P0 | SYNC | tamamlandı | `027_account_deletion_cascade.sql`, `outboxResilienceAndSyncOutcomes.test.ts`, `f1f2IndependentAcceptance.test.ts` | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
+| `Y13` | F1 | P0 | REL | tamamlandı | `docs/store/RELEASE_CHECKLIST.md` (`[GATE-URL-CONSOLE]` vs `[GATE-URL-INAPP]`), `f1ReleaseAndAiContract.test.ts` | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
+| `E04` | F2 | P1 | PRODUCT | tamamlandı | `frontend/lib/dayBoundaryContract.ts`, `taskDurationAndDayContract.test.ts`, `f1f2IndependentAcceptance.test.ts` | `GEÇTİ` | `GEÇTİ` | `N/R` | `N/R` | `BLOKE` |
+| `E05` | F2 | P1 | SYNC | tamamlandı | `frontend/lib/outboxBench.ts`, `outboxStorage.ts`, `outboxResilienceAndSyncOutcomes.test.ts` | `GEÇTİ` | `GEÇTİ` | `N/R` | `N/R` | `N/R` |
+| `E06` | F2 | P1 | SYNC | tamamlandı | `frontend/lib/syncOutcomes.ts`, `unifiedOutbox.ts`, `outboxResilienceAndSyncOutcomes.test.ts` | `GEÇTİ` | `GEÇTİ` | `N/R` | `N/R` | `N/R` |
+| `E08` | F2 | P1 | DATA+SYNC | tamamlandı | `taskRepository.ts` (`getTaskSchemaCapability`), `database.types.ts`, `taskDurationPersistence.test.ts` | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
+| `E09` | F2 | P1 | PRODUCT | tamamlandı | `habitSchedule.ts`, `capacityMetricsContract.ts`, `taskDurationAndDayContract.test.ts` | `GEÇTİ` | `GEÇTİ` | `N/R` | `N/R` | `N/R` |
+| `E10` | F2 | P1 | PRODUCT | tamamlandı | `capacity.ts`, `capacityMetricsContract.ts`, `taskDurationAndDayContract.test.ts` | `GEÇTİ` | `GEÇTİ` | `N/R` | `N/R` | `N/R` |
+| `E19` | F2 | P1 | DATA+SYNC+PRODUCT | tamamlandı | `045_task_estimated_minutes.sql`, `taskRepository.ts`, `taskDuration.ts`, `taskDurationPersistence.test.ts` | `GEÇTİ` | `GEÇTİ` | `BLOKE` | `N/R` | `BLOKE` |
 | `E01` | F3 | P1 | PRODUCT | yeni | `frontend/lib/actionSuggestion.ts`, `todayNext.ts` (`ActionSuggestion` discriminated union) | `YENİ` | `N/R` | `N/R` | `N/R` | `N/R` |
 | `E11` | F3 | P1 | AI | kısmi | `frontend/lib/aiFirstStepAdapter.ts`, `coachActionsV2.ts` (şema doğrulamalı tek adım + yerel fallback) | `KISMİ` | `N/R` | `BLOKE` | `N/R` | `BLOKE` |
 | `U01` | F3 | P1 | UI | kısmi | `frontend/app/tabs/today.tsx`, `NextUpStrip.tsx` (tek baskın CTA + kısa gerekçe + `<= 8` kontrol) | `KISMİ` | `N/R` | `N/R` | `N/R` | `N/R` |
@@ -133,6 +133,11 @@ Durum etiketleri: `GEÇTİ` (doğrulandı), `KISMİ` (altyapı var, hedef fazda 
 | Faz | Owner | Dosya / Alan | Temel SHA | Okuyucular | Merge Sırası |
 |---|---|---|---|---|---|
 | `F0` | `LEAD` | `docs/implementation-v3/PLAYBOOK_EXECUTION_LEDGER.md`, `docs/implementation-v3/R11_CORE_CLOSURE.md`, `docs/implementation-v3/R11_USER_ROUNDS_PLAN.md`, `frontend/__tests__/helpers/playbookFixtures.ts`, `frontend/__tests__/lib/playbookBaselineFixtures.test.ts` | `56577e90` | `ALL` | `1 (LEAD)` |
+| `F1+F2` | `DATA` | `supabase/migrations/045_task_estimated_minutes.sql`, `supabase/rollbacks/045_task_estimated_minutes.rollback.sql`, `supabase/tests/13_task_estimated_minutes_045.sql`, `supabase/migrations/README.md`, `supabase/rollbacks/README.md`, `docs/implementation-v3/SQL_FOR_OWNER.md`, `docs/implementation-v3/OWNER_ROLLOUT_QUICKSTART.md`, `tools/verify-owner-rollout-readiness.mjs`, `frontend/lib/database.types.ts`, `frontend/__tests__/repo/ownerRolloutReadiness.test.ts` | `72b93457` | `SYNC, REL, QA` | `1 (DATA)` |
+| `F1+F2` | `SYNC` | `frontend/lib/taskTypes.ts`, `frontend/repositories/taskRepository.ts`, `frontend/services/taskService.ts`, `frontend/lib/syncOutcomes.ts`, `frontend/services/unifiedOutbox.ts`, `frontend/lib/outboxBench.ts`, `frontend/__tests__/repo/taskDurationPersistence.test.ts`, `frontend/__tests__/lib/outboxResilienceAndSyncOutcomes.test.ts` | `72b93457` | `DATA, PRODUCT, QA` | `2 (SYNC)` |
+| `F1+F2` | `PRODUCT` | `frontend/lib/taskDuration.ts`, `frontend/lib/dayBoundaryContract.ts`, `frontend/lib/capacityMetricsContract.ts`, `frontend/__tests__/lib/taskDurationAndDayContract.test.ts` | `72b93457` | `SYNC, UI, QA` | `3 (PRODUCT)` |
+| `F1+F2` | `REL+AI` | `docs/store/RELEASE_CHECKLIST.md`, `docs/implementation-v3/AI_RETENTION_AND_PROVIDER_CONTRACT.md`, `frontend/__tests__/repo/f1ReleaseAndAiContract.test.ts` | `72b93457` | `DATA, QA, LEAD` | `4 (REL+AI)` |
+| `F1+F2` | `QA` | `frontend/__tests__/fixtures/f1f2IndependentAcceptance.test.ts` | `72b93457` | `LEAD` | `5 (QA)` |
 
 ---
 
@@ -140,4 +145,4 @@ Durum etiketleri: `GEÇTİ` (doğrulandı), `KISMİ` (altyapı var, hedef fazda 
 
 | Faz | Aday commit | İş ID’leri | Ortam / cihaz | Komut ve sonuç | Kanıt URI veya path | Sapma / risk | Karar |
 |---|---|---|---|---|---|---|---|
-| `F0` | *(F0 commit ile mühürlenir)* | `Y08`, `P02` | Windows Node 24 / npm 11 yerel doğrulama + GitHub CI referansı (`45365712434`) | `verify-owner-rollout-readiness.mjs` (0), `typecheck:ci` (0), `lint:ci` (0), `run-tests.js` (0), `jest` F0 paketleri (`ownerRolloutReadiness`, `todayBootstrapContract`, `acceptanceReport`, `evaluationFreeze`, `playbookBaselineFixtures`) yeşil | `docs/implementation-v3/PLAYBOOK_EXECUTION_LEDGER.md`, `frontend/__tests__/helpers/playbookFixtures.ts`, `frontend/__tests__/lib/playbookBaselineFixtures.test.ts` | Canlı Supabase katalog sorgusu ve fiziksel cihaz erişimi operatör yetkisinde (`BLOKE`) | **GEÇTİ** (Taban kilitlendi; F1 ve F2 açıldı) |
+| `F0` | `72b93457` | `Y08`, `P02` | Windows Node 24 / npm 11 yerel doğrulama + GitHub CI referansı (`45365712434`) | `verify-owner-rollout-readiness.mjs` (0), `typecheck:ci` (0), `lint:ci` (0), `run-tests.js` (147/147), `jest` F0 paketleri (8/8 suite, 46/46 test) yeşil | `docs/implementation-v3/PLAYBOOK_EXECUTION_LEDGER.md`, `frontend/__tests__/helpers/playbookFixtures.ts`, `frontend/__tests__/lib/playbookBaselineFixtures.test.ts` | Canlı Supabase katalog sorgusu ve fiziksel cihaz erişimi operatör yetkisinde (`BLOKE`) | **GEÇTİ** (Taban kilitlendi; F1 ve F2 açıldı) |
