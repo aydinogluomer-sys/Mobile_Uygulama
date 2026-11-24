@@ -96,8 +96,81 @@ export function acknowledgementFor(a: IntentAnswer): string {
   return FLOW_COPY.intentAckNo;
 }
 
+// ---------------------------------------------------------------------------
+// P06 — Optional, lightweight, dismissible focus starter guide (zero OS blockers)
+// ---------------------------------------------------------------------------
+
+export const FOCUS_GUIDE_DISMISSED_KEY = (userId: string): string =>
+  `aderyth.focus.guideDismissed.v1.${userId}`;
+
+export type FocusStarterGuideStep = {
+  readonly id: string;
+  readonly title: string;
+  readonly body: string;
+  readonly durationSec: number;
+};
+
+export const DEFAULT_STARTER_GUIDE: readonly FocusStarterGuideStep[] = [
+  {
+    id: 'clear-desk',
+    title: 'Masayı sadeleştir',
+    body: 'Önünde yalnız şu anki işe ait nesneler kalsın.',
+    durationSec: 10,
+  },
+  {
+    id: 'single-target',
+    title: 'Tek sekme veya dosya aç',
+    body: 'Dikkatini dağıtacak diğer pencereleri sessizce kapat.',
+    durationSec: 10,
+  },
+  {
+    id: 'first-two-min',
+    title: 'İlk 2 dakikaya başla',
+    body: 'Bitirmeyi değil, yalnız ilk küçük adımı başlatmayı hedefle.',
+    durationSec: 10,
+  },
+];
+
+const LOW_ENERGY_STARTER_STEP: FocusStarterGuideStep = {
+  id: 'first-two-min',
+  title: 'İlk 2 dakikaya başla',
+  body: 'Yalnız ilk küçük adımı başlat.',
+  durationSec: 10,
+};
+
+export type ResolvedFocusStarterGuide = {
+  readonly visible: boolean;
+  readonly steps: readonly FocusStarterGuideStep[];
+  readonly requiresExtraPermissions: false;
+};
+
+export function resolveFocusStarterGuide(opts: {
+  enabled: boolean;
+  dismissed: boolean;
+  lowEnergy?: boolean;
+}): ResolvedFocusStarterGuide {
+  if (!opts.enabled || opts.dismissed) {
+    return {
+      visible: false,
+      steps: [],
+      requiresExtraPermissions: false,
+    };
+  }
+  return {
+    visible: true,
+    steps: opts.lowEnergy ? [LOW_ENERGY_STARTER_STEP] : DEFAULT_STARTER_GUIDE,
+    requiresExtraPermissions: false,
+  };
+}
+
 registerAccountStorage({
   name: 'focusIntent',
   transient: true,
   keysFor: (uid) => [focusIntentKey(uid)],
+});
+
+registerAccountStorage({
+  name: 'focusStarterGuide',
+  transient: true,
+  keysFor: (uid) => [FOCUS_GUIDE_DISMISSED_KEY(uid)],
 });
