@@ -62,7 +62,7 @@ export async function insertChecklistItem(input: { habit_id: string; title: stri
     .select(ITEM_COLS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
-  return { ok: true, data: data as unknown as ChecklistItem };
+  return { ok: true, data };
 }
 
 export async function patchChecklistItem(id: string, patch: Partial<Pick<ChecklistItem, 'title' | 'required' | 'position' | 'archived_at'>>): Promise<RepoResult<ChecklistItem>> {

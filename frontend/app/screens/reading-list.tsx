@@ -1,5 +1,7 @@
-import { colors, alphaHex, hexA } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Modal, KeyboardAvoidingView, Platform,
@@ -23,13 +25,16 @@ const decorativeA11y =
         importantForAccessibility: 'no-hide-descendants' as const,
       };
 
-const STATUS_TABS: { key: ReadingStatus; label: string; color: string }[] = [
+type StatusTab = { key: ReadingStatus; label: string; color: string };
+type TypeOption = { key: ReadingType; label: string; icon: keyof typeof Ionicons.glyphMap; color: string };
+
+const getStatusTabs = (colors: Palette): StatusTab[] => [
   { key: 'want_to_read', label: 'Okuyacak', color: colors.textFaint },
   { key: 'reading',      label: 'Okuyor',   color: colors.accent },
   { key: 'completed',    label: 'Bitti',     color: colors.success },
 ];
 
-const TYPE_OPTIONS: { key: ReadingType; label: string; icon: string; color: string }[] = [
+const getTypeOptions = (colors: Palette): TypeOption[] => [
   { key: 'book',    label: 'Kitap',   icon: 'book-outline',         color: colors.accent },
   { key: 'article', label: 'Makale',  icon: 'newspaper-outline',    color: colors.teal },
   { key: 'video',   label: 'Video',   icon: 'videocam-outline',     color: colors.error },
@@ -37,9 +42,8 @@ const TYPE_OPTIONS: { key: ReadingType; label: string; icon: string; color: stri
   { key: 'other',   label: 'Diğer',   icon: 'ellipsis-horizontal-outline', color: colors.textDim },
 ];
 
-const TYPE_MAP = Object.fromEntries(TYPE_OPTIONS.map((t) => [t.key, t]));
-
 function StarRating({ value, onChange }: { value: number | null; onChange: (n: number) => void }) {
+  const colors = useThemeColors();
   return (
     <View style={{ flexDirection: 'row', gap: 4 }}>
       {[1, 2, 3, 4, 5].map((n) => (
@@ -58,10 +62,27 @@ function StarRating({ value, onChange }: { value: number | null; onChange: (n: n
 }
 
 export default function ReadingListScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const STATUS_TABS = getStatusTabs(colors);
+  const TYPE_OPTIONS = getTypeOptions(colors);
+  const TYPE_MAP = Object.fromEntries(TYPE_OPTIONS.map((t) => [t.key, t])) as Record<ReadingType, TypeOption>;
   // Each tab owns its own page and cursor now: the store no longer holds one
   // unbounded array that the screen slices. See store/readingListStore.ts.
   const { tabs, counts, fetchItems, loadMore, addItem, updateStatus, updateRating, removeItem, error: loadError } =
-    useReadingListStore();
+    useReadingListStore(
+      useShallow((st) => ({
+        tabs: st.tabs,
+        counts: st.counts,
+        fetchItems: st.fetchItems,
+        loadMore: st.loadMore,
+        addItem: st.addItem,
+        updateStatus: st.updateStatus,
+        updateRating: st.updateRating,
+        removeItem: st.removeItem,
+        error: st.error,
+      })),
+    );
   const [activeTab, setActiveTab] = useState<ReadingStatus>('want_to_read');
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState('');
@@ -208,7 +229,7 @@ export default function ReadingListScreen() {
 
                 <View style={s.cardLeft}>
                   <View style={[s.typeIcon, { backgroundColor: alphaHex(typeInfo.color, '20') }]}>
-                    <Ionicons name={typeInfo.icon as any} size={18} color={typeInfo.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                    <Ionicons name={typeInfo.icon} size={18} color={typeInfo.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                   </View>
                   <View style={s.cardBody}>
                     <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text>
@@ -314,7 +335,7 @@ export default function ReadingListScreen() {
                   accessibilityLabel={`Tür: ${t.label}`}
                   accessibilityState={{ selected: type === t.key, checked: type === t.key }}
                 >
-                  <Ionicons name={t.icon as any} size={16} color={type === t.key ? t.color : colors.textFaint} />
+                  <Ionicons name={t.icon} size={16} color={type === t.key ? t.color : colors.textFaint} />
                   <Text style={[s.typeBtnText, type === t.key && { color: t.color }]}>{t.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -349,7 +370,7 @@ export default function ReadingListScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
 
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.borderSubtle },
@@ -407,8 +428,8 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: 24, paddingBottom: 40, overflow: 'hidden', position: 'relative',
   },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 16 },
-  input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 12 },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 },
+  input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border, marginBottom: 12 },
   urlHint: { fontSize: 12, color: colors.warning, marginTop: -6, marginBottom: 10 },
   fieldLabel: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 8 },
   typeRow: { flexDirection: 'row', gap: 6, marginBottom: 20, flexWrap: 'wrap' },

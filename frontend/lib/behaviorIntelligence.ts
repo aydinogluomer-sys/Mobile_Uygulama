@@ -92,7 +92,7 @@
  *    transform it documents (`1 - stdDev * 2`, clamped) for the same
  *    documented reason (a [0,1]-bounded rate's stdDev maxes at 0.5), but
  *    computes its per-week rate from `isDueOn` (schedule-aware) rather than
- *    `capacity.ts`'s own documented TODO-approximation (raw log count as the
+ *    `capacity.ts`'s own documented historical raw-log approximation (raw log count as the
  *    denominator, undated because `habitSchedule.ts` was off-limits to that
  *    file's author at the time). This file has no such restriction, so it
  *    uses the more correct denominator while keeping the same variance math.

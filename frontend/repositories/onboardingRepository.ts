@@ -55,9 +55,7 @@ export type OnboardingRow = {
 };
 
 const COLS =
-  'user_id,onboarding_version,goals,primary_barrier,pace,preferred_dayparts,' +
-  'reminder_intent,status,completed_at,install_id,install_expected_habits,' +
-  'install_return_status,created_at,updated_at';
+  'user_id,onboarding_version,goals,primary_barrier,pace,preferred_dayparts,reminder_intent,status,completed_at,install_id,install_expected_habits,install_return_status,created_at,updated_at';
 
 /** The caller's row, or `null` when they have never answered anything. */
 export async function fetchOnboarding(): Promise<RepoResult<OnboardingRow | null>> {
@@ -137,5 +135,5 @@ export async function writeOnboarding(input: {
     .select(COLS)
     .single();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data as unknown as OnboardingRow };
+  return { ok: true, data: data as OnboardingRow };
 }

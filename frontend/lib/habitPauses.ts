@@ -103,12 +103,12 @@ export function attachTimeOff<H extends { id: string }>(
   return habits.map((h) => {
     const p = intervalsForHabit(h.id, pauses);
     const v = versions.filter((x) => x.habit_id === h.id);
-    const { pause_intervals: _p, goal_versions: _v, ...rest } = h as H & { pause_intervals?: unknown; goal_versions?: unknown };
-    return {
-      ...(rest as unknown as H),
-      ...(p.length ? { pause_intervals: p } : {}),
-      ...(v.length ? { goal_versions: v } : {}),
-    };
+    const next: H & { pause_intervals?: PauseInterval[]; goal_versions?: GoalVersion[] } = { ...h };
+    delete next.pause_intervals;
+    delete next.goal_versions;
+    if (p.length) next.pause_intervals = p;
+    if (v.length) next.goal_versions = v;
+    return next;
   });
 }
 

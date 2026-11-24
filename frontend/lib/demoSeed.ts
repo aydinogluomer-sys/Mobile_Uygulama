@@ -1,13 +1,13 @@
 import { colors } from '../lib/tokens';
-import { useTaskStore } from '../store/taskStore';
-import { useProjectStore } from '../store/projectStore';
+import { useTaskStore, type Task } from '../store/taskStore';
+import { useProjectStore, type Project } from '../store/projectStore';
 import { useHabitStore } from '../store/habitStore';
 import { useLogStore } from '../store/logStore';
 import { useWillpowerStore } from '../store/willpowerStore';
 import { useFocusStore } from '../store/focusStore';
 import { useRecoveryStore } from '../store/recoveryStore';
 import { useJournalStore } from '../store/journalStore';
-import { supabase } from './supabase';
+import { supabase, type Habit, type HabitLog, type RecoveryPlan } from './supabase';
 import { ymd } from './date';
 
 type SeedSummary = {
@@ -85,7 +85,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
   if (!user) {
     const demoUserId = 'demo-local-user';
 
-    const localProjects = [
+    const localProjects: Project[] = [
       {
         id: 'demo-project-1',
         user_id: demoUserId,
@@ -106,7 +106,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
       },
     ];
 
-    const localHabits = [
+    const localHabits: Habit[] = [
       {
         id: 'demo-habit-1',
         user_id: demoUserId,
@@ -184,7 +184,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
       },
     ];
 
-    const localTasks = [
+    const localTasks: Task[] = [
       {
         id: 'demo-task-1',
         user_id: demoUserId,
@@ -255,7 +255,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
       },
     ];
 
-    const localLogs = [
+    const localLogs: HabitLog[] = [
       {
         id: 'demo-log-1',
         habit_id: 'demo-habit-1',
@@ -291,10 +291,10 @@ export async function seedDemoData(): Promise<SeedSummary> {
       },
     ];
 
-    useProjectStore.setState({ projects: localProjects as any, loading: false });
-    useHabitStore.setState({ habits: localHabits as any, loading: false });
-    useTaskStore.setState({ tasks: localTasks as any, loading: false });
-    useLogStore.setState({ logs: localLogs as any, loading: false });
+    useProjectStore.setState({ projects: localProjects, loading: false });
+    useHabitStore.setState({ habits: localHabits, loading: false });
+    useTaskStore.setState({ tasks: localTasks, loading: false });
+    useLogStore.setState({ logs: localLogs, loading: false });
     useFocusStore.setState({
       focusTasks: [
         {
@@ -321,26 +321,32 @@ export async function seedDemoData(): Promise<SeedSummary> {
           color: colors.success,
           created_at: nowIso,
         },
-      ] as any,
+      ],
       sessionsCompleted: 3,
       selectedTaskId: 'demo-focus-2',
       loadingTasks: false,
     });
+    const demoPlans: RecoveryPlan[] = [
+      {
+        id: 'demo-recovery-1',
+        user_id: demoUserId,
+        habit_id: 'demo-habit-1',
+        source_log_id: null,
+        source_date: ymd(plusDays(today, -1)),
+        target_date: ymd(plusDays(today, 1)),
+        deficit_type: null,
+        deficit_value: null,
+        strategy: 'complete_today',
+        distributed_days: null,
+        note: 'Demo telafi plani',
+        reminder_time: '19:00',
+        status: 'planned',
+        completed_at: null,
+        created_at: nowIso,
+      },
+    ];
     useRecoveryStore.setState({
-      plans: [
-        {
-          id: 'demo-recovery-1',
-          user_id: demoUserId,
-          habit_id: 'demo-habit-1',
-          source_date: ymd(plusDays(today, -1)),
-          target_date: ymd(plusDays(today, 1)),
-          strategy: 'complete_today',
-          note: 'Demo telafi plani',
-          reminder_time: '19:00',
-          status: 'planned',
-          created_at: nowIso,
-        },
-      ] as any,
+      plans: demoPlans,
       loading: false,
     });
     useWillpowerStore.setState({
@@ -374,7 +380,7 @@ export async function seedDemoData(): Promise<SeedSummary> {
           ai_summary: true,
           created_at: nowIso,
         },
-      ] as any,
+      ],
       loading: false,
     });
 

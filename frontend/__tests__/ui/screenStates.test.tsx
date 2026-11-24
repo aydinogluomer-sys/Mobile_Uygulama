@@ -24,7 +24,7 @@ jest.mock('../../store/noteStore', () => {
     loadMore: jest.fn(), fetchNotes: mockRetry, addNote: jest.fn(), updateNote: jest.fn(), removeNote: jest.fn(),
     search: jest.fn(async () => mockLists.search), conflicts: () => [], resolveConflict: jest.fn(),
   });
-  const useNoteStore: any = () => make();
+  const useNoteStore: any = (sel?: any) => { const s = make(); return sel ? sel(s) : s; };
   useNoteStore.getState = make;
   return { useNoteStore };
 });
@@ -33,7 +33,7 @@ jest.mock('../../store/goalStore', () => {
     goals: mockLists.goals, loading: mockLists.loading, loadingMore: false, hasMore: false, error: mockLists.error,
     loadGoals: mockRetry, loadMore: jest.fn(), addGoal: jest.fn(), updateProgress: jest.fn(), archiveGoal: jest.fn(), removeGoal: jest.fn(),
   });
-  const useGoalStore: any = () => make();
+  const useGoalStore: any = (sel?: any) => { const s = make(); return sel ? sel(s) : s; };
   useGoalStore.getState = make;
   return { useGoalStore };
 });
@@ -42,7 +42,7 @@ jest.mock('../../store/projectStore', () => {
     projects: mockLists.projects, hasMore: false, loadingMore: false, error: mockLists.error,
     loadMore: jest.fn(), fetchProjects: mockRetry, addProject: jest.fn(), removeProject: jest.fn(),
   });
-  const useProjectStore: any = () => make();
+  const useProjectStore: any = (sel?: any) => { const s = make(); return sel ? sel(s) : s; };
   useProjectStore.getState = make;
   return { useProjectStore };
 });

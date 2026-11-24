@@ -66,7 +66,7 @@ export async function insertDeepWorkSession(input: {
     .select(COLS)
     .single();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data as unknown as DeepWorkRow };
+  return { ok: true, data: { ...data, created_at: data.created_at ?? '' } };
 }
 
 export async function deleteDeepWorkSession(id: string): Promise<RepoResult<true>> {

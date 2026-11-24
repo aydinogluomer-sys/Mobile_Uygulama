@@ -202,7 +202,7 @@ export async function fetchLogsForDate(dateStr: string): Promise<RepoResult<Habi
     .eq('completed_at', dateStr)
     .limit(500);
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as HabitLog[] };
+  return { ok: true, data: (data ?? []) as HabitLog[] };
 }
 
 /**
@@ -235,7 +235,7 @@ export async function insertHabitLog(params: {
       status,
     };
   }
-  return { ok: true, data: data as unknown as HabitLog };
+  return { ok: true, data: data as HabitLog };
 }
 
 /** The existing row for a (habit, day), used to recover from a 23505. */

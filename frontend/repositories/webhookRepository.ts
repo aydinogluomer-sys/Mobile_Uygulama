@@ -46,7 +46,7 @@ export async function fetchWebhooks(): Promise<RepoResult<WebhookRow[]>> {
     .order('created_at', { ascending: false })
     .limit(50);
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as WebhookRow[] };
+  return { ok: true, data: (data ?? []) as WebhookRow[] };
 }
 
 export async function insertWebhook(input: {
@@ -67,7 +67,7 @@ export async function insertWebhook(input: {
     .select(COLS)
     .single();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data as unknown as WebhookRow };
+  return { ok: true, data: data as WebhookRow };
 }
 
 export async function setWebhookEnabled(id: string, enabled: boolean): Promise<RepoResult<WebhookRow>> {

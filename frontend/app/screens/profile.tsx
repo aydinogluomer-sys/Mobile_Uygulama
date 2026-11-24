@@ -1,4 +1,5 @@
-import { colors, alphaHex, radius } from '../../lib/tokens';
+import { alphaHex, radius, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -31,22 +32,31 @@ import {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { profile, badges, fetchProfile, fetchBadges, setUsername } = useProfileStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const profile = useProfileStore((st) => st.profile);
+  const badges = useProfileStore((st) => st.badges);
+  const fetchProfile = useProfileStore((st) => st.fetchProfile);
+  const fetchBadges = useProfileStore((st) => st.fetchBadges);
+  const setUsername = useProfileStore((st) => st.setUsername);
   const habits = useHabitStore((st) => st.habits);
   const heat = useHeatmapLogs();
   const activeHabitCount = habits.filter((h) => h.status === 'active').length;
   const focusPoints = useSubscriptionStore((st) => st.focusPoints);
   const fetchSub = useSubscriptionStore((st) => st.fetch);
-  const [name, setName] = useState('');
+  const [draftName, setDraftName] = useState<string | null>(null);
+  const name = draftName ?? (profile?.username ?? '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => { fetchProfile(); fetchBadges(); void fetchSub(); }, [fetchProfile, fetchBadges, fetchSub]);
-  useEffect(() => { setName(profile?.username ?? ''); }, [profile?.username]);
 
   async function save() {
     setSaving(true);
     await setUsername(name);
+    if (useProfileStore.getState().profile?.username === (name.trim() || null)) {
+      setDraftName(null);
+    }
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
@@ -162,7 +172,7 @@ export default function ProfileScreen() {
             <TextInput
               style={s.nameInput}
               value={name}
-              onChangeText={setName}
+              onChangeText={setDraftName}
               placeholder="Gizli Savaşçı"
               placeholderTextColor={colors.textFaint}
               maxLength={24}
@@ -240,7 +250,7 @@ export default function ProfileScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40, gap: 14 },
 

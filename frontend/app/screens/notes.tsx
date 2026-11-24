@@ -1,6 +1,8 @@
-import { colors, alphaHex, hexA } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
 import { useEffect, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import ReadingListScreen from './reading-list';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
@@ -30,7 +32,28 @@ const decorativeA11y =
 export default function NotesScreen() {
   const { width } = useWindowDimensions();
   const numCols = width >= 960 ? 3 : 2;
-  const { notes, loading, loadingMore, hasMore, loadMore, fetchNotes, addNote, updateNote, removeNote, search, conflicts, resolveConflict, error: loadError } = useNoteStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const {
+    notes, loading, loadingMore, hasMore, loadMore, fetchNotes,
+    addNote, updateNote, removeNote, search, conflicts, resolveConflict, error: loadError,
+  } = useNoteStore(
+    useShallow((st) => ({
+      notes: st.notes,
+      loading: st.loading,
+      loadingMore: st.loadingMore,
+      hasMore: st.hasMore,
+      loadMore: st.loadMore,
+      fetchNotes: st.fetchNotes,
+      addNote: st.addNote,
+      updateNote: st.updateNote,
+      removeNote: st.removeNote,
+      search: st.search,
+      conflicts: st.conflicts,
+      resolveConflict: st.resolveConflict,
+      error: st.error,
+    })),
+  );
   // R02.05 — re-read on every outbox change, so a conflict appears the moment delivery reports it.
   useCoreOutboxSync();
   const noteConflicts = conflicts();
@@ -45,7 +68,25 @@ export default function NotesScreen() {
   const [viewMode, setViewMode] = useState<'notes' | 'reading_list'>('notes');
   const [initialLoaded, setInitialLoaded] = useState(notes.length > 0);
   const { id: focusId, consume: consumeFocus } = useFocusParam();
+  const [handledFocusId, setHandledFocusId] = useState<string | null>(null);
   const consumedFocusRef = useRef<string | null>(null);
+
+  if (!focusId && handledFocusId !== null) {
+    setHandledFocusId(null);
+  } else if (focusId && handledFocusId !== focusId) {
+    const match = notes.find((n) => n.id === focusId);
+    if (match) {
+      setHandledFocusId(focusId);
+      setViewMode('notes');
+      setEditing(match);
+      setTitle(match.title);
+      setContent(match.content);
+      setSaveError(null);
+      setShowEdit(true);
+    } else if (initialLoaded && !loading) {
+      setHandledFocusId(focusId);
+    }
+  }
 
   useEffect(() => {
     void Promise.resolve(fetchNotes()).finally(() => setInitialLoaded(true));
@@ -60,8 +101,6 @@ export default function NotesScreen() {
     const match = notes.find((n) => n.id === focusId);
     if (match) {
       consumedFocusRef.current = focusId;
-      setViewMode('notes');
-      openEdit(match);
       consumeFocus();
       return;
     }
@@ -79,19 +118,30 @@ export default function NotesScreen() {
   // per keystroke.
   const [results, setResults] = useState<Note[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const trimmedQuery = query.trim();
+
+  function handleQueryChange(next: string) {
+    setQuery(next);
+    if (!next.trim()) {
+      setResults(null);
+      setSearching(false);
+    } else {
+      setSearching(true);
+    }
+  }
+
   useEffect(() => {
-    const term = query.trim();
-    if (!term) { setResults(null); setSearching(false); return; }
-    setSearching(true);
+    if (!trimmedQuery) return;
     let alive = true;
     const t = setTimeout(async () => {
-      const found = await search(term);
+      const found = await search(trimmedQuery);
       if (alive) { setResults(found); setSearching(false); }
     }, 250);
     return () => { alive = false; clearTimeout(t); };
-  }, [query, search]);
+  }, [trimmedQuery, search]);
 
-  const visible = results ?? notes;
+  const activeResults = trimmedQuery ? results : null;
+  const visible = activeResults ?? notes;
 
   function openNew() {
     setEditing(null);
@@ -180,11 +230,11 @@ export default function NotesScreen() {
               placeholder="Notlarda ara..."
               placeholderTextColor={colors.textFaint}
               value={query}
-              onChangeText={setQuery}
+              onChangeText={handleQueryChange}
             />
             {query.length > 0 && (
               <TouchableOpacity
-                onPress={() => setQuery('')}
+                onPress={() => handleQueryChange('')}
                 accessibilityRole="button"
                 accessibilityLabel="Aramayı temizle"
               >
@@ -196,12 +246,12 @@ export default function NotesScreen() {
           <FlatList
             key={`pinboard-${numCols}`}
             onEndReachedThreshold={0.4}
-            onEndReached={() => { if (!results) loadMore(); }}
+            onEndReached={() => { if (!activeResults) loadMore(); }}
             ListFooterComponent={
               // Suppressed while a search is showing: those results are a bounded
               // server query, not a page of the list, so "load more" would be
               // continuing something the user is not looking at.
-              results ? null : <LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />
+              activeResults ? null : <LoadMoreFooter hasMore={hasMore} loading={loadingMore} onPress={loadMore} />
             }
             data={visible}
             ListHeaderComponent={
@@ -368,7 +418,7 @@ export default function NotesScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
 
   topBar: {
@@ -413,7 +463,7 @@ const s = StyleSheet.create({
     margin: 16, backgroundColor: colors.surface, borderRadius: 12,
     padding: 12, borderWidth: 1, borderColor: colors.border,
   },
-  searchInput: { flex: 1, fontSize: 14, color: colors.white },
+  searchInput: { flex: 1, fontSize: 14, color: colors.text },
 
   row: { paddingHorizontal: 10, gap: 10 },
   listContent: { paddingHorizontal: 6, paddingBottom: 100 },
@@ -446,7 +496,7 @@ const s = StyleSheet.create({
     padding: 13,
     flex: 1,
   },
-  cardTitle: { fontSize: 13, fontWeight: '700', color: colors.white, marginBottom: 6 },
+  cardTitle: { fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: 6 },
   cardContent: { fontSize: 13, color: colors.textDim, lineHeight: 18, flex: 1 },
   cardDate: { fontSize: 10, color: colors.textFaint, marginTop: 8 },
 
@@ -466,13 +516,13 @@ const s = StyleSheet.create({
     padding: 20, maxHeight: '90%', overflow: 'hidden', position: 'relative',
   },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
   sheetActions: { flexDirection: 'row', gap: 8 },
   deleteBtn: { padding: 6 },
   closeBtn: { padding: 6 },
 
   titleInput: {
-    fontSize: 18, fontWeight: '600', color: colors.white,
+    fontSize: 18, fontWeight: '600', color: colors.text,
     borderBottomWidth: 1, borderBottomColor: colors.border,
     paddingVertical: 8, marginBottom: 12,
   },

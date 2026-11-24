@@ -89,7 +89,7 @@ export async function fetchTodayBootstrap(today: string): Promise<TodayBootstrap
   const raw = data as Record<string, unknown>;
   const willpowerRaw =
     raw.willpower && typeof raw.willpower === 'object' && !Array.isArray(raw.willpower)
-      ? (raw.willpower as unknown as WillpowerState)
+      ? (raw.willpower as Record<string, unknown> as WillpowerState)
       : null;
 
   return {

@@ -46,7 +46,7 @@ export async function fetchJournalEntries(limit = JOURNAL_FETCH_LIMIT): Promise<
     .order('date', { ascending: false })
     .limit(Math.max(1, Math.min(limit, 1000)));
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as JournalEntryRow[] };
+  return { ok: true, data: data ?? [] };
 }
 
 /**
@@ -75,7 +75,7 @@ export async function searchJournalEntries(
     .order('date', { ascending: false })
     .limit(Math.max(1, Math.min(limit, 50)));
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as JournalEntryRow[] };
+  return { ok: true, data: data ?? [] };
 }
 
 export async function fetchJournalEntry(date: string): Promise<RepoResult<JournalEntryRow | null>> {
@@ -130,7 +130,7 @@ export async function upsertJournalEntry(
         .select(JOURNAL_ENTRY_COLUMNS)
         .single();
       if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-      return { ok: true, data: data as unknown as JournalEntryRow };
+      return { ok: true, data };
     }
     // Row existed on read: compare-and-swap against the exact content we read.
     const patch: TableUpdate<'journal_entries'> = { content: input.content, mood: input.mood ?? null };
@@ -145,7 +145,7 @@ export async function upsertJournalEntry(
       .maybeSingle();
     if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
     if (!data) return { ok: false, error: 'Bu günün kaydı başka bir yerde değişti.', status: 409, code: JOURNAL_CAS_MISMATCH };
-    return { ok: true, data: data as unknown as JournalEntryRow };
+    return { ok: true, data };
   }
 
   const { data, error, status } = await supabase
@@ -154,5 +154,5 @@ export async function upsertJournalEntry(
     .select(JOURNAL_ENTRY_COLUMNS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-  return { ok: true, data: data as unknown as JournalEntryRow };
+  return { ok: true, data };
 }

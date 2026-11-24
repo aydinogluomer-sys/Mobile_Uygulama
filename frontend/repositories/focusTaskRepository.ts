@@ -178,5 +178,5 @@ export async function fetchOpenFocusTasks(limit = 100): Promise<RepoResult<Focus
     .order('created_at', { ascending: true })
     .limit(Math.max(1, Math.min(limit, 500)));
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as FocusTaskRow[] };
+  return { ok: true, data: data ?? [] };
 }

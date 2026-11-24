@@ -39,7 +39,7 @@ export function periodReport(habit: Habit, logs: readonly Log[], range: { start:
   const mine = logs.filter((l) => l.habit_id === habit.id);
   const seen = new Set<string>();
   for (let d = from; d <= to; d = addDaysLocal(d, 1)) {
-    const st = periodStatus(habit, mine as never, d, { asOf: range.asOf });
+    const st = periodStatus(habit, mine, d, { asOf: range.asOf });
     const key = `${ymd(st.periodStart)}|${ymd(st.periodEnd)}`;
     if (seen.has(key)) continue;
     seen.add(key);

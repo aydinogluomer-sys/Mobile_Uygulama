@@ -417,7 +417,7 @@ function rangeSlice(habit: Habit, window: { start: Date; end: Date }): { start: 
  */
 function completedCountInWindow(
   habit: Habit,
-  logs: Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'>[],
+  logs: readonly { habit_id: string; completed_at: string; state: string }[],
   window: { start: Date; end: Date },
 ): number {
   const startYmd = ymd(window.start);
@@ -519,7 +519,7 @@ export function streakBroken(
  *
  * `capacity.masteryStatus` carried this note:
  *
- *     TODO(phase1-wiring): `recent_completion_rate` here is a LOCAL
+ *     Historical note (phase1-wiring): `recent_completion_rate` here is a LOCAL
  *     approximation -- `done` logs divided by TOTAL logs within the trailing
  *     window. It does not know the habit's actual due-schedule.
  *
@@ -862,7 +862,12 @@ export type PeriodStatusOptions = {
 
 const PERIOD_BASIS = Object.freeze({ timezone: 'device-local', weekStart: 'monday' } as const);
 
-type LogForPeriod = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state'> & { value?: number | null };
+export type LogForPeriod = {
+  habit_id: string;
+  completed_at: string;
+  state: string;
+  value?: number | null;
+};
 
 function unknownStatus(
   periodStart: Date, periodEnd: Date, unit: PeriodUnit, reason: PeriodReason,
@@ -886,7 +891,7 @@ function unknownStatus(
  * helper's contract. Within a day, `done` beats `partial` beats the rest, so a
  * day that was completed is not demoted by a stale partial row.
  */
-function oneLogPerDay(habit: Habit, logs: LogForPeriod[]): LogForPeriod[] {
+function oneLogPerDay(habit: Habit, logs: readonly LogForPeriod[]): LogForPeriod[] {
   const rank = (state: string) => (state === 'done' ? 3 : state === 'partial' ? 2 : state === 'skip' ? 1 : 0);
   const byDay = new Map<string, LogForPeriod>();
   for (const l of logs) {
@@ -917,7 +922,7 @@ function amountTarget(habit: Habit): number | null {
  */
 export function periodStatus(
   habit: Habit,
-  logs: LogForPeriod[],
+  logs: readonly LogForPeriod[],
   date: Date,
   opts: PeriodStatusOptions = {},
 ): PeriodStatus {

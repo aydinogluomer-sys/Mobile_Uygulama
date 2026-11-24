@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, Modal, KeyboardAvoidingView, Platform,
@@ -14,27 +15,63 @@ import { EmptyState, FormError, LoadErrorState, EditorialBanner } from '../../co
 import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
-import { colors, hexA } from '../../lib/tokens';
+import { hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { projectProgress } from '../../lib/progressModel';
 
-const PRESET_COLORS = [
-  colors.accent,'#8b5cf6','#ec4899',colors.error,'#f97316',
-  colors.warning,colors.success,colors.teal,'#3b82f6','#84cc16',
+const getPresetColors = (colors: Palette): readonly string[] => [
+  colors.accent, '#8b5cf6', '#ec4899', colors.error, '#f97316',
+  colors.warning, colors.success, colors.teal, '#3b82f6', '#84cc16',
 ];
 
 export default function ProjectsScreen() {
-  const { projects, hasMore, loadingMore, loadMore, fetchProjects, addProject, removeProject, error: loadError } = useProjectStore();
-  const { tasks, fetchTasks, toggleDone, addTask } = useTaskStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const presetColors = getPresetColors(colors);
+  const { projects, hasMore, loadingMore, loadMore, fetchProjects, addProject, removeProject, error: loadError } = useProjectStore(
+    useShallow((st) => ({
+      projects: st.projects,
+      hasMore: st.hasMore,
+      loadingMore: st.loadingMore,
+      loadMore: st.loadMore,
+      fetchProjects: st.fetchProjects,
+      addProject: st.addProject,
+      removeProject: st.removeProject,
+      error: st.error,
+    })),
+  );
+  const { tasks, fetchTasks, toggleDone, addTask } = useTaskStore(
+    useShallow((st) => ({
+      tasks: st.tasks,
+      fetchTasks: st.fetchTasks,
+      toggleDone: st.toggleDone,
+      addTask: st.addTask,
+    })),
+  );
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [color, setColor] = useState(PRESET_COLORS[0]);
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
+  const color = selectedColor ?? presetColors[0];
   const [saveError, setSaveError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [initialLoaded, setInitialLoaded] = useState(projects.length > 0);
   const { id: focusId, consume: consumeFocus } = useFocusParam();
+  const [handledFocusId, setHandledFocusId] = useState<string | null>(null);
   const consumedFocusRef = useRef<string | null>(null);
+
+  if (!focusId && handledFocusId !== null) {
+    setHandledFocusId(null);
+  } else if (focusId && handledFocusId !== focusId) {
+    const match = projects.find((p) => p.id === focusId);
+    if (match) {
+      setHandledFocusId(focusId);
+      setDetailId(match.id);
+    } else if (initialLoaded) {
+      setHandledFocusId(focusId);
+    }
+  }
 
   const detailProject = projects.find((p) => p.id === detailId) ?? null;
   const detailTasks = detailId ? tasks.filter((t) => t.project_id === detailId) : [];
@@ -54,7 +91,6 @@ export default function ProjectsScreen() {
     const match = projects.find((p) => p.id === focusId);
     if (match) {
       consumedFocusRef.current = focusId;
-      setDetailId(match.id);
       consumeFocus();
       return;
     }
@@ -73,7 +109,7 @@ export default function ProjectsScreen() {
       return;
     }
     setSaveError(null);
-    setName(''); setDesc(''); setColor(PRESET_COLORS[0]);
+    setName(''); setDesc(''); setSelectedColor(null);
     setShowAdd(false);
   }
 
@@ -186,13 +222,13 @@ export default function ProjectsScreen() {
 
             <Text style={s.fieldLabel}>Renk</Text>
             <View style={s.colorGrid}>
-              {PRESET_COLORS.map((c) => (
+              {presetColors.map((c, idx) => (
                 <TouchableOpacity
                   key={c}
                   style={[s.colorBtn, { backgroundColor: c }, color === c && s.colorSelected]}
-                  onPress={() => setColor(c)}
+                  onPress={() => setSelectedColor(c)}
                   accessibilityRole="radio"
-                  accessibilityLabel={`Proje rengi ${PRESET_COLORS.indexOf(c) + 1}`}
+                  accessibilityLabel={`Proje rengi ${idx + 1}`}
                   accessibilityState={{ selected: color === c, checked: color === c }}
                 >
                   {color === c && <Ionicons name="checkmark" size={16} color={colors.white} />}
@@ -299,7 +335,7 @@ export default function ProjectsScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   list: { flex: 1 },
   listContent: { padding: 16, paddingBottom: 100 },
@@ -310,7 +346,7 @@ const s = StyleSheet.create({
   },
   colorDot: { width: 14, height: 14, borderRadius: 7 },
   rowBody: { flex: 1 },
-  rowName: { fontSize: 16, fontWeight: '600', color: colors.white },
+  rowName: { fontSize: 16, fontWeight: '600', color: colors.text },
   rowDesc: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   badge: {
     backgroundColor: colors.border, borderRadius: 10,
@@ -329,10 +365,10 @@ const s = StyleSheet.create({
   },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 16 },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 },
   input: {
     backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15,
-    color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 12,
+    color: colors.text, borderWidth: 1, borderColor: colors.border, marginBottom: 12,
   },
   fieldLabel: { fontSize: 12, color: colors.textFaint, fontWeight: '600', marginBottom: 8, letterSpacing: 0.5 },
   colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
@@ -348,7 +384,7 @@ const s = StyleSheet.create({
   // Proje detayı
   detailSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
   detailHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  detailTitle: { flex: 1, fontSize: 19, fontWeight: '700', color: colors.white },
+  detailTitle: { flex: 1, fontSize: 19, fontWeight: '700', color: colors.text },
   detailDesc: { fontSize: 13, color: colors.textFaint, marginBottom: 14, lineHeight: 18 },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
   progressText: { fontSize: 13, color: colors.textDim },

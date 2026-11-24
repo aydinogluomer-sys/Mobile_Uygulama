@@ -433,7 +433,7 @@ async function reconcileOnce(
 
   const permission = wantsAny || wantsTimeSupport ? await ensurePermission() : await hasPermission();
   const res = wantsAny ? await fetchHabitLogsForReview({ start: planLogsSince(now), end: ymd(now) }) : null;
-  const logs: readonly PlanLog[] | null = res && res.ok ? (res.data as never) : null;
+  const logs: readonly PlanLog[] | null = res && res.ok ? res.data : null;
   const others = scheduled.filter((s) => classifyScheduled(s.data).kind === 'other' && s.data?.kind !== REENTRY_KIND).length;
   const plan = planReminders({
     habits,

@@ -37,7 +37,7 @@ export async function fetchPauses(): Promise<RepoResult<Optional<PauseInterval>>
     .limit(1000);
   if (isMissingTable(error)) return { ok: true, data: { available: false, rows: [] } };
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
-  return { ok: true, data: { available: true, rows: (data ?? []) as unknown as PauseInterval[] } };
+  return { ok: true, data: { available: true, rows: (data ?? []) as PauseInterval[] } };
 }
 
 export async function fetchGoalVersions(): Promise<RepoResult<Optional<GoalVersion>>> {
@@ -68,7 +68,7 @@ export async function insertPause(habitId: string | null, draft: PauseDraft): Pr
     .select(PAUSE_COLS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
-  return { ok: true, data: data as unknown as PauseInterval };
+  return { ok: true, data: data as PauseInterval };
 }
 
 export async function setPauseEnd(id: string, endDate: string): Promise<RepoResult<PauseInterval>> {
@@ -93,5 +93,5 @@ export async function upsertGoalVersions(rows: GoalVersion[]): Promise<RepoResul
     .upsert(rows.map((r) => ({ ...r, user_id: u.userId })), { onConflict: 'habit_id,effective_from' })
     .select(VERSION_COLS);
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error) };
-  return { ok: true, data: (data ?? []) as unknown as GoalVersion[] };
+  return { ok: true, data: (data ?? []) as GoalVersion[] };
 }

@@ -27,6 +27,33 @@ const COLS = 'id,user_id,month_key,answers,created_at,updated_at';
 /** 'YYYY-MM', the shape the table's CHECK accepts. */
 export const MONTH_KEY = /^[0-9]{4}-(0[1-9]|1[0-2])$/;
 
+function toAnswersRecord(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === 'string') out[k] = v;
+  }
+  return out;
+}
+
+function toMonthlyReviewRow(row: {
+  id: string;
+  user_id: string;
+  month_key: string;
+  answers: unknown;
+  created_at: string;
+  updated_at: string;
+}): MonthlyReviewRow {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    month_key: row.month_key,
+    answers: toAnswersRecord(row.answers),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
 /**
  * One month, or `null` when nothing has been written yet.
  *
@@ -49,7 +76,7 @@ export async function fetchMonthlyReview(
     .eq('month_key', monthKey)
     .maybeSingle();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data as unknown as MonthlyReviewRow) ?? null };
+  return { ok: true, data: data ? toMonthlyReviewRow(data) : null };
 }
 
 /**
@@ -88,5 +115,5 @@ export async function upsertMonthlyReview(params: {
     .select(COLS)
     .single();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data as unknown as MonthlyReviewRow };
+  return { ok: true, data: toMonthlyReviewRow(data) };
 }

@@ -108,7 +108,7 @@ export async function insertReadingItem(input: {
     .select(COLS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-  return { ok: true, data: data as unknown as ReadingItemRow };
+  return { ok: true, data: data as ReadingItemRow };
 }
 
 async function patch(

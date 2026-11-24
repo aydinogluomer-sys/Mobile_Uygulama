@@ -60,7 +60,7 @@ export async function insertNote(input: {
     .select(COLS)
     .single();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data as unknown as NoteRow };
+  return { ok: true, data: data as NoteRow };
 }
 
 export async function updateNote(
@@ -112,5 +112,5 @@ export async function searchNotes(query: string, limit = 50): Promise<RepoResult
     .order('updated_at', { ascending: false })
     .limit(Math.min(limit, 100));
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as NoteRow[] };
+  return { ok: true, data: (data ?? []) as NoteRow[] };
 }

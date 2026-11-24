@@ -17,6 +17,7 @@
  *               conversation list must not grow into a full-table scan.
  */
 import type { V2ActionType } from '../lib/coachActionsV2';
+import type { Json } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
 import {
   currentUserId, fetchPage, updateOwned, deleteOwned,
@@ -291,6 +292,13 @@ export async function fetchPendingAction(conversationId: string): Promise<RepoRe
   return { ok: true, data: (data as ActionRow) ?? null };
 }
 
+function toJson(val: unknown): Json {
+  if (val === null || typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') return val;
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'object') return val as { [key: string]: unknown };
+  return null;
+}
+
 export async function insertAction(input: {
   conversationId: string;
   assistantMessageId?: string | null;
@@ -306,7 +314,7 @@ export async function insertAction(input: {
       assistant_message_id: input.assistantMessageId ?? null,
       user_id: u.userId,
       action_type: input.actionType,
-      payload: input.payload as never,
+      payload: toJson(input.payload),
     })
     .select(ACTION_COLS)
     .single();
@@ -336,7 +344,7 @@ export async function updateActionPayload(
   if (!u.ok) return u;
   const { data, error } = await supabase
     .from('ai_conversation_actions')
-    .update({ payload: payload as never })
+    .update({ payload: toJson(payload) })
     .eq('id', id)
     .eq('user_id', u.userId)
     .eq('status', 'pending')

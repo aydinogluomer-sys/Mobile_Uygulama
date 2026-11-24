@@ -1,4 +1,5 @@
-import { colors, alphaHex, hexA } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { EditorialBanner } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
@@ -143,6 +144,7 @@ function countOverloadDays(params: {
 }
 
 function AutoMetricTile({ label, value }: { label: string; value: string }) {
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.autoMetricTile}>
       <Text style={s.autoMetricValue} numberOfLines={1}>{value}</Text>
@@ -152,9 +154,13 @@ function AutoMetricTile({ label, value }: { label: string; value: string }) {
 }
 
 export default function WeeklyReviewScreen() {
-  const { tasks, fetchTasks } = useTaskStore();
-  const { habits, fetchHabits } = useHabitStore();
-  const { appendEntry } = useJournalStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const tasks = useTaskStore((st) => st.tasks);
+  const fetchTasks = useTaskStore((st) => st.fetchTasks);
+  const habits = useHabitStore((st) => st.habits);
+  const fetchHabits = useHabitStore((st) => st.fetchHabits);
+  const appendEntry = useJournalStore((st) => st.appendEntry);
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -171,7 +177,6 @@ export default function WeeklyReviewScreen() {
   const targetDate = subWeeks(new Date(), weekOffset);
   const weekKey = getWeekKey(targetDate);
   const currentWeekKeyRef = useRef(weekKey);
-  currentWeekKeyRef.current = weekKey;
   const { start, end } = getWeekRange(targetDate);
   const isCurrentWeek = weekOffset === 0;
   // R05.07 — routine sessions, from the summary each session stored when it finished.
@@ -189,26 +194,6 @@ export default function WeeklyReviewScreen() {
     fetchTasks();
     fetchHabits();
   }, [fetchTasks, fetchHabits]);
-
-  // ── Why a ref rather than a dependency ────────────────────────────────
-  //
-  // The two loaders are plain functions re-created on every render, so
-  // naming them as dependencies would re-run this effect on every render —
-  // an unbounded fetch loop on the heaviest screen in the app. Wrapping
-  // them in useCallback does not help either: they close over `now`,
-  // `targetDate` and freshly filtered arrays, so their identity would still
-  // change every time.
-  //
-  // Their identity was never the trigger. The trigger is the listed inputs.
-  // A ref says exactly that: run when those change, and call whatever
-  // version of the loaders exists at that moment.
-  const loaders = useRef({ loadReview, loadWeekMetrics });
-  loaders.current = { loadReview, loadWeekMetrics };
-
-  useEffect(() => {
-    void loaders.current.loadReview();
-    void loaders.current.loadWeekMetrics();
-  }, [weekOffset, habits.length, tasks.length, routineHistory.length]);
 
   async function loadReview() {
     const user = await currentUser();
@@ -301,6 +286,29 @@ export default function WeeklyReviewScreen() {
     });
   }
 
+  // ── Why a ref rather than a dependency ────────────────────────────────
+  //
+  // The two loaders are plain functions re-created on every render, so
+  // naming them as dependencies would re-run this effect on every render —
+  // an unbounded fetch loop on the heaviest screen in the app. Wrapping
+  // them in useCallback does not help either: they close over `now`,
+  // `targetDate` and freshly filtered arrays, so their identity would still
+  // change every time.
+  //
+  // Their identity was never the trigger. The trigger is the listed inputs.
+  // A ref says exactly that: run when those change, and call whatever
+  // version of the loaders exists at that moment.
+  const loaders = useRef({ loadReview, loadWeekMetrics });
+  useEffect(() => {
+    currentWeekKeyRef.current = weekKey;
+    loaders.current = { loadReview, loadWeekMetrics };
+  });
+
+  useEffect(() => {
+    void loaders.current.loadReview();
+    void loaders.current.loadWeekMetrics();
+  }, [weekOffset, habits.length, tasks.length, routineHistory.length]);
+
   async function handleSave() {
     setSaving(true);
     try {
@@ -358,7 +366,7 @@ export default function WeeklyReviewScreen() {
         />
         <View style={s.hero}>
           <View style={s.heroIcon}>
-            <Ionicons name="bar-chart-outline" size={28} color="#14b8a6" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+            <Ionicons name="bar-chart-outline" size={28} color={colors.teal} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.heroTitle} accessibilityRole="header">Haftalık Rapor</Text>
@@ -523,37 +531,37 @@ export default function WeeklyReviewScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 40 },
   hero: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
-  heroIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#14b8a620', alignItems: 'center', justifyContent: 'center' },
-  heroTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
+  heroIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: alphaHex(colors.teal, '20'), alignItems: 'center', justifyContent: 'center' },
+  heroTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
   heroDates: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   weekNav: { flexDirection: 'row', gap: 4 },
   navBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   navBtnDisabled: { opacity: 0.3 },
   metricsRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
   metric: { flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
-  metricValue: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 4 },
+  metricValue: { fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 4 },
   metricLabel: { fontSize: 10, color: colors.textFaint, textAlign: 'center', lineHeight: 14 },
   badgeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: hexA(colors.surface, 0.92), borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 24, overflow: 'hidden', position: 'relative' },
   badgeEmoji: { fontSize: 20 },
-  badgeTitle: { fontSize: 14, fontWeight: '700', color: colors.white },
+  badgeTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
   badgeDesc: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
   autoMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   autoMetricTile: { width: '31.5%', backgroundColor: colors.surface, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', marginBottom: 8 },
-  autoMetricValue: { fontSize: 15, fontWeight: '700', color: colors.white, marginBottom: 3 },
+  autoMetricValue: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 3 },
   autoMetricLabel: { fontSize: 9.5, color: colors.textFaint, textAlign: 'center', lineHeight: 12 },
   taskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 6 },
   taskTitle: { flex: 1, fontSize: 14, color: colors.textDim },
   moreText: { fontSize: 12, color: colors.textFaint, paddingLeft: 4, marginTop: 4 },
   questionCard: { marginBottom: 14 },
   questionLabel: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 8 },
-  questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#14b8a6', borderRadius: 14, paddingVertical: 15, marginTop: 8 },
+  questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.text, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.teal, borderRadius: 14, paddingVertical: 15, marginTop: 8 },
   saveBtnLoading: { opacity: 0.7 },
   saveBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
   savedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: alphaHex(colors.success, '10'), borderRadius: 12, padding: 12, borderWidth: 1, borderColor: alphaHex(colors.success, '30') },
