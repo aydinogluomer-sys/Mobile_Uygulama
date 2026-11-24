@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font, hexA, radius, space } from '../../lib/tokens';
+import { font, hexA, radius, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 
 type Props = {
   label: string;
@@ -26,6 +27,8 @@ type Props = {
 export default function SelectableTile({
   label, emoji, detail, meta, selected, onPress, disabled, badge, role, size = 'chip',
 }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const isCard = size === 'card';
   return (
     <TouchableOpacity
@@ -70,7 +73,7 @@ export default function SelectableTile({
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   chip: {
     paddingVertical: space.md,
     paddingHorizontal: space.lg,

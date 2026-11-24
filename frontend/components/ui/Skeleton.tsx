@@ -12,7 +12,7 @@
  *  2. **Native driver.**
  *  3. **Non-interactive.**
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, StyleSheet, View, type DimensionValue, type ViewStyle } from 'react-native';
 import { radius, type Palette } from '../../lib/tokens';
 import { useThemedStyles } from '../../hooks/useThemeColors';
@@ -34,7 +34,7 @@ const makeStyles = (c: Palette) =>
 export default function Skeleton({ width = '100%', height = 14, circle = false, style }: Props) {
   const s = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
-  const pulse = useRef(new Animated.Value(0.55)).current;
+  const [pulse] = useState(() => new Animated.Value(0.55));
 
   useEffect(() => {
     if (reduceMotion) {

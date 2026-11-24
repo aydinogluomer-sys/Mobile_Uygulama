@@ -6,7 +6,7 @@
  * and never starts an animation, so the content is simply there. The running animation is stopped
  * on unmount.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, type ViewProps } from 'react-native';
 import { useReducedMotion } from '../seasonalMotion/useReducedMotion';
 
@@ -32,7 +32,7 @@ export default function FadeInUpView({
 }: FadeInUpViewProps) {
   const systemReduceMotion = useReducedMotion();
   const skipAnimation = disabled || (!IS_TEST_ENV && systemReduceMotion);
-  const progress = useRef(new Animated.Value(skipAnimation ? 1 : 0)).current;
+  const [progress] = useState(() => new Animated.Value(skipAnimation ? 1 : 0));
 
   useEffect(() => {
     if (skipAnimation) {

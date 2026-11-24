@@ -1,7 +1,7 @@
 // Seasonal Ambient Motion — renderer (contract §4, §8, §9 RN/Animated yolu)
 // RN built-in Animated + useNativeDriver (kod tabanı reanimated kullanmıyor).
 // Kurallar: pointerEvents none · off/reduce-motion/görünmez → null · per-frame JS YOK.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Animated, Easing, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import type { MonthNameTR, SeasonalMotionIntensity, AmbientParticle, AmbientBand } from './types';
 import { getSeasonalConfig } from './config';
@@ -53,7 +53,7 @@ export default function SeasonalMotion({ month, intensity, reduceMotion, isVisib
 }
 
 function Particle({ p, w, h }: { p: AmbientParticle; w: number; h: number }) {
-  const progress = useRef(new Animated.Value(0)).current;
+  const [progress] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const anim = Animated.sequence([
@@ -79,10 +79,14 @@ function Particle({ p, w, h }: { p: AmbientParticle; w: number; h: number }) {
       ? progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: [p.opacity * 0.12, p.opacity, p.opacity * 0.12] })
       : progress.interpolate({ inputRange: [0, 0.12, 0.85, 1], outputRange: [0, p.opacity, p.opacity, 0] });
 
-  const transform: any[] = [{ translateX }, { translateY }];
-  if (p.rotation !== 0) {
-    transform.push({ rotate: progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${p.rotation}deg`] }) });
-  }
+  const transform =
+    p.rotation !== 0
+      ? [
+          { translateX },
+          { translateY },
+          { rotate: progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${p.rotation}deg`] }) },
+        ]
+      : [{ translateX }, { translateY }];
 
   // Yumuşak ışıma — küçük noktalar parlak görsellerde okunur olsun (iOS shadow)
   const glow = (p.kind === 'dot' || p.kind === 'sparkle')
@@ -117,7 +121,7 @@ function shapeStyle(p: AmbientParticle) {
 }
 
 function Band({ band, w, h }: { band: AmbientBand; w: number; h: number }) {
-  const progress = useRef(new Animated.Value(0)).current;
+  const [progress] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const anim = Animated.sequence([
@@ -139,9 +143,10 @@ function Band({ band, w, h }: { band: AmbientBand; w: number; h: number }) {
   const opacity = isPulse
     ? progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: [band.opacity * 0.3, band.opacity, band.opacity * 0.3] })
     : band.opacity;
-  const translateX = isPulse
-    ? 0
-    : progress.interpolate({ inputRange: [0, 0.5, 1], outputRange: [-0.12 * w, 0.12 * w, -0.12 * w] });
+  const translateX = progress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [-0.12 * w, 0.12 * w, -0.12 * w],
+  });
 
   return (
     <Animated.View
@@ -155,7 +160,7 @@ function Band({ band, w, h }: { band: AmbientBand; w: number; h: number }) {
         backgroundColor: band.color,
         borderRadius: band.heightPct * h,
         opacity,
-        transform: isPulse ? undefined : [{ translateX: translateX as any }],
+        transform: isPulse ? undefined : [{ translateX }],
       }}
     />
   );

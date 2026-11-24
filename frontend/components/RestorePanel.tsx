@@ -9,7 +9,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { confirm } from '../lib/dialog';
-import { colors, space, radius } from '../lib/tokens';
+import { space, radius, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { dryRunRestore, executeRestore, loadRestoreJob, type RestoreReport } from '../services/restoreService';
 import { isInterrupted, interruptedText, type RestoreJob } from '../lib/restoreJob';
 import { loadLocalBackupStatus, runLocalBackup, latestCompleteLocalBackup } from '../services/localBackupService';
@@ -18,6 +19,8 @@ import { currentUser } from '../lib/session';
 import type { RestorePlan } from '../lib/restorePlan';
 
 export default function RestorePanel() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<RestorePlan | null>(null);
@@ -160,7 +163,7 @@ export default function RestorePanel() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   box: { marginTop: space.md, gap: space.sm },
   title: { fontSize: 14, fontWeight: '700', color: colors.text },
   sub: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },

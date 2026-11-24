@@ -1,7 +1,8 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { t } from '../../lib/i18n';
-import { colors, space, radius, font, fontFamily } from '../../lib/tokens';
+import { space, radius, font, fontFamily, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { DECOR, TEXTURES } from '../../lib/visualAssets';
 import TexturedSurface from '../ui/TexturedSurface';
 import EmbeddedFiligree from '../spatial/EmbeddedFiligree';
@@ -15,6 +16,8 @@ type Props = {
 
 /** Telafi rail kartı — son 7 günün Kintsugi altın damarlı telafi planı özeti. */
 export default function RecoveryRailCard({ plans, today, onOpen }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const planned = plans.filter((p) => p.status === 'planned');
   const dueToday = planned.filter((p) => p.target_date === today).length;
   const done = plans.filter((p) => p.status === 'completed').length;
@@ -49,14 +52,20 @@ export default function RecoveryRailCard({ plans, today, onOpen }: Props) {
           </View>
         ))
       )}
-      <TouchableOpacity onPress={onOpen} activeOpacity={0.8} style={s.action}>
+      <TouchableOpacity
+        onPress={onOpen}
+        activeOpacity={0.8}
+        style={s.action}
+        accessibilityRole="button"
+        accessibilityLabel={t('today.recovery.rail.open')}
+      >
         <Text style={s.actionText}>{t('today.recovery.rail.open')}</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   card: {
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
     borderRadius: radius.lg, padding: space.lg, overflow: 'hidden', position: 'relative',
@@ -66,7 +75,7 @@ const s = StyleSheet.create({
   calm: { fontFamily: fontFamily.serif, fontStyle: 'italic', fontSize: 14, color: colors.textFaint, marginBottom: space.sm },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
   rowLabel: { ...font.bodySm, color: colors.textDim },
-  rowValue: { fontFamily: fontFamily.mono, fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] as any },
-  action: { marginTop: space.md, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.borderSubtle },
+  rowValue: { fontFamily: fontFamily.mono, fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  action: { minHeight: 44, justifyContent: 'center', marginTop: space.md, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.borderSubtle },
   actionText: { ...font.bodySm, color: colors.primary, fontWeight: '700' },
 });

@@ -1,7 +1,8 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font, radius, space } from '../../lib/tokens';
+import { font, radius, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { Button } from '../ui';
 
 /** F06 (NAV-04): which way out the gate offers first. */
@@ -62,6 +63,8 @@ type Props = {
  * now for the cases the app genuinely cannot decide.
  */
 export default function OnboardingGate({ error, onRetry, onSignOut, signingOut = false }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const kind = classifyGateError(error);
   const session = kind === 'session';
 
@@ -140,7 +143,7 @@ export default function OnboardingGate({ error, onRetry, onSignOut, signingOut =
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   body: {
     flex: 1, justifyContent: 'center', paddingHorizontal: space.h, gap: space.md,

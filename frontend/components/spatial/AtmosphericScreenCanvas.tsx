@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useState } from 'react';
 import {
   Animated,
   Platform,
@@ -89,11 +89,14 @@ export default function AtmosphericScreenCanvas({
   const seasonalIntensity = useThemeStore((st) => st.seasonalMotion);
   const screenActive = useScreenActive();
   const isActive = active ?? (IS_TEST ? false : screenActive);
-  const shownBefore = useRef(false);
+  const [everActive, setEverActive] = useState(isActive);
+  const [shownBefore, setShownBefore] = useState(false);
 
-  useEffect(() => {
-    if (isActive) shownBefore.current = true;
-  }, [isActive]);
+  if (isActive && !everActive) {
+    setEverActive(true);
+  } else if (!isActive && everActive && !shownBefore) {
+    setShownBefore(true);
+  }
 
   const canAnimate = !IS_TEST && !reduceMotion && isActive && Boolean(scrollY);
 
@@ -129,7 +132,7 @@ export default function AtmosphericScreenCanvas({
     );
   }
 
-  const transitionMs = IS_TEST || reduceMotion || shownBefore.current ? 0 : 280;
+  const transitionMs = IS_TEST || reduceMotion || shownBefore ? 0 : 280;
 
   return (
     <View style={[StyleSheet.absoluteFill, s.root, style]} pointerEvents="none" {...decorativeA11y}>

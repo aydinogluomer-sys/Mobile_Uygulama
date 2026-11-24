@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   Animated,
   Platform,
@@ -11,7 +11,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { colors, hexA, radius, shadow, space } from '../../lib/tokens';
+import { hexA, radius, shadow, space } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { useReducedMotion } from '../seasonalMotion/useReducedMotion';
 import EmbeddedFiligree, { type FiligreeAnchor } from './EmbeddedFiligree';
 
@@ -64,20 +65,23 @@ export default function BentoVisualCard({
   filigreeAnchor = 'bottom-right',
   filigreeOpacity = 0.16,
   filigreeSize = 118,
-  accentColor = colors.primary,
+  accentColor,
   selected,
   padding = 'lg',
   radiusKey = 'lg',
-  backgroundColor = colors.surface,
+  backgroundColor,
   onPress,
   disabled,
   style,
   ...a11y
 }: Props) {
+  const colors = useThemeColors();
+  const resolvedAccent = accentColor ?? colors.primary;
+  const resolvedBg = backgroundColor ?? colors.surface;
   const reduceMotion = useReducedMotion();
   const canAnimate = !IS_TEST && !reduceMotion;
-  const scale = useRef(new Animated.Value(1)).current;
-  const liftY = useRef(new Animated.Value(0)).current;
+  const [scale] = useState(() => new Animated.Value(1));
+  const [liftY] = useState(() => new Animated.Value(0));
   const [hovered, setHovered] = useState(false);
 
   const pad = typeof padding === 'number' ? padding : space[padding];
@@ -101,10 +105,10 @@ export default function BentoVisualCard({
   }
 
   const borderColor = selected
-    ? accentColor
+    ? resolvedAccent
     : hovered
-    ? hexA(accentColor, 0.55)
-    : hexA(accentColor, artSource ? 0.24 : 0.14);
+    ? hexA(resolvedAccent, 0.55)
+    : hexA(resolvedAccent, artSource ? 0.24 : 0.14);
 
   const ownedState = selected === undefined ? undefined : { selected, disabled };
   const accessibilityState =
@@ -157,13 +161,13 @@ export default function BentoVisualCard({
   );
 
   const boxStyle: ViewStyle = {
-    backgroundColor,
+    backgroundColor: resolvedBg,
     borderRadius: radius[radiusKey],
     borderWidth: selected ? 1.5 : 1,
     borderColor,
     overflow: 'hidden',
     position: 'relative',
-    ...(selected || hovered ? shadow.glow(accentColor) : shadow.sm),
+    ...(selected || hovered ? shadow.glow(resolvedAccent) : shadow.sm),
   };
 
   if (!onPress) {
@@ -196,6 +200,7 @@ export default function BentoVisualCard({
         }}
         accessibilityRole="button"
         {...a11y}
+        accessibilityLabel={a11y.accessibilityLabel}
         accessibilityState={accessibilityState}
         style={boxStyle}
       >

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Easing, Platform, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useReducedMotion } from '../seasonalMotion/useReducedMotion';
 
@@ -30,7 +30,7 @@ export default function StaggeredReveal({
   const reduceMotion = useReducedMotion();
   const skip = IS_TEST || reduceMotion;
 
-  const progress = useRef(new Animated.Value(skip ? 1 : 0)).current;
+  const [progress] = useState(() => new Animated.Value(skip ? 1 : 0));
 
   useEffect(() => {
     if (skip) {

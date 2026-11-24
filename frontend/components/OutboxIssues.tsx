@@ -15,11 +15,17 @@
  */
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, space, radius } from '../lib/tokens';
+import { space, radius, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { useTaskStore } from '../store/taskStore';
 
 export default function OutboxIssues() {
-  const { outbox, tasks, retryChange, discardChange } = useTaskStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const outbox = useTaskStore((st) => st.outbox);
+  const tasks = useTaskStore((st) => st.tasks);
+  const retryChange = useTaskStore((st) => st.retryChange);
+  const discardChange = useTaskStore((st) => st.discardChange);
   const issues = (outbox?.commands ?? []).filter((c) => c.status !== 'pending');
   if (issues.length === 0) return null;
 
@@ -62,7 +68,7 @@ export default function OutboxIssues() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   box: { borderWidth: 1, borderColor: colors.warning, borderRadius: radius.md, padding: space.md, gap: space.sm, marginBottom: space.md },
   head: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.warning },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm },

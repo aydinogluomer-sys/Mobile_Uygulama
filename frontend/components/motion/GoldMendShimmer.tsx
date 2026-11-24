@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, StyleSheet, View } from 'react-native';
-import { colors, hexA } from '../../lib/tokens';
+import { hexA } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { useReducedMotion } from '../seasonalMotion/useReducedMotion';
 
 const IS_TEST = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
@@ -23,10 +24,12 @@ type Props = {
  * Kintsugi telafi tamamlama ve ritüel işaretleme anları için tek seferlik
  * sakin altın/yosun ışık süpürmesi ("Kintsugi Gold Mend Shimmer").
  */
-export default function GoldMendShimmer({ triggerKey, color = colors.warning }: Props) {
+export default function GoldMendShimmer({ triggerKey, color }: Props) {
+  const c = useThemeColors();
+  const resolvedColor = color ?? c.warning;
   const reduceMotion = useReducedMotion();
   const skip = IS_TEST || reduceMotion;
-  const sweep = useRef(new Animated.Value(0)).current;
+  const [sweep] = useState(() => new Animated.Value(0));
   const firstMount = useRef(true);
 
   useEffect(() => {
@@ -52,7 +55,7 @@ export default function GoldMendShimmer({ triggerKey, color = colors.warning }: 
         style={[
           s.beam,
           {
-            backgroundColor: hexA(color, 0.22),
+            backgroundColor: hexA(resolvedColor, 0.22),
             opacity: sweep.interpolate({
               inputRange: [0, 0.15, 0.85, 1],
               outputRange: [0, 1, 0.8, 0],
@@ -86,9 +89,11 @@ export type GoldVeinProps = {
 export function GoldVein({
   length,
   thickness = 1.5,
-  color = colors.warning,
+  color,
   angle = -45,
 }: GoldVeinProps) {
+  const c = useThemeColors();
+  const resolvedColor = color ?? c.warning;
   return (
     <View
       pointerEvents="none"
@@ -98,7 +103,7 @@ export function GoldVein({
         {
           width: length,
           height: thickness,
-          backgroundColor: color,
+          backgroundColor: resolvedColor,
           transform: [{ rotate: `${angle}deg` }],
         },
       ]}

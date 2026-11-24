@@ -1,3 +1,4 @@
+import { type ElementType } from 'react';
 import { View, Text, StyleProp, ViewStyle, TouchableOpacity, type AccessibilityProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { space, font, type Palette } from '../../lib/tokens';
@@ -32,7 +33,7 @@ export default function WillpowerBand({ wp, onPress, style, ...a11y }: Props) {
   const c = useThemeColors();
   const ratio = wp.daily_budget > 0 ? wp.used / wp.daily_budget : 0;
   const col = wpColor(ratio, c);
-  const Wrapper: any = onPress ? TouchableOpacity : View;
+  const Wrapper: ElementType = onPress ? TouchableOpacity : View;
 
   return (
     <Wrapper
