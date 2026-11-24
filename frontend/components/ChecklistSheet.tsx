@@ -7,7 +7,9 @@
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, space, radius } from '../lib/tokens';
+import { useShallow } from 'zustand/react/shallow';
+import { hexA, space, radius, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { currentUser } from '../lib/session';
 import { useHabitStore } from '../store/habitStore';
 import { useLogStore } from '../store/logStore';
@@ -25,8 +27,21 @@ interface Props {
 }
 
 export default function ChecklistSheet({ habit, day, onClose }: Props) {
-  const { checklistItems, checklistChecks, toggleCheck } = useHabitStore();
-  const { logHabit, getLogForHabit } = useLogStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const { checklistItems, checklistChecks, toggleCheck } = useHabitStore(
+    useShallow((st) => ({
+      checklistItems: st.checklistItems,
+      checklistChecks: st.checklistChecks,
+      toggleCheck: st.toggleCheck,
+    })),
+  );
+  const { logHabit, getLogForHabit } = useLogStore(
+    useShallow((st) => ({
+      logHabit: st.logHabit,
+      getLogForHabit: st.getLogForHabit,
+    })),
+  );
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [offerNote, setOfferNote] = useState(false);
@@ -126,17 +141,18 @@ export default function ChecklistSheet({ habit, day, onClose }: Props) {
   );
 }
 
-const s = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
-  sheet: { maxHeight: '85%', backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg },
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text },
-  progress: { fontSize: 12, color: colors.textFaint, marginTop: 4 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
-  rowOn: { borderColor: colors.success },
-  itemTitle: { flex: 1, fontSize: 15, color: colors.text },
-  itemTitleOn: { color: colors.textDim },
-  optional: { fontSize: 11, color: colors.textFaint },
-  note: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
-  error: { fontSize: 12, color: colors.error, marginTop: space.sm },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: hexA(colors.black, 0.55) },
+    sheet: { maxHeight: '85%', backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg },
+    head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    title: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text },
+    progress: { fontSize: 12, color: colors.textFaint, marginTop: 4 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+    rowOn: { borderColor: colors.success },
+    itemTitle: { flex: 1, fontSize: 15, color: colors.text },
+    itemTitleOn: { color: colors.textDim },
+    optional: { fontSize: 11, color: colors.textFaint },
+    note: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+    error: { fontSize: 12, color: colors.error, marginTop: space.sm },
+  });

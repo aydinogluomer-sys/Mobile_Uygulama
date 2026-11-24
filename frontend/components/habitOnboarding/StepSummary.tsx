@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { type ComponentProps } from 'react';
 import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../lib/tokens';
 import {
   IMPACT_LEVELS,
   TRIAGE_META,
@@ -11,11 +10,12 @@ import {
 } from '../../lib/triage';
 import { DURATION_UNIT } from '../../lib/habitEngine';
 import { frequencySummary } from '../../lib/frequencyForm';
-import { styles } from './styles';
 import type { StepProps } from './types';
 
+type IconName = ComponentProps<typeof Ionicons>['name'];
+
 export default function StepSummary({ ctx }: StepProps) {
-  const { form, existingHabits, lifeAreas, willpowerState, DEST, plannedTriage, plannedStatus } = ctx;
+  const { form, existingHabits, lifeAreas, willpowerState, DEST, plannedTriage, plannedStatus, colors, styles } = ctx;
   const triage = computeTriage(form.impact_level, form.urgency);
   const tmeta = TRIAGE_META[triage];
   const imp = IMPACT_LEVELS.find((l) => l.key === form.impact_level);
@@ -50,7 +50,7 @@ export default function StepSummary({ ctx }: StepProps) {
       {/* Başlık kartı */}
       <View style={styles.summaryHead}>
         <View style={[styles.summaryIcon, { backgroundColor: (form.color ?? colors.accent) + '25' }]}>
-          <Ionicons name={(form.icon ?? 'star-outline') as any} size={26} color={form.color ?? colors.accent} />
+          <Ionicons name={(form.icon ?? 'star-outline') as IconName} size={26} color={form.color ?? colors.accent} />
         </View>
         <Text style={styles.summaryName}>{form.name || 'İsimsiz alışkanlık'}</Text>
       </View>
@@ -60,7 +60,7 @@ export default function StepSummary({ ctx }: StepProps) {
         {rows.map((r, i) => (
           <View key={i} style={[styles.summaryRow, i === rows.length - 1 && { borderBottomWidth: 0 }]}>
             <View style={styles.summaryRowLeft}>
-              <Ionicons name={r.icon as any} size={15} color={colors.textFaint} />
+              <Ionicons name={r.icon as IconName} size={15} color={colors.textFaint} />
               <Text style={styles.summaryRowLabel}>{r.label}</Text>
             </View>
             <Text style={[styles.summaryRowVal, r.color && { color: r.color }]}>{r.val}</Text>
@@ -71,7 +71,7 @@ export default function StepSummary({ ctx }: StepProps) {
       {/* Hedef kartı */}
       {willpowerState && (
         <View style={[styles.routingCard, { borderColor: DEST.color + '40', backgroundColor: DEST.color + '12' }]}>
-          <Ionicons name={DEST.icon as any} size={18} color={DEST.color} />
+          <Ionicons name={DEST.icon as IconName} size={18} color={DEST.color} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.routingTitle, { color: DEST.color }]}>{DEST.room}&apos;a eklenecek</Text>
             <Text style={styles.routingDesc}>

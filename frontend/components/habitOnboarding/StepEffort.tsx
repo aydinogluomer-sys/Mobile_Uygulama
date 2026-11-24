@@ -1,14 +1,12 @@
-import React from 'react';
+import React, { type ComponentProps } from 'react';
 import { View, Text, TouchableOpacity, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../lib/tokens';
 import { DIFFICULTY_LEVELS, costBreakdown, difficultyMeta } from '../../lib/triage';
 import { decimalTR } from '../../lib/chartText';
-import { styles } from './styles';
 import type { StepProps } from './types';
 
 export default function StepEffort({ ctx }: StepProps) {
-  const { form, setDifficulty, setMinutes } = ctx;
+  const { form, setDifficulty, setMinutes, colors, styles } = ctx;
   const bd = costBreakdown(form);
   const dmeta = difficultyMeta(form.difficulty);
   const rows: { label: string; val: string; color?: string }[] = [
@@ -38,8 +36,11 @@ export default function StepEffort({ ctx }: StepProps) {
               key={d.key}
               style={[styles.typeCard, sel && { borderColor: d.color, backgroundColor: d.color + '18' }]}
               onPress={() => setDifficulty(d.key)}
+              accessibilityRole="button"
+              accessibilityLabel={d.label}
+              accessibilityState={{ selected: sel }}
             >
-              <Ionicons name={d.icon as any} size={22} color={sel ? d.color : colors.textDim} />
+              <Ionicons name={d.icon as ComponentProps<typeof Ionicons>['name']} size={22} color={sel ? d.color : colors.textDim} />
               <Text style={[styles.typeLabel, { marginTop: 6 }, sel && { color: d.color }]}>{d.label}</Text>
               <Text style={styles.typeDesc}>{d.desc}</Text>
             </TouchableOpacity>
@@ -57,6 +58,9 @@ export default function StepEffort({ ctx }: StepProps) {
               key={m}
               style={[styles.minsBtn, sel && styles.minsBtnSel]}
               onPress={() => setMinutes(m)}
+              accessibilityRole="button"
+              accessibilityLabel={`${m} dakika`}
+              accessibilityState={{ selected: sel }}
             >
               <Text style={[styles.minsBtnText, sel && styles.minsBtnTextSel]}>{m} dk</Text>
             </TouchableOpacity>
@@ -65,6 +69,9 @@ export default function StepEffort({ ctx }: StepProps) {
         <TouchableOpacity
           style={[styles.minsBtn, form.estimated_minutes === 0 && styles.minsBtnSel]}
           onPress={() => setMinutes(0)}
+          accessibilityRole="button"
+          accessibilityLabel="Süre belirtme"
+          accessibilityState={{ selected: form.estimated_minutes === 0 }}
         >
           <Text style={[styles.minsBtnText, form.estimated_minutes === 0 && styles.minsBtnTextSel]}>—</Text>
         </TouchableOpacity>

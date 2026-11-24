@@ -1,4 +1,4 @@
-import { colors } from '../lib/tokens';
+import { useThemeColors } from '../hooks/useThemeColors';
 import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { LIFE_AREAS, AreaKey } from '../store/lifeAreasStore';
 import { radarText } from '../lib/chartText';
@@ -22,12 +22,14 @@ const RINGS = [2, 4, 6, 8, 10];
 export default function AreaRadar({
   values,
   size = 260,
-  color = colors.accent,
+  color,
 }: {
   values: Record<AreaKey, number>;
   size?: number;
   color?: string;
 }) {
+  const colors = useThemeColors();
+  const strokeColor = color ?? colors.accent;
   const PAD_X = 25;
   const svgW = size + PAD_X * 2;
   const CX = svgW / 2;
@@ -81,7 +83,7 @@ export default function AreaRadar({
           return <Line key={i} x1={CX} y1={CY} x2={outer.x} y2={outer.y} stroke={colors.border} strokeWidth="1" />;
         })}
 
-        <Polygon points={polyPoints} fill={color + '20'} stroke={color} strokeWidth="2" />
+        <Polygon points={polyPoints} fill={strokeColor + '20'} stroke={strokeColor} strokeWidth="2" />
 
         {dataPoints.map((p, i) => (
           <Circle key={i} cx={p.x} cy={p.y} r={4} fill={LIFE_AREAS[i].color} />
@@ -89,9 +91,9 @@ export default function AreaRadar({
 
         {LIFE_AREAS.map((area, i) => {
           const { x, y } = polarToXY(i * angleStep, MAX_R + 14);
-          const anchor = x < CX - 5 ? 'end' : x > CX + 5 ? 'start' : 'middle';
+          const anchor: 'end' | 'start' | 'middle' = x < CX - 5 ? 'end' : x > CX + 5 ? 'start' : 'middle';
           return (
-            <SvgText key={area.key} x={x} y={y + 4} textAnchor={anchor as any} fill={colors.textDim} fontSize="10" fontWeight="600">
+            <SvgText key={area.key} x={x} y={y + 4} textAnchor={anchor} fill={colors.textDim} fontSize="10" fontWeight="600">
               {area.label}
             </SvgText>
           );

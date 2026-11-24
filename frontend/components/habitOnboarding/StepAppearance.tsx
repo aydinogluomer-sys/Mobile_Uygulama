@@ -1,14 +1,13 @@
-import React from 'react';
+import React, { type ComponentProps } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../lib/tokens';
 import { computeWillpowerCost } from '../../lib/triage';
-import { COLORS, ICONS } from './constants';
-import { styles } from './styles';
+import { getHabitColors, ICONS } from './constants';
 import type { StepProps } from './types';
 
 export default function StepAppearance({ ctx }: StepProps) {
-  const { form, setForm } = ctx;
+  const { form, setForm, colors, styles } = ctx;
+  const paletteColors = getHabitColors(colors);
 
   return (
     <View style={styles.stepContent}>
@@ -22,19 +21,29 @@ export default function StepAppearance({ ctx }: StepProps) {
             key={icon}
             style={[styles.iconBtn, form.icon === icon && { borderColor: form.color ?? colors.accent, borderWidth: 2 }]}
             onPress={() => setForm((prev) => ({ ...prev, icon }))}
+            accessibilityRole="button"
+            accessibilityLabel={`${icon.replace('-outline', '')} ikonu`}
+            accessibilityState={{ selected: form.icon === icon }}
           >
-            <Ionicons name={icon as any} size={24} color={form.icon === icon ? (form.color ?? colors.accent) : colors.textDim} />
+            <Ionicons
+              name={icon as ComponentProps<typeof Ionicons>['name']}
+              size={24}
+              color={form.icon === icon ? (form.color ?? colors.accent) : colors.textDim}
+            />
           </TouchableOpacity>
         ))}
       </View>
 
       <Text style={styles.label}>Renk</Text>
       <View style={styles.colorRow}>
-        {COLORS.map((c) => (
+        {paletteColors.map((c, idx) => (
           <TouchableOpacity
             key={c}
             style={[styles.colorDot, { backgroundColor: c }, form.color === c && styles.colorDotSelected]}
             onPress={() => setForm((prev) => ({ ...prev, color: c }))}
+            accessibilityRole="button"
+            accessibilityLabel={`Renk seçeneği ${idx + 1}`}
+            accessibilityState={{ selected: form.color === c }}
           >
             {form.color === c && <Ionicons name="checkmark" size={16} color={colors.white} />}
           </TouchableOpacity>
@@ -54,6 +63,9 @@ export default function StepAppearance({ ctx }: StepProps) {
             key={n}
             style={[styles.costBtn, form.willpower_cost === n && styles.costBtnSelected]}
             onPress={() => setForm((prev) => ({ ...prev, willpower_cost: n }))}
+            accessibilityRole="button"
+            accessibilityLabel={`İrade maliyeti ${n}`}
+            accessibilityState={{ selected: form.willpower_cost === n }}
           >
             <Text style={[styles.costBtnText, form.willpower_cost === n && styles.costBtnTextSelected]}>{n}</Text>
           </TouchableOpacity>

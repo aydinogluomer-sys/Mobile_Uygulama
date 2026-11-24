@@ -13,7 +13,8 @@ import {
   View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, TextInput, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, alphaHex } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import type { ConversationRow } from '../../repositories/aiConversationRepository';
 
 export type ProjectOption = { id: string; name: string };
@@ -50,6 +51,8 @@ export default function ConversationSheet({
   visible, conversations, activeId, projects, loading, hasMore,
   onClose, onOpen, onNewChat, onRename, onAssignProject, onLoadMore,
 }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
@@ -205,11 +208,12 @@ export default function ConversationSheet({
   );
 }
 
-const s = StyleSheet.create({
-  // Same scrim the AI Coach screen's own modal uses (`rgba(0,0,0,0.6)`), so
-  // opening the thread list does not dim the app to a different depth than
-  // every other sheet on this screen.
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    // Same scrim the AI Coach screen's own modal uses (`0.6` black), so
+    // opening the thread list does not dim the app to a different depth than
+    // every other sheet on this screen.
+    overlay: { flex: 1, backgroundColor: hexA(colors.black, 0.6), justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.bg, borderTopLeftRadius: 18, borderTopRightRadius: 18,
     paddingTop: 14, paddingHorizontal: 16, paddingBottom: 24, maxHeight: '82%',

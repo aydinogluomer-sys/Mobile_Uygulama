@@ -7,7 +7,7 @@
  * Shows the 8 `tier === 'core'` destinations up top and groups `more` + `labs` under
  * a collapsible "Daha fazla" section (`moreOpen ?? stage === 'established'`).
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -40,7 +40,8 @@ import {
   type DrawerGroup,
   type ToneKey,
 } from '../lib/destinations';
-import { colors, alphaHex, radius } from '../lib/tokens';
+import { alphaHex, hexA, radius, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { TEXTURES } from '../lib/visualAssets';
 import TexturedSurface from './ui/TexturedSurface';
 import IconButton from './ui/IconButton';
@@ -71,7 +72,7 @@ const DRAWER_GROUPS: readonly DrawerGroup[] = [
   'SİSTEM',
 ];
 
-function toneColor(tone: ToneKey): string {
+function toneColor(colors: Palette, tone: ToneKey): string {
   return colors[tone];
 }
 
@@ -94,8 +95,10 @@ function ShortcutCard({
   onNavigate: (id: DestinationId) => void;
   onRemove: (route: string) => void;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const name = dest.shortLabel || dest.label;
-  const color = toneColor(dest.tone);
+  const color = toneColor(colors, dest.tone);
   const iconName = dest.icon as keyof typeof Ionicons.glyphMap;
   const inner = (
     <>
@@ -139,6 +142,8 @@ function ShortcutCard({
 }
 
 export default function Drawer() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const router = useRouter();
   const { width: winWidth } = useWindowDimensions();
   const panelWidth = drawerWidth(winWidth);
@@ -171,13 +176,28 @@ export default function Drawer() {
   const focusPoints = useSubscriptionStore((st) => st.focusPoints);
   const stage = useDisclosureStore((st) => st.stage);
 
-  const translateX = useRef(new Animated.Value(-panelWidth)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const [translateX] = useState(() => new Animated.Value(-panelWidth));
+  const [backdropOpacity] = useState(() => new Animated.Value(0));
   const reduceMotion = useReducedMotion();
   const navTimer = useTimeoutRef();
   const searchTimer = useTimeoutRef();
   const [mounted, setMounted] = useState(isOpen);
   const [isEditingShortcuts, setIsEditingShortcuts] = useState(false);
+
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen);
+    if (isOpen) {
+      setMounted(true);
+    } else {
+      setIsEditingShortcuts(false);
+      if (reduceMotion) {
+        setMounted(false);
+      }
+    }
+  } else if (!isOpen && reduceMotion && mounted) {
+    setMounted(false);
+  }
 
   useEffect(() => {
     let alive = true;
@@ -193,7 +213,6 @@ export default function Drawer() {
 
   useEffect(() => {
     if (isOpen) {
-      setMounted(true);
       if (reduceMotion) {
         translateX.setValue(0);
         backdropOpacity.setValue(1);
@@ -215,11 +234,9 @@ export default function Drawer() {
       return;
     }
 
-    setIsEditingShortcuts(false);
     if (reduceMotion) {
       translateX.setValue(-panelWidth);
       backdropOpacity.setValue(0);
-      setMounted(false);
       return;
     }
     Animated.parallel([
@@ -278,7 +295,7 @@ export default function Drawer() {
         : {};
 
   const renderNavRow = (item: Destination) => {
-    const color = toneColor(item.tone);
+    const color = toneColor(colors, item.tone);
     const iconName = item.icon as keyof typeof Ionicons.glyphMap;
     const isPinned = seenShortcutIds.has(item.id);
     const pinRouteKey = shortcutKeyFor(item, shortcutRoutes);
@@ -467,7 +484,7 @@ export default function Drawer() {
                     <View style={s.pickerChipsWrap}>
                       {allDestinations.map((mod) => {
                         const isPinned = seenShortcutIds.has(mod.id);
-                        const color = toneColor(mod.tone);
+                        const color = toneColor(colors, mod.tone);
                         const iconName = mod.icon as keyof typeof Ionicons.glyphMap;
                         const pinRouteKey = shortcutKeyFor(mod, shortcutRoutes);
                         return (
@@ -567,290 +584,291 @@ export default function Drawer() {
   );
 }
 
-const s = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  panel: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    bottom: 0,
-    backgroundColor: colors.surface,
-    borderRightWidth: 1,
-    borderRightColor: colors.border,
-    shadowColor: colors.black,
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    shadowOffset: { width: 4, height: 0 },
-    elevation: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  avatar: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: alphaHex(colors.accent, '20'),
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: alphaHex(colors.accent, '35'),
-  },
-  appName: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 3 },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  levelBadge: {
-    backgroundColor: alphaHex(colors.warning, '18'),
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  levelBadgeText: { fontSize: 10, fontWeight: '700', color: colors.warning },
-  fpBadge: {
-    backgroundColor: alphaHex(colors.primary, '18'),
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  fpBadgeText: { fontSize: 10, fontWeight: '700', color: colors.primary },
-  closeBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
-  divider: { height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 0 },
-  scroll: { padding: 12, paddingBottom: 24 },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    backdrop: {
+      ...StyleSheet.absoluteFill,
+      backgroundColor: hexA(colors.black, 0.6),
+    },
+    panel: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      bottom: 0,
+      backgroundColor: colors.surface,
+      borderRightWidth: 1,
+      borderRightColor: colors.border,
+      shadowColor: colors.black,
+      shadowOpacity: 0.5,
+      shadowRadius: 20,
+      shadowOffset: { width: 4, height: 0 },
+      elevation: 20,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+    avatar: {
+      width: 40, height: 40, borderRadius: 20,
+      backgroundColor: alphaHex(colors.accent, '20'),
+      alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: alphaHex(colors.accent, '35'),
+    },
+    appName: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 3 },
+    badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    levelBadge: {
+      backgroundColor: alphaHex(colors.warning, '18'),
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    levelBadgeText: { fontSize: 10, fontWeight: '700', color: colors.warning },
+    fpBadge: {
+      backgroundColor: alphaHex(colors.primary, '18'),
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: 4,
+    },
+    fpBadgeText: { fontSize: 10, fontWeight: '700', color: colors.primary },
+    closeBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
+    divider: { height: 1, backgroundColor: colors.borderSubtle, marginHorizontal: 0 },
+    scroll: { padding: 12, paddingBottom: 24 },
 
-  shortcutSection: { marginBottom: 18 },
-  shortcutHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    paddingHorizontal: 4,
-  },
-  shortcutTitleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  sectionHeader: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1.2 },
-  countPill: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 999,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  countPillText: { fontSize: 9, fontWeight: '700', color: colors.textDim },
-  shortcutActionsRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  resetBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  resetBtnText: { fontSize: 10, fontWeight: '600', color: colors.textDim },
-  editShortcutsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radius.sm,
-    backgroundColor: alphaHex(colors.primary, '16'),
-    borderWidth: 1,
-    borderColor: alphaHex(colors.primary, '35'),
-  },
-  editShortcutsBtnActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  editShortcutsBtnText: { fontSize: 10, fontWeight: '700', color: colors.primary },
+    shortcutSection: { marginBottom: 18 },
+    shortcutHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 8,
+      paddingHorizontal: 4,
+    },
+    shortcutTitleLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    sectionHeader: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1.2 },
+    countPill: {
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: 999,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    countPillText: { fontSize: 9, fontWeight: '700', color: colors.textDim },
+    shortcutActionsRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    resetBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: 7,
+      paddingVertical: 4,
+      borderRadius: radius.sm,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    resetBtnText: { fontSize: 10, fontWeight: '600', color: colors.textDim },
+    editShortcutsBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: radius.sm,
+      backgroundColor: alphaHex(colors.primary, '16'),
+      borderWidth: 1,
+      borderColor: alphaHex(colors.primary, '35'),
+    },
+    editShortcutsBtnActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    editShortcutsBtnText: { fontSize: 10, fontWeight: '700', color: colors.primary },
 
-  shortcutGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  shortcutCard: {
-    width: '48%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: radius.md,
-    padding: 10,
-    position: 'relative',
-  },
-  shortcutCardEditing: {
-    borderColor: alphaHex(colors.error, '55'),
-    borderStyle: 'dashed',
-  },
-  shortcutIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shortcutLabel: { fontSize: 12, fontWeight: '700', color: colors.text },
-  shortcutHint: { fontSize: 10, color: colors.textDim },
+    shortcutGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    shortcutCard: {
+      width: '48%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+      borderRadius: radius.md,
+      padding: 10,
+      position: 'relative',
+    },
+    shortcutCardEditing: {
+      borderColor: alphaHex(colors.error, '55'),
+      borderStyle: 'dashed',
+    },
+    shortcutIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    shortcutLabel: { fontSize: 12, fontWeight: '700', color: colors.text },
+    shortcutHint: { fontSize: 10, color: colors.textDim },
 
-  addShortcutCard: {
-    width: '48%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: alphaHex(colors.primary, '08'),
-    borderWidth: 1,
-    borderColor: alphaHex(colors.primary, '35'),
-    borderStyle: 'dashed',
-    borderRadius: radius.md,
-    padding: 10,
-  },
-  addShortcutIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.sm,
-    backgroundColor: alphaHex(colors.primary, '18'),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addShortcutLabel: { fontSize: 12, fontWeight: '700', color: colors.primary },
+    addShortcutCard: {
+      width: '48%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: alphaHex(colors.primary, '08'),
+      borderWidth: 1,
+      borderColor: alphaHex(colors.primary, '35'),
+      borderStyle: 'dashed',
+      borderRadius: radius.md,
+      padding: 10,
+    },
+    addShortcutIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.sm,
+      backgroundColor: alphaHex(colors.primary, '18'),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    addShortcutLabel: { fontSize: 12, fontWeight: '700', color: colors.primary },
 
-  pickerBox: {
-    marginTop: 10,
-    padding: 10,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 8,
-  },
-  pickerHelp: {
-    fontSize: 11,
-    color: colors.textDim,
-    lineHeight: 15,
-  },
-  pickerChipsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  pickerChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  pickerChipText: {
-    fontSize: 11,
-    color: colors.textDim,
-    fontWeight: '600',
-  },
+    pickerBox: {
+      marginTop: 10,
+      padding: 10,
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 8,
+    },
+    pickerHelp: {
+      fontSize: 11,
+      color: colors.textDim,
+      lineHeight: 15,
+    },
+    pickerChipsWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    pickerChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      borderRadius: radius.sm,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    pickerChipText: {
+      fontSize: 11,
+      color: colors.textDim,
+      fontWeight: '600',
+    },
 
-  moreToggle: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 12,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  moreToggleText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textDim,
-  },
+    moreToggle: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      marginBottom: 12,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    moreToggleText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textDim,
+    },
 
-  group: { marginBottom: 18 },
-  groupTitle: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1.2, marginBottom: 6, paddingLeft: 6 },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  item: {
-    flex: 1,
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    borderRadius: radius.md,
-  },
-  itemIcon: { width: 30, height: 30, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
-  itemLabel: { fontSize: 13, color: colors.text, fontWeight: '600' },
-  itemHint: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
-  pinBtn: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: radius.sm,
-    backgroundColor: alphaHex(colors.primary, '14'),
-    borderWidth: 1,
-    borderColor: alphaHex(colors.primary, '35'),
-  },
-  pinBtnActive: {
-    backgroundColor: alphaHex(colors.error, '14'),
-    borderColor: alphaHex(colors.error, '35'),
-  },
-  pinBtnText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.primary,
-  },
+    group: { marginBottom: 18 },
+    groupTitle: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1.2, marginBottom: 6, paddingLeft: 6 },
+    itemRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    item: {
+      flex: 1,
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 8,
+      paddingVertical: 7,
+      borderRadius: radius.md,
+    },
+    itemIcon: { width: 30, height: 30, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
+    itemLabel: { fontSize: 13, color: colors.text, fontWeight: '600' },
+    itemHint: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
+    pinBtn: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      borderRadius: radius.sm,
+      backgroundColor: alphaHex(colors.primary, '14'),
+      borderWidth: 1,
+      borderColor: alphaHex(colors.primary, '35'),
+    },
+    pinBtnActive: {
+      backgroundColor: alphaHex(colors.error, '14'),
+      borderColor: alphaHex(colors.error, '35'),
+    },
+    pinBtnText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.primary,
+    },
 
-  footer: {
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSubtle,
-    backgroundColor: colors.surfaceAlt,
-  },
-  searchBar: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  searchBarText: { flex: 1, fontSize: 12, color: colors.textFaint },
-  searchShortcut: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textFaint,
-    backgroundColor: colors.surfaceAlt,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-});
+    footer: {
+      padding: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSubtle,
+      backgroundColor: colors.surfaceAlt,
+    },
+    searchBar: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    searchBarText: { flex: 1, fontSize: 12, color: colors.textFaint },
+    searchShortcut: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.textFaint,
+      backgroundColor: colors.surfaceAlt,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+  });

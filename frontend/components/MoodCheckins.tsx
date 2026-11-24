@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+import { useShallow } from 'zustand/react/shallow';
 import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { space, radius, font, hexA, type Palette } from '../lib/tokens';
 import { EmbeddedFiligree } from './spatial';
@@ -20,7 +21,29 @@ import {
 export default function MoodCheckins() {
   const c = useThemeColors();
   const s = useThemedStyles(makeStyles);
-  const st = useMoodStore();
+  const {
+    definitions,
+    checkins,
+    hydrate,
+    moods,
+    addDefinition,
+    checkIn,
+    setCheckinEnergy,
+    removeCheckin,
+    getToday,
+  } = useMoodStore(
+    useShallow((state) => ({
+      definitions: state.definitions,
+      checkins: state.checkins,
+      hydrate: state.hydrate,
+      moods: state.moods,
+      addDefinition: state.addDefinition,
+      checkIn: state.checkIn,
+      setCheckinEnergy: state.setCheckinEnergy,
+      removeCheckin: state.removeCheckin,
+      getToday: state.today,
+    })),
+  );
   const [intensity, setIntensity] = useState<1 | 2 | 3>(2);
   const [lastId, setLastId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -30,15 +53,20 @@ export default function MoodCheckins() {
   const [defEnergy, setDefEnergy] = useState<MoodEnergy | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { void st.hydrate(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
 
-  const today = st.today();
-  const pendingCheckin = lastId ? st.checkins.find((item) => item.id === lastId) : undefined;
+  const today = getToday();
+  const pendingCheckin = lastId ? checkins.find((item) => item.id === lastId) : undefined;
   const showEnergyPrompt = Boolean(pendingCheckin && !pendingCheckin.energy);
 
   function add() {
-    const r = st.addDefinition(name, icon, valence, defEnergy ?? undefined);
-    if (!r.ok) { setError(r.error); return; }
+    const r = addDefinition(name, icon, valence, defEnergy ?? undefined);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
     setName('');
     setIcon('');
     setValence(3);
@@ -52,12 +80,12 @@ export default function MoodCheckins() {
       <EmbeddedFiligree source={DECOR.cornerBotanical} size={96} opacity={0.14} />
       <Text style={s.head} accessibilityRole="header">ŞU AN NASILSIN?</Text>
       <View style={s.row}>
-        {st.moods().map((m) => (
+        {moods().map((m) => (
           <TouchableOpacity
             key={m.id}
             style={s.mood}
             onPress={() => {
-              const ok = st.checkIn(m.id, intensity);
+              const ok = checkIn(m.id, intensity);
               if (ok) {
                 setLastId(useMoodStore.getState().checkins[0]?.id ?? null);
               }
@@ -87,7 +115,7 @@ export default function MoodCheckins() {
             label={ENERGY_COPY.low}
             color={c.accent}
             onPress={() => {
-              st.setCheckinEnergy(pendingCheckin.id, 'low');
+              setCheckinEnergy(pendingCheckin.id, 'low');
               setLastId(null);
             }}
             accessibilityRole="button"
@@ -98,7 +126,7 @@ export default function MoodCheckins() {
             label={ENERGY_COPY.high}
             color={c.accent}
             onPress={() => {
-              st.setCheckinEnergy(pendingCheckin.id, 'high');
+              setCheckinEnergy(pendingCheckin.id, 'high');
               setLastId(null);
             }}
             accessibilityRole="button"
@@ -211,10 +239,10 @@ export default function MoodCheckins() {
           {today.map((item) => (
             <View key={item.id} style={s.checkRow}>
               <Text style={s.checkText}>
-                {new Date(item.at).toTimeString().slice(0, 5)} · {checkinLabel(item, st.definitions)} · {['hafif', 'orta', 'güçlü'][item.intensity - 1]}{item.energy ? ` · ${MOOD_ENERGY_LABEL[item.energy]}` : ''}
+                {new Date(item.at).toTimeString().slice(0, 5)} · {checkinLabel(item, definitions)} · {['hafif', 'orta', 'güçlü'][item.intensity - 1]}{item.energy ? ` · ${MOOD_ENERGY_LABEL[item.energy]}` : ''}
               </Text>
               <TouchableOpacity
-                onPress={() => st.removeCheckin(item.id)}
+                onPress={() => removeCheckin(item.id)}
                 accessibilityRole="button"
                 accessibilityLabel="Bu kaydı sil"
               >

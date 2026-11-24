@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -41,14 +41,16 @@ export default function FocusIntentSheet({
   const c = useThemeColors();
   const s = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
-  const breathAnim = useRef(new Animated.Value(0)).current;
+  const [breathAnim] = useState(() => new Animated.Value(0));
   const [draft, setDraft] = useState('');
+  const [prevVisible, setPrevVisible] = useState(visible);
 
-  useEffect(() => {
+  if (prevVisible !== visible) {
+    setPrevVisible(visible);
     if (visible) {
       setDraft('');
     }
-  }, [visible]);
+  }
 
   const animateBreath = visible && !IS_TEST && !reduceMotion;
 

@@ -1,25 +1,25 @@
 import { StyleSheet } from 'react-native';
-import { colors, alphaHex } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
 
-export const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'flex-end' },
+export const makeStyles = (colors: Palette) => StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: hexA(colors.black, 0.9), justifyContent: 'flex-end' },
   container: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '92%' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: colors.white },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: colors.text },
   progressContainer: { flexDirection: 'row', justifyContent: 'center', padding: 16, gap: 8 },
   progressDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.border },
   progressDotActive: { backgroundColor: colors.accent, width: 28 },
   content: { flex: 1, padding: 20 },
   stepContent: { flex: 1 },
-  stepTitle: { fontSize: 24, fontWeight: 'bold', color: colors.white, marginBottom: 6 },
+  stepTitle: { fontSize: 24, fontWeight: 'bold', color: colors.text, marginBottom: 6 },
   stepSubtitle: { fontSize: 14, color: colors.textDim, marginBottom: 24 },
-  label: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 10 },
+  label: { fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 10 },
   input: {
     backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15,
-    color: colors.white, marginBottom: 14, borderWidth: 1, borderColor: colors.border,
+    color: colors.text, marginBottom: 14, borderWidth: 1, borderColor: colors.border,
   },
   fieldHint: { fontSize: 12, color: colors.warning, marginTop: -8, marginBottom: 12 },
   minsInfo: { fontSize: 12, color: colors.textFaint, marginTop: -6, marginBottom: 6 },
@@ -31,7 +31,7 @@ export const styles = StyleSheet.create({
   typeCardSelected: { borderColor: colors.accent, backgroundColor: colors.selectedTint },
   typeCardSelectedRed: { borderColor: colors.error, backgroundColor: colors.selectedTintError },
   typeEmoji: { fontSize: 28, marginBottom: 6 },
-  typeLabel: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 2 },
+  typeLabel: { fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 2 },
   typeDesc: { fontSize: 12, color: colors.textDim, textAlign: 'center' },
   measurableSection: { marginTop: 16 },
   dirBtn: {
@@ -74,7 +74,7 @@ export const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent',
   },
-  colorDotSelected: { borderColor: colors.white },
+  colorDotSelected: { borderColor: colors.text },
   infoBox: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
     borderRadius: 10, padding: 12, gap: 10, marginBottom: 14,
@@ -96,7 +96,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 20, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.border,
   },
-  backButtonText: { fontSize: 15, fontWeight: '600', color: colors.white },
+  backButtonText: { fontSize: 15, fontWeight: '600', color: colors.text },
   nextButton: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.accent,
@@ -167,7 +167,7 @@ export const styles = StyleSheet.create({
   },
   costHeadRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   costHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  costHeadLabel: { fontSize: 14, fontWeight: '700', color: colors.white },
+  costHeadLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
   costBigBadge: {
     width: 44, height: 44, borderRadius: 12, backgroundColor: alphaHex(colors.warning, '22'),
     alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: alphaHex(colors.warning, '55'),
@@ -177,7 +177,7 @@ export const styles = StyleSheet.create({
   costRowItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
   costRowLabel: { fontSize: 13, color: colors.textDim },
   costRowVal: { fontSize: 13, fontWeight: '600', color: colors.text },
-  costFormulaLabel: { fontSize: 13, fontWeight: '700', color: colors.white },
+  costFormulaLabel: { fontSize: 13, fontWeight: '700', color: colors.text },
   costFormulaVal: { fontSize: 13, fontWeight: '700', color: colors.warning },
   costHint: { fontSize: 11, color: colors.textFaint, marginTop: 10, lineHeight: 15 },
 
@@ -224,7 +224,7 @@ export const styles = StyleSheet.create({
   // Özet adımı (Step 7)
   summaryHead: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   summaryIcon: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  summaryName: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.white },
+  summaryName: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text },
   summaryTable: { backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14 },
   summaryRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -247,3 +247,5 @@ export const styles = StyleSheet.create({
   areaDot: { width: 9, height: 9, borderRadius: 5 },
   areaChipText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
 });
+
+export type HabitOnboardingStyles = ReturnType<typeof makeStyles>;

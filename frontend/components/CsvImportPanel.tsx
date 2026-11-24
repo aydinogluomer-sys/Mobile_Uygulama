@@ -4,11 +4,14 @@
  */
 import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
-import { colors, space, radius } from '../lib/tokens';
+import { space, radius, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { guessMapping, parseCsv, TARGET_FIELDS, type ImportReport, type ImportTarget, type Mapping } from '../lib/csvImport';
 import { previewImport, runImport } from '../services/csvImportService';
 
 export default function CsvImportPanel() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [text, setText] = useState('');
   const [target, setTarget] = useState<ImportTarget>('tasks');
   const [hasHeader, setHasHeader] = useState(true);
@@ -63,11 +66,24 @@ export default function CsvImportPanel() {
       <Text style={s.sub}>Görev ya da günlük kaydı. Alışkanlık kayıtları içe aktarılamaz (her biri XP üretir). Uygulamaya özel dönüştürücü yoktur; sütunları sen eşlersin.</Text>
       <View style={s.row}>
         {(['tasks', 'journal_entries'] as const).map((t) => (
-          <TouchableOpacity key={t} style={[s.chip, target === t && s.chipOn]} onPress={() => { setTarget(t); reset(t); }} accessibilityRole="button" accessibilityState={{ selected: target === t }}>
+          <TouchableOpacity
+            key={t}
+            style={[s.chip, target === t && s.chipOn]}
+            onPress={() => { setTarget(t); reset(t); }}
+            accessibilityRole="button"
+            accessibilityLabel={t === 'tasks' ? 'Hedef tür: Görevler' : 'Hedef tür: Günlük'}
+            accessibilityState={{ selected: target === t }}
+          >
             <Text style={s.chipText}>{t === 'tasks' ? 'Görevler' : 'Günlük'}</Text>
           </TouchableOpacity>
         ))}
-        <TouchableOpacity style={[s.chip, hasHeader && s.chipOn]} onPress={() => { setHasHeader((h) => !h); setReport(null); }} accessibilityRole="switch" accessibilityState={{ checked: hasHeader }}>
+        <TouchableOpacity
+          style={[s.chip, hasHeader && s.chipOn]}
+          onPress={() => { setHasHeader((h) => !h); setReport(null); }}
+          accessibilityRole="switch"
+          accessibilityLabel="İlk satır başlık"
+          accessibilityState={{ checked: hasHeader }}
+        >
           <Text style={s.chipText}>İlk satır başlık</Text>
         </TouchableOpacity>
       </View>
@@ -110,24 +126,25 @@ export default function CsvImportPanel() {
   );
 }
 
-const s = StyleSheet.create({
-  box: { marginTop: space.lg, gap: space.sm },
-  title: { fontSize: 14, fontWeight: '700', color: colors.text },
-  sub: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
-  row: { flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' },
-  chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
-  chipOn: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
-  chipText: { fontSize: 12, color: colors.textDim },
-  input: { minHeight: 70, maxHeight: 150, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: space.sm, color: colors.text, fontSize: 12 },
-  label: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint, marginTop: space.sm },
-  mapRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
-  mapField: { fontSize: 13, color: colors.text },
-  mapCol: { fontSize: 13, color: colors.accent },
-  btn: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, marginTop: space.sm },
-  btnText: { fontSize: 13, color: colors.textDim },
-  primary: { backgroundColor: colors.accent, borderColor: colors.accent },
-  primaryText: { fontSize: 13, color: colors.bg, fontWeight: '700' },
-  line: { fontSize: 12, color: colors.textDim },
-  preview: { fontSize: 12, color: colors.text },
-  err: { fontSize: 12, color: colors.error },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    box: { marginTop: space.lg, gap: space.sm },
+    title: { fontSize: 14, fontWeight: '700', color: colors.text },
+    sub: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+    row: { flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' },
+    chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+    chipOn: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
+    chipText: { fontSize: 12, color: colors.textDim },
+    input: { minHeight: 70, maxHeight: 150, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: space.sm, color: colors.text, fontSize: 12 },
+    label: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint, marginTop: space.sm },
+    mapRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
+    mapField: { fontSize: 13, color: colors.text },
+    mapCol: { fontSize: 13, color: colors.accent },
+    btn: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, marginTop: space.sm },
+    btnText: { fontSize: 13, color: colors.textDim },
+    primary: { backgroundColor: colors.accent, borderColor: colors.accent },
+    primaryText: { fontSize: 13, color: colors.bg, fontWeight: '700' },
+    line: { fontSize: 12, color: colors.textDim },
+    preview: { fontSize: 12, color: colors.text },
+    err: { fontSize: 12, color: colors.error },
+  });

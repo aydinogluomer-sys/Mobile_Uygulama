@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { type ComponentProps } from 'react';
 import { View, Text, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../lib/tokens';
+import { type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { computeTriage, triageToStatus } from '../../lib/triage';
 import { useHabitForm } from '../../hooks/useHabitForm';
 import { useHabitStore } from '../../store/habitStore';
 import { LIFE_AREAS } from '../../store/lifeAreasStore';
 import { useWillpowerStore } from '../../store/willpowerStore';
 import { TOTAL_STEPS } from './constants';
-import { styles } from './styles';
+import { makeStyles } from './styles';
 import StepName from './StepName';
 import StepMeasure from './StepMeasure';
 import StepFrequency from './StepFrequency';
@@ -18,14 +19,16 @@ import StepAppearance from './StepAppearance';
 import StepSummary from './StepSummary';
 import type { DestinationMeta, HabitOnboardingContext, HabitOnboardingProps } from './types';
 
-const DESTINATIONS: Record<string, DestinationMeta> = {
-  active: { color: colors.success, icon: 'flash', label: 'Aktif Olarak Ekle', room: 'Aktif Odak' },
-  waiting: { color: colors.warning, icon: 'time-outline', label: 'Beklemeye Ekle', room: 'Bekleme Odası' },
-  idea: { color: colors.textFaint, icon: 'bulb-outline', label: 'Fikir Olarak Sakla', room: 'Fikirler' },
-  paused: { color: colors.textDim, icon: 'pause', label: 'Ekle', room: 'Bekleme Odası' },
-  completed: { color: colors.success, icon: 'checkmark', label: 'Ekle', room: 'Tamamlandı' },
-  archived: { color: colors.textFaint, icon: 'archive', label: 'Ekle', room: 'Arşiv' },
-};
+function getDestinations(colors: Palette): Record<string, DestinationMeta> {
+  return {
+    active: { color: colors.success, icon: 'flash', label: 'Aktif Olarak Ekle', room: 'Aktif Odak' },
+    waiting: { color: colors.warning, icon: 'time-outline', label: 'Beklemeye Ekle', room: 'Bekleme Odası' },
+    idea: { color: colors.textFaint, icon: 'bulb-outline', label: 'Fikir Olarak Sakla', room: 'Fikirler' },
+    paused: { color: colors.textDim, icon: 'pause', label: 'Ekle', room: 'Bekleme Odası' },
+    completed: { color: colors.success, icon: 'checkmark', label: 'Ekle', room: 'Tamamlandı' },
+    archived: { color: colors.textFaint, icon: 'archive', label: 'Ekle', room: 'Arşiv' },
+  };
+}
 
 export default function HabitOnboardingModal({
   visible,
@@ -33,6 +36,8 @@ export default function HabitOnboardingModal({
   onSubmit,
   willpowerState,
 }: HabitOnboardingProps) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
   const {
     step,
     setStep,
@@ -64,7 +69,7 @@ export default function HabitOnboardingModal({
   );
   const plannedTriage = computeTriage(form.impact_level, form.urgency);
   const plannedStatus = triageToStatus(plannedTriage, canActivateNow);
-  const DEST = DESTINATIONS[plannedStatus];
+  const DEST = getDestinations(colors)[plannedStatus];
 
   const wpUsedRatio = willpowerState ? willpowerState.used / willpowerState.daily_budget : 0;
   const wpBarColor =
@@ -103,6 +108,8 @@ export default function HabitOnboardingModal({
     plannedStatus,
     DEST,
     wpScore,
+    colors,
+    styles,
   };
 
   const proceedOk = canProceed();
@@ -112,8 +119,8 @@ export default function HabitOnboardingModal({
       <View style={styles.overlay}>
         <View style={styles.container}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={handleClose}>
-              <Ionicons name="close" size={28} color={colors.white} />
+            <TouchableOpacity onPress={handleClose} accessibilityRole="button" accessibilityLabel="Kapat">
+              <Ionicons name="close" size={28} color={colors.text} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Yeni Alışkanlık</Text>
             <View style={{ width: 28 }} />
@@ -134,7 +141,7 @@ export default function HabitOnboardingModal({
                 <View
                   style={[
                     styles.wpBarFill,
-                    { width: `${wpUsedRatio * 100}%` as any, backgroundColor: wpBarColor },
+                    { width: `${Math.min(100, Math.max(0, wpUsedRatio * 100))}%`, backgroundColor: wpBarColor },
                   ]}
                 />
               </View>
@@ -162,8 +169,13 @@ export default function HabitOnboardingModal({
 
           <View style={styles.footer}>
             {step > 1 && (
-              <TouchableOpacity style={styles.backButton} onPress={() => setStep(step - 1)}>
-                <Ionicons name="arrow-back" size={20} color={colors.white} />
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => setStep(step - 1)}
+                accessibilityRole="button"
+                accessibilityLabel="Geri"
+              >
+                <Ionicons name="arrow-back" size={20} color={colors.text} />
                 <Text style={styles.backButtonText}>Geri</Text>
               </TouchableOpacity>
             )}
@@ -172,6 +184,8 @@ export default function HabitOnboardingModal({
                 style={[styles.nextButton, !proceedOk && styles.buttonDisabled]}
                 onPress={() => setStep(step + 1)}
                 disabled={!proceedOk}
+                accessibilityRole="button"
+                accessibilityLabel="Devam"
               >
                 <Text style={styles.nextButtonText}>Devam</Text>
                 <Ionicons name="arrow-forward" size={20} color={colors.white} />
@@ -180,8 +194,10 @@ export default function HabitOnboardingModal({
               <TouchableOpacity
                 style={[styles.submitButton, { backgroundColor: DEST.color }]}
                 onPress={handleSubmit}
+                accessibilityRole="button"
+                accessibilityLabel={DEST.label}
               >
-                <Ionicons name={DEST.icon as any} size={18} color={colors.white} />
+                <Ionicons name={DEST.icon as ComponentProps<typeof Ionicons>['name']} size={18} color={colors.white} />
                 <Text style={styles.submitButtonText}>{DEST.label}</Text>
               </TouchableOpacity>
             )}

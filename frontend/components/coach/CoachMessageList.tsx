@@ -2,7 +2,8 @@ import { Fragment, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { CoachMessage } from '../../hooks/useCoachSend';
-import { alphaHex, colors } from '../../lib/tokens';
+import { alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 
 export type { CoachMessage } from '../../hooks/useCoachSend';
 
@@ -21,6 +22,8 @@ export type CoachMessageListProps = {
 };
 
 export default function CoachMessageList(props: CoachMessageListProps) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const {
     messages,
     hasOlder,
@@ -138,7 +141,8 @@ export default function CoachMessageList(props: CoachMessageListProps) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
   olderBtn: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 14, minHeight: 44, justifyContent: 'center' },
   olderText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
 

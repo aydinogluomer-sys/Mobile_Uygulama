@@ -1,4 +1,5 @@
-import { colors } from '../lib/tokens';
+import { type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
 import type { FrequencyConfig } from '../lib/supabase';
 import {
@@ -38,6 +39,8 @@ export default function FrequencyEditor({
   value: FrequencyConfig;
   onChange: (next: FrequencyConfig) => void;
 }) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
   function updateFreq(next: FrequencyConfig) {
     if (next !== freq) onChange(next);
   }
@@ -344,30 +347,31 @@ export default function FrequencyEditor({
 
 // Copied from HabitOnboarding's sheet so the controls look identical in both
 // places; HabitOnboarding still uses several of these for its other steps.
-const styles = StyleSheet.create({
-  label: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 10 },
-  input: {
-    backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15,
-    color: colors.white, marginBottom: 14, borderWidth: 1, borderColor: colors.border,
-  },
-  row: { flexDirection: 'row', gap: 12, marginBottom: 8 },
-  freqBtn: {
-    flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12,
-    alignItems: 'center', borderWidth: 2, borderColor: colors.border,
-  },
-  freqBtnSelected: { borderColor: colors.accent, backgroundColor: colors.selectedTint },
-  freqBtnText: { color: colors.textDim, fontSize: 13, fontWeight: '600' },
-  freqBtnTextSelected: { color: colors.accent },
-  daysRow: { flexDirection: 'row', gap: 6 },
-  dayBtn: {
-    flex: 1, backgroundColor: colors.surface, borderRadius: 8, paddingVertical: 10,
-    alignItems: 'center', borderWidth: 1, borderColor: colors.border,
-  },
-  dayBtnSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
-  wideChip: { paddingHorizontal: 4 },
-  dayBtnText: { fontSize: 11, color: colors.textDim, fontWeight: '600' },
-  dayBtnTextSelected: { color: colors.white },
-  buttonDisabled: { opacity: 0.4 },
-  endHint: { fontSize: 12, color: colors.accent, marginTop: 10, fontWeight: '600' },
-  endUnit: { fontSize: 13, color: colors.textDim, marginLeft: 10 },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    label: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 10 },
+    input: {
+      backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15,
+      color: colors.white, marginBottom: 14, borderWidth: 1, borderColor: colors.border,
+    },
+    row: { flexDirection: 'row', gap: 12, marginBottom: 8 },
+    freqBtn: {
+      flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12,
+      alignItems: 'center', borderWidth: 2, borderColor: colors.border,
+    },
+    freqBtnSelected: { borderColor: colors.accent, backgroundColor: colors.selectedTint },
+    freqBtnText: { color: colors.textDim, fontSize: 13, fontWeight: '600' },
+    freqBtnTextSelected: { color: colors.accent },
+    daysRow: { flexDirection: 'row', gap: 6 },
+    dayBtn: {
+      flex: 1, backgroundColor: colors.surface, borderRadius: 8, paddingVertical: 10,
+      alignItems: 'center', borderWidth: 1, borderColor: colors.border,
+    },
+    dayBtnSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+    wideChip: { paddingHorizontal: 4 },
+    dayBtnText: { fontSize: 11, color: colors.textDim, fontWeight: '600' },
+    dayBtnTextSelected: { color: colors.white },
+    buttonDisabled: { opacity: 0.4 },
+    endHint: { fontSize: 12, color: colors.accent, marginTop: 10, fontWeight: '600' },
+    endUnit: { fontSize: 13, color: colors.textDim, marginLeft: 10 },
+  });

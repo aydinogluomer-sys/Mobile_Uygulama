@@ -9,7 +9,8 @@
  */
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, space, radius, hexA } from '../lib/tokens';
+import { space, radius, hexA, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import Button from './ui/Button';
 
 export type ConflictChoiceValue = 'mine' | 'theirs' | 'both';
@@ -22,6 +23,8 @@ export default function ConflictChoice({
   onChoose: (c: ConflictChoiceValue) => void;
   busy?: boolean;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.box} accessibilityRole="alert" accessibilityLabel={`${what} başka bir yerde de değiştirildi. Hangisi kalsın?`}>
       <View style={s.head}>
@@ -41,10 +44,11 @@ export default function ConflictChoice({
   );
 }
 
-const s = StyleSheet.create({
-  box: { borderWidth: 1, borderColor: hexA(colors.warning, 0.5), backgroundColor: hexA(colors.warning, 0.08), borderRadius: radius.lg, padding: space.md, marginBottom: space.md, gap: space.sm },
-  head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  title: { color: colors.text, fontSize: 14, fontWeight: '600', flexShrink: 1 },
-  body: { color: colors.textDim, fontSize: 13 },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    box: { borderWidth: 1, borderColor: hexA(colors.warning, 0.5), backgroundColor: hexA(colors.warning, 0.08), borderRadius: radius.lg, padding: space.md, marginBottom: space.md, gap: space.sm },
+    head: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+    title: { color: colors.text, fontSize: 14, fontWeight: '600', flexShrink: 1 },
+    body: { color: colors.textDim, fontSize: 13 },
+    row: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  });

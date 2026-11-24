@@ -24,5 +24,5 @@ it('the preview renders the source line from the store\'s proposalSource', () =>
   const src = stripComments(readFileSync(join(__dirname, '..', '..', 'components', 'AIRoutineModal.tsx'), 'utf8'));
   const preview = src.slice(src.indexOf('{showPreview ? ('));
   expect(preview.slice(0, 800)).toMatch(/accessibilityLabel="Önerinin kaynağı">\{sourceLine\(proposalSource\)\}<\/Text>/);
-  expect(src).toMatch(/\n {4}proposalSource,\n {2}\} = useRoutineStore\(\);/);
+  expect(src).toMatch(/\n {4}proposalSource,\n {2}\} = useRoutineStore\(\s*useShallow\(/);
 });

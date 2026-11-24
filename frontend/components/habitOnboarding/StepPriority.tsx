@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { type ComponentProps } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../lib/tokens';
 import {
   IMPACT_LEVELS,
   URGENCY_OPTIONS,
@@ -9,11 +8,10 @@ import {
   computeTriage,
   eisenhowerCell,
 } from '../../lib/triage';
-import { styles } from './styles';
 import type { StepProps } from './types';
 
 export default function StepPriority({ ctx }: StepProps) {
-  const { form, setImpact, setUrgency } = ctx;
+  const { form, setImpact, setUrgency, colors, styles } = ctx;
   const triage = computeTriage(form.impact_level, form.urgency);
   const meta = TRIAGE_META[triage];
   const cell = eisenhowerCell(form.impact_level, form.urgency);
@@ -39,6 +37,9 @@ export default function StepPriority({ ctx }: StepProps) {
               key={lv.key}
               style={[styles.impactCard, sel && { borderColor: lv.color, backgroundColor: lv.color + '18' }]}
               onPress={() => setImpact(lv.key)}
+              accessibilityRole="button"
+              accessibilityLabel={lv.label}
+              accessibilityState={{ selected: sel }}
             >
               <View style={[styles.impactDot, { backgroundColor: lv.color }]} />
               <Text style={[styles.impactLabel, sel && { color: lv.color }]}>{lv.label}</Text>
@@ -58,8 +59,11 @@ export default function StepPriority({ ctx }: StepProps) {
               key={u.key}
               style={[styles.typeCard, sel && styles.typeCardSelected]}
               onPress={() => setUrgency(u.key)}
+              accessibilityRole="button"
+              accessibilityLabel={u.label}
+              accessibilityState={{ selected: sel }}
             >
-              <Ionicons name={u.icon as any} size={22} color={sel ? colors.accent : colors.textDim} />
+              <Ionicons name={u.icon as ComponentProps<typeof Ionicons>['name']} size={22} color={sel ? colors.accent : colors.textDim} />
               <Text style={[styles.typeLabel, { marginTop: 6 }]}>{u.label}</Text>
               <Text style={styles.typeDesc}>{u.desc}</Text>
             </TouchableOpacity>

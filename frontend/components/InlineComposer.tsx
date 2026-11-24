@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { space, radius, font, onColor, type Palette } from '../lib/tokens';
@@ -61,9 +61,12 @@ export default function InlineComposer({
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
 
   const valueRef = useRef('');
-  valueRef.current = value;
   const selectionRef = useRef<{ start: number; end: number } | null>(null);
-  if (!value) selectionRef.current = null;
+
+  useEffect(() => {
+    valueRef.current = value;
+    if (!value) selectionRef.current = null;
+  }, [value]);
 
   const speech = useSpeechInput(setValue, {
     enabled: Boolean(voice),
@@ -88,6 +91,8 @@ export default function InlineComposer({
   }, [quickEnabled, value, nowFn, resolvedProjects, dismissed]);
 
   function handleChangeText(next: string) {
+    valueRef.current = next;
+    if (!next) selectionRef.current = null;
     setValue(next);
     if (!next.trim() && dismissed.size > 0) {
       setDismissed(new Set());

@@ -7,7 +7,8 @@
  */
 import { useEffect, useState } from 'react';
 import { AppState, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { colors, space, radius } from '../lib/tokens';
+import { space, radius, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import Chip from './ui/Chip';
 import {
   notificationAccess,
@@ -44,10 +45,12 @@ const QUIET = [
 ] as const;
 
 export default function NotificationSettingsCard() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [access, setAccess] = useState<NotificationAccess | null>(null);
   const [settings, setSettings] = useState<ReminderSettings>(DEFAULT_REMINDER_SETTINGS);
   const [support, setSupport] = useState<TimeSupportSettings>(DEFAULT_TIME_SUPPORT_SETTINGS);
-  const [report, setReport] = useState<ReconcileReport | null>(null);
+  const [report, setReport] = useState<ReconcileReport | null>(() => getLastReconcileReport());
 
   useEffect(() => {
     void notificationAccess().then(setAccess);
@@ -55,7 +58,6 @@ export default function NotificationSettingsCard() {
     if (typeof loadTimeSupportSettings === 'function') {
       void loadTimeSupportSettings().then(setSupport);
     }
-    setReport(getLastReconcileReport());
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') {
         void notificationAccess().then(setAccess);
@@ -294,19 +296,20 @@ export default function NotificationSettingsCard() {
   );
 }
 
-const s = StyleSheet.create({
-  box: { padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, gap: space.sm, backgroundColor: colors.bgElevated },
-  head: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint },
-  permBlock: { gap: 6 },
-  warn: { fontSize: 13, color: colors.warning },
-  sub: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
-  actionBtn: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
-  link: { fontSize: 13, color: colors.accent, fontWeight: '700' },
-  label: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint, marginTop: space.sm },
-  row: { flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' },
-  chip: { minHeight: 44, justifyContent: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
-  chipOn: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
-  chipText: { fontSize: 12, color: colors.textDim },
-  toggleRow: { minHeight: 44, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.sm },
-  toggleText: { fontSize: 13, color: colors.text, flex: 1 },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    box: { padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, gap: space.sm, backgroundColor: colors.bgElevated },
+    head: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint },
+    permBlock: { gap: 6 },
+    warn: { fontSize: 13, color: colors.warning },
+    sub: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+    actionBtn: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+    link: { fontSize: 13, color: colors.accent, fontWeight: '700' },
+    label: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint, marginTop: space.sm },
+    row: { flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' },
+    chip: { minHeight: 44, justifyContent: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+    chipOn: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
+    chipText: { fontSize: 12, color: colors.textDim },
+    toggleRow: { minHeight: 44, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.sm },
+    toggleText: { fontSize: 13, color: colors.text, flex: 1 },
+  });

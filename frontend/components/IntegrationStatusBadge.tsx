@@ -1,35 +1,43 @@
-import { colors, alphaHex } from '../lib/tokens';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { alphaHex, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import type { IntegrationStatus } from '../constants/integrations';
 
 type IntegrationStatusBadgeProps = {
   status: IntegrationStatus;
 };
 
-const STATUS_CONFIG: Record<
-  IntegrationStatus,
-  { label: string; backgroundColor: string; color: string }
-> = {
-  available: {
-    label: 'Kur',
-    backgroundColor: alphaHex(colors.accent, '20'),
-    color: colors.accent,
-  },
-  connected: {
-    label: 'Bağlı',
-    backgroundColor: alphaHex(colors.success, '20'),
-    color: colors.success,
-  },
-  comingSoon: {
-    label: 'Yakında',
-    backgroundColor: colors.surface,
-    color: colors.textDim,
-  },
-};
+function getStatusConfig(
+  colors: Palette,
+  status: IntegrationStatus,
+): { label: string; backgroundColor: string; color: string } {
+  switch (status) {
+    case 'available':
+      return {
+        label: 'Kur',
+        backgroundColor: alphaHex(colors.accent, '20'),
+        color: colors.accent,
+      };
+    case 'connected':
+      return {
+        label: 'Bağlı',
+        backgroundColor: alphaHex(colors.success, '20'),
+        color: colors.success,
+      };
+    case 'comingSoon':
+      return {
+        label: 'Yakında',
+        backgroundColor: colors.surface,
+        color: colors.textDim,
+      };
+  }
+}
 
 export default function IntegrationStatusBadge({ status }: IntegrationStatusBadgeProps) {
-  const config = STATUS_CONFIG[status];
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+  const config = getStatusConfig(colors, status);
 
   return (
     <View
@@ -42,16 +50,17 @@ export default function IntegrationStatusBadge({ status }: IntegrationStatusBadg
   );
 }
 
-const styles = StyleSheet.create({
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    badge: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    badgeText: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+  });

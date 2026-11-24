@@ -1,12 +1,10 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, TextInput } from 'react-native';
-import { colors } from '../../lib/tokens';
 import { DURATION_UNIT } from '../../lib/habitEngine';
-import { styles } from './styles';
 import type { StepProps } from './types';
 
 export default function StepMeasure({ ctx }: StepProps) {
-  const { form, setForm, goal, setGoalText } = ctx;
+  const { form, setForm, goal, setGoalText, colors, styles } = ctx;
 
   return (
     <View style={styles.stepContent}>
@@ -130,6 +128,7 @@ export default function StepMeasure({ ctx }: StepProps) {
               style={[styles.dirBtn, form.target_direction === 'at_least' && styles.dirBtnSelected]}
               onPress={() => setForm((prev) => ({ ...prev, target_direction: 'at_least' }))}
               accessibilityRole="button"
+              accessibilityLabel="En az"
               accessibilityState={{ selected: form.target_direction === 'at_least' }}
             >
               <Text style={styles.dirBtnText}>En az ↑</Text>
@@ -138,6 +137,7 @@ export default function StepMeasure({ ctx }: StepProps) {
               style={[styles.dirBtn, form.target_direction === 'at_most' && styles.dirBtnSelected]}
               onPress={() => setForm((prev) => ({ ...prev, target_direction: 'at_most' }))}
               accessibilityRole="button"
+              accessibilityLabel="En fazla"
               accessibilityState={{ selected: form.target_direction === 'at_most' }}
             >
               <Text style={styles.dirBtnText}>En fazla ↓</Text>
@@ -170,6 +170,7 @@ export default function StepMeasure({ ctx }: StepProps) {
               style={[styles.dirBtn, form.target_direction === 'at_least' && styles.dirBtnSelected]}
               onPress={() => setForm((prev) => ({ ...prev, target_direction: 'at_least' }))}
               accessibilityRole="button"
+              accessibilityLabel="En az"
               accessibilityState={{ selected: form.target_direction === 'at_least' }}
             >
               <Text style={styles.dirBtnText}>En az ↑</Text>
@@ -178,6 +179,7 @@ export default function StepMeasure({ ctx }: StepProps) {
               style={[styles.dirBtn, form.target_direction === 'at_most' && styles.dirBtnSelected]}
               onPress={() => setForm((prev) => ({ ...prev, target_direction: 'at_most' }))}
               accessibilityRole="button"
+              accessibilityLabel="En fazla"
               accessibilityState={{ selected: form.target_direction === 'at_most' }}
             >
               <Text style={styles.dirBtnText}>En fazla ↓</Text>

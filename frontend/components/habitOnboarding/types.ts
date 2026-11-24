@@ -1,7 +1,9 @@
 import type React from 'react';
+import type { Palette } from '../../lib/tokens';
 import type { Habit, WillpowerState } from '../../lib/supabase';
 import type { ImpactLevel, Triage, Urgency } from '../../lib/triage';
 import type { CueMode, GoalField, HabitFormData } from '../../hooks/useHabitForm';
+import type { HabitOnboardingStyles } from './styles';
 
 export interface HabitOnboardingProps {
   visible: boolean;
@@ -45,6 +47,8 @@ export type HabitOnboardingContext = {
   plannedStatus: Habit['status'];
   DEST: DestinationMeta;
   wpScore: number | null;
+  colors: Palette;
+  styles: HabitOnboardingStyles;
 };
 
 export type StepProps = {

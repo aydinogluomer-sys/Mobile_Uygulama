@@ -1,11 +1,9 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, TextInput } from 'react-native';
-import { colors } from '../../lib/tokens';
-import { styles } from './styles';
 import type { StepProps } from './types';
 
 export default function StepName({ ctx }: StepProps) {
-  const { form, setForm, lifeAreas } = ctx;
+  const { form, setForm, lifeAreas, colors, styles } = ctx;
 
   return (
     <View style={styles.stepContent}>
@@ -26,6 +24,9 @@ export default function StepName({ ctx }: StepProps) {
         <TouchableOpacity
           style={[styles.typeCard, form.behavior_type === 'positive' && styles.typeCardSelected]}
           onPress={() => setForm((prev) => ({ ...prev, behavior_type: 'positive' }))}
+          accessibilityRole="button"
+          accessibilityLabel="Pozitif davranış"
+          accessibilityState={{ selected: form.behavior_type === 'positive' }}
         >
           <Text style={styles.typeEmoji}>✅</Text>
           <Text style={styles.typeLabel}>Pozitif</Text>
@@ -34,6 +35,9 @@ export default function StepName({ ctx }: StepProps) {
         <TouchableOpacity
           style={[styles.typeCard, form.behavior_type === 'negative' && styles.typeCardSelectedRed]}
           onPress={() => setForm((prev) => ({ ...prev, behavior_type: 'negative' }))}
+          accessibilityRole="button"
+          accessibilityLabel="Negatif davranış"
+          accessibilityState={{ selected: form.behavior_type === 'negative' }}
         >
           <Text style={styles.typeEmoji}>🚫</Text>
           <Text style={styles.typeLabel}>Negatif</Text>
@@ -53,6 +57,9 @@ export default function StepName({ ctx }: StepProps) {
               key={a.key}
               style={[styles.areaChip, sel && { backgroundColor: a.color + '22', borderColor: a.color }]}
               onPress={() => setForm((prev) => ({ ...prev, life_area: sel ? null : a.key }))}
+              accessibilityRole="button"
+              accessibilityLabel={a.label}
+              accessibilityState={{ selected: sel }}
             >
               <View style={[styles.areaDot, { backgroundColor: a.color }]} />
               <Text style={[styles.areaChipText, sel && { color: a.color }]}>{a.label}</Text>

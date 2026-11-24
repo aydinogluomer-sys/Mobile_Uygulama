@@ -9,7 +9,8 @@
  */
 import { useState } from 'react';
 import { Button } from '../ui';
-import { colors, space } from '../../lib/tokens';
+import { space } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { useNotionSessionStore } from '../../store/notionSessionStore';
 import { loadDemoSeed } from '../../lib/demoSeedGate';
 import { reportError } from '../../lib/crashReporting';
@@ -17,6 +18,7 @@ import { reportError } from '../../lib/crashReporting';
 type Props = { onDone: () => void };
 
 export default function DevDemoLoginButton({ onDone }: Props) {
+  const colors = useThemeColors();
   const [busy, setBusy] = useState(false);
 
   async function handleBypassLogin() {

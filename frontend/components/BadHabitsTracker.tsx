@@ -1,4 +1,5 @@
-import { colors, alphaHex, radius } from '../lib/tokens';
+import { alphaHex, hexA, radius, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -44,8 +45,10 @@ interface BadHabitsTrackerProps {
 }
 
 export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerProps) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
   const [badHabits, setBadHabits] = useState<BadHabitRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(visible);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedHabit, setSelectedHabit] = useState<BadHabitRow | null>(null);
@@ -66,6 +69,14 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
     time_wasted_per_day: '',
   });
 
+  const [prevVisible, setPrevVisible] = useState(visible);
+  if (prevVisible !== visible) {
+    setPrevVisible(visible);
+    if (visible) {
+      setLoading(true);
+    }
+  }
+
   const persistUrgeCount = useCallback(async (count: number) => {
     const uid = (await currentUser())?.id;
     if (!uid) return;
@@ -85,22 +96,37 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
   };
 
   useEffect(() => {
-    if (visible) {
-      loadBadHabits();
-      void (async () => {
-        await AsyncStorage.removeItem(URGE_STORAGE_KEY_PREFIX);
-        const uid = (await currentUser())?.id;
-        if (!uid) {
-          deflectedRef.current = 0;
-          setDeflectedUrges(0);
-          return;
-        }
-        const v = await AsyncStorage.getItem(urgeStorageKey(uid));
-        const n = v ? parseInt(v, 10) || 0 : 0;
-        deflectedRef.current = n;
-        setDeflectedUrges(n);
-      })().catch(() => undefined);
-    }
+    if (!visible) return;
+    let active = true;
+    void (async () => {
+      const res = await listBadHabits(null, 100);
+      if (!active) return;
+      setLoading(false);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setError(null);
+      setBadHabits(res.data.rows);
+    })();
+    void (async () => {
+      await AsyncStorage.removeItem(URGE_STORAGE_KEY_PREFIX);
+      const uid = (await currentUser())?.id;
+      if (!active) return;
+      if (!uid) {
+        deflectedRef.current = 0;
+        setDeflectedUrges(0);
+        return;
+      }
+      const v = await AsyncStorage.getItem(urgeStorageKey(uid));
+      if (!active) return;
+      const n = v ? parseInt(v, 10) || 0 : 0;
+      deflectedRef.current = n;
+      setDeflectedUrges(n);
+    })().catch(() => undefined);
+    return () => {
+      active = false;
+    };
   }, [visible]);
 
   useEffect(() => {
@@ -185,11 +211,19 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
     >
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose}>
+          <TouchableOpacity
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Bıraktığım alışkanlıkları kapat"
+          >
             <Ionicons name="close" size={28} color={colors.white} />
           </TouchableOpacity>
           <Text style={styles.title}>Bıraktığım Alışkanlıklar</Text>
-          <TouchableOpacity onPress={() => setShowAddModal(true)}>
+          <TouchableOpacity
+            onPress={() => setShowAddModal(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Yeni kötü alışkanlık ekle"
+          >
             <Ionicons name="add-circle" size={28} color={colors.accent} />
           </TouchableOpacity>
         </View>
@@ -245,6 +279,8 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                   key={habit.id}
                   style={styles.habitCard}
                   onPress={() => viewSavings(habit)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${habit.name} tasarruf raporunu görüntüle`}
                 >
                   <View style={styles.habitIcon}>
                     <Ionicons name="ban" size={24} color={colors.error} />
@@ -322,12 +358,16 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                 <TouchableOpacity
                   style={[styles.modalButton, styles.cancelButton]}
                   onPress={() => setShowAddModal(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="İptal"
                 >
                   <Text style={styles.cancelButtonText}>İptal</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.saveButton]}
                   onPress={handleAddBadHabit}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ekle"
                 >
                   <Text style={styles.saveButtonText}>Ekle</Text>
                 </TouchableOpacity>
@@ -381,6 +421,8 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                     setSelectedHabit(null);
                     setSavings(null);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Tasarruf raporunu kapat"
                 >
                   <Text style={styles.closeButtonText}>Kapat</Text>
                 </TouchableOpacity>
@@ -435,270 +477,271 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    paddingTop: 50,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.white,
-  },
-  loader: {
-    marginTop: 40,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.white,
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: colors.textFaint,
-    marginTop: 8,
-  },
-  habitCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  habitIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: alphaHex(colors.error, '20'),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  habitInfo: {
-    flex: 1,
-  },
-  habitName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.white,
-    marginBottom: 4,
-  },
-  habitDate: {
-    fontSize: 13,
-    color: colors.textDim,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.white,
-    marginBottom: 20,
-  },
-  input: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: colors.white,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  fieldHint: {
-    fontSize: 12,
-    color: colors.warning,
-    marginTop: -6,
-    marginBottom: 10,
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
-  },
-  modalButton: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: colors.textGhost,
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.white,
-  },
-  saveButton: {
-    backgroundColor: colors.accent,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.white,
-  },
-  savingsContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-  },
-  savingsHeader: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  savingsTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.white,
-    marginTop: 16,
-  },
-  savingsSubtitle: {
-    fontSize: 14,
-    color: colors.textDim,
-    marginTop: 4,
-  },
-  savingsStats: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-  },
-  savingsStatCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  savingsStatValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.white,
-    marginTop: 8,
-  },
-  savingsStatLabel: {
-    fontSize: 12,
-    color: colors.textDim,
-    marginTop: 4,
-  },
-  closeButton: {
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  closeButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.white,
-  },
-  urgeBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: alphaHex(colors.teal, '45'),
-  },
-  urgeBannerTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.white,
-  },
-  urgeBannerSub: {
-    fontSize: 12,
-    color: colors.textDim,
-    marginTop: 4,
-    lineHeight: 17,
-  },
-  urgeStartBtn: {
-    backgroundColor: colors.teal,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: radius.md,
-  },
-  urgeStartBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.white,
-  },
-  urgeModalCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  urgeModalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.white,
-    marginTop: 12,
-  },
-  urgeTimerText: {
-    fontSize: 44,
-    fontWeight: '800',
-    color: colors.teal,
-    marginVertical: 14,
-    fontVariant: ['tabular-nums'],
-  },
-  urgeBreathText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.white,
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  urgeScienceNote: {
-    fontSize: 12,
-    color: colors.textFaint,
-    textAlign: 'center',
-    lineHeight: 17,
-  },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.bg,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 16,
+      paddingTop: 50,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+    },
+    title: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      color: colors.white,
+    },
+    loader: {
+      marginTop: 40,
+    },
+    content: {
+      flex: 1,
+      padding: 16,
+    },
+    emptyState: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 80,
+    },
+    emptyText: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.white,
+      marginTop: 16,
+    },
+    emptySubtext: {
+      fontSize: 14,
+      color: colors.textFaint,
+      marginTop: 8,
+    },
+    habitCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    habitIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: alphaHex(colors.error, '20'),
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    habitInfo: {
+      flex: 1,
+    },
+    habitName: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.white,
+      marginBottom: 4,
+    },
+    habitDate: {
+      fontSize: 13,
+      color: colors.textDim,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: hexA(colors.black, 0.8),
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 16,
+    },
+    modalContent: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: 24,
+      width: '100%',
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      color: colors.white,
+      marginBottom: 20,
+    },
+    input: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      fontSize: 16,
+      color: colors.white,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    fieldHint: {
+      fontSize: 12,
+      color: colors.warning,
+      marginTop: -6,
+      marginBottom: 10,
+    },
+    textArea: {
+      height: 80,
+      textAlignVertical: 'top',
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      gap: 12,
+      marginTop: 12,
+    },
+    modalButton: {
+      flex: 1,
+      borderRadius: 12,
+      padding: 16,
+      alignItems: 'center',
+    },
+    cancelButton: {
+      backgroundColor: colors.textGhost,
+    },
+    cancelButtonText: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: colors.white,
+    },
+    saveButton: {
+      backgroundColor: colors.accent,
+    },
+    saveButtonText: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: colors.white,
+    },
+    savingsContent: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: 24,
+      width: '100%',
+    },
+    savingsHeader: {
+      alignItems: 'center',
+      marginBottom: 32,
+    },
+    savingsTitle: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: colors.white,
+      marginTop: 16,
+    },
+    savingsSubtitle: {
+      fontSize: 14,
+      color: colors.textDim,
+      marginTop: 4,
+    },
+    savingsStats: {
+      flexDirection: 'row',
+      gap: 12,
+      marginBottom: 24,
+    },
+    savingsStatCard: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    savingsStatValue: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      color: colors.white,
+      marginTop: 8,
+    },
+    savingsStatLabel: {
+      fontSize: 12,
+      color: colors.textDim,
+      marginTop: 4,
+    },
+    closeButton: {
+      backgroundColor: colors.accent,
+      borderRadius: 12,
+      padding: 16,
+      alignItems: 'center',
+    },
+    closeButtonText: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: colors.white,
+    },
+    urgeBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      padding: 14,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: alphaHex(colors.teal, '45'),
+    },
+    urgeBannerTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.white,
+    },
+    urgeBannerSub: {
+      fontSize: 12,
+      color: colors.textDim,
+      marginTop: 4,
+      lineHeight: 17,
+    },
+    urgeStartBtn: {
+      backgroundColor: colors.teal,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: radius.md,
+    },
+    urgeStartBtnText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.white,
+    },
+    urgeModalCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      padding: 24,
+      width: '100%',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    urgeModalTitle: {
+      fontSize: 20,
+      fontWeight: '800',
+      color: colors.white,
+      marginTop: 12,
+    },
+    urgeTimerText: {
+      fontSize: 44,
+      fontWeight: '800',
+      color: colors.teal,
+      marginVertical: 14,
+      fontVariant: ['tabular-nums'],
+    },
+    urgeBreathText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.white,
+      textAlign: 'center',
+      marginBottom: 10,
+    },
+    urgeScienceNote: {
+      fontSize: 12,
+      color: colors.textFaint,
+      textAlign: 'center',
+      lineHeight: 17,
+    },
+  });

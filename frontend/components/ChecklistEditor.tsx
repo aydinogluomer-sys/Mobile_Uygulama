@@ -7,13 +7,26 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 import { confirm } from '../lib/dialog';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, space, radius } from '../lib/tokens';
+import { useShallow } from 'zustand/react/shallow';
+import { space, radius, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { FormError } from './ui/FormFeedback';
 import { useHabitStore } from '../store/habitStore';
 import { currentItems, MAX_ITEM_TITLE } from '../lib/habitChecklist';
 
 export default function ChecklistEditor({ habitId }: { habitId: string }) {
-  const { checklistItems, checklistAvailable, addChecklistItem, setChecklistItemRequired, archiveChecklistItem } = useHabitStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const { checklistItems, checklistAvailable, addChecklistItem, setChecklistItemRequired, archiveChecklistItem } =
+    useHabitStore(
+      useShallow((st) => ({
+        checklistItems: st.checklistItems,
+        checklistAvailable: st.checklistAvailable,
+        addChecklistItem: st.addChecklistItem,
+        setChecklistItemRequired: st.setChecklistItemRequired,
+        archiveChecklistItem: st.archiveChecklistItem,
+      })),
+    );
   const [title, setTitle] = useState('');
   const [required, setRequired] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,13 +95,14 @@ export default function ChecklistEditor({ habitId }: { habitId: string }) {
   );
 }
 
-const s = StyleSheet.create({
-  pending: { fontSize: 12, color: colors.warning, lineHeight: 17 },
-  empty: { fontSize: 13, color: colors.textFaint },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 6 },
-  itemTitle: { flex: 1, fontSize: 14, color: colors.text },
-  tag: { fontSize: 11, color: colors.textFaint, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 3 },
-  tagOn: { color: colors.text, borderColor: colors.accent },
-  addRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
-  input: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: space.sm, color: colors.text, fontSize: 14 },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    pending: { fontSize: 12, color: colors.warning, lineHeight: 17 },
+    empty: { fontSize: 13, color: colors.textFaint },
+    row: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: 6 },
+    itemTitle: { flex: 1, fontSize: 14, color: colors.text },
+    tag: { fontSize: 11, color: colors.textFaint, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 3 },
+    tagOn: { color: colors.text, borderColor: colors.accent },
+    addRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
+    input: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: space.sm, color: colors.text, fontSize: 14 },
+  });

@@ -1,6 +1,6 @@
 import { TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 
 export type PasswordToggleProps = {
   visible: boolean;
@@ -22,6 +22,7 @@ export default function PasswordToggle({
   showLabel = 'Şifreyi göster',
   hideLabel = 'Şifreyi gizle',
 }: PasswordToggleProps) {
+  const colors = useThemeColors();
   return (
     <TouchableOpacity
       onPress={onToggle}

@@ -5,7 +5,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { currentUser } from '../../lib/session';
-import { colors, fontFamily } from '../../lib/tokens';
+import { fontFamily, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useFocusStore } from '../../store/focusStore';
 import { todayLocal } from '../../lib/date';
 import { seriesText, redactSessionsForShare } from '../../lib/chartText';
@@ -39,6 +40,8 @@ function modeLabel(mode: string): string {
 }
 
 export default function FocusReportModal({ visible, onClose, accent }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const settings = useFocusStore((st) => st.settings);
   const [range, setRange] = useState<ReportRange>('week');
   const [tab, setTab] = useState<Tab>('summary');
@@ -46,10 +49,20 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
   const [loading, setLoading] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
 
+  const openKey = visible ? `open:${settings.defaultReportRange}` : 'closed';
+  const [prevOpenKey, setPrevOpenKey] = useState('');
+  if (prevOpenKey !== openKey) {
+    setPrevOpenKey(openKey);
+    if (visible) {
+      setRange(settings.defaultReportRange);
+      setTab('summary');
+      setExportNote(null);
+      setLoading(true);
+    }
+  }
+
   // Sıralama gizliyse ve o sekmedeysek özete dön
-  useEffect(() => {
-    if (!settings.showRanking && tab === 'ranking') setTab('summary');
-  }, [settings.showRanking, tab]);
+  const activeTab: Tab = !settings.showRanking && tab === 'ranking' ? 'summary' : tab;
 
   const timeFmt = (d: Date) =>
     settings.hourFormat === '12h'
@@ -58,20 +71,24 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
 
   useEffect(() => {
     if (!visible) return;
-    setRange(settings.defaultReportRange);
-    setTab('summary');
-    setExportNote(null);
     let active = true;
-    (async () => {
-      setLoading(true);
+    void (async () => {
       const user = await currentUser();
-      if (!user) { setLoading(false); return; }
+      if (!user) {
+        if (active) setLoading(false);
+        return;
+      }
       const yearAgo = new Date();
       yearAgo.setFullYear(yearAgo.getFullYear() - 1);
       const res = await fetchFocusSessionsSince({ sinceIso: yearAgo.toISOString() });
-      if (active) { setRows(res.ok ? res.data : []); setLoading(false); }
+      if (active) {
+        setRows(res.ok ? res.data : []);
+        setLoading(false);
+      }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [visible, settings.defaultReportRange]);
 
   const workSessions = useMemo(() => rows.filter((r) => r.mode === 'work'), [rows]);
@@ -129,18 +146,34 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
         {/* Başlık */}
         <View style={s.header}>
           <Text style={s.title}>{t('focus.report.title')}</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={10}>
+          <TouchableOpacity
+            onPress={onClose}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}
+          >
             <Ionicons name="close" size={24} color={colors.textFaint} />
           </TouchableOpacity>
         </View>
 
         {/* Sekmeler */}
-        <View style={s.tabs}>
-          {(settings.showRanking ? TABS : TABS.filter((tb) => tb.key !== 'ranking')).map((tb) => (
-            <TouchableOpacity key={tb.key} style={[s.tab, tab === tb.key && { borderBottomColor: accent }]} onPress={() => setTab(tb.key)}>
-              <Text style={[s.tabText, tab === tb.key && { color: colors.text }]}>{tb.label()}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={s.tabs} accessibilityRole="tablist">
+          {(settings.showRanking ? TABS : TABS.filter((tb) => tb.key !== 'ranking')).map((tb) => {
+            const tbLabel = tb.label();
+            const isSel = activeTab === tb.key;
+            return (
+              <TouchableOpacity
+                key={tb.key}
+                style={[s.tab, isSel && { borderBottomColor: accent }]}
+                onPress={() => setTab(tb.key)}
+                accessibilityRole="tab"
+                accessibilityLabel={tbLabel}
+                accessibilityState={{ selected: isSel }}
+              >
+                <Text style={[s.tabText, isSel && { color: colors.text }]}>{tbLabel}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {loading ? (
@@ -149,15 +182,22 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
           <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
             {/* Range filtresi */}
             <View style={s.rangeRow}>
-              {RANGES.map((r) => (
-                <TouchableOpacity
-                  key={r.key}
-                  style={[s.rangeBtn, range === r.key && { backgroundColor: accent + '22', borderColor: accent }]}
-                  onPress={() => setRange(r.key)}
-                >
-                  <Text style={[s.rangeText, range === r.key && { color: accent }]}>{r.label()}</Text>
-                </TouchableOpacity>
-              ))}
+              {RANGES.map((r) => {
+                const rLabel = r.label();
+                const isSel = range === r.key;
+                return (
+                  <TouchableOpacity
+                    key={r.key}
+                    style={[s.rangeBtn, isSel && { backgroundColor: accent + '22', borderColor: accent }]}
+                    onPress={() => setRange(r.key)}
+                    accessibilityRole="button"
+                    accessibilityLabel={rLabel}
+                    accessibilityState={{ selected: isSel }}
+                  >
+                    <Text style={[s.rangeText, isSel && { color: accent }]}>{rLabel}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {sessions.length === 0 ? (
@@ -165,7 +205,7 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
                 <Ionicons name="bar-chart-outline" size={40} color={colors.textGhost} />
                 <Text style={s.emptyText}>{t('focus.report.empty')}</Text>
               </View>
-            ) : tab === 'summary' ? (
+            ) : activeTab === 'summary' ? (
               <>
                 <View style={s.statRow}>
                   <Stat value={t('focus.stat.hoursValue', { hours: fmtHours(sum.totalSeconds) })} label={t('focus.stat.totalFocus')} />
@@ -176,8 +216,16 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
                 {settings.showFocusChart && (
                   <>
                     <Text style={s.sectionTitle}>{t('focus.complete.hours.overline')}</Text>
-                    <View style={[s.chart, { height: chartH }]} accessible accessibilityRole="image"
-                      accessibilityLabel={seriesText(t('focus.report.chart.seriesTitle'), chart.map((b) => ({ label: b.label, value: Math.round(b.seconds / 60) })), t('focus.report.chart.unitMinutes'))}>
+                    <View
+                      style={[s.chart, { height: chartH }]}
+                      accessible
+                      accessibilityRole="image"
+                      accessibilityLabel={seriesText(
+                        t('focus.report.chart.seriesTitle'),
+                        chart.map((b) => ({ label: b.label, value: Math.round(b.seconds / 60) })),
+                        t('focus.report.chart.unitMinutes'),
+                      )}
+                    >
                       {chart.map((b, i) => (
                         <View key={i} style={s.chartCol}>
                           <View style={[s.chartBar, { height: Math.max(2, Math.round((b.seconds / maxBar) * (chartH - 22))), backgroundColor: accent }]} />
@@ -199,7 +247,7 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
                   </View>
                 ))}
               </>
-            ) : tab === 'detail' ? (
+            ) : activeTab === 'detail' ? (
               <View style={{ gap: 8 }}>
                 {sessions.map((sn) => {
                   const dt = new Date(sn.started_at);
@@ -243,19 +291,38 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
           </Text>
         ) : null}
         <View style={s.footer}>
-          <TouchableOpacity onPress={() => setShareTitles((v) => !v)} accessibilityRole="switch"
-            accessibilityState={{ checked: shareTitles }} accessibilityLabel={t('focus.report.shareTitles.a11y')}>
+          <TouchableOpacity
+            onPress={() => setShareTitles((v) => !v)}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: shareTitles }}
+            accessibilityLabel={t('focus.report.shareTitles.a11y')}
+          >
             <Text style={s.footerText}>{t('focus.report.shareTitles', { box: shareTitles ? '☑' : '☐' })}</Text>
           </TouchableOpacity>
           <Text style={s.footerText}>{settings.enableLocalReports ? t('focus.report.localActive') : t('focus.report.localDisabled')}</Text>
           <View style={s.footerBtns}>
-            <TouchableOpacity style={s.exportBtn} onPress={() => exportData('csv')}>
+            <TouchableOpacity
+              style={s.exportBtn}
+              onPress={() => exportData('csv')}
+              accessibilityRole="button"
+              accessibilityLabel="CSV"
+            >
               <Text style={s.exportText}>CSV</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.exportBtn} onPress={() => exportData('excel')}>
+            <TouchableOpacity
+              style={s.exportBtn}
+              onPress={() => exportData('excel')}
+              accessibilityRole="button"
+              accessibilityLabel="Excel"
+            >
               <Text style={s.exportText}>Excel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.exportBtn} onPress={() => exportData('json')}>
+            <TouchableOpacity
+              style={s.exportBtn}
+              onPress={() => exportData('json')}
+              accessibilityRole="button"
+              accessibilityLabel="JSON"
+            >
               <Text style={s.exportText}>JSON</Text>
             </TouchableOpacity>
           </View>
@@ -266,6 +333,7 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
 }
 
 function Stat({ value, label }: { value: string; label: string }) {
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.stat}>
       <Text style={s.statValue}>{value}</Text>
@@ -275,6 +343,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 function RankCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.rankCard}>
       <Text style={s.rankLabel}>{label}</Text>
@@ -284,59 +353,60 @@ function RankCard({ label, value, sub, accent }: { label: string; value: string;
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14 },
-  title: { fontSize: 20, fontWeight: '800', color: colors.text },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14 },
+    title: { fontSize: 20, fontWeight: '800', color: colors.text },
 
-  tabs: { flexDirection: 'row', paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle },
-  tab: { paddingVertical: 10, marginRight: 18, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabText: { fontSize: 14, fontWeight: '700', color: colors.textFaint },
+    tabs: { flexDirection: 'row', paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle },
+    tab: { paddingVertical: 10, marginRight: 18, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+    tabText: { fontSize: 14, fontWeight: '700', color: colors.textFaint },
 
-  content: { padding: 18, paddingBottom: 40 },
-  rangeRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
-  rangeBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  rangeText: { fontSize: 12, fontWeight: '700', color: colors.textFaint },
+    content: { padding: 18, paddingBottom: 40 },
+    rangeRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
+    rangeBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+    rangeText: { fontSize: 12, fontWeight: '700', color: colors.textFaint },
 
-  statRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  stat: { flex: 1, backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 14, alignItems: 'center' },
-  statValue: { fontFamily: fontFamily.mono, fontSize: 22, fontWeight: '800', color: colors.text },
-  statLabel: { fontSize: 10, color: colors.textFaint, marginTop: 4, letterSpacing: 0.4 },
+    statRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+    stat: { flex: 1, backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 14, alignItems: 'center' },
+    statValue: { fontFamily: fontFamily.mono, fontSize: 22, fontWeight: '800', color: colors.text },
+    statLabel: { fontSize: 10, color: colors.textFaint, marginTop: 4, letterSpacing: 0.4 },
 
-  sectionTitle: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1, marginBottom: 12, marginTop: 4 },
-  chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginBottom: 22 },
-  chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 5 },
-  chartBar: { width: '70%', maxWidth: 22, borderRadius: 3, minHeight: 2 },
-  chartLabel: { fontSize: 9, color: colors.textFaint, fontFamily: fontFamily.mono },
+    sectionTitle: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1, marginBottom: 12, marginTop: 4 },
+    chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginBottom: 22 },
+    chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 5 },
+    chartBar: { width: '70%', maxWidth: 22, borderRadius: 3, minHeight: 2 },
+    chartLabel: { fontSize: 9, color: colors.textFaint, fontFamily: fontFamily.mono },
 
-  ttRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  ttName: { flex: 1.2, fontSize: 13, color: colors.textDim },
-  ttBar: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
-  ttBarFill: { height: '100%', borderRadius: 3 },
-  ttVal: { fontSize: 12, color: colors.textFaint, fontFamily: fontFamily.mono, minWidth: 48, textAlign: 'right' },
+    ttRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+    ttName: { flex: 1.2, fontSize: 13, color: colors.textDim },
+    ttBar: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
+    ttBarFill: { height: '100%', borderRadius: 3 },
+    ttVal: { fontSize: 12, color: colors.textFaint, fontFamily: fontFamily.mono, minWidth: 48, textAlign: 'right' },
 
-  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 },
-  detailTask: { fontSize: 13, color: colors.text, fontWeight: '600' },
-  detailMeta: { fontSize: 11, color: colors.textFaint, marginTop: 2, fontFamily: fontFamily.mono },
-  detailDur: { fontSize: 12, color: colors.textDim, fontFamily: fontFamily.mono },
-  detailStatus: { fontSize: 11, fontWeight: '700', minWidth: 48, textAlign: 'right' },
+    detailRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 12 },
+    detailTask: { fontSize: 13, color: colors.text, fontWeight: '600' },
+    detailMeta: { fontSize: 11, color: colors.textFaint, marginTop: 2, fontFamily: fontFamily.mono },
+    detailDur: { fontSize: 12, color: colors.textDim, fontFamily: fontFamily.mono },
+    detailStatus: { fontSize: 11, fontWeight: '700', minWidth: 48, textAlign: 'right' },
 
-  rankGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  rankCard: { width: '47%', backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 4 },
-  rankLabel: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 0.4, textTransform: 'uppercase' },
-  rankValue: { fontSize: 15, fontWeight: '800', color: colors.text },
-  rankSub: { fontSize: 11, color: colors.textFaint },
+    rankGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    rankCard: { width: '47%', backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 14, gap: 4 },
+    rankLabel: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 0.4, textTransform: 'uppercase' },
+    rankValue: { fontSize: 15, fontWeight: '800', color: colors.text },
+    rankSub: { fontSize: 11, color: colors.textFaint },
 
-  empty: { alignItems: 'center', gap: 12, paddingTop: 50, paddingHorizontal: 30 },
-  emptyText: { fontSize: 13, color: colors.textFaint, textAlign: 'center', lineHeight: 19 },
+    empty: { alignItems: 'center', gap: 12, paddingTop: 50, paddingHorizontal: 30 },
+    emptyText: { fontSize: 13, color: colors.textFaint, textAlign: 'center', lineHeight: 19 },
 
-  footer: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 18, paddingVertical: 12,
-    borderTopWidth: 1, borderTopColor: colors.borderSubtle,
-  },
-  footerText: { fontSize: 11, color: colors.textFaint },
-  footerBtns: { flexDirection: 'row', gap: 8 },
-  exportBtn: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  exportText: { fontSize: 12, fontWeight: '700', color: colors.textDim },
-});
+    footer: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 18, paddingVertical: 12,
+      borderTopWidth: 1, borderTopColor: colors.borderSubtle,
+    },
+    footerText: { fontSize: 11, color: colors.textFaint },
+    footerBtns: { flexDirection: 'row', gap: 8 },
+    exportBtn: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+    exportText: { fontSize: 12, fontWeight: '700', color: colors.textDim },
+  });
