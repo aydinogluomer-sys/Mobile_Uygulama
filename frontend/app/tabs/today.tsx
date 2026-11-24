@@ -134,7 +134,7 @@ export default function TodayScreen() {
   const isWide = width >= 1180;
   const clock = useTodayClock();
   const today = clock.today;
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const [scrollY] = useState(() => new Animated.Value(0));
 
   const { fetchHabits, timeOffAvailable, addTimeOff, endTimeOff, checklistItems } = useHabitStore(
     useShallow((st) => ({
@@ -223,13 +223,15 @@ export default function TodayScreen() {
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<PartGroupKey>>(EMPTY_GROUPS);
   const lightDayOpen = lightDayPick !== null;
 
-  useEffect(() => {
-    void useMoodStore.getState().hydrate();
-  }, [clock.today]);
-
-  useEffect(() => {
+  const [trackedDay, setTrackedDay] = useState(clock.today);
+  if (trackedDay !== clock.today) {
+    setTrackedDay(clock.today);
     setExpandedGroups(EMPTY_GROUPS);
     setCapsuleMoment(false);
+  }
+
+  useEffect(() => {
+    void useMoodStore.getState().hydrate();
   }, [clock.today]);
 
   useEffect(() => {
@@ -314,15 +316,10 @@ export default function TodayScreen() {
   const showRoutine = isToolVisible('routine', stage, choices.routine, toolCtx);
   const showStrategy = isToolVisible('strategy', stage, choices.strategy, toolCtx);
 
-  useEffect(() => {
-    if (!showSegments && activeSegment !== 'all') {
-      setActiveSegment('all');
-    } else if (activeSegment === 'balance' && !showBalance && !showRoutine && !showStrategy) {
-      setActiveSegment('all');
-    }
-  }, [showSegments, showBalance, showRoutine, showStrategy, activeSegment]);
-
-  const effectiveSegment = showSegments ? activeSegment : 'all';
+  const effectiveSegment =
+    !showSegments || (activeSegment === 'balance' && !showBalance && !showRoutine && !showStrategy)
+      ? 'all'
+      : activeSegment;
 
   const loadPeriodLogs = useCallback(async () => {
     const res = await logsForPeriod({ start: periodWindowStart(todayDate), end: today });
@@ -339,7 +336,7 @@ export default function TodayScreen() {
   }, [fetchHabits, fetchLogsForDate, fetchPlans, fetchTasks, fetchToday, loadPeriodLogs, today]);
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(() => load());
   }, [load]);
 
   async function onRefresh() {
@@ -358,7 +355,7 @@ export default function TodayScreen() {
         return;
       }
       if (isMeasurableTracking(h.tracking_type)) {
-        router.push('/tabs/timeline' as any);
+        router.push('/tabs/timeline');
         return;
       }
       const log = getLogForHabit(h.id);
@@ -392,10 +389,10 @@ export default function TodayScreen() {
 
   const openNowAction = useCallback(
     (a: NextAction) => {
-      if (a.kind === 'focus') router.push('/tabs/focus' as any);
-      else if (a.kind === 'routine') router.push('/screens/routine-runner' as any);
+      if (a.kind === 'focus') router.push('/tabs/focus');
+      else if (a.kind === 'routine') router.push('/screens/routine-runner');
       else if (a.kind === 'recovery') navigateTo(router, 'recovery');
-      else if (a.kind === 'task') router.push('/tabs/tasks' as any);
+      else if (a.kind === 'task') router.push('/tabs/tasks');
       else {
         const h = habits.find((x) => x.id === a.id);
         if (h) void onHabitTap(h);
@@ -434,7 +431,7 @@ export default function TodayScreen() {
         label: primary.label,
         icon: (primary.verb === 'Devam et' ? 'play-forward' : 'play') as 'play-forward' | 'play',
         variant: 'primary' as const,
-        onPress: () => (nowAction ? openNowAction(nowAction) : router.push('/tabs/focus' as any)),
+        onPress: () => (nowAction ? openNowAction(nowAction) : router.push('/tabs/focus')),
       },
       {
         label: t('today.more.title'),
@@ -457,21 +454,21 @@ export default function TodayScreen() {
             ? t('today.metrics.tasks.subOverdue', { overdue: overdueList.length, today: todayTasks.length })
             : t('today.metrics.tasks.subToday', { count: todayTasks.length }),
         tone: 'mute',
-        onPress: () => router.push('/tabs/tasks' as any),
+        onPress: () => router.push('/tabs/tasks'),
       },
       {
         eyebrow: t('today.metrics.focus.eyebrow'),
         value: sessionsCompleted > 0 ? String(sessionsCompleted) : '—',
         sub: sessionsCompleted > 0 ? t('today.metrics.focus.subDone') : t('today.metrics.focus.subIdle'),
         tone: sessionsCompleted > 0 ? 'accent' : 'mute',
-        onPress: () => router.push('/tabs/focus' as any),
+        onPress: () => router.push('/tabs/focus'),
       },
       {
         eyebrow: t('today.metrics.habits.eyebrow'),
         value: `${Math.round(habitPct * 100)}%`,
         sub: habitCopy.metricSub,
         tone: habitSummary.total > 0 && remainingHabits === 0 ? 'ok' : 'mute',
-        onPress: () => router.push('/tabs/timeline' as any),
+        onPress: () => router.push('/tabs/timeline'),
       },
       {
         eyebrow: t('today.metrics.recovery.eyebrow'),
@@ -495,7 +492,7 @@ export default function TodayScreen() {
   ]);
 
   const handleNextUpPress = useCallback(() => {
-    router.push('/tabs/tasks' as any);
+    router.push('/tabs/tasks');
   }, [router]);
 
   const blockTasks = useMemo(() => todayTasks.filter((task) => !!task.time_block_start), [todayTasks]);
@@ -643,7 +640,7 @@ export default function TodayScreen() {
             activeOpacity={0.85}
             onPress={() => {
               haptic.select();
-              router.push(`/screens/focus-flow?item=${dailySpark.item.id}` as any);
+              router.push(`/screens/focus-flow?item=${dailySpark.item.id}`);
             }}
             accessibilityRole="button"
             accessibilityLabel={t('today.spark.watch.a11y')}
@@ -905,8 +902,8 @@ export default function TodayScreen() {
                 stateOf={stateOf}
                 onHabitTap={onHabitTap}
                 onToggleGroup={handleToggleGroup}
-                onOpenRing={() => router.push('/tabs/timeline' as any)}
-                onOpenTimeline={() => router.push('/tabs/timeline' as any)}
+                onOpenRing={() => router.push('/tabs/timeline')}
+                onOpenTimeline={() => router.push('/tabs/timeline')}
                 onOpenLightDay={() => setLightDayPick(new Set())}
                 onOpenHoliday={() => setHolidayOpen(true)}
               />
@@ -932,7 +929,7 @@ export default function TodayScreen() {
                     label={t('today.seeAll')}
                     variant="ghost"
                     size="sm"
-                    onPress={() => router.push('/tabs/tasks' as any)}
+                    onPress={() => router.push('/tabs/tasks')}
                     accessibilityLabel={t('today.tasks.openAll.a11y')}
                   />
                 </View>
@@ -962,7 +959,7 @@ export default function TodayScreen() {
                       title={t('today.tasks.empty.title')}
                       hint={t('today.tasks.empty.hint')}
                       ctaLabel={t('today.tasks.empty.cta')}
-                      onCta={() => router.push('/tabs/tasks' as any)}
+                      onCta={() => router.push('/tabs/tasks')}
                       color={c.success}
                       compact
                     />
@@ -1022,7 +1019,7 @@ export default function TodayScreen() {
                 </TouchableOpacity>
 
                 {wp && (
-                  <Card padding="lg" onPress={() => router.push('/tabs/timeline' as any)}>
+                  <Card padding="lg" onPress={() => router.push('/tabs/timeline')}>
                     <View style={s.wpHead}>
                       <Text style={s.wpHeadText}>{t('today.willpower.title')}</Text>
                       <Text style={s.wpHeadHint}>{t('today.willpower.hint')}</Text>
@@ -1040,7 +1037,7 @@ export default function TodayScreen() {
             )}
 
             {showRoutine && (
-              <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => router.push('/screens/routine-runner' as any)}>
+              <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => router.push('/screens/routine-runner')}>
                 <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={108} opacity={0.16} />
                 <SectionHeader title={t('today.routine.overline')} variant="overline" />
                 <Text style={s.breakNote}>
@@ -1091,7 +1088,7 @@ export default function TodayScreen() {
         onClose={() => setSmallStartFor(null)}
         onStart={(parent, draft) => {
           const started = useFocusStore.getState().startSmallStep(parent, draft);
-          if (started) { setSmallStartFor(null); router.push('/tabs/focus' as any); }
+          if (started) { setSmallStartFor(null); router.push('/tabs/focus'); }
           return started;
         }}
       />

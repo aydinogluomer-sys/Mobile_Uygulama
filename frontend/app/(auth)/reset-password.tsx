@@ -6,7 +6,8 @@ import { Link, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { supabase } from '../../lib/supabase';
 import { signOutLocal } from '../../services/accountService';
-import { colors, space, radius, font, shadow, fontFamily } from '../../lib/tokens';
+import { space, radius, font, shadow, fontFamily, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { Button, EmblemMedallion } from '../../components/ui';
 import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
@@ -17,6 +18,8 @@ import { establishSessionFromAuthUrl, useAuthLinkUrl } from '../../lib/authDeepL
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -212,7 +215,7 @@ export default function ResetPasswordScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { flexGrow: 1, justifyContent: 'center', width: '100%', maxWidth: 480, alignSelf: 'center', paddingHorizontal: 28, paddingVertical: 40 },
   brand: { alignItems: 'center', marginBottom: 28 },

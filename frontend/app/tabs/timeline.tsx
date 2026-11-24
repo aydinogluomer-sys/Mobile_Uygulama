@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
   View,
   Text,
@@ -30,7 +30,8 @@ import type { Habit } from '../../lib/supabase';
 import { computeTriage, triageToStatus, impactMeta, TRIAGE_META, cueLabel } from '../../lib/triage';
 import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from '../../lib/capacity';
 import { syncAllReminders } from '../../lib/notifications';
-import { colors, radius, hexA } from '../../lib/tokens';
+import { radius, hexA, alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
 import { EditorialBanner, WillpowerBand, SectionHeader, EmptyState, FormError, IconButton, ProgressBar, SheetModal } from '../../components/ui';
 import { undoToastBottom } from '../../lib/layoutMetrics';
@@ -47,6 +48,8 @@ import HabitMgmtCard from '../../components/habits/HabitMgmtCard';
 import { navigateTo } from '../../lib/destinations';
 import { t } from '../../lib/i18n';
 
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
 const FAB_BOTTOM = Platform.OS === 'ios' ? 100 : 80;
 
 function getDeleteReasons(): string[] {
@@ -61,6 +64,8 @@ function getDeleteReasons(): string[] {
 
 export default function TimelineScreen() {
   const router = useRouter();
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion(); // R06.04 — toasts appear without the slide
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [loading, setLoading] = useState(true);
@@ -86,9 +91,13 @@ export default function TimelineScreen() {
   const consumeIntent = useCommandStore((st) => st.consumeIntent);
   useEffect(() => {
     if (pendingIntent === 'new-habit') {
-      if (consumeIntent() === 'new-habit') setShowOnboarding(true);
+      if (consumeIntent() === 'new-habit') {
+        queueMicrotask(() => setShowOnboarding(true));
+      }
     } else if (pendingIntent === 'ai-routine') {
-      if (consumeIntent() === 'ai-routine') setShowAIRoutine(true);
+      if (consumeIntent() === 'ai-routine') {
+        queueMicrotask(() => setShowAIRoutine(true));
+      }
     }
   }, [pendingIntent, consumeIntent]);
 
@@ -160,10 +169,12 @@ export default function TimelineScreen() {
   }, [selectedDate, fetchHabits, fetchLogsForDate, fetchToday]);
 
   useEffect(() => {
-    setLoading(true);
-    loadData().finally(() => setLoading(false));
-    return () => { if (deleteTimer.current) clearTimeout(deleteTimer.current); };
+    void loadData().finally(() => setLoading(false));
   }, [loadData]);
+
+  useEffect(() => () => {
+    if (deleteTimer.current) clearTimeout(deleteTimer.current);
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -396,24 +407,24 @@ export default function TimelineScreen() {
             <Text style={[styles.habitRowName, isDone && styles.habitRowNameDone]}>{habit.name}</Text>
             <View style={styles.rowBadges}>
               {imp && (
-                <View style={[styles.impactChip, { backgroundColor: imp.color + '20', borderColor: imp.color + '40' }]}>
+                <View style={[styles.impactChip, { backgroundColor: alphaHex(imp.color, '20'), borderColor: alphaHex(imp.color, '40') }]}>
                   <View style={[styles.impactChipDot, { backgroundColor: imp.color }]} />
                   <Text style={[styles.impactChipText, { color: imp.color }]}>{imp.label}</Text>
                 </View>
               )}
               <View style={styles.wpCostBadge}>
-                <Ionicons name="flash" size={10} color="#f59e0b" />
+                <Ionicons name="flash" size={10} color={colors.warning} />
                 <Text style={styles.wpCostText}>{habit.willpower_cost}</Text>
               </View>
               {habit.estimated_minutes > 0 && (
                 <View style={styles.minBadge}>
-                  <Ionicons name="timer-outline" size={10} color="#14b8a6" />
+                  <Ionicons name="timer-outline" size={10} color={colors.teal} />
                   <Text style={styles.minBadgeText}>{t('habits.minutesShort', { minutes: habit.estimated_minutes })}</Text>
                 </View>
               )}
               {habit.reminders?.enabled && (
                 <View style={styles.remBadge}>
-                  <Ionicons name="notifications" size={10} color="#a78bfa" />
+                  <Ionicons name="notifications" size={10} color={colors.info} />
                   <Text style={styles.remBadgeText}>{habit.reminders.time}</Text>
                 </View>
               )}
@@ -449,7 +460,7 @@ export default function TimelineScreen() {
             compact
             icon="checkmark-done-circle-outline"
             size={22}
-            color="#10b981"
+            color={colors.success}
             label={t('habits.mgmt.complete.a11y', { name: habit.name })}
             style={styles.rowIconBtn}
             onPress={() => { void handleComplete(habit); }}
@@ -458,7 +469,7 @@ export default function TimelineScreen() {
             compact
             icon="pause-circle-outline"
             size={22}
-            color={colors.neutral400}
+            color={colors.textDim}
             label={t('habits.mgmt.pause.a11y', { name: habit.name })}
             style={styles.rowIconBtn}
             onPress={() => { void handlePause(habit); }}
@@ -467,7 +478,7 @@ export default function TimelineScreen() {
             compact
             icon="trash-outline"
             size={16}
-            color="#ef4444"
+            color={colors.error}
             label={t('habits.mgmt.delete.a11y', { name: habit.name })}
             style={styles.rowTrashBtn}
             onPress={() => { setDeleteReason(''); setDeleteTarget(habit); }}
@@ -527,7 +538,7 @@ export default function TimelineScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('habits.mode.flow.a11y')}
         >
-          <Ionicons name="pulse-outline" size={14} color={viewMode === 'flow' ? colors.primary : colors.neutral400} />
+          <Ionicons name="pulse-outline" size={14} color={viewMode === 'flow' ? colors.primary : colors.textDim} />
           <Text style={[styles.modeChipText, viewMode === 'flow' && styles.modeChipTextActive]}>{t('habits.mode.flow')}</Text>
         </TouchableOpacity>
 
@@ -537,7 +548,7 @@ export default function TimelineScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('habits.mode.matrix.a11y')}
         >
-          <Ionicons name="options-outline" size={14} color={viewMode === 'matrix' ? colors.primary : colors.neutral400} />
+          <Ionicons name="options-outline" size={14} color={viewMode === 'matrix' ? colors.primary : colors.textDim} />
           <Text style={[styles.modeChipText, viewMode === 'matrix' && styles.modeChipTextActive]}>{t('habits.mode.matrix')}</Text>
         </TouchableOpacity>
 
@@ -547,7 +558,7 @@ export default function TimelineScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('habits.mode.limits.a11y')}
         >
-          <Ionicons name="shield-half-outline" size={14} color="#ef4444" />
+          <Ionicons name="shield-half-outline" size={14} color={colors.error} />
           <Text style={styles.modeChipText}>{t('habits.mode.limits')}</Text>
         </TouchableOpacity>
       </View>
@@ -653,7 +664,7 @@ export default function TimelineScreen() {
                   {t('habits.explore.sub')}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.neutral400} />
+              <Ionicons name="chevron-forward" size={16} color={colors.textDim} />
             </TouchableOpacity>
 
         {/* Aktif Odak — takip edilebilir */}
@@ -745,7 +756,7 @@ export default function TimelineScreen() {
           accessibilityRole="alert"
           accessibilityLiveRegion="polite"
         >
-          <Ionicons name="trash" size={16} color="#ef4444" />
+          <Ionicons name="trash" size={16} color={colors.error} />
           <Text style={styles.undoText} numberOfLines={1}>
             {t('habits.toast.deleted', { name: pendingDelete.habit.name })}
           </Text>
@@ -789,7 +800,7 @@ export default function TimelineScreen() {
             sheetStyle={styles.delSheet}
             accessibilityLabel={t('habits.delete.sheet.a11y')}
           >
-            <View style={styles.delIconWrap}><Ionicons name="trash-outline" size={26} color="#ef4444" /></View>
+            <View style={styles.delIconWrap}><Ionicons name="trash-outline" size={26} color={colors.error} /></View>
             <Text style={styles.delTitle}>{t('habits.delete.title')}</Text>
             <Text style={styles.delSub} numberOfLines={2}>
               {t('habits.delete.prompt', { name: deleteTarget?.name ?? '' })}
@@ -846,7 +857,7 @@ export default function TimelineScreen() {
         <View style={styles.capOverlay}>
           <View style={styles.capSheet}>
             <View style={styles.capHeader}>
-              <View style={styles.capWarnIcon}><Ionicons name="flash" size={22} color="#ef4444" /></View>
+              <View style={styles.capWarnIcon}><Ionicons name="flash" size={22} color={colors.error} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.capTitle}>{t('habits.capacity.modal.title')}</Text>
                 <Text style={styles.capSub}>
@@ -862,7 +873,7 @@ export default function TimelineScreen() {
               <View style={styles.capStatRow}>
                 <View style={styles.capStat}><Text style={styles.capStatVal}>{wp.daily_budget - wp.used}</Text><Text style={styles.capStatLabel}>{t('habits.capacity.freeWillpower')}</Text></View>
                 <View style={styles.capStat}><Text style={styles.capStatVal}>{wp.focus_capacity - wp.active_count}</Text><Text style={styles.capStatLabel}>{t('habits.capacity.freeSlots')}</Text></View>
-                <View style={styles.capStat}><Text style={[styles.capStatVal, { color: '#f59e0b' }]}>{capacityTarget.willpower_cost}</Text><Text style={styles.capStatLabel}>{t('habits.capacity.required')}</Text></View>
+                <View style={styles.capStat}><Text style={[styles.capStatVal, { color: colors.warning }]}>{capacityTarget.willpower_cost}</Text><Text style={styles.capStatLabel}>{t('habits.capacity.required')}</Text></View>
               </View>
             )}
 
@@ -894,18 +905,18 @@ export default function TimelineScreen() {
               ) : (
                 activeHabits.map((h) => (
                   <View key={h.id} style={styles.capItem}>
-                    <View style={[styles.capItemIcon, { backgroundColor: (h.color ?? colors.primary) + '25' }]}>
-                      <Ionicons name={(h.icon ?? 'star-outline') as any} size={18} color={h.color ?? colors.primary} />
+                    <View style={[styles.capItemIcon, { backgroundColor: alphaHex(h.color ?? colors.primary, '25') }]}>
+                      <Ionicons name={(h.icon ?? 'star-outline') as IoniconName} size={18} color={h.color ?? colors.primary} />
                     </View>
                     <Text style={styles.capItemName} numberOfLines={1}>{h.name}</Text>
-                    <View style={styles.capItemCost}><Ionicons name="flash" size={11} color="#f59e0b" /><Text style={styles.capItemCostText}>{h.willpower_cost}</Text></View>
+                    <View style={styles.capItemCost}><Ionicons name="flash" size={11} color={colors.warning} /><Text style={styles.capItemCostText}>{h.willpower_cost}</Text></View>
                     <TouchableOpacity
                       style={styles.capMoveBtn}
                       onPress={() => handlePause(h)}
                       accessibilityRole="button"
                       accessibilityLabel={t('habits.mgmt.pause.a11y', { name: h.name })}
                     >
-                      <Ionicons name="arrow-down" size={13} color={colors.neutral400} /><Text style={styles.capMoveText}>{t('habits.mgmt.wait')}</Text>
+                      <Ionicons name="arrow-down" size={13} color={colors.textDim} /><Text style={styles.capMoveText}>{t('habits.mgmt.wait')}</Text>
                     </TouchableOpacity>
                   </View>
                 ))
@@ -926,7 +937,7 @@ export default function TimelineScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t('habits.capacity.addWaiting.a11y')}
               >
-                <Ionicons name="time-outline" size={15} color="#f59e0b" /><Text style={styles.capWaitText}>{t('habits.capacity.addWaiting')}</Text>
+                <Ionicons name="time-outline" size={15} color={colors.warning} /><Text style={styles.capWaitText}>{t('habits.capacity.addWaiting')}</Text>
               </TouchableOpacity>
             </View>
             <TouchableOpacity
@@ -949,7 +960,7 @@ export default function TimelineScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
 
@@ -962,27 +973,27 @@ const styles = StyleSheet.create({
   dayItem: { alignItems: 'center', justifyContent: 'center', width: 44, height: 60, borderRadius: 12 },
   daySelected: { backgroundColor: colors.primary },
   dayToday: { borderWidth: 1, borderColor: colors.primary },
-  dayName: { fontSize: 11, color: colors.neutral400, marginBottom: 4 },
-  dayNum: { fontSize: 17, fontWeight: '600', color: colors.white },
+  dayName: { fontSize: 11, color: colors.textDim, marginBottom: 4 },
+  dayNum: { fontSize: 17, fontWeight: '600', color: colors.text },
   dayTextSel: { color: colors.white },
 
   summaryBar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.coolBlack750,
+    paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
   },
-  summaryDate: { fontSize: 16, fontWeight: '700', color: colors.white },
-  summaryProgress: { fontSize: 13, color: colors.neutral400 },
+  summaryDate: { fontSize: 16, fontWeight: '700', color: colors.text },
+  summaryProgress: { fontSize: 13, color: colors.textDim },
 
   scroll: { flex: 1 },
   section: { paddingHorizontal: 12, paddingTop: 16 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, paddingHorizontal: 2 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.white, flex: 1 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.text, flex: 1 },
   sectionCount: { fontSize: 13, color: colors.textFaint, fontWeight: '600' },
   sectionHint: { fontSize: 12, color: colors.textFaint, marginBottom: 10, fontStyle: 'italic', paddingHorizontal: 2 },
 
   empty: { alignItems: 'center', paddingVertical: 32, gap: 8 },
   emptySmall: { alignItems: 'center', paddingVertical: 16 },
-  emptyTitle: { fontSize: 16, fontWeight: '600', color: colors.white },
+  emptyTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
   emptyHint: { fontSize: 13, color: colors.textFaint },
 
   // Takip satırı (aktif)
@@ -993,20 +1004,20 @@ const styles = StyleSheet.create({
   },
   habitRowDone: { opacity: 0.6, borderColor: hexA(colors.success, 0.25) },
   habitRowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
-  check: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: colors.coolBlack600, alignItems: 'center', justifyContent: 'center' },
+  check: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   habitRowInfo: { flex: 1 },
-  habitRowName: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 4 },
+  habitRowName: { fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 4 },
   habitRowNameDone: { textDecorationLine: 'line-through', color: colors.textFaint },
   rowBadges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' },
   measurableRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  measurableTrack: { flex: 1, height: 4, backgroundColor: colors.coolBlack700, borderRadius: 2, overflow: 'hidden' },
+  measurableTrack: { flex: 1, height: 4, backgroundColor: colors.surfaceAlt, borderRadius: 2, overflow: 'hidden' },
   measurableFill: { height: '100%', borderRadius: 2 },
-  measurableLabel: { fontSize: 11, color: colors.neutral400, minWidth: 80 },
+  measurableLabel: { fontSize: 11, color: colors.textDim, minWidth: 80 },
   rowActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   rowIconBtn: { padding: 2 },
   rowTrashBtn: {
-    width: 32, height: 32, borderRadius: 9, backgroundColor: '#ef444415',
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#ef444430',
+    width: 32, height: 32, borderRadius: 9, backgroundColor: alphaHex(colors.error, '15'),
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: alphaHex(colors.error, '30'),
   },
   xpBadge: { backgroundColor: hexA(colors.primary, 0.12), borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3, marginRight: 2 },
   xpBadgeText: { fontSize: 11, color: colors.primary, fontWeight: '600' },
@@ -1021,17 +1032,17 @@ const styles = StyleSheet.create({
   mgmtCardDone: { opacity: 0.55, borderColor: hexA(colors.success, 0.25) },
   iconWrap: { width: 42, height: 42, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   mgmtMeta: { flex: 1 },
-  mgmtName: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 4 },
+  mgmtName: { fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 4 },
 
   impactChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1 },
   impactChipDot: { width: 7, height: 7, borderRadius: 4 },
   impactChipText: { fontSize: 11, fontWeight: '600' },
-  wpCostBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#f59e0b20', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  wpCostText: { fontSize: 11, color: '#f59e0b', fontWeight: '600' },
-  minBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#14b8a620', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  minBadgeText: { fontSize: 11, color: '#14b8a6', fontWeight: '600' },
-  remBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#8b5cf620', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  remBadgeText: { fontSize: 11, color: '#a78bfa', fontWeight: '600' },
+  wpCostBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: alphaHex(colors.warning, '20'), borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  wpCostText: { fontSize: 11, color: colors.warning, fontWeight: '600' },
+  minBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: alphaHex(colors.teal, '20'), borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  minBadgeText: { fontSize: 11, color: colors.teal, fontWeight: '600' },
+  remBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: alphaHex(colors.info, '20'), borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  remBadgeText: { fontSize: 11, color: colors.info, fontWeight: '600' },
   cueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   cueText: { fontSize: 12, color: colors.textFaint, flex: 1 },
   stackingChainRow: {
@@ -1052,7 +1063,7 @@ const styles = StyleSheet.create({
   modeChipActive: {
     backgroundColor: hexA(colors.primary, 0.14), borderColor: colors.primary,
   },
-  modeChipText: { fontSize: 12, fontWeight: '600', color: colors.neutral400 },
+  modeChipText: { fontSize: 12, fontWeight: '600', color: colors.textDim },
   modeChipTextActive: { color: colors.primary, fontWeight: '700' },
   topActionGrid: {
     flexDirection: 'row', gap: 10, paddingHorizontal: 12, paddingTop: 12,
@@ -1064,7 +1075,7 @@ const styles = StyleSheet.create({
   },
   exploreStripCard: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: hexA('#f59e0b', 0.35),
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: hexA(colors.warning, 0.35),
     borderRadius: radius.md, padding: 11, marginHorizontal: 12, marginTop: 10,
   },
   measurableBadge: { backgroundColor: hexA(colors.primary, 0.12), borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
@@ -1079,8 +1090,8 @@ const styles = StyleSheet.create({
   },
   moveBtnText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
   trashBtn: {
-    width: 32, height: 32, borderRadius: 9, backgroundColor: '#ef444415',
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#ef444430',
+    width: 32, height: 32, borderRadius: 9, backgroundColor: alphaHex(colors.error, '15'),
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: alphaHex(colors.error, '30'),
   },
 
   fab: {
@@ -1096,64 +1107,64 @@ const styles = StyleSheet.create({
   undoToast: {
     position: 'absolute', left: 16, right: 16, bottom: undoToastBottom(FAB_BOTTOM),
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.coolBlack800, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
-    borderWidth: 1, borderColor: colors.coolBlack700,
+    backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
+    borderWidth: 1, borderColor: colors.surfaceAlt,
     shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 10,
   },
-  undoText: { flex: 1, fontSize: 14, color: colors.neutral200 },
+  undoText: { flex: 1, fontSize: 14, color: colors.text },
   undoBtn: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: hexA(colors.primary, 0.12), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: hexA(colors.primary, 0.25) },
   undoBtnText: { fontSize: 13, color: colors.primary, fontWeight: '700' },
 
   // Silme modalı
-  delSheet: { backgroundColor: colors.coolBlack800, borderRadius: 20, padding: 22, borderWidth: 1, borderColor: colors.coolBlack700 },
-  delIconWrap: { width: 52, height: 52, borderRadius: 16, backgroundColor: '#ef444418', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 12 },
-  delTitle: { fontSize: 19, fontWeight: '800', color: colors.white, textAlign: 'center', marginBottom: 4 },
-  delSub: { fontSize: 13, color: colors.neutral400, textAlign: 'center', marginBottom: 18, lineHeight: 18 },
+  delSheet: { backgroundColor: colors.surface, borderRadius: 20, padding: 22, borderWidth: 1, borderColor: colors.surfaceAlt },
+  delIconWrap: { width: 52, height: 52, borderRadius: 16, backgroundColor: alphaHex(colors.error, '18'), alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 12 },
+  delTitle: { fontSize: 19, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: 4 },
+  delSub: { fontSize: 13, color: colors.textDim, textAlign: 'center', marginBottom: 18, lineHeight: 18 },
   reasonWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-  reasonChip: { backgroundColor: colors.coolBlack900, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: colors.coolBlack700 },
-  reasonChipSel: { backgroundColor: '#ef444418', borderColor: '#ef4444' },
-  reasonChipText: { fontSize: 13, color: colors.neutral400 },
-  reasonChipTextSel: { color: '#ef4444', fontWeight: '600' },
-  reasonInput: { backgroundColor: colors.coolBlack900, borderRadius: 12, padding: 12, fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.coolBlack700, marginBottom: 18 },
+  reasonChip: { backgroundColor: colors.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: colors.surfaceAlt },
+  reasonChipSel: { backgroundColor: alphaHex(colors.error, '18'), borderColor: colors.error },
+  reasonChipText: { fontSize: 13, color: colors.textDim },
+  reasonChipTextSel: { color: colors.error, fontWeight: '600' },
+  reasonInput: { backgroundColor: colors.bg, borderRadius: 12, padding: 12, fontSize: 14, color: colors.text, borderWidth: 1, borderColor: colors.surfaceAlt, marginBottom: 18 },
   delActions: { flexDirection: 'row', gap: 12 },
-  delCancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.coolBlack700, alignItems: 'center' },
-  delCancelText: { fontSize: 15, fontWeight: '600', color: colors.neutral200 },
-  delConfirmBtn: { flex: 1, flexDirection: 'row', gap: 6, paddingVertical: 13, borderRadius: 12, backgroundColor: '#ef4444', alignItems: 'center', justifyContent: 'center' },
+  delCancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.surfaceAlt, alignItems: 'center' },
+  delCancelText: { fontSize: 15, fontWeight: '600', color: colors.text },
+  delConfirmBtn: { flex: 1, flexDirection: 'row', gap: 6, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.error, alignItems: 'center', justifyContent: 'center' },
   delConfirmText: { fontSize: 15, fontWeight: '700', color: colors.white },
 
   // Kapasite yöneticisi
-  capOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
-  capSheet: { backgroundColor: colors.coolBlack800, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 24, maxHeight: '88%' },
+  capOverlay: { flex: 1, backgroundColor: hexA(colors.black, 0.85), justifyContent: 'flex-end' },
+  capSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 24, maxHeight: '88%' },
   capHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
-  capWarnIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#ef444418', alignItems: 'center', justifyContent: 'center' },
-  capTitle: { fontSize: 18, fontWeight: '800', color: colors.white },
-  capSub: { fontSize: 13, color: colors.neutral400, marginTop: 2, lineHeight: 17 },
+  capWarnIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: alphaHex(colors.error, '18'), alignItems: 'center', justifyContent: 'center' },
+  capTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
+  capSub: { fontSize: 13, color: colors.textDim, marginTop: 2, lineHeight: 17 },
   capStatRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
-  capStat: { flex: 1, backgroundColor: colors.coolBlack900, borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.coolBlack700 },
-  capStatVal: { fontSize: 20, fontWeight: '800', color: colors.white },
+  capStat: { flex: 1, backgroundColor: colors.bg, borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.surfaceAlt },
+  capStatVal: { fontSize: 20, fontWeight: '800', color: colors.text },
   capStatLabel: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   capAdviceBox: {
-    backgroundColor: colors.coolBlack900, borderRadius: 12, padding: 12, marginBottom: 14,
-    borderWidth: 1, borderColor: colors.coolBlack700,
+    backgroundColor: colors.bg, borderRadius: 12, padding: 12, marginBottom: 14,
+    borderWidth: 1, borderColor: colors.surfaceAlt,
   },
-  capAdviceFormula: { fontSize: 13, fontWeight: '700', color: '#f59e0b', marginBottom: 4 },
-  capAdviceMsg: { fontSize: 12, color: colors.neutral400, lineHeight: 16 },
+  capAdviceFormula: { fontSize: 13, fontWeight: '700', color: colors.warning, marginBottom: 4 },
+  capAdviceMsg: { fontSize: 12, color: colors.textDim, lineHeight: 16 },
   capListTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
   capList: { maxHeight: 240 },
   capEmpty: { fontSize: 13, color: colors.textFaint, textAlign: 'center', paddingVertical: 16 },
-  capItem: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.coolBlack900, borderRadius: 12, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: colors.coolBlack700 },
+  capItem: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.bg, borderRadius: 12, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: colors.surfaceAlt },
   capItemIcon: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  capItemName: { flex: 1, fontSize: 14, color: colors.neutral200, fontWeight: '500' },
-  capItemCost: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#f59e0b20', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  capItemCostText: { fontSize: 11, color: '#f59e0b', fontWeight: '600' },
-  capMoveBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.coolBlack700, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
-  capMoveText: { fontSize: 12, color: colors.neutral400, fontWeight: '600' },
+  capItemName: { flex: 1, fontSize: 14, color: colors.text, fontWeight: '500' },
+  capItemCost: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: alphaHex(colors.warning, '20'), borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  capItemCostText: { fontSize: 11, color: colors.warning, fontWeight: '600' },
+  capMoveBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  capMoveText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
   capActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  capCancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.coolBlack700, alignItems: 'center' },
-  capCancelText: { fontSize: 14, fontWeight: '600', color: colors.neutral200 },
-  capWaitBtn: { flex: 1.4, flexDirection: 'row', gap: 6, paddingVertical: 13, borderRadius: 12, backgroundColor: '#f59e0b18', borderWidth: 1, borderColor: '#f59e0b40', alignItems: 'center', justifyContent: 'center' },
-  capWaitText: { fontSize: 14, fontWeight: '700', color: '#f59e0b' },
-  capActivateBtn: { flexDirection: 'row', gap: 8, paddingVertical: 15, borderRadius: 12, marginTop: 10, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center' },
+  capCancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: colors.surfaceAlt, alignItems: 'center' },
+  capCancelText: { fontSize: 14, fontWeight: '600', color: colors.text },
+  capWaitBtn: { flex: 1.4, flexDirection: 'row', gap: 6, paddingVertical: 13, borderRadius: 12, backgroundColor: alphaHex(colors.warning, '18'), borderWidth: 1, borderColor: alphaHex(colors.warning, '40'), alignItems: 'center', justifyContent: 'center' },
+  capWaitText: { fontSize: 14, fontWeight: '700', color: colors.warning },
+  capActivateBtn: { flexDirection: 'row', gap: 8, paddingVertical: 15, borderRadius: 12, marginTop: 10, backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center' },
   capActivateDisabled: { backgroundColor: colors.selectedTintSuccess, opacity: 0.7 },
   capActivateText: { fontSize: 15, fontWeight: '700', color: colors.white },
 
@@ -1186,7 +1197,7 @@ const styles = StyleSheet.create({
   routineBannerTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.white,
+    color: colors.text,
   },
   routineBannerSub: {
     fontSize: 12,

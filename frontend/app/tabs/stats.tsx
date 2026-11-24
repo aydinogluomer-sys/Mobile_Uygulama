@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type ComponentProps } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
   useWindowDimensions, TouchableOpacity, Modal, RefreshControl,
@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 import { format, subDays, getDaysInMonth } from 'date-fns';
 import { decimalTR, seriesText } from '../../lib/chartText';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
@@ -19,12 +20,15 @@ import { LIFE_AREAS, AreaKey } from '../../store/lifeAreasStore';
 import AreaRadar from '../../components/AreaRadar';
 import HabitListView from '../../components/HabitListView';
 import KintsugiYearGrid from '../../components/habits/KintsugiYearGrid';
-import { colors, space, radius, font, hexA, fontFamily } from '../../lib/tokens';
+import { space, radius, font, hexA, alphaHex, fontFamily, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
 import { barWidth, chartWidth, radarSize } from '../../lib/layoutMetrics';
 import { Card, StatTile, SectionHeader, ProgressBar, ProgressRing, EmptyState, Button, EditorialBanner } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
+
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 const MONTHS_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
@@ -35,6 +39,7 @@ const BAR_GAP = 3;
 const CHART_H = 80;
 
 export function TrendChart({ data, width: winWidth = 375 }: { data: number[]; width?: number }) {
+  const colors = useThemeColors();
   const CHART_WIDTH = chartWidth(winWidth);
   const BAR_W = barWidth(CHART_WIDTH, BAR_COUNT, BAR_GAP);
   const max = Math.max(...data, 1);
@@ -76,6 +81,8 @@ export function TrendChart({ data, width: winWidth = 375 }: { data: number[]; wi
 
 export default function StatsScreen() {
   const router = useRouter();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const { width } = useWindowDimensions();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -92,8 +99,14 @@ export default function StatsScreen() {
   const [monthCompletions, setMonthCompletions] = useState(0);
   const [partialData, setPartialData] = useState(false);
 
-  const { habits, fetchHabits, updateHabit } = useHabitStore();
-  const { fetchTasks } = useTaskStore();
+  const { habits, fetchHabits, updateHabit } = useHabitStore(
+    useShallow((st) => ({
+      habits: st.habits,
+      fetchHabits: st.fetchHabits,
+      updateHabit: st.updateHabit,
+    })),
+  );
+  const fetchTasks = useTaskStore((st) => st.fetchTasks);
 
   const now = new Date();
   const monthName = MONTHS_TR[now.getMonth()];
@@ -151,7 +164,6 @@ export default function StatsScreen() {
   const noData = habits.length === 0 && totalCompletions === 0;
 
   const loadData = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
     // Read the clock when the load RUNS, not when the component last
     // rendered -- see the note above about 00:01 refreshes.
     const now = new Date();
@@ -269,7 +281,7 @@ export default function StatsScreen() {
           selected={selectedDay?.date ?? null}
           onSelect={onPickHeatDay}
           status={heatError ? 'error' : 'ready'}
-          onRetry={() => { void loadData(); }}
+          onRetry={() => { setLoading(true); void loadData(); }}
         />
 
         {selectedDay && selectedDateObj && (
@@ -293,11 +305,18 @@ export default function StatsScreen() {
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <AtmosphericScreenCanvas source={CANVASES.observatoryStats} textureSource={TEXTURES.topographic} scrim={0.64} tintColor={colors.primary} />
       {/* Görünüm sekmesi */}
-      <View style={s.viewToggle}>
+      <View style={s.viewToggle} accessibilityRole="tablist">
         {(['ozet', 'liste'] as const).map((v) => {
           const sel = view === v;
           return (
-            <TouchableOpacity key={v} style={[s.vtBtn, sel && s.vtBtnSel]} onPress={() => { haptic.select(); setView(v); }}>
+            <TouchableOpacity
+              key={v}
+              style={[s.vtBtn, sel && s.vtBtnSel]}
+              onPress={() => { haptic.select(); setView(v); }}
+              accessibilityRole="tab"
+              accessibilityLabel={v === 'ozet' ? 'Özet görünümü' : 'Liste görünümü'}
+              accessibilityState={{ selected: sel }}
+            >
               <Ionicons name={v === 'ozet' ? 'bar-chart-outline' : 'list-outline'} size={15} color={sel ? colors.white : colors.textDim} />
               <Text style={[s.vtText, sel && s.vtTextSel]}>{v === 'ozet' ? 'Özet' : 'Liste'}</Text>
             </TouchableOpacity>
@@ -316,7 +335,7 @@ export default function StatsScreen() {
             title="Henüz veri yok"
             hint="İlk alışkanlığını ekle ve birkaç gün takip et — özetin burada canlanacak."
             ctaLabel="Alışkanlık Ekle"
-            onCta={() => router.push('/tabs/timeline' as any)}
+            onCta={() => router.push('/tabs/timeline')}
           />
         </View>
       ) : (
@@ -487,7 +506,12 @@ export default function StatsScreen() {
           <View style={s.catSheet}>
             <View style={s.catHead}>
               <Text style={s.catTitle}>Kategori Ata</Text>
-              <TouchableOpacity onPress={() => setCategorizing(false)}>
+              <TouchableOpacity
+                onPress={() => setCategorizing(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Kategori atama penceresini kapat"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <Ionicons name="close" size={22} color={colors.textDim} />
               </TouchableOpacity>
             </View>
@@ -502,15 +526,17 @@ export default function StatsScreen() {
                 {uncategorized.map((h) => (
                   <View key={h.id} style={s.catRow}>
                     <View style={s.catRowHead}>
-                      <Ionicons name={(h.icon ?? 'star-outline') as any} size={16} color={h.color ?? colors.primary} />
+                      <Ionicons name={(h.icon ?? 'star-outline') as IoniconName} size={16} color={h.color ?? colors.primary} />
                       <Text style={s.catRowName} numberOfLines={1}>{h.name}</Text>
                     </View>
                     <View style={s.catChips}>
                       {LIFE_AREAS.map((a) => (
                         <TouchableOpacity
                           key={a.key}
-                          style={[s.catChip, { borderColor: a.color + '50' }]}
+                          style={[s.catChip, { borderColor: alphaHex(a.color, '50') }]}
                           onPress={() => { haptic.success(); updateHabit(h.id, { life_area: a.key }); }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${h.name} için ${a.label} kategorisini ata`}
                         >
                           <View style={[s.areaDot, { backgroundColor: a.color }]} />
                           <Text style={s.catChipText}>{a.label}</Text>
@@ -528,7 +554,7 @@ export default function StatsScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
 
   viewToggle: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
@@ -570,8 +596,8 @@ const s = StyleSheet.create({
   monthStat: { flex: 1, alignItems: 'center' },
   monthStatVal: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: 2 },
   monthStatLabel: { fontSize: 11, color: colors.textFaint },
-  monthDivider: { width: 1, height: 32, backgroundColor: colors.coolBlack700 },
-  monthBarBg: { height: 5, backgroundColor: colors.coolBlack700, borderRadius: 3, marginBottom: 6 },
+  monthDivider: { width: 1, height: 32, backgroundColor: colors.surfaceAlt },
+  monthBarBg: { height: 5, backgroundColor: colors.surfaceAlt, borderRadius: 3, marginBottom: 6 },
   monthBarFill: { height: 5, backgroundColor: colors.primary, borderRadius: 3 },
   monthBarLabel: { fontSize: 11, color: colors.textFaint },
 
@@ -581,9 +607,9 @@ const s = StyleSheet.create({
   areaRadarWrap: { alignItems: 'center', marginVertical: 10 },
   areaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
   areaDot: { width: 10, height: 10, borderRadius: 5 },
-  areaLabel: { fontSize: 13, color: colors.neutral200, width: 60 },
+  areaLabel: { fontSize: 13, color: colors.text, width: 60 },
   areaCount: { fontSize: 10, color: colors.textFaint, width: 64 },
-  areaBarBg: { flex: 1, height: 6, backgroundColor: colors.coolBlack700, borderRadius: 3, overflow: 'hidden' },
+  areaBarBg: { flex: 1, height: 6, backgroundColor: colors.surfaceAlt, borderRadius: 3, overflow: 'hidden' },
   areaBarFill: { height: '100%', borderRadius: 3 },
   areaPct: { fontSize: 12, fontWeight: '700', width: 40, textAlign: 'right' },
   areaEmpty: { alignItems: 'center', paddingVertical: 24, gap: 6 },
@@ -596,7 +622,7 @@ const s = StyleSheet.create({
   },
   catBtnText: { fontSize: 13, color: colors.primary, fontWeight: '600' },
 
-  catOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
+  catOverlay: { flex: 1, backgroundColor: hexA(colors.black, 0.85), justifyContent: 'flex-end' },
   catSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32, maxHeight: '85%' },
   catHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   catTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
@@ -614,6 +640,6 @@ const s = StyleSheet.create({
   cardSub: { fontSize: 12, color: colors.textDim, marginBottom: 14 },
   heatDetail: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
   heatDetailDot: { width: 11, height: 11, borderRadius: 2 },
-  heatDetailText: { fontSize: 12, color: colors.neutral200, fontWeight: '600' },
+  heatDetailText: { fontSize: 12, color: colors.text, fontWeight: '600' },
 
 });

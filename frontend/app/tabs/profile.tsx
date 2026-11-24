@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import SegmentedTabs, { type Segment } from '../../components/SegmentedTabs';
-import { colors } from '../../lib/tokens';
+import { type Palette } from '../../lib/tokens';
+import { useThemedStyles } from '../../hooks/useThemeColors';
 import { INTEGRATIONS_VISIBLE } from '../../lib/destinations';
 import { useTabParam } from '../../hooks/useTabParams';
 import ProfileDetailScreen from '../screens/profile';
@@ -38,14 +39,19 @@ function resolveProfileTab(candidate: Key | null): Key {
 }
 
 export default function ProfileHubScreen() {
+  const s = useThemedStyles(makeStyles);
   const segments = profileSegments();
   const { value: tabParam, stamp } = useTabParam(PROFILE_TABS);
   const [tab, setTab] = useState<Key>(() => resolveProfileTab(tabParam));
+  const paramSyncKey = `${tabParam ?? ''}|${stamp ?? ''}`;
+  const [lastParamSyncKey, setLastParamSyncKey] = useState(paramSyncKey);
 
-  useEffect(() => {
-    if (!tabParam) return;
-    setTab(resolveProfileTab(tabParam));
-  }, [tabParam, stamp]);
+  if (lastParamSyncKey !== paramSyncKey) {
+    setLastParamSyncKey(paramSyncKey);
+    if (tabParam) {
+      setTab(resolveProfileTab(tabParam));
+    }
+  }
 
   return (
     <View style={s.root}>
@@ -59,7 +65,7 @@ export default function ProfileHubScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   body: { flex: 1 },
 });

@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font, hexA, radius, space } from '../../lib/tokens';
+import { font, hexA, radius, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import OnboardingScaffold from '../../components/onboarding/OnboardingScaffold';
 import { ONBOARDING_ART } from '../../lib/visualAssets';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { DAYPART_LABELS, GOAL_LABELS, PACE_LABELS } from '../../lib/onboarding';
 import { DAYPART_ORDER } from '../../lib/starterPlan';
+
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 /**
  * Step 3 — the plan, before anything is written.
@@ -30,6 +33,8 @@ import { DAYPART_ORDER } from '../../lib/starterPlan';
  */
 export default function OnboardingPlanScreen() {
   const router = useRouter();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const plan = useOnboardingStore((s) => s.plan);
   const planReasons = useOnboardingStore((s) => s.planReasons);
   const answers = useOnboardingStore((s) => s.answers);
@@ -205,7 +210,7 @@ export default function OnboardingPlanScreen() {
           <Text style={s.groupTitle}>{DAYPART_LABELS[group.daypart]}</Text>
           {group.habits.map((habit) => (
             <View key={habit.name} style={s.habitRow}>
-              <Ionicons name={habit.icon as never} size={18} color={colors.primary} />
+              <Ionicons name={habit.icon as IoniconName} size={18} color={colors.primary} />
               <View style={s.habitBody}>
                 <Text style={s.habitName}>{habit.name}</Text>
                 <Text style={s.habitMeta}>
@@ -233,6 +238,7 @@ export default function OnboardingPlanScreen() {
         <TouchableOpacity
           onPress={() => setDropped(new Set())}
           accessibilityRole="button"
+          accessibilityLabel={`Çıkardıklarımı geri getir, ${dropped.size} alışkanlık`}
           style={s.restore}
         >
           <Ionicons name="refresh-outline" size={15} color={colors.primaryBright} />
@@ -259,7 +265,7 @@ export default function OnboardingPlanScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   muted: { ...font.body, color: colors.textFaint },
   recovery: {
     flexDirection: 'row', gap: space.md, alignItems: 'flex-start',

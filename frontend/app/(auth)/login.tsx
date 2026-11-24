@@ -8,7 +8,8 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
-import { colors, space, radius, font, shadow, fontFamily, hexA, alphaHex } from '../../lib/tokens';
+import { space, radius, font, shadow, fontFamily, hexA, alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { Button, EditorialBanner, TexturedSurface } from '../../components/ui';
 import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
@@ -55,6 +56,8 @@ export default function LoginScreen() {
   const { width } = useWindowDimensions();
   const isSplit = width >= 860;
   const router = useRouter();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -248,7 +251,12 @@ export default function LoginScreen() {
         />
 
         <Link href="/(auth)/forgot-password" asChild>
-          <TouchableOpacity style={s.forgotBtn} disabled={loading}>
+          <TouchableOpacity
+            style={s.forgotBtn}
+            disabled={loading}
+            accessibilityRole="link"
+            accessibilityLabel="Şifre kurtarma ekranına git"
+          >
             <Text style={s.forgotText}>Şifremi unuttum</Text>
           </TouchableOpacity>
         </Link>
@@ -277,7 +285,11 @@ export default function LoginScreen() {
         <Button label="Giriş Yap" onPress={handleLogin} loading={loading} size="lg" variant="secondary" style={{ marginTop: space.xs }} />
 
         <Link href="/(auth)/register" asChild>
-          <TouchableOpacity style={s.linkBtn}>
+          <TouchableOpacity
+            style={s.linkBtn}
+            accessibilityRole="link"
+            accessibilityLabel="Hesabın yok mu? Kayıt ol"
+          >
             <Text style={s.linkText}>Hesabın yok mu? <Text style={s.linkHighlight}>Kayıt ol</Text></Text>
           </TouchableOpacity>
         </Link>
@@ -357,7 +369,7 @@ export default function LoginScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 36 },
 

@@ -7,9 +7,11 @@ import { confirm, notify } from '../../lib/dialog';
 import { useFocusParam } from '../../hooks/useFocusParam';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore, type Task, type ListType, type TaskPriority } from '../../store/taskStore';
 import { useProjectStore } from '../../store/projectStore';
-import { colors, space, alphaHex, hexA } from '../../lib/tokens';
+import { space, alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
 import InlineComposer from '../../components/InlineComposer';
 import { todayLocal } from '../../lib/date';
@@ -29,14 +31,17 @@ const TABS: { key: ListType | 'done'; label: string }[] = [
   { key: 'done', label: 'Arşiv' },
 ];
 
-const PRIORITY_META: Record<TaskPriority, { color: string; label: string }> = {
-  high: { color: colors.error, label: 'Yüksek' },
-  medium: { color: colors.warning, label: 'Orta' },
-  low: { color: colors.success, label: 'Düşük' },
-  none: { color: colors.textFaint, label: 'Yok' },
+const PRIORITY_META: Record<TaskPriority, { colorKey: keyof Palette; label: string }> = {
+  high: { colorKey: 'error', label: 'Yüksek' },
+  medium: { colorKey: 'warning', label: 'Orta' },
+  low: { colorKey: 'success', label: 'Düşük' },
+  none: { colorKey: 'textFaint', label: 'Yok' },
 };
 
 export default function TasksScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const priorityColor = (p: TaskPriority): string => colors[PRIORITY_META[p].colorKey];
   const [viewMode, setViewMode] = useState<'list' | 'matrix'>('list');
   const [activeTab, setActiveTab] = useState<ListType | 'done'>('inbox');
   const [smartList, setSmartList] = useState<SmartListKey | null>(null);
@@ -46,8 +51,30 @@ export default function TasksScreen() {
   const [listType, setListType] = useState<ListType>('inbox');
   const [splitTarget, setSplitTarget] = useState<Task | null>(null);
 
-  const { tasks, loading, loadingMore, hasMore, loadMore, fetchTasks, addTask, toggleDone, removeTask, archiveTask, byList } = useTaskStore();
-  const { projects, fetchProjects } = useProjectStore();
+  const {
+    tasks, loading, loadingMore, hasMore, loadMore,
+    fetchTasks, addTask, toggleDone, removeTask, archiveTask, byList,
+  } = useTaskStore(
+    useShallow((st) => ({
+      tasks: st.tasks,
+      loading: st.loading,
+      loadingMore: st.loadingMore,
+      hasMore: st.hasMore,
+      loadMore: st.loadMore,
+      fetchTasks: st.fetchTasks,
+      addTask: st.addTask,
+      toggleDone: st.toggleDone,
+      removeTask: st.removeTask,
+      archiveTask: st.archiveTask,
+      byList: st.byList,
+    })),
+  );
+  const { projects, fetchProjects } = useProjectStore(
+    useShallow((st) => ({
+      projects: st.projects,
+      fetchProjects: st.fetchProjects,
+    })),
+  );
   const [initialLoaded, setInitialLoaded] = useState(tasks.length > 0);
   const { id: focusId, consume: consumeFocus } = useFocusParam();
   const consumedFocusRef = useRef<string | null>(null);
@@ -66,11 +93,13 @@ export default function TasksScreen() {
     const match = tasks.find((t) => t.id === focusId);
     if (match) {
       consumedFocusRef.current = focusId;
-      setViewMode('list');
-      setSmartList(null);
-      setActiveTab(match.completed || match.status === 'cancelled' ? 'done' : match.list_type);
-      setSplitTarget(match);
       consumeFocus();
+      queueMicrotask(() => {
+        setViewMode('list');
+        setSmartList(null);
+        setActiveTab(match.completed || match.status === 'cancelled' ? 'done' : match.list_type);
+        setSplitTarget(match);
+      });
       return;
     }
     if (initialLoaded && !loading) {
@@ -278,7 +307,12 @@ export default function TasksScreen() {
             />
             <Text style={s.emptyText}>{activeSmartDef ? activeSmartDef.empty : 'Görev yok'}</Text>
             {showComposer && (
-              <TouchableOpacity onPress={() => openAdd(activeTab as ListType)} style={s.emptyAdd}>
+              <TouchableOpacity
+                onPress={() => openAdd(activeTab as ListType)}
+                style={s.emptyAdd}
+                accessibilityRole="button"
+                accessibilityLabel="Yeni görev ekle"
+              >
                 <Text style={s.emptyAddText}>+ Görev Ekle</Text>
               </TouchableOpacity>
             )}
@@ -286,14 +320,21 @@ export default function TasksScreen() {
         }
         renderItem={({ item }) => {
           const itemDay = dueDay(item.due_date);
+          const itemPrioColor = priorityColor(item.priority);
           return (
             <View style={[s.row, item.completed && s.rowDone]}>
               <EmbeddedFiligree source={DECOR.cornerBlueprint} size={78} opacity={0.12} />
-              <TouchableOpacity style={s.check} onPress={() => { haptic.success(); toggleDone(item.id); }}>
+              <TouchableOpacity
+                style={s.check}
+                onPress={() => { haptic.success(); toggleDone(item.id); }}
+                accessibilityRole="checkbox"
+                accessibilityLabel={`${item.title} görevini ${item.completed ? 'tamamlanmadı' : 'tamamlandı'} olarak işaretle`}
+                accessibilityState={{ checked: item.completed }}
+              >
                 <View style={[
                   s.checkBox,
-                  { borderColor: PRIORITY_META[item.priority].color },
-                  item.completed && { backgroundColor: PRIORITY_META[item.priority].color, borderColor: PRIORITY_META[item.priority].color },
+                  { borderColor: itemPrioColor },
+                  item.completed && { backgroundColor: itemPrioColor, borderColor: itemPrioColor },
                 ]}>
                   {item.completed && <Ionicons name="checkmark" size={12} color={colors.white} />}
                 </View>
@@ -305,7 +346,7 @@ export default function TasksScreen() {
                 </Text>
                 <View style={s.rowMeta}>
                   {item.priority !== 'none' && (
-                    <View style={[s.priorityDot, { backgroundColor: PRIORITY_META[item.priority].color }]} />
+                    <View style={[s.priorityDot, { backgroundColor: itemPrioColor }]} />
                   )}
                   {itemDay ? (
                     <Text style={[
@@ -340,7 +381,12 @@ export default function TasksScreen() {
                 </TouchableOpacity>
               )}
 
-              <TouchableOpacity style={s.deleteBtn} onPress={() => confirmDelete(item)}>
+              <TouchableOpacity
+                style={s.deleteBtn}
+                onPress={() => confirmDelete(item)}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.title} görevini sil`}
+              >
                 <Ionicons name="trash-outline" size={16} color={colors.textGhost} />
               </TouchableOpacity>
             </View>
@@ -353,6 +399,8 @@ export default function TasksScreen() {
         <TouchableOpacity
           style={s.fab}
           onPress={() => openAdd(activeTab as ListType)}
+          accessibilityRole="button"
+          accessibilityLabel="Yeni görev ekle"
         >
           <Ionicons name="add" size={26} color={colors.white} />
         </TouchableOpacity>
@@ -391,45 +439,65 @@ export default function TasksScreen() {
 
             {/* Liste seçimi */}
             <Text style={s.fieldLabel}>Liste</Text>
-            <View style={s.optRow}>
-              {(['inbox','this_week','someday'] as ListType[]).map((l) => (
-                <TouchableOpacity
-                  key={l}
-                  style={[s.optBtn, listType === l && s.optBtnActive]}
-                  onPress={() => setListType(l)}
-                >
-                  <Text style={[s.optText, listType === l && s.optTextActive]}>
-                    {l === 'inbox' ? 'Gelen' : l === 'this_week' ? 'Bu Hafta' : 'Bir Gün'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={s.optRow} accessibilityRole="radiogroup">
+              {(['inbox','this_week','someday'] as ListType[]).map((l) => {
+                const listLabel = l === 'inbox' ? 'Gelen' : l === 'this_week' ? 'Bu Hafta' : 'Bir Gün';
+                return (
+                  <TouchableOpacity
+                    key={l}
+                    style={[s.optBtn, listType === l && s.optBtnActive]}
+                    onPress={() => setListType(l)}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`${listLabel} listesi`}
+                    accessibilityState={{ selected: listType === l, checked: listType === l }}
+                  >
+                    <Text style={[s.optText, listType === l && s.optTextActive]}>
+                      {listLabel}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* Öncelik seçimi */}
             <Text style={s.fieldLabel}>Öncelik</Text>
-            <View style={s.optRow}>
-              {(['none','low','medium','high'] as TaskPriority[]).map((p) => (
-                <TouchableOpacity
-                  key={p}
-                  style={[s.optBtn, priority === p && { backgroundColor: PRIORITY_META[p].color + '30', borderColor: PRIORITY_META[p].color }]}
-                  onPress={() => setPriority(p)}
-                >
-                  <View style={[s.priorityDot, { backgroundColor: PRIORITY_META[p].color }]} />
-                  <Text style={[s.optText, priority === p && { color: PRIORITY_META[p].color }]}>
-                    {PRIORITY_META[p].label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={s.optRow} accessibilityRole="radiogroup">
+              {(['none','low','medium','high'] as TaskPriority[]).map((p) => {
+                const pColor = priorityColor(p);
+                return (
+                  <TouchableOpacity
+                    key={p}
+                    style={[s.optBtn, priority === p && { backgroundColor: alphaHex(pColor, '30'), borderColor: pColor }]}
+                    onPress={() => setPriority(p)}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`Öncelik: ${PRIORITY_META[p].label}`}
+                    accessibilityState={{ selected: priority === p, checked: priority === p }}
+                  >
+                    <View style={[s.priorityDot, { backgroundColor: pColor }]} />
+                    <Text style={[s.optText, priority === p && { color: pColor }]}>
+                      {PRIORITY_META[p].label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             <View style={s.modalActions}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setShowAdd(false)}>
+              <TouchableOpacity
+                style={s.cancelBtn}
+                onPress={() => setShowAdd(false)}
+                accessibilityRole="button"
+                accessibilityLabel="İptal"
+              >
                 <Text style={s.cancelText}>İptal</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.addBtn, !title.trim() && s.addBtnDisabled]}
                 onPress={handleAdd}
                 disabled={!title.trim()}
+                accessibilityRole="button"
+                accessibilityLabel="Görevi ekle"
+                accessibilityState={{ disabled: !title.trim() }}
               >
                 <Text style={s.addBtnText}>Ekle</Text>
               </TouchableOpacity>
@@ -441,7 +509,7 @@ export default function TasksScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
 
   topBar: {
@@ -549,15 +617,15 @@ const s = StyleSheet.create({
     elevation: 8,
   },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: hexA(colors.black, 0.8), justifyContent: 'flex-end' },
   modalSheet: {
     backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: 24, paddingBottom: 40,
   },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 },
   input: {
     backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15,
-    color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 60, marginBottom: 16,
+    color: colors.text, borderWidth: 1, borderColor: colors.border, minHeight: 60, marginBottom: 16,
   },
   fieldLabel: { fontSize: 12, color: colors.textFaint, fontWeight: '600', marginBottom: 8, letterSpacing: 0.5 },
   optRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },

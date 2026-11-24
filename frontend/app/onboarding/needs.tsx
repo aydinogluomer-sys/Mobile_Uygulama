@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { colors, font, space } from '../../lib/tokens';
+import { font, space, type Palette } from '../../lib/tokens';
+import { useThemedStyles } from '../../hooks/useThemeColors';
 import OnboardingScaffold from '../../components/onboarding/OnboardingScaffold';
 import { ONBOARDING_ART } from '../../lib/visualAssets';
 import SelectableTile from '../../components/onboarding/SelectableTile';
@@ -20,6 +21,7 @@ import {
  */
 export default function OnboardingNeedsScreen() {
   const router = useRouter();
+  const s = useThemedStyles(makeStyles);
   const answers = useOnboardingStore((s) => s.answers);
   const toggleGoal = useOnboardingStore((s) => s.toggleGoal);
   const setBarrier = useOnboardingStore((s) => s.setBarrier);
@@ -106,7 +108,7 @@ export default function OnboardingNeedsScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   section: { gap: space.md },
   sectionTitle: { ...font.h2, color: colors.text },
   sectionHint: { ...font.bodySm, color: colors.textFaint, marginTop: -4 },

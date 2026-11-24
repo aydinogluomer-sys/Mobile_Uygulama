@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
-import { colors, space, radius, font, shadow, fontFamily } from '../../lib/tokens';
+import { space, radius, font, shadow, fontFamily, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { Button, EmblemMedallion } from '../../components/ui';
 import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
@@ -20,6 +21,8 @@ type Step = 'email' | 'code';
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -160,7 +163,12 @@ export default function ForgotPasswordScreen() {
                   onChangeText={(text) => { setCode(text.replace(/\D/g, '').slice(0, 6)); setError(''); }}
                   onSubmitEditing={handleVerifyCode}
                 />
-                <TouchableOpacity onPress={changeEmail} style={s.changeButton} accessibilityRole="button">
+                <TouchableOpacity
+                  onPress={changeEmail}
+                  style={s.changeButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="E-posta adresini değiştir"
+                >
                   <Text style={s.changeText}>E-posta adresini değiştir</Text>
                 </TouchableOpacity>
               </>
@@ -188,7 +196,17 @@ export default function ForgotPasswordScreen() {
             />
 
             {step === 'code' && (
-              <TouchableOpacity onPress={handleSendCode} disabled={loading || resendCooldown > 0} style={s.resendButton} accessibilityRole="button">
+              <TouchableOpacity
+                onPress={handleSendCode}
+                disabled={loading || resendCooldown > 0}
+                style={s.resendButton}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  resendCooldown > 0
+                    ? `Yeniden gönder, ${resendCooldown} saniye kaldı`
+                    : 'Kod gelmedi mi? Yeniden gönder'
+                }
+              >
                 <Text style={[s.resendText, resendCooldown > 0 && s.resendTextDisabled]}>
                   {resendCooldown > 0 ? `Yeniden gönder · ${resendCooldown}s` : 'Kod gelmedi mi? Yeniden gönder'}
                 </Text>
@@ -196,7 +214,11 @@ export default function ForgotPasswordScreen() {
             )}
 
             <Link href="/(auth)/login" asChild>
-              <TouchableOpacity style={s.backBtn} accessibilityRole="link">
+              <TouchableOpacity
+                style={s.backBtn}
+                accessibilityRole="link"
+                accessibilityLabel="Giriş ekranına dön"
+              >
                 <Ionicons name="arrow-back" size={14} color={colors.textDim} />
                 <Text style={s.backText}>Giriş ekranına dön</Text>
               </TouchableOpacity>
@@ -208,7 +230,7 @@ export default function ForgotPasswordScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scroll: { flexGrow: 1, justifyContent: 'center', width: '100%', maxWidth: 480, alignSelf: 'center', paddingHorizontal: 28, paddingVertical: 40 },
   brand: { alignItems: 'center', marginBottom: 28 },
@@ -231,8 +253,8 @@ const s = StyleSheet.create({
   eyebrow: { ...font.overline, color: colors.primaryBright },
   title: { ...font.title, color: colors.text },
   subtitle: { ...font.body, color: colors.textDim, lineHeight: 22 },
-  messageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: radius.md, backgroundColor: 'rgba(199,106,106,0.08)' },
-  infoRow: { backgroundColor: 'rgba(135,166,120,0.08)' },
+  messageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: radius.md, backgroundColor: hexA(colors.error, 0.08) },
+  infoRow: { backgroundColor: hexA(colors.success, 0.08) },
   errorText: { color: colors.error, fontSize: 13, flex: 1, lineHeight: 19 },
   infoText: { color: colors.success, fontSize: 13, flex: 1, lineHeight: 19 },
   changeButton: { alignSelf: 'flex-start', marginTop: -4 },
