@@ -114,7 +114,11 @@ export default function HabitSection(props: HabitSectionProps): React.JSX.Elemen
           {done ? (
             <Ionicons name="checkmark" size={16} color={c.white} />
           ) : (
-            <Ionicons name={(h.icon ?? 'ellipse-outline') as any} size={15} color={col} />
+            <Ionicons
+              name={(h.icon ?? 'ellipse-outline') as React.ComponentProps<typeof Ionicons>['name']}
+              size={15}
+              color={col}
+            />
           )}
         </View>
         <Text style={[s.habitName, done && s.habitNameDone]} numberOfLines={1}>

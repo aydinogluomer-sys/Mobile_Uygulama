@@ -51,6 +51,7 @@ export default function Card({
         onPress={onPress}
         accessibilityRole="button"
         {...a11y}
+        accessibilityLabel={a11y.accessibilityLabel}
         accessibilityState={accessibilityState}
         style={[base, style]}
       >

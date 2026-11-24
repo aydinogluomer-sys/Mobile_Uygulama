@@ -1,6 +1,7 @@
-import { colors, hexA } from '../lib/tokens';
+import { hexA, type Palette } from '../lib/tokens';
 import { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useThemedStyles } from '../hooks/useThemeColors';
 import { useProfileStore } from '../store/profileStore';
 import { rankMeta } from '../lib/ranks';
 import { getRankCrest, TEXTURES } from '../lib/visualAssets';
@@ -12,7 +13,9 @@ import TexturedSurface from './ui/TexturedSurface';
  * (XP, alışkanlık tamamlamada server-side trigger'larla kazanılır).
  */
 export default function XPDisplay() {
-  const { profile, fetchProfile } = useProfileStore();
+  const s = useThemedStyles(makeStyles);
+  const profile = useProfileStore((st) => st.profile);
+  const fetchProfile = useProfileStore((st) => st.fetchProfile);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
@@ -45,7 +48,7 @@ export default function XPDisplay() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   container: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
     paddingHorizontal: 16, paddingVertical: 14,

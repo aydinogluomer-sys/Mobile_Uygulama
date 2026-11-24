@@ -11,7 +11,8 @@
  */
 import { useEffect, useState } from 'react';
 import { AppState, Platform, View, Text, StyleSheet, type AppStateStatus } from 'react-native';
-import { colors } from '../lib/tokens';
+import { type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { loadReminderSettings } from '../services/reminderService';
 import { EmblemMedallion, TexturedSurface } from './ui';
 import { ONBOARDING_ART, TEXTURES } from '../lib/visualAssets';
@@ -30,6 +31,8 @@ export function shouldCover(hideTitles: boolean, state: AppStateStatus): boolean
 }
 
 export default function PrivacyCover() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   // A runtime that cannot say (no string state yet) counts as in front: never cover a visible app.
   const [state, setState] = useState<AppStateStatus>(typeof AppState.currentState === 'string' ? AppState.currentState : 'active');
   const [hide, setHide] = useState(false);
@@ -57,7 +60,7 @@ export default function PrivacyCover() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   cover: {
     position: 'absolute',
     top: 0,

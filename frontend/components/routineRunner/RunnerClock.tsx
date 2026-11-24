@@ -37,7 +37,6 @@ function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    setNow(Date.now());
     if (!active) return;
     const id = setInterval(() => {
       setNow(Date.now());
@@ -117,10 +116,14 @@ export function RunnerTimeUp(props: {
   children: React.ReactNode;
   onTimeUp?: () => void;
 }): React.JSX.Element | null {
+  const { children, onTimeUp } = props;
   const { view, stepId } = useInternalRunnerClock();
   const firedStepRef = useRef<string | null>(null);
-  const onTimeUpRef = useRef(props.onTimeUp);
-  onTimeUpRef.current = props.onTimeUp;
+  const onTimeUpRef = useRef(onTimeUp);
+
+  useEffect(() => {
+    onTimeUpRef.current = onTimeUp;
+  }, [onTimeUp]);
 
   useEffect(() => {
     if (view.timeUp && stepId && firedStepRef.current !== stepId) {
@@ -130,5 +133,5 @@ export function RunnerTimeUp(props: {
   }, [view.timeUp, stepId]);
 
   if (!view.timeUp) return null;
-  return <View accessibilityLiveRegion="polite">{props.children}</View>;
+  return <View accessibilityLiveRegion="polite">{children}</View>;
 }

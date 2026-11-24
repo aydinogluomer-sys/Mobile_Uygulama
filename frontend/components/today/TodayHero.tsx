@@ -2,7 +2,8 @@ import { memo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { colors, space, radius, font, fontFamily, hexA, onColor } from '../../lib/tokens';
+import { space, radius, font, fontFamily, hexA, onColor, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useAccent } from '../../lib/useAccent';
 import { DECOR, getTodayHeroForHour, TEXTURES } from '../../lib/visualAssets';
 import type { TodayNarrative } from '../../lib/todayNarrative';
@@ -34,6 +35,8 @@ const decorativeA11y =
 
 /** Editöryel Bugün hero — eyebrow + anlatısal serif başlık (clay vurgulu) + alt-metin + bağlamsal CTA'lar. */
 function TodayHero({ eyebrow, narrative, ctas }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const accent = useAccent();
   const { width } = useWindowDimensions();
   const isCompact = width < 480;
@@ -88,7 +91,7 @@ function TodayHero({ eyebrow, narrative, ctas }: Props) {
 
 export default memo(TodayHero);
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   wrap: {
     width: '100%',
     marginBottom: space.xxl,

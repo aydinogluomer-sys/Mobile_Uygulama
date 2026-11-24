@@ -11,7 +11,8 @@ import {
   AccessibilityInfo, ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, alphaHex, radius, space, font } from '../lib/tokens';
+import { alphaHex, radius, space, font, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { signOutNotice } from '../services/accountService';
 
 export type SignOutConfirmModalProps = {
@@ -31,6 +32,8 @@ export type SignOutConfirmModalProps = {
 export default function SignOutConfirmModal({
   visible, unsent, busy, error, onSyncFirst, onConfirm, onCancel,
 }: SignOutConfirmModalProps) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [reduceMotion, setReduceMotion] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -109,7 +112,7 @@ export default function SignOutConfirmModal({
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: alphaHex(colors.bg, 'D9'),

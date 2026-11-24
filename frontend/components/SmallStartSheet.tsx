@@ -5,10 +5,11 @@
  * The parent is shown, never edited. The sheet says out loud what the step
  * does NOT do: it does not complete or shrink the task.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { View, Text, StyleSheet, Modal, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, space, radius } from '../lib/tokens';
+import { hexA, space, radius, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { TexturedSurface } from './ui';
 import { TEXTURES } from '../lib/visualAssets';
 import { FLOW_COPY } from '../lib/flowCopy';
@@ -25,12 +26,19 @@ interface Props {
 }
 
 export default function SmallStartSheet({ parent, onClose, onStart }: Props) {
-  const [draft, setDraft] = useState<SmallStepDraft>({ title: '', minutes: 10 });
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const [prevParent, setPrevParent] = useState<SmallStepParent | null>(parent);
+  const [draft, setDraft] = useState<SmallStepDraft>(() => (parent ? draftFor(parent) : { title: '', minutes: 10 }));
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (parent) { setDraft(draftFor(parent)); setError(null); }
-  }, [parent]);
+  if (prevParent !== parent) {
+    setPrevParent(parent);
+    if (parent) {
+      setDraft(draftFor(parent));
+      setError(null);
+    }
+  }
 
   if (!parent) return null;
 
@@ -112,8 +120,8 @@ export default function SmallStartSheet({ parent, onClose, onStart }: Props) {
   );
 }
 
-const s = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+const makeStyles = (colors: Palette) => StyleSheet.create({
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: hexA(colors.black, 0.55) },
   sheet: { backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: 6, overflow: 'hidden', position: 'relative' },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.sm },
   title: { fontSize: 18, fontWeight: '700', color: colors.text },

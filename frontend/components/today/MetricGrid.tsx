@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
-import { colors, space, font, fontFamily } from '../../lib/tokens';
+import { space, font, fontFamily, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { DECOR } from '../../lib/visualAssets';
 import BentoVisualCard from '../spatial/BentoVisualCard';
 import AnimatedMetricValue from '../motion/AnimatedMetricValue';
@@ -15,22 +16,31 @@ export type Metric = {
   onPress?: () => void;
 };
 
-const TONE: Record<NonNullable<Metric['tone']>, string> = {
-  accent: colors.primary,
-  ok: colors.success,
-  warn: colors.warning,
-  bad: colors.error,
-  mute: colors.textGhost,
-};
+function toneColor(colors: Palette, tone: NonNullable<Metric['tone']>): string {
+  switch (tone) {
+    case 'accent':
+      return colors.primary;
+    case 'ok':
+      return colors.success;
+    case 'warn':
+      return colors.warning;
+    case 'bad':
+      return colors.error;
+    case 'mute':
+      return colors.textGhost;
+  }
+}
 
 /** Sakin 2×2 / 4×1 Bento metrik ızgarası — gömülü usturlap filigranı + akıcı mono sayaç + yay etkileşimi. */
 export default function MetricGrid({ metrics }: { metrics: Metric[] }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const { width } = useWindowDimensions();
   const wide = width >= 960;
   return (
     <View style={s.grid}>
       {metrics.map((m, idx) => {
-        const color = m.tone ? TONE[m.tone] : colors.text;
+        const color = m.tone ? toneColor(colors, m.tone) : colors.text;
         return (
           <StaggeredReveal key={m.eyebrow} index={idx} style={[s.cellWrap, wide && s.cellWide]}>
             <BentoVisualCard
@@ -55,7 +65,7 @@ export default function MetricGrid({ metrics }: { metrics: Metric[] }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md },
   cellWrap: {
     flexGrow: 1,
@@ -69,7 +79,7 @@ const s = StyleSheet.create({
     fontSize: 28,
     fontWeight: '500',
     letterSpacing: -0.5,
-    fontVariant: ['tabular-nums'] as any,
+    fontVariant: ['tabular-nums'],
     marginBottom: 2,
   },
   sub: { ...font.caption, color: colors.textFaint, lineHeight: 16 },

@@ -27,17 +27,26 @@ const mockState = {
 };
 
 jest.mock('../../store/habitStore', () => ({
-  useHabitStore: () => ({ habits: mockState.habits, fetchHabits: mockState.fetchHabits }),
+  useHabitStore: (sel?: (s: unknown) => unknown) => {
+    const st = { habits: mockState.habits, fetchHabits: mockState.fetchHabits };
+    return sel ? sel(st) : st;
+  },
 }));
 jest.mock('../../store/taskStore', () => ({
-  useTaskStore: () => ({
-    tasks: mockState.tasks,
-    hasMore: mockState.tasksHasMore,
-    fetchTasks: mockState.fetchTasks,
-  }),
+  useTaskStore: (sel?: (s: unknown) => unknown) => {
+    const st = {
+      tasks: mockState.tasks,
+      hasMore: mockState.tasksHasMore,
+      fetchTasks: mockState.fetchTasks,
+    };
+    return sel ? sel(st) : st;
+  },
 }));
 jest.mock('../../store/journalStore', () => ({
-  useJournalStore: () => ({ entries: mockState.entries, fetchEntries: mockState.fetchEntries }),
+  useJournalStore: (sel?: (s: unknown) => unknown) => {
+    const st = { entries: mockState.entries, fetchEntries: mockState.fetchEntries };
+    return sel ? sel(st) : st;
+  },
 }));
 jest.mock('../../services/habitLogService', () => ({
   loadDay: (...args: unknown[]) => (mockState.loadDay as (...a: unknown[]) => unknown)(...args),

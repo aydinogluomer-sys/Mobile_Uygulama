@@ -16,7 +16,8 @@ import {
   View, Text, StyleSheet, Modal, TouchableOpacity, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, alphaHex, radius, space, font } from '../lib/tokens';
+import { alphaHex, hexA, radius, space, font, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import {
   describeFlushOutcome,
   discardOutboxIssue,
@@ -41,12 +42,17 @@ export const DISCARD_CONFIRM_MS = 4_000;
 const DISCARD_LABEL = 'Bu değişikliği bırak';
 const DISCARD_CONFIRM_LABEL = 'Emin misin? Dokun ve bırak';
 
-const TONE_COLOR: Record<FlushOutcome['tone'], string> = {
-  success: colors.success,
-  waiting: colors.info,
-  attention: colors.warning,
-  auth: colors.warning,
-};
+function toneColor(colors: Palette, tone: FlushOutcome['tone']): string {
+  switch (tone) {
+    case 'success':
+      return colors.success;
+    case 'waiting':
+      return colors.info;
+    case 'attention':
+    case 'auth':
+      return colors.warning;
+  }
+}
 
 interface OutboxStatusModalProps {
   visible: boolean;
@@ -54,6 +60,8 @@ interface OutboxStatusModalProps {
 }
 
 export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModalProps) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
   const [summary, setSummary] = useState<OutboxSummary>(() => getUnifiedOutboxSummary());
   const [issues, setIssues] = useState<OutboxIssue[]>(() => listOutboxIssues());
@@ -62,13 +70,29 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
   const [busyIssue, setBusyIssue] = useState<string | null>(null);
   const [confirmingDiscard, setConfirmingDiscard] = useState<string | null>(null);
   const [quarantined, setQuarantined] = useState(0);
+  const [prevVisible, setPrevVisible] = useState(visible);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  if (prevVisible !== visible) {
+    setPrevVisible(visible);
+    if (visible) {
+      setSummary(getUnifiedOutboxSummary());
+      setIssues(listOutboxIssues());
+    } else {
+      setConfirmingDiscard(null);
+      setFlushOutcome(null);
+    }
+  }
+
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      if (confirmTimer.current) {
+        clearTimeout(confirmTimer.current);
+        confirmTimer.current = null;
+      }
+      return;
+    }
     let cancelled = false;
-    setSummary(getUnifiedOutboxSummary());
-    setIssues(listOutboxIssues());
     void currentUser()
       .then((u) => (u ? countQuarantined(u.id) : 0))
       .then((n) => {
@@ -88,13 +112,6 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
   useEffect(() => () => {
     if (confirmTimer.current) clearTimeout(confirmTimer.current);
   }, []);
-  useEffect(() => {
-    if (visible) return;
-    if (confirmTimer.current) clearTimeout(confirmTimer.current);
-    confirmTimer.current = null;
-    setConfirmingDiscard(null);
-    setFlushOutcome(null);
-  }, [visible]);
 
   async function handleFlush() {
     haptic.medium();
@@ -228,7 +245,7 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
 
           {flushOutcome && (
             <Text
-              style={[s.msgText, { color: TONE_COLOR[flushOutcome.tone] }]}
+              style={[s.msgText, { color: toneColor(colors, flushOutcome.tone) }]}
               accessibilityLiveRegion="polite"
             >
               {flushOutcome.message}
@@ -318,10 +335,10 @@ export default function OutboxStatusModal({ visible, onClose }: OutboxStatusModa
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: hexA(colors.black, 0.65),
     justifyContent: 'flex-end',
   },
   card: {

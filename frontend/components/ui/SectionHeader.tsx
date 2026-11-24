@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { space, font, tabularNums } from '../../lib/tokens';
 import { useThemeColors } from '../../hooks/useThemeColors';
@@ -23,7 +23,7 @@ type Props = {
   actionAccessibilityHint?: string;
   /** overline (küçük, uppercase) · title (sans) · serif (editöryel başlık) */
   variant?: 'overline' | 'title' | 'serif';
-  style?: any;
+  style?: StyleProp<ViewStyle>;
 };
 
 /** Bölüm başlığı — overline/serif başlık + opsiyonel count/aksiyon. */

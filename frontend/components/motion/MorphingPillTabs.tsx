@@ -124,8 +124,8 @@ export default function MorphingPillTabs<T extends string>({
   const [baseW, setBaseW] = useState(0);
   const baseWRef = useRef(0);
   const lastTargetRef = useRef<{ x: number; width: number } | null>(null);
-  const animX = useRef(new Animated.Value(0)).current;
-  const animScale = useRef(new Animated.Value(1)).current;
+  const [animX] = useState(() => new Animated.Value(0));
+  const [animScale] = useState(() => new Animated.Value(1));
 
   const activeRect = layouts[value];
 

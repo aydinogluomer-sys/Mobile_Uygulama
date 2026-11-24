@@ -3,10 +3,11 @@
  * break, with what it does to target, rate, streak and reminders spelled out
  * next to what a single-day skip does, so the user picks the right one.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, space, radius } from '../lib/tokens';
+import { hexA, space, radius, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { TexturedSurface } from './ui';
 import { TEXTURES } from '../lib/visualAssets';
 import { addDaysLocal, parseLocalDate, ymd } from '../lib/date';
@@ -49,12 +50,23 @@ interface Props {
 }
 
 export default function TimeOffSheet({ visible, kind, habitName, today, available, onClose, onConfirm }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const [prevVisible, setPrevVisible] = useState(visible);
   const [startIdx, setStartIdx] = useState(0);
   const [lenIdx, setLenIdx] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { if (visible) { setStartIdx(0); setLenIdx(0); setError(null); setSaving(false); } }, [visible]);
+  if (prevVisible !== visible) {
+    setPrevVisible(visible);
+    if (visible) {
+      setStartIdx(0);
+      setLenIdx(0);
+      setError(null);
+      setSaving(false);
+    }
+  }
 
   const fx = EXCUSE_EFFECTS[kind];
   const skip = EXCUSE_EFFECTS.skip;
@@ -85,7 +97,7 @@ export default function TimeOffSheet({ visible, kind, habitName, today, availabl
             <View style={s.chips}>
               {STARTS.map((o, i) => (
                 <TouchableOpacity key={o.key} style={[s.chip, i === startIdx && s.chipOn]} onPress={() => setStartIdx(i)}
-                  accessibilityRole="button" accessibilityState={{ selected: i === startIdx }}>
+                  accessibilityRole="button" accessibilityLabel={o.label} accessibilityState={{ selected: i === startIdx }}>
                   <Text style={[s.chipText, i === startIdx && s.chipTextOn]}>{o.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -95,7 +107,7 @@ export default function TimeOffSheet({ visible, kind, habitName, today, availabl
             <View style={s.chips}>
               {LENGTHS.map((o, i) => (
                 <TouchableOpacity key={o.key} style={[s.chip, i === lenIdx && s.chipOn]} onPress={() => setLenIdx(i)}
-                  accessibilityRole="button" accessibilityState={{ selected: i === lenIdx }}>
+                  accessibilityRole="button" accessibilityLabel={o.label} accessibilityState={{ selected: i === lenIdx }}>
                   <Text style={[s.chipText, i === lenIdx && s.chipTextOn]}>{o.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -136,8 +148,8 @@ export default function TimeOffSheet({ visible, kind, habitName, today, availabl
   );
 }
 
-const s = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+const makeStyles = (colors: Palette) => StyleSheet.create({
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: hexA(colors.black, 0.55) },
   sheet: { maxHeight: '88%', backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, overflow: 'hidden', position: 'relative' },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.sm },
   title: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text },

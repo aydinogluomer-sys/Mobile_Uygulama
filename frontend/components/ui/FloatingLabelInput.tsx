@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import {
   Animated,
   StyleSheet,
@@ -109,8 +109,8 @@ export default function FloatingLabelInput({
   const c = useThemeColors();
   const s = useThemedStyles(makeStyles);
   const [focused, setFocused] = useState(false);
-  const fill = useRef(new Animated.Value(value ? 1 : 0)).current;
-  const focusLine = useRef(new Animated.Value(0)).current;
+  const [fill] = useState(() => new Animated.Value(value ? 1 : 0));
+  const [focusLine] = useState(() => new Animated.Value(0));
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {

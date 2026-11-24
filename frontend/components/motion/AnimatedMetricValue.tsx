@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Platform, Text, type StyleProp, type TextStyle } from 'react-native';
 import { useReducedMotion } from '../seasonalMotion/useReducedMotion';
 
@@ -18,7 +18,7 @@ type Props = {
 export default function AnimatedMetricValue({ value, style, numberOfLines }: Props) {
   const reduceMotion = useReducedMotion();
   const skip = IS_TEST || reduceMotion;
-  const anim = useRef(new Animated.Value(1)).current;
+  const [anim] = useState(() => new Animated.Value(1));
   const prevValue = useRef(value);
 
   useEffect(() => {

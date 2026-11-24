@@ -6,7 +6,8 @@ import { View, Text, StyleSheet, Modal, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { getMonthBackground } from '../../lib/monthBackgrounds';
-import { colors, hexA, alphaHex } from '../../lib/tokens';
+import { hexA, alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import SeasonalMotion from './SeasonalMotion';
 import { MONTH_NAMES_TR, monthNameFromIndex } from './config';
 import type { SeasonalMotionIntensity } from './types';
@@ -14,6 +15,8 @@ import type { SeasonalMotionIntensity } from './types';
 const INTENSITIES: SeasonalMotionIntensity[] = ['off', 'subtle', 'normal'];
 
 export default function SeasonalMotionPreview({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [monthIdx, setMonthIdx] = useState(new Date().getMonth());
   const [intensity, setIntensity] = useState<SeasonalMotionIntensity>('subtle');
   const [simReduce, setSimReduce] = useState(false);
@@ -36,28 +39,58 @@ export default function SeasonalMotionPreview({ visible, onClose }: { visible: b
         <View style={s.panel}>
           <View style={s.rowBetween}>
             <Text style={s.title}>Mevsimsel Hareket — Önizleme (DEV)</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={10}><Ionicons name="close" size={22} color={colors.white} /></TouchableOpacity>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Önizlemeyi kapat"
+            >
+              <Ionicons name="close" size={22} color={colors.white} />
+            </TouchableOpacity>
           </View>
 
           <View style={s.monthRow}>
-            <TouchableOpacity style={s.navBtn} onPress={() => setMonthIdx((m) => (m + 11) % 12)}>
+            <TouchableOpacity
+              style={s.navBtn}
+              onPress={() => setMonthIdx((m) => (m + 11) % 12)}
+              accessibilityRole="button"
+              accessibilityLabel="Önceki ay"
+            >
               <Ionicons name="chevron-back" size={18} color={colors.white} />
             </TouchableOpacity>
             <Text style={s.monthName}>{MONTH_NAMES_TR[monthIdx]}</Text>
-            <TouchableOpacity style={s.navBtn} onPress={() => setMonthIdx((m) => (m + 1) % 12)}>
+            <TouchableOpacity
+              style={s.navBtn}
+              onPress={() => setMonthIdx((m) => (m + 1) % 12)}
+              accessibilityRole="button"
+              accessibilityLabel="Sonraki ay"
+            >
               <Ionicons name="chevron-forward" size={18} color={colors.white} />
             </TouchableOpacity>
           </View>
 
           <View style={s.seg}>
             {INTENSITIES.map((it) => (
-              <TouchableOpacity key={it} style={[s.segBtn, intensity === it && s.segOn]} onPress={() => setIntensity(it)}>
+              <TouchableOpacity
+                key={it}
+                style={[s.segBtn, intensity === it && s.segOn]}
+                onPress={() => setIntensity(it)}
+                accessibilityRole="button"
+                accessibilityLabel={`Yoğunluk: ${it}`}
+                accessibilityState={{ selected: intensity === it }}
+              >
                 <Text style={[s.segTxt, intensity === it && s.segTxtOn]}>{it}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <TouchableOpacity style={s.toggleRow} onPress={() => setSimReduce((v) => !v)}>
+          <TouchableOpacity
+            style={s.toggleRow}
+            onPress={() => setSimReduce((v) => !v)}
+            accessibilityRole="switch"
+            accessibilityLabel="Azaltılmış hareket simülasyonu"
+            accessibilityState={{ checked: simReduce }}
+          >
             <Ionicons name={simReduce ? 'checkbox' : 'square-outline'} size={18} color={colors.accent} />
             <Text style={s.toggleTxt}>Reduce motion simülasyonu (animasyon kapanmalı)</Text>
           </TouchableOpacity>
@@ -67,12 +100,12 @@ export default function SeasonalMotionPreview({ visible, onClose }: { visible: b
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.black },
   center: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   centerNum: { fontSize: 64, fontWeight: '800', color: colors.white },
   centerLabel: { fontSize: 13, color: colors.white, marginTop: 4 },
-  panel: { position: 'absolute', left: 16, right: 16, bottom: 36, backgroundColor: 'rgba(20,20,16,0.92)', borderRadius: 16, padding: 16, gap: 14, borderWidth: 1, borderColor: colors.border },
+  panel: { position: 'absolute', left: 16, right: 16, bottom: 36, backgroundColor: hexA(colors.bg, 0.92), borderRadius: 16, padding: 16, gap: 14, borderWidth: 1, borderColor: colors.border },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 14, fontWeight: '800', color: colors.white },
   monthRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

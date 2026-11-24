@@ -3,7 +3,8 @@ import {
   View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, alphaHex, radius, space, font } from '../lib/tokens';
+import { alphaHex, hexA, radius, space, font, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { useHabitStore } from '../store/habitStore';
 import { useTaskStore } from '../store/taskStore';
 import { useJournalStore } from '../store/journalStore';
@@ -37,21 +38,42 @@ type Load = { state: 'idle' | 'loading' | 'ready' | 'error'; error: string | nul
 const LOAD_ERROR_TEXT = 'Veriler yüklenemedi; bağlantını kontrol edip yeniden dene.';
 
 export default function ObsidianExportModal({ visible, onClose }: ObsidianExportModalProps) {
-  const { habits, fetchHabits } = useHabitStore();
-  const { tasks, hasMore: tasksHasMore, fetchTasks } = useTaskStore();
-  const { entries, fetchEntries } = useJournalStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const habits = useHabitStore((st) => st.habits);
+  const fetchHabits = useHabitStore((st) => st.fetchHabits);
+  const tasks = useTaskStore((st) => st.tasks);
+  const tasksHasMore = useTaskStore((st) => st.hasMore);
+  const fetchTasks = useTaskStore((st) => st.fetchTasks);
+  const entries = useJournalStore((st) => st.entries);
+  const fetchEntries = useJournalStore((st) => st.fetchEntries);
 
   const [exportType, setExportType] = useState<ObsidianKind>('daily');
   const [copied, setCopied] = useState(false);
   const [copying, setCopying] = useState(false);
-  const [load, setLoad] = useState<Load>({ state: 'idle', error: null });
+  const [load, setLoad] = useState<Load>(() =>
+    visible ? { state: 'loading', error: null } : { state: 'idle', error: null },
+  );
   const [confirming, setConfirming] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [todayLogs, setTodayLogs] = useState<MdLog[]>([]);
   const [vaultNotes, setVaultNotes] = useState<MdNote[]>([]);
   const [vaultComplete, setVaultComplete] = useState(true);
+  const [prevTrigger, setPrevTrigger] = useState<{ visible: boolean; exportType: ObsidianKind }>({
+    visible,
+    exportType: 'daily',
+  });
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runId = useRef(0);
+
+  if (prevTrigger.visible !== visible || prevTrigger.exportType !== exportType) {
+    setPrevTrigger({ visible, exportType });
+    setConfirming(false);
+    setStatus(null);
+    if (visible) {
+      setLoad({ state: 'loading', error: null });
+    }
+  }
 
   const loadFor = useCallback(async (kind: ObsidianKind, myRun: number): Promise<Load> => {
     try {
@@ -110,11 +132,12 @@ export default function ObsidianExportModal({ visible, onClose }: ObsidianExport
   useEffect(() => {
     if (!visible) {
       runId.current += 1;
-      setConfirming(false);
-      setStatus(null);
       return;
     }
-    triggerLoad(exportType);
+    const my = ++runId.current;
+    void loadFor(exportType, my).then((res) => {
+      if (runId.current === my) setLoad(res);
+    });
     return () => {
       runId.current += 1;
       if (copiedTimer.current) {
@@ -122,7 +145,7 @@ export default function ObsidianExportModal({ visible, onClose }: ObsidianExport
         copiedTimer.current = null;
       }
     };
-  }, [visible, exportType, triggerLoad]);
+  }, [visible, exportType, loadFor]);
 
   const today = todayLocal();
   const todayJournal = useMemo(() => {
@@ -340,10 +363,10 @@ export default function ObsidianExportModal({ visible, onClose }: ObsidianExport
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: hexA(colors.black, 0.65),
     justifyContent: 'flex-end',
   },
   card: {

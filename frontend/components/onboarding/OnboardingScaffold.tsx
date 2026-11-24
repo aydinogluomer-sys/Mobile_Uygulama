@@ -2,7 +2,8 @@ import { ReactNode } from 'react';
 import { Platform, View, Text, StyleSheet, ScrollView, TouchableOpacity, type ImageSourcePropType } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, font, hexA, radius, space } from '../../lib/tokens';
+import { font, hexA, radius, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { Button } from '../ui';
 import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../spatial';
 import { CANVASES, DECOR, TEXTURES } from '../../lib/visualAssets';
@@ -51,6 +52,8 @@ export default function OnboardingScaffold({
   primaryLabel, onPrimary, primaryDisabled, primaryLoading,
   secondaryLabel, onSecondary, error,
 }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   return (
     <SafeAreaView style={s.safe}>
       <AtmosphericScreenCanvas
@@ -100,7 +103,12 @@ export default function OnboardingScaffold({
           size="lg"
         />
         {!!secondaryLabel && !!onSecondary && (
-          <TouchableOpacity onPress={onSecondary} style={s.secondary} accessibilityRole="button">
+          <TouchableOpacity
+            onPress={onSecondary}
+            style={s.secondary}
+            accessibilityRole="button"
+            accessibilityLabel={secondaryLabel}
+          >
             <Text style={s.secondaryText}>{secondaryLabel}</Text>
           </TouchableOpacity>
         )}
@@ -109,7 +117,7 @@ export default function OnboardingScaffold({
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg, position: 'relative' },
   progress: {
     flexDirection: 'row', gap: 6,

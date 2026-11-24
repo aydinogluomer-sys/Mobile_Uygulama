@@ -5,7 +5,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput } from 'react-native';
-import { colors, space, radius } from '../lib/tokens';
+import { hexA, space, radius, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { buildReminderConfig, MAX_REMINDER_TIMES } from '../lib/reminderPlan';
 import { openNotificationSettings, type NotificationAccess } from '../lib/notifications';
 import type { Habit } from '../lib/supabase';
@@ -30,6 +31,9 @@ const failed = (o: unknown): o is { ok: false; error: string } =>
   typeof o === 'object' && o !== null && (o as { ok?: unknown }).ok === false;
 
 export default function ReminderEditor({ habit, permission, access, onClose, onSave }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const [prevHabit, setPrevHabit] = useState<Habit | null>(null);
   const [enabled, setEnabled] = useState(true);
   const [times, setTimes] = useState<string[]>(['08:00']);
   const [days, setDays] = useState<number[]>([]);
@@ -37,14 +41,19 @@ export default function ReminderEditor({ habit, permission, access, onClose, onS
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
+  if (prevHabit !== habit) {
+    setPrevHabit(habit);
+    if (habit) {
+      const r = habit.reminders;
+      setEnabled(r?.enabled ?? true);
+      setTimes(r?.times?.length ? r.times : [r?.time ?? '08:00']);
+      setDays(r?.days ?? []);
+      setError(null);
+      setSaving(false);
+    }
+  }
+
   useEffect(() => {
-    if (!habit) return;
-    const r = habit.reminders;
-    setEnabled(r?.enabled ?? true);
-    setTimes(r?.times?.length ? r.times : [r?.time ?? '08:00']);
-    setDays(r?.days ?? []);
-    setError(null);
-    setSaving(false);
     savingRef.current = false;
   }, [habit]);
 
@@ -156,8 +165,8 @@ export default function ReminderEditor({ habit, permission, access, onClose, onS
   );
 }
 
-const s = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+const makeStyles = (colors: Palette) => StyleSheet.create({
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: hexA(colors.black, 0.55) },
   sheet: { backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: space.sm },
   title: { fontSize: 18, fontWeight: '700', color: colors.text },
   warnWrap: { gap: space.xs },

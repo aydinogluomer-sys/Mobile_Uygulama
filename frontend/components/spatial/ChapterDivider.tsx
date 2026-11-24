@@ -8,7 +8,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { colors, font, hexA, space } from '../../lib/tokens';
+import { font, hexA, space } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 
 const IS_TEST = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
@@ -34,17 +35,19 @@ type Props = {
 export default function ChapterDivider({
   source,
   label,
-  accentColor = colors.warning,
+  accentColor,
   style,
 }: Props) {
+  const c = useThemeColors();
+  const resolvedAccent = accentColor ?? c.warning;
   return (
     <View style={[s.wrap, style]} pointerEvents="none" {...decorativeA11y}>
-      <View style={[s.hairline, { backgroundColor: hexA(accentColor, 0.22) }]} />
+      <View style={[s.hairline, { backgroundColor: hexA(resolvedAccent, 0.22) }]} />
       {source && !IS_TEST ? (
         <Image source={source} style={s.ornament} contentFit="contain" cachePolicy="memory-disk" />
       ) : null}
-      {label ? <Text style={[s.label, { color: hexA(accentColor, 0.78) }]}>{label}</Text> : null}
-      <View style={[s.hairline, { backgroundColor: hexA(accentColor, 0.22) }]} />
+      {label ? <Text style={[s.label, { color: hexA(resolvedAccent, 0.78) }]}>{label}</Text> : null}
+      <View style={[s.hairline, { backgroundColor: hexA(resolvedAccent, 0.22) }]} />
     </View>
   );
 }
