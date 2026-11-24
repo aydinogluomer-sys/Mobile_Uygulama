@@ -77,7 +77,11 @@ describe('F25 (DSA-01) — light theme release gate and first-wave migration fen
     expect(tabsLayout).toMatch(/LIGHT_THEME_ENABLED\s*\?[\s\S]*?accessibilityLabel="Tema değiştir"/);
   });
 
-  it('(-) flipping LIGHT_THEME_ENABLED to true prematurely is blocked by > 100 unmigrated static importers', () => {
+  it('(+) zero unmigrated static colors importers remain across all app/ and components/ .tsx files', () => {
+    expect(staticImporters).toEqual([]);
+  });
+
+  it('(-) evaluateLightThemeGate blocks synthetic unmigrated static importers when LIGHT_THEME_ENABLED is true unless listed in INTENTIONALLY_DARK', () => {
     let mockedEnabled = false;
     jest.isolateModules(() => {
       jest.doMock('../../lib/featureGates', () => ({
@@ -90,7 +94,11 @@ describe('F25 (DSA-01) — light theme release gate and first-wave migration fen
       mockedEnabled = fg.LIGHT_THEME_ENABLED;
     });
     expect(mockedEnabled).toBe(true);
-    const blockers = evaluateLightThemeGate(mockedEnabled, staticImporters, INTENTIONALLY_DARK);
-    expect(blockers.length).toBeGreaterThan(100);
+    const syntheticBlockers = evaluateLightThemeGate(
+      mockedEnabled,
+      ['app/screens/synthetic.tsx', 'components/IntentionallyDark.tsx'],
+      new Set(['components/IntentionallyDark.tsx']),
+    );
+    expect(syntheticBlockers).toEqual(['app/screens/synthetic.tsx']);
   });
 });

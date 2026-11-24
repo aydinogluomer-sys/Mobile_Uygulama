@@ -118,21 +118,21 @@ function ratchetProblems(
 
 const ROOT = join(__dirname, '..', '..');
 
-// Locked to exact post-Wave-9 production measurement (F28/F29/F30/F32 + today.tsx navigateTo: asAny 129 -> 85, asNever 17 -> 15, colonAny 5 -> 4).
+// Locked to exact post-Shard-A..E production measurement (asAny: 85 -> 0, asUnknownAs: 50 -> 4, asNever: 15 -> 3, colonAny: 4 -> 0, eslintDisable: 14 -> 8).
 const CEILINGS: Readonly<EscapeCounts> = {
-  asAny: 85,
-  asUnknownAs: 50,
-  asNever: 15,
-  colonAny: 4,
+  asAny: 0,
+  asUnknownAs: 4,
+  asNever: 3,
+  colonAny: 0,
   genericAny: 0,
   tsDirective: 0,
-  eslintDisable: 14,
+  eslintDisable: 8,
 };
 
 const LAYER_CEILINGS: Readonly<Record<'repositories' | 'store', Partial<EscapeCounts>>> = {
   repositories: {
-    asUnknownAs: 46,
-    asNever: 2,
+    asUnknownAs: 3,
+    asNever: 0,
   },
   store: {
     asAny: 0,

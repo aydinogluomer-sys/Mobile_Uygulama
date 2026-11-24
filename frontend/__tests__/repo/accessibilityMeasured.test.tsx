@@ -117,9 +117,9 @@ const FIRST_WAVE_A11Y = [
 ] as const;
 
 export const TOUCHABLE_CEILINGS = {
-  noRole: 93,
-  noLabel: 113,
-  iconOnlyNoLabel: 22,
+  noRole: 0,
+  noLabel: 0,
+  iconOnlyNoLabel: 0,
 } as const;
 
 describe('touchable roles and labels ratchet (F26 / DSA-02)', () => {

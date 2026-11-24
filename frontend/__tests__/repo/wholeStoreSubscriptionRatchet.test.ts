@@ -35,10 +35,8 @@ const WHOLE_STORE_RE = /=\s*use[A-Za-z]+Store\(\)\s*;/g;
 const HOT_WHOLE_STORE_RE = /=\s*use(?:Focus|Log|Habit|Task|Willpower|Recovery|Disclosure|RoutineRunner|[A-Za-z]+)Store\(\)\s*;/g;
 const UNSHALLOWED_OBJECT_SELECTOR_RE = /\buse[A-Za-z]+Store\s*\(\s*\([^)]*\)\s*=>\s*\(\s*\{/g;
 
-// Pre-F27 baseline on f87818e1 was 93 (today.tsx: 6, FocusFlowView.tsx: 3, YearlyHeatmap.tsx: 1 in F31).
-// Post-Wave-8B locked ceiling: 93 - 10 = 83.
-// F28 (PRF-12, PRF-18): habits (-2), timeline (-3), HabitListView (-1), Drawer (-1), CommandPalette (-5), hub (-3) => 83 - 15 = 68.
-export const BASELINE = 68;
+// Pre-F27 baseline on f87818e1 was 93; post-F28 was 68; post-Shards-A..E locked at 0.
+export const BASELINE = 0;
 
 function walkCodeFiles(relDir: string): string[] {
   const abs = join(ROOT, relDir);

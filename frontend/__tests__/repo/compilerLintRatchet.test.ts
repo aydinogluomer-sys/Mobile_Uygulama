@@ -18,11 +18,10 @@ const COMPILER_HOOK_RULES = [
 ] as const;
 
 /**
- * Frozen legacy ceiling measured when enabling the 4 React Compiler hook rules (BLD-15).
- * Breakdown at F48 freeze: refs=132, set-state-in-effect=48, preserve-manual-memoization=11, purity=1 (total=192).
+ * Locked at zero after clearing all 192 legacy React Compiler hook findings across Shards A–E.
  * Only decreases via `npx eslint . --ext .ts,.tsx --prune-suppressions`.
  */
-export const BASELINE_TOTAL = 192;
+export const BASELINE_TOTAL = 0;
 
 type SuppressionsFile = Record<string, Record<string, { count: number }>>;
 
@@ -123,7 +122,7 @@ describe('F48 C8 (BLD-15) — React Compiler Hook Rules Lint Ratchet', () => {
 
     expect(summary.unexpectedRules).toEqual([]);
     expect(summary.missingFiles).toEqual([]);
-    expect(summary.total).toBeGreaterThan(0);
+    expect(summary.total).toBe(0);
     expect(summary.total).toBeLessThanOrEqual(BASELINE_TOTAL);
   });
 

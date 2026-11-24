@@ -4,7 +4,7 @@
  * serif editöryel başlıklar, mono tabular sayılar, eyebrow etiketleri, keskin küçük radii.
  * Hardcoded hex yerine bunları kullan.
  */
-import { Platform } from 'react-native';
+import { Platform, type FontVariant } from 'react-native';
 
 // hex'e alpha eklemek için: hexA('#D97757', 0.14) → 'rgba(217,119,87,0.14)'
 export function hexA(hex: string, alpha: number): string {
@@ -320,10 +320,10 @@ export const font = {
   // Eyebrow — küçük, uppercase, sıkı tracking
   overline: { fontSize: 11, fontWeight: '600' as const, letterSpacing: 1.2, textTransform: 'uppercase' as const },
   // Metrik — mono, tabular
-  metric: { fontFamily: fontFamily.mono, fontSize: 26, fontWeight: '500' as const, letterSpacing: -0.5, fontVariant: ['tabular-nums'] as any },
+  metric: { fontFamily: fontFamily.mono, fontSize: 26, fontWeight: '500' as const, letterSpacing: -0.5, fontVariant: ['tabular-nums'] as FontVariant[] },
 };
 
-export const tabularNums = { fontFamily: fontFamily.mono, fontVariant: ['tabular-nums'] as any };
+export const tabularNums = { fontFamily: fontFamily.mono, fontVariant: ['tabular-nums'] as FontVariant[] };
 
 // Gölge/glow — "barely there", sıcak
 export const shadow = {
