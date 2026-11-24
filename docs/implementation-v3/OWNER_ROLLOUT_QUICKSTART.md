@@ -13,7 +13,7 @@
 Hiçbir ağ veya canlı veritabanı bağlantısı kurmadan yerel ağacın geçişe hazır olduğunu doğrulayın:
 
 ```bash
-# 1.1 Migration <-> Rollback 1:1 eşliği (028..044), rollback onay kilidi,
+# 1.1 Migration <-> Rollback 1:1 eşliği (028..045, 18 migration), rollback onay kilidi,
 #     predeploy_guard.sh, DEPLOYMENT.json + deno.lock ve 8 featureGate kontrolü (çıkış: 0)
 node tools/verify-owner-rollout-readiness.mjs
 
@@ -40,32 +40,33 @@ env -u SUPABASE_PROJECT_REF bash supabase/predeploy_guard.sh
      SELECT count(*) FROM public.xp_drift();
      ```
      Sonuç kesinlikle **`0`** olmalıdır (`0` değilse `038` uygulanmaz; önce `rebuild_profile_xp(uuid)` değerlendirilir).
-   - **`0.5` & `0.6`:** `039` öncesi yinelenen mesaj / iade sayımlarını ve `042` öncesi `habit_logs` / `habits` üzerinde bağımlı görünüm olmadığını (`0` satır) kaydedin.
-   - **`§3` Ön denetim:** `040` öncesi onarılacak `profiles.username` sayısını, `archive_f13`'e taşınacak 6 tablonun satır sayılarını ve `auth.users` üzerindeki eski test hesaplarını kontrol edin.
+   - **`0.5`, `0.6` & `0.7`:** `039` öncesi yinelenen mesaj / iade sayımlarını, `042` öncesi `habit_logs` / `habits` üzerinde bağımlı görünüm olmadığını (`0` satır) ve `045` öncesi `tasks.estimated_minutes` / `estimate_source` sütunlarının henüz bulunmadığını (`0` satır) kaydedin.
+   - **`§3` & `§10` (`Y01` Canlı Kanıt Paketi):** `040` öncesi onarılacak `profiles.username` sayısını, `archive_f13`'e taşınacak 6 tablonun satır sayılarını, `auth.users` eski test hesaplarını kontrol edin ve `SQL_FOR_OWNER.md §10` (`Y01`) kapsamındaki 6 parçalı salt-okunur canlı şema/defter/RPC/RLS/`xp_drift`/Edge kanıt çıktısını arşivleyin.
 
 ---
 
-## Adım 3 — Sıralı Veritabanı Migration Penceresi (`028`..`044`)
+## Adım 3 — Sıralı Veritabanı Migration Penceresi (`028`..`045` — 18 Migration)
 
-### Kritik İstemci İkilisi (Client Binary) ↔ Veritabanı Sıralama Kuralları
+### Kritik İstemci İkilisi (`Eski İstemci` vs `Yeni İstemci`) ↔ Veritabanı Sıralama Matrisi (`Y02`)
 
-| Kural | Migration | Zorunlu Zamanlama | Neden |
+| Kural / Matris (`Y02`) | Migration | Zorunlu Zamanlama | `Eski İstemci` × `Yeni İstemci` Uyum Özeti (`SQL_FOR_OWNER.md §11`) |
 |---|---|---|---|
-| **ÖNCE / BİRLİKTE** | **`042`** (`042_numeric_measures_and_willpower.sql`) | Yeni istemci sürümünden **ÖNCE** (veya aynı pencerede birlikte) | Ondalık `daily_goal` / `habit_logs.value` (`numeric(12,2)`) ve `spend_willpower` atomik RPC'si istemci ondalık veri göndermeden önce hazır olmalıdır (`SQL_FOR_OWNER.md §5`). |
-| **SONRA** | **`039`** (`039_focus_point_hardening.sql`) | Yeni istemci sürümü mağazalarda yayına çıktıktan **SONRA** | Eski `spend_focus_points(integer, text)` RPC'sinin istemci `EXECUTE` yetkisini kapatır; eski istemciler kredi harcayamaz hale gelir (`SQL_FOR_OWNER.md §1 & §5`). |
-| **XP Drift Kapısı** | **`036`, `038`, `040`, `044`** (ve `041`–`043`) | Her adımdan hemen **SONRA** | `SELECT count(*) FROM public.xp_drift();` **`0`** dönmelidir (`0` değilse bir sonraki adıma geçilmez). |
+| **ÖNCE / BİRLİKTE (Faz A)** | **`042`** (`042_numeric_measures_and_willpower.sql`) | Yeni istemci sürümünden **ÖNCE** (veya aynı pencerede birlikte) | `042` sonrası eski tam sayı yazımları kayıpsız çalışır; yeni istemci ondalık (`1.5`) veri göndermeden önce `numeric(12,2)` ve `spend_willpower` hazır olmalıdır (`042` öncesi ondalık yazım `22P02` alır). |
+| **ÖNCE / BİRLİKTE (Faz A)** | **`045`** (`045_task_estimated_minutes.sql`) | Yeni istemci sürümünden **ÖNCE** (veya aynı pencerede birlikte) | `045` sonrası nullable `estimated_minutes` (`1..1440`) ve `estimate_source` eski istemciyi hiç etkilemez (`NULL` kalır); yeni istemci `045` öncesi çalışırsa `42703`/`PGRST204` (`E08` `schema_missing`) ile dar-kolon fallback'ine düşer ama süreyi sunucuda saklayamaz. |
+| **SONRA (Faz B)** | **`039`** (`039_focus_point_hardening.sql`) | Yeni istemci sürümü mağazalarda yayına çıktıktan **SONRA** | Eski `spend_focus_points(integer, text)` RPC'sinin istemci `EXECUTE` yetkisini kapatır; `039` sonrası eski istemciler `42501` alır, yeni istemci ise Edge v2 akışıyla tam uyumludur (`SQL_FOR_OWNER.md §5 & §11`). |
+| **XP Drift Kapısı** | **`036`, `038`, `040`, `044`, `045`** (ve `041`–`043`) | Her adımdan hemen **SONRA** | `SELECT count(*) FROM public.xp_drift();` **`0`** dönmelidir (`0` değilse bir sonraki adıma geçilmez). |
 
-### Uygulama Dizisi (`SQL_FOR_OWNER.md §1` & Doğrulama `§2.1`–`§2.17`)
+### Uygulama Dizisi (`SQL_FOR_OWNER.md §1` & Doğrulama `§2.1`–`§2.18`)
 
 1. **Faz A — İstemci Yayını Öncesi Hazırlık ve Şema Genişletme:**
    - Sırayla uygula ve her adımdan sonra karşılık gelen `SQL_FOR_OWNER.md §2` doğrulamasını çalıştır:
-     `028` → `029` → `030` → `031` → `032` → `033` → `034` → `035` → `036` *(ardından `xp_drift() = 0`)* → `037` → `038` *(önkoşul: `036` + `xp_drift() = 0`; sonrasında tekrar `xp_drift() = 0`)* → **`042`** *(yeni istemci ikilisinden ÖNCE/birlikte; sonrasında `xp_drift() = 0`)*.
+     `028` → `029` → `030` → `031` → `032` → `033` → `034` → `035` → `036` *(ardından `xp_drift() = 0`)* → `037` → `038` *(önkoşul: `036` + `xp_drift() = 0`; sonrasında tekrar `xp_drift() = 0`)* → **`042`** *(yeni istemci ikilisinden ÖNCE/birlikte; `§2.15` + `xp_drift() = 0`)* → **`045`** *(görev süre tahmini + `get_today_bootstrap` görev projeksiyonu; `§2.18` + `xp_drift() = 0`)*.
 2. **Faz B — Yeni İstemci İkilisi Yayında Olduktan Sonra Sıkılaştırma:**
    - Sırayla uygula:
      **`039`** *(istemci yayını SONRASI)* → **`040`** *(önkoşul: `028–039`; sonrasında `xp_drift() = 0` ve `§2.13` doğrulaması)* → `041` *(`§2.14`)* → `043` *(önkoşul: `038`; `§2.16`)* → **`044`** *(önkoşul: `039` + `040`; sonrasında `xp_drift() = 0` ve `§2.17`)*.
-   - *(Not: Yeni istemci ikilisi halihazırda yayındaysa ve eski istemci trafiği sonlandıysa `028` → `044` kesintisiz artan sırayla uygulanabilir; `042` her koşulda ondalık yazan istemciden önce devrede olmalıdır.)*
-3. **Bitiş RLS Negatif Kontrolü:** [`SQL_FOR_OWNER.md §6`](./SQL_FOR_OWNER.md) (`6.1` tüm 10 yeni tabloda `rowsecurity = true`, `6.2` anon/public politikası `0` satır).
-4. **Acil Geri Alma (Gerekirse):** Yalnızca `supabase/rollbacks/` altından **büyükten küçüğe** (`044 → ... → 028`; `040` mutlaka `039/038/036`'dan önce, `038` mutlaka `036`'dan önce), aynı SQL oturumunda `SET aderyth.rollback_confirm = 'NNN';` komutuyla çalıştırılır (`supabase/rollbacks/README.md`).
+   - *(Not: Yeni istemci ikilisi halihazırda yayındaysa ve eski istemci trafiği sonlandıysa `028` → `045` kesintisiz artan sırayla uygulanabilir; `042` ve `045` her koşulda ondalık/süre yazan istemciden önce devrede olmalıdır.)*
+3. **Bitiş RLS Negatif Kontrolü ve `Y01` Kanıt Paketi:** [`SQL_FOR_OWNER.md §6` & `§10`](./SQL_FOR_OWNER.md) (`6.1` tüm 10 yeni tabloda `rowsecurity = true`, `6.2` anon/public politikası `0` satır, `§10` iki hesaplı RLS izolasyonu ve `xp_drift() = 0`).
+4. **Kurtarma ve Acil Geri Alma Kararı (`Y06`):** Canlı veri yazıldıktan sonra varsayılan yol **ileri düzeltmedir (`Forward-Fix`, RPO = 0)** (`SQL_FOR_OWNER.md §12`). Geri alma betiği gerekiyorsa yalnızca `supabase/rollbacks/` altından **büyükten küçüğe** (`045 → ... → 028`; `040` mutlaka `039/038/036`'dan önce, `038` mutlaka `036`'dan önce), aynı SQL oturumunda `SET aderyth.rollback_confirm = 'NNN';` komutuyla çalıştırılır (`supabase/rollbacks/README.md`).
 
 ---
 

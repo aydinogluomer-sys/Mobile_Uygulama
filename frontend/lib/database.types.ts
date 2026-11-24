@@ -2051,6 +2051,10 @@ export type Database = {
           project_id: string | null;
           notes_text: string | null;
           quadrant: string | null;
+          // @source migration:045
+          estimated_minutes: number | null;
+          // @source migration:045
+          estimate_source: string | null;
         };
         Insert: {
           id?: string;
@@ -2074,6 +2078,10 @@ export type Database = {
           project_id?: string | null;
           notes_text?: string | null;
           quadrant?: string | null;
+          // @source migration:045
+          estimated_minutes?: number | null;
+          // @source migration:045
+          estimate_source?: string | null;
         };
         Update: {
           id?: string;
@@ -2097,6 +2105,10 @@ export type Database = {
           project_id?: string | null;
           notes_text?: string | null;
           quadrant?: string | null;
+          // @source migration:045
+          estimated_minutes?: number | null;
+          // @source migration:045
+          estimate_source?: string | null;
         };
         Relationships: [];
       };

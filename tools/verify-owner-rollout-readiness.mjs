@@ -4,7 +4,7 @@
  *
  * Verifies deterministic repository invariants before (and immediately after)
  * an owner production rollout against canonical project `kbcuolhjjnmhjaarxxmu`:
- *   1. Migration <-> Rollback 1:1 parity (`028`..`044`), `aderyth.rollback_confirm`,
+ *   1. Migration <-> Rollback 1:1 parity (`028`..`045`), `aderyth.rollback_confirm`,
  *      and `docs/implementation-v3/SQL_FOR_OWNER.md` coverage.
  *   2. `supabase/predeploy_guard.sh` integrity (`set -euo pipefail`, LF endings,
  *      fail-closed on empty/non-canonical ref, canonical `kbcuolhjjnmhjaarxxmu`).
@@ -40,7 +40,7 @@ export const DEFAULT_REPO_ROOT = resolve(dirname(THIS_FILE), '..');
 export const CANONICAL_PROJECT_REF = 'kbcuolhjjnmhjaarxxmu';
 
 export const EXPECTED_PENDING_MIGRATION_NUMBERS = Object.freeze(
-  Array.from({ length: 17 }, (_, idx) => String(28 + idx).padStart(3, '0')),
+  Array.from({ length: 18 }, (_, idx) => String(28 + idx).padStart(3, '0')),
 );
 
 export const EXPECTED_DEPLOYED_EDGE_FUNCTIONS = Object.freeze([
@@ -196,7 +196,7 @@ export function rollbackFileNameFor(migrationFile) {
 }
 
 /**
- * Check 1: Migration <-> Rollback 1:1 parity (`028`..`044`), `aderyth.rollback_confirm`,
+ * Check 1: Migration <-> Rollback 1:1 parity (`028`..`045`), `aderyth.rollback_confirm`,
  * and `docs/implementation-v3/SQL_FOR_OWNER.md` documentation coverage.
  *
  * @param {{
@@ -848,7 +848,7 @@ export function formatReadinessReport(report) {
   const statusTag = (ok) => (ok ? '[PASS]' : '[FAIL]');
   const lines = [
     `Owner Rollout Readiness (${report.mode}) — canonical target ${report.canonicalProjectRef}`,
-    `${statusTag(report.checks.migrationRollbackParity.ok)} Migration <-> Rollback parity (${report.checks.migrationRollbackParity.checkedMigrations} migrations 028..044)`,
+    `${statusTag(report.checks.migrationRollbackParity.ok)} Migration <-> Rollback parity (${report.checks.migrationRollbackParity.checkedMigrations} migrations 028..045)`,
     `${statusTag(report.checks.predeployGuard.ok)} Predeploy guard integrity (set -euo pipefail, fail-closed${report.checks.predeployGuard.bashProbed ? ', bash-probed' : ''})`,
     `${statusTag(report.checks.edgeDeployment.ok)} Edge deployment manifest & Deno lock (${report.checks.edgeDeployment.deployedFunctions.join(', ') || 'none'})`,
     `${statusTag(report.checks.featureGates.ok)} Feature gates safety fence (${ALL_FEATURE_GATES.length} boolean literals)`,

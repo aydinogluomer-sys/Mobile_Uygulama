@@ -7,7 +7,7 @@ Postgres 17 hizmetinde sınanmak üzere bağlanmıştır; ilk gerçek CI koşusu
 
 ## Amaç
 
-`supabase/migrations/028` ile `044` arasındaki on yedi migration ileri yönde yazılmıştır ve canlıda
+`supabase/migrations/028` ile `045` arasındaki on sekiz migration ileri yönde yazılmıştır ve canlıda
 uygulanmamıştır. Sahip birini bir Supabase branch'inde ya da canlıda uygulayıp bir sorun görürse,
 elinde sınanmış bir geri dönüş yolu olmalıdır. Her migration için bir geri alma betiği, CI'da
 "ileri uygula, sondan başa geri al, kataloğu baştakiyle karşılaştır, yeniden ileri uygula" döngüsüyle
@@ -71,16 +71,17 @@ Hiçbir betikte `DROP ... CASCADE` biçimi, `DROP SCHEMA` ya da `auth.` şeması
 select * from public.xp_drift();   -- 0 satır beklenir
 ```
 
-Yıkıcı betikler (028, 029, 030, 031, 033 veri siler; 036 ve 040 güvenlik açıklarını, 038 XP pencere, tavan ve
+Yıkıcı betikler (028, 029, 030, 031, 033, 045 veri siler; 036 ve 040 güvenlik açıklarını, 038 XP pencere, tavan ve
 seri açıklarını yeniden açar) yedek ister
-(S1). Ayrıntılı salt-okunur sorgular `docs/implementation-v3/SQL_FOR_OWNER.md` §2.10'dadır.
+(S1). Ayrıntılı salt-okunur sorgular ve kayıplı geri alma vs ileri düzeltme / yedekten dönüş RPO–RTO karar matrisi (`Y06`) `docs/implementation-v3/SQL_FOR_OWNER.md` §2.10 ve §12'dedir.
 
 ## Betikler ve sıra
 
-Sıra **büyükten küçüğe**: 044, 043, 042, 041, 040, 039, 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
+Sıra **büyükten küçüğe**: 045, 044, 043, 042, 041, 040, 039, 038, 037, 036, 035, 034, 033, 032, 031, 030, 029, 028.
 
 | Betik | Geri aldığı migration | Etkisi | Veri kaybı |
 | --- | --- | --- | --- |
+| `045_task_estimated_minutes.rollback.sql` | `045_task_estimated_minutes.sql` | `get_today_bootstrap(date)` varsa 037 gövdesine döner (ACL korunur), `tasks_estimate_source_check`, `tasks_estimated_minutes_check`, `tasks.estimate_source` ve `tasks.estimated_minutes` düşer | görev başına kayıtlı dakika tahmini ve tahmin kaynağı silinir (görev başlığı/durumu ve XP değişmez) |
 | `044_ai_messages_and_retention.rollback.sql` | `044_ai_messages_and_retention.sql` | `ai_messages_insert_own` 026 şekline döner, `purge_ai_retention()` ve `ai_requests_user_created_idx` düşer, `cleanup_old_ai_calls()` EXECUTE hakları taban haline döner | yok (044 altında `purge_ai_retention()` çalıştırıldıysa boşaltılmış/silinmiş AI kayıtları geri gelmez) |
 | `043_profile_time_zone.rollback.sql` | `043_profile_time_zone.sql` | `profiles.time_zone`, `profiles_time_zone_check`, `set_profile_time_zone`, `local_date_in_zone` ve `week_start_in_zone` düşer; `fn_habit_log_guard`, `track_weekly_xp` ve `get_weekly_leaderboard` 043 öncesi UTC gövdelerine döner | kayıtlı IANA saat dilimi adları silinir (uygulama bir sonraki açılışta yeniden bildirir; XP ve defter değişmez) |
 | `042_numeric_measures_and_willpower.rollback.sql` | `042_numeric_measures_and_willpower.sql` | `habit_logs.value` ve `habits.daily_goal` `integer` tipine döner, `habit_xp_value(uuid, text, integer)` canlı gövdesiyle geri gelir, `habit_xp_value(uuid, text, numeric)` ve `spend_willpower` düşer | **kayıplı**: ondalık `value` ve `daily_goal` değerleri en yakın tam sayıya yuvarlanır (XP ve defter değişmez) |
@@ -111,7 +112,7 @@ Zorunlu sıra kısıtları şunlardır:
 
 ## Güvenli yeniden çalıştırma
 
-028, 029, 030, 031, 033, 037, 039, 041 ve 044 `IF EXISTS` / `IF NOT EXISTS` ve idempotent politika/kısıt yenilemesi kullanır: ikinci çalıştırma no-op'tur. 032, 034 ve 035
+028, 029, 030, 031, 033, 037, 039, 041, 044 ve 045 `IF EXISTS` / `IF NOT EXISTS` ve idempotent politika/kısıt/fonksiyon yenilemesi kullanır: ikinci çalıştırma no-op'tur. 032, 034 ve 035
 aynı kısıtı yeniden kurar. **036 ikinci çalıştırmada reddeder** (`036 is not applied`): defter yoksa 036
 uygulanmamış sayılır ve böyle bir veritabanına `TO PUBLIC` hakları vermemek bilinçli bir güvencedir.
 **038 de ikinci çalıştırmada reddeder** (`038 is not applied`, `fn_habit_log_guard` yoksa): 038'in
@@ -154,7 +155,7 @@ sıralı satırlar olarak yazar. CI sırayla:
    kontroller). Hatada durmayan bir istemci de (`ON_ERROR_STOP` yok) denenir: başarısız onay bloğu
    transaction'ı iptal durumunda bırakır, sonraki ifadeler reddedilir, `COMMIT` geri sarar. Reddedilen
    denemeler katalogu değiştirmez.
-4. 044'ten 028'e, her betik kendi `SET aderyth.rollback_confirm` değeriyle geri alınır.
+4. 045'ten 028'e, her betik kendi `SET aderyth.rollback_confirm` değeriyle geri alınır.
 5. Geri alınmış katalog tabanla `diff -u` ile karşılaştırılır, `xp_drift()` 0 satır olmalıdır.
 6. İkinci geri alma turu hiçbir şeyi değiştirmez (036, 038, 040, 042 ve 043 reddeder).
 7. Yeniden ileri uygulama; ikinci ileri parmak izi ilkine eşit olmalı, `run.sh` yeniden yeşil olmalıdır.
