@@ -7,6 +7,7 @@ import {
   type ChannelId,
 } from '../lib/outboxEngine';
 import type { Flusher } from '../lib/syncCoordinator';
+import type { SyncOutcomeStatus } from '../lib/syncOutcomes';
 import { useHabitStore } from '../store/habitStore';
 
 /**
@@ -153,4 +154,16 @@ export function describeFlushOutcome(after: UnifiedOutboxSummary): FlushOutcome 
 
 export function syncFlushers(): Flusher[] {
   return outboxEngine.flushers();
+}
+
+export type { SyncOutcomeStatus };
+
+export function mapSummaryToSyncOutcome(summary: UnifiedOutboxSummary): SyncOutcomeStatus {
+  if (summary.conflict > 0) return 'conflict';
+  if (summary.dead > 0) return 'permanent';
+  if (summary.authBlocked || (summary.errors !== undefined && Object.keys(summary.errors).length > 0)) {
+    return 'retryable';
+  }
+  if (summary.pending > 0) return 'pending';
+  return 'committed';
 }

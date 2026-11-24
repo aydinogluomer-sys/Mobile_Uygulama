@@ -76,6 +76,7 @@ export function newTaskRow(id: string, input: Partial<Task>, now: Date = new Dat
     parent_task_id: input.parent_task_id ?? null,
     is_subtask: input.is_subtask ?? false,
     ...(input.estimated_minutes !== undefined ? { estimated_minutes: input.estimated_minutes } : {}),
+    ...(input.estimate_source !== undefined ? { estimate_source: input.estimate_source } : {}),
     project_id: input.project_id ?? null,
     description: input.description ?? null,
     notes_text: input.notes_text ?? null,
@@ -92,7 +93,7 @@ export function newTaskRow(id: string, input: Partial<Task>, now: Date = new Dat
 export function alreadyHolds(row: Record<string, unknown> | object, payload: Record<string, unknown>): boolean {
   const r = row as Record<string, unknown>;
   return Object.keys(payload).every((k) => {
-    if (k === 'estimated_minutes' && !(k in r)) return true;
+    if ((k === 'estimated_minutes' || k === 'estimate_source') && !(k in r)) return true;
     const a = payload[k];
     const b = r[k];
     if (a === b) return true;
