@@ -647,14 +647,8 @@ END $$;
 -- 8c. clients can no longer write any of the 17 tables
 REVOKE INSERT, UPDATE, DELETE ON public.user_gamification FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.ai_calls FROM anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON public.boss_contributors FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.calendars FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.event_templates FROM anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON public.user_challenges FROM anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON public.user_inventory FROM anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON public.user_pets FROM anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON public.user_quests FROM anon, authenticated;
-REVOKE INSERT, UPDATE, DELETE ON public.user_skills FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.global_bosses FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.pet_stages FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.quests FROM anon, authenticated;
@@ -662,6 +656,28 @@ REVOKE INSERT, UPDATE, DELETE ON public.shop_items FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.skills FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.challenges FROM anon, authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.habit_templates FROM anon, authenticated;
+
+DO $$
+BEGIN
+  IF to_regclass('public.boss_contributors') IS NOT NULL THEN
+    REVOKE INSERT, UPDATE, DELETE ON public.boss_contributors FROM anon, authenticated;
+  END IF;
+  IF to_regclass('public.user_challenges') IS NOT NULL THEN
+    REVOKE INSERT, UPDATE, DELETE ON public.user_challenges FROM anon, authenticated;
+  END IF;
+  IF to_regclass('public.user_inventory') IS NOT NULL THEN
+    REVOKE INSERT, UPDATE, DELETE ON public.user_inventory FROM anon, authenticated;
+  END IF;
+  IF to_regclass('public.user_pets') IS NOT NULL THEN
+    REVOKE INSERT, UPDATE, DELETE ON public.user_pets FROM anon, authenticated;
+  END IF;
+  IF to_regclass('public.user_quests') IS NOT NULL THEN
+    REVOKE INSERT, UPDATE, DELETE ON public.user_quests FROM anon, authenticated;
+  END IF;
+  IF to_regclass('public.user_skills') IS NOT NULL THEN
+    REVOKE INSERT, UPDATE, DELETE ON public.user_skills FROM anon, authenticated;
+  END IF;
+END $$;
 
 -- 8d. the six user-data tables move to a schema PostgREST does not expose
 --     (data kept; FK to auth.users ON DELETE CASCADE keeps account deletion complete)
