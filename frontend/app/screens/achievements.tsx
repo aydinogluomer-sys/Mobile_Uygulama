@@ -4,7 +4,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, alphaHex, radius, space, font } from '../../lib/tokens';
+import { useShallow } from 'zustand/react/shallow';
+import { alphaHex, radius, space, font, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useProfileStore } from '../../store/profileStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
@@ -33,13 +35,22 @@ export type AchievementItem = {
 };
 
 export default function AchievementsScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const { width } = useWindowDimensions();
-  const { profile, badges, fetchProfile, fetchBadges } = useProfileStore();
-  const { habits } = useHabitStore();
-  const { logs } = useLogStore();
-  const { tasks } = useTaskStore();
-  const { sessions } = useDeepWorkStore();
-  const { entries } = useJournalStore();
+  const { profile, badges, fetchProfile, fetchBadges } = useProfileStore(
+    useShallow((st) => ({
+      profile: st.profile,
+      badges: st.badges,
+      fetchProfile: st.fetchProfile,
+      fetchBadges: st.fetchBadges,
+    })),
+  );
+  const habits = useHabitStore((st) => st.habits);
+  const logs = useLogStore((st) => st.logs);
+  const tasks = useTaskStore((st) => st.tasks);
+  const sessions = useDeepWorkStore((st) => st.sessions);
+  const entries = useJournalStore((st) => st.entries);
 
   const [activeCategory, setActiveCategory] = useState<AchievementCategory>('all');
 
@@ -186,7 +197,7 @@ export default function AchievementsScreen() {
     // Supabase profile_badges ile eşleştir
     return list.map((item) => {
       const dbMatch = badges.find(
-        (b) => b.badge_name?.toLowerCase() === item.title.toLowerCase() || b.id === item.id
+        (b) => b.badge_name?.toLowerCase() === item.title.toLowerCase() || b.id === item.id,
       );
       if (dbMatch) {
         return {
@@ -242,13 +253,13 @@ export default function AchievementsScreen() {
 
         {/* Kategori Filtreleri */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
-          {[
+          {([
             { key: 'all', label: 'Tümü' },
             { key: 'habits', label: 'Alışkanlık' },
             { key: 'streaks', label: 'Seri' },
             { key: 'level', label: 'Seviye' },
             { key: 'focus', label: 'Odak & Zihin' },
-          ].map((cat) => {
+          ] as const).map((cat) => {
             const active = activeCategory === cat.key;
             return (
               <TouchableOpacity
@@ -256,7 +267,7 @@ export default function AchievementsScreen() {
                 style={[s.filterChip, active && s.filterChipActive]}
                 onPress={() => {
                   haptic.select();
-                  setActiveCategory(cat.key as AchievementCategory);
+                  setActiveCategory(cat.key);
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`${cat.label} başarımlarını filtrele`}
@@ -338,207 +349,208 @@ export default function AchievementsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: space.lg, paddingBottom: space.hh, gap: space.md },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    content: { padding: space.lg, paddingBottom: space.hh, gap: space.md },
 
-  heroCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: space.lg,
-    gap: space.md,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  heroHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  heroTitle: {
-    ...font.title,
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  heroSub: {
-    ...font.caption,
-    color: colors.textDim,
-    marginTop: 2,
-  },
-  trophyWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: alphaHex(colors.warning, '18'),
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: alphaHex(colors.warning, '35'),
-  },
-  progressBarTrack: {
-    height: 8,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.full,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: colors.warning,
-    borderRadius: radius.full,
-  },
+    heroCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: space.lg,
+      gap: space.md,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    heroHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    heroTitle: {
+      ...font.title,
+      fontSize: 20,
+      fontWeight: '800',
+      color: colors.text,
+    },
+    heroSub: {
+      ...font.caption,
+      color: colors.textDim,
+      marginTop: 2,
+    },
+    trophyWrap: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      backgroundColor: alphaHex(colors.warning, '18'),
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: alphaHex(colors.warning, '35'),
+    },
+    progressBarTrack: {
+      height: 8,
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: radius.full,
+      overflow: 'hidden',
+    },
+    progressBarFill: {
+      height: '100%',
+      backgroundColor: colors.warning,
+      borderRadius: radius.full,
+    },
 
-  filterRow: {
-    flexDirection: 'row',
-    gap: space.sm,
-    paddingVertical: space.xs,
-  },
-  filterChip: {
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  filterChipActive: {
-    backgroundColor: alphaHex(colors.primary, '20'),
-    borderColor: colors.primary,
-  },
-  filterChipText: {
-    ...font.caption,
-    fontWeight: '600',
-    color: colors.textDim,
-  },
-  filterChipTextActive: {
-    color: colors.primary,
-    fontWeight: '700',
-  },
+    filterRow: {
+      flexDirection: 'row',
+      gap: space.sm,
+      paddingVertical: space.xs,
+    },
+    filterChip: {
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      borderRadius: radius.full,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    filterChipActive: {
+      backgroundColor: alphaHex(colors.primary, '20'),
+      borderColor: colors.primary,
+    },
+    filterChipText: {
+      ...font.caption,
+      fontWeight: '600',
+      color: colors.textDim,
+    },
+    filterChipTextActive: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
 
-  vitrineGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space.md,
-    justifyContent: 'space-between',
-  },
-  vitrineCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: space.md,
-    gap: space.sm,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  cardUnlocked: {
-    borderColor: alphaHex(colors.warning, '45'),
-    backgroundColor: alphaHex(colors.surface, '96'),
-  },
-  cardLocked: {
-    borderColor: colors.borderSubtle,
-    opacity: 0.88,
-  },
-  vitrineTopBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusDotOn: {
-    backgroundColor: colors.warning,
-  },
-  statusDotOff: {
-    backgroundColor: colors.border,
-  },
-  pedestalStage: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    position: 'relative',
-  },
-  medallionSpotlight: {
-    position: 'absolute',
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: alphaHex(colors.warning, '16'),
-  },
-  cardBody: {
-    gap: 5,
-    alignItems: 'center',
-  },
-  cardTitle: {
-    ...font.title,
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  cardTitleLocked: {
-    color: colors.textDim,
-  },
-  cardDesc: {
-    ...font.body,
-    fontSize: 11,
-    color: colors.textFaint,
-    lineHeight: 15,
-    textAlign: 'center',
-    minHeight: 30,
-  },
-  badgePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
-    backgroundColor: alphaHex(colors.accent, '18'),
-  },
-  xpBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.accent,
-  },
-  unlockedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    marginTop: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: radius.full,
-    backgroundColor: alphaHex(colors.success, '14'),
-  },
-  unlockedText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.success,
-  },
-  progressCol: {
-    width: '100%',
-    gap: 4,
-    marginTop: 4,
-  },
-  subProgressTrack: {
-    width: '100%',
-    height: 5,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.full,
-    overflow: 'hidden',
-  },
-  subProgressFill: {
-    height: '100%',
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-  },
-  progressText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.textFaint,
-    textAlign: 'center',
-  },
-});
+    vitrineGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: space.md,
+      justifyContent: 'space-between',
+    },
+    vitrineCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      padding: space.md,
+      gap: space.sm,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    cardUnlocked: {
+      borderColor: alphaHex(colors.warning, '45'),
+      backgroundColor: alphaHex(colors.surface, '96'),
+    },
+    cardLocked: {
+      borderColor: colors.borderSubtle,
+      opacity: 0.88,
+    },
+    vitrineTopBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    statusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    statusDotOn: {
+      backgroundColor: colors.warning,
+    },
+    statusDotOff: {
+      backgroundColor: colors.border,
+    },
+    pedestalStage: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 8,
+      position: 'relative',
+    },
+    medallionSpotlight: {
+      position: 'absolute',
+      width: 84,
+      height: 84,
+      borderRadius: 42,
+      backgroundColor: alphaHex(colors.warning, '16'),
+    },
+    cardBody: {
+      gap: 5,
+      alignItems: 'center',
+    },
+    cardTitle: {
+      ...font.title,
+      fontSize: 14,
+      fontWeight: '800',
+      color: colors.text,
+      textAlign: 'center',
+    },
+    cardTitleLocked: {
+      color: colors.textDim,
+    },
+    cardDesc: {
+      ...font.body,
+      fontSize: 11,
+      color: colors.textFaint,
+      lineHeight: 15,
+      textAlign: 'center',
+      minHeight: 30,
+    },
+    badgePill: {
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: radius.sm,
+      backgroundColor: alphaHex(colors.accent, '18'),
+    },
+    xpBadgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.accent,
+    },
+    unlockedRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      marginTop: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 3,
+      borderRadius: radius.full,
+      backgroundColor: alphaHex(colors.success, '14'),
+    },
+    unlockedText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.success,
+    },
+    progressCol: {
+      width: '100%',
+      gap: 4,
+      marginTop: 4,
+    },
+    subProgressTrack: {
+      width: '100%',
+      height: 5,
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: radius.full,
+      overflow: 'hidden',
+    },
+    subProgressFill: {
+      height: '100%',
+      backgroundColor: colors.primary,
+      borderRadius: radius.full,
+    },
+    progressText: {
+      fontSize: 10,
+      fontWeight: '600',
+      color: colors.textFaint,
+      textAlign: 'center',
+    },
+  });

@@ -1,6 +1,7 @@
-import { colors, alphaHex, hexA } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { Image } from 'expo-image';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Modal,
@@ -8,6 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, Stack } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 import { navigateTo } from '../../lib/destinations';
 import type { Habit } from '../../lib/supabase';
 import { useHabitStore } from '../../store/habitStore';
@@ -69,6 +71,53 @@ function derivedStateFor(
   return completion.state === 'skip' ? 'miss' : completion.state;
 }
 
+async function computeCoachAnalytics(): Promise<{
+  habits: string[];
+  summary: Record<string, string> | null;
+} | null> {
+  try {
+    const activeHabitRows = useHabitStore.getState().habits.filter((h) => h.status === 'active');
+    if (activeHabitRows.length === 0) return null;
+
+    const today = new Date();
+    const end = ymd(today);
+    const start = ymd(addDaysLocal(today, -55));
+    const start30 = ymd(addDaysLocal(today, -29));
+
+    const review = await loadReviewData({ start, end });
+    if (!review.ok) return null;
+    const logs = review.data.logs;
+
+    const enrichedHabits = activeHabitRows.slice(0, 20).map((h) => {
+      const r = habitCompletionRate(h, logs, { start: start30, end });
+      return r.ok ? `${h.name} (30g tamamlama: %${Math.round(r.value * 100)})` : h.name;
+    });
+
+    const summary: Record<string, string> = {};
+    const stats = weekdayBreakdown(activeHabitRows, logs, { start, end });
+    const best = bestWeekday(stats);
+    const worst = worstWeekday(stats);
+    if (best.ok) summary.en_iyi_gun = `${DOW_TR[best.value.weekday]} (%${Math.round(best.value.rate * 100)})`;
+    if (worst.ok) summary.en_zayif_gun = `${DOW_TR[worst.value.weekday]} (%${Math.round(worst.value.rate * 100)})`;
+
+    const rate = recoverySuccessRate(review.data.recoveryPlans.map(planFromRow));
+    if (rate.ok) summary.telafi_basari_orani = `%${Math.round(rate.value * 100)}`;
+
+    return {
+      habits: enrichedHabits,
+      summary: Object.keys(summary).length > 0 ? summary : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+const GREETING: Message = {
+  id: 'greeting',
+  role: 'assistant',
+  content: 'Merhaba! Ben Aderyth AI Coach\'un. Alışkanlıkların, görevlerin ve hedeflerin hakkında sana yardımcı olabilirim. Ne öğrenmek istersin?',
+};
+
 const QUICK_PROMPT_ART = [BENTO_ART.coachAnalyze, BENTO_ART.coachSuggest, BENTO_ART.coachShield, BENTO_ART.coachPlan] as const;
 const QUICK_PROMPTS = [
   'Alışkanlıklarımı analiz et',
@@ -78,12 +127,18 @@ const QUICK_PROMPTS = [
 ];
 
 export default function AICoachScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const router = useRouter();
-  const { habits } = useHabitStore();
-  const { tasks } = useTaskStore();
-  const { state: wp, fetchToday } = useWillpowerStore();
-  const { focusPoints, fetch: fetchSub, setBalance } = useSubscriptionStore();
-  const appendEntry = useJournalStore((s) => s.appendEntry);
+  const { habits } = useHabitStore(useShallow((st) => ({ habits: st.habits })));
+  const { tasks } = useTaskStore(useShallow((st) => ({ tasks: st.tasks })));
+  const { state: wp, fetchToday } = useWillpowerStore(
+    useShallow((st) => ({ state: st.state, fetchToday: st.fetchToday })),
+  );
+  const { focusPoints, fetch: fetchSub, setBalance } = useSubscriptionStore(
+    useShallow((st) => ({ focusPoints: st.focusPoints, fetch: st.fetch, setBalance: st.setBalance })),
+  );
+  const appendEntry = useJournalStore((st) => st.appendEntry);
   // ── Durable transcript ────────────────────────────────────────────────
   //
   // The conversation lives in Supabase, not here. `transient` holds the two
@@ -108,15 +163,17 @@ export default function AICoachScreen() {
   const updatePendingPayload = useAiConversationStore((st) => st.updatePendingPayload);
   const loadMoreConversations = useAiConversationStore((st) => st.loadConversations);
 
-  const [transient, setTransient] = useState<Message[]>([]);
+  // Transient receipts/errors belong to the thread they happened in.
+  const [transientState, setTransientState] = useState<{ threadId: string | null; items: Message[] }>({
+    threadId: activeId,
+    items: [],
+  });
+  const transient = useMemo(
+    () => (transientState.threadId === activeId ? transientState.items : []),
+    [transientState, activeId],
+  );
   const [sheetOpen, setSheetOpen] = useState(false);
   const projects = useProjectStore((st) => st.projects);
-
-  const GREETING: Message = {
-    id: 'greeting',
-    role: 'assistant',
-    content: 'Merhaba! Ben Aderyth AI Coach\'un. Alışkanlıkların, görevlerin ve hedeflerin hakkında sana yardımcı olabilirim. Ne öğrenmek istersin?',
-  };
 
   const messages: Message[] = [
     ...(storeMessages.length === 0 ? [GREETING] : storeMessages.map((m) => ({ id: m.id, role: m.role, content: m.content }))),
@@ -124,9 +181,13 @@ export default function AICoachScreen() {
   ];
   const setMessages = useCallback((updater: (prev: Message[]) => Message[]) => {
     // Only ever appends transient rows. Durable turns are written by the store.
-    setTransient((prev) => {
-      const next = updater([...prev]);
-      return next.filter((m) => !storeMessages.some((sm) => sm.id === m.id) && m.id !== 'greeting');
+    const curThread = useAiConversationStore.getState().activeId;
+    setTransientState((prev) => {
+      const base = prev.threadId === curThread ? prev.items : [];
+      const next = updater([...base]).filter(
+        (m) => !storeMessages.some((sm) => sm.id === m.id) && m.id !== 'greeting',
+      );
+      return { threadId: curThread, items: next };
     });
   }, [storeMessages]);
   const pushTransient = useCallback((m: Message) => {
@@ -135,9 +196,12 @@ export default function AICoachScreen() {
 
   const [input, setInput] = useState('');
   const inputRef = useRef('');
-  inputRef.current = input;
   const selRef = useRef<{ start: number; end: number } | null>(null);
-  if (!input) selRef.current = null;
+  const handleInputChange = useCallback((next: string) => {
+    inputRef.current = next;
+    if (!next) selRef.current = null;
+    setInput(next);
+  }, []);
   const scrollRef = useRef<ScrollView>(null);
 
   // Günlüğe özetleme akışı
@@ -155,13 +219,13 @@ export default function AICoachScreen() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
 
-  const stageCoachProposal = useRoutineStore((s) => s.stageCoachProposal);
-  const confirmInstall = useRoutineStore((s) => s.confirmInstall);
-  const clearGenerated = useRoutineStore((s) => s.clearGenerated);
-  const logHabitWrite = useLogStore((s) => s.logHabit);
+  const stageCoachProposal = useRoutineStore((st) => st.stageCoachProposal);
+  const confirmInstall = useRoutineStore((st) => st.confirmInstall);
+  const clearGenerated = useRoutineStore((st) => st.clearGenerated);
+  const logHabitWrite = useLogStore((st) => st.logHabit);
 
   /** Dictation fills the composer without overwriting existing text. It never sends — see the hook's own doc. */
-  const speech = useSpeechInput(setInput, {
+  const speech = useSpeechInput(handleInputChange, {
     getBase: () => splitAtSelection(inputRef.current, selRef.current),
     maxLength: 500,
   });
@@ -184,7 +248,7 @@ export default function AICoachScreen() {
   const { send, summarize, loading, summarizing, streamingReply, insufficientCredits } = useCoachSend({
     activeId,
     input,
-    setInput,
+    setInput: handleInputChange,
     hasConversation,
     habits,
     tasks,
@@ -199,54 +263,22 @@ export default function AICoachScreen() {
   // Reopen the thread the user was last in.
   useEffect(() => { void hydrateConversations(); }, [hydrateConversations]);
 
-  // Transient receipts/errors belong to the thread they happened in.
-  useEffect(() => { setTransient([]); }, [activeId]);
-
   useEffect(() => {
     const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     return () => clearTimeout(t);
   }, [storeMessages, transient]);
 
-  const loadAnalyticsSummary = useCallback(async () => {
-    try {
-      const activeHabitRows = useHabitStore.getState().habits.filter((h) => h.status === 'active');
-      if (activeHabitRows.length === 0) return;
-
-      const today = new Date();
-      const end = ymd(today);
-      const start = ymd(addDaysLocal(today, -55));
-      const start30 = ymd(addDaysLocal(today, -29));
-
-      const review = await loadReviewData({ start, end });
-      if (!review.ok) return;
-      const logs = review.data.logs;
-      const recoveryRes = { ok: true as const, data: review.data.recoveryPlans };
-
-      const enrichedHabits = activeHabitRows.slice(0, 20).map((h) => {
-        const r = habitCompletionRate(h, logs, { start: start30, end });
-        return r.ok ? `${h.name} (30g tamamlama: %${Math.round(r.value * 100)})` : h.name;
-      });
-
-      const summary: Record<string, string> = {};
-      const stats = weekdayBreakdown(activeHabitRows, logs, { start, end });
-      const best = bestWeekday(stats);
-      const worst = worstWeekday(stats);
-      if (best.ok) summary.en_iyi_gun = `${DOW_TR[best.value.weekday]} (%${Math.round(best.value.rate * 100)})`;
-      if (worst.ok) summary.en_zayif_gun = `${DOW_TR[worst.value.weekday]} (%${Math.round(worst.value.rate * 100)})`;
-
-      if (recoveryRes.ok) {
-        const rate = recoverySuccessRate(recoveryRes.data.map(planFromRow));
-        if (rate.ok) summary.telafi_basari_orani = `%${Math.round(rate.value * 100)}`;
-      }
-
-      setAnalyticsHabits(enrichedHabits);
-      setAnalyticsSummary(Object.keys(summary).length > 0 ? summary : null);
-    } catch {
-      // best-effort
-    }
-  }, []);
-
-  useEffect(() => { fetchToday(); fetchSub(); loadAnalyticsSummary(); }, [fetchToday, fetchSub, loadAnalyticsSummary]);
+  useEffect(() => {
+    fetchToday();
+    fetchSub();
+    let alive = true;
+    void computeCoachAnalytics().then((res) => {
+      if (!alive || !res) return;
+      setAnalyticsHabits(res.habits);
+      setAnalyticsSummary(res.summary);
+    });
+    return () => { alive = false; };
+  }, [fetchToday, fetchSub]);
 
   const stageLog = useCallback((query: string, date: string, completion: CoachLogCompletion) => {
     const resolution = resolveHabitQuery(query, habits);
@@ -330,10 +362,38 @@ export default function AICoachScreen() {
     previewProposal(title, SINGLE_HABIT_GOAL, next);
   }
 
+  const stageFromActionsRef = useRef(stageFromActions);
   useEffect(() => {
-    if (!pendingAction) { setStaged(null); setStagedV2(null); return; }
-    stageFromActions([pendingAction.action]);
-  }, [pendingAction, stageFromActions]);
+    stageFromActionsRef.current = stageFromActions;
+  }, [stageFromActions]);
+
+  useEffect(() => {
+    let alive = true;
+    const applyPending = (nextPending: typeof pendingAction) => {
+      if (!alive) return;
+      if (!nextPending) {
+        setStaged(null);
+        setStagedV2(null);
+        return;
+      }
+      stageFromActionsRef.current([nextPending.action]);
+    };
+
+    const initial = useAiConversationStore.getState().pendingAction;
+    if (initial) {
+      void Promise.resolve().then(() => applyPending(initial));
+    }
+
+    const unsub = useAiConversationStore.subscribe((state, prev) => {
+      if (state.pendingAction !== prev.pendingAction) {
+        applyPending(state.pendingAction);
+      }
+    });
+    return () => {
+      alive = false;
+      unsub();
+    };
+  }, []);
 
   function handlePickCandidate(habit: Habit) {
     setStaged((prev) =>
@@ -502,11 +562,11 @@ export default function AICoachScreen() {
               accessibilityState={{ disabled: !hasConversation || summarizing || loading, busy: summarizing }}
             >
               {summarizing ? (
-                <ActivityIndicator size="small" color="#ec4899" />
+                <ActivityIndicator size="small" color={colors.primary} />
               ) : (
-                <Ionicons name="book-outline" size={16} color={hasConversation ? '#ec4899' : colors.textGhost} />
+                <Ionicons name="book-outline" size={16} color={hasConversation ? colors.primary : colors.textGhost} />
               )}
-              <Text style={[s.headerBtnText, { color: hasConversation ? '#ec4899' : colors.textFaint }]}>Günlüğe</Text>
+              <Text style={[s.headerBtnText, { color: hasConversation ? colors.primary : colors.textFaint }]}>Günlüğe</Text>
             </TouchableOpacity>
           ),
         }}
@@ -638,6 +698,7 @@ export default function AICoachScreen() {
               onPress={() => void send(p)}
               disabled={loading}
               accessibilityRole="button"
+              accessibilityLabel={p}
               accessibilityHint="Bu soruyu koça gönderir"
               accessibilityState={{ disabled: loading }}
             >
@@ -677,7 +738,7 @@ export default function AICoachScreen() {
             placeholder="Bir şey sor..."
             placeholderTextColor={colors.textFaint}
             value={input}
-            onChangeText={setInput}
+            onChangeText={handleInputChange}
             onSelectionChange={(e) => { selRef.current = e.nativeEvent.selection; }}
             multiline
             maxLength={500}
@@ -713,7 +774,7 @@ export default function AICoachScreen() {
           <View style={s.modalCard}>
             <View style={s.modalHeader}>
               <View style={s.modalTitleWrap}>
-                <Ionicons name="sparkles" size={15} color="#ec4899" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                <Ionicons name="sparkles" size={15} color={colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 <Text style={s.modalTitle} accessibilityRole="header">Günlüğe Özet</Text>
               </View>
               <TouchableOpacity
@@ -801,103 +862,104 @@ export default function AICoachScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
 
-  headerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4 },
-  headerBtnText: { fontSize: 13, fontWeight: '700' },
+    headerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4 },
+    headerBtnText: { fontSize: 13, fontWeight: '700' },
 
-  fpBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 14, paddingVertical: 8,
-    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
-  },
-  fpBarWarn: { backgroundColor: alphaHex(colors.error, '12'), borderBottomColor: alphaHex(colors.error, '30') },
-  fpLeft: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  fpText: { fontSize: 14, fontWeight: '700', color: colors.warning },
-  fpSub: { fontSize: 11, color: colors.textFaint },
-  creditsBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: colors.warning, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
-  },
-  creditsText: { fontSize: 12, fontWeight: '700', color: colors.white },
+    fpBar: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 14, paddingVertical: 8,
+      backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
+    },
+    fpBarWarn: { backgroundColor: alphaHex(colors.error, '12'), borderBottomColor: alphaHex(colors.error, '30') },
+    fpLeft: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    fpText: { fontSize: 14, fontWeight: '700', color: colors.warning },
+    fpSub: { fontSize: 11, color: colors.textFaint },
+    creditsBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: colors.warning, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5,
+    },
+    creditsText: { fontSize: 12, fontWeight: '700', color: colors.white },
 
-  messages: { flex: 1 },
-  messagesContent: { padding: 16, gap: 10, paddingBottom: 8 },
+    messages: { flex: 1 },
+    messagesContent: { padding: 16, gap: 10, paddingBottom: 8 },
 
-  micBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
-  },
-  micBtnActive: { backgroundColor: alphaHex(colors.primary, '22'), borderColor: colors.primary },
-  micHint: { fontSize: 11, color: colors.textFaint, paddingHorizontal: 16, paddingBottom: 4 },
+    micBtn: {
+      width: 44, height: 44, borderRadius: 22,
+      alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+    },
+    micBtnActive: { backgroundColor: alphaHex(colors.primary, '22'), borderColor: colors.primary },
+    micHint: { fontSize: 11, color: colors.textFaint, paddingHorizontal: 16, paddingBottom: 4 },
 
-  convBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4,
-  },
-  convBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6,
-    minHeight: 36, paddingHorizontal: 10, borderRadius: 8,
-    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
-  },
-  convTitle: { flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' },
-  convNew: {
-    width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
-  },
+    convBar: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4,
+    },
+    convBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6,
+      minHeight: 36, paddingHorizontal: 10, borderRadius: 8,
+      borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+    },
+    convTitle: { flex: 1, fontSize: 13, color: colors.text, fontWeight: '600' },
+    convNew: {
+      width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+    },
 
-  quickRow: { maxHeight: 54, borderTopWidth: 1, borderTopColor: colors.borderSubtle },
-  quickThumb: { width: 24, height: 24, borderRadius: 6 },
-  quickContent: { paddingHorizontal: 12, paddingVertical: 6, gap: 8 },
-  quickBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: hexA(colors.surface, 0.92), borderRadius: 20, paddingHorizontal: 11, paddingVertical: 6,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  quickText: { fontSize: 12, color: colors.textDim },
+    quickRow: { maxHeight: 54, borderTopWidth: 1, borderTopColor: colors.borderSubtle },
+    quickThumb: { width: 24, height: 24, borderRadius: 6 },
+    quickContent: { paddingHorizontal: 12, paddingVertical: 6, gap: 8 },
+    quickBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: hexA(colors.surface, 0.92), borderRadius: 20, paddingHorizontal: 11, paddingVertical: 6,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    quickText: { fontSize: 12, color: colors.textDim },
 
-  inputRow: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: 10,
-    padding: 12, borderTopWidth: 1, borderTopColor: colors.surface,
-  },
-  input: {
-    flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: 12,
-    fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.border,
-    maxHeight: 100,
-  },
-  sendBtn: {
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
-  },
-  sendBtnDisabled: { opacity: 0.4 },
+    inputRow: {
+      flexDirection: 'row', alignItems: 'flex-end', gap: 10,
+      padding: 12, borderTopWidth: 1, borderTopColor: colors.surface,
+    },
+    input: {
+      flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: 12,
+      fontSize: 14, color: colors.text, borderWidth: 1, borderColor: colors.border,
+      maxHeight: 100,
+    },
+    sendBtn: {
+      width: 42, height: 42, borderRadius: 21,
+      backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
+    },
+    sendBtnDisabled: { opacity: 0.4 },
 
-  // Günlüğe özet modalı
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 18 },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  modalTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
-  modalSub: { fontSize: 12.5, color: colors.textFaint, marginBottom: 12, lineHeight: 18 },
-  summaryInput: {
-    backgroundColor: colors.bg, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
-    padding: 12, fontSize: 14, color: colors.text, lineHeight: 21,
-    minHeight: 150, maxHeight: 280, marginBottom: 14,
-  },
-  modalFooter: { flexDirection: 'row', gap: 10, alignSelf: 'stretch' },
-  modalBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, borderRadius: 12, paddingVertical: 12,
-  },
-  modalBtnGhost: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
-  modalBtnGhostText: { fontSize: 14, fontWeight: '600', color: colors.textDim },
-  modalBtnPrimary: { backgroundColor: '#ec4899' },
-  modalBtnPrimaryText: { fontSize: 14, fontWeight: '700', color: colors.white },
-  modalBtnDisabled: { opacity: 0.4 },
-  savedBox: { alignItems: 'center', paddingTop: 6 },
-  savedIcon: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: colors.success,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 10,
-  },
-  savedText: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 18 },
-});
+    // Günlüğe özet modalı
+    modalOverlay: { flex: 1, backgroundColor: hexA(colors.black, 0.6), justifyContent: 'center', padding: 20 },
+    modalCard: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 18 },
+    modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+    modalTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
+    modalSub: { fontSize: 12.5, color: colors.textFaint, marginBottom: 12, lineHeight: 18 },
+    summaryInput: {
+      backgroundColor: colors.bg, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
+      padding: 12, fontSize: 14, color: colors.text, lineHeight: 21,
+      minHeight: 150, maxHeight: 280, marginBottom: 14,
+    },
+    modalFooter: { flexDirection: 'row', gap: 10, alignSelf: 'stretch' },
+    modalBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 6, borderRadius: 12, paddingVertical: 12,
+    },
+    modalBtnGhost: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+    modalBtnGhostText: { fontSize: 14, fontWeight: '600', color: colors.textDim },
+    modalBtnPrimary: { backgroundColor: colors.primary },
+    modalBtnPrimaryText: { fontSize: 14, fontWeight: '700', color: colors.white },
+    modalBtnDisabled: { opacity: 0.4 },
+    savedBox: { alignItems: 'center', paddingTop: 6 },
+    savedIcon: {
+      width: 44, height: 44, borderRadius: 22, backgroundColor: colors.success,
+      alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+    },
+    savedText: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 18 },
+  });

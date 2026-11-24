@@ -1,4 +1,5 @@
-import { colors, alphaHex, hexA } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useEffect, useState } from 'react';
 import {
   useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -7,6 +8,7 @@ import {
 import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useShallow } from 'zustand/react/shallow';
 import { EditorialBanner, FormError, LoadErrorState, listState, SheetModal, Skeleton } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { AnimatedMetricValue } from '../../components/motion';
@@ -19,9 +21,31 @@ import { parseManualMinutes } from '../../lib/focusDuration';
 const QUICK_DURATIONS = [25, 45, 60, 90];
 
 export default function DeepWorkScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const { width } = useWindowDimensions();
   const isWide = width >= 920;
-  const { sessions, loading, error: loadError, loadSessions, addSession, removeSession, todayMinutes, weekMinutes } = useDeepWorkStore();
+  const {
+    sessions,
+    loading,
+    error: loadError,
+    loadSessions,
+    addSession,
+    removeSession,
+    todayMinutes,
+    weekMinutes,
+  } = useDeepWorkStore(
+    useShallow((st) => ({
+      sessions: st.sessions,
+      loading: st.loading,
+      error: st.error,
+      loadSessions: st.loadSessions,
+      addSession: st.addSession,
+      removeSession: st.removeSession,
+      todayMinutes: st.todayMinutes,
+      weekMinutes: st.weekMinutes,
+    })),
+  );
   const [modal, setModal] = useState(false);
   const [subject, setSubject] = useState('');
   const [minutes, setMinutes] = useState('60');
@@ -255,71 +279,72 @@ export default function DeepWorkScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { width: '100%', maxWidth: 1120, alignSelf: 'center', padding: 16, paddingBottom: 48 },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    scroll: { width: '100%', maxWidth: 1120, alignSelf: 'center', padding: 16, paddingBottom: 48 },
 
-  metrics: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  metricCard: {
-    flex: 1, alignItems: 'center', gap: 6, padding: 16,
-    overflow: 'hidden', position: 'relative',
-    backgroundColor: hexA(colors.surface, 0.92), borderRadius: 14, borderWidth: 1,
-  },
-  metricValue: { fontSize: 20, fontWeight: '700', color: colors.white },
-  metricLabel: { fontSize: 11, color: colors.textFaint },
+    metrics: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+    metricCard: {
+      flex: 1, alignItems: 'center', gap: 6, padding: 16,
+      overflow: 'hidden', position: 'relative',
+      backgroundColor: hexA(colors.surface, 0.92), borderRadius: 14, borderWidth: 1,
+    },
+    metricValue: { fontSize: 20, fontWeight: '700', color: colors.text },
+    metricLabel: { fontSize: 11, color: colors.textFaint },
 
-  consoleCols: { gap: 16, marginTop: 8 },
-  consoleColsWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 20 },
+    consoleCols: { gap: 16, marginTop: 8 },
+    consoleColsWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 20 },
 
-  section: { marginBottom: 24 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1 },
-  addBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: alphaHex(colors.info, '15'), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
-  },
-  addBtnText: { fontSize: 13, color: colors.teal, fontWeight: '600' },
+    section: { marginBottom: 24 },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1 },
+    addBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: alphaHex(colors.info, '15'), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+    },
+    addBtnText: { fontSize: 13, color: colors.teal, fontWeight: '600' },
 
-  sessionRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: hexA(colors.surface, 0.92), borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: colors.border, marginBottom: 6,
-  },
-  sessionDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
-  sessionSubject: { fontSize: 14, color: colors.text, fontWeight: '500' },
-  sessionDate: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
-  sessionDuration: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
-  deleteBtn: { padding: 4 },
+    sessionRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: hexA(colors.surface, 0.92), borderRadius: 12, padding: 12,
+      borderWidth: 1, borderColor: colors.border, marginBottom: 6,
+    },
+    sessionDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
+    sessionSubject: { fontSize: 14, color: colors.text, fontWeight: '500' },
+    sessionDate: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
+    sessionDuration: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
+    deleteBtn: { padding: 4 },
 
-  emptyCard: {
-    alignItems: 'center', gap: 6, padding: 32,
-    overflow: 'hidden', position: 'relative',
-    backgroundColor: hexA(colors.surface, 0.9), borderRadius: 14, borderWidth: 1, borderColor: colors.border,
-  },
-  emptyText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
-  emptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
+    emptyCard: {
+      alignItems: 'center', gap: 6, padding: 32,
+      overflow: 'hidden', position: 'relative',
+      backgroundColor: hexA(colors.surface, 0.9), borderRadius: 14, borderWidth: 1, borderColor: colors.border,
+    },
+    emptyText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
+    emptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
 
-  modalCard: { overflow: 'hidden', position: 'relative', backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: colors.border },
-  modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
+    modalCard: { overflow: 'hidden', position: 'relative', backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: colors.border },
+    modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    modalTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
 
-  fieldLabel: { fontSize: 12, color: colors.textFaint, marginBottom: 8, fontWeight: '600' },
-  input: {
-    backgroundColor: colors.coolBlack850, borderRadius: 10, padding: 14,
-    fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 16,
-  },
+    fieldLabel: { fontSize: 12, color: colors.textFaint, marginBottom: 8, fontWeight: '600' },
+    input: {
+      backgroundColor: colors.bg, borderRadius: 10, padding: 14,
+      fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border, marginBottom: 16,
+    },
 
-  quickRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  quickBtn: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: colors.coolBlack850, borderWidth: 1, borderColor: colors.border,
-  },
-  quickBtnActive: { backgroundColor: alphaHex(colors.info, '20'), borderColor: colors.teal },
-  quickBtnText: { fontSize: 13, color: colors.textFaint },
-  quickBtnTextActive: { color: colors.teal, fontWeight: '700' },
+    quickRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+    quickBtn: {
+      paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8,
+      backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
+    },
+    quickBtnActive: { backgroundColor: alphaHex(colors.info, '20'), borderColor: colors.teal },
+    quickBtnText: { fontSize: 13, color: colors.textFaint },
+    quickBtnTextActive: { color: colors.teal, fontWeight: '700' },
 
-  saveBtn: { backgroundColor: colors.teal, borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 4 },
-  saveBtnDisabled: { opacity: 0.4 },
-  entryError: { fontSize: 12, color: colors.error, marginTop: -4, marginBottom: 12 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
-});
+    saveBtn: { backgroundColor: colors.teal, borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 4 },
+    saveBtnDisabled: { opacity: 0.4 },
+    entryError: { fontSize: 12, color: colors.error, marginTop: -4, marginBottom: 12 },
+    saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
+  });

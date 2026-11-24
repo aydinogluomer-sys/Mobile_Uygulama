@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentProps } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Animated, Easing, useWindowDimensions,
@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useIsFocused } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
@@ -20,11 +21,14 @@ import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
 import GlassPanel from '../../components/ui/GlassPanel';
 import { EmbeddedFiligree } from '../../components/spatial';
 import { DECOR } from '../../lib/visualAssets';
-import { colors, hexA } from '../../lib/tokens';
+import { hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { ymd } from '../../lib/date';
 
-const DAYS_SHORT = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
-const MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
+const DAYS_SHORT = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const MONTH_TAGLINES = MONTH_TAGLINES_TR;
 
 function getDaysInMonth(year: number, month: number) {
@@ -37,6 +41,8 @@ function getFirstDayOfMonth(year: number, month: number) {
 }
 
 export default function CalendarScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const headerHeight = useHeaderHeight();
   const isFocused = useIsFocused();
   const { width } = useWindowDimensions();
@@ -47,17 +53,20 @@ export default function CalendarScreen() {
   const [selected, setSelected] = useState(ymd(today));
   const [showMotionPreview, setShowMotionPreview] = useState(false);
 
-  const { tasks, fetchTasks } = useTaskStore();
-  const { habits, fetchHabits } = useHabitStore();
-  const { fetchLogsForDate } = useLogStore();
+  const { tasks, fetchTasks } = useTaskStore(
+    useShallow((st) => ({ tasks: st.tasks, fetchTasks: st.fetchTasks })),
+  );
+  const { habits, fetchHabits } = useHabitStore(
+    useShallow((st) => ({ habits: st.habits, fetchHabits: st.fetchHabits })),
+  );
+  const fetchLogsForDate = useLogStore((st) => st.fetchLogsForDate);
 
   // Defter sayfası animasyonu: girişte "açılma", ay değişiminde yön bazlı "sayfa çevirme".
   const reduceMotion = useReducedMotion();
-  const pageAnim = useRef(new Animated.Value(1)).current;
+  const [pageAnim] = useState(() => new Animated.Value(1));
   const [flipDir, setFlipDir] = useState(0); // -1 önceki, 0 açılış, +1 sonraki
 
-  function animatePage(dir: number) {
-    setFlipDir(dir);
+  const runPageAnimation = useCallback((dir: number) => {
     if (reduceMotion) { pageAnim.setValue(1); return; } // erişilebilirlik: animasyon yok
     pageAnim.setValue(0);
     Animated.timing(pageAnim, {
@@ -66,21 +75,33 @@ export default function CalendarScreen() {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
+  }, [pageAnim, reduceMotion]);
+
+  function animatePage(dir: number) {
+    setFlipDir(dir);
+    runPageAnimation(dir);
   }
 
   useEffect(() => { fetchTasks(); fetchHabits(); }, [fetchTasks, fetchHabits]);
   useEffect(() => { if (selected) fetchLogsForDate(selected); }, [selected, fetchLogsForDate]);
   // Ekran odağa gelince defter "açılır"
-  useEffect(() => { if (isFocused) animatePage(0); }, [isFocused]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (isFocused) {
+      runPageAnimation(0);
+      return;
+    }
+    const frameId = requestAnimationFrame(() => setFlipDir(0));
+    return () => cancelAnimationFrame(frameId);
+  }, [isFocused, runPageAnimation]);
 
   function prevMonth() {
-    if (month === 0) { setYear(y => y - 1); setMonth(11); }
-    else setMonth(m => m - 1);
+    if (month === 0) { setYear((y) => y - 1); setMonth(11); }
+    else setMonth((m) => m - 1);
     animatePage(-1);
   }
   function nextMonth() {
-    if (month === 11) { setYear(y => y + 1); setMonth(0); }
-    else setMonth(m => m + 1);
+    if (month === 11) { setYear((y) => y + 1); setMonth(0); }
+    else setMonth((m) => m + 1);
     animatePage(1);
   }
 
@@ -90,7 +111,7 @@ export default function CalendarScreen() {
     transformOrigin: 'left center' as const,
     transform: [
       { perspective: 900 },
-      { rotateY: pageAnim.interpolate({ inputRange: [0, 1], outputRange: [`${(flipDir === 0 ? 10 : flipDir * 16)}deg`, '0deg'] }) },
+      { rotateY: pageAnim.interpolate({ inputRange: [0, 1], outputRange: [`${flipDir === 0 ? 10 : flipDir * 16}deg`, '0deg'] }) },
       { translateX: pageAnim.interpolate({ inputRange: [0, 1], outputRange: [flipDir * 26, 0] }) },
     ],
   };
@@ -125,57 +146,57 @@ export default function CalendarScreen() {
             <View style={isAlmanacSpread ? s.almanacLeft : undefined}>
               {/* Defter sayfası — giriş "açılma" + ay değişiminde sayfa çevirme animasyonu */}
               <Animated.View style={pageStyle}>
-              {/* Ajanda kapak başlığı — cam YOK; mevsim sahnesi + hareketi burada açıkça görünür */}
-              <View style={s.hero}>
-                <View style={s.heroNavRow}>
-                  <TouchableOpacity style={s.heroArrow} onPress={prevMonth} accessibilityRole="button" accessibilityLabel="Önceki ay">
-                    <Ionicons name="chevron-back" size={22} color={colors.white} />
-                  </TouchableOpacity>
-                  <Text style={s.heroMonth} accessibilityRole="header">{MONTHS[month]}</Text>
-                  <TouchableOpacity style={s.heroArrow} onPress={nextMonth} accessibilityRole="button" accessibilityLabel="Sonraki ay">
-                    <Ionicons name="chevron-forward" size={22} color={colors.white} />
-                  </TouchableOpacity>
-                </View>
-                <Text style={s.heroYear}>{year}</Text>
-                <Text style={s.heroTagline}>{MONTH_TAGLINES[month]}</Text>
-              </View>
-
-              {/* Takvim paneli — gün başlıkları + ızgara, cam üzerinde */}
-              <GlassPanel style={s.panel}>
-                <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={112} opacity={0.14} />
-                <View style={s.weekRow}>
-                  {DAYS_SHORT.map((d) => (
-                    <Text key={d} style={s.dayHeader}>{d}</Text>
-                  ))}
+                {/* Ajanda kapak başlığı — cam YOK; mevsim sahnesi + hareketi burada açıkça görünür */}
+                <View style={s.hero}>
+                  <View style={s.heroNavRow}>
+                    <TouchableOpacity style={s.heroArrow} onPress={prevMonth} accessibilityRole="button" accessibilityLabel="Önceki ay">
+                      <Ionicons name="chevron-back" size={22} color={colors.white} />
+                    </TouchableOpacity>
+                    <Text style={s.heroMonth} accessibilityRole="header">{MONTHS[month]}</Text>
+                    <TouchableOpacity style={s.heroArrow} onPress={nextMonth} accessibilityRole="button" accessibilityLabel="Sonraki ay">
+                      <Ionicons name="chevron-forward" size={22} color={colors.white} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={s.heroYear}>{year}</Text>
+                  <Text style={s.heroTagline}>{MONTH_TAGLINES[month]}</Text>
                 </View>
 
-                <View style={s.grid}>
-                  {Array.from({ length: firstDay }).map((_, i) => (
-                    <View key={`empty-${i}`} style={s.dayCell} />
-                  ))}
-                  {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
-                    const ds = dateStr(day);
-                    const isToday = ds === todayStr;
-                    const isSelected = ds === selected;
-                    const hasDot = hasTask(day);
-                    return (
-                      <TouchableOpacity
-                        key={day}
-                        style={[s.dayCell, isSelected && s.dayCellSelected, isToday && !isSelected && s.dayCellToday]}
-                        onPress={() => setSelected(ds)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${day} ${MONTHS[month]} ${year}${isToday ? ', bugün' : ''}${hasDot ? ', görev var' : ''}`}
-                        accessibilityState={{ selected: isSelected }}
-                      >
-                        <Text style={[s.dayText, isSelected && s.dayTextSelected, isToday && !isSelected && s.dayTextToday]}>
-                          {day}
-                        </Text>
-                        {hasDot && <View style={[s.dot, isSelected && s.dotSelected]} />}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </GlassPanel>
+                {/* Takvim paneli — gün başlıkları + ızgara, cam üzerinde */}
+                <GlassPanel style={s.panel}>
+                  <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={112} opacity={0.14} />
+                  <View style={s.weekRow}>
+                    {DAYS_SHORT.map((d) => (
+                      <Text key={d} style={s.dayHeader}>{d}</Text>
+                    ))}
+                  </View>
+
+                  <View style={s.grid}>
+                    {Array.from({ length: firstDay }).map((_, i) => (
+                      <View key={`empty-${i}`} style={s.dayCell} />
+                    ))}
+                    {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+                      const ds = dateStr(day);
+                      const isToday = ds === todayStr;
+                      const isSelected = ds === selected;
+                      const hasDot = hasTask(day);
+                      return (
+                        <TouchableOpacity
+                          key={day}
+                          style={[s.dayCell, isSelected && s.dayCellSelected, isToday && !isSelected && s.dayCellToday]}
+                          onPress={() => setSelected(ds)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${day} ${MONTHS[month]} ${year}${isToday ? ', bugün' : ''}${hasDot ? ', görev var' : ''}`}
+                          accessibilityState={{ selected: isSelected }}
+                        >
+                          <Text style={[s.dayText, isSelected && s.dayTextSelected, isToday && !isSelected && s.dayTextToday]}>
+                            {day}
+                          </Text>
+                          {hasDot && <View style={[s.dot, isSelected && s.dotSelected]} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </GlassPanel>
               </Animated.View>
             </View>
 
@@ -212,7 +233,7 @@ export default function CalendarScreen() {
                 ) : (
                   selectedHabitLogs.slice(0, 5).map((h) => (
                     <View key={h.id} style={s.item}>
-                      <Ionicons name={(h.icon ?? 'star-outline') as any} size={14} color={h.color ?? colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                      <Ionicons name={(h.icon ?? 'star-outline') as IoniconName} size={14} color={h.color ?? colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       <Text style={s.itemText}>{h.name}</Text>
                     </View>
                   ))
@@ -241,74 +262,75 @@ export default function CalendarScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
-  safe: { flex: 1, backgroundColor: 'transparent' },
-  content: { padding: 16, paddingBottom: 40 },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: colors.bg },
+    safe: { flex: 1, backgroundColor: 'transparent' },
+    content: { padding: 16, paddingBottom: 40 },
 
-  almanacSpread: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 20,
-  },
-  almanacLeft: {
-    flex: 1.15,
-  },
-  almanacRight: {
-    flex: 0.95,
-    paddingTop: 28,
-  },
+    almanacSpread: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 20,
+    },
+    almanacLeft: {
+      flex: 1.15,
+    },
+    almanacRight: {
+      flex: 0.95,
+      paddingTop: 28,
+    },
 
-  panel: { marginBottom: 16, overflow: 'hidden', position: 'relative' },
-  panelLast: { marginBottom: 0, overflow: 'hidden', position: 'relative' },
+    panel: { marginBottom: 16, overflow: 'hidden', position: 'relative' },
+    panelLast: { marginBottom: 0, overflow: 'hidden', position: 'relative' },
 
-  // Ajanda kapak başlığı (cam yok → mevsim sahnesi/hareket görünür)
-  hero: { minHeight: 156, alignItems: 'center', justifyContent: 'center', paddingVertical: 22, marginBottom: 6 },
-  heroNavRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16 },
-  heroArrow: {
-    width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: hexA(colors.bgSunk, 0.32), borderWidth: 1, borderColor: hexA(colors.white, 0.15),
-  },
-  heroMonth: {
-    fontSize: 40, fontWeight: '800', color: colors.white, letterSpacing: 0.5,
-    minWidth: 172, textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 10, textShadowOffset: { width: 0, height: 2 },
-  },
-  heroYear: {
-    fontSize: 15, fontWeight: '600', color: hexA(colors.white, 0.82), marginTop: 4, letterSpacing: 3,
-    textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6,
-  },
-  heroTagline: {
-    fontSize: 13, color: hexA(colors.white, 0.85), marginTop: 8, fontStyle: 'italic', textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6,
-  },
+    // Ajanda kapak başlığı (cam yok → mevsim sahnesi/hareket görünür)
+    hero: { minHeight: 156, alignItems: 'center', justifyContent: 'center', paddingVertical: 22, marginBottom: 6 },
+    heroNavRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16 },
+    heroArrow: {
+      width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: hexA(colors.bgSunk, 0.32), borderWidth: 1, borderColor: hexA(colors.white, 0.15),
+    },
+    heroMonth: {
+      fontSize: 40, fontWeight: '800', color: colors.white, letterSpacing: 0.5,
+      minWidth: 172, textAlign: 'center',
+      textShadowColor: hexA(colors.black, 0.55), textShadowRadius: 10, textShadowOffset: { width: 0, height: 2 },
+    },
+    heroYear: {
+      fontSize: 15, fontWeight: '600', color: hexA(colors.white, 0.82), marginTop: 4, letterSpacing: 3,
+      textShadowColor: hexA(colors.black, 0.5), textShadowRadius: 6,
+    },
+    heroTagline: {
+      fontSize: 13, color: hexA(colors.white, 0.85), marginTop: 8, fontStyle: 'italic', textAlign: 'center',
+      textShadowColor: hexA(colors.black, 0.5), textShadowRadius: 6,
+    },
 
-  weekRow: { flexDirection: 'row', marginBottom: 8 },
-  dayHeader: { flex: 1, textAlign: 'center', fontSize: 11, color: colors.textDim, fontWeight: '600' },
+    weekRow: { flexDirection: 'row', marginBottom: 8 },
+    dayHeader: { flex: 1, textAlign: 'center', fontSize: 11, color: colors.textDim, fontWeight: '600' },
 
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { width: `${100/7}%` as any, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  dayCellSelected: { backgroundColor: colors.primary, borderRadius: 10 },
-  dayCellToday: { borderWidth: 1, borderColor: colors.primary, borderRadius: 10 },
-  dayText: { fontSize: 14, color: colors.text },
-  dayTextSelected: { color: colors.white, fontWeight: '700' },
-  dayTextToday: { color: colors.primary, fontWeight: '700' },
-  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.primary },
-  dotSelected: { backgroundColor: hexA(colors.white, 0.5) },
+    grid: { flexDirection: 'row', flexWrap: 'wrap' },
+    dayCell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
+    dayCellSelected: { backgroundColor: colors.primary, borderRadius: 10 },
+    dayCellToday: { borderWidth: 1, borderColor: colors.primary, borderRadius: 10 },
+    dayText: { fontSize: 14, color: colors.text },
+    dayTextSelected: { color: colors.white, fontWeight: '700' },
+    dayTextToday: { color: colors.primary, fontWeight: '700' },
+    dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.primary },
+    dotSelected: { backgroundColor: hexA(colors.white, 0.5) },
 
-  sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textDim, letterSpacing: 1, marginBottom: 10 },
-  noItem: { fontSize: 13, color: colors.textFaint, fontStyle: 'italic' },
-  item: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: hexA(colors.surface, 0.7), borderRadius: 10, padding: 12,
-    borderWidth: 1, borderColor: hexA(colors.border, 0.8), marginBottom: 6,
-  },
-  priorityDot: { width: 8, height: 8, borderRadius: 4 },
-  itemText: { fontSize: 14, color: colors.text, flex: 1 },
+    sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textDim, letterSpacing: 1, marginBottom: 10 },
+    noItem: { fontSize: 13, color: colors.textFaint, fontStyle: 'italic' },
+    item: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: hexA(colors.surface, 0.7), borderRadius: 10, padding: 12,
+      borderWidth: 1, borderColor: hexA(colors.border, 0.8), marginBottom: 6,
+    },
+    priorityDot: { width: 8, height: 8, borderRadius: 4 },
+    itemText: { fontSize: 14, color: colors.text, flex: 1 },
 
-  devBtn: {
-    position: 'absolute', right: 14, bottom: 24, width: 40, height: 40, borderRadius: 20,
-    backgroundColor: hexA(colors.bgSunk, 0.8), borderWidth: 1, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center',
-  },
-});
+    devBtn: {
+      position: 'absolute', right: 14, bottom: 24, width: 40, height: 40, borderRadius: 20,
+      backgroundColor: hexA(colors.bgSunk, 0.8), borderWidth: 1, borderColor: colors.border,
+      alignItems: 'center', justifyContent: 'center',
+    },
+  });

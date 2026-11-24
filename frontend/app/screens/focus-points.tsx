@@ -30,12 +30,14 @@
  * and prices so that turning `PAID_SUBSCRIPTIONS_ENABLED` back on is a
  * rendering change, not archaeology.
  */
-import { useEffect } from 'react';
+import { useEffect, type ComponentProps } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { colors, alphaHex } from '../../lib/tokens';
+import { useShallow } from 'zustand/react/shallow';
+import { alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { TIERS, ACTION_COST, creditsSummary } from '../../lib/subscription';
 import {
@@ -47,7 +49,7 @@ import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../..
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 /** What a Focus Point is spent on, in the order a new user meets them. */
-const SPEND: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; cost: number }[] = [
+const SPEND: { icon: ComponentProps<typeof Ionicons>['name']; label: string; cost: number }[] = [
   { icon: 'chatbubbles-outline', label: 'AI Coach mesajı', cost: ACTION_COST.coach },
   { icon: 'sparkles-outline', label: 'AI rutin oluşturma', cost: ACTION_COST.routine },
   { icon: 'document-text-outline', label: 'Günlük özeti', cost: ACTION_COST.summarize },
@@ -72,8 +74,19 @@ function renewalLabel(iso: string | null): string | null {
 }
 
 export default function FocusPointsScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const router = useRouter();
-  const { tier, focusPoints, monthlyGrant, creditsPeriodEnd, fetch, loaded } = useSubscriptionStore();
+  const { tier, focusPoints, monthlyGrant, creditsPeriodEnd, fetch, loaded } = useSubscriptionStore(
+    useShallow((st) => ({
+      tier: st.tier,
+      focusPoints: st.focusPoints,
+      monthlyGrant: st.monthlyGrant,
+      creditsPeriodEnd: st.creditsPeriodEnd,
+      fetch: st.fetch,
+      loaded: st.loaded,
+    })),
+  );
 
   useEffect(() => { if (!loaded) fetch(); }, [loaded, fetch]);
 
@@ -245,115 +258,116 @@ export default function FocusPointsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 40 },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    content: { padding: 16, paddingBottom: 40 },
 
-  balanceCard: {
-    backgroundColor: colors.surface, borderRadius: 18, padding: 20,
-    borderWidth: 1, borderColor: colors.border, alignItems: 'center',
-    overflow: 'hidden', position: 'relative',
-  },
-  balanceLabel: { fontSize: 12, color: colors.textFaint },
-  balanceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  balanceVal: { fontSize: 40, fontWeight: '800', color: colors.warning },
-  balanceUnit: { fontSize: 15, fontWeight: '700', color: colors.warning, marginTop: 10 },
-  balanceHint: { fontSize: 12, color: colors.textFaint, marginTop: 6 },
+    balanceCard: {
+      backgroundColor: colors.surface, borderRadius: 18, padding: 20,
+      borderWidth: 1, borderColor: colors.border, alignItems: 'center',
+      overflow: 'hidden', position: 'relative',
+    },
+    balanceLabel: { fontSize: 12, color: colors.textFaint },
+    balanceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+    balanceVal: { fontSize: 40, fontWeight: '800', color: colors.warning },
+    balanceUnit: { fontSize: 15, fontWeight: '700', color: colors.warning, marginTop: 10 },
+    balanceHint: { fontSize: 12, color: colors.textFaint, marginTop: 6 },
 
-  planRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
-    borderRadius: 14, borderWidth: 1, borderColor: colors.border,
-    paddingVertical: 14, marginTop: 12,
-  },
-  planCell: { flex: 1, alignItems: 'center' },
-  cellDivider: { width: 1, alignSelf: 'stretch', backgroundColor: colors.border },
-  cellLabel: { fontSize: 11, color: colors.textFaint },
-  cellVal: { fontSize: 16, fontWeight: '700', color: colors.text, marginTop: 3 },
-  renewNote: { fontSize: 12, color: colors.textFaint, marginTop: 8, paddingHorizontal: 4 },
+    planRow: {
+      flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
+      borderRadius: 14, borderWidth: 1, borderColor: colors.border,
+      paddingVertical: 14, marginTop: 12,
+    },
+    planCell: { flex: 1, alignItems: 'center' },
+    cellDivider: { width: 1, alignSelf: 'stretch', backgroundColor: colors.border },
+    cellLabel: { fontSize: 11, color: colors.textFaint },
+    cellVal: { fontSize: 16, fontWeight: '700', color: colors.text, marginTop: 3 },
+    renewNote: { fontSize: 12, color: colors.textFaint, marginTop: 8, paddingHorizontal: 4 },
 
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: colors.textDim, marginTop: 22, marginBottom: 8, paddingHorizontal: 4 },
-  card: {
-    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
-    paddingHorizontal: 14, overflow: 'hidden', position: 'relative',
-  },
-  spendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
-  spendRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
-  spendLabel: { flex: 1, fontSize: 14, color: colors.text },
-  spendCost: { fontSize: 13, fontWeight: '700', color: colors.warning },
-  spendFoot: { fontSize: 12, color: colors.textFaint, lineHeight: 18, paddingBottom: 14, paddingTop: 2 },
+    sectionTitle: { fontSize: 13, fontWeight: '700', color: colors.textDim, marginTop: 22, marginBottom: 8, paddingHorizontal: 4 },
+    card: {
+      backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
+      paddingHorizontal: 14, overflow: 'hidden', position: 'relative',
+    },
+    spendRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+    spendRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
+    spendLabel: { flex: 1, fontSize: 14, color: colors.text },
+    spendCost: { fontSize: 13, fontWeight: '700', color: colors.warning },
+    spendFoot: { fontSize: 12, color: colors.textFaint, lineHeight: 18, paddingBottom: 14, paddingTop: 2 },
 
-  freeCard: {
-    flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginTop: 16,
-    backgroundColor: alphaHex(colors.success, '14'), borderRadius: 14, padding: 14,
-  },
-  freeText: { flex: 1, fontSize: 13, color: colors.text, lineHeight: 19 },
+    freeCard: {
+      flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginTop: 16,
+      backgroundColor: alphaHex(colors.success, '14'), borderRadius: 14, padding: 14,
+    },
+    freeText: { flex: 1, fontSize: 13, color: colors.text, lineHeight: 19 },
 
-  historyBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16,
-    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
-    paddingVertical: 14, paddingHorizontal: 14,
-  },
-  historyText: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.accent },
+    historyBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16,
+      backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border,
+      paddingVertical: 14, paddingHorizontal: 14,
+    },
+    historyText: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.accent },
 
-  tierCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    gap: 12,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  tierCardActive: {
-    backgroundColor: alphaHex(colors.surface, '95'),
-  },
-  tierHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  tierName: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  tierTagline: {
-    fontSize: 11,
-    color: colors.textFaint,
-    marginTop: 2,
-  },
-  tierGrantBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  tierGrantText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  tierDivider: {
-    height: 1,
-    backgroundColor: colors.borderSubtle,
-  },
-  tierFeatRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  tierFeatText: {
-    fontSize: 12,
-    color: colors.textDim,
-  },
-  activeBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: alphaHex(colors.success, '20'),
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    marginTop: 4,
-  },
-  activeBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.success,
-  },
-});
+    tierCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      padding: 16,
+      gap: 12,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    tierCardActive: {
+      backgroundColor: alphaHex(colors.surface, '95'),
+    },
+    tierHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+    },
+    tierName: {
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    tierTagline: {
+      fontSize: 11,
+      color: colors.textFaint,
+      marginTop: 2,
+    },
+    tierGrantBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 8,
+    },
+    tierGrantText: {
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    tierDivider: {
+      height: 1,
+      backgroundColor: colors.borderSubtle,
+    },
+    tierFeatRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    tierFeatText: {
+      fontSize: 12,
+      color: colors.textDim,
+    },
+    activeBadge: {
+      alignSelf: 'flex-start',
+      backgroundColor: alphaHex(colors.success, '20'),
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+      marginTop: 4,
+    },
+    activeBadgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.success,
+    },
+  });

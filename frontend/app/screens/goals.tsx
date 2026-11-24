@@ -1,6 +1,7 @@
-import { colors, alphaHex, hexA } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import OKRScreen from './okr';
 import LifeAreasScreen from './life-areas';
 import {
@@ -10,13 +11,14 @@ import {
 import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useShallow } from 'zustand/react/shallow';
 import { useGoalStore, Goal, GoalKind } from '../../store/goalStore';
 import { EmptyState, Skeleton, FormError, FormPreview, LoadErrorState, EditorialBanner, EmblemMedallion, SheetModal } from '../../components/ui';
 import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { goalProgress } from '../../lib/progressModel';
 
-const TABS: { key: GoalKind; label: string; color: string }[] = [
+const getTabs = (colors: Palette): { key: GoalKind; label: string; color: string }[] => [
   { key: 'yearly', label: 'Yıllık', color: colors.accent },
   { key: 'quarterly', label: 'Çeyreklik', color: colors.warning },
   { key: 'monthly', label: 'Aylık', color: colors.success },
@@ -28,9 +30,10 @@ const CUR_QUARTER = Math.ceil((NOW.getMonth() + 1) / 3);
 const CUR_MONTH = NOW.getMonth() + 1;
 
 function ProgressBar({ pct, color }: { pct: number; color: string }) {
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.barBg}>
-      <View style={[s.barFill, { width: `${Math.min(pct, 100)}%` as any, backgroundColor: color }]} />
+      <View style={[s.barFill, { width: `${Math.min(pct, 100)}%`, backgroundColor: color }]} />
     </View>
   );
 }
@@ -40,6 +43,8 @@ function GoalCard({ goal, color, onEdit, onDelete }: {
   onEdit: (g: Goal) => void;
   onDelete: (id: string) => void;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   return (
     <TouchableOpacity
       style={[s.goalCard, goal.progress >= 100 && s.goalDone]}
@@ -71,7 +76,28 @@ function GoalCard({ goal, color, onEdit, onDelete }: {
 }
 
 export default function GoalsScreen() {
-  const { goals, loading, loadGoals, addGoal, updateProgress, removeGoal, error: loadError } = useGoalStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const tabs = useMemo(() => getTabs(colors), [colors]);
+  const {
+    goals,
+    loading,
+    loadGoals,
+    addGoal,
+    updateProgress,
+    removeGoal,
+    error: loadError,
+  } = useGoalStore(
+    useShallow((st) => ({
+      goals: st.goals,
+      loading: st.loading,
+      loadGoals: st.loadGoals,
+      addGoal: st.addGoal,
+      updateProgress: st.updateProgress,
+      removeGoal: st.removeGoal,
+      error: st.error,
+    })),
+  );
   const [activeTab, setActiveTab] = useState<GoalKind>('yearly');
   const [modal, setModal] = useState(false);
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
@@ -86,7 +112,7 @@ export default function GoalsScreen() {
 
   useEffect(() => { loadGoals(); }, [loadGoals]);
 
-  const tabInfo = TABS.find((t) => t.key === activeTab)!;
+  const tabInfo = tabs.find((t) => t.key === activeTab)!;
   const filtered = goals.filter((g) => g.kind === activeTab);
 
   function openAdd() {
@@ -199,7 +225,7 @@ export default function GoalsScreen() {
         <>
           {/* Tab bar */}
           <View style={s.tabs}>
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <TouchableOpacity
                 key={t.key}
                 style={[s.tab, activeTab === t.key && { borderBottomColor: t.color, borderBottomWidth: 2 }]}
@@ -374,108 +400,109 @@ export default function GoalsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
 
-  topBar: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
-    backgroundColor: hexA(colors.bg, 0.72),
-  },
-  viewSwitch: {
-    flexDirection: 'row',
-    backgroundColor: hexA(colors.surface, 0.92),
-    borderRadius: 12,
-    padding: 3,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  viewBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 7,
-    borderRadius: 9,
-    gap: 5,
-  },
-  viewBtnActive: {
-    backgroundColor: alphaHex(colors.primary, '20'),
-    borderColor: colors.primary,
-    borderWidth: 1,
-  },
-  viewText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textDim,
-  },
-  viewTextActive: {
-    color: colors.primary,
-  },
+    topBar: {
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      paddingBottom: 4,
+      backgroundColor: hexA(colors.bg, 0.72),
+    },
+    viewSwitch: {
+      flexDirection: 'row',
+      backgroundColor: hexA(colors.surface, 0.92),
+      borderRadius: 12,
+      padding: 3,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    viewBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 7,
+      borderRadius: 9,
+      gap: 5,
+    },
+    viewBtnActive: {
+      backgroundColor: alphaHex(colors.primary, '20'),
+      borderColor: colors.primary,
+      borderWidth: 1,
+    },
+    viewText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textDim,
+    },
+    viewTextActive: {
+      color: colors.primary,
+    },
 
-  tabs: { flexDirection: 'row', backgroundColor: hexA(colors.coolBlack850, 0.88), borderBottomWidth: 1, borderBottomColor: colors.border },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
+    tabs: { flexDirection: 'row', backgroundColor: hexA(colors.bg, 0.88), borderBottomWidth: 1, borderBottomColor: colors.border },
+    tab: { flex: 1, alignItems: 'center', paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+    tabText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
 
-  scroll: { padding: 16, paddingBottom: 80 },
+    scroll: { padding: 16, paddingBottom: 80 },
 
-  summary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  summaryText: { fontSize: 12, color: colors.textFaint },
-  summaryPct: { fontSize: 13, fontWeight: '700' },
+    summary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    summaryText: { fontSize: 12, color: colors.textFaint },
+    summaryPct: { fontSize: 13, fontWeight: '700' },
 
-  goldenThreadSpine: {
-    borderLeftWidth: 2,
-    borderLeftColor: hexA(colors.warning, 0.38),
-    paddingLeft: 12,
-  },
-  goalCard: {
-    backgroundColor: hexA(colors.surface, 0.92), borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: colors.border, marginBottom: 10,
-    overflow: 'hidden', position: 'relative',
-  },
-  goalDone: { borderColor: alphaHex(colors.success, '30'), backgroundColor: alphaHex(colors.success, '08') },
-  goalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  goalTitle: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '500', lineHeight: 20 },
-  goalTitleDone: { textDecorationLine: 'line-through', color: colors.textFaint },
-  goalPct: { fontSize: 15, fontWeight: '700' },
-  manualNote: { fontSize: 11, color: colors.textFaint, marginTop: 6 },
+    goldenThreadSpine: {
+      borderLeftWidth: 2,
+      borderLeftColor: hexA(colors.warning, 0.38),
+      paddingLeft: 12,
+    },
+    goalCard: {
+      backgroundColor: hexA(colors.surface, 0.92), borderRadius: 14, padding: 14,
+      borderWidth: 1, borderColor: colors.border, marginBottom: 10,
+      overflow: 'hidden', position: 'relative',
+    },
+    goalDone: { borderColor: alphaHex(colors.success, '30'), backgroundColor: alphaHex(colors.success, '08') },
+    goalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+    goalTitle: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '500', lineHeight: 20 },
+    goalTitleDone: { textDecorationLine: 'line-through', color: colors.textFaint },
+    goalPct: { fontSize: 15, fontWeight: '700' },
+    manualNote: { fontSize: 11, color: colors.textFaint, marginTop: 6 },
 
-  barBg: { height: 6, backgroundColor: colors.border, borderRadius: 3 },
-  barFill: { height: 6, borderRadius: 3 },
+    barBg: { height: 6, backgroundColor: colors.border, borderRadius: 3 },
+    barFill: { height: 6, borderRadius: 3 },
 
-  emptyCard: {
-    alignItems: 'center', gap: 8, padding: 40,
-    backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginTop: 20,
-  },
-  emptyText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
-  emptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
+    emptyCard: {
+      alignItems: 'center', gap: 8, padding: 40,
+      backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginTop: 20,
+    },
+    emptyText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
+    emptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
 
-  fab: {
-    position: 'absolute', bottom: 24, right: 20,
-    width: 52, height: 52, borderRadius: 26,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: colors.black, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
-  },
+    fab: {
+      position: 'absolute', bottom: 24, right: 20,
+      width: 52, height: 52, borderRadius: 26,
+      alignItems: 'center', justifyContent: 'center',
+      shadowColor: colors.black, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
+    },
 
-  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: colors.border },
-  modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
-  editTitle: { fontSize: 15, color: colors.text, marginBottom: 16, lineHeight: 22 },
+    modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: colors.border },
+    modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    modalTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
+    editTitle: { fontSize: 15, color: colors.text, marginBottom: 16, lineHeight: 22 },
 
-  fieldLabel: { fontSize: 12, color: colors.textFaint, marginBottom: 8, fontWeight: '600' },
-  input: {
-    backgroundColor: colors.coolBlack850, borderRadius: 10, padding: 14,
-    fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 16,
-  },
-  quickRow: { flexDirection: 'row', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
-  quickBtn: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: colors.coolBlack850, borderWidth: 1, borderColor: colors.border,
-  },
-  quickText: { fontSize: 13, color: colors.textFaint },
+    fieldLabel: { fontSize: 12, color: colors.textFaint, marginBottom: 8, fontWeight: '600' },
+    input: {
+      backgroundColor: colors.bg, borderRadius: 10, padding: 14,
+      fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border, marginBottom: 16,
+    },
+    quickRow: { flexDirection: 'row', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
+    quickBtn: {
+      paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8,
+      backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
+    },
+    quickText: { fontSize: 13, color: colors.textFaint },
 
-  saveBtn: { borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 4 },
-  saveBtnDisabled: { opacity: 0.4 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
-});
+    saveBtn: { borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 4 },
+    saveBtnDisabled: { opacity: 0.4 },
+    saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
+  });

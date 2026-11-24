@@ -1,16 +1,20 @@
-import { colors, alphaHex } from '../../lib/tokens';
-import { useEffect, useState, useCallback } from 'react';
+import { alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
+import { useEffect, useState, type ComponentProps } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
+import { useShallow } from 'zustand/react/shallow';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { listTransactions } from '../../services/focusPointService';
 import { EditorialBanner, EmblemMedallion, EmptyState, Skeleton } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
+
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 type Tx = {
   id: string;
@@ -20,7 +24,7 @@ type Tx = {
   created_at: string;
 };
 
-function reasonMeta(reason: string | null): { label: string; icon: string } {
+function reasonMeta(reason: string | null): { label: string; icon: IoniconName } {
   const r = reason ?? '';
   if (r === 'monthly_renewal') return { label: 'Aylık yenileme', icon: 'refresh-outline' };
   if (r.startsWith('subscription_activated:pro')) return { label: 'Pro aktivasyonu', icon: 'diamond-outline' };
@@ -32,26 +36,37 @@ function reasonMeta(reason: string | null): { label: string; icon: string } {
 }
 
 export default function CreditHistoryScreen() {
-  const { focusPoints, refresh } = useSubscriptionStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const { focusPoints, refresh } = useSubscriptionStore(
+    useShallow((st) => ({ focusPoints: st.focusPoints, refresh: st.refresh })),
+  );
   const [txs, setTxs] = useState<Tx[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    const res = await listTransactions(80);
-    setTxs(res.ok ? res.data : []);
-    await refresh();
-  }, [refresh]);
-
   useEffect(() => {
-    setLoading(true);
-    load().finally(() => setLoading(false));
-  }, [load]);
+    let alive = true;
+    void listTransactions(80)
+      .then(async (res) => {
+        if (alive) setTxs(res.ok ? res.data : []);
+        await refresh();
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => { alive = false; };
+  }, [refresh]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await load();
-    setRefreshing(false);
+    try {
+      const res = await listTransactions(80);
+      setTxs(res.ok ? res.data : []);
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const earned = txs.filter((t) => t.delta > 0).reduce((a, t) => a + t.delta, 0);
@@ -150,7 +165,7 @@ export default function CreditHistoryScreen() {
             return (
               <View key={t.id} style={s.row}>
                 <View style={[s.rowIcon, { backgroundColor: alphaHex(positive ? colors.success : colors.error, '18') }]}>
-                  <Ionicons name={m.icon as any} size={16} color={positive ? colors.success : colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                  <Ionicons name={m.icon} size={16} color={positive ? colors.success : colors.error} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.rowLabel}>{m.label}</Text>
@@ -171,33 +186,34 @@ export default function CreditHistoryScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 40 },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
+    content: { padding: 16, paddingBottom: 40 },
 
-  summary: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  sumCard: {
-    flex: 1, backgroundColor: colors.surface, borderRadius: 14, paddingVertical: 14,
-    alignItems: 'center', borderWidth: 1, borderColor: colors.border, gap: 3,
-    overflow: 'hidden', position: 'relative',
-  },
-  sumVal: { fontSize: 20, fontWeight: '800', color: colors.warning },
-  sumLabel: { fontSize: 11, color: colors.textFaint },
+    summary: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+    sumCard: {
+      flex: 1, backgroundColor: colors.surface, borderRadius: 14, paddingVertical: 14,
+      alignItems: 'center', borderWidth: 1, borderColor: colors.border, gap: 3,
+      overflow: 'hidden', position: 'relative',
+    },
+    sumVal: { fontSize: 20, fontWeight: '800', color: colors.warning },
+    sumLabel: { fontSize: 11, color: colors.textFaint },
 
-  row: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: colors.surface, borderRadius: 12, padding: 12, marginBottom: 8,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  rowIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  rowLabel: { fontSize: 14, color: colors.text, fontWeight: '600' },
-  rowDate: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
-  rowRight: { alignItems: 'flex-end' },
-  rowDelta: { fontSize: 15, fontWeight: '800' },
-  rowBal: { fontSize: 10, color: colors.textFaint, marginTop: 2 },
+    row: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: colors.surface, borderRadius: 12, padding: 12, marginBottom: 8,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    rowIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    rowLabel: { fontSize: 14, color: colors.text, fontWeight: '600' },
+    rowDate: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
+    rowRight: { alignItems: 'flex-end' },
+    rowDelta: { fontSize: 15, fontWeight: '800' },
+    rowBal: { fontSize: 10, color: colors.textFaint, marginTop: 2 },
 
-  empty: { alignItems: 'center', paddingTop: 60, gap: 8 },
-  emptyText: { fontSize: 16, color: colors.textDim, fontWeight: '600' },
-  emptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
-});
+    empty: { alignItems: 'center', paddingTop: 60, gap: 8 },
+    emptyText: { fontSize: 16, color: colors.textDim, fontWeight: '600' },
+    emptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
+  });

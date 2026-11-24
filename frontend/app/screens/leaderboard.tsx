@@ -1,10 +1,12 @@
-import { colors, alphaHex } from '../../lib/tokens';
+import { alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useShallow } from 'zustand/react/shallow';
 import { useProfileStore, LeaderboardScope } from '../../store/profileStore';
 import { rankMeta } from '../../lib/ranks';
 import { EditorialBanner, EmblemMedallion, EmptyState, Skeleton } from '../../components/ui';
@@ -15,11 +17,29 @@ const MEDALS = ['🥇', '🥈', '🥉'];
 const ROMAN_PODIUM = ['I', 'II', 'III'] as const;
 
 export default function LeaderboardScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const {
-    profile, fetchProfile,
-    leaderboard, scope, lbLoading, fetchLeaderboard,
-    myRank, fetchMyRank,
-  } = useProfileStore();
+    profile,
+    fetchProfile,
+    leaderboard,
+    scope,
+    lbLoading,
+    fetchLeaderboard,
+    myRank,
+    fetchMyRank,
+  } = useProfileStore(
+    useShallow((st) => ({
+      profile: st.profile,
+      fetchProfile: st.fetchProfile,
+      leaderboard: st.leaderboard,
+      scope: st.scope,
+      lbLoading: st.lbLoading,
+      fetchLeaderboard: st.fetchLeaderboard,
+      myRank: st.myRank,
+      fetchMyRank: st.fetchMyRank,
+    })),
+  );
 
   useEffect(() => {
     fetchProfile();
@@ -226,104 +246,105 @@ export default function LeaderboardScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
 
-  tabs: { flexDirection: 'row', gap: 8, padding: 12, paddingBottom: 4 },
-  tab: {
-    flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 12,
-    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
-  },
-  tabActive: { backgroundColor: alphaHex(colors.warning, '20'), borderColor: colors.warning },
-  tabText: { fontSize: 13, fontWeight: '700', color: colors.textFaint },
-  tabTextActive: { color: colors.warning },
+    tabs: { flexDirection: 'row', gap: 8, padding: 12, paddingBottom: 4 },
+    tab: {
+      flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 12,
+      borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+    },
+    tabActive: { backgroundColor: alphaHex(colors.warning, '20'), borderColor: colors.warning },
+    tabText: { fontSize: 13, fontWeight: '700', color: colors.textFaint },
+    tabTextActive: { color: colors.warning },
 
-  content: { padding: 12, paddingBottom: 40, gap: 8 },
+    content: { padding: 12, paddingBottom: 40, gap: 8 },
 
-  meCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: alphaHex(colors.warning, '12'), borderRadius: 16, borderWidth: 1, borderColor: alphaHex(colors.warning, '40'),
-    padding: 14, marginBottom: 4, overflow: 'hidden', position: 'relative',
-  },
-  meRankWrap: { alignItems: 'center', minWidth: 48 },
-  meRankLabel: { fontSize: 9, fontWeight: '800', color: colors.textFaint, letterSpacing: 1 },
-  meRank: { fontSize: 20, fontWeight: '800', color: colors.warning },
-  meName: { fontSize: 15, fontWeight: '700', color: colors.text },
-  meRankRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  meTier: { fontSize: 12, fontWeight: '700' },
-  meLevel: { fontSize: 12, color: colors.textFaint },
-  meXp: { fontSize: 15, fontWeight: '800', color: colors.warning },
+    meCard: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: alphaHex(colors.warning, '12'), borderRadius: 16, borderWidth: 1, borderColor: alphaHex(colors.warning, '40'),
+      padding: 14, marginBottom: 4, overflow: 'hidden', position: 'relative',
+    },
+    meRankWrap: { alignItems: 'center', minWidth: 48 },
+    meRankLabel: { fontSize: 9, fontWeight: '800', color: colors.textFaint, letterSpacing: 1 },
+    meRank: { fontSize: 20, fontWeight: '800', color: colors.warning },
+    meName: { fontSize: 15, fontWeight: '700', color: colors.text },
+    meRankRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+    meTier: { fontSize: 12, fontWeight: '700' },
+    meLevel: { fontSize: 12, color: colors.textFaint },
+    meXp: { fontSize: 15, fontWeight: '800', color: colors.warning },
 
-  podiumStage: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    marginVertical: 4,
-  },
-  podiumColumn: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    gap: 5,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  podiumColumnFirst: {
-    paddingVertical: 18,
-    backgroundColor: alphaHex(colors.warning, '10'),
-  },
-  podiumColumnSide: {
-    paddingVertical: 12,
-  },
-  podiumRomanPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-  },
-  podiumRomanText: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-  },
-  podiumName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  podiumNameFirst: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  podiumTier: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  podiumXp: {
-    fontSize: 12,
-    fontWeight: '800',
-    marginTop: 2,
-  },
+    podiumStage: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: 8,
+      marginVertical: 4,
+    },
+    podiumColumn: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      paddingHorizontal: 8,
+      alignItems: 'center',
+      gap: 5,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    podiumColumnFirst: {
+      paddingVertical: 18,
+      backgroundColor: alphaHex(colors.warning, '10'),
+    },
+    podiumColumnSide: {
+      paddingVertical: 12,
+    },
+    podiumRomanPill: {
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 999,
+    },
+    podiumRomanText: {
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0.6,
+    },
+    podiumName: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.text,
+      textAlign: 'center',
+    },
+    podiumNameFirst: {
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    podiumTier: {
+      fontSize: 10,
+      fontWeight: '700',
+    },
+    podiumXp: {
+      fontSize: 12,
+      fontWeight: '800',
+      marginTop: 2,
+    },
 
-  row: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border,
-    paddingVertical: 12, paddingHorizontal: 12,
-  },
-  rowMe: { borderColor: colors.warning, backgroundColor: alphaHex(colors.warning, '12') },
-  rankCol: { width: 34, alignItems: 'center' },
-  rankNum: { fontSize: 15, fontWeight: '800', color: colors.textDim },
-  rankTop: { fontSize: 20 },
-  name: { fontSize: 14, fontWeight: '600', color: colors.text },
-  nameMe: { color: colors.warning },
-  rankRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  tier: { fontSize: 11, fontWeight: '700' },
-  lvl: { fontSize: 11, color: colors.textFaint },
-  xp: { fontSize: 14, fontWeight: '800', color: colors.textDim },
+    row: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border,
+      paddingVertical: 12, paddingHorizontal: 12,
+    },
+    rowMe: { borderColor: colors.warning, backgroundColor: alphaHex(colors.warning, '12') },
+    rankCol: { width: 34, alignItems: 'center' },
+    rankNum: { fontSize: 15, fontWeight: '800', color: colors.textDim },
+    rankTop: { fontSize: 20 },
+    name: { fontSize: 14, fontWeight: '600', color: colors.text },
+    nameMe: { color: colors.warning },
+    rankRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+    tier: { fontSize: 11, fontWeight: '700' },
+    lvl: { fontSize: 11, color: colors.textFaint },
+    xp: { fontSize: 14, fontWeight: '800', color: colors.textDim },
 
-  empty: { alignItems: 'center', gap: 12, paddingTop: 60, paddingHorizontal: 30 },
-  emptyText: { fontSize: 13, color: colors.textFaint, textAlign: 'center', lineHeight: 19 },
-});
+    empty: { alignItems: 'center', gap: 12, paddingTop: 60, paddingHorizontal: 30 },
+    emptyText: { fontSize: 13, color: colors.textFaint, textAlign: 'center', lineHeight: 19 },
+  });

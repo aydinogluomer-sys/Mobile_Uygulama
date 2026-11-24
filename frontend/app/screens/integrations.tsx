@@ -1,5 +1,6 @@
-import { colors, alphaHex } from '../../lib/tokens';
-import { useEffect, useState } from 'react';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
+import { useEffect, useState, type ComponentProps } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
   Linking, ActivityIndicator,
@@ -7,6 +8,7 @@ import {
 import { confirm, notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useShallow } from 'zustand/react/shallow';
 import { INTEGRATION_CATEGORIES, type IntegrationCategory, type IntegrationItem } from '../../constants/integrations';
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 import IntegrationItemCard from '../../components/IntegrationItemCard';
@@ -22,13 +24,39 @@ import {
   INTEGRATION_UNAVAILABLE_REASON,
 } from '../../lib/featureGates';
 
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
 export default function IntegrationsScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [selected, setSelected] = useState<IntegrationCategory | null>(null);
   const [detailItem, setDetailItem] = useState<IntegrationItem | null>(null);
   const [notionModal, setNotionModal] = useState(false);
   const [googleModal, setGoogleModal] = useState(false);
 
-  const { connection, status: notionStatus, lastSynced, error: notionError, fetchStatus, prefetchAuthUrl, connect, disconnect, sync } = useNotionStore();
+  const {
+    connection,
+    status: notionStatus,
+    lastSynced,
+    error: notionError,
+    fetchStatus,
+    prefetchAuthUrl,
+    connect,
+    disconnect,
+    sync,
+  } = useNotionStore(
+    useShallow((st) => ({
+      connection: st.connection,
+      status: st.status,
+      lastSynced: st.lastSynced,
+      error: st.error,
+      fetchStatus: st.fetchStatus,
+      prefetchAuthUrl: st.prefetchAuthUrl,
+      connect: st.connect,
+      disconnect: st.disconnect,
+      sync: st.sync,
+    })),
+  );
   const {
     connection: googleConnection,
     status: googleStatus,
@@ -36,7 +64,16 @@ export default function IntegrationsScreen() {
     fetchStatus: fetchGoogleStatus,
     connect: connectGoogle,
     disconnect: disconnectGoogle,
-  } = useGoogleCalendarStore();
+  } = useGoogleCalendarStore(
+    useShallow((st) => ({
+      connection: st.connection,
+      status: st.status,
+      error: st.error,
+      fetchStatus: st.fetchStatus,
+      connect: st.connect,
+      disconnect: st.disconnect,
+    })),
+  );
   const isConnected = !!connection;
   const isGoogleConnected = !!googleConnection;
 
@@ -56,7 +93,7 @@ export default function IntegrationsScreen() {
     if (notionModal && !isConnected) prefetchAuthUrl();
   }, [notionModal, isConnected, prefetchAuthUrl]);
 
-  const connectedCount = INTEGRATION_CATEGORIES.flatMap(c => c.items).filter(i => i.status === 'connected').length + (isConnected ? 1 : 0) + (isGoogleConnected ? 1 : 0);
+  const connectedCount = INTEGRATION_CATEGORIES.flatMap((c) => c.items).filter((i) => i.status === 'connected').length + (isConnected ? 1 : 0) + (isGoogleConnected ? 1 : 0);
 
   function handleItemPress(item: IntegrationItem) {
     if (item.id === 'notion' && !NOTION_INTEGRATION_ENABLED) return;
@@ -102,6 +139,18 @@ export default function IntegrationsScreen() {
     }
   }
 
+  const notionFeatures: { icon: IoniconName; color: string; label: string }[] = [
+    { icon: 'checkmark-circle-outline', color: colors.success, label: 'Alışkanlık Takibi veritabanı' },
+    { icon: 'list-outline', color: colors.accent, label: 'Görevler veritabanı' },
+    { icon: 'sync-outline', color: colors.primary, label: 'Günlük otomatik sync' },
+  ];
+
+  const googleFeatures: { icon: IoniconName; color: string; label: string }[] = [
+    { icon: 'calendar-outline', color: colors.info, label: 'Google Calendar erişimi' },
+    { icon: 'checkmark-circle-outline', color: colors.success, label: 'Habit bloklarını takvime ekle' },
+    { icon: 'sync-outline', color: colors.primary, label: 'Tek tuşla OAuth bağlanması' },
+  ];
+
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <AtmosphericScreenCanvas
@@ -123,7 +172,7 @@ export default function IntegrationsScreen() {
           </View>
         </View>
         <View style={s.bannerBadge}>
-          <Text style={s.bannerBadgeText}>{INTEGRATION_CATEGORIES.flatMap(c => c.items).length}</Text>
+          <Text style={s.bannerBadgeText}>{INTEGRATION_CATEGORIES.flatMap((c) => c.items).length}</Text>
         </View>
       </View>
 
@@ -154,8 +203,8 @@ export default function IntegrationsScreen() {
         >
           <View style={s.featureLeft}>
             <EmbeddedFiligree source={DECOR.obsidianPrism} anchor="bottom-right" opacity={0.14} size={88} />
-            <View style={[s.featureIcon, { backgroundColor: '#f9731620' }]}>
-              <Ionicons name="document-text-outline" size={22} color="#f97316" />
+            <View style={[s.featureIcon, { backgroundColor: alphaHex(colors.primary, '20') }]}>
+              <Ionicons name="document-text-outline" size={22} color={colors.primary} />
             </View>
             <View style={s.featureBody}>
               <View style={s.featureRow}>
@@ -189,8 +238,8 @@ export default function IntegrationsScreen() {
         >
           <View style={s.featureLeft}>
             <EmbeddedFiligree source={DECOR.obsidianPrism} anchor="bottom-right" opacity={0.14} size={88} />
-            <View style={[s.featureIcon, { backgroundColor: '#4285F420' }]}> 
-              <Ionicons name="calendar-outline" size={22} color="#4285F4" />
+            <View style={[s.featureIcon, { backgroundColor: alphaHex(colors.info, '20') }]}>
+              <Ionicons name="calendar-outline" size={22} color={colors.info} />
             </View>
             <View style={s.featureBody}>
               <View style={s.featureRow}>
@@ -209,8 +258,6 @@ export default function IntegrationsScreen() {
           <Ionicons name="chevron-forward" size={16} color={colors.textGhost} />
         </TouchableOpacity>
 
-
-
         <View style={s.hint}>
           <Ionicons name="information-circle-outline" size={16} color={colors.textGhost} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <Text style={s.hintText}>Entegrasyonlar yakında geliyor.</Text>
@@ -224,8 +271,8 @@ export default function IntegrationsScreen() {
             {selected && (
               <>
                 <View style={s.sheetHeader}>
-                  <View style={[s.sheetIcon, { backgroundColor: selected.accentColor + '20' }]}>
-                    <Ionicons name={selected.iconName as any} size={24} color={selected.accentColor} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                  <View style={[s.sheetIcon, { backgroundColor: `${selected.accentColor}20` }]}>
+                    <Ionicons name={selected.iconName as IoniconName} size={24} color={selected.accentColor} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                   </View>
                   <View style={s.sheetTitleWrap}>
                     <Text style={s.sheetTitle}>{selected.title}</Text>
@@ -262,8 +309,8 @@ export default function IntegrationsScreen() {
         <View style={s.overlay}>
           <View style={[s.sheet, { maxHeight: '70%' }]}>
             <View style={s.sheetHeader}>
-              <View style={[s.sheetIcon, { backgroundColor: '#f9731620' }]}>
-                <Ionicons name="document-text-outline" size={24} color="#f97316" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+              <View style={[s.sheetIcon, { backgroundColor: alphaHex(colors.primary, '20') }]}>
+                <Ionicons name="document-text-outline" size={24} color={colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
               </View>
               <View style={s.sheetTitleWrap}>
                 <Text style={s.sheetTitle}>Notion</Text>
@@ -354,13 +401,9 @@ export default function IntegrationsScreen() {
                 <>
                   {/* Ne yapacağını göster */}
                   <View style={s.oauthPreview}>
-                    {[
-                      { icon: 'checkmark-circle-outline', color: colors.success, label: 'Alışkanlık Takibi veritabanı' },
-                      { icon: 'list-outline', color: colors.accent, label: 'Görevler veritabanı' },
-                      { icon: 'sync-outline', color: '#f97316', label: 'Günlük otomatik sync' },
-                    ].map(f => (
+                    {notionFeatures.map((f) => (
                       <View key={f.label} style={s.previewRow}>
-                        <Ionicons name={f.icon as any} size={18} color={f.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                        <Ionicons name={f.icon} size={18} color={f.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                         <Text style={s.previewLabel}>{f.label}</Text>
                         <Ionicons name="checkmark" size={14} color={colors.textGhost} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       </View>
@@ -379,7 +422,7 @@ export default function IntegrationsScreen() {
                   )}
 
                   <TouchableOpacity
-                    style={[s.primaryBtn, { backgroundColor: '#f97316' }, notionStatus === 'connecting' && s.btnDisabled]}
+                    style={[s.primaryBtn, { backgroundColor: colors.primary }, notionStatus === 'connecting' && s.btnDisabled]}
                     onPress={handleConnect}
                     disabled={notionStatus === 'connecting'}
                     accessibilityRole="button"
@@ -403,10 +446,10 @@ export default function IntegrationsScreen() {
       {/* ── Google Calendar Modal ───────────────────────────────────────────── */}
       <Modal visible={googleModal} transparent animationType="slide" onRequestClose={() => setGoogleModal(false)}>
         <View style={s.overlay}>
-          <View style={[s.sheet, { maxHeight: '70%' }]}> 
+          <View style={[s.sheet, { maxHeight: '70%' }]}>
             <View style={s.sheetHeader}>
-              <View style={[s.sheetIcon, { backgroundColor: '#4285F420' }]}> 
-                <Ionicons name="calendar-outline" size={24} color="#4285F4" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+              <View style={[s.sheetIcon, { backgroundColor: alphaHex(colors.info, '20') }]}>
+                <Ionicons name="calendar-outline" size={24} color={colors.info} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
               </View>
               <View style={s.sheetTitleWrap}>
                 <Text style={s.sheetTitle}>Google Calendar</Text>
@@ -455,13 +498,9 @@ export default function IntegrationsScreen() {
               ) : (
                 <>
                   <View style={s.oauthPreview}>
-                    {[
-                      { icon: 'calendar-outline', color: '#4285F4', label: 'Google Calendar erişimi' },
-                      { icon: 'checkmark-circle-outline', color: colors.success, label: 'Habit bloklarını takvime ekle' },
-                      { icon: 'sync-outline', color: '#f97316', label: 'Tek tuşla OAuth bağlanması' },
-                    ].map(f => (
+                    {googleFeatures.map((f) => (
                       <View key={f.label} style={s.previewRow}>
-                        <Ionicons name={f.icon as any} size={18} color={f.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                        <Ionicons name={f.icon} size={18} color={f.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                         <Text style={s.previewLabel}>{f.label}</Text>
                         <Ionicons name="checkmark" size={14} color={colors.textGhost} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                       </View>
@@ -480,7 +519,7 @@ export default function IntegrationsScreen() {
                   )}
 
                   <TouchableOpacity
-                    style={[s.primaryBtn, { backgroundColor: '#4285F4' }, googleStatus === 'connecting' && s.btnDisabled]}
+                    style={[s.primaryBtn, { backgroundColor: colors.info }, googleStatus === 'connecting' && s.btnDisabled]}
                     onPress={handleGoogleConnect}
                     disabled={googleStatus === 'connecting'}
                     accessibilityRole="button"
@@ -513,131 +552,132 @@ export default function IntegrationsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  banner: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    margin: 16, padding: 14, borderRadius: 14,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', position: 'relative',
-  },
-  bannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  bannerTitle: { fontSize: 15, fontWeight: '700', color: colors.white },
-  bannerSub: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
-  bannerBadge: { width: 32, height: 32, borderRadius: 16, backgroundColor: alphaHex(colors.accent, '20'), alignItems: 'center', justifyContent: 'center' },
-  bannerBadgeText: { fontSize: 13, fontWeight: '700', color: colors.accent },
-  content: { paddingHorizontal: 16, paddingBottom: 40 },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    banner: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      margin: 16, padding: 14, borderRadius: 14,
+      backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, overflow: 'hidden', position: 'relative',
+    },
+    bannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+    bannerTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+    bannerSub: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
+    bannerBadge: { width: 32, height: 32, borderRadius: 16, backgroundColor: alphaHex(colors.accent, '20'), alignItems: 'center', justifyContent: 'center' },
+    bannerBadgeText: { fontSize: 13, fontWeight: '700', color: colors.accent },
+    content: { paddingHorizontal: 16, paddingBottom: 40 },
 
-  featureCard: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: colors.border, marginBottom: 10, overflow: 'hidden', position: 'relative',
-  },
-  featureCardConnected: { borderColor: alphaHex(colors.success, '30') },
-  featureLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  featureIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  featureBody: { flex: 1 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  featureTitle: { fontSize: 15, fontWeight: '700', color: colors.white },
-  featureDesc: { fontSize: 12, color: colors.textFaint, lineHeight: 16 },
+    featureCard: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      backgroundColor: colors.surface, borderRadius: 14, padding: 14,
+      borderWidth: 1, borderColor: colors.border, marginBottom: 10, overflow: 'hidden', position: 'relative',
+    },
+    featureCardConnected: { borderColor: alphaHex(colors.success, '30') },
+    featureLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+    featureIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    featureBody: { flex: 1 },
+    featureRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+    featureTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+    featureDesc: { fontSize: 12, color: colors.textFaint, lineHeight: 16 },
 
-  badge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
-  badgeAvailable: { backgroundColor: alphaHex(colors.success, '18') },
-  badgeConnected: { backgroundColor: alphaHex(colors.success, '20') },
-  badgeText: { fontSize: 10, fontWeight: '700' },
-  badgeTextAvailable: { color: colors.success },
-  badgeTextConnected: { color: colors.success },
+    badge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+    badgeAvailable: { backgroundColor: alphaHex(colors.success, '18') },
+    badgeConnected: { backgroundColor: alphaHex(colors.success, '20') },
+    badgeText: { fontSize: 10, fontWeight: '700' },
+    badgeTextAvailable: { color: colors.success },
+    badgeTextConnected: { color: colors.success },
 
-  hint: {
-    flexDirection: 'row', gap: 8, alignItems: 'flex-start',
-    marginTop: 4, padding: 12, borderRadius: 10,
-    backgroundColor: colors.coolBlack850, borderWidth: 1, borderColor: colors.borderSubtle,
-  },
-  hintText: { flex: 1, fontSize: 12, color: colors.textFaint, lineHeight: 18 },
+    hint: {
+      flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+      marginTop: 4, padding: 12, borderRadius: 10,
+      backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.borderSubtle,
+    },
+    hintText: { flex: 1, fontSize: 12, color: colors.textFaint, lineHeight: 18 },
 
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 },
-  sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 20, paddingBottom: 16 },
-  sheetIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  sheetTitleWrap: { flex: 1 },
-  sheetTitle: { fontSize: 17, fontWeight: '700', color: colors.white, marginBottom: 4 },
-  sheetDesc: { fontSize: 13, color: colors.textDim, lineHeight: 18 },
-  closeBtn: { padding: 4 },
-  divider: { height: 1, backgroundColor: colors.border },
-  itemList: { padding: 16 },
-  stepList: { padding: 16, gap: 10 },
+    overlay: { flex: 1, backgroundColor: hexA(colors.black, 0.8), justifyContent: 'flex-end' },
+    sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 },
+    sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 20, paddingBottom: 16 },
+    sheetIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    sheetTitleWrap: { flex: 1 },
+    sheetTitle: { fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 4 },
+    sheetDesc: { fontSize: 13, color: colors.textDim, lineHeight: 18 },
+    closeBtn: { padding: 4 },
+    divider: { height: 1, backgroundColor: colors.border },
+    itemList: { padding: 16 },
+    stepList: { padding: 16, gap: 10 },
 
-  // Notion bağlı
-  connectedBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: alphaHex(colors.success, '12'), borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: alphaHex(colors.success, '30'), marginBottom: 4,
-  },
-  connectedIconWrap: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  connectedTitle: { fontSize: 15, fontWeight: '700', color: colors.success },
-  connectedSub: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
-  dbLinks: { gap: 8, marginBottom: 8 },
-  dbLink: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.surface, borderRadius: 10, padding: 12,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  dbLinkText: { flex: 1, fontSize: 14, color: colors.text, fontWeight: '500' },
+    // Notion bağlı
+    connectedBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: alphaHex(colors.success, '12'), borderRadius: 12, padding: 14,
+      borderWidth: 1, borderColor: alphaHex(colors.success, '30'), marginBottom: 4,
+    },
+    connectedIconWrap: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+    connectedTitle: { fontSize: 15, fontWeight: '700', color: colors.success },
+    connectedSub: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
+    dbLinks: { gap: 8, marginBottom: 8 },
+    dbLink: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: colors.surface, borderRadius: 10, padding: 12,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    dbLinkText: { flex: 1, fontSize: 14, color: colors.text, fontWeight: '500' },
 
-  // Notion bağlanma
-  oauthPreview: {
-    backgroundColor: colors.surface, borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: colors.border, gap: 12, marginBottom: 12,
-  },
-  previewRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  previewLabel: { flex: 1, fontSize: 14, color: colors.text },
-  oauthNote: { fontSize: 12, color: colors.textFaint, lineHeight: 18, marginBottom: 16 },
+    // Notion bağlanma
+    oauthPreview: {
+      backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+      borderWidth: 1, borderColor: colors.border, gap: 12, marginBottom: 12,
+    },
+    previewRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    previewLabel: { flex: 1, fontSize: 14, color: colors.text },
+    oauthNote: { fontSize: 12, color: colors.textFaint, lineHeight: 18, marginBottom: 16 },
 
-  // Buttons
-  primaryBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-    backgroundColor: colors.accent, borderRadius: 14, padding: 16, marginTop: 4,
-  },
-  primaryBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
-  btnDisabled: { opacity: 0.55 },
-  secondaryBtn: {
-    marginTop: 10, paddingVertical: 13, borderRadius: 12,
-    backgroundColor: colors.borderSubtle, alignItems: 'center',
-    borderWidth: 1, borderColor: colors.border,
-  },
-  secondaryBtnText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
+    // Buttons
+    primaryBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+      backgroundColor: colors.accent, borderRadius: 14, padding: 16, marginTop: 4,
+    },
+    primaryBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
+    btnDisabled: { opacity: 0.55 },
+    secondaryBtn: {
+      marginTop: 10, paddingVertical: 13, borderRadius: 12,
+      backgroundColor: colors.borderSubtle, alignItems: 'center',
+      borderWidth: 1, borderColor: colors.border,
+    },
+    secondaryBtnText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
 
-  errorBox: {
-    flexDirection: 'row', gap: 8, alignItems: 'flex-start',
-    backgroundColor: alphaHex(colors.error, '10'), borderRadius: 10, padding: 12,
-    borderWidth: 1, borderColor: alphaHex(colors.error, '28'), marginBottom: 8,
-  },
-  errorText: { flex: 1, fontSize: 12, color: colors.error, lineHeight: 17 },
+    errorBox: {
+      flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+      backgroundColor: alphaHex(colors.error, '10'), borderRadius: 10, padding: 12,
+      borderWidth: 1, borderColor: alphaHex(colors.error, '28'), marginBottom: 8,
+    },
+    errorText: { flex: 1, fontSize: 12, color: colors.error, lineHeight: 17 },
 
-  // Obsidian
-  sectionLabel: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1.2, marginTop: 4, marginBottom: 4 },
-  featureChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: colors.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  featureChip2: {},
-  featureChipText: { fontSize: 12, color: colors.textDim },
-  stepCard: {
-    flexDirection: 'row', gap: 12, alignItems: 'flex-start',
-    backgroundColor: colors.surface, borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  stepNum: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  stepNumText: { fontSize: 12, fontWeight: '700', color: colors.white },
-  stepTitle: { fontSize: 14, fontWeight: '600', color: colors.text },
-  stepDesc: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
-  pathBox: { backgroundColor: colors.coolBlack950, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.borderSubtle },
-  pathLabel: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 4 },
-  pathValue: { fontSize: 13, fontFamily: 'monospace', color: colors.accent },
-  docsBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: alphaHex(colors.accent, '10'), borderRadius: 10, padding: 12,
-    borderWidth: 1, borderColor: alphaHex(colors.accent, '30'),
-  },
-  docsBtnText: { fontSize: 13, color: colors.accent, fontWeight: '500' },
-});
+    // Obsidian
+    sectionLabel: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1.2, marginTop: 4, marginBottom: 4 },
+    featureChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 5,
+      backgroundColor: colors.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    featureChip2: {},
+    featureChipText: { fontSize: 12, color: colors.textDim },
+    stepCard: {
+      flexDirection: 'row', gap: 12, alignItems: 'flex-start',
+      backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    stepNum: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    stepNumText: { fontSize: 12, fontWeight: '700', color: colors.white },
+    stepTitle: { fontSize: 14, fontWeight: '600', color: colors.text },
+    stepDesc: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+    pathBox: { backgroundColor: colors.bgSunk, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.borderSubtle },
+    pathLabel: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 4 },
+    pathValue: { fontSize: 13, fontFamily: 'monospace', color: colors.accent },
+    docsBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: alphaHex(colors.accent, '10'), borderRadius: 10, padding: 12,
+      borderWidth: 1, borderColor: alphaHex(colors.accent, '30'),
+    },
+    docsBtnText: { fontSize: 13, color: colors.accent, fontWeight: '500' },
+  });

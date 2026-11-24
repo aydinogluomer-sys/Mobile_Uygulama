@@ -1,4 +1,5 @@
-import { colors, hexA } from '../../lib/tokens';
+import { hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -8,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import Svg, { Polygon, Circle, Line, Text as SvgText } from 'react-native-svg';
+import { useShallow } from 'zustand/react/shallow';
 import { useLifeAreasStore, LIFE_AREAS, AreaKey } from '../../store/lifeAreasStore';
 import { EditorialBanner, FormError, Skeleton } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
@@ -44,6 +46,7 @@ function polarToXY(angle: number, radius: number) {
 }
 
 function RadarWeb({ values }: { values: Record<AreaKey, number> }) {
+  const colors = useThemeColors();
   const n = LIFE_AREAS.length;
   const angleStep = 360 / n;
 
@@ -106,12 +109,12 @@ function RadarWeb({ values }: { values: Record<AreaKey, number> }) {
         const angle = i * angleStep;
         const labelR = MAX_R + 14;
         const { x, y } = polarToXY(angle, labelR);
-        const anchor = x < CX - 5 ? 'end' : x > CX + 5 ? 'start' : 'middle';
+        const anchor: 'end' | 'start' | 'middle' = x < CX - 5 ? 'end' : x > CX + 5 ? 'start' : 'middle';
         return (
           <SvgText
             key={area.key}
             x={x} y={y + 4}
-            textAnchor={anchor as any}
+            textAnchor={anchor}
             fill={colors.textDim}
             fontSize="10"
             fontWeight="600"
@@ -138,6 +141,8 @@ function AreaTarotCard({
   onChange: (v: number) => void;
   cardWidthStyle: object;
 }) {
+  const colors = useThemeColors();
+  const sl = useThemedStyles(makeCardStyles);
   return (
     <View style={[sl.card, cardWidthStyle, { borderColor: hexA(area.color, 0.34) }]}>
       {!IS_TEST ? (
@@ -158,7 +163,7 @@ function AreaTarotCard({
             {area.label}
           </Text>
           <View style={[sl.scoreBadge, { borderColor: hexA(area.color, 0.45), backgroundColor: hexA(area.color, 0.14) }]}>
-            <Text style={[sl.valueText, { color: colors.white }]}>{value}</Text>
+            <Text style={[sl.valueText, { color: colors.text }]}>{value}</Text>
             <Text style={sl.scoreSuffix}>/10</Text>
           </View>
         </View>
@@ -183,7 +188,21 @@ function AreaTarotCard({
 }
 
 export default function LifeAreasScreen() {
-  const { values, lastSavedDate, loading, saving, error, loadLatest, setValue, save } = useLifeAreasStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const sl = useThemedStyles(makeCardStyles);
+  const { values, lastSavedDate, loading, saving, error, loadLatest, setValue, save } = useLifeAreasStore(
+    useShallow((st) => ({
+      values: st.values,
+      lastSavedDate: st.lastSavedDate,
+      loading: st.loading,
+      saving: st.saving,
+      error: st.error,
+      loadLatest: st.loadLatest,
+      setValue: st.setValue,
+      save: st.save,
+    })),
+  );
   const { width } = useWindowDimensions();
   const cols = width >= 980 ? 4 : width >= 460 ? 2 : 1;
   const cardWidthStyle =
@@ -192,7 +211,7 @@ export default function LifeAreasScreen() {
   useEffect(() => { loadLatest(); }, [loadLatest]);
 
   const avg = Math.round(
-    Object.values(values).reduce((a, b) => a + b, 0) / LIFE_AREAS.length * 10
+    (Object.values(values).reduce((a, b) => a + b, 0) / LIFE_AREAS.length) * 10,
   ) / 10;
 
   if (loading) {
@@ -313,95 +332,97 @@ export default function LifeAreasScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: 18, paddingBottom: 44, alignItems: 'center' },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    scroll: { padding: 18, paddingBottom: 44, alignItems: 'center' },
 
-  radarStage: {
-    width: '100%',
-    alignItems: 'center',
-    backgroundColor: hexA(colors.surface, 0.88),
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  radarContainer: { alignItems: 'center', position: 'relative' },
-  avgBadge: {
-    position: 'absolute', top: 14, right: 14, zIndex: 2,
-    backgroundColor: hexA(colors.bgSunk, 0.92), borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
-    borderWidth: 1, borderColor: hexA(colors.warning, 0.4), alignItems: 'center',
-  },
-  avgValue: { fontSize: 18, fontWeight: '700', color: colors.white, fontVariant: ['tabular-nums'] },
-  avgLabel: { fontSize: 10, color: colors.textFaint },
+    radarStage: {
+      width: '100%',
+      alignItems: 'center',
+      backgroundColor: hexA(colors.surface, 0.88),
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 14,
+      paddingHorizontal: 12,
+      marginBottom: 8,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    radarContainer: { alignItems: 'center', position: 'relative' },
+    avgBadge: {
+      position: 'absolute', top: 14, right: 14, zIndex: 2,
+      backgroundColor: hexA(colors.bgSunk, 0.92), borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
+      borderWidth: 1, borderColor: hexA(colors.warning, 0.4), alignItems: 'center',
+    },
+    avgValue: { fontSize: 18, fontWeight: '700', color: colors.text, fontVariant: ['tabular-nums'] },
+    avgLabel: { fontSize: 10, color: colors.textFaint },
 
-  lastSaved: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  lastSavedText: { fontSize: 12, color: colors.textFaint },
+    lastSaved: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+    lastSavedText: { fontSize: 12, color: colors.textFaint },
 
-  slidersCard: {
-    width: '100%', backgroundColor: colors.surface, borderRadius: 16,
-    padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 20,
-    gap: 14,
-  },
-  tarotGrid: {
-    width: '100%',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 12,
-    marginTop: 6,
-    marginBottom: 20,
-  },
+    slidersCard: {
+      width: '100%', backgroundColor: colors.surface, borderRadius: 16,
+      padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 20,
+      gap: 14,
+    },
+    tarotGrid: {
+      width: '100%',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      rowGap: 12,
+      marginTop: 6,
+      marginBottom: 20,
+    },
 
-  saveBtn: {
-    width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, backgroundColor: colors.accent, borderRadius: 14, padding: 15,
-  },
-  saveBtnLoading: { opacity: 0.7 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
-});
+    saveBtn: {
+      width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 8, backgroundColor: colors.accent, borderRadius: 14, padding: 15,
+    },
+    saveBtnLoading: { opacity: 0.7 },
+    saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
+  });
 
-const sl = StyleSheet.create({
-  skeletonRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  card: {
-    backgroundColor: hexA(colors.surface, 0.94),
-    borderRadius: 15,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  artWrap: {
-    width: '100%',
-    height: 82,
-    position: 'relative',
-    backgroundColor: colors.bgSunk,
-  },
-  cardBody: {
-    padding: 12,
-    gap: 10,
-  },
-  headRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  label: { fontSize: 13, fontWeight: '700', flex: 1 },
-  scoreBadge: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  sliderTrack: { flexDirection: 'row', gap: 3 },
-  tick: {
-    flex: 1, height: 10, borderRadius: 4, backgroundColor: colors.border,
-  },
-  valueText: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  scoreSuffix: { fontSize: 10, color: colors.textFaint, marginLeft: 1 },
-});
+const makeCardStyles = (colors: Palette) =>
+  StyleSheet.create({
+    skeletonRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    card: {
+      backgroundColor: hexA(colors.surface, 0.94),
+      borderRadius: 15,
+      borderWidth: 1,
+      overflow: 'hidden',
+    },
+    artWrap: {
+      width: '100%',
+      height: 82,
+      position: 'relative',
+      backgroundColor: colors.bgSunk,
+    },
+    cardBody: {
+      padding: 12,
+      gap: 10,
+    },
+    headRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    label: { fontSize: 13, fontWeight: '700', flex: 1 },
+    scoreBadge: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 8,
+      borderWidth: 1,
+    },
+    sliderTrack: { flexDirection: 'row', gap: 3 },
+    tick: {
+      flex: 1, height: 10, borderRadius: 4, backgroundColor: colors.border,
+    },
+    valueText: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
+    scoreSuffix: { fontSize: 10, color: colors.textFaint, marginLeft: 1 },
+  });

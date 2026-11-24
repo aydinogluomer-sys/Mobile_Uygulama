@@ -1,30 +1,36 @@
 import { Stack } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { colors, hexA } from '../../lib/tokens';
+import { hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemeMode, useThemedStyles } from '../../hooks/useThemeColors';
 
 /** Mevsimsel arka plana sahip ekranlar için: görselin üstüne oturan frosted-glass header. */
 function GlassHeaderBg() {
+  const colors = useThemeColors();
+  const mode = useThemeMode();
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={StyleSheet.absoluteFill}>
-      <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+      <BlurView intensity={30} tint={mode === 'light' ? 'light' : 'dark'} style={StyleSheet.absoluteFill} />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bgSunk, 0.45) }]} />
       <View style={s.hairline} />
     </View>
   );
 }
-const seasonalHeader = {
-  headerTransparent: true,
-  headerTintColor: colors.white,
-  headerBackground: () => <GlassHeaderBg />,
-} as const;
 
 export default function ScreensLayout() {
+  const colors = useThemeColors();
+  const seasonalHeader = {
+    headerTransparent: true,
+    headerTintColor: colors.white,
+    headerBackground: () => <GlassHeaderBg />,
+  } as const;
+
   return (
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: colors.surface },
-        headerTintColor: colors.white,
+        headerTintColor: colors.text,
         headerBackTitle: 'Geri',
         contentStyle: { backgroundColor: colors.bg },
       }}
@@ -62,6 +68,7 @@ export default function ScreensLayout() {
   );
 }
 
-const s = StyleSheet.create({
-  hairline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: hexA(colors.white, 0.08) },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    hairline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: hexA(colors.white, 0.08) },
+  });

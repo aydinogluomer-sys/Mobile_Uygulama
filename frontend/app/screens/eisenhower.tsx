@@ -1,5 +1,6 @@
-import { colors, alphaHex, hexA } from '../../lib/tokens';
-import { useState, useEffect } from 'react';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
+import { useState, useEffect, useMemo, type ComponentProps } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Modal, FlatList, type ImageSourcePropType,
@@ -7,6 +8,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 import { navigateTo } from '../../lib/destinations';
 import { useTaskStore, Task, QuadrantType } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
@@ -16,16 +18,18 @@ import { EditorialBanner } from '../../components/ui';
 import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
+
 type Quadrant = {
   key: QuadrantType;
   label: string;
   action: string;
   color: string;
-  icon: string;
+  icon: IoniconName;
   relief: ImageSourcePropType;
 };
 
-const QUADRANTS: Quadrant[] = [
+const getQuadrants = (colors: Palette): Quadrant[] => [
   { key: 'UI', label: 'YAP', action: 'Acil + Önemli', color: colors.error, icon: 'flame-outline', relief: DECOR.quadrantFlame },
   { key: 'NI', label: 'PLANLA', action: 'Önemli, Acil Değil', color: colors.accent, icon: 'calendar-outline', relief: DECOR.quadrantCompass },
   { key: 'UN', label: 'DELEGE ET', action: 'Acil, Önemsiz', color: colors.warning, icon: 'people-outline', relief: DECOR.quadrantHourglass },
@@ -40,9 +44,12 @@ const TRIAGE_CELLS: { key: Triage; action: string; relief: ImageSourcePropType }
   { key: 'eliminate', action: 'Ne Acil Ne Önemli', relief: DECOR.quadrantFeather },
 ];
 
-const PRIORITY_COLOR: Record<string, string> = {
-  high: colors.error, medium: colors.warning, low: colors.success, none: colors.textGhost,
-};
+const getPriorityColor = (colors: Palette): Record<string, string> => ({
+  high: colors.error,
+  medium: colors.warning,
+  low: colors.success,
+  none: colors.textGhost,
+});
 
 const STATUS_LABEL: Record<string, string> = {
   active: 'Aktif', waiting: 'Bekleme', idea: 'Fikir', paused: 'Askıda', completed: 'Tamam',
@@ -55,11 +62,14 @@ function QuadrantBox({
   tasks: Task[];
   onAssign: (task: Task) => void;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const priorityColor = getPriorityColor(colors);
   return (
     <View style={[s.quadrant, { borderColor: alphaHex(q.color, '40') }]}>
       <EmbeddedFiligree source={q.relief} anchor="bottom-right" size={118} opacity={0.22} />
       <View style={s.qHeader}>
-        <Ionicons name={q.icon as any} size={14} color={q.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+        <Ionicons name={q.icon} size={14} color={q.color} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         <Text style={[s.qLabel, { color: q.color }]}>{q.label}</Text>
       </View>
       <Text style={s.qAction}>{q.action}</Text>
@@ -75,7 +85,7 @@ function QuadrantBox({
             accessibilityLabel={`${t.title} — ${q.label} kadranında`}
             accessibilityHint="Kadranı değiştirmek için aç"
           >
-            <View style={[s.dot, { backgroundColor: PRIORITY_COLOR[t.priority] }]} />
+            <View style={[s.dot, { backgroundColor: priorityColor[t.priority] }]} />
             <Text style={s.taskTitle} numberOfLines={2}>{t.title}</Text>
           </TouchableOpacity>
         ))
@@ -91,6 +101,8 @@ function HabitQuadrantBox({
   habits: Habit[];
   onTap: () => void;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const m = TRIAGE_META[triage];
   const cell = TRIAGE_CELLS.find((c) => c.key === triage);
   return (
@@ -126,9 +138,21 @@ function HabitQuadrantBox({
 }
 
 export default function EisenhowerScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const quadrants = useMemo(() => getQuadrants(colors), [colors]);
+  const priorityColor = useMemo(() => getPriorityColor(colors), [colors]);
   const router = useRouter();
-  const { tasks, fetchTasks, updateQuadrant } = useTaskStore();
-  const { habits, fetchHabits } = useHabitStore();
+  const { tasks, fetchTasks, updateQuadrant } = useTaskStore(
+    useShallow((st) => ({
+      tasks: st.tasks,
+      fetchTasks: st.fetchTasks,
+      updateQuadrant: st.updateQuadrant,
+    })),
+  );
+  const { habits, fetchHabits } = useHabitStore(
+    useShallow((st) => ({ habits: st.habits, fetchHabits: st.fetchHabits })),
+  );
   const [mode, setMode] = useState<'tasks' | 'habits'>('tasks');
   const [assignModal, setAssignModal] = useState<Task | null>(null);
   const [pickModal, setPickModal] = useState(false);
@@ -220,8 +244,8 @@ export default function EisenhowerScreen() {
           <View style={s.row}>
             {isTasks ? (
               <>
-                <QuadrantBox q={QUADRANTS[0]} tasks={byQuadrant('UI')} onAssign={setAssignModal} />
-                <QuadrantBox q={QUADRANTS[1]} tasks={byQuadrant('NI')} onAssign={setAssignModal} />
+                <QuadrantBox q={quadrants[0]} tasks={byQuadrant('UI')} onAssign={setAssignModal} />
+                <QuadrantBox q={quadrants[1]} tasks={byQuadrant('NI')} onAssign={setAssignModal} />
               </>
             ) : (
               <>
@@ -233,8 +257,8 @@ export default function EisenhowerScreen() {
           <View style={s.row}>
             {isTasks ? (
               <>
-                <QuadrantBox q={QUADRANTS[2]} tasks={byQuadrant('UN')} onAssign={setAssignModal} />
-                <QuadrantBox q={QUADRANTS[3]} tasks={byQuadrant('NN')} onAssign={setAssignModal} />
+                <QuadrantBox q={quadrants[2]} tasks={byQuadrant('UN')} onAssign={setAssignModal} />
+                <QuadrantBox q={quadrants[3]} tasks={byQuadrant('NN')} onAssign={setAssignModal} />
               </>
             ) : (
               <>
@@ -272,7 +296,7 @@ export default function EisenhowerScreen() {
           <View style={s.modalCard}>
             <Text style={s.modalTitle} numberOfLines={2}>{assignModal?.title}</Text>
             <Text style={s.modalSub}>Kadranı değiştir:</Text>
-            {QUADRANTS.map((q) => (
+            {quadrants.map((q) => (
               <TouchableOpacity
                 key={q.key}
                 style={[s.modalOption, assignModal?.quadrant === q.key && s.modalOptionActive]}
@@ -284,7 +308,7 @@ export default function EisenhowerScreen() {
                   checked: assignModal?.quadrant === q.key,
                 }}
               >
-                <Ionicons name={q.icon as any} size={16} color={q.color} />
+                <Ionicons name={q.icon} size={16} color={q.color} />
                 <View style={{ flex: 1 }}>
                   <Text style={[s.modalOptionLabel, { color: q.color }]}>{q.label}</Text>
                   <Text style={s.modalOptionSub}>{q.action}</Text>
@@ -330,7 +354,7 @@ export default function EisenhowerScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`${item.title} görevini kadrana yerleştir`}
                 >
-                  <View style={[s.dot, { backgroundColor: PRIORITY_COLOR[item.priority] }]} />
+                  <View style={[s.dot, { backgroundColor: priorityColor[item.priority] }]} />
                   <Text style={s.pickTitle} numberOfLines={1}>{item.title}</Text>
                   <Ionicons name="chevron-forward" size={14} color={colors.textGhost} />
                 </TouchableOpacity>
@@ -343,89 +367,90 @@ export default function EisenhowerScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: 16, paddingBottom: 40 },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    scroll: { padding: 16, paddingBottom: 40 },
 
-  toggle: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  toggleBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: hexA(colors.surface, 0.92), borderRadius: 12, paddingVertical: 10,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  toggleBtnSel: { backgroundColor: colors.accent, borderColor: colors.accent },
-  toggleText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
-  toggleTextSel: { color: colors.white },
-  modeHint: { fontSize: 12, color: colors.textFaint, marginBottom: 16, paddingHorizontal: 2 },
+    toggle: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+    toggleBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      backgroundColor: hexA(colors.surface, 0.92), borderRadius: 12, paddingVertical: 10,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    toggleBtnSel: { backgroundColor: colors.accent, borderColor: colors.accent },
+    toggleText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
+    toggleTextSel: { color: colors.white },
+    modeHint: { fontSize: 12, color: colors.textFaint, marginBottom: 16, paddingHorizontal: 2 },
 
-  unassignedBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: alphaHex(colors.warning, '15'), borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: alphaHex(colors.warning, '30'), marginBottom: 16,
-  },
-  unassignedText: { flex: 1, fontSize: 13, color: colors.warning },
-  unassignedLink: { fontSize: 13, color: colors.warning, fontWeight: '700' },
+    unassignedBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: alphaHex(colors.warning, '15'), borderRadius: 12, padding: 12,
+      borderWidth: 1, borderColor: alphaHex(colors.warning, '30'), marginBottom: 16,
+    },
+    unassignedText: { flex: 1, fontSize: 13, color: colors.warning },
+    unassignedLink: { fontSize: 13, color: colors.warning, fontWeight: '700' },
 
-  matrix: { gap: 10, position: 'relative' },
-  row: { flexDirection: 'row', gap: 10 },
-  crosshairWrap: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  crosshairBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.bgSunk,
-    borderWidth: 1,
-    borderColor: hexA(colors.warning, 0.55),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    matrix: { gap: 10, position: 'relative' },
+    row: { flexDirection: 'row', gap: 10 },
+    crosshairWrap: {
+      ...StyleSheet.absoluteFill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    crosshairBadge: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: colors.bgSunk,
+      borderWidth: 1,
+      borderColor: hexA(colors.warning, 0.55),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  quadrant: {
-    flex: 1, minHeight: 168, backgroundColor: hexA(colors.surface, 0.92),
-    borderRadius: 14, padding: 12, borderWidth: 1,
-    overflow: 'hidden', position: 'relative',
-  },
-  qHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-  qLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
-  qAction: { fontSize: 10, color: colors.textFaint, marginBottom: 10 },
-  qEmpty: { fontSize: 11, color: colors.textFaint, textAlign: 'center', marginTop: 12 },
+    quadrant: {
+      flex: 1, minHeight: 168, backgroundColor: hexA(colors.surface, 0.92),
+      borderRadius: 14, padding: 12, borderWidth: 1,
+      overflow: 'hidden', position: 'relative',
+    },
+    qHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+    qLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
+    qAction: { fontSize: 10, color: colors.textFaint, marginBottom: 10 },
+    qEmpty: { fontSize: 11, color: colors.textFaint, textAlign: 'center', marginTop: 12 },
 
-  taskChip: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 6,
-    backgroundColor: hexA(colors.coolBlack850, 0.9), borderRadius: 8, padding: 8, marginBottom: 6,
-  },
-  dot: { width: 7, height: 7, borderRadius: 4, marginTop: 3, flexShrink: 0 },
-  taskTitle: { flex: 1, fontSize: 12, color: colors.neutral300, lineHeight: 16 },
-  habitRoom: { fontSize: 9, color: colors.textFaint, marginTop: 1 },
+    taskChip: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 6,
+      backgroundColor: hexA(colors.bg, 0.9), borderRadius: 8, padding: 8, marginBottom: 6,
+    },
+    dot: { width: 7, height: 7, borderRadius: 4, marginTop: 3, flexShrink: 0 },
+    taskTitle: { flex: 1, fontSize: 12, color: colors.textDim, lineHeight: 16 },
+    habitRoom: { fontSize: 9, color: colors.textFaint, marginTop: 1 },
 
-  axisRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingHorizontal: 4 },
-  axisLabel: { fontSize: 10, color: colors.textFaint },
-  axisLabelCenter: { fontSize: 10, color: colors.textFaint, fontWeight: '700' },
-  mirrorNote: { fontSize: 11, color: colors.textFaint, marginTop: 14, lineHeight: 16, fontStyle: 'italic' },
+    axisRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingHorizontal: 4 },
+    axisLabel: { fontSize: 10, color: colors.textFaint },
+    axisLabelCenter: { fontSize: 10, color: colors.textFaint, fontWeight: '700' },
+    mirrorNote: { fontSize: 11, color: colors.textFaint, marginTop: 14, lineHeight: 16, fontStyle: 'italic' },
 
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.border },
-  modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 16, fontWeight: '700', color: colors.white, flex: 1, marginBottom: 4 },
-  modalSub: { fontSize: 12, color: colors.textFaint, marginBottom: 12 },
-  modalOption: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    padding: 12, borderRadius: 10, marginBottom: 8,
-    backgroundColor: colors.coolBlack850, borderWidth: 1, borderColor: colors.border,
-  },
-  modalOptionActive: { borderColor: colors.accent },
-  modalOptionLabel: { fontSize: 13, fontWeight: '700' },
-  modalOptionSub: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
-  modalCancel: { alignItems: 'center', marginTop: 8, padding: 10 },
-  modalCancelText: { fontSize: 13, color: colors.error },
+    modalBg: { flex: 1, backgroundColor: hexA(colors.black, 0.7), justifyContent: 'center', padding: 20 },
+    modalCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.border },
+    modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    modalTitle: { fontSize: 16, fontWeight: '700', color: colors.text, flex: 1, marginBottom: 4 },
+    modalSub: { fontSize: 12, color: colors.textFaint, marginBottom: 12 },
+    modalOption: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      padding: 12, borderRadius: 10, marginBottom: 8,
+      backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border,
+    },
+    modalOptionActive: { borderColor: colors.accent },
+    modalOptionLabel: { fontSize: 13, fontWeight: '700' },
+    modalOptionSub: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
+    modalCancel: { alignItems: 'center', marginTop: 8, padding: 10 },
+    modalCancelText: { fontSize: 13, color: colors.error },
 
-  pickRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
-  },
-  pickTitle: { flex: 1, fontSize: 14, color: colors.text },
-});
+    pickRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
+    },
+    pickTitle: { flex: 1, fontSize: 14, color: colors.text },
+  });

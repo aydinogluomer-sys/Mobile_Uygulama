@@ -1,4 +1,5 @@
-import { colors, alphaHex, font, space } from '../../lib/tokens';
+import { alphaHex, font, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -12,7 +13,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 // R07.01 — filter by #tag.
 import { tagCounts, withTag } from '../../lib/journalText';
 // R07.05 — mood next to habits, described, not explained.
@@ -32,8 +34,16 @@ import { todayLocal } from '../../lib/date';
 type Section = { key: string; label: string; data: ArchiveRowModel[] };
 
 export default function JournalArchiveScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const router = useRouter();
-  const { entries: all, fetchEntries, truncated } = useJournalStore();
+  const { entries: all, fetchEntries, truncated } = useJournalStore(
+    useShallow((st) => ({
+      entries: st.entries,
+      fetchEntries: st.fetchEntries,
+      truncated: st.truncated,
+    })),
+  );
   const params = useLocalSearchParams<{ tag?: string }>();
   const [tag, setTag] = useState<string | null>(typeof params.tag === 'string' ? params.tag : null);
   const tags = useMemo(() => tagCounts(all).slice(0, 12), [all]);
@@ -67,7 +77,7 @@ export default function JournalArchiveScreen() {
 
   const openEntry = useCallback(
     (date: string) => {
-      router.push(`/screens/journal-reader?date=${date}` as any);
+      router.push(`/screens/journal-reader?date=${date}` as Href);
     },
     [router],
   );
@@ -79,7 +89,7 @@ export default function JournalArchiveScreen() {
         <Text style={s.sectionLabel}>{sec.label.toLocaleUpperCase('tr-TR')}</Text>
       </View>
     ),
-    [],
+    [s],
   );
 
   const renderItem = useCallback(
@@ -153,7 +163,7 @@ export default function JournalArchiveScreen() {
                 const label = `${day} ${MONTHS[Number(d.date.slice(5, 7)) - 1]}${d.entryId ? ', kayıt var' : ', kayıt yok'}`;
                 return d.entryId ? (
                   <TouchableOpacity key={d.date} style={[s.calDay, s.calDayOn, !d.inMonth && s.calDayOut]}
-                    onPress={() => router.push(`/screens/journal-reader?date=${d.date}` as any)}
+                    onPress={() => router.push(`/screens/journal-reader?date=${d.date}` as Href)}
                     accessibilityRole="button" accessibilityLabel={label}>
                     <Text style={s.calDayText}>{day}</Text>
                   </TouchableOpacity>
@@ -222,6 +232,7 @@ export default function JournalArchiveScreen() {
 }
 
 function Stat({ value, label }: { value: string; label: string }) {
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.stat}>
       <Text style={s.statValue}>{value}</Text>
@@ -230,7 +241,7 @@ function Stat({ value, label }: { value: string; label: string }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   // R07.01
   tagRow: { gap: 8, paddingBottom: 12 },
   tagChip: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: colors.border },
