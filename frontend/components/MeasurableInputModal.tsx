@@ -1,15 +1,18 @@
 import { useState, type ComponentProps } from 'react';
 import {
   View, Text, StyleSheet, Modal, TextInput,
-  TouchableOpacity, KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { hexA, type Palette } from '../lib/tokens';
+import { font, hexA, radius, space, type Palette } from '../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import type { Habit } from '../lib/supabase';
+import { scheduleKind } from '../lib/habitSchedule';
 // R01.03-a: the same add the screen's write uses, so the preview cannot disagree with what is saved.
 import { dayTotalAfterEntry } from '../services/habitLogService';
 import { isNumberInputPending, parseLocaleNumberOrNaN } from '../lib/localeNumber';
+import { Button, IconButton } from './ui';
+import { useReducedMotion } from './seasonalMotion/useReducedMotion';
 
 interface Props {
   visible: boolean;
@@ -28,9 +31,58 @@ interface Props {
   onConfirm: (value: number) => void;
 }
 
+export function buildMeasurableTypeHint(habit: Habit): string {
+  const ceiling = habit.target_direction === 'at_most';
+  const goal = habit.daily_goal ?? 0;
+  const unit = habit.unit?.trim() || '';
+
+  let typeExample: string;
+  if (ceiling) {
+    typeExample = `En çok ${goal} · hiç olmadıysa 0 yazabilirsin`;
+  } else if (habit.tracking_type === 'duration') {
+    typeExample = `Örnek: 15 ${unit || 'dk'}`;
+  } else {
+    typeExample = `Örnek: 1,5 ${unit || 'L'} veya 0,5`;
+  }
+
+  const sk = scheduleKind(habit);
+  const rawKind = (habit.frequency_config as { kind?: string; count?: number } | undefined)?.kind;
+  const rawCount = habit.frequency_config?.count;
+
+  if (sk.kind === 'weekly_count' && sk.count > 0) {
+    return `${typeExample} · Dönem hedefi: haftada ${sk.count} kez — bu kayıt hedef ayarını değiştirmez, yalnız bu günün ilerlemesini ekler`;
+  }
+  if (rawKind === 'weekly_count' && typeof rawCount === 'number' && rawCount > 0) {
+    return `${typeExample} · Dönem hedefi: haftada ${Math.floor(rawCount)} kez — bu kayıt hedef ayarını değiştirmez, yalnız bu günün ilerlemesini ekler`;
+  }
+  if (sk.kind === 'monthly_count' && sk.count > 0) {
+    return `${typeExample} · Dönem hedefi: ayda ${sk.count} kez — bu kayıt hedef ayarını değiştirmez, yalnız bu günün ilerlemesini ekler`;
+  }
+  return typeExample;
+}
+
+export function buildMeasurablePresaveImpact(
+  ceiling: boolean,
+  goal: number,
+  totalAfter: number,
+): string {
+  if (ceiling) {
+    if (totalAfter <= goal) {
+      return 'Hedefe ulaşıyor · seri korunur ve tamamlanma puanı işlenir';
+    }
+    return 'Günlük sınır aşılıyor · hedef ayarın değişmez';
+  }
+  if (goal > 0 && totalAfter >= goal) {
+    return 'Hedefe ulaşıyor · seri korunur ve tamamlanma puanı işlenir';
+  }
+  const afterPct = goal > 0 ? Math.min(100, Math.round((totalAfter / goal) * 100)) : 0;
+  return `Kısmi ilerleme olarak kaydedilir (${afterPct}%) · hedef ayarın değişmez`;
+}
+
 export default function MeasurableInputModal({ visible, habit, currentValue, dayLabel, onClose, onConfirm }: Props) {
   const colors = useThemeColors();
   const styles = useThemedStyles(makeStyles);
+  const reduceMotion = useReducedMotion();
   const [input, setInput] = useState('');
   const [focused, setFocused] = useState(true);
 
@@ -48,6 +100,9 @@ export default function MeasurableInputModal({ visible, habit, currentValue, day
   const valid = !isNaN(parsed) && (ceiling ? parsed >= 0 : parsed > 0);
   const totalAfter = valid ? dayTotalAfterEntry(currentValue, parsed) : null;
   const showFormatHint = focused && !isNumberInputPending(input) && isNaN(parsed);
+  const typeHint = buildMeasurableTypeHint(habit);
+  const presaveImpact =
+    totalAfter !== null ? buildMeasurablePresaveImpact(ceiling, goal, totalAfter) : null;
 
   function handleConfirm() {
     if (valid) {
@@ -74,7 +129,12 @@ export default function MeasurableInputModal({ visible, habit, currentValue, day
       : `Hedef tamamlandı! (o gün ${currentValue} ${unit})`;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType={reduceMotion ? 'none' : 'fade'}
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -87,9 +147,14 @@ export default function MeasurableInputModal({ visible, habit, currentValue, day
               color={habit.color ?? colors.accent}
             />
             <Text style={styles.title} numberOfLines={1}>{habit.name}</Text>
-            <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Kapat">
-              <Ionicons name="close" size={22} color={colors.textDim} />
-            </TouchableOpacity>
+            <IconButton
+              icon="close"
+              label="Kapat"
+              size={22}
+              color={colors.textDim}
+              compact
+              onPress={onClose}
+            />
           </View>
 
           <View style={styles.progress}>
@@ -104,7 +169,11 @@ export default function MeasurableInputModal({ visible, habit, currentValue, day
           {dayLabel
             ? <Text style={styles.label}>{dayLabel} ne kadar ekleyelim? ({unit})</Text>
             : <Text style={styles.label}>Bugüne ne kadar ekleyelim? ({unit})</Text>}
+          <Text testID="measurable-type-hint" style={styles.typeHint}>
+            {typeHint}
+          </Text>
           <TextInput
+            testID="measurable-amount-input"
             style={styles.input}
             placeholder={ceiling ? 'Örn: 1 (hiç yoksa 0)' : `Örn: ${Math.ceil(remaining / 2)}`}
             placeholderTextColor={colors.textFaint}
@@ -132,24 +201,32 @@ export default function MeasurableInputModal({ visible, habit, currentValue, day
                 ? `Girdiğin sayı bugünkü toplama eklenir. Kaydedince bugün: ${totalAfter} ${unit}`
                 : 'Girdiğin sayı bugünkü toplama eklenir; kaydedilen, günün toplamıdır.'}
           </Text>
+          {presaveImpact !== null && (
+            <Text
+              testID="measurable-presave-impact"
+              style={styles.impactPreview}
+              accessibilityLiveRegion="polite"
+            >
+              {presaveImpact}
+            </Text>
+          )}
 
           <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.cancelBtn}
+            <Button
+              label="İptal"
+              variant="secondary"
+              color={colors.textDim}
               onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="İptal"
-            >
-              <Text style={styles.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.confirmBtn, { backgroundColor: habit.color ?? colors.accent }]}
+              testID="measurable-cancel-btn"
+              style={styles.cancelBtn}
+            />
+            <Button
+              label="Kaydet"
+              variant="primary"
               onPress={handleConfirm}
-              accessibilityRole="button"
-              accessibilityLabel="Kaydet"
-            >
-              <Text style={styles.confirmText}>Kaydet</Text>
-            </TouchableOpacity>
+              testID="measurable-confirm-btn"
+              style={styles.confirmBtn}
+            />
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -161,33 +238,48 @@ const makeStyles = (colors: Palette) =>
   StyleSheet.create({
     overlay: { flex: 1, backgroundColor: hexA(colors.black, 0.85), justifyContent: 'flex-end' },
     card: {
-      backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-      padding: 24, paddingBottom: 36,
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: radius.xl,
+      borderTopRightRadius: radius.xl,
+      padding: space.xxl,
+      paddingBottom: space.hh,
     },
-    header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
-    title: { flex: 1, fontSize: 16, fontWeight: '600', color: colors.text },
-    progress: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-    progressTrack: { flex: 1, height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' },
-    progressFill: { height: '100%', borderRadius: 3 },
-    progressText: { fontSize: 12, color: colors.textDim, width: 36, textAlign: 'right' },
-    remaining: { fontSize: 13, color: colors.textDim, marginBottom: 20 },
-    label: { fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 10 },
+    header: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.lg },
+    title: { flex: 1, ...font.h3, color: colors.text },
+    progress: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.xs },
+    progressTrack: {
+      flex: 1,
+      height: 6,
+      backgroundColor: colors.border,
+      borderRadius: radius.pill,
+      overflow: 'hidden',
+    },
+    progressFill: { height: '100%', borderRadius: radius.pill },
+    progressText: { ...font.caption, color: colors.textDim, width: 36, textAlign: 'right' },
+    remaining: { ...font.bodySm, color: colors.textDim, marginBottom: space.md },
+    label: { ...font.body, fontWeight: '600', color: colors.text, marginBottom: space.xs },
+    typeHint: { ...font.caption, color: colors.textFaint, marginBottom: space.sm },
     input: {
-      backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 16,
-      color: colors.text, borderWidth: 1, borderColor: colors.border, marginBottom: 20,
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      padding: space.md,
+      ...font.h3,
+      color: colors.text,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: space.md,
     },
     hintWarning: {
-      fontSize: 12, color: colors.warning, marginTop: -12, marginBottom: 12,
+      ...font.caption,
+      color: colors.warning,
+      marginBottom: space.sm,
     },
-    actions: { flexDirection: 'row', gap: 12 },
-    cancelBtn: {
-      flex: 1, backgroundColor: colors.border, borderRadius: 12,
-      paddingVertical: 14, alignItems: 'center',
+    impactPreview: {
+      ...font.caption,
+      color: colors.accent,
+      marginBottom: space.lg,
     },
-    cancelText: { fontSize: 15, color: colors.textDim, fontWeight: '600' },
-    confirmBtn: {
-      flex: 2, borderRadius: 12,
-      paddingVertical: 14, alignItems: 'center',
-    },
-    confirmText: { fontSize: 15, color: colors.white, fontWeight: '700' },
+    actions: { flexDirection: 'row', gap: space.md },
+    cancelBtn: { flex: 1 },
+    confirmBtn: { flex: 2 },
   });
