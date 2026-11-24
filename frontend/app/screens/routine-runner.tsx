@@ -1,5 +1,5 @@
 /**
- * R05.02 / F34 — the routine runner: pick a template, then one step at a time.
+ * R05.02 / F34 / U06 / U14 — the routine runner: pick a template, then one step at a time.
  *
  * Only the user completes a step: a timed step whose time runs out says so
  * and waits. A skipped step is not done; any step's mark can be changed from
@@ -7,11 +7,12 @@
  * session; "Şablona uygula" is the separate, explicit act that writes them
  * to the template as a new version (a built-in becomes the user's copy).
  *
- * R05.05 (partial): the next step is announced to the screen reader and a
- * time-up gives one haptic.
+ * R05.05 / U14: the next step is announced to the screen reader and a
+ * time-up cue respects quiet hours and screen-reader state.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   AccessibilityInfo,
   AppState,
@@ -36,11 +37,16 @@ import {
   validateStep,
   type StepKind,
 } from '../../lib/routineRunner';
+import {
+  DEFAULT_ROUTINE_CUE_SETTINGS,
+  parseReminderQuietPrefs,
+  resolveRoutineStepCue,
+} from '../../lib/routineCuePolicy';
 import { isMeasurableTracking } from '../../lib/habitEngine';
 import { alphaHex, font, hexA, onColor, radius, space, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
-import { Button, EditorialBanner, EmblemMedallion } from '../../components/ui';
+import { Button, Chip, EditorialBanner, EmblemMedallion } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import ActiveRoutinePicker from '../../components/routineRunner/ActiveRoutinePicker';
 import {
@@ -150,6 +156,12 @@ export default function RoutineRunnerScreen() {
   const [draftError, setDraftError] = useState<string | null>(null);
   const announcedFor = useRef<string | null>(null);
   const lastTapRef = useRef(0);
+  const cuePrefsRef = useRef({
+    quietStart: DEFAULT_ROUTINE_CUE_SETTINGS.quietStart,
+    quietEnd: DEFAULT_ROUTINE_CUE_SETTINGS.quietEnd,
+    hidePrivateStepTitles: DEFAULT_ROUTINE_CUE_SETTINGS.hidePrivateStepTitles,
+  });
+  const screenReaderRef = useRef(false);
 
   const guarded = (fn: () => void) => () => {
     const t = Date.now();
@@ -160,6 +172,34 @@ export default function RoutineRunnerScreen() {
 
   const hydrate = st.hydrate;
   useEffect(() => { void hydrate(); }, [hydrate]);
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem('reminders.settings.v1')
+      .then((raw) => {
+        if (active) cuePrefsRef.current = parseReminderQuietPrefs(raw);
+      })
+      .catch(() => {});
+
+    if (typeof AccessibilityInfo.isScreenReaderEnabled === 'function') {
+      AccessibilityInfo.isScreenReaderEnabled()
+        .then((enabled) => {
+          if (active) screenReaderRef.current = Boolean(enabled);
+        })
+        .catch(() => {});
+    }
+    const srSub =
+      typeof AccessibilityInfo.addEventListener === 'function'
+        ? AccessibilityInfo.addEventListener('screenReaderChanged', (enabled) => {
+            screenReaderRef.current = Boolean(enabled);
+          })
+        : null;
+
+    return () => {
+      active = false;
+      srSub?.remove?.();
+    };
+  }, []);
 
   const s = st.session;
   const running = s?.status === 'running';
@@ -180,6 +220,7 @@ export default function RoutineRunnerScreen() {
   }, [running]);
 
   const step = s ? currentStep(s) : undefined;
+  const nextStep = s ? s.steps[s.index + 1] : undefined;
 
   useEffect(() => {
     if (step && announcedFor.current !== step.id) {
@@ -287,13 +328,21 @@ export default function RoutineRunnerScreen() {
           </View>
           {renderStaleNotices()}
           {s.edited && (
-            <TouchableOpacity style={x.secondary} onPress={() => st.applyToTemplate()} accessibilityRole="button" accessibilityLabel="Bu oturumdaki değişiklikleri şablona uygula">
-              <Text style={x.secondaryText}>Değişiklikleri şablona uygula</Text>
-            </TouchableOpacity>
+            <Button
+              label="Değişiklikleri şablona uygula"
+              variant="secondary"
+              size="md"
+              onPress={() => st.applyToTemplate()}
+              accessibilityLabel="Bu oturumdaki değişiklikleri şablona uygula"
+            />
           )}
-          <TouchableOpacity style={x.primary} onPress={() => st.discard()} accessibilityRole="button" accessibilityLabel="Kapat">
-            <Text style={x.primaryText}>Kapat</Text>
-          </TouchableOpacity>
+          <Button
+            label="Kapat"
+            variant="primary"
+            size="lg"
+            onPress={() => st.discard()}
+            accessibilityLabel="Kapat"
+          />
         </ScrollView>
       </SafeAreaView>
     );
@@ -346,6 +395,18 @@ export default function RoutineRunnerScreen() {
             })}
           </View>
 
+          {s.status === 'paused' && (
+            <View
+              testID="runner-paused-banner"
+              style={x.pausedBanner}
+              accessibilityRole="summary"
+              accessibilityLiveRegion="polite"
+            >
+              <Ionicons name="pause-circle-outline" size={18} color={c.warning} />
+              <Text style={x.pausedBannerText}>Oturum duraklatıldı — geçen süre donduruldu</Text>
+            </View>
+          )}
+
           {step ? (
             <View style={x.stepCard} accessible accessibilityLabel={`Sıradaki adım: ${step.title}`}>
               <RunningStepAnnouncer
@@ -370,7 +431,40 @@ export default function RoutineRunnerScreen() {
               </View>
               <Text style={x.stepTitle}>{step.title}</Text>
               <RunnerTimerText style={x.timer} warnStyle={{ color: c.warning }} />
-              <RunnerTimeUp onTimeUp={() => { try { haptic.warning(); } catch { /* yoksay */ } }}>
+              {nextStep && (
+                <Text testID="runner-next-step-preview" style={x.nextStepPreview} numberOfLines={1}>
+                  {`Sonra: ${nextStep.title}`}
+                </Text>
+              )}
+              <RunnerTimeUp
+                onTimeUp={() => {
+                  const nowDate = new Date();
+                  const nowHm = `${String(nowDate.getHours()).padStart(2, '0')}:${String(nowDate.getMinutes()).padStart(2, '0')}`;
+                  const cue = resolveRoutineStepCue({
+                    stepId: step.id,
+                    stepTitle: step.title,
+                    remainingSec: 0,
+                    nowHm,
+                    event: 'time_up',
+                    settings: {
+                      soundCueEnabled: true,
+                      hapticEnabled: true,
+                      quietStart: cuePrefsRef.current.quietStart,
+                      quietEnd: cuePrefsRef.current.quietEnd,
+                      hidePrivateStepTitles: cuePrefsRef.current.hidePrivateStepTitles,
+                      screenReaderActive: screenReaderRef.current,
+                    },
+                  });
+                  if (cue.playHaptic) {
+                    try {
+                      if (cue.hapticStyle === 'light') haptic.light();
+                      else haptic.warning();
+                    } catch {
+                      /* yoksay */
+                    }
+                  }
+                }}
+              >
                 <Text style={x.upNote}>Süre doldu. Tamamlamak sana kalmış — yaptıysan işaretle.</Text>
               </RunnerTimeUp>
               <View style={x.row}>
@@ -403,15 +497,31 @@ export default function RoutineRunnerScreen() {
           </View>
           {s.steps.map((p, i) => {
             const r = s.results[p.id];
-            const icon = r?.mark === 'done' ? 'checkmark-circle' : r?.mark === 'skipped' ? 'remove-circle-outline' : 'ellipse-outline';
+            const icon =
+              r?.mark === 'done'
+                ? 'checkmark-circle'
+                : r?.mark === 'skipped'
+                  ? 'play-skip-forward-circle-outline'
+                  : 'ellipse-outline';
+            const iconColor =
+              r?.mark === 'done' ? c.success : r?.mark === 'skipped' ? c.warning : c.textFaint;
             const nextMark = r?.mark === 'done' ? 'skipped' : r?.mark === 'skipped' ? null : 'done';
             return (
               <View key={p.id} style={[x.stepRow, i === s.index && x.stepRowNow]}>
-                <TouchableOpacity onPress={() => st.mark(p.id, nextMark)} accessibilityRole="button"
-                  accessibilityLabel={`${p.title}: ${r?.mark === 'done' ? 'yapıldı' : r?.mark === 'skipped' ? 'geçildi' : 'açık'}. Değiştirmek için dokun.`}>
-                  <Ionicons name={icon} size={20} color={r?.mark === 'done' ? c.success : c.textFaint} />
+                <TouchableOpacity
+                  onPress={() => st.mark(p.id, nextMark)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${p.title}: ${r?.mark === 'done' ? 'yapıldı' : r?.mark === 'skipped' ? 'atlandı (yapılmadı)' : 'açık'}. Değiştirmek için dokun.`}
+                >
+                  <Ionicons name={icon} size={20} color={iconColor} />
                 </TouchableOpacity>
                 <Text style={x.stepRowTitle} numberOfLines={1}>{p.title}{p.kind === 'timed' && p.durationSec ? ` · ${Math.round(p.durationSec / 60)} dk` : ''}{p.habitId ? ' · alışkanlık' : ''}</Text>
+                {r?.mark === 'done' && (
+                  <Chip size="sm" label="Yapıldı" color={c.success} />
+                )}
+                {r?.mark === 'skipped' && (
+                  <Chip size="sm" label="Atlandı (yapılmadı)" color={c.warning} />
+                )}
                 {editing && (
                   <View style={x.editRow}>
                     {p.kind === 'timed' && (
@@ -457,7 +567,13 @@ export default function RoutineRunnerScreen() {
                 </ScrollView>
               )}
               {draftError && <Text style={x.error} accessibilityRole="alert">{draftError}</Text>}
-              <TouchableOpacity style={x.secondary} onPress={addDraft} accessibilityRole="button" accessibilityLabel="Adımı bu oturuma ekle"><Text style={x.secondaryText}>Bu oturuma ekle</Text></TouchableOpacity>
+              <Button
+                label="Bu oturuma ekle"
+                variant="secondary"
+                size="md"
+                onPress={addDraft}
+                accessibilityLabel="Adımı bu oturuma ekle"
+              />
               <Text style={x.note}>Bu değişiklikler yalnız bu oturum için. Şablona yazmak bitişte ayrıca sorulur.</Text>
             </View>
           )}
@@ -509,10 +625,27 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     backgroundColor: c.success, borderColor: c.success,
   },
   stoneNodeSkipped: {
-    backgroundColor: hexA(c.textGhost, 0.4), borderColor: c.textGhost,
+    backgroundColor: hexA(c.warning, 0.28), borderColor: c.warning,
   },
   stoneNodeCurrent: {
     height: 9, backgroundColor: c.accent, borderColor: c.accent,
+  },
+  pausedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radius.md,
+    backgroundColor: hexA(c.warning, 0.14),
+    borderWidth: 1,
+    borderColor: hexA(c.warning, 0.36),
+  },
+  pausedBannerText: {
+    flex: 1,
+    ...font.bodySm,
+    fontWeight: '600',
+    color: c.warning,
   },
   stepCard: {
     padding: space.lg, borderRadius: radius.lg,
@@ -523,6 +656,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   stepEyebrow: { ...font.overline, color: c.accent },
   stepTitle: { ...font.title, fontWeight: '700', color: c.text },
   timer: { ...font.display, fontWeight: '700', color: c.text, fontVariant: ['tabular-nums'] },
+  nextStepPreview: { ...font.bodySm, color: c.textDim },
   upNote: { ...font.bodySm, color: c.warning },
   row: { flexDirection: 'row', gap: space.sm, alignItems: 'center', flexWrap: 'wrap' },
   primary: {
@@ -530,11 +664,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     backgroundColor: c.accent, borderRadius: radius.md, paddingVertical: space.md, marginTop: space.sm,
   },
   primaryText: { ...font.body, color: onColor(c.accent), fontWeight: '700' },
-  secondary: {
-    minHeight: 44, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: c.accent, borderRadius: radius.md, paddingVertical: space.md, marginTop: space.sm,
-  },
-  secondaryText: { ...font.bodySm, color: c.accent, fontWeight: '700' },
   ghost: {
     flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'center',
     borderWidth: 1, borderColor: c.border, borderRadius: radius.md, paddingVertical: space.sm,
