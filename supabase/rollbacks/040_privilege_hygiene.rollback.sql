@@ -375,6 +375,19 @@ REVOKE SELECT (id, user_id, workspace_id, workspace_name, workspace_icon, bot_id
 -- grantee and GRANT back exactly what the snapshot holds. Tables first (a table-level
 -- REVOKE also clears column rights), then columns, functions, default privileges.
 -- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION pg_temp.acl_rows(p_acl aclitem[])
+  RETURNS TABLE(grantee oid, privilege_type text, is_grantable boolean)
+  LANGUAGE plpgsql
+  IMMUTABLE
+AS $acl_rows$
+BEGIN
+  IF p_acl IS NULL OR coalesce(array_ndims(p_acl), 0) <> 1 OR coalesce(array_length(p_acl, 1), 0) = 0 THEN
+    RETURN;
+  END IF;
+  RETURN QUERY SELECT e.grantee, e.privilege_type, e.is_grantable FROM aclexplode(p_acl) e;
+END;
+$acl_rows$;
+
 DO $acl$
 DECLARE
   s record;
@@ -395,18 +408,18 @@ BEGIN
       FROM pg_class c WHERE c.oid = to_regclass(s.obj);
     CONTINUE WHEN NOT FOUND;
     FOR g IN
-      SELECT e.grantee FROM aclexplode(s.acl) e
+      SELECT e.grantee FROM pg_temp.acl_rows(s.acl) e
       UNION
-      SELECT e.grantee FROM aclexplode(v_now) e
+      SELECT e.grantee FROM pg_temp.acl_rows(v_now) e
     LOOP
       IF ARRAY(SELECT e.privilege_type || CASE WHEN e.is_grantable THEN '*' ELSE '' END
-                 FROM aclexplode(s.acl) e WHERE e.grantee = g.grantee ORDER BY 1)
+                 FROM pg_temp.acl_rows(s.acl) e WHERE e.grantee = g.grantee ORDER BY 1)
          IS DISTINCT FROM
          ARRAY(SELECT e.privilege_type || CASE WHEN e.is_grantable THEN '*' ELSE '' END
-                 FROM aclexplode(v_now) e WHERE e.grantee = g.grantee ORDER BY 1) THEN
+                 FROM pg_temp.acl_rows(v_now) e WHERE e.grantee = g.grantee ORDER BY 1) THEN
         v_role := CASE WHEN g.grantee = 0 THEN 'PUBLIC' ELSE g.grantee::regrole::text END;
         EXECUTE format('REVOKE ALL ON TABLE %s FROM %s', s.obj, v_role);
-        FOR p IN SELECT e.privilege_type, e.is_grantable FROM aclexplode(s.acl) e WHERE e.grantee = g.grantee LOOP
+        FOR p IN SELECT e.privilege_type, e.is_grantable FROM pg_temp.acl_rows(s.acl) e WHERE e.grantee = g.grantee LOOP
           EXECUTE format('GRANT %s ON TABLE %s TO %s%s', p.privilege_type, s.obj, v_role,
                          CASE WHEN p.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
         END LOOP;
@@ -417,10 +430,9 @@ BEGIN
   -- columns (every column that holds a right now or held one in the snapshot)
   FOR s IN
     SELECT format('%I.%I', n.nspname, c.relname) AS rel, a.attname,
-           coalesce(a.attacl, '{}'::aclitem[]) AS now_acl,
-           coalesce((SELECT x.acl FROM archive_040.acl_snapshot x
-                      WHERE x.kind = 'col' AND x.obj = format('%I.%I.%I', n.nspname, c.relname, a.attname)),
-                    '{}'::aclitem[]) AS old_acl
+           a.attacl AS now_acl,
+           (SELECT x.acl FROM archive_040.acl_snapshot x
+             WHERE x.kind = 'col' AND x.obj = format('%I.%I.%I', n.nspname, c.relname, a.attname)) AS old_acl
       FROM pg_attribute a
       JOIN pg_class c ON c.oid = a.attrelid
       JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -432,18 +444,18 @@ BEGIN
      ORDER BY 1, 2
   LOOP
     FOR g IN
-      SELECT e.grantee FROM aclexplode(s.old_acl) e
+      SELECT e.grantee FROM pg_temp.acl_rows(s.old_acl) e
       UNION
-      SELECT e.grantee FROM aclexplode(s.now_acl) e
+      SELECT e.grantee FROM pg_temp.acl_rows(s.now_acl) e
     LOOP
       IF ARRAY(SELECT e.privilege_type || CASE WHEN e.is_grantable THEN '*' ELSE '' END
-                 FROM aclexplode(s.old_acl) e WHERE e.grantee = g.grantee ORDER BY 1)
+                 FROM pg_temp.acl_rows(s.old_acl) e WHERE e.grantee = g.grantee ORDER BY 1)
          IS DISTINCT FROM
          ARRAY(SELECT e.privilege_type || CASE WHEN e.is_grantable THEN '*' ELSE '' END
-                 FROM aclexplode(s.now_acl) e WHERE e.grantee = g.grantee ORDER BY 1) THEN
+                 FROM pg_temp.acl_rows(s.now_acl) e WHERE e.grantee = g.grantee ORDER BY 1) THEN
         v_role := CASE WHEN g.grantee = 0 THEN 'PUBLIC' ELSE g.grantee::regrole::text END;
         EXECUTE format('REVOKE ALL (%I) ON TABLE %s FROM %s', s.attname, s.rel, v_role);
-        FOR p IN SELECT e.privilege_type, e.is_grantable FROM aclexplode(s.old_acl) e WHERE e.grantee = g.grantee LOOP
+        FOR p IN SELECT e.privilege_type, e.is_grantable FROM pg_temp.acl_rows(s.old_acl) e WHERE e.grantee = g.grantee LOOP
           EXECUTE format('GRANT %s (%I) ON TABLE %s TO %s%s', p.privilege_type, s.attname, s.rel, v_role,
                          CASE WHEN p.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
         END LOOP;
@@ -457,18 +469,18 @@ BEGIN
       FROM pg_proc f WHERE f.oid = to_regprocedure(s.obj);
     CONTINUE WHEN NOT FOUND;
     FOR g IN
-      SELECT e.grantee FROM aclexplode(s.acl) e
+      SELECT e.grantee FROM pg_temp.acl_rows(s.acl) e
       UNION
-      SELECT e.grantee FROM aclexplode(v_now) e
+      SELECT e.grantee FROM pg_temp.acl_rows(v_now) e
     LOOP
       IF ARRAY(SELECT e.privilege_type || CASE WHEN e.is_grantable THEN '*' ELSE '' END
-                 FROM aclexplode(s.acl) e WHERE e.grantee = g.grantee ORDER BY 1)
+                 FROM pg_temp.acl_rows(s.acl) e WHERE e.grantee = g.grantee ORDER BY 1)
          IS DISTINCT FROM
          ARRAY(SELECT e.privilege_type || CASE WHEN e.is_grantable THEN '*' ELSE '' END
-                 FROM aclexplode(v_now) e WHERE e.grantee = g.grantee ORDER BY 1) THEN
+                 FROM pg_temp.acl_rows(v_now) e WHERE e.grantee = g.grantee ORDER BY 1) THEN
         v_role := CASE WHEN g.grantee = 0 THEN 'PUBLIC' ELSE g.grantee::regrole::text END;
         EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %s', s.obj, v_role);
-        FOR p IN SELECT e.privilege_type, e.is_grantable FROM aclexplode(s.acl) e WHERE e.grantee = g.grantee LOOP
+        FOR p IN SELECT e.privilege_type, e.is_grantable FROM pg_temp.acl_rows(s.acl) e WHERE e.grantee = g.grantee LOOP
           EXECUTE format('GRANT %s ON FUNCTION %s TO %s%s', p.privilege_type, s.obj, v_role,
                          CASE WHEN p.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
         END LOOP;
@@ -500,23 +512,23 @@ BEGIN
     v_in := CASE WHEN v_nsp = '' THEN '' ELSE format(' IN SCHEMA %I', v_nsp) END;
     v_old := CASE WHEN s.in_old THEN s.old_acl
                   WHEN v_nsp = '' THEN acldefault(CASE v_type WHEN 'S' THEN 's'::"char" ELSE v_type END, 'postgres'::regrole)
-                  ELSE '{}'::aclitem[] END;
+                  ELSE NULL::aclitem[] END;
     v_now := CASE WHEN s.in_now THEN s.now_acl
                   WHEN v_nsp = '' THEN acldefault(CASE v_type WHEN 'S' THEN 's'::"char" ELSE v_type END, 'postgres'::regrole)
-                  ELSE '{}'::aclitem[] END;
+                  ELSE NULL::aclitem[] END;
     FOR g IN
-      SELECT e.grantee FROM aclexplode(v_old) e
+      SELECT e.grantee FROM pg_temp.acl_rows(v_old) e
       UNION
-      SELECT e.grantee FROM aclexplode(v_now) e
+      SELECT e.grantee FROM pg_temp.acl_rows(v_now) e
     LOOP
       IF ARRAY(SELECT e.privilege_type || CASE WHEN e.is_grantable THEN '*' ELSE '' END
-                 FROM aclexplode(v_old) e WHERE e.grantee = g.grantee ORDER BY 1)
+                 FROM pg_temp.acl_rows(v_old) e WHERE e.grantee = g.grantee ORDER BY 1)
          IS DISTINCT FROM
          ARRAY(SELECT e.privilege_type || CASE WHEN e.is_grantable THEN '*' ELSE '' END
-                 FROM aclexplode(v_now) e WHERE e.grantee = g.grantee ORDER BY 1) THEN
+                 FROM pg_temp.acl_rows(v_now) e WHERE e.grantee = g.grantee ORDER BY 1) THEN
         v_role := CASE WHEN g.grantee = 0 THEN 'PUBLIC' ELSE g.grantee::regrole::text END;
         EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE postgres%s REVOKE ALL ON %s FROM %s', v_in, v_kw, v_role);
-        FOR p IN SELECT e.privilege_type, e.is_grantable FROM aclexplode(v_old) e WHERE e.grantee = g.grantee LOOP
+        FOR p IN SELECT e.privilege_type, e.is_grantable FROM pg_temp.acl_rows(v_old) e WHERE e.grantee = g.grantee LOOP
           EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE postgres%s GRANT %s ON %s TO %s%s', v_in, p.privilege_type, v_kw, v_role,
                          CASE WHEN p.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
         END LOOP;
