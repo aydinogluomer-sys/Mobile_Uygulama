@@ -138,10 +138,14 @@ Durum etiketleri: `GEÇTİ` (doğrulandı), `KISMİ` (altyapı var, hedef fazda 
 | `F1+F2` | `PRODUCT` | `frontend/lib/taskDuration.ts`, `frontend/lib/dayBoundaryContract.ts`, `frontend/lib/capacityMetricsContract.ts`, `frontend/__tests__/lib/taskDurationAndDayContract.test.ts` | `72b93457` | `SYNC, UI, QA` | `3 (PRODUCT)` |
 | `F1+F2` | `REL+AI` | `docs/store/RELEASE_CHECKLIST.md`, `docs/implementation-v3/AI_RETENTION_AND_PROVIDER_CONTRACT.md`, `frontend/__tests__/repo/f1ReleaseAndAiContract.test.ts` | `72b93457` | `DATA, QA, LEAD` | `4 (REL+AI)` |
 | `F1+F2` | `QA` | `frontend/__tests__/fixtures/f1f2IndependentAcceptance.test.ts` | `72b93457` | `LEAD` | `5 (QA)` |
-| `F3-W2A` | `PRODUCT-F3` | `frontend/lib/actionSuggestion.ts`, `frontend/lib/routinePacks.ts`, `frontend/__tests__/lib/actionSuggestion.test.ts` | `0b7e9ea3` | `AI, UI, QA` | `1 (PRODUCT-F3)` |
-| `F3-W2A` | `AI-F3` | `frontend/lib/aiFirstStepAdapter.ts`, `frontend/__tests__/lib/aiFirstStepAdapter.test.ts` | `0b7e9ea3` | `PRODUCT, UI, QA` | `2 (AI-F3)` |
-| `F4-W2A` | `PRODUCT-F4` | `frontend/lib/dayPlanPreview.ts`, `frontend/__tests__/lib/dayPlanPreview.test.ts` | `0b7e9ea3` | `SYNC, UI, QA` | `3 (PRODUCT-F4)` |
-| `F3+F4-W2A` | `SYNC+NATIVE` | `frontend/lib/smallStart.ts`, `frontend/store/focusStore.ts`, `frontend/services/dayPlanCommitService.ts`, `frontend/__tests__/services/dayPlanCommitAndFocusIdempotency.test.ts` | `0b7e9ea3` | `UI, QA` | `4 (SYNC+NATIVE)` |
+| `F3-W2A` | `PRODUCT-F3` | `frontend/lib/actionSuggestion.ts`, `frontend/lib/routinePacks.ts`, `frontend/__tests__/lib/actionSuggestion.test.ts` | `0b7e9ea3` | `AI, UI, QA` | `1 (PRODUCT-F3 -> 1a82759b)` |
+| `F3-W2A` | `AI-F3` | `frontend/lib/aiFirstStepAdapter.ts`, `frontend/__tests__/lib/aiFirstStepAdapter.test.ts` | `0b7e9ea3` | `PRODUCT, UI, QA` | `2 (AI-F3 -> 1a82759b)` |
+| `F4-W2A` | `PRODUCT-F4` | `frontend/lib/dayPlanPreview.ts`, `frontend/__tests__/lib/dayPlanPreview.test.ts` | `0b7e9ea3` | `SYNC, UI, QA` | `3 (PRODUCT-F4 -> 1a82759b)` |
+| `F3+F4-W2A` | `SYNC+NATIVE` | `frontend/lib/smallStart.ts`, `frontend/store/focusStore.ts`, `frontend/services/dayPlanCommitService.ts`, `frontend/__tests__/services/dayPlanCommitAndFocusIdempotency.test.ts` | `0b7e9ea3` | `UI, QA` | `4 (SYNC+NATIVE -> 1a82759b)` |
+| `F3+F4-W2B` | `TODAY-UI` | `frontend/components/SmallStartSheet.tsx`, `frontend/components/today/DayReplanSheet.tsx`, `frontend/app/tabs/today.tsx`, `frontend/lib/todayNarrative.ts`, `frontend/locales/tr.json`, `frontend/__tests__/ui/firstActionAndReplanToday.test.tsx` | `1a82759b` | `QA, LEAD` | `1 (TODAY-UI)` |
+| `F3-W2B` | `ONBOARDING-UI` | `frontend/app/onboarding/plan.tsx`, `frontend/__tests__/ui/onboardingFirstAction.test.tsx` | `1a82759b` | `QA, LEAD` | `2 (ONBOARDING-UI)` |
+| `F4-W2B` | `RECOVERY-REVIEW-UI` | `frontend/app/screens/recovery.tsx`, `frontend/app/screens/weekly-review.tsx`, `frontend/__tests__/ui/weeklyReviewAndRecoveryFlow.test.tsx` | `1a82759b` | `QA, LEAD` | `3 (RECOVERY-REVIEW-UI)` |
+| `F3+F4-W2B` | `QA-F3F4` | `frontend/__tests__/fixtures/f3f4AcceptanceMatrix.test.ts` | `1a82759b` | `LEAD` | `4 (QA-F3F4)` |
 
 ---
 
