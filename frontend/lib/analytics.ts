@@ -50,6 +50,13 @@ export const ANALYTICS_EVENTS = [
   'onboarding_plan_generated',
   'onboarding_plan_installed',
   'onboarding_skipped',
+  // E13 (F5) — minimal opt-in product events for time-to-first-action and
+  // same-day return after disruption. Closed enums + ids/counts/timestamps only.
+  'first_action_started',
+  'day_replan_applied',
+  'day_replan_undone',
+  'focus_stopped_early',
+  'light_day_confirmed',
 ] as const;
 
 export type AnalyticsEventName = (typeof ANALYTICS_EVENTS)[number];
@@ -144,7 +151,46 @@ export const ANALYTICS_ENUMS: Readonly<Record<string, readonly string[]>> = {
     pack: true,
     coach: true,
   }),
+  replan_outcome: exhaustiveList<'committed' | 'pending' | 'partial' | 'conflict' | 'aborted'>({
+    committed: true,
+    pending: true,
+    partial: true,
+    conflict: true,
+    aborted: true,
+  }),
+  undo_outcome: exhaustiveList<'undone' | 'pending' | 'partial' | 'conflict' | 'noop'>({
+    undone: true,
+    pending: true,
+    partial: true,
+    conflict: true,
+    noop: true,
+  }),
+  stop_reason: exhaustiveList<'early_exit' | 'switched_task' | 'completed' | 'paused'>({
+    early_exit: true,
+    switched_task: true,
+    completed: true,
+    paused: true,
+  }),
+  suggestion_kind: exhaustiveList<
+    'resume_focus' | 'resume_routine' | 'start_small' | 'recovery' | 'habit' | 'task'
+  >({
+    resume_focus: true,
+    resume_routine: true,
+    start_small: true,
+    recovery: true,
+    habit: true,
+    task: true,
+  }),
+  environment: exhaustiveList<'development' | 'staging' | 'production' | 'test'>({
+    development: true,
+    staging: true,
+    production: true,
+    test: true,
+  }),
 };
+
+/** Maximum retention window (in days) for opted-in scrubbed product analytics events (E13). */
+export const ANALYTICS_RETENTION_DAYS = 90 as const;
 
 /**
  * A string is permitted only if it is a UUID, an ISO date, or an allowed enum
@@ -235,10 +281,21 @@ export const consoleAnalyticsSink: AnalyticsSink = (event) => {
 };
 
 let sink: AnalyticsSink = noopSink;
+let analyticsOptIn = false;
 
 /** Attach a real transport (or `consoleAnalyticsSink`) at app boot. `null` restores the default. */
 export function setAnalyticsSink(next: AnalyticsSink | null): void {
   sink = next ?? noopSink;
+}
+
+/** Explicit user consent toggle for E13 product analytics. Default is `false` (strict opt-in). */
+export function setAnalyticsOptIn(enabled: boolean): void {
+  analyticsOptIn = Boolean(enabled);
+}
+
+/** Returns whether product analytics emission has been explicitly opted into. */
+export function isAnalyticsOptedIn(): boolean {
+  return analyticsOptIn;
 }
 
 /**
@@ -260,4 +317,19 @@ export function emitEvent(event: AnalyticsEvent): void {
   } catch {
     // Deliberately empty: see above.
   }
+}
+
+/**
+ * E13 opt-in product event funnel: validates and scrubs `props` via `buildEvent`
+ * (so undeclared event names always fail loudly at the call site), then drops
+ * the event unless `isAnalyticsOptedIn() === true`.
+ */
+export function emitProductEvent(
+  name: AnalyticsEventName,
+  props: Record<string, unknown> = {},
+): AnalyticsEvent | null {
+  const event = buildEvent(name, props);
+  if (!analyticsOptIn) return null;
+  emitEvent(event);
+  return event;
 }
