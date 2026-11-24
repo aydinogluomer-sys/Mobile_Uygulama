@@ -2,6 +2,7 @@ export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 export type TaskPriority = 'high' | 'medium' | 'low' | 'none';
 export type ListType = 'inbox' | 'this_week' | 'someday';
 export type QuadrantType = 'UI' | 'NI' | 'UN' | 'NN' | null;
+export type TaskEstimateSource = 'user' | 'ai' | 'block' | 'default';
 
 export type Task = {
   id: string;
@@ -14,6 +15,7 @@ export type Task = {
   time_block_start?: string | null;
   time_block_end?: string | null;
   estimated_minutes?: number | null;
+  estimate_source?: TaskEstimateSource | null;
   parent_task_id?: string | null;
   is_subtask?: boolean;
   project_id?: string | null;
