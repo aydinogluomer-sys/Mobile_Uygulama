@@ -51,16 +51,18 @@ describe('Insights -- route registration and reachability', () => {
     expect(/<Stack\.Screen\s+name="insights"/.test(layout)).toBe(true);
   });
 
-  it('is reachable from the drawer (components/Drawer.tsx) with route "/screens/insights"', () => {
+  it('is reachable from the drawer via lib/destinations.ts with legacy route "/screens/insights"', () => {
     const drawer = read(DRAWER_PATH);
-    expect(drawer.includes("route: '/screens/insights'")).toBe(true);
+    const destinations = read('lib/destinations.ts');
+    expect(drawer.includes("visibleDestinations('drawer')")).toBe(true);
+    expect(destinations.includes("'/screens/insights'")).toBe(true);
   });
 
-  it('the drawer entry sits inside the ALIŞKANLIKLAR group (plan says "check how existing entries are added and follow it")', () => {
-    const drawer = read(DRAWER_PATH);
-    const groupMatch = drawer.match(/title:\s*'ALIŞKANLIKLAR'[\s\S]*?\],\s*\},/);
-    expect(groupMatch).not.toBeNull();
-    expect((groupMatch as RegExpMatchArray)[0].includes("/screens/insights")).toBe(true);
+  it('the destination entry sits inside the ALIŞKANLIKLAR drawer group', () => {
+    const destinations = read('lib/destinations.ts');
+    const entryMatch = destinations.match(/id:\s*'behaviour'[\s\S]*?legacyRoutes:\s*\[\s*'\/screens\/insights'/);
+    expect(entryMatch).not.toBeNull();
+    expect((entryMatch as RegExpMatchArray)[0].includes("drawerGroup: 'ALIŞKANLIKLAR'")).toBe(true);
   });
 });
 

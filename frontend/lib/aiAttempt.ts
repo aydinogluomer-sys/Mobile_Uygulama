@@ -18,7 +18,9 @@
  *
  * Pure apart from the id factory it is given.
  */
-import { EdgeTimeoutError } from './edgeCall';
+import { accountEpoch } from './accountScope';
+import { extractInvokeError } from './aiInvoke';
+import { EdgeTimeoutError, REQUEST_IN_PROGRESS_RETRY_DELAYS_MS } from './edgeCall';
 
 /** True when the request may have reached the server but no answer came back. */
 export function isNoAnswer(err: unknown): boolean {
@@ -32,21 +34,66 @@ export function isNoAnswer(err: unknown): boolean {
 /** Said after a lost answer, so the user knows trying again is free. */
 export const NO_ANSWER_NOTE = 'Yanıt alınamadı. Aynı isteği tekrar gönderirsen ikinci kez ücret alınmaz.';
 
+export const REQUEST_IN_PROGRESS_CODE = 'REQUEST_IN_PROGRESS';
+export const IN_PROGRESS_NOTE =
+  'Yanıtın hâlâ hazırlanıyor. Birkaç saniye sonra aynı isteği tekrar gönder; ikinci kez ücret alınmaz.';
+
 export type AttemptKeeper = {
-  /** The request id for sending `key` now: the open attempt's id if it is the same request, else a new one. */
+  /** İstek kimliği: aynı anahtarla açık deneme varsa onun kimliği, yoksa yenisi. */
   begin(key: string): string;
-  /** The server answered (success or a definite error): the attempt is closed. */
+  /**
+   * Açık denemeye ikinci bir anahtar bağlar (kimlik DEĞİŞMEZ). Yeni konuşmanın ilk mesajında
+   * konuşma satırı oluşunca `${eskiThread}|${metin}` yerine `${yeniThread}|${metin}` ile gelen
+   * yeniden gönderim de aynı kimliği bulur. Açık deneme `fromKey` ile eşleşmiyorsa hiçbir şey yapmaz.
+   */
+  rebind(fromKey: string, toKey: string): void;
+  /** Sunucu kesin yanıt verdi (sonuç ya da kesin hata): deneme kapanır. */
   answered(): void;
 };
 
 export function createAttemptKeeper(newId: () => string): AttemptKeeper {
-  let open: { key: string; requestId: string } | null = null;
+  let open: { keys: Set<string>; requestId: string; epoch: number } | null = null;
   return {
     begin(key) {
-      if (open && open.key === key) return open.requestId;
-      open = { key, requestId: newId() };
+      const nowEpoch = accountEpoch();
+      if (open && open.epoch === nowEpoch && open.keys.has(key)) return open.requestId;
+      open = { keys: new Set([key]), requestId: newId(), epoch: nowEpoch };
       return open.requestId;
+    },
+    rebind(fromKey, toKey) {
+      if (open && open.epoch === accountEpoch() && open.keys.has(fromKey)) open.keys.add(toKey);
     },
     answered() { open = null; },
   };
+}
+
+export type InvokeOutcome<T> = { data: T | null; error: unknown };
+export type InvokeErrorInfo = { msg: string; code?: string; balance?: number };
+export type RetryOutcome<T> = InvokeOutcome<T> & {
+  /** Bütçe doldu ve sunucu hâlâ işliyor: ANAHTAR KORUNMALI, answered() ÇAĞRILMAMALI. */
+  stillInProgress: boolean;
+  /** Hata gövdesi BİR KEZ okunmuş hâli (Response gövdesi ikinci kez okunamaz); hata yoksa null. */
+  errorInfo: InvokeErrorInfo | null;
+};
+
+export async function retryWhileInProgress<T>(
+  call: () => Promise<InvokeOutcome<T>>,
+  opts: {
+    delaysMs?: readonly number[];
+    sleep?: (ms: number) => Promise<void>;
+    isCancelled?: () => boolean;
+    fallbackMessage?: string;
+  } = {},
+): Promise<RetryOutcome<T>> {
+  const delays = opts.delaysMs ?? REQUEST_IN_PROGRESS_RETRY_DELAYS_MS;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  for (let attempt = 0; ; attempt += 1) {
+    const out = await call();
+    if (!out.error) return { ...out, stillInProgress: false, errorInfo: null };
+    if (isNoAnswer(out.error)) return { ...out, stillInProgress: false, errorInfo: null };
+    const info = await extractInvokeError(out.error, opts.fallbackMessage);
+    if (info.code !== REQUEST_IN_PROGRESS_CODE) return { ...out, stillInProgress: false, errorInfo: info };
+    if (attempt >= delays.length || opts.isCancelled?.()) return { ...out, stillInProgress: true, errorInfo: info };
+    await sleep(delays[attempt]);
+  }
 }

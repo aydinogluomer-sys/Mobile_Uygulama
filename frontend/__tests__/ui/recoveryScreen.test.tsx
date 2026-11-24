@@ -63,9 +63,12 @@ function textOf(r: TestRenderer.ReactTestRenderer): string {
   return out.join(' ');
 }
 
+const mounted: TestRenderer.ReactTestRenderer[] = [];
+
 async function render() {
   let r!: TestRenderer.ReactTestRenderer;
   await act(async () => { r = TestRenderer.create(<RecoveryScreen />); });
+  mounted.push(r);
   for (let i = 0; i < 3; i++) await act(async () => { await new Promise((res) => setTimeout(res, 0)); });
   return r;
 }
@@ -82,9 +85,16 @@ beforeEach(() => {
   useHabitStore.setState({ habits: (globalThis as any).__habits, loading: false } as any);
 });
 
+afterEach(async () => {
+  while (mounted.length > 0) {
+    const r = mounted.pop()!;
+    await act(async () => { r.unmount(); });
+  }
+});
+
 it('a missed day is in the backlog; planning it previews the target day\'s load', async () => {
   const r = await render();
-  expect(textOf(r)).toMatch(/Kaçırıldı/);
+  expect(textOf(r)).toMatch(/Bekleyen/);
   await firstPress(r, 'Telafi Planla');
   expect(textOf(r)).toMatch(/O GÜNÜN YÜKÜ/);
 });
@@ -109,5 +119,5 @@ it('R06.03: a plan that could not be saved keeps the sheet and says why', async 
   await act(async () => { await plan.props.onPress(); });
   expect(textOf(r)).toMatch(/Plan kaydedilemedi\. Seçimlerin duruyor/);
   expect(textOf(r)).toMatch(/O GÜNÜN YÜKÜ/); // the sheet is still open
-  useRecoveryStore.setState({ addPlan: realAdd });
+  await act(async () => { useRecoveryStore.setState({ addPlan: realAdd }); });
 });

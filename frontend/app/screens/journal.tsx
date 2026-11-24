@@ -8,6 +8,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
+import { navigateTo } from '../../lib/destinations';
 import { useJournalStore } from '../../store/journalStore';
 import { MOODS } from '../../lib/journalMoods';
 import { todayLocal, ymd, addDaysLocal, parseLocalDate } from '../../lib/date';
@@ -17,9 +18,13 @@ import { currentUser } from '../../lib/session';
 import { draftDiffers, draftKey, extractTags, toggleListLine, wrapSelection, type JournalDraft } from '../../lib/journalText';
 // R07.02 — several check-ins a day, with the user's own moods.
 import MoodCheckins from '../../components/MoodCheckins';
+import ReflectionTemplate from '../../components/journal/ReflectionTemplate';
+import TimeCapsuleComposer from '../../components/journal/TimeCapsuleComposer';
+import { appendBlock } from '../../lib/reflectionTemplate';
 import ConflictChoice from '../../components/ConflictChoice';
 import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
-import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFiligree, TexturedSurface } from '../../components/ui';
+import { EditorialBanner, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, getMoodSeal, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const PROMPTS = [
@@ -121,7 +126,7 @@ export default function JournalScreen() {
         options={{
           headerRight: () => (
             <TouchableOpacity
-              onPress={() => router.push('/screens/journal-archive' as any)}
+              onPress={() => navigateTo(router, 'journal-archive')}
               style={s.archiveBtn}
               hitSlop={8}
               accessibilityRole="link"
@@ -212,6 +217,7 @@ export default function JournalScreen() {
               </View>
             )}
             <Text style={s.promptText}>{randomPrompt}</Text>
+            <ReflectionTemplate onInsert={(text) => edit(appendBlock(content, text), mood)} />
             {draftRestored && (
               <Text style={s.draftNote} accessibilityRole="alert">Kaydedilmemiş taslağın geri yüklendi.</Text>
             )}
@@ -257,6 +263,8 @@ export default function JournalScreen() {
             )}
           </TouchableOpacity>
 
+          <TimeCapsuleComposer />
+
           {/* AI İçgörüleri — dönem butonları */}
           <View style={s.insightsCard}>
             <View style={s.insightsTop}>
@@ -270,7 +278,7 @@ export default function JournalScreen() {
                   <TouchableOpacity
                     key={key}
                     style={s.insightBtn}
-                    onPress={() => router.push(`/screens/journal-insights?period=${key}` as any)}
+                    onPress={() => navigateTo(router, 'journal-insights', { period: key })}
                     accessibilityRole="link"
                     accessibilityLabel={`${label} AI içgörülerini aç`}
                   >
@@ -289,7 +297,7 @@ export default function JournalScreen() {
                 <Text style={s.historyTitle}>GEÇMİŞ KAYITLAR</Text>
                 <TouchableOpacity
                   style={s.archiveLink}
-                  onPress={() => router.push('/screens/journal-archive' as any)}
+                  onPress={() => navigateTo(router, 'journal-archive')}
                   accessibilityRole="link"
                   accessibilityLabel="Tüm günlük arşivini aç"
                 >

@@ -10,10 +10,10 @@
  * noon and 23:59:30 local, across month ends, 29 February in leap and
  * non-leap years, New Year, and the EU DST-change days.
  *
- * Environment note: jest pins TZ=Europe/Istanbul (jest.setup.js), which has no
- * DST since 2016; the DST dates are here so a change to component-based date
- * arithmetic would surface as a day shift on them, not as a claim that a DST
- * zone was exercised.
+ * Environment note: default Jest runs pin TZ=Europe/Istanbul (no DST since 2016);
+ * real northern/southern DST zones (`America/New_York`, `Pacific/Auckland`, `UTC`)
+ * are exercised by `dstMatrix.test.ts` and `npm run test:tz` (which also runs this
+ * suite across all four zones).
  */
 jest.mock('../../lib/supabase', () => ({ supabase: { from: jest.fn(), auth: { getUser: jest.fn() } } }));
 
@@ -24,6 +24,8 @@ import { habitAveragePercent } from '../../lib/reportMetrics';
 import { recoveryBacklog } from '../../lib/recoveryBacklog';
 import { addDaysLocal, ymd, parseLocalDate } from '../../lib/date';
 import { selectTodayHabits } from '../../app/tabs/today';
+import { blocksOn, layoutDayStrip, nextBlockInfo } from '../../lib/nextBlock';
+import { planTaskReminders } from '../../lib/taskReminderPlan';
 
 function habit(id: string, fc: FrequencyConfig): Habit {
   return {
@@ -74,9 +76,9 @@ describe('R01.07 — every consumer agrees with the canonical day, at every hour
         const prev = addDaysLocal(parseLocalDate(ds)!, -1);
         const plan = planReminders({ habits: [h], logs: [], settings: DEFAULT_REMINDER_SETTINGS, now: new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), 20, 0), horizonDays: 3 });
         expect(plan.reminders.some((r) => r.day === ds)).toBe(canonical);
-        // reports: a done log counts on a due day and nowhere else
+        // reports: a done log counts on a due day and nowhere else (null = no due day in range, F13 INT-06)
         const pct = habitAveragePercent({ habits: [h], logs: [{ habit_id: h.id, completed_at: ds, state: 'done', value: null }], start: ds, end: ds });
-        expect(pct).toBe(canonical ? 100 : 0);
+        expect(pct).toBe(canonical ? 100 : null);
         // recovery: the next morning, an unlogged due day is in the backlog
         const next = at(ymd(addDaysLocal(parseLocalDate(ds)!, 1)), [0, 0, 30]);
         const backlog = recoveryBacklog({ habits: [h], today: next, doneSet: new Set(), partialSet: new Set(), missedSet: new Set(), lookback: 1 });
@@ -130,5 +132,40 @@ describe('R01.07 — additive schema: old rows count exactly as before', () => {
     const r = (logs: typeof old) => habitAveragePercent({ habits: [h], logs, start: '2026-03-23', end: '2026-03-29' });
     expect(r(withTz)).toBe(r(old));
     expect(r(old)).toBe(Math.round(100 / 7));
+  });
+});
+
+describe('F36 — (due_date, time_block_start) cross-consumer instant agreement', () => {
+  it.each(DATES)('NextUp, DayTimeStrip and planTaskReminders derive the identical start instant on %s', (ds) => {
+    const fixtureTask = {
+      id: `tb-${ds}`,
+      title: 'Zaman bloğu',
+      due_date: `${ds}T00:00:00+00:00`,
+      time_block_start: '15:30',
+      time_block_end: '16:15',
+      completed: false,
+      status: 'pending',
+      priority: 'medium' as const,
+    };
+
+    const blocks = blocksOn([fixtureTask], ds);
+    expect(blocks).toHaveLength(1);
+    const canonicalStartMs = blocks[0].start.getTime();
+
+    const strip = layoutDayStrip(blocks, at(ds, [12, 0, 0]));
+    const stripBlock = strip.items.find((i) => i.kind === 'block');
+    expect(stripBlock?.kind === 'block' && stripBlock.block.start.getTime()).toBe(canonicalStartMs);
+
+    const next = nextBlockInfo([fixtureTask], at(ds, [12, 0, 0]));
+    expect(next?.block.start.getTime()).toBe(canonicalStartMs);
+
+    const planned = planTaskReminders({
+      tasks: [fixtureTask],
+      settings: { quietStart: null, quietEnd: null, hideTitles: false },
+      support: { taskLeadMin: 30 },
+      now: at(ds, [12, 0, 0]),
+    });
+    expect(planned.reminders).toHaveLength(1);
+    expect(planned.reminders[0].at.getTime()).toBe(canonicalStartMs - 30 * 60_000);
   });
 });

@@ -1,4 +1,9 @@
 /**
+ * @deprecated F46 (Stage G, SYN-14): Live habit-log queueing now runs on the unified outbox
+ * (`lib/outbox.ts` + `services/outboxChannel.ts` under `outbox.v1.habit.<uid>`). This module is
+ * retained solely as the legacy disk parser (`loadSyncQueue` / `isValidOp`) for one-time migration
+ * in `lib/outboxEngine.ts` (`migrateLegacyHabitQueue`) and legacy unit tests.
+ *
  * Offline habit-log sync queue.  (Phase 4, plan §18)
  *
  * THE PROBLEM THIS FILE SOLVES, stated once so every function below can stay
@@ -32,6 +37,8 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Ymd } from './date';
+import { normalizeNote } from './habitNote';
+import { quarantineBlob } from './outboxStorage';
 
 /**
  * Deliberately NOT imported from `lib/supabase.ts`'s `HabitLog['state']`,
@@ -63,6 +70,8 @@ export type HabitLogIntent = {
    * user was, not where the phone is now. Absent on ops from older builds.
    */
   tz?: string;
+  /** F31 (PS-03): optional private single-line note attached to the log intent. */
+  note?: string | null;
 };
 
 export type SyncOpStatus = 'pending' | 'dead';
@@ -158,13 +167,21 @@ export function enqueue(
   opts: { id?: string; now?: number; userId?: string; priorState?: SyncOp['priorState'] } = {},
 ): { state: SyncQueueState; op: SyncOp } {
   const now = opts.now ?? Date.now();
+  const normalizedIntent: HabitLogIntent =
+    intent.note === undefined
+      ? intent
+      : { ...intent, note: normalizeNote(intent.note) ?? null };
   const idx = state.ops.findIndex((o) => o.habitId === habitId && o.date === date);
 
   if (idx >= 0) {
     const prior = state.ops[idx];
+    const collapsedIntent: HabitLogIntent =
+      normalizedIntent.note === undefined && prior.intent.note !== undefined
+        ? { ...normalizedIntent, note: prior.intent.note }
+        : normalizedIntent;
     const revived: SyncOp = {
       ...prior,
-      intent,
+      intent: collapsedIntent,
       attempts: 0,
       status: 'pending',
       lastError: undefined,
@@ -185,7 +202,7 @@ export function enqueue(
     id: opts.id ?? genId(habitId, date),
     habitId,
     date,
-    intent,
+    intent: normalizedIntent,
     attempts: 0,
     status: 'pending',
     seq: state.nextSeq,
@@ -387,31 +404,53 @@ function isValidOp(x: unknown): x is SyncOp {
   if (!o.intent || typeof o.intent !== 'object') return false;
   const intent = o.intent as Record<string, unknown>;
   if (!['done', 'partial', 'skip', 'miss'].includes(intent.state as string)) return false;
+  if ('note' in intent && intent.note !== undefined) {
+    if (intent.note === null) {
+      intent.note = null;
+    } else if (typeof intent.note === 'string') {
+      intent.note = normalizeNote(intent.note) ?? null;
+    } else {
+      delete intent.note;
+    }
+  }
   return true;
 }
 
-function isValidQueueState(x: unknown): x is SyncQueueState {
-  if (!x || typeof x !== 'object') return false;
-  const s = x as Record<string, unknown>;
-  return typeof s.nextSeq === 'number' && Array.isArray(s.ops) && s.ops.every(isValidOp);
+async function salvageQueue(parsed: unknown, raw: string, key: string, userId: string): Promise<SyncQueueState> {
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { ops?: unknown }).ops)) {
+    if (await quarantineBlob(key, raw)) await AsyncStorage.removeItem(key);
+    return emptyQueueState();
+  }
+  const s = parsed as { nextSeq?: unknown; ops: unknown[] };
+  const valid = s.ops.filter(isValidOp);
+  const rejected = s.ops.filter((o) => !isValidOp(o));
+  if (rejected.length > 0) await quarantineBlob(key, JSON.stringify({ reason: 'ops', ops: rejected }));
+  if (valid.length === 0) return emptyQueueState();
+  const nextSeq = typeof s.nextSeq === 'number' ? s.nextSeq : valid.reduce((m, o) => Math.max(m, o.seq), 0) + 1;
+  return stampOwner({ ops: valid, nextSeq }, userId);
 }
 
 /**
- * Loads the persisted queue, or an empty one if there is nothing stored, the
- * stored value is not valid JSON, or it does not match the expected shape
- * (a corrupt payload is discarded rather than allowed to crash boot or
- * silently wedge the app with garbage ops).
+ * Loads the persisted queue, quarantining unreadable JSON or malformed ops
+ * rather than crashing boot or discarding sibling valid ops (F19, SYN-04).
  */
 export async function loadSyncQueue(userId: string): Promise<SyncQueueState> {
   if (!userId) return emptyQueueState();
   try {
-    const raw = await AsyncStorage.getItem(storageKeyFor(userId));
+    const key = storageKeyFor(userId);
+    const raw = await AsyncStorage.getItem(key);
     if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (!isValidQueueState(parsed)) return emptyQueueState();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        if (await quarantineBlob(key, raw)) await AsyncStorage.removeItem(key);
+        return emptyQueueState();
+      }
+      const salvaged = await salvageQueue(parsed, raw, key, userId);
       // F05 (SYN-V01): an op stamped with ANOTHER account never joins this queue. It moves to the
       // quarantine key, and the quarantine gives back what belongs to the loading account.
-      const { own, foreign } = partitionByOwner(parsed, userId);
+      const { own, foreign } = partitionByOwner(salvaged, userId);
       const quarantined = await readQuarantine();
       const mine = quarantined.filter((o) => o.userId === userId);
       const merged = mine.length > 0 ? mergeOps(own, mine, userId) : own;
@@ -430,25 +469,18 @@ export async function loadSyncQueue(userId: string): Promise<SyncQueueState> {
     }
 
     // ── One-time migration off the unscoped key ────────────────────────────
-    // The legacy queue carries no owner, so it cannot be attributed with
-    // certainty. It is adopted by the first account to load after the
-    // upgrade and the legacy key is then deleted, which on a single-account
-    // device (the ordinary case) is both correct and lossless — discarding it
-    // instead would silently drop writes the user is still owed.
-    //
-    // On a shared device the adopting account may be the wrong one. That is
-    // not a regression: the unscoped queue was ALREADY shared by every
-    // account, so this is strictly narrower, it happens once, and a
-    // mis-attributed op is now rejected by the database anyway — habit_logs
-    // requires the habit to belong to the caller (migration
-    // 007_habit_logs_ownership_check).
     const legacy = await AsyncStorage.getItem(LEGACY_STORAGE_KEY);
     if (!legacy) return emptyQueueState();
-    await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
-    const parsedLegacy: unknown = JSON.parse(legacy);
-    if (!isValidQueueState(parsedLegacy)) return emptyQueueState();
-    const adopted = stampOwner(parsedLegacy, userId);
-    await saveSyncQueue(adopted, userId);
+    let parsedLegacy: unknown;
+    try {
+      parsedLegacy = JSON.parse(legacy);
+    } catch {
+      if (await quarantineBlob(LEGACY_STORAGE_KEY, legacy)) await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
+      return emptyQueueState();
+    }
+    const adopted = await salvageQueue(parsedLegacy, legacy, LEGACY_STORAGE_KEY, userId);
+    // Delete legacy key ONLY after the adopted queue is durably saved under the user key.
+    if (await saveSyncQueue(adopted, userId)) await AsyncStorage.removeItem(LEGACY_STORAGE_KEY);
     return adopted;
   } catch {
     return emptyQueueState();

@@ -21,17 +21,18 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { readHabitOnboardingSource } from '../helpers/habitOnboardingSource';
 
 const root = join(__dirname, '..', '..');
 const read = (p: string) => readFileSync(join(root, p), 'utf8');
 const codeLines = (src: string) => src.split(/\r?\n/).filter((l) => !/^\s*(\*|\/\/|\/\*|\{\/\*)/.test(l));
 
-const FORM = 'components/HabitOnboarding.tsx';
 const EDITOR = 'components/FrequencyEditor.tsx';
 const LIB = 'lib/frequencyForm.ts';
 
 describe('R01.02-e — the form builds frequency_config only through lib/frequencyForm', () => {
-  const code = codeLines(read(FORM));
+  const formSrc = readHabitOnboardingSource(root);
+  const code = codeLines(formSrc);
   const ed = codeLines(read(EDITOR));
 
   it('NEGATIVE — the old `{ kind }` reset is gone (red if it comes back)', () => {
@@ -84,7 +85,7 @@ describe('R01.02-e — the form builds frequency_config only through lib/frequen
   });
 
   it('no new dependency: no date-picker import', () => {
-    expect(read(FORM)).not.toMatch(/datetimepicker|date-picker|DateTimePicker/i);
+    expect(formSrc).not.toMatch(/datetimepicker|date-picker|DateTimePicker/i);
     expect(read(EDITOR)).not.toMatch(/datetimepicker|date-picker|DateTimePicker/i);
   });
 });

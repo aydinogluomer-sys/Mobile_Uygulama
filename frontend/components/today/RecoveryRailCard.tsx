@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { t } from '../../lib/i18n';
 import { colors, space, radius, font, fontFamily } from '../../lib/tokens';
 import { DECOR, TEXTURES } from '../../lib/visualAssets';
 import TexturedSurface from '../ui/TexturedSurface';
@@ -20,10 +21,10 @@ export default function RecoveryRailCard({ plans, today, onOpen }: Props) {
   const overdue = planned.filter((p) => p.target_date < today).length;
 
   const rows = [
-    { label: 'Planlı telafi', value: String(planned.length), tone: planned.length ? 'warn' : 'mute' },
-    { label: 'Bugün hedefli', value: String(dueToday), tone: dueToday ? 'accent' : 'mute' },
-    { label: 'Gecikmiş', value: String(overdue), tone: overdue ? 'bad' : 'mute' },
-    { label: 'Tamamlanan', value: String(done), tone: done ? 'ok' : 'mute' },
+    { label: t('today.recovery.rail.planned'), value: String(planned.length), tone: planned.length ? 'warn' : 'mute' },
+    { label: t('today.recovery.rail.dueToday'), value: String(dueToday), tone: dueToday ? 'accent' : 'mute' },
+    { label: t('today.recovery.rail.overdue'), value: String(overdue), tone: overdue ? 'bad' : 'mute' },
+    { label: t('today.recovery.rail.done'), value: String(done), tone: done ? 'ok' : 'mute' },
   ] as const;
 
   const TONE: Record<string, string> = {
@@ -35,11 +36,11 @@ export default function RecoveryRailCard({ plans, today, onOpen }: Props) {
       <TexturedSurface source={TEXTURES.kintsugi} textureOpacity={0.09} overlayOnly />
       <EmbeddedFiligree source={DECOR.cornerKintsugiSeam} anchor="bottom-right" size={132} opacity={0.22} />
       <View style={s.head}>
-        <Text style={s.title}>Telafi · son 7 gün</Text>
+        <Text style={s.title}>{t('today.recovery.rail.title')}</Text>
         <Ionicons name="moon-outline" size={16} color={colors.warning} />
       </View>
       {planned.length === 0 && done === 0 ? (
-        <Text style={s.calm}>Telafi planın yok — her şey yolunda.</Text>
+        <Text style={s.calm}>{t('today.recovery.rail.calm')}</Text>
       ) : (
         rows.map((r) => (
           <View key={r.label} style={s.row}>
@@ -49,7 +50,7 @@ export default function RecoveryRailCard({ plans, today, onOpen }: Props) {
         ))
       )}
       <TouchableOpacity onPress={onOpen} activeOpacity={0.8} style={s.action}>
-        <Text style={s.actionText}>Tam dökümü aç →</Text>
+        <Text style={s.actionText}>{t('today.recovery.rail.open')}</Text>
       </TouchableOpacity>
     </View>
   );

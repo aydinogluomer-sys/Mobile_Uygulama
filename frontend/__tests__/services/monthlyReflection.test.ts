@@ -46,12 +46,16 @@ jest.mock('../../repositories/monthlyReviewRepository', () => ({
 // The rest of the service pulls in repositories that build a Supabase client.
 jest.mock('../../repositories/habitLogRepository', () => ({ fetchHabitLogsForReview: jest.fn() }));
 jest.mock('../../repositories/recoveryRepository', () => ({ fetchRecoveryPlansForReview: jest.fn() }));
-jest.mock('../../repositories/focusSessionRepository', () => ({ fetchFocusSessionsSince: jest.fn() }));
+jest.mock('../../repositories/focusSessionRepository', () => ({
+  fetchFocusSessionsSince: jest.fn(),
+  fetchFocusSessionsBetween: jest.fn(),
+}));
 jest.mock('../../repositories/reviewRepository', () => ({ fetchWeeklyReview: jest.fn(), upsertWeeklyReview: jest.fn() }));
 
 import {
   loadMonthlyReflection, saveMonthlyDraft, saveMonthlyReflection,
 } from '../../services/reviewService';
+import { upsertMonthlyReview } from '../../repositories/monthlyReviewRepository';
 
 const MONTH = '2026-08';
 const LEGACY = `monthly_review_${MONTH}`;
@@ -221,5 +225,69 @@ describe('a failed cloud read', () => {
     const r = await loadMonthlyReflection(MONTH);
     expect(r.answers).toEqual({ wins: 'offline text' });
     expect(r.source).toBe('draft');
+    expect(r.cloudError).toBe('offline');
+  });
+
+  it('returns source: "error" with cloudError when the cloud fails and no draft or legacy exists', async () => {
+    mockCloud.readError = 'connection reset';
+    const r = await loadMonthlyReflection(MONTH);
+    expect(r.answers).toEqual({});
+    expect(r.source).toBe('error');
+    expect(r.cloudError).toBe('connection reset');
+  });
+
+  it('merges a newer 1-key local draft on top of a 5-key cloud row without losing the other 4 keys', async () => {
+    mockCloud.row = cloudRow(
+      { k1: 'c1', k2: 'c2', k3: 'c3', k4: 'c4', k5: 'c5' },
+      '2026-08-20T00:00:00.000Z',
+    );
+    await AsyncStorage.setItem(draftKeyFor('userA'), JSON.stringify({
+      answers: { k3: 'draft-override' },
+      savedAt: '2026-08-25T00:00:00.000Z',
+    }));
+
+    const r = await loadMonthlyReflection(MONTH);
+    expect(r.source).toBe('draft');
+    expect(r.answers).toEqual({
+      k1: 'c1',
+      k2: 'c2',
+      k3: 'draft-override',
+      k4: 'c4',
+      k5: 'c5',
+    });
+  });
+
+  it('refuses saveMonthlyReflection without calling upsertMonthlyReview when the cloud cannot be read first', async () => {
+    (upsertMonthlyReview as jest.Mock).mockClear();
+    mockCloud.readError = 'offline';
+    const res = await saveMonthlyReflection(MONTH, { wins: 'local only' });
+    expect(res.ok).toBe(false);
+    expect(upsertMonthlyReview).not.toHaveBeenCalled();
+  });
+
+  it('preserves unseen cloud keys on save while allowing an explicit empty string to clear a key', async () => {
+    mockCloud.row = cloudRow(
+      { k1: 'c1', k2: 'c2', k3: 'c3', k4: 'c4', k5: 'c5' },
+      '2026-08-20T00:00:00.000Z',
+    );
+    const saved1 = await saveMonthlyReflection(MONTH, { k2: 'updated' });
+    expect(saved1.ok).toBe(true);
+    expect(mockCloud.row?.answers).toEqual({
+      k1: 'c1',
+      k2: 'updated',
+      k3: 'c3',
+      k4: 'c4',
+      k5: 'c5',
+    });
+
+    const saved2 = await saveMonthlyReflection(MONTH, { k4: '' });
+    expect(saved2.ok).toBe(true);
+    expect(mockCloud.row?.answers).toEqual({
+      k1: 'c1',
+      k2: 'updated',
+      k3: 'c3',
+      k4: '',
+      k5: 'c5',
+    });
   });
 });

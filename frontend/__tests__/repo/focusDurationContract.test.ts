@@ -52,6 +52,17 @@ describe('R05.06 — a break is not focus and earns nothing', () => {
       expect(cond.split('\n')[0]).toMatch(/phase === 'work'/);
     }
   });
+  it('partial session writes in focusStore are also gated on work phase only (F16)', () => {
+    const partialCalls = [...store.matchAll(/recordPartialWorkPhase\(/g)];
+    expect(partialCalls.length).toBeGreaterThanOrEqual(2);
+    const abandonedIdx = store.indexOf('function recordAbandoned(');
+    const staleIdx = store.indexOf('function recordStaleSnapshot(');
+    expect(abandonedIdx).toBeGreaterThan(-1);
+    expect(staleIdx).toBeGreaterThan(-1);
+    const abandonedBody = store.slice(abandonedIdx, store.indexOf('\n}', abandonedIdx) + 2);
+    expect(abandonedBody).toMatch(/st\.phase !== 'work'/);
+    expect(store).toMatch(/if \(snap\.phase === 'work'\) recordStaleSnapshot\(snap\)/);
+  });
   it('neither focus surface awards XP', () => {
     for (const p of ['services/focusService.ts', 'store/focusStore.ts', 'store/deepWorkStore.ts', 'repositories/deepWorkRepository.ts']) {
       expect(read(p)).not.toMatch(/\bxp\b|add_xp|awardXp/i);

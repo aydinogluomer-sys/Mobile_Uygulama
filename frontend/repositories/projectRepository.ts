@@ -7,6 +7,7 @@
  * discarded.
  */
 import { supabase } from '../lib/supabase';
+import { likeContains } from './likePattern';
 import {
   currentUserId, deleteOwned, deleteOwnedIfPresent, fetchPage,
   insertOwnedWithId, isTransportFailure, updateOwned, updateOwnedVersioned,
@@ -86,17 +87,16 @@ export async function deleteProject(id: string): Promise<RepoResult<true>> {
 
 /** Server-side name search — see `taskRepository.searchTasks` for why. */
 export async function searchProjects(query: string, limit = 8): Promise<RepoResult<ProjectRow[]>> {
+  const pattern = likeContains(query);
+  if (pattern === null) return { ok: true, data: [] };
   const u = await currentUserId();
   if (!u.ok) return u;
-  const term = query.trim();
-  if (!term) return { ok: true, data: [] };
-  const safe = term.replace(/[,()%]/g, ' ');
   const { data, error, status } = await supabase
     .from('projects')
     .select(COLS)
     .eq('user_id', u.userId)
     .neq('status', 'archived')
-    .ilike('name', `%${safe}%`)
+    .ilike('name', pattern)
     .order('created_at', { ascending: false })
     .limit(Math.min(limit, 25));
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };

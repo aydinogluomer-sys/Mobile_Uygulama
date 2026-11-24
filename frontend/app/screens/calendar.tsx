@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Animated, Easing, useWindowDimensions,
@@ -10,12 +10,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
+import DayTimeStrip from '../../components/calendar/DayTimeStrip';
+import { useMinuteClock } from '../../hooks/useMinuteClock';
+import { blocksOn } from '../../lib/nextBlock';
 import MonthBackground from '../../components/MonthBackground';
 import SeasonalMotionPreview from '../../components/seasonalMotion/SeasonalMotionPreview';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
 import GlassPanel from '../../components/ui/GlassPanel';
-import { EmbeddedFiligree } from '../../components/ui';
+import { EmbeddedFiligree } from '../../components/spatial';
 import { DECOR } from '../../lib/visualAssets';
 import { colors, hexA } from '../../lib/tokens';
 import { ymd } from '../../lib/date';
@@ -95,6 +98,8 @@ export default function CalendarScreen() {
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
   const todayStr = ymd(today);
+  const selectedBlocks = useMemo(() => blocksOn(tasks, selected), [tasks, selected]);
+  const nowTick = useMinuteClock(isFocused && selected === todayStr);
 
   function dateStr(day: number) {
     return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -106,6 +111,7 @@ export default function CalendarScreen() {
   }
 
   const selectedTasks = tasks.filter((t) => t.due_date?.startsWith(selected) && !t.completed);
+  const untimedSelected = selectedTasks.filter((t) => selectedBlocks.every((b) => b.id !== t.id));
   const selectedHabitLogs = habits.filter((h) => h.status === 'active');
 
   return (
@@ -183,12 +189,17 @@ export default function CalendarScreen() {
                 {selectedTasks.length === 0 ? (
                   <Text style={s.noItem}>Bu gün için görev yok</Text>
                 ) : (
-                  selectedTasks.map((t) => (
-                    <View key={t.id} style={s.item}>
-                      <View style={[s.priorityDot, { backgroundColor: t.priority === 'high' ? colors.error : t.priority === 'medium' ? colors.warning : colors.success }]} />
-                      <Text style={s.itemText}>{t.title}</Text>
-                    </View>
-                  ))
+                  <>
+                    {selectedBlocks.length > 0 && (
+                      <DayTimeStrip blocks={selectedBlocks} now={selected === todayStr ? nowTick : null} />
+                    )}
+                    {untimedSelected.map((t) => (
+                      <View key={t.id} style={s.item}>
+                        <View style={[s.priorityDot, { backgroundColor: t.priority === 'high' ? colors.error : t.priority === 'medium' ? colors.warning : colors.success }]} />
+                        <Text style={s.itemText}>{t.title}</Text>
+                      </View>
+                    ))}
+                  </>
                 )}
               </GlassPanel>
 

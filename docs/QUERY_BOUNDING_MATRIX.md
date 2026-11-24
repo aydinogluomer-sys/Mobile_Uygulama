@@ -14,39 +14,42 @@ query is unbounded; this does not.
 | `aiConversationRepository.ts` | `fetchMessagesPage` | `ai_messages` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `aiConversationRepository.ts` | `fetchPendingAction` | `ai_conversation_actions` | no | SINGLE_ROW | yes |
 | `aiConversationRepository.ts` | `insertAction` | `ai_conversation_actions` | no | WRITE | — |
+| `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | SINGLE_ROW | yes |
 | `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | WRITE | — |
-| `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | SINGLE_ROW | — |
+| `aiConversationRepository.ts` | `insertMessage` | `ai_messages` | no | SINGLE_ROW | yes |
 | `aiConversationRepository.ts` | `resolveAction` | `ai_conversation_actions` | no | WRITE | yes |
 | `aiConversationRepository.ts` | `updateActionPayload` | `ai_conversation_actions` | no | WRITE | yes |
 | `badHabitRepository.ts` | `fetchBadHabitsPage` | `bad_habits` | yes | KEYSET_PAGE | yes |
 | `badHabitRepository.ts` | `insertBadHabit` | `bad_habits` | no | WRITE | — |
 | `creditRepository.ts` | `fetchCreditTransactions` | `credit_transactions` | yes | BOUNDED_DOMAIN_WINDOW | yes |
-| `deepWorkRepository.ts` | `fetchDeepWorkSince` | `deep_work_sessions` | yes | DATE_WINDOW | yes |
+| `deepWorkRepository.ts` | `fetchDeepWorkSince` | `deep_work_sessions` | yes | RANGE_PAGED | yes |
 | `deepWorkRepository.ts` | `insertDeepWorkSession` | `deep_work_sessions` | no | WRITE | — |
+| `exportRepository.ts` | `fetchOwnOnboardingForExport` | `user_onboarding` | no | SINGLE_ROW | yes |
+| `exportRepository.ts` | `fetchOwnProfileForExport` | `profiles` | no | SINGLE_ROW | yes |
 | `focusSessionRepository.ts` | `deleteAllFocusSessions` | `focus_sessions` | no | WRITE | yes |
-| `focusSessionRepository.ts` | `fetchAllFocusSessions` | `focus_sessions` | yes | BOUNDED_DOMAIN_WINDOW | yes |
-| `focusSessionRepository.ts` | `fetchFocusSecondsForReview` | `focus_sessions` | yes | DATE_WINDOW | yes |
-| `focusSessionRepository.ts` | `fetchFocusSessionsSince` | `focus_sessions` | yes | DATE_WINDOW | yes |
-| `focusSessionRepository.ts` | `insertFocusSession` | `focus_sessions` | no | WRITE | — |
-| `focusTaskRepository.ts` | `fetchAllFocusTasks` | `focus_tasks` | yes | BOUNDED_DOMAIN_WINDOW | yes |
+| `focusSessionRepository.ts` | `fetchAllFocusSessions` | `focus_sessions` | yes | RANGE_PAGED | yes |
+| `focusSessionRepository.ts` | `fetchFocusSessionsBetween` | `focus_sessions` | yes | RANGE_PAGED | yes |
+| `focusSessionRepository.ts` | `fetchFocusSessionsSince` | `focus_sessions` | yes | RANGE_PAGED | yes |
+| `focusTaskRepository.ts` | `fetchAllFocusTasks` | `focus_tasks` | yes | RANGE_PAGED | yes |
 | `focusTaskRepository.ts` | `fetchOpenFocusTasks` | `focus_tasks` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `focusTaskRepository.ts` | `insertFocusTask` | `focus_tasks` | no | WRITE | — |
 | `goalRepository.ts` | `fetchGoalsPage` | `goals` | yes | KEYSET_PAGE | yes |
 | `goalRepository.ts` | `insertGoal` | `goals` | no | WRITE | — |
 | `habitChecklistRepository.ts` | `deleteCheck` | `habit_checklist_checks` | no | WRITE | yes |
-| `habitChecklistRepository.ts` | `fetchChecklistChecks` | `habit_checklist_checks` | yes | DATE_WINDOW | yes |
-| `habitChecklistRepository.ts` | `fetchChecklistItems` | `habit_checklist_items` | yes | BOUNDED_DOMAIN_WINDOW | yes |
+| `habitChecklistRepository.ts` | `fetchChecklistChecks` | `habit_checklist_checks` | yes | RANGE_PAGED | yes |
+| `habitChecklistRepository.ts` | `fetchChecklistItems` | `habit_checklist_items` | yes | RANGE_PAGED | yes |
 | `habitChecklistRepository.ts` | `insertCheck` | `habit_checklist_checks` | no | WRITE | — |
 | `habitChecklistRepository.ts` | `insertChecklistItem` | `habit_checklist_items` | no | WRITE | — |
-| `habitLogRepository.ts` | `fetchHabitIdsCompletedSince` | `habit_logs` | yes | DATE_WINDOW | yes |
-| `habitLogRepository.ts` | `fetchHabitLogsForHabit` | `habit_logs` | yes | DATE_WINDOW | yes |
-| `habitLogRepository.ts` | `fetchHabitLogsForHabitsSince` | `habit_logs` | yes | DATE_WINDOW | yes |
-| `habitLogRepository.ts` | `fetchHabitLogsForReview` | `habit_logs` | yes | DATE_WINDOW | yes |
-| `habitLogRepository.ts` | `fetchHabitLogsHeatmap` | `habit_logs` | yes | DATE_WINDOW | yes |
+| `habitLogRepository.ts` | `fetchHabitIdsCompletedSince` | `habit_logs` | yes | RANGE_PAGED | yes |
+| `habitLogRepository.ts` | `fetchHabitLogsForHabit` | `habit_logs` | yes | RANGE_PAGED | yes |
+| `habitLogRepository.ts` | `fetchHabitLogsForHabitsSince` | `habit_logs` | yes | RANGE_PAGED | yes |
+| `habitLogRepository.ts` | `fetchHabitLogsForReview` | `habit_logs` | yes | RANGE_PAGED | yes |
+| `habitLogRepository.ts` | `fetchHabitLogsHeatmap` | `habit_logs` | yes | RANGE_PAGED | yes |
 | `habitLogRepository.ts` | `fetchLogsForDate` | `habit_logs` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitLogRepository.ts` | `findHabitLog` | `habit_logs` | no | SINGLE_ROW | yes |
 | `habitLogRepository.ts` | `insertHabitLog` | `habit_logs` | no | WRITE | — |
-| `habitPauseRepository.ts` | `fetchGoalVersions` | `habit_goal_versions` | yes | BOUNDED_DOMAIN_WINDOW | yes |
+| `habitLogRepository.ts` | `updateLogNote` | `habit_logs` | no | WRITE | yes |
+| `habitPauseRepository.ts` | `fetchGoalVersions` | `habit_goal_versions` | yes | RANGE_PAGED | yes |
 | `habitPauseRepository.ts` | `fetchPauses` | `habit_pauses` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitPauseRepository.ts` | `insertPause` | `habit_pauses` | no | WRITE | — |
 | `habitPauseRepository.ts` | `upsertGoalVersions` | `habit_goal_versions` | no | WRITE | — |
@@ -54,6 +57,7 @@ query is unbounded; this does not.
 | `habitRepository.ts` | `fetchHabits` | `habits` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitRepository.ts` | `insertHabit` | `habits` | no | WRITE | — |
 | `habitRepository.ts` | `insertRoutineHabits` | `habits` | no | WRITE | — |
+| `habitRepository.ts` | `insertRoutineHabits` | `habits` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `habitRepository.ts` | `purgeHabit` | `habit_deletions` | no | WRITE | — |
 | `habitRepository.ts` | `searchHabits` | `habits` | yes | BOUNDED_SEARCH | yes |
 | `journalInsightRepository.ts` | `fetchJournalInsight` | `journal_insights` | no | SINGLE_ROW | yes |
@@ -61,6 +65,8 @@ query is unbounded; this does not.
 | `journalRepository.ts` | `fetchJournalEntries` | `journal_entries` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `journalRepository.ts` | `fetchJournalEntry` | `journal_entries` | no | SINGLE_ROW | yes |
 | `journalRepository.ts` | `searchJournalEntries` | `journal_entries` | yes | BOUNDED_SEARCH | yes |
+| `journalRepository.ts` | `upsertJournalEntry` | `journal_entries` | no | WRITE | — |
+| `journalRepository.ts` | `upsertJournalEntry` | `journal_entries` | no | WRITE | yes |
 | `journalRepository.ts` | `upsertJournalEntry` | `journal_entries` | no | WRITE | — |
 | `lifeAreaRepository.ts` | `fetchRecentLifeAreaLogs` | `life_area_logs` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `lifeAreaRepository.ts` | `upsertLifeAreaLogs` | `life_area_logs` | no | WRITE | — |
@@ -86,7 +92,8 @@ query is unbounded; this does not.
 | `readingListRepository.ts` | `fetchReadingListPage` | `reading_list` | yes | KEYSET_PAGE | yes |
 | `readingListRepository.ts` | `insertReadingItem` | `reading_list` | no | WRITE | — |
 | `recoveryRepository.ts` | `fetchPlannedRecoveryPlans` | `recovery_plans` | yes | BOUNDED_DOMAIN_WINDOW | yes |
-| `recoveryRepository.ts` | `fetchRecoveryPlansForReview` | `recovery_plans` | yes | DATE_WINDOW | yes |
+| `recoveryRepository.ts` | `fetchRecoveryPlansForReview` | `recovery_plans` | yes | RANGE_PAGED | yes |
+| `recoveryRepository.ts` | `fetchRecoveryPlanStatesForHabit` | `recovery_plans` | yes | DATE_WINDOW | yes |
 | `recoveryRepository.ts` | `insertRecoveryPlan` | `recovery_plans` | no | WRITE | — |
 | `reviewRepository.ts` | `fetchWeeklyReview` | `weekly_reviews` | no | SINGLE_ROW | yes |
 | `reviewRepository.ts` | `upsertWeeklyReview` | `weekly_reviews` | no | SINGLE_ROW | yes |
@@ -103,18 +110,20 @@ query is unbounded; this does not.
 | `taskRepository.ts` | `updateTaskVersioned` | `tasks` | no | SINGLE_ROW | yes |
 | `webhookRepository.ts` | `fetchWebhooks` | `webhooks` | yes | BOUNDED_DOMAIN_WINDOW | yes |
 | `webhookRepository.ts` | `insertWebhook` | `webhooks` | no | WRITE | — |
-| `willpowerRepository.ts` | `fetchOrCreateWillpowerState` | `willpower_state` | no | SINGLE_ROW | yes |
-| `willpowerRepository.ts` | `fetchOrCreateWillpowerState` | `willpower_state` | no | WRITE | — |
+| `willpowerRepository.ts` | `resetWillpowerRepositoryMemory` | `willpower_state` | no | WRITE | — |
+| `willpowerRepository.ts` | `resetWillpowerRepositoryMemory` | `willpower_state` | no | SINGLE_ROW | yes |
 | `willpowerRepository.ts` | `updateWillpowerState` | `willpower_state` | no | WRITE | yes |
 
 ## Totals
 
-- queries: **98**
-- collection SELECTs: **42**
+- queries: **105**
+- collection SELECTs: **44**
 - KEYSET_PAGE: **7**
-- DATE_WINDOW: **10**
+- RANGE_PAGED: **14**
+- DATE_WINDOW: **1**
 - BOUNDED_SEARCH: **4**
 - EXACT_COUNT: **2**
-- BOUNDED_DOMAIN_WINDOW: **19**
-- SINGLE_ROW: **14**
+- BOUNDED_DOMAIN_WINDOW: **16**
+- SINGLE_ROW: **17**
+- **UNPAGED_WINDOW: 0**
 - **UNCLASSIFIED: 0**

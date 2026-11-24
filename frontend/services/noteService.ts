@@ -1,10 +1,5 @@
 /**
- * Notes: reads, and writes through the core outbox (R02.03).
- *
- * A note gets its id on the device, so a create delivered twice is one note.
- * An edit carries the `updated_at` it was made against; if the note changed
- * elsewhere meanwhile the edit is a CONFLICT and both versions are kept until
- * the user picks -- "aynı notta çatışan sürümü koru" (R02.05, T08).
+ * Notes: reads, and writes through the core outbox (R02.03 / F46).
  */
 import { coreOutbox } from './coreOutbox';
 import {
@@ -27,8 +22,8 @@ export function pendingNoteCommands(): OutboxCommand[] {
   return (coreOutbox.state()?.commands ?? []).filter((c) => c.entity === NOTE_ENTITY);
 }
 
-export async function createNote(input: { title: string; content: string; tags?: string[] }): Promise<Result & { id?: string }> {
-  const id = newOperationId();
+export async function createNote(input: { id?: string; title: string; content: string; tags?: string[] }): Promise<Result & { id?: string }> {
+  const id = input.id ?? newOperationId();
   const w = await coreOutbox.write({ entity: NOTE_ENTITY, entityId: id, kind: 'create', payload: { title: input.title, content: input.content, tags: input.tags ?? [] } });
   if (!w.ok) return w;
   await coreOutbox.flush();
@@ -52,10 +47,25 @@ export async function removeNote(id: string): Promise<Result> {
 
 export type ConflictChoice = 'mine' | 'theirs' | 'both';
 
+/** Deterministic v4-shaped UUID derived from a conflict command's operationId so retries do not duplicate the copy. */
+function conflictCopyId(operationId: string): string {
+  const chunks = [0, 1, 2, 3].map((seed) => {
+    let h = (0x811c9dc5 ^ seed) >>> 0;
+    const s = `conflict-copy:${seed}:${operationId}`;
+    for (let i = 0; i < s.length; i += 1) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, '0');
+  });
+  const hex = chunks.join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 /**
  * `mine`: this device's edit over the server's current version. `theirs`:
- * drop this device's edit. `both`: keep the server's note AND this device's
- * text as a new note "(çakışan sürüm)" -- nothing is lost.
+ * drop this device's edit. `both`: atomically replace the conflict command
+ * with a new "(çakışan sürüm)" note command so nothing is lost on crash or save failure.
  */
 export async function resolveNoteConflict(id: string, choice: ConflictChoice, localTitle: string): Promise<{ ok: boolean; error?: string; copyId?: string }> {
   const cmd = pendingNoteCommands().find((c) => c.entityId === id && c.status === 'conflict');
@@ -69,11 +79,20 @@ export async function resolveNoteConflict(id: string, choice: ConflictChoice, lo
     return { ok: true };
   }
   const p = cmd.payload as { title?: string; content?: string; tags?: string[] };
-  await coreOutbox.discard(cmd.operationId);
-  const copy = await createNote({
-    title: `${p.title ?? localTitle} (çakışan sürüm)`,
-    content: p.content ?? cur.data?.content ?? '',
-    tags: p.tags ?? cur.data?.tags ?? [],
+  const copyId = conflictCopyId(cmd.operationId);
+  const replaced = await coreOutbox.replace(cmd.operationId, {
+    entity: NOTE_ENTITY,
+    entityId: copyId,
+    kind: 'create',
+    payload: {
+      title: `${p.title ?? localTitle} (çakışan sürüm)`,
+      content: p.content ?? cur.data?.content ?? '',
+      tags: p.tags ?? cur.data?.tags ?? [],
+    },
   });
-  return copy.ok ? { ok: true, copyId: copy.id } : { ok: false, error: copy.error };
+  if (!replaced.ok || !replaced.savedOnDevice) {
+    return { ok: false, error: 'Çakışma çözümü cihaza kaydedilemedi; çakışma korunuyor.' };
+  }
+  await coreOutbox.flush();
+  return { ok: true, copyId };
 }

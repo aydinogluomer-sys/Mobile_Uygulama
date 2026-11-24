@@ -8,7 +8,7 @@ Durum tarihi: 2026-10-07. Kaynak: kod (`store/*`, `lib/syncQueue.ts`, `lib/outbo
 
 | Alan | İşlem | Bugün (çevrimdışı) | Mekanizma | Hedef / not |
 |---|---|---|---|---|
-| Alışkanlık kaydı | kaydet / değer / skip / miss | **Yerel-önce, kuyruklu** | `lib/syncQueue.ts` (habit\|gün başına tek op, geri çekilme, hesap başına anahtar) | Var. Genel outbox'a taşınması S7 sonrası |
+| Alışkanlık kaydı | kaydet / değer / skip / miss | **Yerel-önce, birleşik outbox** (F46) | `lib/outbox.ts` + `services/outboxChannel.ts` (`outbox.v1.habit.<uid>`, `coalesce: 'replace'`, eski `atlas_sync_queue_v1` göçü) | Tamamlandı (F46). 4 kanallı ortak motor (`task`, `core`, `habit`, `effect`) |
 | Bugün görevleri | ekle / tamamla / düzenle / sil / taşı / arşivle | **Yerel-önce, outbox** (R02, bu faz) | `lib/outbox.ts` + `lib/outboxStorage.ts` + `services/outboxRunner.ts` + `taskService.deliverTaskCommand` | Var. Çakışma ve ölü değişiklik kullanıcıya gösterilir (`OutboxIssues`) |
 | Görev bölme (TaskSplitter) | toplu alt görev ekleme | Ağ gerekli | `taskService.createSubtasks` doğrudan | Outbox'a bağlanacak (dependsOn ile ana göreve) |
 | Kontrol listesi | işaret / adım düzenleme | Ağ gerekli | `habitChecklistRepository` doğrudan | Migration 029 uygulanınca outbox'a |
@@ -47,7 +47,7 @@ bilmez.
 
 | Kabul maddesi | Durum | Kanıt |
 |---|---|---|
-| Çevrimdışı 100 karışık eylem, yeniden başlatma, ağ dönüşünde kayıpsız uzlaşma | **Görevler için fixture'da GEÇER**; alışkanlık kaydı mevcut kuyrukta | `__tests__/fixtures/taskOutboxScenarios.test.ts` |
+| Çevrimdışı 100 karışık eylem, yeniden başlatma, ağ dönüşünde kayıpsız uzlaşma | **Görevler, çekirdek, alışkanlık kaydı ve webhook efektleri birleşik outbox'ta GEÇER** (F46) | `__tests__/fixtures/taskOutboxScenarios.test.ts`, `__tests__/store/habitOutboxMigration.test.ts`, `__tests__/services/webhookOutbox.test.ts` |
 | Aynı komut beş retry'da tek etki | GEÇER (görev) | aynı dosya, "re-delivered five times" |
 | A kuyruğu B hesabına taşınmaz | GEÇER (görev + alışkanlık) | aynı dosya "accounts"; `outboxRunner.test.ts` |
 | Silinmiş öğe geç edit ile geri doğmaz | GEÇER (görev) | "deleted elsewhere", "late local edit" |

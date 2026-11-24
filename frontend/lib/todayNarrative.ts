@@ -3,6 +3,7 @@
  * Atlas dil sistemi: anlatısal başlık + vurgu (em) + alt-metin. Saf/deterministik fonksiyon.
  * İlham: personal-os-v2 (8).html · atl-bugun-hero.
  */
+import { t } from './i18n';
 
 export type NarrativeInput = {
   /** 0–23 saat (yerel) */
@@ -27,54 +28,64 @@ export type TodayNarrative = {
 
 function timeSub(hour: number, focusSessions: number): string {
   if (focusSessions > 0) {
-    return `Bugün ${focusSessions} odak seansı tamamlandı; ritmi koru.`;
+    return t('today.narrative.sub.focused', { count: focusSessions });
   }
-  if (hour < 12) return 'Güne kısa bir odak bloğuyla başla.';
-  if (hour < 18) return 'Bir odak bloğu aç ve ilerlemeyi sürdür.';
-  return 'Günü sakin bir kapanışla bitir.';
+  if (hour < 12) return t('today.narrative.sub.morning');
+  if (hour < 18) return t('today.narrative.sub.afternoon');
+  return t('today.narrative.sub.evening');
 }
+
+export const OVERDUE_CALM_LIMIT = 5;
 
 /** Önceliklendirme: gecikmiş > bugünkü görev > kalan alışkanlık > tamamlandı. */
 export function buildTodayNarrative(input: NarrativeInput): TodayNarrative {
   const { hour, overdueCount, todayTaskCount, remainingHabits, totalHabits, focusSessions } = input;
   const sub = timeSub(hour, focusSessions);
 
+  if (overdueCount > OVERDUE_CALM_LIMIT) {
+    return {
+      lead: t('today.narrative.calm.lead'),
+      emphasis: t('today.narrative.calm.emphasis'),
+      tail: t('today.narrative.calm.tail'),
+      sub,
+    };
+  }
   if (overdueCount > 0) {
     return {
-      lead: 'Bugün önce ',
-      emphasis: `${overdueCount} gecikmiş işi`,
-      tail: ' sakin biçimde topla.',
+      lead: t('today.narrative.overdue.lead'),
+      emphasis: t('today.narrative.overdue.emphasis', { count: overdueCount }),
+      tail: t('today.narrative.overdue.tail'),
       sub,
     };
   }
   if (todayTaskCount > 0) {
     return {
-      lead: 'Bugün ',
-      emphasis: `${todayTaskCount} planlı görevi`,
-      tail: ' net bir akışla bitir.',
+      lead: t('today.narrative.tasks.lead'),
+      emphasis: t('today.narrative.tasks.emphasis', { count: todayTaskCount }),
+      tail: t('today.narrative.tasks.tail'),
       sub,
     };
   }
   if (remainingHabits > 0) {
     return {
-      lead: 'Bugün ',
-      emphasis: `${remainingHabits} alışkanlığı`,
-      tail: ' tamamlayıp seriyi koru.',
+      lead: t('today.narrative.habits.lead'),
+      emphasis: t('today.narrative.habits.emphasis', { count: remainingHabits }),
+      tail: t('today.narrative.habits.tail'),
       sub,
     };
   }
   if (totalHabits > 0) {
     return {
-      lead: 'Masadaki işler ',
-      emphasis: 'tamamlandı',
-      tail: ' — sıradaki odağı planla.',
+      lead: t('today.narrative.done.lead'),
+      emphasis: t('today.narrative.done.emphasis'),
+      tail: t('today.narrative.done.tail'),
       sub,
     };
   }
   return {
-    lead: 'Bugüne ',
-    emphasis: 'temiz bir sayfa',
-    tail: ' ile başla.',
+    lead: t('today.narrative.fresh.lead'),
+    emphasis: t('today.narrative.fresh.emphasis'),
+    tail: t('today.narrative.fresh.tail'),
     sub,
   };
 }

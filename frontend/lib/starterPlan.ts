@@ -202,6 +202,8 @@ function reduceTargets(barrier: BarrierId | null, h: StarterCandidate): {
 export type StarterPlanContext = {
   /** Habits already active — the load this plan is added on top of. */
   activeHabits: HabitLoadInput[];
+  /** Explicit clock so range-envelope gating is deterministic across midnight. */
+  asOf: Date;
   ceiling?: number;
   candidates?: StarterCandidate[];
 };
@@ -264,7 +266,7 @@ export function buildStarterPlan(
 
   // KD-08 — same activation-gate rule as evaluateProposal: a habit outside its
   // date range today carries no load.
-  const currentLoad = dailyLoad({ habits: habitsInRangeOn(ctx.activeHabits, new Date()) }).normalised;
+  const currentLoad = dailyLoad({ habits: habitsInRangeOn(ctx.activeHabits, ctx.asOf) }).normalised;
 
   const chosen: StarterHabit[] = [];
   let running = currentLoad;

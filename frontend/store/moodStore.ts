@@ -10,12 +10,32 @@ import { currentUser } from '../lib/session';
 import { newOperationId } from '../lib/outbox';
 import { todayLocal } from '../lib/date';
 import {
-  allMoods, editDefinition, makeCheckin, validateDefinition, MAX_CHECKINS,
-  type MoodCheckin, type MoodDefinition,
+  allMoods,
+  editDefinition,
+  makeCheckin,
+  normaliseEnergy,
+  validateDefinition,
+  withEnergy,
+  MAX_CHECKINS,
+  type MoodCheckin,
+  type MoodDefinition,
+  type MoodEnergy,
 } from '../lib/moods';
 
 export const moodKey = (userId: string) => `moods.v1.${userId}`;
 type Saved = { v: 1; definitions: MoodDefinition[]; checkins: MoodCheckin[] };
+
+function cleanDefinition(d: MoodDefinition): MoodDefinition {
+  const { energy: rawEnergy, ...rest } = d;
+  const energy = normaliseEnergy(rawEnergy);
+  return energy ? { ...rest, energy } : rest;
+}
+
+function cleanCheckin(c: MoodCheckin): MoodCheckin {
+  const { energy: rawEnergy, ...rest } = c;
+  const energy = normaliseEnergy(rawEnergy);
+  return energy ? { ...rest, energy } : rest;
+}
 
 type MoodStore = {
   userId: string | null;
@@ -23,10 +43,22 @@ type MoodStore = {
   checkins: MoodCheckin[];
   hydrate: () => Promise<void>;
   moods: () => MoodDefinition[];
-  addDefinition: (name: string, icon: string, valence: number) => { ok: true } | { ok: false; error: string };
-  updateDefinition: (id: string, name: string, icon: string, valence: number) => { ok: true } | { ok: false; error: string };
+  addDefinition: (
+    name: string,
+    icon: string,
+    valence: number,
+    energy?: MoodEnergy,
+  ) => { ok: true } | { ok: false; error: string };
+  updateDefinition: (
+    id: string,
+    name: string,
+    icon: string,
+    valence: number,
+    energy?: MoodEnergy | null,
+  ) => { ok: true } | { ok: false; error: string };
   archiveDefinition: (id: string) => void;
   checkIn: (moodId: string, intensity: 1 | 2 | 3, note?: string) => boolean;
+  setCheckinEnergy: (id: string, energy: MoodEnergy | null) => boolean;
   removeCheckin: (id: string) => void;
   today: () => MoodCheckin[];
 };
@@ -49,23 +81,30 @@ export const useMoodStore = create<MoodStore>((set, get) => {
       if (get().userId === u.id) return;
       try {
         const o = JSON.parse((await AsyncStorage.getItem(moodKey(u.id))) ?? 'null') as Saved | null;
-        if (o && o.v === 1) { set({ userId: u.id, definitions: o.definitions ?? [], checkins: o.checkins ?? [] }); return; }
+        if (o && o.v === 1) {
+          const definitions = Array.isArray(o.definitions) ? o.definitions.map(cleanDefinition) : [];
+          const checkins = Array.isArray(o.checkins) ? o.checkins.map(cleanCheckin) : [];
+          set({ userId: u.id, definitions, checkins });
+          return;
+        }
       } catch { /* start clean */ }
       set({ userId: u.id, definitions: [], checkins: [] });
     },
 
     moods: () => allMoods(get().definitions),
 
-    addDefinition: (name, icon, valence) => {
-      const v = validateDefinition({ id: newOperationId(), name, icon, valence }, get().definitions);
+    addDefinition: (name, icon, valence, energy) => {
+      const v = validateDefinition({ id: newOperationId(), name, icon, valence, energy }, get().definitions);
       if (!v.ok) return { ok: false, error: v.reason };
       set({ definitions: [...get().definitions, v.def] });
       persist();
       return { ok: true };
     },
 
-    updateDefinition: (id, name, icon, valence) => {
-      const v = validateDefinition({ id, name, icon, valence }, get().definitions);
+    updateDefinition: (id, name, icon, valence, energy) => {
+      const prev = get().definitions.find((d) => d.id === id);
+      const nextEnergy = energy === undefined ? prev?.energy : (energy ?? undefined);
+      const v = validateDefinition({ id, name, icon, valence, energy: nextEnergy }, get().definitions);
       if (!v.ok) return { ok: false, error: v.reason };
       set({ definitions: editDefinition(get().definitions, v.def) });
       persist();
@@ -83,6 +122,14 @@ export const useMoodStore = create<MoodStore>((set, get) => {
       if (!def || !get().userId) return false;
       const c = makeCheckin(def, { id: newOperationId(), at: new Date(), day: todayLocal(), intensity, note });
       set({ checkins: [c, ...get().checkins].slice(0, MAX_CHECKINS) });
+      persist();
+      return true;
+    },
+
+    setCheckinEnergy: (id, energy) => {
+      const cur = get().checkins;
+      if (!id || !cur.some((c) => c.id === id)) return false;
+      set({ checkins: cur.map((c) => (c.id === id ? withEnergy(c, energy) : c)) });
       persist();
       return true;
     },

@@ -23,6 +23,7 @@
  */
 import { create } from 'zustand';
 import { accountEpoch, registerAccountScoped, registerAccountStorage } from '../lib/accountScope';
+import { createLatest } from '../lib/latestOnly';
 import { currentUser } from '../lib/session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -68,6 +69,8 @@ function forgetLastActive(): void {
  * previous account started is dropped instead of becoming the new account's list.
  */
 let listSeq = 0;
+const threadLatest = createLatest();
+const unresolvedConfirmations = new Set<string>();
 
 export type CoachStoreMessage = {
   id: string;
@@ -84,6 +87,7 @@ type SendDeps = {
   /** Calls the coach edge function. Injected so tests never hit the network. */
   invoke: (body: Record<string, unknown>) => Promise<CoachInvokeResult>;
   requestId: string;
+  onConversationCreated?: (row: ConversationRow) => void;
 };
 
 type AiConversationStore = {
@@ -115,7 +119,7 @@ type AiConversationStore = {
    * including the failure, which belongs to the thread it happened in.
    */
   send: (text: string, deps: SendDeps) => Promise<{ ok: boolean; error?: string; stale?: boolean }>;
-  resolvePending: (status: 'confirmed' | 'cancelled') => Promise<void>;
+  resolvePending: (status: 'confirmed' | 'cancelled') => Promise<boolean>;
   /**
    * Persist an answer the user gave about the OPEN proposal.
    *
@@ -124,7 +128,7 @@ type AiConversationStore = {
    * that stages it and preview the same thing twice. What this buys is the next
    * OPEN of the conversation, which reads the row fresh.
    */
-  updatePendingPayload: (action: CoachAction) => Promise<void>;
+  updatePendingPayload: (action: CoachAction) => Promise<boolean>;
   reset: () => void;
 };
 
@@ -189,24 +193,35 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
   },
 
   openConversation: async (id) => {
+    const run = threadLatest.begin();
     // Swap EVERYTHING that belongs to a thread at once. A staged proposal from
     // the previous conversation must not survive this call.
     set({ activeId: id, messages: [], pendingAction: null, loadingMessages: true, messagesHasMore: false });
     writeLastActive(id);
-    const epoch = accountEpoch();
+    try {
+      const res = await openThread(id);
+      if (!run.isCurrent()) return;
+      if (!res.ok) { set({ loadingMessages: false, error: res.error }); return; }
 
-    const res = await openThread(id);
-    // another thread was opened meanwhile, or the account changed: this answer is not for the screen
-    if (get().activeId !== id || epoch !== accountEpoch()) return;
-    if (!res.ok) { set({ loadingMessages: false, error: res.error }); return; }
+      let staged = res.data.staged;
+      if (staged && unresolvedConfirmations.has(staged.row.id)) {
+        const stagedId = staged.row.id;
+        void resolveStagedAction(stagedId, 'confirmed').then((r) => {
+          if (r.ok) unresolvedConfirmations.delete(stagedId);
+        });
+        staged = null;
+      }
 
-    set({
-      messages: res.data.messages.map(toStoreMessage),
-      messagesHasMore: res.data.hasMore,
-      loadingMessages: false,
-      pendingAction: res.data.staged,
-      error: null,
-    });
+      set({
+        messages: res.data.messages.map(toStoreMessage),
+        messagesHasMore: res.data.hasMore,
+        loadingMessages: false,
+        pendingAction: staged,
+        error: null,
+      });
+    } finally {
+      run.done();
+    }
   },
 
   loadOlderMessages: async () => {
@@ -214,19 +229,27 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
     if (!activeId || !messagesHasMore || loadingMessages) return;
     const oldest = messages[0];
     if (!oldest) return;
+    const forId = activeId;
+    const run = threadLatest.begin();
     set({ loadingMessages: true });
-    const res = await olderMessages(activeId, oldest.created_at);
-    if (!res.ok) { set({ loadingMessages: false, error: res.error }); return; }
-    set((s) => ({
-      messages: [...res.data.messages.map(toStoreMessage), ...s.messages],
-      messagesHasMore: res.data.hasMore,
-      loadingMessages: false,
-    }));
+    try {
+      const res = await olderMessages(forId, { createdAt: oldest.created_at, id: oldest.id });
+      if (!run.isCurrent() || get().activeId !== forId) return;
+      if (!res.ok) { set({ loadingMessages: false, error: res.error }); return; }
+      set((s) => ({
+        messages: [...res.data.messages.map(toStoreMessage), ...s.messages],
+        messagesHasMore: res.data.hasMore,
+        loadingMessages: false,
+      }));
+    } finally {
+      run.done();
+    }
   },
 
   /** A blank slate. The row is created by the first message, not by this. */
   newChat: () => {
-    set({ activeId: null, messages: [], pendingAction: null, messagesHasMore: false, error: null });
+    threadLatest.invalidate();
+    set({ activeId: null, messages: [], pendingAction: null, loadingMessages: false, messagesHasMore: false, error: null });
     forgetLastActive();
   },
 
@@ -290,10 +313,13 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
           activeId: adopt ? row.id : s.activeId,
         }));
         if (adopt) writeLastActive(row.id);
+        deps.onConversationCreated?.(row);
       },
       onUserMessage: (row) => {
         if (!stillOpen()) return;
-        set((s) => ({ messages: [...s.messages, toStoreMessage(row)] }));
+        set((s) => ({
+          messages: s.messages.some((m) => m.id === row.id) ? s.messages : [...s.messages, toStoreMessage(row)],
+        }));
       },
     });
 
@@ -324,22 +350,51 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
    */
   updatePendingPayload: async (action) => {
     const current = get().pendingAction;
-    if (!current) return;
-    await updateStagedAction(current.row.id, action);
+    if (!current) return true;
+    const res = await updateStagedAction(current.row.id, action);
+    if (!res.ok) { set({ error: res.error }); return false; }
+    return true;
   },
 
   resolvePending: async (status) => {
     const current = get().pendingAction;
-    if (!current) return;
+    if (!current) {
+      if (status === 'confirmed' && unresolvedConfirmations.size > 0) {
+        const ids = [...unresolvedConfirmations];
+        const retryId = ids[ids.length - 1];
+        const retryRes = await resolveStagedAction(retryId, 'confirmed');
+        if (retryRes.ok) {
+          unresolvedConfirmations.delete(retryId);
+          set({ error: null });
+          return true;
+        }
+        return false;
+      }
+      return true;
+    }
+    const openedIn = get().activeId;
     set({ pendingAction: null });
-    await resolveStagedAction(current.row.id, status);
+    const res = await resolveStagedAction(current.row.id, status);
+    if (res.ok) {
+      unresolvedConfirmations.delete(current.row.id);
+      return true;
+    }
+    if (status === 'cancelled') {
+      if (get().activeId === openedIn && get().pendingAction === null) set({ pendingAction: current });
+      set({ error: res.error });
+    } else {
+      unresolvedConfirmations.add(current.row.id);
+      set({ error: 'Öneri uygulandı ama sunucuda kapatılamadı; sonraki açılışta tekrar denenecek.' });
+    }
+    return false;
   },
 
   reset: () => {
+    threadLatest.invalidate();
     listSeq += 1;
     set({
       conversations: [], conversationsCursor: null, conversationsHasMore: false, loadingConversations: false,
-      activeId: null, messages: [], messagesHasMore: false,
+      activeId: null, messages: [], loadingMessages: false, messagesHasMore: false,
       pendingAction: null, sending: false, error: null,
     });
     // The last-open thread is NOT forgotten here: leaving the screen and coming back must reopen it.
@@ -349,5 +404,13 @@ export const useAiConversationStore = create<AiConversationStore>((set, get) => 
 
 // F04 (STO-22, STO-V02): the transcript belongs to the signed-in account; a list request in flight
 // across the boundary is dropped, and the last-open thread of the account leaves with it.
-registerAccountScoped({ name: 'aiConversation', store: useAiConversationStore, onReset: () => { listSeq += 1; } });
+registerAccountScoped({
+  name: 'aiConversation',
+  store: useAiConversationStore,
+  onReset: () => {
+    listSeq += 1;
+    threadLatest.invalidate();
+    unresolvedConfirmations.clear();
+  },
+});
 registerAccountStorage({ name: 'coach.lastConversation', transient: true, keysFor: (uid) => [lastActiveKey(uid)] });

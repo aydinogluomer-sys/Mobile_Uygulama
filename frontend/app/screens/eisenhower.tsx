@@ -7,11 +7,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { navigateTo } from '../../lib/destinations';
 import { useTaskStore, Task, QuadrantType } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 import type { Habit } from '../../lib/supabase';
 import { computeTriage, TRIAGE_META, type Triage } from '../../lib/triage';
-import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 type Quadrant = {
@@ -223,8 +225,8 @@ export default function EisenhowerScreen() {
               </>
             ) : (
               <>
-                <HabitQuadrantBox triage="do_now" habits={byTriage('do_now')} onTap={() => router.push('/tabs/habits')} />
-                <HabitQuadrantBox triage="plan" habits={byTriage('plan')} onTap={() => router.push('/tabs/habits')} />
+                <HabitQuadrantBox triage="do_now" habits={byTriage('do_now')} onTap={() => navigateTo(router, 'habits')} />
+                <HabitQuadrantBox triage="plan" habits={byTriage('plan')} onTap={() => navigateTo(router, 'habits')} />
               </>
             )}
           </View>
@@ -236,8 +238,8 @@ export default function EisenhowerScreen() {
               </>
             ) : (
               <>
-                <HabitQuadrantBox triage="wait_watch" habits={byTriage('wait_watch')} onTap={() => router.push('/tabs/habits')} />
-                <HabitQuadrantBox triage="eliminate" habits={byTriage('eliminate')} onTap={() => router.push('/tabs/habits')} />
+                <HabitQuadrantBox triage="wait_watch" habits={byTriage('wait_watch')} onTap={() => navigateTo(router, 'habits')} />
+                <HabitQuadrantBox triage="eliminate" habits={byTriage('eliminate')} onTap={() => navigateTo(router, 'habits')} />
               </>
             )}
           </View>
@@ -390,7 +392,7 @@ const s = StyleSheet.create({
   qHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   qLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
   qAction: { fontSize: 10, color: colors.textFaint, marginBottom: 10 },
-  qEmpty: { fontSize: 11, color: colors.textGhost, textAlign: 'center', marginTop: 12 },
+  qEmpty: { fontSize: 11, color: colors.textFaint, textAlign: 'center', marginTop: 12 },
 
   taskChip: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 6,
@@ -401,9 +403,9 @@ const s = StyleSheet.create({
   habitRoom: { fontSize: 9, color: colors.textFaint, marginTop: 1 },
 
   axisRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingHorizontal: 4 },
-  axisLabel: { fontSize: 10, color: colors.textGhost },
+  axisLabel: { fontSize: 10, color: colors.textFaint },
   axisLabelCenter: { fontSize: 10, color: colors.textFaint, fontWeight: '700' },
-  mirrorNote: { fontSize: 11, color: colors.textGhost, marginTop: 14, lineHeight: 16, fontStyle: 'italic' },
+  mirrorNote: { fontSize: 11, color: colors.textFaint, marginTop: 14, lineHeight: 16, fontStyle: 'italic' },
 
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: 20 },
   modalCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: colors.border },

@@ -3,7 +3,7 @@
  * in order, nothing skipped at page edges, and a ceiling reported as
  * truncation instead of a silent cut.
  */
-const mockSize = { n: 1234 };
+const mockSize = { n: 1234, serverCap: Infinity };
 let mockRows = Array.from({ length: mockSize.n }, (_, i) => ({ id: `id-${String(i).padStart(5, '0')}`, user_id: 'u1', n: i }));
 const resize = (n: number) => { mockRows = Array.from({ length: n }, (_, i) => ({ id: `id-${String(i).padStart(6, '0')}`, user_id: 'u1', n: i })); };
 jest.mock('../../lib/supabase', () => {
@@ -14,7 +14,8 @@ jest.mock('../../lib/supabase', () => {
       limit: (n: number) => { st.limit = n; return q; },
       gt: (_c: string, v: string) => { st.gt = v; return q; },
       then: (ok: (v: unknown) => unknown) => {
-        const rows = mockRows.filter((r) => st.gt === null || r.id > st.gt).slice(0, st.limit);
+        const cap = Math.min(st.limit, mockSize.serverCap);
+        const rows = mockRows.filter((r) => st.gt === null || r.id > st.gt).slice(0, cap);
         return Promise.resolve({ data: rows, error: null, status: 200 }).then(ok);
       },
     };
@@ -53,3 +54,24 @@ it('R08.07 — the dry run reads the account in full, and refuses past the ceili
   expect(!over.ok && over.code).toBe('TOO_LARGE');
   resize(1234);
 }, 30_000);
+
+it('F20 (SYN-06) — sunucu tavanı sayfa boyutundan küçükken (100) tüm 1234 satır gelir ve tam dolu son sayfayı boş sayfa bitirir', async () => {
+  mockSize.serverCap = 100;
+  try {
+    resize(1234);
+    const capped = await fetchOwnedTable('okrs', 5000, 500);
+    if (!capped.ok) throw new Error(capped.error);
+    expect(capped.data.truncated).toBe(false);
+    expect(capped.data.rows).toHaveLength(1234);
+    expect(capped.data.rows.map((x) => x.n)).toEqual(mockRows.map((x) => x.n));
+  } finally {
+    mockSize.serverCap = Infinity;
+  }
+
+  resize(600);
+  const exactPages = await fetchOwnedTable('okrs', 5000, 300);
+  if (!exactPages.ok) throw new Error(exactPages.error);
+  expect(exactPages.data.truncated).toBe(false);
+  expect(exactPages.data.rows).toHaveLength(600);
+  resize(1234);
+});

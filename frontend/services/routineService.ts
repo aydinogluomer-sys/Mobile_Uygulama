@@ -16,6 +16,9 @@
  * The store keeps `generating` / `installing` / the staged proposal, which
  * are what the screen renders.
  */
+import { isNoAnswer, retryWhileInProgress, type InvokeOutcome, type RetryOutcome } from '../lib/aiAttempt';
+import { extractInvokeError } from '../lib/aiInvoke';
+import { todayLocal } from '../lib/date';
 import { computeWillpowerCost } from '../lib/triage';
 import type { FrequencyConfig, Habit } from '../lib/supabase';
 import {
@@ -23,6 +26,8 @@ import {
   type InstallHabitRow,
 } from '../repositories/habitRepository';
 import { fetchRoutines as repoFetchRoutines } from '../repositories/routineRepository';
+import { loadToday, spend } from './capacityService';
+import { invokeEdgeFunction } from './edgeFunctions';
 
 /** The user's saved routines. Bounded in the repository. */
 export const listRoutines = <T,>() => repoFetchRoutines<T>();
@@ -103,15 +108,17 @@ export function buildInstallRows(
 }
 
 export type InstallResult =
-  | { ok: true; habits: Habit[] }
+  | { ok: true; habits: Habit[]; budgetRecorded: boolean }
   | { ok: false; error: string };
 
 /**
- * Persists a validated, capacity-evaluated proposal as habits.
+ * Persists a validated, capacity-evaluated proposal as habits and records the
+ * active rows' willpower cost against today's budget (`clamp: true`).
  *
  * `installId` is optional and passed straight through. Callers that do not
  * supply one -- the Routine Pack picker and the AI builder -- produce rows
- * with `install_id = null`, exactly as before.
+ * with `install_id = null`, exactly as before. A failure to record the budget
+ * never fails the confirmed install (`budgetRecorded: false`).
  */
 export async function installProposal(
   habits: ProposalHabit[],
@@ -120,5 +127,65 @@ export async function installProposal(
 ): Promise<InstallResult> {
   const rows = buildInstallRows(habits, toActivate);
   const res = await insertRoutineHabits(rows, installId);
-  return res.ok ? { ok: true, habits: res.data } : { ok: false, error: res.error };
+  if (!res.ok) return { ok: false, error: res.error };
+
+  const active = res.data.filter((h) => h.status === 'active');
+  if (active.length === 0) {
+    return { ok: true, habits: res.data, budgetRecorded: true };
+  }
+
+  const totalCost = active.reduce((sum, h) => sum + (h.willpower_cost ?? 0), 0);
+  let budgetRecorded = false;
+  try {
+    const today = await loadToday(todayLocal());
+    if (today.ok) {
+      const spent = await spend(today.data, totalCost, {
+        activations: active.length,
+        clamp: true,
+      });
+      budgetRecorded = spent.ok;
+    }
+  } catch {
+    budgetRecorded = false;
+  }
+
+  return { ok: true, habits: res.data, budgetRecorded };
+}
+
+export type RoutineGenerationReply =
+  | { kind: 'no_answer' }
+  | { kind: 'in_progress' }
+  | { kind: 'refused'; message: string; balance?: number }
+  | { kind: 'answered'; data: Record<string, unknown> | null };
+
+const ROUTINE_ERROR_FALLBACK = 'Bir hata oluştu, tekrar deneyin.';
+
+export async function requestRoutineGeneration(
+  prompt: string,
+  requestId: string,
+  runRetry: <T>(
+    call: () => Promise<InvokeOutcome<T>>,
+    opts?: { fallbackMessage?: string },
+  ) => Promise<RetryOutcome<T>> = retryWhileInProgress,
+): Promise<RoutineGenerationReply> {
+  try {
+    const outcome = await runRetry(
+      () =>
+        invokeEdgeFunction<Record<string, unknown>>('generate-routine', {
+          label: 'AI rutin',
+          body: { prompt, request_id: requestId },
+        }),
+      { fallbackMessage: ROUTINE_ERROR_FALLBACK },
+    );
+    if (outcome.error && isNoAnswer(outcome.error)) return { kind: 'no_answer' };
+    if (outcome.stillInProgress) return { kind: 'in_progress' };
+    if (outcome.error) {
+      const info = outcome.errorInfo ?? (await extractInvokeError(outcome.error, ROUTINE_ERROR_FALLBACK));
+      return { kind: 'refused', message: info.msg, balance: info.balance };
+    }
+    return { kind: 'answered', data: outcome.data };
+  } catch (e) {
+    if (isNoAnswer(e)) return { kind: 'no_answer' };
+    throw e;
+  }
 }

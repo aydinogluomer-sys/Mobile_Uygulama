@@ -8,9 +8,11 @@
  * Plus the one privacy step before sharing a report: the user chooses
  * whether task titles go out; by default they do not.
  */
+import { fmt } from './i18n';
+
 /** R10.05 — a decimal as Turkish writes it: "2,3", never "2.3". The one UI decimal formatter. */
 export function decimalTR(n: number, digits = 1): string {
-  return (Number.isInteger(n) ? String(n) : n.toFixed(digits)).replace('.', ',');
+  return fmt.decimal(n, digits);
 }
 const nf = decimalTR;
 

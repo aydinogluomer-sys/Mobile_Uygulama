@@ -35,16 +35,16 @@
  */
 import {
   fetchConversationsPage, createConversation, renameConversation,
-  setConversationProject, deleteConversation, fetchConversation,
+  setConversationProject, fetchConversation,
   fetchMessagesPage, insertMessage, fetchPendingAction, insertAction,
   resolveAction, updateActionPayload, MAX_TITLE_LENGTH, MESSAGE_PAGE_SIZE,
-  type ConversationRow, type MessageRow, type ActionRow,
+  type ConversationRow, type MessageRow, type ActionRow, type MessageCursor,
 } from '../repositories/aiConversationRepository';
 import { validateCoachActions, type CoachAction } from '../lib/coachActions';
 import type { Cursor, Page, RepoResult } from '../repositories/shared';
 
 export { MAX_TITLE_LENGTH, MESSAGE_PAGE_SIZE };
-export type { ConversationRow, MessageRow, ActionRow };
+export type { ConversationRow, MessageRow, ActionRow, MessageCursor };
 
 /** A model proposal that has been persisted and is awaiting the user's word. */
 export type StagedAction = { row: ActionRow; action: CoachAction };
@@ -121,7 +121,7 @@ export async function openThread(
 /** The page before `before`, oldest-first, ready to prepend. */
 export async function olderMessages(
   conversationId: string,
-  before: string,
+  before: MessageCursor,
 ): Promise<RepoResult<{ messages: MessageRow[]; hasMore: boolean }>> {
   const page = await fetchMessagesPage(conversationId, before, MESSAGE_PAGE_SIZE);
   if (!page.ok) return page;
@@ -145,10 +145,6 @@ export function renameThread(id: string, title: string): Promise<RepoResult<Conv
  */
 export function setThreadProject(id: string, projectId: string | null): Promise<RepoResult<ConversationRow>> {
   return setConversationProject(id, projectId);
-}
-
-export function deleteThread(id: string): Promise<RepoResult<true>> {
-  return deleteConversation(id);
 }
 
 /**
@@ -189,7 +185,11 @@ export type CoachTurnInput = {
   /** One key per attempt, so a retry replays the first charge. */
   requestId: string;
   invoke: (body: Record<string, unknown>) => Promise<CoachInvokeResult>;
-  /** Progress hooks so the screen can render the turn as it happens. */
+  /**
+   * Progress hooks so the screen can render the turn as it happens. The user row is idempotent:
+   * the same `requestId` returns the existing row, so `onUserMessage` can fire a second time for a
+   * row already shown; the store's id check keeps it from being drawn twice.
+   */
   onConversationCreated?: (row: ConversationRow) => void;
   onUserMessage?: (row: MessageRow) => void;
 };
@@ -214,7 +214,9 @@ export type CoachTurn = {
  * about to be torn down.
  *
  * On failure nothing is fabricated. The user message stays as sent and the
- * same `request_id` can be retried without paying twice.
+ * same `request_id` can be retried without paying twice. The user row is
+ * idempotent: a retry with the same `request_id` gets the existing row back
+ * (so `onUserMessage` may fire again for it; the store's id check closes that).
  */
 export async function runCoachTurn(input: CoachTurnInput): Promise<RepoResult<CoachTurn>> {
   const msg = input.text.trim();
@@ -255,7 +257,16 @@ export async function runCoachTurn(input: CoachTurnInput): Promise<RepoResult<Co
   const assistantRow = await insertMessage({
     conversationId, role: 'assistant', content: reply, requestId: input.requestId,
   });
-  if (!assistantRow.ok) return assistantRow;
+  if (!assistantRow.ok) {
+    if (assistantRow.code === '42501') {
+      return {
+        ok: false,
+        error: 'Yanıt kaydedilemedi. Biraz sonra tekrar dene; ücret alındıysa süre dolunca iade edilir.',
+        code: '42501',
+      };
+    }
+    return assistantRow;
+  }
 
   // Validated from scratch no matter what the server already did, and a
   // rejected suggestion is simply dropped: the answer above was paid for and

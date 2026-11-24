@@ -11,6 +11,9 @@
  *                    refresh keeps `ready` and marks the status stale.
  *   account race     A's late answer is not written into B's state.
  */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('expo-secure-store', () => require('../helpers/secureStoreFake').createSecureStoreModule());
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createMockDb, makeSupabaseMock, type MockDb } from '../helpers/supabaseMock';
 

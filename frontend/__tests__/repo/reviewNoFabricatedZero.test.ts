@@ -55,4 +55,22 @@ describe('review screens never fabricate a 0 from a failed fetch', () => {
     const w = windowAfter(bad, 'const completedLogCount');
     expect(w).toMatch(/:\s*0\b/);
   });
+
+  it('F13 INT-06 -- weekly-review.tsx const rate yields null, never 0, when logsRes fails', () => {
+    const w = windowAfter(src, 'const rate');
+    expect(w).not.toBe('');
+    expect(w).toMatch(/logsRes\.ok/);
+    expect(w).toMatch(/:\s*null\s*;/);
+    expect(w).not.toMatch(/:\s*0\b/);
+    expect(windowAfter('const rate = logsRes.ok ? 1 : 0;', 'const rate')).toMatch(/:\s*0\b/);
+  });
+
+  it('F13 INT-06 -- monthly-review.tsx const rate yields null, never 0, when logsRes fails', () => {
+    const monthlySrc = read('app/screens/monthly-review.tsx');
+    const w = windowAfter(monthlySrc, 'const rate');
+    expect(w).not.toBe('');
+    expect(w).toMatch(/logsRes\.ok/);
+    expect(w).toMatch(/:\s*null\s*;/);
+    expect(w).not.toMatch(/:\s*0\b/);
+  });
 });

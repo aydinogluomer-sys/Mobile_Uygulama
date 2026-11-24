@@ -23,15 +23,25 @@ function test(name, fn) {
 
 function read(p) { return fs.readFileSync(p, 'utf8'); }
 function exists(p) { return fs.existsSync(p); }
+const catalog = exists('./locales/tr.json') ? JSON.parse(read('./locales/tr.json')) : {};
+function rendersKey(src, key, text) {
+  return new RegExp("\\bt\\(\\s*['\"]" + key.replace(/\./g, '\\.') + "['\"]").test(src) && catalog[key] === text;
+}
 
 console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('  ATLAS POS v2 — TAM TEST SÜİTİ');
+console.log('  ADERYTH — YAPISAL KAPI');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
 // 1. TypeScript
 console.log('\n📋 1. TypeScript');
 test('0 hata', () => {
-  try { execSync('npx tsc --noEmit', { stdio: 'pipe' }); return true; }
+  try {
+    execSync('node --max-old-space-size=4096 node_modules/typescript/bin/tsc --noEmit -p tsconfig.ci.json', {
+      stdio: 'pipe',
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    return true;
+  }
   catch(e) { return (e.stdout || e.stderr || '').toString().slice(0, 200); }
 });
 
@@ -119,11 +129,11 @@ test('drawerStore open/close/toggle', () => {
 
 // 5. Bugün ekranı
 console.log('\n☀️  5. Bugün Ekranı');
-const today = read('./app/tabs/today.tsx');
+const today = ['./app/tabs/today.tsx', './hooks/useTodayModel.ts', './components/today/HabitSection.tsx'].filter(exists).map(read).join('\n');
 test('Alışkanlık metrik kartı', () => today.includes('completedHabits') && today.includes('activeHabits'));
 test('Görev metrik kartı', () => today.includes('todayTasks') || today.includes('dueToday'));
-test('İrade bandı', () => today.includes('WillpowerBand') && today.includes('İrade'));
-test('Bugünün alışkanlıkları listesi', () => today.includes('RİTÜELLER · BUGÜN') && today.includes('activeHabits'));
+test('İrade bandı', () => today.includes('WillpowerBand') && rendersKey(today, 'today.willpower.title', 'İrade dengesi'));
+test('Bugünün alışkanlıkları listesi', () => rendersKey(today, 'today.rituals.overline', 'RİTÜELLER · BUGÜN') && today.includes('activeHabits'));
 test('Bekleyen görevler listesi', () => today.includes('pendingTasks') || today.includes('YAKLAŞAN'));
 test('Quick grid KALDIRILDI', () => !today.includes('QUICK_ITEMS'));
 test('/tabs/timeline yönlendirmesi', () => today.includes('/tabs/timeline'));
@@ -160,7 +170,7 @@ test('Ölçülebilir alışkanlık + MeasurableInputModal', () =>
   routesByMeasurability && tl.includes('MeasurableInputModal'));
 test('XP gösterimi', () => tl.includes('xp'));
 test('Willpower bandı', () => tl.includes('wp') && tl.includes('daily_budget'));
-test('Aktif alışkanlık boş durumu', () => tl.includes('Aktif alışkanlık yok') && tl.includes('EmptyState'));
+test('Aktif alışkanlık boş durumu', () => rendersKey(tl, 'habits.active.empty.title', 'Aktif alışkanlık yok') && tl.includes('EmptyState'));
 
 // 8. Okuma Listesi
 console.log('\n📚 8. Okuma Listesi');
@@ -168,7 +178,7 @@ const rl = read('./app/screens/reading-list.tsx');
 test('3 status tab', () => rl.includes('want_to_read') && rl.includes('reading') && rl.includes('completed'));
 test('5 tür (book/article/video/podcast/other)', () => ['book','article','video','podcast','other'].every(t => rl.includes(t)));
 test('StarRating bileşeni', () => rl.includes('StarRating'));
-test('Alert silme onayı', () => rl.includes('Alert') && rl.includes('Sil'));
+test('Silme onayı (platform-güvenli diyalog)', () => rl.includes('confirm(') && rl.includes('Sil') && !/\bAlert\.alert/.test(rl));
 test('FAB ekle butonu', () => rl.includes('fab'));
 const rls = read('./store/readingListStore.ts');
 test('readingListStore metodları', () => ['fetchItems','addItem','updateStatus','updateRating','removeItem'].every(m => rls.includes(m)));
@@ -240,9 +250,10 @@ test('taskStore Task tipi kullanılıyor', () => adhd.includes('taskStore'));
 // uygulamanın çalışma anında yüzeye çıkardığı bir şeydir, yapısal bir geçidin
 // iddia edebileceği bir şey değil.
 console.log('\n🔌 11. Supabase & Env');
+const envSrc = read('./lib/env.ts');
 const sl = read('./lib/supabase.ts');
-test('SUPABASE_URL ortam değişkeninden okunuyor', () => sl.includes('EXPO_PUBLIC_SUPABASE_URL'));
-test('ANON_KEY ortam değişkeninden okunuyor', () => sl.includes('EXPO_PUBLIC_SUPABASE_ANON_KEY'));
+test('SUPABASE_URL ortam değişkeninden okunuyor', () => envSrc.includes('EXPO_PUBLIC_SUPABASE_URL'));
+test('ANON_KEY ortam değişkeninden okunuyor', () => envSrc.includes('EXPO_PUBLIC_SUPABASE_ANON_KEY'));
 test('createClient çağrısı', () => sl.includes('createClient'));
 
 // 12. CommandPalette
@@ -272,7 +283,7 @@ test('Ayarlar export JSON+CSV+Excel', () =>
 const frm = read('./components/focus/FocusReportModal.tsx');
 test('Rapor footer Excel butonu', () => frm.includes("exportData('excel')") && frm.includes('toExcelXML'));
 test('Ayarları sıfırla geri bildirimi', () =>
-  fsm.includes('haptic.success') && fsm.includes('varsayılana döndürüldü') && fsm.includes('DEFAULT_SETTINGS'));
+  fsm.includes('haptic.success') && rendersKey(fsm, 'focus.settings.reset.done', 'Odak ayarları varsayılana döndürüldü.') && fsm.includes('DEFAULT_SETTINGS'));
 // Platform-güvenli dışa aktarma: web=indir, native=Share (Alert/Share Modal üstünde açılmaz sorunu)
 test('Dışa aktarma platform-güvenli (web indir)', () =>
   fsm.includes('webDownload') && fsm.includes("Platform.OS === 'web'") &&
@@ -296,7 +307,8 @@ test('focus.tsx Spotify kartı render', () => {
 });
 test('Odak konusu adlandırma + başlat-öncesi seçim zorunlu', () => {
   const f = read('./app/tabs/focus.tsx');
-  return f.includes('ODAK KONUSU') && !f.includes('ODAK GÖREVLERİ') &&
+  return rendersKey(f, 'focus.topic.overline', 'ODAK KONUSU') && !f.includes('ODAK GÖREVLERİ') &&
+    !Object.values(catalog).some(v => v.includes('ODAK GÖREVLERİ')) &&
     f.includes("phase === 'work' && !selectedTaskId") && f.includes('startHint');
 });
 test('Seans tamamlandı raporu (timer bitince)', () => {
@@ -308,8 +320,8 @@ test('Seans tamamlandı raporu (timer bitince)', () => {
 });
 test('Seans raporu grafikleri (gerçek veri)', () => {
   const m = read('./components/focus/FocusSessionCompleteModal.tsx');
-  return m.includes('ODAK SAATLERİ') && m.includes('buckets') && m.includes('byTask') &&
-    m.includes('GÖREVE GÖRE SÜRE') && m.includes('focus_sessions');
+  return rendersKey(m, 'focus.complete.hours.overline', 'ODAK SAATLERİ') && m.includes('buckets') && m.includes('byTask') &&
+    rendersKey(m, 'focus.complete.byTask.overline', 'GÖREVE GÖRE SÜRE') && m.includes('focus_sessions');
 });
 
 // 16. Seasonal Ambient Motion (takvim)
@@ -346,8 +358,10 @@ test('monthly-review: kapak + hareket + sayfa çevirme', () => {
 test('MONTH_TAGLINES_TR tek kaynak (config)', () => smCfg.includes('MONTH_TAGLINES_TR') && cal.includes('MONTH_TAGLINES_TR'));
 const setg = read('./app/tabs/settings.tsx');
 test('Ayarlar: Arka plan animasyonları (Kapalı/Hafif/Normal)', () =>
-  setg.includes('Arka plan animasyonları') && setg.includes('setSeasonalMotion') &&
-  ['Kapalı','Hafif','Normal'].every((l) => setg.includes(l)));
+  rendersKey(setg, 'settings.motion.title', 'Arka plan animasyonları') && setg.includes('setSeasonalMotion') &&
+  rendersKey(setg, 'settings.motion.off', 'Kapalı') &&
+  rendersKey(setg, 'settings.motion.subtle', 'Hafif') &&
+  rendersKey(setg, 'settings.motion.normal', 'Normal'));
 const thm = read('./store/themeStore.ts');
 test('themeStore seasonalMotion + persist', () =>
   thm.includes('seasonalMotion') && thm.includes('setSeasonalMotion') && thm.includes('app_seasonal_motion'));
@@ -376,7 +390,7 @@ test('today.tsx: hero + metrik ızgarası mount', () =>
 test('components/today/NextUpStrip.tsx + Sırada mount', () => {
   if (!exists('./components/today/NextUpStrip.tsx')) return 'yok';
   const ns = read('./components/today/NextUpStrip.tsx');
-  return ns.includes('SIRADA') && ns.includes('dueLabel') &&
+  return rendersKey(ns, 'today.nextUp.overline', 'AKIŞ / SIRADA') && ns.includes('dueLabel') &&
     todayTsx.includes('<NextUpStrip') && todayTsx.includes('nextUpItems');
 });
 console.log('\n⚡ 18. Satır-içi görev ekleyici (FAZ 3)');
@@ -401,7 +415,7 @@ console.log('\n🌙 20. Telafi rail + editöryel boş durum (FAZ 5)');
 test('components/today/RecoveryRailCard.tsx + mount', () => {
   if (!exists('./components/today/RecoveryRailCard.tsx')) return 'yok';
   const rc = read('./components/today/RecoveryRailCard.tsx');
-  return rc.includes('Telafi · son 7 gün') && rc.includes("status === 'planned'") &&
+  return rendersKey(rc, 'today.recovery.rail.title', 'Telafi · son 7 gün') && rc.includes("status === 'planned'") &&
     todayTsx.includes('<RecoveryRailCard');
 });
 test('EmptyState editorial varyantı + today kullanımı', () => {
@@ -429,7 +443,7 @@ test('useAccent: Button + tab bar + TodayHero', () => {
 });
 test('settings: Aksan rengi seçici', () => {
   const sg = read('./app/tabs/settings.tsx');
-  return sg.includes('Aksan rengi') && sg.includes('setAccent') && sg.includes('accentDot');
+  return rendersKey(sg, 'settings.accent.title', 'Aksan rengi') && sg.includes('setAccent') && sg.includes('accentDot');
 });
 console.log('\n📁 22. Proje detay görünümü (FAZ 7)');
 test('projects.tsx: detay modal + ilerleme + görev listesi', () => {

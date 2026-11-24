@@ -2,18 +2,14 @@ import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Modal, Alert,
+  TextInput,
 } from 'react-native';
+import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  AnimatedMetricValue,
-  AtmosphericScreenCanvas,
-  ChapterDivider,
-  EditorialBanner,
-  EmbeddedFiligree,
-  Skeleton,
-} from '../../components/ui';
+import { EditorialBanner, FormError, LoadErrorState, listState, SheetModal, Skeleton } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
+import { AnimatedMetricValue } from '../../components/motion';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { useDeepWorkStore } from '../../store/deepWorkStore';
 import { todayLocal } from '../../lib/date';
@@ -25,11 +21,12 @@ const QUICK_DURATIONS = [25, 45, 60, 90];
 export default function DeepWorkScreen() {
   const { width } = useWindowDimensions();
   const isWide = width >= 920;
-  const { sessions, loading, loadSessions, addSession, removeSession, todayMinutes, weekMinutes } = useDeepWorkStore();
+  const { sessions, loading, error: loadError, loadSessions, addSession, removeSession, todayMinutes, weekMinutes } = useDeepWorkStore();
   const [modal, setModal] = useState(false);
   const [subject, setSubject] = useState('');
   const [minutes, setMinutes] = useState('60');
   const [entryError, setEntryError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
@@ -120,6 +117,8 @@ export default function DeepWorkScreen() {
               </TouchableOpacity>
             </View>
 
+            <FormError message={actionError} />
+
             {loading ? (
               Array.from({ length: 3 }, (_, i) => (
                 <View key={i} style={s.sessionRow}>
@@ -128,6 +127,8 @@ export default function DeepWorkScreen() {
                   <Skeleton width={44} height={12} />
                 </View>
               ))
+            ) : listState({ loading, error: loadError, count: sessions.length }) === 'error' ? (
+              <LoadErrorState what="Seanslar" onRetry={() => { void loadSessions(); }} />
             ) : todaySessions.length === 0 ? (
               <View style={s.emptyCard}>
                 <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="bottom-right" size={120} opacity={0.14} />
@@ -145,10 +146,12 @@ export default function DeepWorkScreen() {
                   <Text style={[s.sessionDuration, { color: colors.teal }]}>{formatMins(sess.duration_minutes)}</Text>
                   <TouchableOpacity
                     style={s.deleteBtn}
-                    onPress={() => Alert.alert('Sil', 'Bu seans silinsin mi?', [
-                      { text: 'İptal' },
-                      { text: 'Sil', style: 'destructive', onPress: () => removeSession(sess.id) },
-                    ])}
+                    onPress={async () => {
+                      if (await confirm({ title: 'Sil', message: 'Bu seans silinsin mi?', confirmText: 'Sil', destructive: true })) {
+                        const ok = await removeSession(sess.id);
+                        setActionError(ok ? null : (useDeepWorkStore.getState().error ?? 'Seans silinemedi.'));
+                      }
+                    }}
                     accessibilityRole="button"
                     accessibilityLabel={`${sess.subject} seansını sil`}
                   >
@@ -179,73 +182,75 @@ export default function DeepWorkScreen() {
       </ScrollView>
 
       {/* Seans ekle modal */}
-      <Modal visible={modal} transparent animationType="slide" onRequestClose={() => setModal(false)}>
-        <View style={s.modalBg}>
-          <View style={s.modalCard}>
-            <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="top-right" size={110} opacity={0.14} />
-            <View style={s.modalHead}>
-              <Text style={s.modalTitle} accessibilityRole="header">Seans Ekle</Text>
-              <TouchableOpacity
-                onPress={() => setModal(false)}
-                accessibilityRole="button"
-                accessibilityLabel="Kapat"
-              >
-                <Ionicons name="close" size={20} color={colors.textFaint} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={s.fieldLabel}>Konu / Proje</Text>
-            <TextInput
-              style={s.input}
-              placeholder="Ne üzerine çalıştın?"
-              placeholderTextColor={colors.textFaint}
-              value={subject}
-              onChangeText={setSubject}
-              autoFocus
-            />
-
-            <Text style={s.fieldLabel}>Aktif süre (molalar hariç)</Text>
-            <View style={s.quickRow}>
-              {QUICK_DURATIONS.map((d) => (
-                <TouchableOpacity
-                  key={d}
-                  style={[s.quickBtn, minutes === String(d) && s.quickBtnActive]}
-                  onPress={() => { setMinutes(String(d)); setEntryError(null); }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${d} dakika`}
-                  accessibilityState={{ selected: minutes === String(d) }}
-                >
-                  <Text style={[s.quickBtnText, minutes === String(d) && s.quickBtnTextActive]}>
-                    {d}dk
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TextInput
-              style={s.input}
-              placeholder="Dakika (özel)"
-              placeholderTextColor={colors.textFaint}
-              value={minutes}
-              onChangeText={(t) => { setMinutes(t); setEntryError(null); }}
-              keyboardType="numeric"
-            />
-            {entryError && (
-              <Text style={s.entryError} accessibilityRole="alert">{entryError}</Text>
-            )}
-
-            <TouchableOpacity
-              style={[s.saveBtn, (!subject.trim() || !minutes) && s.saveBtnDisabled]}
-              onPress={handleAdd}
-              disabled={!subject.trim() || !minutes}
-              accessibilityRole="button"
-              accessibilityLabel="Kaydet"
-              accessibilityState={{ disabled: !subject.trim() || !minutes }}
-            >
-              <Text style={s.saveBtnText}>Kaydet</Text>
-            </TouchableOpacity>
-          </View>
+      <SheetModal
+        visible={modal}
+        align="bottom"
+        onClose={() => setModal(false)}
+        sheetStyle={s.modalCard}
+        accessibilityLabel="Seans Ekle"
+      >
+        <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="top-right" size={110} opacity={0.14} />
+        <View style={s.modalHead}>
+          <Text style={s.modalTitle} accessibilityRole="header">Seans Ekle</Text>
+          <TouchableOpacity
+            onPress={() => setModal(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Kapat"
+          >
+            <Ionicons name="close" size={20} color={colors.textFaint} />
+          </TouchableOpacity>
         </View>
-      </Modal>
+
+        <Text style={s.fieldLabel}>Konu / Proje</Text>
+        <TextInput
+          style={s.input}
+          placeholder="Ne üzerine çalıştın?"
+          placeholderTextColor={colors.textFaint}
+          value={subject}
+          onChangeText={setSubject}
+          autoFocus
+        />
+
+        <Text style={s.fieldLabel}>Aktif süre (molalar hariç)</Text>
+        <View style={s.quickRow}>
+          {QUICK_DURATIONS.map((d) => (
+            <TouchableOpacity
+              key={d}
+              style={[s.quickBtn, minutes === String(d) && s.quickBtnActive]}
+              onPress={() => { setMinutes(String(d)); setEntryError(null); }}
+              accessibilityRole="button"
+              accessibilityLabel={`${d} dakika`}
+              accessibilityState={{ selected: minutes === String(d) }}
+            >
+              <Text style={[s.quickBtnText, minutes === String(d) && s.quickBtnTextActive]}>
+                {d}dk
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TextInput
+          style={s.input}
+          placeholder="Dakika (özel)"
+          placeholderTextColor={colors.textFaint}
+          value={minutes}
+          onChangeText={(t) => { setMinutes(t); setEntryError(null); }}
+          keyboardType="numeric"
+        />
+        {entryError && (
+          <Text style={s.entryError} accessibilityRole="alert">{entryError}</Text>
+        )}
+
+        <TouchableOpacity
+          style={[s.saveBtn, (!subject.trim() || !minutes) && s.saveBtnDisabled]}
+          onPress={handleAdd}
+          disabled={!subject.trim() || !minutes}
+          accessibilityRole="button"
+          accessibilityLabel="Kaydet"
+          accessibilityState={{ disabled: !subject.trim() || !minutes }}
+        >
+          <Text style={s.saveBtnText}>Kaydet</Text>
+        </TouchableOpacity>
+      </SheetModal>
     </SafeAreaView>
   );
 }
@@ -292,9 +297,8 @@ const s = StyleSheet.create({
     backgroundColor: hexA(colors.surface, 0.9), borderRadius: 14, borderWidth: 1, borderColor: colors.border,
   },
   emptyText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
-  emptyHint: { fontSize: 12, color: colors.textGhost, textAlign: 'center' },
+  emptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
 
-  modalBg: { flex: 1, backgroundColor: hexA(colors.black, 0.7), justifyContent: 'flex-end' },
   modalCard: { overflow: 'hidden', position: 'relative', backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: colors.border },
   modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 18, fontWeight: '700', color: colors.white },

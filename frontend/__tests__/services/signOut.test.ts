@@ -5,6 +5,9 @@
  * memory, in the read cache and in its transient keys. Unsent work is never removed: it waits under
  * the account's own key for the same account. A failed sign-out clears nothing (no false success).
  */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('expo-secure-store', () => require('../helpers/secureStoreFake').createSecureStoreModule());
+
 const mockAuth = {
   uid: 'A' as string | null,
   signOutError: null as null | { message: string; name?: string },

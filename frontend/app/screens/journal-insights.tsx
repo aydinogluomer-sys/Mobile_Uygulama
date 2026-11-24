@@ -15,11 +15,17 @@ import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { ACTION_COST } from '../../lib/subscription';
 import { periodWindow, InsightPeriod } from '../../lib/journalStats';
 import { insightBasis, insightFacts, insightPrompt } from '../../lib/journalInsightContext';
-import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../../lib/aiAttempt';
+import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE, IN_PROGRESS_NOTE, retryWhileInProgress } from '../../lib/aiAttempt';
 import { decimalTR } from '../../lib/chartText';
 import { extractInvokeError } from '../../lib/aiInvoke';
-import { AtmosphericScreenCanvas, EmptyState, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { EmptyState, EditorialBanner } from '../../components/ui';
+import YearInPixels from '../../components/journal/YearInPixels';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
+import { todayLocal } from '../../lib/date';
+import { dailyMoods } from '../../lib/moods';
+import { buildYearPixels, YEAR_PIXELS_SCOPE_NOTE_DEVICE } from '../../lib/yearPixels';
+import { useMoodStore } from '../../store/moodStore';
 
 const PERIODS: { key: InsightPeriod; label: string }[] = [
   { key: 'weekly', label: 'Haftalık' },
@@ -33,7 +39,9 @@ const insightAttempt = createAttemptKeeper(newRequestId);
 
 export default function JournalInsightsScreen() {
   const router = useRouter();
-  const { entries, fetchEntries } = useJournalStore();
+  const { entries, fetchEntries, truncated } = useJournalStore();
+  const checkins = useMoodStore((st) => st.checkins);
+  const hydrateMoods = useMoodStore((st) => st.hydrate);
   const { get: getCached, fetchInsight, saveInsight } = useInsightsStore();
   const { focusPoints, fetch: fetchSub, setBalance } = useSubscriptionStore();
 
@@ -66,7 +74,21 @@ export default function JournalInsightsScreen() {
     : null;
 
   useEffect(() => { fetchEntries(); fetchSub(); }, [fetchEntries, fetchSub]);
+  useEffect(() => { void hydrateMoods(); }, [hydrateMoods]);
   useEffect(() => { fetchInsight(period, win.key); setError(null); setLowCredits(false); }, [period, win.key, fetchInsight]);
+
+  const yearModel = useMemo(() => {
+    if (period !== 'yearly') return null;
+    const moods = dailyMoods(
+      checkins,
+      entries.map((e) => ({ date: e.date, mood: e.mood })),
+    );
+    return buildYearPixels({
+      year: Number(win.key),
+      moods,
+      todayYmd: todayLocal(),
+    });
+  }, [period, win.key, checkins, entries]);
 
   async function generate() {
     if (loading || prompt.used.length === 0) return;
@@ -78,16 +100,20 @@ export default function JournalInsightsScreen() {
     const requestId = insightAttempt.begin(`${period}|${win.key}|${text}`);
 
     try {
-      const { data, error: invErr } = await withEdgeDeadline('Günlük içgörüsü', (signal) =>
-        supabase.functions.invoke('generate-routine', {
-        signal,
-        body: { mode: 'insights', period, entries: text, request_id: requestId },
-      }));
+      const outcome = await retryWhileInProgress(
+        () => withEdgeDeadline('Günlük içgörüsü', (signal) =>
+          supabase.functions.invoke('generate-routine', {
+            signal,
+            body: { mode: 'insights', period, entries: text, request_id: requestId },
+          })),
+      );
+      const { data, error: invErr } = outcome;
 
       if (invErr && isNoAnswer(invErr)) throw invErr;
+      if (outcome.stillInProgress) { setError(IN_PROGRESS_NOTE); return; }
       insightAttempt.answered();
       if (invErr) {
-        const { msg, code, balance } = await extractInvokeError(invErr);
+        const { msg, code, balance } = outcome.errorInfo ?? await extractInvokeError(invErr);
         if (typeof balance === 'number') setBalance(balance);
         if (code === 'INSUFFICIENT_CREDITS') setLowCredits(true);
         throw new Error(msg);
@@ -157,6 +183,14 @@ export default function JournalInsightsScreen() {
           <Text style={s.metaCount}>{periodEntries.length} kayıt</Text>
         </View>
 
+        {period === 'yearly' && yearModel && (
+          <YearInPixels
+            model={yearModel}
+            truncated={Boolean(truncated)}
+            scopeNote={YEAR_PIXELS_SCOPE_NOTE_DEVICE}
+          />
+        )}
+
         {periodEntries.length === 0 ? (
           <EmptyState
             icon="bulb-outline"
@@ -220,6 +254,7 @@ export default function JournalInsightsScreen() {
                   );
                 })}
               </View>
+              <Text style={s.cardMeta}>Seçili kayıtların metni, içgörü oluşturduğunda Anthropic’e gönderilir (en fazla 8000 karakter). Ayrıntı Gizlilik ekranında.</Text>
             </View>
 
             {error && (

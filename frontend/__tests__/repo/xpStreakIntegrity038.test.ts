@@ -351,7 +351,7 @@ describe('038: the SQL behaviour test and the known-red list', () => {
 
   it('expected_failures.txt has no line justified by 036 or 038 (they close their holes)', () => {
     const lines = read('supabase/tests/expected_failures.txt').split('\n').filter((l) => l.trim() && !l.trim().startsWith('#'));
-    expect(lines.length).toBeGreaterThan(0); // F09 still owes its 20 lines
+    // F09 (040_privilege_hygiene.sql) closed and removed all 20 remaining T02b_search_path.* lines.
     expect(lines.filter((l) => /\b03[68]\b/.test(l))).toEqual([]);
   });
 });
@@ -486,7 +486,7 @@ describe('038: the client half of the contract', () => {
     expect(body.length).toBeGreaterThan(500);
     const check = body.indexOf('if (!isLoggableDay(dateStr)) return Promise.resolve({ ok: false, error: LOGGABLE_DAY_MESSAGE });');
     expect(check).toBeGreaterThan(-1);
-    for (const later of ['buildOptimisticLog(', 'enqueueOp(', 'saveSyncQueue(', 'serialise(']) {
+    for (const later of ['buildOptimisticLog(', 'habitChannel.ensure(', 'habitChannel.write(']) {
       expect({ later, after: body.indexOf(later) > check }).toEqual({ later, after: true });
     }
   });

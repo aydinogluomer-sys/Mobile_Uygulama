@@ -25,6 +25,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { catalog, rendersKey } from '../helpers/catalog';
 import { stripComments } from '../helpers/sourceText';
 
 const ROOT = join(__dirname, '..', '..');
@@ -54,7 +55,7 @@ describe('the scan reads real content', () => {
   it('the export section is still there to be checked', () => {
     // Positive control: every negative assertion below would pass if the
     // feature had simply been deleted.
-    expect(visible(settings)).toContain('Verileri Dışa Aktar');
+    expect(rendersKey(visible(settings), 'settings.export.title', 'Verileri Dışa Aktar')).toBe(true);
     expect(visible(service)).toContain('export function backupToCSV');
   });
 });
@@ -62,12 +63,16 @@ describe('the scan reads real content', () => {
 describe('nothing user-facing calls it a backup', () => {
   it('the share sheet no longer offers a "Veri Yedeği"', () => {
     expect(visible(settings)).not.toContain('Veri Yedeği');
-    expect(visible(settings)).toContain('Veri Dışa Aktarımı');
+    expect(Object.values(catalog).some((v) => v.includes('Veri Yedeği'))).toBe(false);
+    expect(
+      rendersKey(visible(settings), 'settings.export.shareTitle', 'Aderyth Veri Dışa Aktarımı ({format})'),
+    ).toBe(true);
   });
 
   it('the incomplete-read alert no longer says "Yedek eksik"', () => {
     expect(visible(settings)).not.toContain('Yedek eksik');
-    expect(visible(settings)).toContain('Dışa aktarım eksik');
+    expect(Object.values(catalog).some((v) => v.includes('Yedek eksik'))).toBe(false);
+    expect(rendersKey(visible(settings), 'settings.export.failed.title', 'Dışa aktarım eksik')).toBe(true);
   });
 
   it('the CSV banner is an export, not a backup', () => {
@@ -76,15 +81,13 @@ describe('nothing user-facing calls it a backup', () => {
   });
 
   it('the UI says outright that there is no FULL restore, and names what never comes back', () => {
-    // The one place the word may still appear: it appears in order to be
-    // denied. Checked as rendered text, not as a string literal.
-    // R08 revisited this: a checked, partial merge now exists (see below),
-    // so "geri yükleme yoktur" became "tam geri yükleme yoktur" -- and the
-    // screen must name what is never restored, so the partial merge cannot
-    // read as a full one.
-    expect(visible(settings)).toContain('Bu tam bir yedek değildir');
-    expect(visible(settings)).toContain('tam geri yükleme yoktur');
-    expect(visible(settings)).toMatch(/alışkanlık\s+kayıtları, odak oturumları ve webhook/);
+    expect(
+      rendersKey(
+        visible(settings),
+        'settings.export.disclaimer',
+        "Bu tam bir yedek değildir — tam geri yükleme yoktur. JSON dosyası aşağıda doğrulanıp eksik kayıtlar hesabına eklenebilir; alışkanlık kayıtları, odak oturumları ve webhook'lar geri yüklenemez. Dışa aktarım tüm alışkanlık kayıtlarını (yapıldı, kısmen, atlandı, kaçırıldı) notlarıyla içerir.",
+      ),
+    ).toBe(true);
   });
 });
 
@@ -117,6 +120,8 @@ describe('no import path exists', () => {
     const repo = stripComments(readFileSync(join(ROOT, 'repositories', 'restoreRepository.ts'), 'utf8'));
     expect(repo).not.toMatch(/\.update\(|\.upsert\(|\.delete\(/);
     expect(repo).not.toMatch(/'habit_logs'|'focus_sessions'|'webhooks'/);
+    const exportRepo = stripComments(readFileSync(join(ROOT, 'repositories', 'exportRepository.ts'), 'utf8'));
+    expect(exportRepo).not.toMatch(/\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
   });
 
   it('the file still says WHY, so the next person does not rediscover it', () => {

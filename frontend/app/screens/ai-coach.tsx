@@ -1,9 +1,6 @@
 import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { Image } from 'expo-image';
-import { withEdgeDeadline } from '../../lib/edgeCall';
-import { newRequestId } from '../../services/focusPointService';
-import { invokeAiWithStream } from '../../services/aiStreamService';
-import { useState, useRef, useEffect, useCallback, Fragment } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Modal,
@@ -11,15 +8,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, Stack } from 'expo-router';
-import { supabase, type Habit } from '../../lib/supabase';
+import { navigateTo } from '../../lib/destinations';
+import type { Habit } from '../../lib/supabase';
 import { useHabitStore } from '../../store/habitStore';
 import { useTaskStore } from '../../store/taskStore';
 import { useWillpowerStore } from '../../store/willpowerStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useJournalStore } from '../../store/journalStore';
 import { ACTION_COST } from '../../lib/subscription';
-import { extractInvokeError } from '../../lib/aiInvoke';
-import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../../lib/aiAttempt';
 import { todayLocal, ymd, addDaysLocal, parseLocalDate } from '../../lib/date';
 import { habitCompletionRate, weekdayBreakdown, bestWeekday, worstWeekday, recoverySuccessRate } from '../../lib/behaviorIntelligence';
 import { planFromRow } from '../../lib/recovery';
@@ -37,6 +33,7 @@ import {
 import CoachActionCard, { type StagedCoachAction, type ClarifyAnswer } from '../../components/coach/CoachActionCard';
 // R09.02 — the second action set (gated): its own card, its own checks.
 import CoachActionCardV2 from '../../components/coach/CoachActionCardV2';
+import CoachMessageList, { type CoachMessage } from '../../components/coach/CoachMessageList';
 import { habitFingerprint, isV2Type, staleness, type CoachActionV2 } from '../../lib/coachActionsV2';
 import { completionFor, stateForValue } from '../../services/habitLogService';
 import { firstMissingSemantic } from '../../lib/coachClarify';
@@ -44,18 +41,16 @@ import { sameUnit } from '../../lib/units';
 import type { ProposalHabit } from '../../lib/routineProposal';
 import { useRoutineStore } from '../../store/routineStore';
 import { useLogStore } from '../../store/logStore';
-import { useSpeechInput } from '../../hooks/useSpeechInput';
+import { useCoachSend } from '../../hooks/useCoachSend';
+import { splitAtSelection, useSpeechInput } from '../../hooks/useSpeechInput';
 import { useAiConversationStore } from '../../store/aiConversationStore';
 import ConversationSheet from '../../components/coach/ConversationSheet';
 import { useProjectStore } from '../../store/projectStore';
-import { AtmosphericScreenCanvas, EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { EmblemMedallion, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas } from '../../components/spatial';
 import { BENTO_ART, CANVASES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
-type Message = {
-  id: string;
-  role: 'user' | 'assistant' | 'error';
-  content: string;
-};
+type Message = CoachMessage;
 
 /**
  * What a completion MEANS for this habit, asked of the domain engine.
@@ -73,10 +68,6 @@ function derivedStateFor(
   if (completion.kind === 'value') return stateForValue(habit, completion.value);
   return completion.state === 'skip' ? 'miss' : completion.state;
 }
-
-// R09.06 — an unanswered coach message / summary keeps its request id for the resend.
-const coachAttempt = createAttemptKeeper(newRequestId);
-const summaryAttempt = createAttemptKeeper(newRequestId);
 
 const QUICK_PROMPT_ART = [BENTO_ART.coachAnalyze, BENTO_ART.coachSuggest, BENTO_ART.coachShield, BENTO_ART.coachPlan] as const;
 const QUICK_PROMPTS = [
@@ -131,33 +122,31 @@ export default function AICoachScreen() {
     ...(storeMessages.length === 0 ? [GREETING] : storeMessages.map((m) => ({ id: m.id, role: m.role, content: m.content }))),
     ...transient,
   ];
-  const setMessages = (updater: (prev: Message[]) => Message[]) => {
+  const setMessages = useCallback((updater: (prev: Message[]) => Message[]) => {
     // Only ever appends transient rows. Durable turns are written by the store.
     setTransient((prev) => {
       const next = updater([...prev]);
       return next.filter((m) => !storeMessages.some((sm) => sm.id === m.id) && m.id !== 'greeting');
     });
-  };
+  }, [storeMessages]);
+  const pushTransient = useCallback((m: Message) => {
+    setMessages((prev) => [...prev, m]);
+  }, [setMessages]);
+
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [streamingReply, setStreamingReply] = useState('');
-  const [insufficientCredits, setInsufficientCredits] = useState(false);
+  const inputRef = useRef('');
+  inputRef.current = input;
+  const selRef = useRef<{ start: number; end: number } | null>(null);
+  if (!input) selRef.current = null;
   const scrollRef = useRef<ScrollView>(null);
 
   // Günlüğe özetleme akışı
-  const [summarizing, setSummarizing] = useState(false);
   const [summaryModal, setSummaryModal] = useState(false);
   const [summaryText, setSummaryText] = useState('');
   const [summarySaving, setSummarySaving] = useState(false);
   const [summarySaved, setSummarySaved] = useState(false);
 
   // ── Conversational actions ────────────────────────────────────────────
-  //
-  // `staged` is the ONLY bridge between what the model suggested and what
-  // gets written, and it is plain app state rather than something parsed back
-  // out of chat history. That matters: "Evet" in a later message is not a
-  // confirmation of anything specific, whereas a staged action names the
-  // habit, the date and the completion, and the card shows all three.
   const [staged, setStaged] = useState<StagedCoachAction | null>(null);
   const [stagedV2, setStagedV2] = useState<CoachActionV2 | null>(null);
   const [stagedBusy, setStagedBusy] = useState(false);
@@ -171,8 +160,11 @@ export default function AICoachScreen() {
   const clearGenerated = useRoutineStore((s) => s.clearGenerated);
   const logHabitWrite = useLogStore((s) => s.logHabit);
 
-  /** Dictation fills the composer. It never sends — see the hook's own doc. */
-  const speech = useSpeechInput(setInput);
+  /** Dictation fills the composer without overwriting existing text. It never sends — see the hook's own doc. */
+  const speech = useSpeechInput(setInput, {
+    getBase: () => splitAtSelection(inputRef.current, selRef.current),
+    maxLength: 500,
+  });
 
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Leaving this screen must silence it: a half-read answer continuing to play
@@ -185,64 +177,51 @@ export default function AICoachScreen() {
 
   const hasConversation = messages.some((m) => m.role === 'user');
 
-  // Deterministic analytics summary (plan §13: "send walking_completion_30d
-  // = 72, monday_completion = 41, recovery_success = 80 -- not raw rows").
-  // Computed ONCE per screen visit from lib/behaviorIntelligence.ts (Phase 2's
-  // exact-arithmetic engine, the same one app/screens/insights.tsx uses) --
-  // never re-derived per message, and never blocking: a failure here leaves
-  // both pieces of state `null` and `send()` below falls back to the plain
-  // habit-name list it always sent, so an analytics hiccup can never break
-  // the coach itself (Gate D).
+  // Deterministic analytics summary computed ONCE per screen visit.
   const [analyticsHabits, setAnalyticsHabits] = useState<string[] | null>(null);
   const [analyticsSummary, setAnalyticsSummary] = useState<Record<string, string> | null>(null);
 
-  // Reopen the thread the user was last in. This is the reported defect:
-  // leaving AI Coach and returning must not silently start a fresh chat.
+  const { send, summarize, loading, summarizing, streamingReply, insufficientCredits } = useCoachSend({
+    activeId,
+    input,
+    setInput,
+    hasConversation,
+    habits,
+    tasks,
+    wp,
+    analyticsHabits,
+    analyticsSummary,
+    sendToStore,
+    setBalance,
+    pushTransient,
+  });
+
+  // Reopen the thread the user was last in.
   useEffect(() => { void hydrateConversations(); }, [hydrateConversations]);
 
-  // An error and a "✓ yazıldı" receipt belong to the thread they happened in.
-  // They are not conversation and are never persisted, so switching threads
-  // has to drop them -- otherwise thread A's "kredi yetersiz" sits underneath
-  // thread B's transcript, which is a leak even though no row moved.
+  // Transient receipts/errors belong to the thread they happened in.
   useEffect(() => { setTransient([]); }, [activeId]);
 
   useEffect(() => {
-    // The delay lets the new bubble lay out before scrolling to it. The
-    // cleanup is the part that matters: without it every message left a live
-    // timer behind, and on unmount those still fired and reached for a
-    // ScrollView that no longer exists.
     const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     return () => clearTimeout(t);
   }, [storeMessages, transient]);
 
-  // Deliberately a one-shot, not re-run when `habits` changes later in the
-  // session -- same intentional "fetch once on mount" scope as `fetchToday`/
-  // `fetchSub` above.
   const loadAnalyticsSummary = useCallback(async () => {
     try {
-      // Imperative read, not the `habits` binding from render: this is a
-      // one-shot and must not gain a dependency that re-runs it.
       const activeHabitRows = useHabitStore.getState().habits.filter((h) => h.status === 'active');
       if (activeHabitRows.length === 0) return;
 
       const today = new Date();
       const end = ymd(today);
-      // 8 weeks: clears weekdayBreakdown's MIN_WEEKDAY_SAMPLES (3) for most
-      // weekdays and is recoverySuccessRate's whole input window; short
-      // enough to stay a cheap, single-screen-visit fetch.
       const start = ymd(addDaysLocal(today, -55));
       const start30 = ymd(addDaysLocal(today, -29));
 
       const review = await loadReviewData({ start, end });
-      if (!review.ok) return; // best-effort -- see field doc
+      if (!review.ok) return;
       const logs = review.data.logs;
       const recoveryRes = { ok: true as const, data: review.data.recoveryPlans };
 
-      // Enriches the SAME `activeHabits` array the edge function already
-      // reads verbatim into its prompt (`ctx.activeHabits.join(', ')`) with
-      // each habit's real 30-day completion rate -- e.g. plan §13's own
-      // `walking_completion_30d = 72` example, computed via
-      // `habitCompletionRate`, never fabricated when data is insufficient.
       const enrichedHabits = activeHabitRows.slice(0, 20).map((h) => {
         const r = habitCompletionRate(h, logs, { start: start30, end });
         return r.ok ? `${h.name} (30g tamamlama: %${Math.round(r.value * 100)})` : h.name;
@@ -263,19 +242,12 @@ export default function AICoachScreen() {
       setAnalyticsHabits(enrichedHabits);
       setAnalyticsSummary(Object.keys(summary).length > 0 ? summary : null);
     } catch {
-      // best-effort -- see field doc above
+      // best-effort
     }
   }, []);
 
   useEffect(() => { fetchToday(); fetchSub(); loadAnalyticsSummary(); }, [fetchToday, fetchSub, loadAnalyticsSummary]);
 
-  /**
-   * Resolve a log against the user's REAL habits and show what it will mean.
-   *
-   * `derived` is the domain engine's answer, not this screen's: 10 against a
-   * target of 20 is `partial`, and the card says so BEFORE the write instead of
-   * the user finding out afterwards in the habit list.
-   */
   const stageLog = useCallback((query: string, date: string, completion: CoachLogCompletion) => {
     const resolution = resolveHabitQuery(query, habits);
     if (resolution.kind === 'none') { setStaged({ kind: 'nomatch', query }); return; }
@@ -285,9 +257,6 @@ export default function AICoachScreen() {
     }
     const habit = resolution.habit;
 
-    // "10 sayfa" against a habit measured in minutes is not a unit this app may
-    // reinterpret. Spellings of the SAME unit (dk / dakika) pass; a real
-    // disagreement becomes a question.
     if (completion.kind === 'value' && completion.unit && !sameUnit(completion.unit, habit.unit)) {
       setStaged({ kind: 'unitMismatch', habit, date, value: completion.value, unit: completion.unit });
       return;
@@ -296,16 +265,6 @@ export default function AICoachScreen() {
     setStaged({ kind: 'log', habit, date, completion, derived: derivedStateFor(habit, completion) });
   }, [habits]);
 
-  /**
-   * Validate, capacity-evaluate and preview a habit list -- or ask for the one
-   * field that is genuinely missing.
-   *
-   * Clarification comes BEFORE validation on purpose. A numeric habit with no
-   * target PASSES the validator (the semantic fields are optional there, and
-   * have to be, because packs and older callers omit them) and would install as
-   * a habit nothing can ever be logged against. Asking is the difference
-   * between "Kitap Oku" and "Kitap Oku, 20 dakika, her gün".
-   */
   const previewProposal = useCallback((title: string, goal: string, list: ProposalHabit[]) => {
     const gap = firstMissingSemantic(list);
     if (gap) {
@@ -320,20 +279,6 @@ export default function AICoachScreen() {
     setStaged({ kind: 'proposal', title, habits: list, evaluation: useRoutineStore.getState().evaluation });
   }, [stageCoachProposal]);
 
-  /**
-   * Turn a validated suggestion into something the user can look at.
-   *
-   * Nothing here writes. A habit is handed to the routine pipeline's validator
-   * and capacity engine (the same one packs and AI routines use) so the preview
-   * shows the REAL activate-vs-queue outcome rather than a guess; a log is
-   * resolved against the user's own habits and refuses to choose when two of
-   * them match.
-   *
-   * A PLAN stops one step earlier, at an offer. Three habits becoming a
-   * confirmation sheet the instant the model answers is a lot of screen for
-   * something the user only asked to see; "Bu Planı Alışkanlıklara Dönüştür" is
-   * where they say they meant it.
-   */
   const stageFromActions = useCallback((actions: CoachAction[]) => {
     const action = actions[0];
     if (!action) return;
@@ -354,19 +299,11 @@ export default function AICoachScreen() {
     if (action.type === 'log_habit') stageLog(action.habit_query, action.date, action.completion);
   }, [previewProposal, stageLog]);
 
-  /** The CTA under a plan. Still zero writes -- it opens the preview. */
   function handleAcceptPlan() {
     if (staged?.kind !== 'planOffer') return;
     previewProposal(staged.title, staged.goal, staged.habits);
   }
 
-  /**
-   * Fold one answered question back into the proposal and continue.
-   *
-   * The answer replaces exactly the field that was asked about; nothing else in
-   * the habit is touched, and the next gap (if any) is asked next. A habit
-   * missing both a target and a schedule costs two taps, not a form.
-   */
   function handleClarify(answer: ClarifyAnswer) {
     if (staged?.kind !== 'clarify') return;
     const { title, habits: list, index } = staged;
@@ -374,8 +311,6 @@ export default function AICoachScreen() {
       if (i !== index) return h;
       if (answer.missing === 'frequency') return { ...h, frequency_config: answer.frequency_config };
       if (answer.daily_goal === null) {
-        // "Hedefsiz": a yes/no habit after all. BOTH halves of the measurement
-        // go, because half of one is not a valid habit.
         const { unit: _unit, daily_goal: _goal, target_direction: _dir, ...rest } = h;
         return { ...rest, tracking_type: 'binary' };
       }
@@ -387,8 +322,6 @@ export default function AICoachScreen() {
         target_direction: h.target_direction ?? 'at_least',
       };
     });
-    // Durable, so leaving and coming back does not ask the same question
-    // again. The screen has already moved on -- this only rewrites the row.
     void updatePendingPayload(
       next.length === 1
         ? { type: 'propose_habit', habit: next[0] }
@@ -397,18 +330,11 @@ export default function AICoachScreen() {
     previewProposal(title, SINGLE_HABIT_GOAL, next);
   }
 
-
-  // A durable proposal belongs to the open conversation, so staging follows it
-  // -- including on reopen, which is what makes a preview survive navigation.
-  // Declared after `stageFromActions` on purpose: a callback used by an effect
-  // has to exist before it, which is the same ordering rule that caught
-  // `loadBadHabits` during the SDK migration.
   useEffect(() => {
     if (!pendingAction) { setStaged(null); setStagedV2(null); return; }
     stageFromActions([pendingAction.action]);
   }, [pendingAction, stageFromActions]);
 
-  /** Picking from the ambiguity card only narrows the target; it does not write. */
   function handlePickCandidate(habit: Habit) {
     setStaged((prev) =>
       prev && prev.kind === 'ambiguous'
@@ -426,31 +352,20 @@ export default function AICoachScreen() {
   function handleCancelStaged() {
     setStaged(null);
     clearGenerated();
-    // Closes the DURABLE row too. Without this the proposal would come back as
-    // pending the next time the conversation was opened, which is precisely
-    // the "cancelled action silently reappears" case.
     void resolvePendingAction('cancelled');
   }
 
-  /**
-   * The only place in this screen that persists anything.
-   *
-   * `stagedBusy` is the double-tap guard; the install path has its own
-   * (`installing` inside routineStore), and habit logs are reconciled on
-   * `habit_id + completed_at`, so a repeated confirmation updates one row
-   * rather than adding a second.
-   */
   async function handleConfirmStaged() {
     if (!staged || stagedBusy || confirming.current) return;
     confirming.current = true;
     setStagedBusy(true);
     try {
       if (staged.kind === 'proposal') {
-        const ok = await confirmInstall();
-        // Resolved pending -> confirmed. The repository scopes that update to
-        // rows still pending, so a second tap or a resumed app changes
-        // nothing: one staged proposal, one install.
-        if (ok) await resolvePendingAction('confirmed');
+        const ok = await confirmInstall(pendingAction?.row.id);
+        if (ok) {
+          const resolved = await resolvePendingAction('confirmed');
+          if (!resolved) await resolvePendingAction('confirmed');
+        }
         setStaged(null);
         setMessages((prev) => [...prev, {
           id: Date.now().toString(),
@@ -465,9 +380,7 @@ export default function AICoachScreen() {
 
       if (staged.kind === 'log' || staged.kind === 'unitMismatch') {
         const when = parseLocalDate(staged.date) ?? new Date();
-        // R09.03 — the card was staged against the habit AS IT WAS. If it was
-        // edited (goal, unit, tracking, status, schedule) or removed since,
-        // the preview no longer describes this write: re-preview or drop.
+        // R09.03 — re-verify entity fingerprint before writing.
         const live = useHabitStore.getState().habits.find((h) => h.id === staged.habit.id);
         const freshness = staleness(habitFingerprint(staged.habit), live, habitFingerprint);
         if (freshness === 'gone') {
@@ -483,20 +396,10 @@ export default function AICoachScreen() {
           return;
         }
         const habit = live!;
-        // A confirmed mismatch means "yes, in the habit's own unit" -- the
-        // number is kept and the unit the user said is dropped, rather than
-        // converted into something nobody agreed to.
         const completion: CoachLogCompletion = staged.kind === 'unitMismatch'
           ? { kind: 'value', value: staged.value }
           : staged.completion;
 
-        // THE defect this step closes. `state` used to be
-        // `completion.kind === 'state' ? completion.state : 'done'`, so ten
-        // minutes against a twenty-minute target was persisted as `done`. The
-        // comment above it said the domain engine decided; it did not, that
-        // line did, and it was wrong. `completionFor` IS that engine: it reads
-        // the habit's tracking type, behaviour type, target and direction and
-        // returns state, value and target together.
         const intent = completion.kind === 'value'
           ? completionFor(habit, completion.value)
           : {
@@ -537,10 +440,6 @@ export default function AICoachScreen() {
   async function copyMessage(m: Message) {
     await Clipboard.setStringAsync(m.content);
     setCopiedId(m.id);
-    // The "Kopyalandı" tick clears itself, and that timer must not outlive the
-    // screen: a stray callback firing after unmount sets state on a component
-    // that is gone. Held so it can be cancelled, and replaced rather than
-    // stacked when two messages are copied in quick succession.
     if (copyTimer.current) clearTimeout(copyTimer.current);
     copyTimer.current = setTimeout(() => setCopiedId((cur) => (cur === m.id ? null : cur)), 1500);
   }
@@ -557,128 +456,20 @@ export default function AICoachScreen() {
     });
   }
 
-  async function send(text?: string) {
-    const msg = (text ?? input).trim();
-    if (!msg || loading) return;
-    setInput('');
-    setLoading(true);
-    setInsufficientCredits(false);
-    // One key per attempt: a retry of THIS message replays the first charge
-    // rather than paying for a second answer. See newRequestId(). R09.06 --
-    // "a retry" includes sending the same text again after a lost answer.
-    const requestId = coachAttempt.begin(`${activeId ?? ''}|${msg}`);
-
-    try {
-      // Deterministic analytics summary when available (see loadAnalyticsSummary
-      // above), else the same plain habit-name list this screen always sent --
-      // an analytics failure never blocks a coach message (Gate D).
-      const activeHabits = analyticsHabits ?? habits.filter((h) => h.status === 'active').map((h) => h.name);
-      const pendingTasks = tasks.filter((t) => !t.completed).length;
-
-      // The STORE owns the turn now, because the ordering matters more than
-      // the rendering: it persists the user message, calls the provider, and
-      // persists the answer BEFORE any of this reports success. What the
-      // screen supplies is the transport and the app's domain context.
-      const res = await sendToStore(msg, {
-        requestId,
-        invoke: async (payload) => {
-          setStreamingReply('');
-          const { data, error } = await invokeAiWithStream({
-            onReplyText: (partial) => setStreamingReply(partial),
-            /* SSE token streaming via invokeAiWithStream */
-              /* deadline signal managed by aiStreamService */
-              body: {
-                ...payload,
-                context: {
-                  activeHabits,
-                  pendingTaskCount: pendingTasks,
-                  habitCount: habits.length,
-                  willpower: wp
-                    ? { used: wp.used, daily_budget: wp.daily_budget, active_count: wp.active_count, focus_capacity: wp.focus_capacity }
-                    : undefined,
-                  analytics: analyticsSummary ?? undefined,
-                },
-                mode: 'coach',
-              },
-          });
-
-          if (error && isNoAnswer(error)) throw new Error(NO_ANSWER_NOTE);
-          coachAttempt.answered();
-          if (error) {
-            // Sunucunun döndürdüğü gerçek hata mesajını çek (kredi, rate limit, vb.)
-            const { msg: emsg, code, balance } = await extractInvokeError(error);
-            if (typeof balance === 'number') setBalance(balance);
-            if (code === 'INSUFFICIENT_CREDITS') setInsufficientCredits(true);
-            throw new Error(emsg);
-          }
-          if (typeof data?.balance === 'number') setBalance(data.balance);
-          return data ?? {};
-        },
-      });
-
-      // A coach turn takes seconds and the user may open another conversation
-      // meanwhile. The store says so, and a failure that belongs to a thread
-      // nobody is looking at must not surface under the one they opened.
-      if (res.stale) return;
-      if (!res.ok) throw new Error(res.error ?? 'Bir hata oluştu');
-    } catch (e) {
-      const errMsg = e instanceof Error ? e.message : 'Bir hata oluştu';
-      setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'error', content: errMsg }]);
-    } finally {
-      setStreamingReply('');
-      setLoading(false);
-    }
-  }
-
-  // Konuşmayı özetleyip günlüğe eklenebilir bir taslak üret → önizleme modalı aç
-  async function summarize() {
+  async function handleSummarize() {
     if (summarizing || loading || !hasConversation) return;
-
     const transcript = messages
       .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.id !== '0')
       .map((m) => `${m.role === 'user' ? 'Ben' : 'Koç'}: ${m.content}`)
       .join('\n\n');
-    if (transcript.trim().length < 10) return;
-
-    setSummarizing(true);
-    setInsufficientCredits(false);
-    // One key per attempt: a retry of THIS summarise replays the first
-    // charge instead of paying twice. See newRequestId(). R09.06 -- the same
-    // transcript sent again after a lost answer is that retry.
-    const requestId = summaryAttempt.begin(transcript);
-    try {
-      const { data, error } = await withEdgeDeadline('AI Koç', (signal) =>
-        supabase.functions.invoke('generate-routine', {
-        signal,
-        body: { mode: 'summarize', transcript, request_id: requestId },
-      }));
-
-      if (error && isNoAnswer(error)) throw new Error(NO_ANSWER_NOTE);
-      summaryAttempt.answered();
-      if (error) {
-        const { msg, code, balance } = await extractInvokeError(error);
-        if (typeof balance === 'number') setBalance(balance);
-        if (code === 'INSUFFICIENT_CREDITS') setInsufficientCredits(true);
-        throw new Error(msg);
-      }
-
-      if (data?.error) throw new Error(data.error);
-      const summary = data?.summary;
-      if (!summary) throw new Error('Özet alınamadı, tekrar deneyin.');
-
-      if (typeof data?.balance === 'number') setBalance(data.balance);
-      setSummaryText(summary);
+    const out = await summarize(transcript);
+    if (out.ok) {
+      setSummaryText(out.summary);
       setSummarySaved(false);
       setSummaryModal(true);
-    } catch (e) {
-      const errMsg = e instanceof Error ? e.message : 'Bir hata oluştu';
-      setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'error', content: errMsg }]);
-    } finally {
-      setSummarizing(false);
     }
   }
 
-  // Düzenlenen özeti bugünün günlük kaydına ekle
   async function saveSummaryToJournal() {
     const text = summaryText.trim();
     if (!text || summarySaving) return;
@@ -701,7 +492,7 @@ export default function AICoachScreen() {
         options={{
           headerRight: () => (
             <TouchableOpacity
-              onPress={summarize}
+              onPress={() => void handleSummarize()}
               disabled={!hasConversation || summarizing || loading}
               style={s.headerBtn}
               hitSlop={8}
@@ -715,7 +506,7 @@ export default function AICoachScreen() {
               ) : (
                 <Ionicons name="book-outline" size={16} color={hasConversation ? '#ec4899' : colors.textGhost} />
               )}
-              <Text style={[s.headerBtnText, { color: hasConversation ? '#ec4899' : colors.textGhost }]}>Günlüğe</Text>
+              <Text style={[s.headerBtnText, { color: hasConversation ? '#ec4899' : colors.textFaint }]}>Günlüğe</Text>
             </TouchableOpacity>
           ),
         }}
@@ -782,130 +573,40 @@ export default function AICoachScreen() {
           style={s.messages}
           contentContainerStyle={s.messagesContent}
         >
-          {messagesHasMore && (
-            <TouchableOpacity
-              onPress={() => void loadOlderMessages()}
-              style={s.olderBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Daha eski mesajları yükle"
-            >
-              <Text style={s.olderText}>Daha eski mesajlar</Text>
-            </TouchableOpacity>
-          )}
-          {messages.map((m) => (
-            /* The copy/speak controls are SIBLINGS of the bubble, never
-               children of it. Putting them inside would mean touching the
-               bubble's flex direction again, and that is the exact geometry
-               that stretched a three-word message to the height of the
-               conversation in Step 11A.1. This leaves those styles untouched. */
-            <Fragment key={m.id}>
-            <View
-              style={[
-                s.bubble,
-                m.role === 'user' ? s.bubbleUser : s.bubbleAssistant,
-                m.role === 'error' && s.bubbleError,
-              ]}
-              accessibilityRole={m.role === 'error' ? 'alert' : undefined}
-            >
-              {m.role === 'assistant' && (
-                <View style={s.assistantIcon}>
-                  <Ionicons name="sparkles" size={12} color="#8b5cf6" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-                </View>
-              )}
-              <Text style={[
-                s.bubbleText,
-                // `flex: 1` belongs ONLY to the bubbles that lay out as a row.
-                // Assistant and error bubbles put the sparkles icon beside the
-                // text, so the text has to claim the rest of that row. The user
-                // bubble has no icon and stays a column, where the very same
-                // declaration stops meaning "fill the row" and starts meaning
-                // "grow down the cross axis" -- which is what stretched a
-                // three-word message to the height of the conversation.
-                m.role !== 'user' && s.bubbleTextRow,
-                m.role === 'user' && s.bubbleTextUser,
-                m.role === 'error' && s.bubbleTextError,
-              ]}>
-                {m.content}
-              </Text>
-            </View>
+          <CoachMessageList
+            messages={messages}
+            hasOlder={messagesHasMore}
+            onLoadOlder={() => void loadOlderMessages()}
+            copiedId={copiedId}
+            speakingId={speakingId}
+            onCopy={(m) => void copyMessage(m)}
+            onSpeak={speakMessage}
+            loading={loading}
+            streamingReply={streamingReply}
+          >
+            {stagedV2 && (
+              <CoachActionCardV2
+                action={stagedV2}
+                onDone={(ok, message) => {
+                  void resolvePendingAction(ok ? 'confirmed' : 'cancelled');
+                  setStagedV2(null);
+                  setMessages((prev) => [...prev, { id: Date.now().toString(), role: ok ? 'assistant' : 'error', content: message }]);
+                }}
+              />
+            )}
 
-            <View style={[s.msgActions, m.role === 'user' ? s.msgActionsRight : s.msgActionsLeft]}>
-              <TouchableOpacity
-                onPress={() => copyMessage(m)}
-                hitSlop={10}
-                style={s.msgActionBtn}
-                accessibilityRole="button"
-                accessibilityLabel="Mesajı kopyala"
-              >
-                <Ionicons
-                  name={copiedId === m.id ? 'checkmark' : 'copy-outline'}
-                  size={13}
-                  color={copiedId === m.id ? colors.success : colors.textGhost}
-                />
-                {copiedId === m.id && <Text style={s.msgActionText}>Kopyalandı</Text>}
-              </TouchableOpacity>
-
-              {m.role === 'assistant' && (
-                <TouchableOpacity
-                  onPress={() => speakMessage(m)}
-                  hitSlop={10}
-                  style={s.msgActionBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={speakingId === m.id ? 'Sesli okumayı durdur' : 'Yanıtı sesli oku'}
-                  accessibilityState={{ selected: speakingId === m.id }}
-                >
-                  <Ionicons
-                    name={speakingId === m.id ? 'stop-circle-outline' : 'volume-medium-outline'}
-                    size={14}
-                    color={speakingId === m.id ? colors.primary : colors.textGhost}
-                  />
-                </TouchableOpacity>
-              )}
-            </View>
-            </Fragment>
-          ))}
-
-          {/* The confirmation barrier. Rendered after the conversation so the
-              thing being confirmed is the last thing on screen. */}
-          {stagedV2 && (
-            <CoachActionCardV2
-              action={stagedV2}
-              onDone={(ok, message) => {
-                void resolvePendingAction(ok ? 'confirmed' : 'cancelled');
-                setStagedV2(null);
-                setMessages((prev) => [...prev, { id: Date.now().toString(), role: ok ? 'assistant' : 'error', content: message }]);
-              }}
-            />
-          )}
-
-          {staged && (
-            <CoachActionCard
-              staged={staged}
-              busy={stagedBusy}
-              onConfirm={handleConfirmStaged}
-              onCancel={handleCancelStaged}
-              onPickCandidate={handlePickCandidate}
-              onClarify={handleClarify}
-              onAcceptPlan={handleAcceptPlan}
-            />
-          )}
-
-          {loading && (
-            // Yanıtın uzunluğu/şekli önceden bilinmiyor — burada iskelet değil,
-            // "yazıyor" göstergesi doğru olan. Ekran okuyucuya da duyurulur.
-            <View style={[s.bubble, s.bubbleAssistant]} accessibilityRole="progressbar" accessibilityLabel="Koç yanıt yazıyor">
-              {streamingReply ? (
-                <>
-                  <View style={s.assistantIcon}>
-                    <Ionicons name="sparkles" size={12} color={colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-                  </View>
-                  <Text style={[s.bubbleText, s.bubbleTextRow]}>{streamingReply}</Text>
-                </>
-              ) : (
-                <ActivityIndicator size="small" color={colors.primary} />
-              )}
-            </View>
-          )}
+            {staged && (
+              <CoachActionCard
+                staged={staged}
+                busy={stagedBusy}
+                onConfirm={handleConfirmStaged}
+                onCancel={handleCancelStaged}
+                onPickCandidate={handlePickCandidate}
+                onClarify={handleClarify}
+                onAcceptPlan={handleAcceptPlan}
+              />
+            )}
+          </CoachMessageList>
         </ScrollView>
 
         <ConversationSheet
@@ -934,7 +635,7 @@ export default function AICoachScreen() {
             <TouchableOpacity
               key={p}
               style={s.quickBtn}
-              onPress={() => send(p)}
+              onPress={() => void send(p)}
               disabled={loading}
               accessibilityRole="button"
               accessibilityHint="Bu soruyu koça gönderir"
@@ -946,9 +647,6 @@ export default function AICoachScreen() {
           ))}
         </ScrollView>
 
-        {/* Dictation state and failures are said out loud in text, because a
-            microphone that silently did nothing is indistinguishable from one
-            that is listening. */}
         {(speech.listening || speech.error) && (
           <Text style={s.micHint}>
             {speech.listening ? 'Dinliyorum… Bitince mikrofona tekrar dokun.' : speech.error}
@@ -957,7 +655,7 @@ export default function AICoachScreen() {
 
         {/* Input */}
         <View style={s.inputRow}>
-          {speech.available && (
+          {speech.available && !speech.blocked && (
             <TouchableOpacity
               style={[s.micBtn, speech.listening && s.micBtnActive]}
               onPress={() => (speech.listening ? speech.stop() : speech.start())}
@@ -980,15 +678,16 @@ export default function AICoachScreen() {
             placeholderTextColor={colors.textFaint}
             value={input}
             onChangeText={setInput}
+            onSelectionChange={(e) => { selRef.current = e.nativeEvent.selection; }}
             multiline
             maxLength={500}
-            onSubmitEditing={() => send()}
+            onSubmitEditing={() => void send()}
             blurOnSubmit
             accessibilityLabel="Koça mesajın"
           />
           <TouchableOpacity
             style={[s.sendBtn, (!input.trim() || loading) && s.sendBtnDisabled]}
-            onPress={() => send()}
+            onPress={() => void send()}
             disabled={!input.trim() || loading}
             accessibilityRole="button"
             accessibilityLabel="Gönder"
@@ -1044,7 +743,7 @@ export default function AICoachScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[s.modalBtn, s.modalBtnPrimary]}
-                    onPress={() => { setSummaryModal(false); router.push('/screens/journal' as any); }}
+                    onPress={() => { setSummaryModal(false); navigateTo(router, 'journal'); }}
                     accessibilityRole="link"
                     accessibilityLabel="Günlüğü aç"
                   >
@@ -1126,52 +825,8 @@ const s = StyleSheet.create({
   messages: { flex: 1 },
   messagesContent: { padding: 16, gap: 10, paddingBottom: 8 },
 
-  bubble: {
-    maxWidth: '85%', borderRadius: 16, padding: 12,
-    borderWidth: 1,
-  },
-  bubbleUser: {
-    alignSelf: 'flex-end',
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  bubbleAssistant: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-  },
-  bubbleError: {
-    alignSelf: 'flex-start',
-    backgroundColor: alphaHex(colors.error, '15'),
-    borderColor: alphaHex(colors.error, '30'),
-  },
-  assistantIcon: {
-    width: 20, height: 20, borderRadius: 10,
-    backgroundColor: '#8b5cf620', alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
-  },
-  // Typography only -- deliberately no `flex` here. Every bubble shares this,
-  // but they do not share a flex direction: `bubbleAssistant` (which the error
-  // bubble also builds on) sets `flexDirection: 'row'`, while `bubbleUser`
-  // stays a column. A single `flex: 1` cannot be right for both.
-  bubbleText: { fontSize: 14, color: colors.text, lineHeight: 20 },
-  /** Row bubbles only: take the width left over beside the icon. */
-  bubbleTextRow: { flex: 1 },
-  bubbleTextUser: { color: colors.white },
-  bubbleTextError: { color: colors.error },
-
-  // Sits under the bubble, not inside it. `alignSelf` mirrors the bubble's own
-  // side so the controls stay with their message; nothing here can influence
-  // the bubble's height.
-  msgActions: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -4 },
-  msgActionsLeft: { alignSelf: 'flex-start', paddingLeft: 4 },
-  msgActionsRight: { alignSelf: 'flex-end', paddingRight: 4 },
-  msgActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, minHeight: 28 },
-  msgActionText: { fontSize: 11, color: colors.success, fontWeight: '600' },
-
   micBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 44, height: 44, borderRadius: 22,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
   },
@@ -1192,8 +847,6 @@ const s = StyleSheet.create({
     width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
   },
-  olderBtn: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 14, minHeight: 36, justifyContent: 'center' },
-  olderText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
 
   quickRow: { maxHeight: 54, borderTopWidth: 1, borderTopColor: colors.borderSubtle },
   quickThumb: { width: 24, height: 24, borderRadius: 6 },

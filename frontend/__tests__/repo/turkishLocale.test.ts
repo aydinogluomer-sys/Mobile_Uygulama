@@ -56,6 +56,11 @@ describe('decimals', () => {
     const offenders = SRC.filter((f) => !(f in ALLOWED) && /\.toFixed\(/.test(read(f)));
     expect(offenders).toEqual([]);
   });
+  it('only lib/i18n.ts constructs Intl.NumberFormat (single formatter rule)', () => {
+    const offenders = SRC.filter((f) => f !== 'lib/i18n.ts' && /\bnew\s+Intl\.NumberFormat\s*\(/.test(read(f)));
+    expect(offenders).toEqual([]);
+    expect(read('lib/i18n.ts')).toContain("new Intl.NumberFormat('tr-TR'");
+  });
   it('the allowed ones are as described', () => {
     expect(read('lib/moodHabitRelation.ts')).toMatch(/toFixed\(1\)\.replace\('\.', ','\)/);
     expect(read('lib/subscription.ts')).toMatch(/\$\$\{p\.toFixed\(2\)\}/);

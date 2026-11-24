@@ -7,11 +7,15 @@
  */
 import type { TableInsert, TableUpdate } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
-import type { Task } from '../store/taskStore';
+import type { Task } from '../lib/taskTypes';
+import { likeContains } from './likePattern';
 import {
   currentUserId, deleteOwned, fetchPage, isTransportFailure, updateOwned,
   type Cursor, type Page, type RepoResult,
 } from './shared';
+
+const TASK_COLS =
+  'id,user_id,title,description,category,due_date,time_block_start,time_block_end,completed,completed_at,is_subtask,parent_task_id,created_at,updated_at,list_name,status,priority,list_type,project_id,notes_text,quadrant';
 
 export type SplitTaskInput = {
   title: string;
@@ -22,6 +26,8 @@ export type SplitTaskInput = {
   project_id: string | null;
   list_type: Task['list_type'];
   completed: boolean;
+  parent_task_id: string | null;
+  is_subtask: boolean;
 };
 
 /**
@@ -32,7 +38,7 @@ export async function insertSplitTasks(rows: SplitTaskInput[]): Promise<RepoResu
   const u = await currentUserId();
   if (!u.ok) return u;
   const payload = rows.map((row) => ({ ...row, user_id: u.userId }));
-  const { data, error } = await supabase.from('tasks').insert(payload).select();
+  const { data, error } = await supabase.from('tasks').insert(payload).select(TASK_COLS);
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as Task[] };
 }
@@ -44,11 +50,6 @@ export async function insertSplitTasks(rows: SplitTaskInput[]): Promise<RepoResu
 // `fetchTasks` was unbounded and unscoped, `updateTask`/`removeTask` matched
 // on `id` alone, and `removeTask` discarded its result.
 // ---------------------------------------------------------------------------
-
-const TASK_COLS =
-  'id,user_id,title,description,category,due_date,time_block_start,time_block_end,' +
-  'completed,completed_at,is_subtask,parent_task_id,created_at,updated_at,list_name,' +
-  'status,priority,list_type,project_id,notes_text,quadrant';
 
 export async function fetchTasksPage(
   cursor?: Cursor | null,
@@ -76,6 +77,10 @@ export async function insertTask(input: Partial<Task>): Promise<RepoResult<Task>
       priority: input.priority ?? 'none',
       list_type: input.list_type ?? 'inbox',
       due_date: input.due_date ?? null,
+      time_block_start: input.time_block_start ?? null,
+      time_block_end: input.time_block_end ?? null,
+      parent_task_id: input.parent_task_id ?? null,
+      is_subtask: input.is_subtask ?? false,
       project_id: input.project_id ?? null,
       description: input.description ?? null,
       notes_text: input.notes_text ?? null,
@@ -90,9 +95,10 @@ export async function insertTask(input: Partial<Task>): Promise<RepoResult<Task>
 export async function updateTask(id: string, patch: Partial<Task>): Promise<RepoResult<Task>> {
   const u = await currentUserId();
   if (!u.ok) return u;
+  const { estimated_minutes: _est, ...dbPatch } = patch;
   return updateOwned<Task>({
     table: 'tasks', id, userId: u.userId,
-    patch: patch as Record<string, unknown>, columns: TASK_COLS,
+    patch: dbPatch as Record<string, unknown>, columns: TASK_COLS,
   });
 }
 
@@ -111,17 +117,16 @@ export async function deleteTask(id: string): Promise<RepoResult<true>> {
  * everything into memory to filter it.
  */
 export async function searchTasks(query: string, limit = 8): Promise<RepoResult<Task[]>> {
+  const pattern = likeContains(query);
+  if (pattern === null) return { ok: true, data: [] };
   const u = await currentUserId();
   if (!u.ok) return u;
-  const term = query.trim();
-  if (!term) return { ok: true, data: [] };
-  const safe = term.replace(/[,()%]/g, ' ');
   const { data, error } = await supabase
     .from('tasks')
     .select(TASK_COLS)
     .eq('user_id', u.userId)
     .eq('completed', false)
-    .ilike('title', `%${safe}%`)
+    .ilike('title', pattern)
     .order('created_at', { ascending: false })
     .limit(Math.min(limit, 25));
   if (error) return { ok: false, error: error.message };
@@ -149,9 +154,10 @@ export async function insertTaskRow(row: Partial<Task> & { id: string }, expecte
   if (!u.ok) return u;
   const wrong = wrongAccount(expectedUserId, u.userId);
   if (wrong) return wrong;
+  const { estimated_minutes: _est, ...dbRow } = row;
   const { data, error, status } = await supabase
     .from('tasks')
-    .insert({ ...row, title: row.title ?? '', user_id: u.userId } as TableInsert<'tasks'>)
+    .insert({ ...dbRow, title: dbRow.title ?? '', user_id: u.userId } as TableInsert<'tasks'>)
     .select(TASK_COLS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
@@ -166,7 +172,8 @@ export async function updateTaskVersioned(
   if (!u.ok) return u;
   const wrong = wrongAccount(expectedUserId, u.userId);
   if (wrong) return wrong;
-  let q = supabase.from('tasks').update(patch as TableUpdate<'tasks'>).eq('id', id).eq('user_id', u.userId);
+  const { estimated_minutes: _est, ...dbPatch } = patch;
+  let q = supabase.from('tasks').update(dbPatch as TableUpdate<'tasks'>).eq('id', id).eq('user_id', u.userId);
   if (baseVersion !== null) q = q.eq('updated_at', baseVersion);
   const { data, error, status } = await q.select(TASK_COLS).maybeSingle();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };

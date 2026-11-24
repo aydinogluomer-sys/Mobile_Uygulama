@@ -1,4 +1,5 @@
 import { registerAccountScoped } from '../lib/accountScope';
+import { createLatest } from '../lib/latestOnly';
 import { create } from 'zustand';
 import {
   deleteDeepWorkSession,
@@ -32,16 +33,25 @@ type DeepWorkStore = {
   weekMinutes: () => number;
 };
 
+const loadLatest = createLatest();
+
 export const useDeepWorkStore = create<DeepWorkStore>((set, get) => ({
   sessions: [],
   loading: false,
   error: null,
 
   loadSessions: async (days = 30) => {
+    const run = loadLatest.begin();
     set({ loading: true, error: null });
-    const res = await fetchDeepWorkSince(days);
-    if (!res.ok) return set({ loading: false, error: res.error });
-    set({ sessions: res.data, loading: false });
+    try {
+      const res = await fetchDeepWorkSince(days);
+      if (!run.isCurrent()) return;
+      if (!res.ok) { set({ loading: false, error: res.error }); return; }
+      set({ sessions: res.data, loading: false });
+    } finally {
+      run.done();
+      if (loadLatest.pending() === 0 && get().loading) set({ loading: false });
+    }
   },
 
   addSession: async (subject, minutes, date) => {

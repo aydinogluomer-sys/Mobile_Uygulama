@@ -302,9 +302,9 @@ describe('AC-W08 — the sync badge exists, is exported, and is mounted', () => 
     // R02.03: the core outbox (journal, notes, recovery plans, focus sessions) joins the same badge.
     expect(tag![0]).toMatch(/pending=\{pendingSyncCount(?: \+ taskSync\.pending)?(?: \+ coreSync\.pending)?\}/);
     expect(tag![0]).toMatch(/dead=\{deadSyncCount(?: \+ taskSync\.dead \+ taskSync\.conflict)?(?: \+ coreSync\.dead \+ coreSync\.conflict)?\}/);
-    // …and those names come from the store, not from local state.
+    // …and those names come from the store (F27: through useShallow), not from local state.
     expect(today).toMatch(
-      /const \{[^}]*\bpendingSyncCount\b[^}]*\bdeadSyncCount\b[^}]*\} = useLogStore\(\);/,
+      /const \{[^}]*\bpendingSyncCount\b[^}]*\bdeadSyncCount\b[^}]*\} = useLogStore\(\s*useShallow\(/,
     );
   });
 
@@ -369,5 +369,31 @@ describe('AC-W09 — the coordinator is started, and it owns the only timer', ()
 
   it('scanner sanity — an interval in the coordinator would be caught', () => {
     expect('const t = setInterval(() => flush(), 1000);').toMatch(/setInterval\s*\(/);
+  });
+});
+
+describe('AC-W10 — F46 unified 4-channel outbox engine & web tab coordination', () => {
+  const unified = read('services/unifiedOutbox.ts');
+  const engine = read('lib/outboxEngine.ts');
+  const tabCoord = read('lib/tabCoordination.ts');
+
+  it('registers all four channels (task, core, habit, effect) onto outboxEngine', () => {
+    expect(read('store/taskStore.ts')).toContain("outboxEngine.register('task'");
+    expect(read('services/coreOutbox.ts')).toContain("outboxEngine.register('core'");
+    expect(store).toContain("outboxEngine.register('habit'");
+    expect(read('services/webhookService.ts')).toContain("outboxEngine.register('effect'");
+  });
+
+  it('unifiedOutbox delegates to outboxEngine without importing taskStore or logStore', () => {
+    expect(unified).toContain('outboxEngine.summaryAll()');
+    expect(unified).toContain('outboxEngine.flushAll()');
+    expect(unified).toContain('outboxEngine.flushers()');
+    expect(unified).not.toMatch(/useTaskStore|useLogStore/);
+  });
+
+  it('exports createWebTabDeps and attachTabs for multi-tab coordination', () => {
+    expect(tabCoord).toContain('export function createWebTabDeps()');
+    expect(engine).toContain('attachTabs(');
+    expect(layout).toContain('outboxEngine.attachTabs(createWebTabDeps())');
   });
 });

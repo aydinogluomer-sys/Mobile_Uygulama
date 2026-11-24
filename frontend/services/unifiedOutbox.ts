@@ -1,82 +1,74 @@
 import { useEffect, useState } from 'react';
-import { nextReadyAt, type OutboxCommand, type OutboxSummary } from '../lib/outbox';
+import type { OutboxSummary } from '../lib/outbox';
+import {
+  ENTITY_LABELS_TR,
+  outboxEngine,
+  parseHabitLogEntityId,
+  type ChannelId,
+} from '../lib/outboxEngine';
 import type { Flusher } from '../lib/syncCoordinator';
-import { useLogStore } from '../store/logStore';
-import { useTaskStore } from '../store/taskStore';
 import { useHabitStore } from '../store/habitStore';
-import { coreOutbox } from './coreOutbox';
 
 /**
- * Unified Offline Outbox Coordinator.
+ * F46 — Unified Offline Outbox Read Facade over `lib/outboxEngine`.
  *
- * Bridges Aderyth's three persisted offline mutation engines under a single
- * observable summary and single-call flush coordinator:
- *  1. `useLogStore`   — habit completions, skips, partial logs (`syncQueue`)
- *  2. `useTaskStore`  — tasks, subtasks, completions (`outbox:task`)
- *  3. `coreOutbox`    — notes, journal entries, recovery plans, focus sessions,
- *                       goals, projects, reading list, OKRs, life area check-ins
+ * All four durable channels (`habit`, `task`, `core`, `effect`) register on
+ * `outboxEngine`; this module maps engine summaries, flush outcomes, issues,
+ * and coordinator flushers to the UI-facing shapes.
  */
+
+export type UnifiedFlushChannel = 'habitLogs' | 'tasks' | 'core' | 'effects';
 
 export type UnifiedOutboxSummary = OutboxSummary & {
   channels: {
     habitLogs: { pending: number; dead: number };
     tasks: OutboxSummary;
     core: OutboxSummary;
+    effects?: OutboxSummary;
   };
+  errors?: Partial<Record<UnifiedFlushChannel, string>>;
+};
+
+const CHANNEL_TO_SUMMARY_KEY: Record<ChannelId, UnifiedFlushChannel> = {
+  habit: 'habitLogs',
+  task: 'tasks',
+  core: 'core',
+  effect: 'effects',
 };
 
 export function getUnifiedOutboxSummary(): UnifiedOutboxSummary {
-  const logState = useLogStore.getState();
-  const habitPending = logState?.pendingSyncCount ?? 0;
-  const habitDead = logState?.deadSyncCount ?? 0;
-
-  const taskState = useTaskStore.getState();
-  const taskSummary: OutboxSummary = taskState?.sync ?? {
-    pending: 0,
-    dead: 0,
-    conflict: 0,
-    authBlocked: false,
-  };
-
-  const coreSummary = coreOutbox.sync();
-
+  const all = outboxEngine.summaryAll();
   return {
-    pending: habitPending + taskSummary.pending + coreSummary.pending,
-    dead: habitDead + taskSummary.dead + coreSummary.dead,
-    conflict: taskSummary.conflict + coreSummary.conflict,
-    authBlocked: Boolean(taskSummary.authBlocked || coreSummary.authBlocked),
+    pending: all.pending,
+    dead: all.dead,
+    conflict: all.conflict,
+    authBlocked: all.authBlocked,
     channels: {
-      habitLogs: { pending: habitPending, dead: habitDead },
-      tasks: taskSummary,
-      core: coreSummary,
+      habitLogs: {
+        pending: all.channels.habit.pending,
+        dead: all.channels.habit.dead,
+      },
+      tasks: all.channels.task,
+      core: all.channels.core,
+      effects: all.channels.effect,
     },
   };
 }
 
 export function subscribeUnifiedOutbox(listener: () => void): () => void {
-  const unsubCore = coreOutbox.subscribe(listener);
-  const unsubLogs =
-    typeof useLogStore.subscribe === 'function' ? useLogStore.subscribe(() => listener()) : () => undefined;
-  const unsubTasks =
-    typeof useTaskStore.subscribe === 'function' ? useTaskStore.subscribe(() => listener()) : () => undefined;
-  return () => {
-    unsubCore();
-    unsubLogs();
-    unsubTasks();
-  };
+  return outboxEngine.subscribeAll(listener);
 }
 
 export async function flushAllOutboxes(): Promise<UnifiedOutboxSummary> {
-  const logFlush = useLogStore.getState()?.flushPendingSync;
-  const taskFlush = useTaskStore.getState()?.flush;
-
-  await Promise.all([
-    typeof logFlush === 'function' ? logFlush() : Promise.resolve(),
-    typeof taskFlush === 'function' ? taskFlush() : Promise.resolve(),
-    coreOutbox.flush(),
-  ]);
-
-  return getUnifiedOutboxSummary();
+  const { errors: engineErrors } = await outboxEngine.flushAll();
+  const errors: Partial<Record<UnifiedFlushChannel, string>> = {};
+  for (const [id, msg] of Object.entries(engineErrors)) {
+    if (msg !== undefined) {
+      errors[CHANNEL_TO_SUMMARY_KEY[id as ChannelId]] = msg;
+    }
+  }
+  const current = getUnifiedOutboxSummary();
+  return Object.keys(errors).length > 0 ? { ...current, errors } : current;
 }
 
 export function useUnifiedOutboxSync(): UnifiedOutboxSummary {
@@ -91,13 +83,8 @@ export function useUnifiedOutboxSync(): UnifiedOutboxSummary {
   return summary;
 }
 
-// ---------------------------------------------------------------------------
-// F05 (SYN-03, SYN-15, SYN-16) — what could not be sent, a way out for each,
-// an honest flush message, and the coordinator's view of the three channels
-// ---------------------------------------------------------------------------
-
 export type OutboxIssue = {
-  channel: 'habit' | 'task' | 'core';
+  channel: ChannelId;
   id: string;
   label: string;
   reason: string;
@@ -106,81 +93,50 @@ export type OutboxIssue = {
 
 /** What each core outbox entity is called on screen. */
 export const CORE_ENTITY_LABELS: Record<string, string> = {
-  journal_entry: 'Günlük',
-  note: 'Not',
-  recovery_plan: 'Telafi planı',
-  focus_session: 'Odak seansı',
-  goal: 'Hedef',
-  project: 'Proje',
-  reading_item: 'Okuma öğesi',
-  okr_objective: 'OKR hedefi',
-  key_result: 'Anahtar sonuç',
-  life_area_log: 'Yaşam alanı',
+  journal_entry: ENTITY_LABELS_TR.journal_entry,
+  note: ENTITY_LABELS_TR.note,
+  recovery_plan: ENTITY_LABELS_TR.recovery_plan,
+  focus_session: ENTITY_LABELS_TR.focus_session,
+  goal: ENTITY_LABELS_TR.goal,
+  project: ENTITY_LABELS_TR.project,
+  reading_item: ENTITY_LABELS_TR.reading_item,
+  okr_objective: ENTITY_LABELS_TR.okr_objective,
+  key_result: ENTITY_LABELS_TR.key_result,
+  life_area_log: ENTITY_LABELS_TR.life_area_log,
 };
 
-const REFUSED = 'Sunucu kabul etmedi.';
-const CONFLICTED = 'Başka bir yerde değiştirilmiş.';
-
-function commandIssue(channel: 'task' | 'core', c: OutboxCommand, label: string): OutboxIssue {
-  const status = c.status === 'conflict' ? 'conflict' : 'dead';
-  return {
-    channel,
-    id: c.operationId,
-    label,
-    reason: status === 'conflict' ? CONFLICTED : (c.lastError ?? REFUSED),
-    status,
-  };
-}
-
-/** Every change that will not go by itself: habit `dead` ops, task and core `dead`/`conflict` commands. */
 export function listOutboxIssues(): OutboxIssue[] {
-  const issues: OutboxIssue[] = [];
-
   const habits = useHabitStore.getState()?.habits ?? [];
-  const deadOps = useLogStore.getState()?.deadSyncOps?.() ?? [];
-  for (const op of deadOps) {
-    const name = habits.find((h) => h.id === op.habitId)?.name ?? 'Alışkanlık';
-    issues.push({ channel: 'habit', id: op.id, label: `${name} · ${op.date}`, reason: op.lastError ?? REFUSED, status: 'dead' });
-  }
-
-  const taskState = useTaskStore.getState();
-  for (const c of taskState?.outbox?.commands ?? []) {
-    if (c.status === 'pending') continue;
-    const title = taskState.tasks?.find((t) => t.id === c.entityId)?.title;
-    issues.push(commandIssue('task', c, title ? `Görev: ${title}` : 'Görev'));
-  }
-
-  for (const c of coreOutbox.state()?.commands ?? []) {
-    if (c.status === 'pending') continue;
-    issues.push(commandIssue('core', c, CORE_ENTITY_LABELS[c.entity] ?? 'Değişiklik'));
-  }
-  return issues;
+  return outboxEngine.listIssues().map((issue): OutboxIssue => {
+    let label = issue.label;
+    if (issue.channel === 'habit') {
+      const parsed = parseHabitLogEntityId(issue.entityId);
+      if (parsed) {
+        const name = habits.find((h) => h.id === parsed.habitId)?.name ?? 'Alışkanlık';
+        label = `${name} · ${parsed.date}`;
+      }
+    }
+    return {
+      channel: issue.channel,
+      id: issue.operationId,
+      label,
+      reason: issue.reason,
+      status: issue.status,
+    };
+  });
 }
 
-/**
- * "Yeniden dene". A core conflict is NOT retried from here: it is resolved on its own screen, where
- * the two versions can be compared (nothing is called).
- */
 export async function retryOutboxIssue(issue: OutboxIssue): Promise<void> {
-  if (issue.channel === 'habit') return useLogStore.getState().reviveSyncOp(issue.id);
-  if (issue.channel === 'task') return useTaskStore.getState().retryChange(issue.id);
-  if (issue.status === 'conflict') return;
-  return coreOutbox.retry(issue.id, null);
+  if (issue.channel === 'core' && issue.status === 'conflict') return;
+  await outboxEngine.channel(issue.channel)?.retry(issue.id, null);
 }
 
-/** "Bu değişikliği bırak": the change is given up and the screen goes back to the server's version. */
 export async function discardOutboxIssue(issue: OutboxIssue): Promise<void> {
-  if (issue.channel === 'habit') return useLogStore.getState().dropSyncOp(issue.id);
-  if (issue.channel === 'task') return useTaskStore.getState().discardChange(issue.id);
-  return coreOutbox.discard(issue.id);
+  await outboxEngine.channel(issue.channel)?.discard(issue.id);
 }
 
 export type FlushOutcome = { tone: 'success' | 'waiting' | 'attention' | 'auth'; message: string };
 
-/**
- * The message after "Şimdi Senkronize Et", made from what is LEFT, not from the fact that the call
- * returned (SYN-16: offline with 7 waiting, it used to say everything was delivered).
- */
 export function describeFlushOutcome(after: UnifiedOutboxSummary): FlushOutcome {
   const stuck = after.dead + after.conflict;
   if (after.authBlocked) {
@@ -195,35 +151,6 @@ export function describeFlushOutcome(after: UnifiedOutboxSummary): FlushOutcome 
   return { tone: 'success', message: 'Her şey eşitlendi.' };
 }
 
-/**
- * The three channels as lib/syncCoordinator sees them. Every call reads the stores afresh (nothing
- * is captured when the coordinator starts), so the counts are the current ones on every round.
- */
 export function syncFlushers(): Flusher[] {
-  return [
-    {
-      name: 'habitLogs',
-      pending: () => useLogStore.getState()?.pendingSyncCount ?? 0,
-      nextReadyAt: () => useLogStore.getState()?.nextSyncReadyAt?.() ?? null,
-      flush: () => useLogStore.getState().flushPendingSync(),
-    },
-    {
-      name: 'tasks',
-      pending: () => useTaskStore.getState()?.sync?.pending ?? 0,
-      nextReadyAt: () => {
-        const box = useTaskStore.getState()?.outbox;
-        return box ? nextReadyAt(box) : null;
-      },
-      flush: () => useTaskStore.getState().flush(),
-    },
-    {
-      name: 'core',
-      pending: () => coreOutbox.sync().pending,
-      nextReadyAt: () => {
-        const box = coreOutbox.state();
-        return box ? nextReadyAt(box) : null;
-      },
-      flush: () => coreOutbox.flush(),
-    },
-  ];
+  return outboxEngine.flushers();
 }

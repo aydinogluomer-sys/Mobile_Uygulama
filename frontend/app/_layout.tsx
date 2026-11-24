@@ -1,5 +1,6 @@
 import { resetWebhookCache } from '../services/webhookService';
 import { coreOutbox } from '../services/coreOutbox';
+import { createWebTabDeps, outboxEngine } from '../lib/outboxEngine';
 // F05 (SYN-15) — the coordinator flushes waiting work while the app is open (one timer, no polling library).
 import { syncFlushers } from '../services/unifiedOutbox';
 import { startSyncCoordinator } from '../lib/syncCoordinator';
@@ -10,7 +11,8 @@ import { ActivityIndicator, AppState, Platform, View, type AppStateStatus } from
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
-import { supabase, SUPABASE_CONFIG_ERROR } from '../lib/supabase';
+import { publicEnvStatus, supabase, SUPABASE_CONFIG_ERROR } from '../lib/supabase';
+import ConfigErrorScreen from '../components/ConfigErrorScreen';
 // F06 (SYN-02, SYN-23, NAV-04) — a boot that survives an offline start, a hang and a missing config.
 import { resolveBootSession, BOOT_WATCHDOG_MS } from '../lib/bootSession';
 import { readStoredSession } from '../lib/session';
@@ -20,22 +22,37 @@ import BootGate from '../components/BootGate';
 import { signOutCurrentAccount } from '../services/accountService';
 // F04 — one account boundary for everything account-scoped (stores, read cache, reminders, keys).
 import { endAccountScope } from '../lib/accountScope';
-import { colors } from '../lib/tokens';
+import { StatusBar } from 'expo-status-bar';
+import { useThemeColors, useThemeMode } from '../hooks/useThemeColors';
 import { useThemeStore } from '../store/themeStore';
 import { useNotionSessionStore } from '../store/notionSessionStore';
 import { useLogStore } from '../store/logStore';
 // R02 — the task outbox is flushed on boot, on foreground and after a session refresh.
 import { useTaskStore } from '../store/taskStore';
+import { useFocusStore } from '../store/focusStore';
+import { expectedEndMs } from '../lib/focusTimer';
 // R04 — reminders follow the schedule; their buttons act once.
 import * as Notifications from 'expo-notifications';
-import { useHabitStore } from '../store/habitStore';
-import { registerReminderReconciler } from '../lib/notifications';
-import { reconcileReminders, handleReminderResponse } from '../services/reminderService';
+import { useHabitStore, whenHabitsLoaded } from '../store/habitStore';
+import { registerReminderReconciler, REMINDERS_SUPPORTED } from '../lib/notifications';
+import {
+  bindTimeSupportUser,
+  createReconcileTrigger,
+  reconcileReminders,
+  handleReminderResponse,
+  REPLAN_DEBOUNCE_MS,
+  type TimeSupportContext,
+} from '../services/reminderService';
+import { hasReminderHabits } from '../lib/reminderPlan';
+import { syncProfileTimeZone } from '../services/timeZoneSyncService';
 import { resolveOnboardingRouting, useOnboardingStore } from '../store/onboardingStore';
 import OnboardingGate from '../components/onboarding/OnboardingGate';
 import { installGlobalErrorHandlers, reportError } from '../lib/crashReporting';
 import { initCrashReporting } from '../lib/sentryClient';
 import ErrorBoundary from '../components/ui/ErrorBoundary';
+import DialogHost from '../components/ui/DialogHost';
+import CommandPalette from '../components/CommandPalette';
+import { useWebShortcuts } from '../hooks/useWebShortcuts';
 
 // Web OAuth popup callback'ini tamamla; aksi halde openAuthSessionAsync beklemede kalabilir.
 WebBrowser.maybeCompleteAuthSession();
@@ -60,12 +77,25 @@ installGlobalErrorHandlers();
 // davranır (geliştirmede console sink, üretimde sessizlik).
 initCrashReporting();
 
+/**
+ * F08 (BLD-02): a build without its public Supabase configuration shows a calm, static
+ * "Yapılandırma eksik" screen instead of booting. The check sits OUTSIDE the component that holds
+ * the hooks (Rules of Hooks: an early return before them would change the hook order), and
+ * ConfigErrorScreen needs nothing that could itself fail (react-native and tokens only).
+ */
 export default function RootLayout() {
+  if (!publicEnvStatus.ok) return <ConfigErrorScreen missing={publicEnvStatus.missing} />;
+  return <RootLayoutInner />;
+}
+
+function RootLayoutInner() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const segments = useSegments();
   const loadTheme = useThemeStore((s) => s.load);
+  const c = useThemeColors();
+  const mode = useThemeMode();
   const notionSession = useNotionSessionStore((s) => s.session);
   const hydrateNotionSession = useNotionSessionStore((s) => s.hydrate);
   // Plan §18 offline senkron yaşam döngüsü. Seçici (selector) ile alınıyor:
@@ -266,9 +296,6 @@ export default function RootLayout() {
         void flushPendingSync();
         void useTaskStore.getState().flush();
         void coreOutbox.flush();
-        // R04.04 — the plan is built from local dates at run time, so this
-        // also re-plans after a timezone or DST change.
-        void reconcileReminders(() => useHabitStore.getState().habits);
         // F06 (NAV-04): a status that came from the device cache (or a failed silent refresh) is
         // read again from the server, silently; the screen stays up whatever the answer.
         if (useOnboardingStore.getState().staleStatus) void hydrateOnboarding();
@@ -302,48 +329,101 @@ export default function RootLayout() {
   // F06: keyed on the user id -- an hourly token refresh no longer tears down and re-registers the
   // notification listeners and re-plans every reminder.
   useEffect(() => {
-    if (loading || !sessionUid) { registerReminderReconciler(null); return; }
-    const run = () => reconcileReminders(() => useHabitStore.getState().habits);
+    if (loading || !sessionUid || !REMINDERS_SUPPORTED) { bindTimeSupportUser(null); registerReminderReconciler(null); return; }
+    bindTimeSupportUser(sessionUid);
+    let tasksHydrated = false;
+    const habitsNow = () => { const s = useHabitStore.getState(); return s.habitsLoaded ? s.habits : null; };
+    const ctx: TimeSupportContext = {
+      tasks: () => {
+        const ts = useTaskStore.getState();
+        return ts.tasksLoaded || tasksHydrated || ts.tasks.length > 0 ? ts.tasks : null;
+      },
+      userId: () => sessionUid,
+      focus: () => {
+        const fs = useFocusStore.getState();
+        if (fs.status === 'idle') return { active: false, endsAt: null };
+        if (fs.status === 'running') {
+          const endMs = fs.clock ? expectedEndMs(fs.clock) : null;
+          const fallbackMs = fs.secondsLeft > 0 ? Date.now() + fs.secondsLeft * 1000 : null;
+          const resolved = endMs ?? fallbackMs;
+          return { active: true, endsAt: resolved !== null ? new Date(resolved) : null };
+        }
+        return { active: true, endsAt: null };
+      },
+    };
+    const trigger = createReconcileTrigger({ run: () => reconcileReminders(habitsNow, undefined, ctx), delayMs: REPLAN_DEBOUNCE_MS });
+    const run = () => trigger.flushNow();
     registerReminderReconciler(run);
-    void run();
-    const unsubLogs = useLogStore.subscribe((s, prev) => { if (s.logs !== prev.logs) void run(); });
-    // Status changes (activate / queue), breaks, holidays and goal versions
-    // all change the habit list: re-plan.
-    const unsubHabits = useHabitStore.subscribe((s, prev) => { if (s.habits !== prev.habits) void run(); });
+    void whenHabitsLoaded().then(() => trigger.flushNow());
+    const unsubLogs = useLogStore.subscribe((s, prev) => { if (s.logs !== prev.logs && hasReminderHabits(useHabitStore.getState().habits)) trigger.schedule(); });
+    const unsubHabits = useHabitStore.subscribe((s, prev) => { if (s.habits !== prev.habits && (hasReminderHabits(s.habits) || hasReminderHabits(prev.habits))) trigger.schedule(); });
+    const unsubTasks = useTaskStore.subscribe((s, prev) => { if (s.tasks !== prev.tasks || s.tasksLoaded !== prev.tasksLoaded) { if (s.tasks !== prev.tasks) tasksHydrated = true; trigger.schedule(); } });
+    const unsubFocus = useFocusStore.subscribe((s, prev) => { if (s.status !== prev.status) trigger.schedule(); });
+    const appSub = AppState.addEventListener('change', (next: AppStateStatus) => { if (next === 'active') void trigger.flushNow(); });
     const deps = {
       get habits() { return useHabitStore.getState().habits; },
+      whenHabitsReady: () => whenHabitsLoaded(),
       logHabit: (p: { habitId: string; date: Date; state: 'done' | 'partial' | 'skip' | 'miss' }) => useLogStore.getState().logHabit(p),
       openMeasure: () => router.push('/tabs/timeline' as never),
       reconcile: run,
     };
     const respSub = Notifications.addNotificationResponseReceivedListener((r) => { void handleReminderResponse(r, deps); });
     void Notifications.getLastNotificationResponseAsync().then((r) => { if (r) void handleReminderResponse(r, deps); }).catch(() => undefined);
-    return () => { unsubLogs(); unsubHabits(); respSub.remove(); registerReminderReconciler(null); };
+    return () => { trigger.cancel(); unsubLogs(); unsubHabits(); unsubTasks(); unsubFocus(); appSub.remove(); respSub.remove(); registerReminderReconciler(null); };
   }, [loading, sessionUid, router]);
+
+  // F15 -- the device zone is reported once per session and again when the app returns to the
+  // foreground (a trip changes the zone). Silent by design: it never blocks, never shows UI.
+  useEffect(() => {
+    if (loading || !session) return;
+    void syncProfileTimeZone();
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next === 'active') void syncProfileTimeZone();
+    });
+    return () => sub.remove();
+  }, [loading, session]);
+
+  // F46 (SYN-10) -- multi-tab web lock + BroadcastChannel/storage coordination across all 4 outbox channels.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    return outboxEngine.attachTabs(createWebTabDeps());
+  }, []);
+
+  // CI PARİTESİ (davranış değişikliği DEĞİL, yalnızca tipleme).
+  //
+  // `tsconfig.json` `.expo/types/**/*.ts`'i include ediyor ve orada duran
+  // `router.d.ts` expo-router'ın ÜRETİLMİŞ typed-routes bildirimi. O dosya
+  // `.gitignore`'da (frontend/.gitignore:7) ve yalnızca dev sunucusu
+  // tarafından üretiliyor -- `npx expo export` bile yeniden yazmıyor.
+  // Dolayısıyla temiz bir CI klonunda mevcut değil ve `useSegments()`
+  // 1-elemanlı `[string]` tuple'ına düşüyor; `segments[1]` o durumda
+  // TS2493 "tuple has no element at index 1" veriyor. Yerelde geçen,
+  // CI'da kırmızı olan hata tam olarak buydu.
+  //
+  // Okumayı bir kez düz `string[]` üzerinden yapmak, üretilmiş bildirim
+  // olsun olmasın aynı sonucu veriyor: dizi sınırının dışındaki bir okuma
+  // JS'te zaten `undefined`, karşılaştırma da `false` -- yani parola
+  // kurtarma muafiyeti bugünküyle birebir aynı çalışıyor.
+  //
+  // F22 (NAV-06): computed in the component body (not inside the effect) because the
+  // spinner below needs it too: recovery screens keep the navigator mounted while the
+  // onboarding row is read.
+  const segmentPath = segments as unknown as string[];
+  const inAuthGroup = segmentPath[0] === '(auth)';
+  const inPasswordRecovery = inAuthGroup && (
+    segmentPath[1] === 'forgot-password' || segmentPath[1] === 'reset-password'
+  );
+  const shellVisible =
+    !SUPABASE_CONFIG_ERROR &&
+    !loading &&
+    (hasSupabaseSession ? onboardingHydration === 'ready' : !!notionSession) &&
+    !inAuthGroup &&
+    segmentPath[0] !== 'onboarding';
+  useWebShortcuts(shellVisible);
 
   useEffect(() => {
     if (loading) return;
 
-    // CI PARİTESİ (davranış değişikliği DEĞİL, yalnızca tipleme).
-    //
-    // `tsconfig.json` `.expo/types/**/*.ts`'i include ediyor ve orada duran
-    // `router.d.ts` expo-router'ın ÜRETİLMİŞ typed-routes bildirimi. O dosya
-    // `.gitignore`'da (frontend/.gitignore:7) ve yalnızca dev sunucusu
-    // tarafından üretiliyor -- `npx expo export` bile yeniden yazmıyor.
-    // Dolayısıyla temiz bir CI klonunda mevcut değil ve `useSegments()`
-    // 1-elemanlı `[string]` tuple'ına düşüyor; `segments[1]` o durumda
-    // TS2493 "tuple has no element at index 1" veriyor. Yerelde geçen,
-    // CI'da kırmızı olan hata tam olarak buydu.
-    //
-    // Okumayı bir kez düz `string[]` üzerinden yapmak, üretilmiş bildirim
-    // olsun olmasın aynı sonucu veriyor: dizi sınırının dışındaki bir okuma
-    // JS'te zaten `undefined`, karşılaştırma da `false` -- yani parola
-    // kurtarma muafiyeti bugünküyle birebir aynı çalışıyor.
-    const segmentPath = segments as unknown as string[];
-    const inAuthGroup = segmentPath[0] === '(auth)';
-    const inPasswordRecovery = inAuthGroup && (
-      segmentPath[1] === 'forgot-password' || segmentPath[1] === 'reset-password'
-    );
     // The decision itself is a pure function in `store/onboardingStore.ts`,
     // so every combination of session / hydration / status can be asserted
     // directly instead of by mounting a navigator and reading the source.
@@ -360,7 +440,7 @@ export default function RootLayout() {
 
     if (decision.kind === 'redirect') router.replace(decision.to);
     // 'wait' and 'gate' are handled by the render below; 'stay' does nothing.
-  }, [hasSupabaseSession, notionSession, loading, segments, router, onboardingHydration, onboardingStatus, personalizing]);
+  }, [hasSupabaseSession, notionSession, loading, segmentPath, inAuthGroup, inPasswordRecovery, router, onboardingHydration, onboardingStatus, personalizing]);
 
   // §18: boot zinciri çözülene kadar HİÇBİR ekran render edilmez. Bu kozmetik
   // bir splash değil; "ilk dokunuştan önce hidrasyon" garantisini yapısal
@@ -404,11 +484,15 @@ export default function RootLayout() {
   // oturumu varken onboarding satırı okunana kadar bekleniyor; aksi halde
   // yeni kullanıcı önce boş bir Today görür, sonra onboarding'e atılırdı.
   if (loading || (!!session && onboardingHydration !== 'ready')) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
+    // F22 (NAV-06): a recovery screen stays mounted while the onboarding row is read;
+    // unmounting it would drop the user out of the new-password form.
+    if (loading || !inPasswordRecovery) {
+      return (
+        <View style={{ flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={c.primary} />
+        </View>
+      );
+    }
   }
 
   // §24 "crash reporting": navigator'ı saran sınır. Buradaki bir render
@@ -420,16 +504,20 @@ export default function RootLayout() {
   // kırık ekrana geri dönmek fallback yerine aynı throw'u yeniden üretirdi.
   // Sekme/grup değişimi ("başka bir yere gittim") doğru granülerlik.
   return (
-    <ErrorBoundary context="root-navigator" resetKeys={[segments[0]]}>
-      {/* R06.05 — covers the app-switcher preview when "hide titles" is on */}
-      <PrivacyCover />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="tabs" />
-        <Stack.Screen name="habits" />
-        <Stack.Screen name="screens" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding" />
-      </Stack>
-    </ErrorBoundary>
+    <>
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+      <ErrorBoundary context="root-navigator" resetKeys={[segments[0]]}>
+        {/* R06.05 — covers the app-switcher preview when "hide titles" is on */}
+        <PrivacyCover />
+        {shellVisible && <CommandPalette />}
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="tabs" />
+          <Stack.Screen name="screens" />
+          <Stack.Screen name="onboarding" />
+        </Stack>
+      </ErrorBoundary>
+      <DialogHost />
+    </>
   );
 }

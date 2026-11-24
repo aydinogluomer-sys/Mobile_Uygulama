@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import SegmentedTabs, { type Segment } from '../../components/SegmentedTabs';
 import ObsidianExportModal from '../../components/ObsidianExportModal';
 import { colors, radius, alphaHex } from '../../lib/tokens';
+import { navigateTo } from '../../lib/destinations';
+import { useTabParam } from '../../hooks/useTabParams';
 import StatsScreen from './stats';
 import WeeklyReviewScreen from '../screens/weekly-review';
 import MonthlyReviewScreen from '../screens/monthly-review';
@@ -21,9 +23,22 @@ import AICoachScreen from '../screens/ai-coach';
  * 2. Zihin & Günlük (Günlük Yaz, Arşiv, AI Analizi + Obsidian Markdown Aktarımı)
  * 3. AI Koç (Kanıt Satırlı Akıllı Koç + Odak Puanı / Kredi Geçmişi Kısayolu)
  */
-type MainTab = 'reports' | 'journal' | 'coach';
-type ReportTab = 'stats' | 'recovery' | 'behaviour' | 'weekly' | 'monthly';
-type JournalTab = 'write' | 'archive' | 'insights';
+export const INSIGHTS_MAIN_TABS = ['reports', 'journal', 'coach'] as const;
+export const INSIGHTS_REPORT_TABS = ['stats', 'recovery', 'behaviour', 'weekly', 'monthly'] as const;
+export const INSIGHTS_JOURNAL_TABS = ['write', 'archive', 'insights'] as const;
+const INSIGHTS_SUB_TABS = [...INSIGHTS_REPORT_TABS, ...INSIGHTS_JOURNAL_TABS] as const;
+
+type MainTab = (typeof INSIGHTS_MAIN_TABS)[number];
+type ReportTab = (typeof INSIGHTS_REPORT_TABS)[number];
+type JournalTab = (typeof INSIGHTS_JOURNAL_TABS)[number];
+
+function isReportTab(v: string | null): v is ReportTab {
+  return v !== null && (INSIGHTS_REPORT_TABS as readonly string[]).includes(v);
+}
+
+function isJournalTab(v: string | null): v is JournalTab {
+  return v !== null && (INSIGHTS_JOURNAL_TABS as readonly string[]).includes(v);
+}
 
 const MAIN_SEGMENTS: readonly Segment<MainTab>[] = [
   { key: 'reports', label: 'Özet & Telafi' },
@@ -41,10 +56,23 @@ const REPORT_SEGMENTS: readonly { key: ReportTab; label: string }[] = [
 
 export default function InsightsHubScreen() {
   const router = useRouter();
-  const [mainTab, setMainTab] = useState<MainTab>('reports');
-  const [reportTab, setReportTab] = useState<ReportTab>('stats');
-  const [journalTab, setJournalTab] = useState<JournalTab>('write');
+  const { value: mainParam, stamp } = useTabParam(INSIGHTS_MAIN_TABS, 'tab');
+  const { value: subParam } = useTabParam(INSIGHTS_SUB_TABS, 'sub');
+
+  const [mainTab, setMainTab] = useState<MainTab>(() => mainParam ?? 'reports');
+  const [reportTab, setReportTab] = useState<ReportTab>(() =>
+    isReportTab(subParam) ? subParam : 'stats',
+  );
+  const [journalTab, setJournalTab] = useState<JournalTab>(() =>
+    isJournalTab(subParam) ? subParam : 'write',
+  );
   const [showObsidianModal, setShowObsidianModal] = useState(false);
+
+  useEffect(() => {
+    if (mainParam) setMainTab(mainParam);
+    if (isReportTab(subParam)) setReportTab(subParam);
+    if (isJournalTab(subParam)) setJournalTab(subParam);
+  }, [mainParam, subParam, stamp]);
 
   return (
     <View style={s.root}>
@@ -128,7 +156,7 @@ export default function InsightsHubScreen() {
           <Text style={s.coachStripHint}>Kanıta dayalı eylem önerileri · Onayınızla uygulanır</Text>
           <TouchableOpacity
             style={s.creditHistoryBtn}
-            onPress={() => router.push('/screens/credit-history' as any)}
+            onPress={() => navigateTo(router, 'credit-history')}
             accessibilityRole="button"
             accessibilityLabel="Odak Puanı ve Kredi Geçmişini Gör"
           >

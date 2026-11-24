@@ -10,13 +10,15 @@ import { currentUserId, isTransportFailure, wrongAccountFor, type RepoResult } f
 
 export type LifeAreaLogRow = { date: string; area: string; value: number };
 
+export const LIFE_AREA_LOG_COLUMNS = 'date,area,value';
+
 /** The most recent day's rows, newest first. `limit` bounds the lookback. */
 export async function fetchRecentLifeAreaLogs(limit = 8): Promise<RepoResult<LifeAreaLogRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   const { data, error, status } = await supabase
     .from('life_area_logs')
-    .select('*')
+    .select(LIFE_AREA_LOG_COLUMNS)
     .eq('user_id', u.userId)
     .order('date', { ascending: false })
     .limit(Math.max(1, Math.min(limit, 200)));

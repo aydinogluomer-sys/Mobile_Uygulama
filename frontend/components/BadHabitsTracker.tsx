@@ -1,5 +1,5 @@
 import { colors, alphaHex, radius } from '../lib/tokens';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { haptic } from '../lib/haptics';
+import { isNumberInputPending, parseLocaleNumber } from '../lib/localeNumber';
+/*
+ * SCOPE (F23, GAP1-15): maliyet ve tasarruf, bırakma motivasyonudur; bütçe/harcama aracı DEĞİLDİR
+ * (F14 finans modülü kalıcı iptal). Bu alanları başka ekrana, grafiğe, dışa aktarıma veya kategoriye taşıma.
+ */
 import {
   listBadHabits, createBadHabit, savingsFor, type Savings,
 } from '../services/badHabitService';
@@ -48,12 +53,24 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
   const [urgeShieldActive, setUrgeShieldActive] = useState(false);
   const [urgeSecondsLeft, setUrgeSecondsLeft] = useState(60);
   const [deflectedUrges, setDeflectedUrges] = useState(0);
+  const urgeCountedRef = useRef(false);
+  const deflectedRef = useRef(0);
+  /*
+   * SCOPE (F23, GAP1-15): maliyet ve tasarruf, bırakma motivasyonudur; bütçe/harcama aracı DEĞİLDİR
+   * (F14 finans modülü kalıcı iptal). Bu alanları başka ekrana, grafiğe, dışa aktarıma veya kategoriye taşıma.
+   */
   const [newHabit, setNewHabit] = useState({
     name: '',
     description: '',
     cost_per_day: '',
     time_wasted_per_day: '',
   });
+
+  const persistUrgeCount = useCallback(async (count: number) => {
+    const uid = (await currentUser())?.id;
+    if (!uid) return;
+    await AsyncStorage.setItem(urgeStorageKey(uid), String(count));
+  }, []);
 
   const loadBadHabits = async () => {
     setLoading(true);
@@ -73,9 +90,15 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
       void (async () => {
         await AsyncStorage.removeItem(URGE_STORAGE_KEY_PREFIX);
         const uid = (await currentUser())?.id;
-        if (!uid) { setDeflectedUrges(0); return; }
+        if (!uid) {
+          deflectedRef.current = 0;
+          setDeflectedUrges(0);
+          return;
+        }
         const v = await AsyncStorage.getItem(urgeStorageKey(uid));
-        setDeflectedUrges(v ? parseInt(v, 10) || 0 : 0);
+        const n = v ? parseInt(v, 10) || 0 : 0;
+        deflectedRef.current = n;
+        setDeflectedUrges(n);
       })().catch(() => undefined);
     }
   }, [visible]);
@@ -83,22 +106,23 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
   useEffect(() => {
     if (!urgeShieldActive) return;
     if (urgeSecondsLeft <= 0) {
-      haptic.success();
-      const nextCount = deflectedUrges + 1;
-      setDeflectedUrges(nextCount);
-      void (async () => {
-        const uid = (await currentUser())?.id;
-        if (!uid) return;
-        await AsyncStorage.setItem(urgeStorageKey(uid), String(nextCount));
-      })().catch(() => undefined);
+      if (!urgeCountedRef.current) {
+        urgeCountedRef.current = true; // bu kalkan oturumunda tek sayım
+        haptic.success();
+        const next = deflectedRef.current + 1;
+        deflectedRef.current = next;
+        setDeflectedUrges(next);
+        void persistUrgeCount(next).catch(() => undefined);
+      }
       return;
     }
     const timer = setTimeout(() => setUrgeSecondsLeft((s) => s - 1), 1000);
     return () => clearTimeout(timer);
-  }, [urgeShieldActive, urgeSecondsLeft, deflectedUrges]);
+  }, [urgeShieldActive, urgeSecondsLeft, persistUrgeCount]);
 
   const startUrgeShield = () => {
     haptic.medium();
+    urgeCountedRef.current = false; // yeni oturum yeni sayım
     setUrgeSecondsLeft(60);
     setUrgeShieldActive(true);
   };
@@ -111,16 +135,28 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
         ? 'Nefesini Sakince Tut (4 sn)…'
         : 'Ağzından Yavaşça Ver (6 sn)…';
 
+  const costRaw = newHabit.cost_per_day;
+  const parsedCost =
+    costRaw.trim() === '' ? 0 : parseLocaleNumber(costRaw, { min: 0, max: 1_000_000 });
+  const costInvalid = costRaw.trim() !== '' && parsedCost === null;
+  const showCostHint = costInvalid && !isNumberInputPending(costRaw);
+
+  const timeRaw = newHabit.time_wasted_per_day;
+  const parsedTime =
+    timeRaw.trim() === '' ? 0 : parseLocaleNumber(timeRaw, { integer: true, min: 0, max: 1440 });
+  const timeInvalid = timeRaw.trim() !== '' && parsedTime === null;
+  const showTimeHint = timeInvalid && !isNumberInputPending(timeRaw);
+
   const handleAddBadHabit = async () => {
     const name = newHabit.name.trim();
-    if (!name) return;
+    if (!name || costInvalid || timeInvalid) return;
 
     const res = await createBadHabit({
       name,
       description: newHabit.description.trim() || null,
       quitDate: new Date().toISOString(),
-      costPerDay: parseFloat(newHabit.cost_per_day) || 0,
-      timeWastedPerDay: parseInt(newHabit.time_wasted_per_day, 10) || 0,
+      costPerDay: parsedCost ?? 0,
+      timeWastedPerDay: parsedTime ?? 0,
     });
     if (!res.ok) {
       setError(res.error);
@@ -242,7 +278,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                 placeholder="Alışkanlık adı (örn: Sigara)"
                 placeholderTextColor={colors.textFaint}
                 value={newHabit.name}
-                onChangeText={(text) => setNewHabit({ ...newHabit, name: text })}
+                onChangeText={(text) => setNewHabit((prev) => ({ ...prev, name: text }))}
               />
 
               <TextInput
@@ -250,7 +286,7 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                 placeholder="Açıklama"
                 placeholderTextColor={colors.textFaint}
                 value={newHabit.description}
-                onChangeText={(text) => setNewHabit({ ...newHabit, description: text })}
+                onChangeText={(text) => setNewHabit((prev) => ({ ...prev, description: text }))}
                 multiline
               />
 
@@ -259,18 +295,28 @@ export default function BadHabitsTracker({ visible, onClose }: BadHabitsTrackerP
                 placeholder="Günlük maliyet (₺)"
                 placeholderTextColor={colors.textFaint}
                 value={newHabit.cost_per_day}
-                onChangeText={(text) => setNewHabit({ ...newHabit, cost_per_day: text })}
+                onChangeText={(text) => setNewHabit((prev) => ({ ...prev, cost_per_day: text }))}
                 keyboardType="numeric"
               />
+              {showCostHint && (
+                <Text style={styles.fieldHint} accessibilityLiveRegion="polite">
+                  Tutarı rakamla yaz, örn. 12,5
+                </Text>
+              )}
 
               <TextInput
                 style={styles.input}
                 placeholder="Günlük kaybedilen zaman (dakika)"
                 placeholderTextColor={colors.textFaint}
                 value={newHabit.time_wasted_per_day}
-                onChangeText={(text) => setNewHabit({ ...newHabit, time_wasted_per_day: text })}
+                onChangeText={(text) => setNewHabit((prev) => ({ ...prev, time_wasted_per_day: text }))}
                 keyboardType="numeric"
               />
+              {showTimeHint && (
+                <Text style={styles.fieldHint} accessibilityLiveRegion="polite">
+                  Dakikayı tam sayı yaz, örn. 30
+                </Text>
+              )}
 
               <View style={styles.modalButtons}>
                 <TouchableOpacity
@@ -492,6 +538,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: colors.warning,
+    marginTop: -6,
+    marginBottom: 10,
   },
   textArea: {
     height: 80,

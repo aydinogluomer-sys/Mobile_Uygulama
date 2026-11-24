@@ -71,6 +71,22 @@ export function getFocusBackdrop(presetId: string): ImageSourcePropType {
   return FOCUS_BACKDROPS[presetId] ?? FOCUS_BACKDROPS.default;
 }
 
+export const FOCUS_SWATCHES: Record<string, ImageSourcePropType> = {
+  default: require('../assets/images/focus-themes/swatch-default.webp'),
+  forest: require('../assets/images/focus-themes/swatch-forest.webp'),
+  cosmic: require('../assets/images/focus-themes/swatch-cosmic.webp'),
+  warm: require('../assets/images/focus-themes/swatch-warm.webp'),
+  ocean: require('../assets/images/focus-themes/swatch-ocean.webp'),
+  sunset: require('../assets/images/focus-themes/swatch-sunset.webp'),
+  midnight: require('../assets/images/focus-themes/swatch-midnight.webp'),
+  rose: require('../assets/images/focus-themes/swatch-rose.webp'),
+  mono: require('../assets/images/focus-themes/swatch-mono.webp'),
+};
+
+export function getFocusSwatch(presetId: string): ImageSourcePropType {
+  return FOCUS_SWATCHES[presetId] ?? FOCUS_SWATCHES.default;
+}
+
 export const FOCUS_COMPLETE_GONG: ImageSourcePropType = require('../assets/images/focus-themes/focus-complete-gong.webp');
 
 export const FLOW_CBT_BACKDROPS: Record<string, ImageSourcePropType> = {

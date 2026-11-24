@@ -28,8 +28,10 @@
  * repository functions -- no new repository code needed for this screen.
  */
 import { withEdgeDeadline } from '../../lib/edgeCall';
+import { createLatest } from '../../lib/latestOnly';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { newRequestId } from '../../services/focusPointService';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,7 +43,8 @@ import { supabase } from '../../lib/supabase';
 import type { Habit, RecoveryPlan } from '../../lib/supabase';
 import type { FocusSessionRow } from '../../lib/focusReport';
 import { colors, space, font, hexA } from '../../lib/tokens';
-import { AtmosphericScreenCanvas, Card, ChapterDivider, SectionHeader, EmptyState, IconCircle, Skeleton, SkeletonLines, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { Card, SectionHeader, EmptyState, IconCircle, Skeleton, SkeletonLines, EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { ymd, ymdFromIso, parseLocalDate, addDaysLocal } from '../../lib/date';
 import { carriesDayLoad } from '../../lib/habitSchedule';
@@ -58,9 +61,11 @@ import { planFromRow } from '../../lib/recovery';
 import {
   weeklyDigest, monthlyDigest, formatDigestForPrompt, MAX_HABIT_ENTRIES, type Digest,
 } from '../../lib/insightDigest';
+import { WEEKDAY_PATTERN_WINDOW_DAYS } from '../../lib/completionMetric';
+import { DIGEST_PREAMBLE, INSUFFICIENT_COPY, insufficientText, type InsufficientKind } from '../../lib/metricCopy';
 import { extractInvokeError } from '../../lib/aiInvoke';
 import { loadReviewData, type ReviewLogRow } from '../../services/reviewService';
-import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
+import { sessionsBetween } from '../../services/focusService';
 import { DOW_TR } from '../../lib/focusReport';
 
 const HISTORY_WEEKS = 14; // >= the 12-week trend + 8-week fragility windows behaviorIntelligence.ts uses, with a buffer
@@ -76,7 +81,7 @@ function trendIcon(direction: 'improving' | 'declining' | 'flat'): keyof typeof 
   return 'remove-outline';
 }
 function formatTrend(t: Result<Trend>): string {
-  if (!t.ok) return t.reason;
+  if (!t.ok) return insufficientText('trend', t.reason);
   const pts = Math.round(t.value.magnitude * 100);
   return `${trendLabel(t.value.direction)} · ${pts >= 0 ? '+' : ''}${pts} puan${t.value.partialWindow ? ` (${t.value.weeksUsed}/${t.value.weeksRequested} hafta)` : ''}`;
 }
@@ -130,11 +135,12 @@ function countOverloadDays(params: {
  * `result.reason` -- never a substituted number -- mirroring
  * `habit-detail.tsx`'s own `InsightRow`.
  */
-function InsightRow<T>({ icon, label, result, formatOk }: {
+function InsightRow<T>({ icon, label, result, formatOk, kind }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   result: Result<T>;
   formatOk: (value: T) => string;
+  kind?: InsufficientKind;
 }) {
   return (
     <Card padding="md" style={s.insightCard}>
@@ -145,7 +151,7 @@ function InsightRow<T>({ icon, label, result, formatOk }: {
       {result.ok ? (
         <Text style={s.insightValue}>{formatOk(result.value)}</Text>
       ) : (
-        <Text style={s.insightReason}>{result.reason}</Text>
+        <Text style={s.insightReason}>{insufficientText(kind, result.reason)}</Text>
       )}
     </Card>
   );
@@ -208,7 +214,7 @@ function AiCommentaryPanel({ digest, label }: { digest: Digest; label: string })
     setError(null);
     const requestId = newRequestId();
     try {
-      const message = `${label} alışkanlık verilerimi analiz et, kısa bir yorum ve somut bir tavsiye ver:\n${formatDigestForPrompt(digest)}`;
+      const message = `${label} alışkanlık verilerimi analiz et, kısa bir yorum ve somut bir tavsiye ver. ${DIGEST_PREAMBLE}\n${formatDigestForPrompt(digest)}`;
       const { data, error: invokeError } = await withEdgeDeadline('AI analizi', (signal) =>
         supabase.functions.invoke('generate-routine', {
         signal,
@@ -283,24 +289,35 @@ export default function InsightsScreen() {
     fetchTasks();
   }, [fetchHabits, fetchTasks]);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    Promise.all([
-      loadReviewData({ start: since, end: todayYmd }),
-      fetchFocusSessionsSince({ sinceIso: since }),
-    ]).then(([reviewRes, sessionsRes]) => {
-      if (cancelled) return;
+  const insightsLatest = useRef(createLatest()).current;
+
+  const loadInsights = useCallback(async (opts: { silent: boolean }) => {
+    const run = insightsLatest.begin();
+    if (!opts.silent) setLoading(true);
+    try {
+      const [reviewRes, sessionsRes] = await Promise.all([
+        loadReviewData({ start: since, end: todayYmd }),
+        sessionsBetween({ startYmd: since, endYmd: todayYmd }),
+      ]);
+      if (!run.isCurrent()) return;
       // Habit logs and recovery come from ONE service call: a review
       // built from logs plus an empty recovery list (because that query
       // failed) understates how much the user caught up.
       setLogs(reviewRes.ok ? reviewRes.data.logs : []);
       setRecoveryPlans(reviewRes.ok ? (reviewRes.data.recoveryPlans as never) : []);
-      setFocusSessions(sessionsRes.ok ? sessionsRes.data.filter((sess: { started_at: string }) => sess.started_at <= `${todayYmd}T23:59:59`) : []);
-      setLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [since, todayYmd]);
+      setFocusSessions(sessionsRes.ok ? sessionsRes.data : []);
+    } finally {
+      run.done();
+      if (!opts.silent) setLoading(false);
+    }
+  }, [since, todayYmd, insightsLatest]);
+
+  useEffect(() => { void loadInsights({ silent: false }); }, [loadInsights]);
+  useRefreshOnFocus(() => {
+    void fetchHabits();
+    void fetchTasks();
+    return loadInsights({ silent: true });
+  });
 
   const activeHabits = habits.filter((h) => h.status === 'active');
   const weekRange = getWeekBounds(today);
@@ -309,15 +326,16 @@ export default function InsightsScreen() {
   const habitName = (id: string) => habits.find((h) => h.id === id)?.name ?? '—';
 
   // ---- hero -----------------------------------------------------------
-  const weekRate = calculateHabitCompletionRate(activeHabits, logs, weekRange.start, weekRange.end);
+  const weekRate = calculateHabitCompletionRate(activeHabits, logs, weekRange.start, weekRange.end, { asOf: today });
   const weekOverWeek = completionTrend(activeHabits, logs, { weeks: 2, asOf: today });
   const strongest = strongestHabit(activeHabits, logs, { asOf: today });
-  const weekdayStats = weekdayBreakdown(activeHabits, logs, { start: weekRange.start, end: weekRange.end });
+  const patternStart = ymd(addDaysLocal(today, -(WEEKDAY_PATTERN_WINDOW_DAYS - 1)));
+  const weekdayStats = weekdayBreakdown(activeHabits, logs, { start: patternStart, end: todayYmd }, { asOf: today });
   const worstDay = worstWeekday(weekdayStats);
   const bestDay = bestWeekday(weekdayStats);
 
   // ---- Ay -----------------------------------------------------------
-  const monthRate = calculateHabitCompletionRate(activeHabits, logs, monthRange.start, monthRange.end);
+  const monthRate = calculateHabitCompletionRate(activeHabits, logs, monthRange.start, monthRange.end, { asOf: today });
   const trend12 = completionTrend(activeHabits, logs, { weeks: 12, asOf: today });
   const trend4 = completionTrend(activeHabits, logs, { weeks: 4, asOf: today });
 
@@ -359,7 +377,7 @@ export default function InsightsScreen() {
   const start30d = ymd(addDaysLocal(today, -29));
   const habitCompletionRates30d = activeHabits.slice(0, MAX_HABIT_ENTRIES).map((h) => ({
     habitName: h.name,
-    rate: habitCompletionRate(h, logs, { start: start30d, end: todayYmd }),
+    rate: habitCompletionRate(h, logs, { start: start30d, end: todayYmd }, { asOf: today }),
   }));
   const overloadDaysThisMonth = countOverloadDays({
     start: monthRange.start, end: monthRange.end, activeHabits, allTasks: tasks, focusSessions, habitLogs: logs,
@@ -445,19 +463,25 @@ export default function InsightsScreen() {
           <Card padding="lg" style={s.heroCard}>
             <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={124} opacity={0.18} />
             <Text style={s.heroLabel}>BU HAFTA</Text>
-            <Text style={s.heroPercent}>%{weekRate}</Text>
+            <Text
+              style={s.heroPercent}
+              accessibilityLabel={weekRate === null ? 'Bu hafta tamamlama: veri yok' : `Bu hafta tamamlama: yüzde ${weekRate}`}
+            >
+              {weekRate === null ? '—' : `%${weekRate}`}
+            </Text>
+            {weekRate === null && <Text style={s.insightReason}>{INSUFFICIENT_COPY.rate}</Text>}
             <Text style={s.heroDelta}>
               {weekOverWeek.ok
                 ? `${weekOverWeek.value.magnitude >= 0 ? '+' : ''}${Math.round(weekOverWeek.value.magnitude * 100)}% önceki haftaya göre`
-                : weekOverWeek.reason}
+                : insufficientText('trend', weekOverWeek.reason)}
             </Text>
             <Text style={s.heroLine}>
-              En güçlü: {strongest.ok ? habitName(strongest.value.habitId) : strongest.reason}
+              {strongest.ok ? `En güçlü: ${habitName(strongest.value.habitId)}` : insufficientText('strength', strongest.reason)}
             </Text>
-            <Text style={[s.heroLine, s.heroWarning]}>
+            <Text style={[s.heroLine, worstDay.ok && s.heroWarning]}>
               {worstDay.ok
-                ? `Dikkat: ${DOW_TR[worstDay.value.weekday]} tamamlama oranı %${Math.round(worstDay.value.rate * 100)}`
-                : `Dikkat: ${worstDay.reason}`}
+                ? `Dikkat: ${DOW_TR[worstDay.value.weekday]} günleri son 8 haftada %${Math.round(worstDay.value.rate * 100)}`
+                : insufficientText('weekday', worstDay.reason)}
             </Text>
           </Card>
         )}
@@ -465,21 +489,21 @@ export default function InsightsScreen() {
         <ChapterDivider source={DECOR.dividerSundial} label="ALTI EKSENLİ GÖZLEM" />
         {/* HAFTA */}
         <SectionHeader title="HAFTA" variant="overline" style={{ marginTop: space.xl }} />
-        <InsightRow icon="trending-up-outline" label="En başarılı gün" result={bestDay} formatOk={(v) => `${DOW_TR[v.weekday]} · %${Math.round(v.rate * 100)}`} />
-        <InsightRow icon="trending-down-outline" label="En zayıf gün" result={worstDay} formatOk={(v) => `${DOW_TR[v.weekday]} · %${Math.round(v.rate * 100)}`} />
-        <InsightRow icon={trendIcon(trend4.ok ? trend4.value.direction : 'flat')} label="4 haftalık trend" result={trend4} formatOk={() => formatTrend(trend4)} />
+        <InsightRow icon="trending-up-outline" label="En başarılı gün" result={bestDay} kind="weekday" formatOk={(v) => `${DOW_TR[v.weekday]} · %${Math.round(v.rate * 100)}`} />
+        <InsightRow icon="trending-down-outline" label="En zayıf gün" result={worstDay} kind="weekday" formatOk={(v) => `${DOW_TR[v.weekday]} · %${Math.round(v.rate * 100)}`} />
+        <InsightRow icon={trendIcon(trend4.ok ? trend4.value.direction : 'flat')} label="4 haftalık trend" result={trend4} kind="trend" formatOk={() => formatTrend(trend4)} />
         <AiCommentaryPanel digest={weeklyDigestData} label="Bu haftaki" />
 
         {/* AY */}
         <SectionHeader title="AY" variant="overline" style={{ marginTop: space.lg }} />
-        <MetricRow icon="calendar-number-outline" label="Bu ay tamamlama" value={`%${monthRate}`} />
-        <InsightRow icon={trendIcon(trend12.ok ? trend12.value.direction : 'flat')} label="12 haftalık trend" result={trend12} formatOk={() => formatTrend(trend12)} />
+        <MetricRow icon="calendar-number-outline" label="Bu ay tamamlama" value={monthRate === null ? INSUFFICIENT_COPY.rate : `%${monthRate}`} />
+        <InsightRow icon={trendIcon(trend12.ok ? trend12.value.direction : 'flat')} label="12 haftalık trend" result={trend12} kind="trend" formatOk={() => formatTrend(trend12)} />
         <AiCommentaryPanel digest={monthlyDigestData} label="Bu ayki" />
 
         {/* ALIŞKANLIKLAR */}
         <SectionHeader title="ALIŞKANLIKLAR" variant="overline" style={{ marginTop: space.lg }} />
-        <InsightRow icon="flash-outline" label="En güçlü habit" result={strongest} formatOk={(v) => habitName(v.habitId)} />
-        <InsightRow icon="pulse-outline" label="En kırılgan habit" result={fragile} formatOk={(v) => `${habitName(v.habitId)} · %${Math.round(v.volatility * 100)} oynaklık`} />
+        <InsightRow icon="flash-outline" label="En güçlü habit" result={strongest} kind="strength" formatOk={(v) => habitName(v.habitId)} />
+        <InsightRow icon="pulse-outline" label="En kırılgan habit" result={fragile} kind="fragility" formatOk={(v) => `${habitName(v.habitId)} · %${Math.round(v.volatility * 100)} oynaklık`} />
 
         {/* KAPASİTE */}
         <SectionHeader title="KAPASİTE" variant="overline" style={{ marginTop: space.lg }} />
@@ -493,7 +517,7 @@ export default function InsightsScreen() {
         {/* TELAFİ */}
         <SectionHeader title="TELAFİ" variant="overline" style={{ marginTop: space.lg }} />
         <InsightRow icon="refresh-circle-outline" label="En sık telafi edilen habit" result={mostRecovered} formatOk={(v) => `${habitName(v.habitId)} · ${v.count}x`} />
-        <InsightRow icon="checkmark-done-outline" label="Telafi başarı oranı" result={recoveryRate} formatOk={(v) => `%${Math.round(v * 100)}`} />
+        <InsightRow icon="checkmark-done-outline" label="Telafi başarı oranı" result={recoveryRate} kind="recovery" formatOk={(v) => `%${Math.round(v * 100)}`} />
 
         {/* ODAK */}
         <SectionHeader title="ODAK" variant="overline" style={{ marginTop: space.lg, marginBottom: space.xxl }} />

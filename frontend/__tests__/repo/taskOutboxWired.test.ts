@@ -18,17 +18,18 @@ describe('R02 — task writes are local-first', () => {
     expect(store).not.toMatch(/\b(insertTask|repoUpdateTask|repoDeleteTask|setCompleted)\(/);
   });
 
-  it('every task mutation goes through apply() -> enqueue on the live outbox', () => {
+  it('every task mutation goes through apply() -> taskChannel.write on the shared outbox', () => {
     for (const fn of ['addTask', 'updateTask', 'removeTask', 'toggleDone']) {
       const at = store.indexOf(`  ${fn}: async`);
       const body = store.slice(at, store.indexOf('\n  },', at));
       expect(body).toMatch(/apply\(/);
     }
-    expect(store).toMatch(/const live = get\(\)\.outbox!;\s*const res = enqueue\(live,/);
+    expect(store).toMatch(/const res = await taskChannel\.write\(input,/);
   });
 
   it('a refetch overlays unsent changes', () => {
-    expect(store).toMatch(/tasks: box \? overlay\(box, 'task', res\.data\.rows\) : res\.data\.rows/);
+    expect(store).toMatch(/const live = get\(\)\.outbox \?\? box;[\s\S]*tasks: live \? overlay\(live, 'task', res\.data\.rows\) : res\.data\.rows/);
+    expect(store).not.toMatch(/tasks: box \? overlay\(box,/);
   });
 
   it('the signed-in account is asked before every command', () => {
@@ -68,9 +69,13 @@ describe('R02 — visibility', () => {
 describe('R02 — repository backstop', () => {
   it('each outbox write refuses a session that is not the command\'s account', () => {
     const repo = code('repositories/taskRepository.ts');
-    expect((repo.match(/const wrong = wrongAccount\(expectedUserId, u\.userId\);\s*if \(wrong\) return wrong;/g) ?? []).length).toBe(3);
+    const expectedFns = repo.match(/export (?:async )?function \w+\([^)]*expectedUserId/g) ?? [];
+    expect(expectedFns.length).toBeGreaterThan(0);
+    const guardSites =
+      repo.match(/const wrong = wrongAccount\(expectedUserId, u\.userId\);\s*if \(wrong\) return wrong;/g) ?? [];
+    expect(guardSites).toHaveLength(expectedFns.length);
     const svc = code('services/taskService.ts');
-    expect((svc.match(/cmd\.userId\)/g) ?? []).length).toBe(3);
+    expect(svc.match(/cmd\.userId\)/g) ?? []).toHaveLength(expectedFns.length);
   });
 });
 

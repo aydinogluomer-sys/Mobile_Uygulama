@@ -1,6 +1,7 @@
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle, type ImageSourcePropType } from 'react-native';
 import { Image } from 'expo-image';
-import { colors, radius, space } from '../../lib/tokens';
+import { radius, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 
 type Props = {
   children?: React.ReactNode;
@@ -28,6 +29,14 @@ const decorativeA11y =
         importantForAccessibility: 'no-hide-descendants' as const,
       } as const);
 
+const makeStyles = (_c: Palette) =>
+  StyleSheet.create({
+    clip: {
+      overflow: 'hidden',
+      position: 'relative',
+    },
+  });
+
 /**
  * Atlas "Paper & Clay" dokunsal yüzey kabı.
  * Kartlara, çekmeceye, günlük sayfalarına veya tam ekran katmanlara sıfır layout
@@ -37,14 +46,19 @@ export default function TexturedSurface({
   children,
   source,
   textureOpacity = 0.06,
-  backgroundColor = colors.surface,
-  borderColor = colors.border,
+  backgroundColor,
+  borderColor,
   borderWidth = 1,
   radiusKey = 'md',
   padding,
   overlayOnly = false,
   style,
 }: Props) {
+  const c = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const resolvedBg = backgroundColor ?? c.surface;
+  const resolvedBorder = borderColor ?? c.border;
+
   if (overlayOnly) {
     if (IS_TEST) return null;
     return (
@@ -66,8 +80,8 @@ export default function TexturedSurface({
       style={[
         s.clip,
         {
-          backgroundColor,
-          borderColor,
+          backgroundColor: resolvedBg,
+          borderColor: resolvedBorder,
           borderWidth,
           borderRadius: radius[radiusKey],
           ...(pad !== undefined ? { padding: pad } : null),
@@ -89,11 +103,3 @@ export default function TexturedSurface({
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  clip: {
-    overflow: 'hidden',
-    position: 'relative',
-  },
-});
-

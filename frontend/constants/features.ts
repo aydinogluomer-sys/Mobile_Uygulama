@@ -73,32 +73,8 @@ export const CURRENT_FEATURES: FeatureHighlight[] = [
   {
     id: 'webhook',
     title: 'Webhook otomasyonu',
-    description: 'Tamamlama olaylarını kendi URL’nize gönderin. Kurulum: Entegrasyonlar → Otomasyonlar.',
+    description: 'Tamamlama olaylarını kendi URL’nize gönderin. Kurulum: Bağlantılar → Otomasyonlar.',
     icon: 'link-outline',
     color: '#f59e0b',
-  },
-];
-
-export const UPCOMING_FEATURES: FeatureHighlight[] = [
-  {
-    id: 'quick-add-task',
-    title: 'Hızlı görev ekleme',
-    description: 'Timeline üzerinden tek dokunuşla görev oluşturma.',
-    icon: 'add-circle-outline',
-    color: '#9ca3af',
-  },
-  {
-    id: 'achievements-gallery',
-    title: 'Rozet ve başarım galerisi',
-    description: 'Kazandığınız rozetleri tek ekranda görüntüleyin.',
-    icon: 'ribbon-outline',
-    color: '#9ca3af',
-  },
-  {
-    id: 'integrations-hub',
-    title: 'Entegrasyonlar',
-    description: 'Notion, sağlık verisi, AI koç ve daha fazlası — yukarıdaki Entegrasyonlar bölümünde.',
-    icon: 'extension-puzzle-outline',
-    color: '#9ca3af',
   },
 ];

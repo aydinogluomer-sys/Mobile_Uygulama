@@ -188,6 +188,43 @@ describe('two devices', () => {
     await st().flush();
     expect(mockServer.rows.size).toBe(0);
   });
+
+  it('F19 (SYN-05): clearTombstones on taskStore un-hides a restored task over fetchTasks and persists', async () => {
+    const t = await st().addTask({ title: 'yedekten dönecek' });
+    await st().flush();
+    await st().removeTask(t!.id);
+    await st().flush();
+    expect(st().outbox?.tombstones[`task|${t!.id}`]).toBeDefined();
+
+    // Backup restore inserts the row back onto the server directly
+    mockServer.rows.set(t!.id, {
+      id: t!.id,
+      user_id: 'user-a',
+      title: 'yedekten dönecek',
+      completed: false,
+      status: 'pending',
+      completed_at: null,
+      updated_at: mockVersion(),
+      created_at: '2026-10-07T09:00:00.000Z',
+      list_type: 'inbox',
+      priority: 'none',
+      due_date: null,
+    });
+
+    // Without clearTombstones, overlay hides the restored row during grace
+    await st().fetchTasks();
+    expect(st().tasks.map((x) => x.id)).toEqual([]);
+
+    await st().clearTombstones([t!.id]);
+    expect(st().outbox?.tombstones[`task|${t!.id}`]).toBeUndefined();
+    await st().fetchTasks();
+    expect(st().tasks.map((x) => x.title)).toEqual(['yedekten dönecek']);
+
+    // Survives cold restart
+    kill();
+    await st().fetchTasks();
+    expect(st().tasks.map((x) => x.title)).toEqual(['yedekten dönecek']);
+  });
 });
 
 describe('accounts', () => {

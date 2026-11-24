@@ -5,6 +5,8 @@ import { ymd, ymdFromIso, startOfWeekLocal } from './date';
 // R05.06 — the one seconds->minutes rule for focus time.
 import { secondsToMinutes } from './focusDuration';
 import { decimalTR } from './chartText';
+import { escapeCsvCell } from './csvImport';
+import { browserDownload } from './shareFile';
 
 export type FocusSessionRow = {
   id: string;
@@ -93,7 +95,7 @@ export function buckets(sessions: FocusSessionRow[], range: ReportRange, now: Da
   if (range === 'today') {
     const arr: Bucket[] = Array.from({ length: 24 }, (_, i) => ({ label: String(i).padStart(2, '0'), seconds: 0 }));
     sessions.forEach((s) => { arr[new Date(s.started_at).getHours()].seconds += s.completed_seconds || 0; });
-    return arr.slice(6); // 06–23 arası kompakt
+    return arr;
   }
   const start = rangeStart(range, now);
   const days = range === 'week' ? 7 : new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -120,7 +122,16 @@ export type Ranking = {
   streak: number;
 };
 
-export function ranking(sessions: FocusSessionRow[]): Ranking {
+function resolveRankingClock(now: Date = new Date()): Date {
+  return now;
+}
+
+export function ranking(
+  sessions: FocusSessionRow[],
+  optsOrNow: Date | { streakSessions?: FocusSessionRow[]; now?: Date } = new Date(),
+): Ranking {
+  const opts = optsOrNow instanceof Date ? { now: optsOrNow } : optsOrNow;
+  const now = resolveRankingClock(opts.now);
   const tasks = byTask(sessions);
   const byDay: Record<string, number> = {};
   sessions.forEach((s) => { const k = ymdFromIso(s.started_at); byDay[k] = (byDay[k] || 0) + (s.completed_seconds || 0); });
@@ -129,10 +140,10 @@ export function ranking(sessions: FocusSessionRow[]): Ranking {
   sessions.forEach((s) => { const h = new Date(s.started_at).getHours(); byHour[h] = (byHour[h] || 0) + (s.completed_seconds || 0); });
   const topHourEntry = Object.entries(byHour).sort((a, b) => b[1] - a[1])[0];
 
-  // Streak: ardışık (≥1 tamamlanan seans) günler, bugünden/dünden geri
-  const doneDays = new Set(sessions.filter((s) => s.completed).map((s) => ymdFromIso(s.started_at)));
+  // Seri: ardışık (en az 1 tamamlanan seans) günler. Seçili aralıktan BAĞIMSIZ: tüm geçmişten hesaplanır.
+  const doneDays = new Set((opts.streakSessions ?? sessions).filter((s) => s.completed).map((s) => ymdFromIso(s.started_at)));
   let streak = 0;
-  const cur = new Date(); cur.setHours(0, 0, 0, 0);
+  const cur = new Date(now); cur.setHours(0, 0, 0, 0);
   if (!doneDays.has(ymd(cur))) cur.setDate(cur.getDate() - 1);
   while (doneDays.has(ymd(cur))) { streak++; cur.setDate(cur.getDate() - 1); }
 
@@ -161,12 +172,8 @@ export function fmtHours(sec: number): string {
 // Seansları CSV metnine çevir (dışa aktarma için)
 export function toCSV(sessions: FocusSessionRow[]): string {
   const head = ['task_title', 'mode', 'started_at', 'ended_at', 'planned_seconds', 'completed_seconds', 'completed'];
-  const esc = (v: unknown) => {
-    const str = v == null ? '' : String(v);
-    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-  };
   const rows = sessions.map((s) =>
-    [s.task_title, s.mode, s.started_at, s.ended_at, s.planned_seconds, s.completed_seconds, s.completed].map(esc).join(',')
+    [s.task_title, s.mode, s.started_at, s.ended_at, s.planned_seconds, s.completed_seconds, s.completed].map(escapeCsvCell).join(',')
   );
   return head.join(',') + '\n' + rows.join('\n');
 }
@@ -220,22 +227,7 @@ export const EXPORT_META: Record<ExportFmt, { ext: string; mime: string }> = {
 // Web'de gerçek dosya indir (Share API masaüstü tarayıcılarda yok/no-op).
 // RN-Web'de document/Blob mevcut; native'de bu kod yolu hiç çağrılmaz.
 export function webDownload(filename: string, mime: string, content: string): boolean {
-  try {
-    const g = globalThis as any;
-    if (!g?.document || !g?.Blob || !g?.URL?.createObjectURL) return false;
-    const blob = new g.Blob([content], { type: mime });
-    const url = g.URL.createObjectURL(blob);
-    const a = g.document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    g.document.body.appendChild(a);
-    a.click();
-    a.remove();
-    g.URL.revokeObjectURL(url);
-    return true;
-  } catch {
-    return false;
-  }
+  return browserDownload(filename, mime, content);
 }
 
 // Oturumları tek bir Excel sayfasına çevir (toCSV ile aynı kolonlar)

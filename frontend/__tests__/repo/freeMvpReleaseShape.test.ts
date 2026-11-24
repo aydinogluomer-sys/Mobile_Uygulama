@@ -54,6 +54,8 @@ function uiSources(): { path: string; text: string }[] {
   };
   walk(join(FRONTEND, 'app'), 'app');
   walk(join(FRONTEND, 'components'), 'components');
+  out.push({ path: 'lib/destinations.ts', text: read('lib', 'destinations.ts') });
+  out.push({ path: 'locales/tr.json', text: read('locales', 'tr.json') });
   return out;
 }
 
@@ -101,6 +103,14 @@ describe('FREE MVP — no production surface promises a purchase', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('locales/tr.json is included in uiSources() and synthetic paid-tier catalog copy is caught', () => {
+    expect(UI.map((f) => f.path)).toContain('locales/tr.json');
+    const banned = ['Abone Ol', 'Test modu', 'EN POPÜLER', 'Üyeliği Yükselt'];
+    const fakeSource = { path: 'locales/tr.json', text: '{"settings.cta": "Plus — Abone Ol"}' };
+    const caught = banned.filter((b) => fakeSource.text.includes(b)).map((b) => `${fakeSource.path}: ${b}`);
+    expect(caught).toEqual(['locales/tr.json: Abone Ol']);
+  });
+
   it('the Focus Points screen states the free position and names no price', () => {
     const screen = read('app', 'screens', 'focus-points.tsx');
     expect(screen).toContain('PAID_SUBSCRIPTIONS_DISABLED_REASON');
@@ -110,8 +120,11 @@ describe('FREE MVP — no production surface promises a purchase', () => {
 
   it('the route registration and the drawer point at the new screen', () => {
     expect(read('app', 'screens', '_layout.tsx')).toContain('name="focus-points"');
+    const destinations = read('lib', 'destinations.ts');
     const drawer = read('components', 'Drawer.tsx');
-    expect(drawer).toContain("route: '/screens/focus-points'");
+    expect(destinations).toContain("pathname: '/screens/focus-points'");
+    expect(drawer).toContain("visibleDestinations('drawer')");
+    expect(destinations).not.toContain('Üyelik & Krediler');
     expect(drawer).not.toContain('Üyelik & Krediler');
   });
 
@@ -232,8 +245,8 @@ describe('public URLs are not linked while they 404', () => {
   });
 
   it('the Settings row is gated on the flag, not merely absent', () => {
-    const settings = read('app', 'tabs', 'settings.tsx');
-    expect(settings).toContain('{PUBLIC_SITE_URLS_LIVE && renderSettingItem(');
+    const accountSection = read('components', 'settings', 'AccountSection.tsx');
+    expect(accountSection).toContain('{PUBLIC_SITE_URLS_LIVE && (');
   });
 
   it('app config carries no dead URL', () => {
@@ -247,7 +260,9 @@ describe('public URLs are not linked while they 404', () => {
     // exists so the product discloses correctly while the listing waits.
     expect(existsSync(join(FRONTEND, 'app', 'screens', 'privacy.tsx'))).toBe(true);
     const settings = read('app', 'tabs', 'settings.tsx');
-    expect(settings).toContain("router.push('/screens/privacy')");
+    const accountSection = read('components', 'settings', 'AccountSection.tsx');
+    expect(accountSection).toContain("navigateTo(router, 'privacy')");
     expect(settings).toContain('handleDeleteAccount');
+    expect(accountSection).toContain('onDeleteAccount');
   });
 });

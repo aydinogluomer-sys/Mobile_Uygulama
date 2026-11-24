@@ -8,13 +8,13 @@ import {
   ActivityIndicator,
   RefreshControl,
   Platform,
-  Alert,
   Modal,
   TextInput,
 } from 'react-native';
+import { notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Animatable from 'react-native-animatable';
+import FadeInUpView from '../../components/motion/FadeInUpView';
 import { format, addDays, startOfWeek } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { useHabitStore } from '../../store/habitStore';
@@ -32,21 +32,32 @@ import { dailyLoad, capacityAdvice, bandFor, LOAD_BANDS, habitsInRangeOn } from 
 import { syncAllReminders } from '../../lib/notifications';
 import { colors, radius, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree, WillpowerBand, SectionHeader, EmptyState, ProgressBar } from '../../components/ui';
+import { EditorialBanner, WillpowerBand, SectionHeader, EmptyState, FormError, IconButton, ProgressBar, SheetModal } from '../../components/ui';
+import { undoToastBottom } from '../../lib/layoutMetrics';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { CANVASES, DECOR, RITUAL_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { isMeasurableTracking } from '../../lib/habitEngine';
 // R01.03-a: a measurable entry's total and state come from the service, not this screen.
 import { measuredEntryFor } from '../../services/habitLogService';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { useRouter } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
+import HabitMgmtCard from '../../components/habits/HabitMgmtCard';
+import { navigateTo } from '../../lib/destinations';
+import { t } from '../../lib/i18n';
 
-const DELETE_REASONS = [
-  'Artık ihtiyacım yok',
-  'Çok zorlayıcı',
-  'Yanlış oluşturdum',
-  'Önceliğim değişti',
-  'Zaman bulamıyorum',
-];
+const FAB_BOTTOM = Platform.OS === 'ios' ? 100 : 80;
+
+function getDeleteReasons(): string[] {
+  return [
+    t('habits.delete.reason.noNeed'),
+    t('habits.delete.reason.tooHard'),
+    t('habits.delete.reason.mistake'),
+    t('habits.delete.reason.priority'),
+    t('habits.delete.reason.noTime'),
+  ];
+}
 
 export default function TimelineScreen() {
   const router = useRouter();
@@ -59,6 +70,7 @@ export default function TimelineScreen() {
   const [showAIRoutine, setShowAIRoutine] = useState(false);
   const [showBadHabits, setShowBadHabits] = useState(false);
   const [viewMode, setViewMode] = useState<'flow' | 'matrix'>('flow');
+  const [actionError, setActionError] = useState<string | null>(null);
 
   /**
    * The command palette cannot open this modal itself — it is mounted in the
@@ -73,8 +85,11 @@ export default function TimelineScreen() {
   const pendingIntent = useCommandStore((st) => st.pendingIntent);
   const consumeIntent = useCommandStore((st) => st.consumeIntent);
   useEffect(() => {
-    if (pendingIntent !== 'new-habit') return;
-    if (consumeIntent() === 'new-habit') setShowOnboarding(true);
+    if (pendingIntent === 'new-habit') {
+      if (consumeIntent() === 'new-habit') setShowOnboarding(true);
+    } else if (pendingIntent === 'ai-routine') {
+      if (consumeIntent() === 'ai-routine') setShowAIRoutine(true);
+    }
   }, [pendingIntent, consumeIntent]);
 
   const [xpAnim, setXpAnim] = useState<number | null>(null);
@@ -88,9 +103,48 @@ export default function TimelineScreen() {
   // Kapasite yöneticisi
   const [capacityTarget, setCapacityTarget] = useState<Omit<Habit, 'id' | 'created_at' | 'user_id'> | null>(null);
 
-  const { habits, loading: habitsLoading, fetchHabits, addHabit, activateHabit, pauseHabit, updateHabit, removeHabit, restoreHabit, purgeHabit } = useHabitStore();
-  const { fetchLogsForDate, logHabit, getLogForHabit, getRemainingValue } = useLogStore();
-  const { state: wp, fetchToday, canActivate, spend, refund } = useWillpowerStore();
+  const {
+    habits,
+    loading: habitsLoading,
+    fetchHabits,
+    addHabit,
+    activateHabit,
+    pauseHabit,
+    updateHabit,
+    removeHabit,
+    restoreHabit,
+    purgeHabit,
+  } = useHabitStore(
+    useShallow((st) => ({
+      habits: st.habits,
+      loading: st.loading,
+      fetchHabits: st.fetchHabits,
+      addHabit: st.addHabit,
+      activateHabit: st.activateHabit,
+      pauseHabit: st.pauseHabit,
+      updateHabit: st.updateHabit,
+      removeHabit: st.removeHabit,
+      restoreHabit: st.restoreHabit,
+      purgeHabit: st.purgeHabit,
+    })),
+  );
+  const { fetchLogsForDate, logHabit, getLogForHabit, getRemainingValue } = useLogStore(
+    useShallow((st) => ({
+      fetchLogsForDate: st.fetchLogsForDate,
+      logHabit: st.logHabit,
+      getLogForHabit: st.getLogForHabit,
+      getRemainingValue: st.getRemainingValue,
+    })),
+  );
+  const { state: wp, fetchToday, canActivate, spend, refund } = useWillpowerStore(
+    useShallow((st) => ({
+      state: st.state,
+      fetchToday: st.fetchToday,
+      canActivate: st.canActivate,
+      spend: st.spend,
+      refund: st.refund,
+    })),
+  );
 
   // W1 (task Phase-1 CODER-F, Plan §10): şu an aktif alışkanlıkların yükü --
   // canActivate'e gerçek kapasite verisi geçmek için kullanılır. `habitsLoading`
@@ -99,8 +153,8 @@ export default function TimelineScreen() {
   // yükü OLDUĞUNDAN AZ gösterip aktivasyona yanlışlıkla izin verebilirdi.
   const activeHabits = habits.filter((h) => h.status === 'active');
 
-  const loadData = useCallback(async () => {
-    await Promise.all([fetchHabits(), fetchLogsForDate(selectedDate), fetchToday()]);
+  const loadData = useCallback(async (opts?: { force?: boolean }) => {
+    await Promise.all([fetchHabits(opts), fetchLogsForDate(selectedDate), fetchToday()]);
     // Bildirim hatırlatıcılarını mevcut alışkanlıklarla senkronla
     syncAllReminders(useHabitStore.getState().habits);
   }, [selectedDate, fetchHabits, fetchLogsForDate, fetchToday]);
@@ -113,9 +167,11 @@ export default function TimelineScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await loadData({ force: true });
     setRefreshing(false);
   };
+
+  useRefreshOnFocus(() => loadData());
 
   // ── Günlük takip ──
   const handleYesNoTap = async (habit: Habit) => {
@@ -123,7 +179,7 @@ export default function TimelineScreen() {
     const nextState = (!log || log.state === 'miss') ? 'done' : 'miss';
     if (nextState === 'done') haptic.success(); else haptic.light();
     const res = await logHabit({ habitId: habit.id, date: selectedDate, state: nextState });
-    if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
+    if (!res.ok) void notify(t('habits.saveFailed'), res.error);
   };
 
   // R01.03-a — the modal's number is what the user ADDS; what is written is the
@@ -143,7 +199,7 @@ export default function TimelineScreen() {
       targetDirection: intent.targetDirection,
     });
     if (!res.ok) {
-      Alert.alert('Kaydedilemedi', res.error);
+      void notify(t('habits.saveFailed'), res.error);
       return;                       // modalı açık bırak; kullanıcı tekrar denesin
     }
     setMeasureHabit(null);
@@ -168,9 +224,12 @@ export default function TimelineScreen() {
       setXpAnim(habitData.willpower_cost);
       setTimeout(() => setXpAnim(null), 2000);
     } else if (finalStatus === 'idea') {
-      Alert.alert('🗑 Fikirler\'e Eklendi', 'Düşük öncelikli bir alışkanlık. Fikirler bölümünde saklandı.', [{ text: 'Tamam' }]);
+      void notify(t('habits.addedIdea.title'), t('habits.addedIdea.body'));
     } else {
-      Alert.alert(`${TRIAGE_META[triage].emoji} Bekleme Odasına Alındı`, `Strateji kararı: ${TRIAGE_META[triage].label}.`, [{ text: 'Tamam' }]);
+      void notify(
+        t('habits.addedWaiting.title', { emoji: TRIAGE_META[triage].emoji }),
+        t('habits.addedWaiting.body', { label: TRIAGE_META[triage].label }),
+      );
     }
     await loadData();
   };
@@ -200,13 +259,26 @@ export default function TimelineScreen() {
   const handleActivate = async (habit: Habit) => {
     if (!canActivate(habit.willpower_cost, habitsLoading ? undefined : { habit, activeHabits })) {
       haptic.warning();
-      Alert.alert('Kapasite Dolu', `${habit.willpower_cost} irade gerekiyor; bütçen yetmiyor veya slot dolu.`, [{ text: 'Tamam' }]);
+      void notify(
+        t('habits.capacity.full.title'),
+        t('habits.capacity.full.body', { cost: habit.willpower_cost }),
+      );
       return;
     }
-    haptic.success();
-    await activateHabit(habit.id, habit.willpower_cost);
+    const r = await activateHabit(habit.id, habit.willpower_cost);
+    if (r.ok) {
+      haptic.success();
+      setActionError(null);
+    } else {
+      haptic.warning();
+      setActionError(r.error);
+    }
   };
-  const handlePause = async (habit: Habit) => { haptic.light(); await pauseHabit(habit.id, habit.willpower_cost); };
+  const handlePause = async (habit: Habit) => {
+    haptic.light();
+    const r = await pauseHabit(habit.id, habit.willpower_cost);
+    setActionError(r.ok ? null : r.error);
+  };
   const handleMoveToWaiting = async (habit: Habit) => { haptic.light(); await updateHabit(habit.id, { status: 'waiting' }); };
   const handleComplete = async (habit: Habit) => {
     haptic.success();
@@ -264,6 +336,9 @@ export default function TimelineScreen() {
               key={i}
               style={[styles.dayItem, sel && styles.daySelected, today && !sel && styles.dayToday]}
               onPress={() => setSelectedDate(day)}
+              accessibilityRole="button"
+              accessibilityLabel={format(day, 'dd MMMM EEEE', { locale: tr })}
+              accessibilityState={{ selected: sel }}
             >
               <Text style={[styles.dayName, sel && styles.dayTextSel]}>{format(day, 'EEE', { locale: tr })}</Text>
               <Text style={[styles.dayNum, sel && styles.dayTextSel]}>{format(day, 'd')}</Text>
@@ -296,6 +371,16 @@ export default function TimelineScreen() {
           else handleYesNoTap(habit);
         }}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={t('habits.row.status.a11y', {
+          name: habit.name,
+          state: isDone
+            ? t('habits.row.state.done')
+            : isPartial
+              ? t('habits.row.state.partial')
+              : t('habits.row.state.pending'),
+        })}
+        accessibilityState={{ checked: isDone }}
       >
         <View style={styles.habitRowLeft}>
           <View style={[
@@ -323,7 +408,7 @@ export default function TimelineScreen() {
               {habit.estimated_minutes > 0 && (
                 <View style={styles.minBadge}>
                   <Ionicons name="timer-outline" size={10} color="#14b8a6" />
-                  <Text style={styles.minBadgeText}>{habit.estimated_minutes}dk</Text>
+                  <Text style={styles.minBadgeText}>{t('habits.minutesShort', { minutes: habit.estimated_minutes })}</Text>
                 </View>
               )}
               {habit.reminders?.enabled && (
@@ -337,7 +422,7 @@ export default function TimelineScreen() {
               <View style={styles.stackingChainRow}>
                 <Ionicons name="git-commit-outline" size={12} color={colors.primary} />
                 <Text style={styles.stackingChainText} numberOfLines={1}>
-                  Zincir: {cue} ──► {habit.name}
+                  {t('habits.row.chain', { cue, name: habit.name })}
                 </Text>
               </View>
             )}
@@ -345,7 +430,11 @@ export default function TimelineScreen() {
               <View style={styles.measurableRow}>
                 <ProgressBar progress={pct / 100} color={habit.color ?? colors.primary} height={4} style={{ flex: 1 }} />
                 <Text style={styles.measurableLabel}>
-                  {isDone ? 'Tamamlandı' : remaining > 0 ? `${remaining} ${habit.unit ?? ''} kaldı` : `${currentValue} ${habit.unit ?? ''}`}
+                  {isDone
+                    ? t('common.done')
+                    : remaining > 0
+                      ? t('habits.row.remaining', { remaining, unit: habit.unit ?? '' })
+                      : `${currentValue} ${habit.unit ?? ''}`}
                 </Text>
               </View>
             )}
@@ -356,83 +445,51 @@ export default function TimelineScreen() {
           {log?.xp != null && log.xp > 0 && (
             <View style={styles.xpBadge}><Text style={styles.xpBadgeText}>+{log.xp}</Text></View>
           )}
-          <TouchableOpacity style={styles.rowIconBtn} onPress={() => handleComplete(habit)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <Ionicons name="checkmark-done-circle-outline" size={22} color="#10b981" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.rowIconBtn} onPress={() => handlePause(habit)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <Ionicons name="pause-circle-outline" size={22} color={colors.neutral400} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.rowTrashBtn} onPress={() => { setDeleteReason(''); setDeleteTarget(habit); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <Ionicons name="trash-outline" size={16} color="#ef4444" />
-          </TouchableOpacity>
+          <IconButton
+            compact
+            icon="checkmark-done-circle-outline"
+            size={22}
+            color="#10b981"
+            label={t('habits.mgmt.complete.a11y', { name: habit.name })}
+            style={styles.rowIconBtn}
+            onPress={() => { void handleComplete(habit); }}
+          />
+          <IconButton
+            compact
+            icon="pause-circle-outline"
+            size={22}
+            color={colors.neutral400}
+            label={t('habits.mgmt.pause.a11y', { name: habit.name })}
+            style={styles.rowIconBtn}
+            onPress={() => { void handlePause(habit); }}
+          />
+          <IconButton
+            compact
+            icon="trash-outline"
+            size={16}
+            color="#ef4444"
+            label={t('habits.mgmt.delete.a11y', { name: habit.name })}
+            style={styles.rowTrashBtn}
+            onPress={() => { setDeleteReason(''); setDeleteTarget(habit); }}
+          />
         </View>
       </TouchableOpacity>
     );
   };
 
-  // Bekleme/Fikirler → yönetim kartı
-  const renderMgmtCard = (habit: Habit) => {
-    const imp = habit.impact_level ? impactMeta(habit.impact_level) : null;
-    const isIdea = habit.status === 'idea';
-    const isCompleted = habit.status === 'completed';
-    const cue = cueLabel(habit, habits);
-    return (
-      <View key={habit.id} style={[styles.mgmtCard, isIdea && styles.mgmtCardIdea, isCompleted && styles.mgmtCardDone]}>
-        <View style={[styles.iconWrap, { backgroundColor: (habit.color ?? colors.primary) + '25' }]}>
-          <Ionicons name={(habit.icon ?? 'star-outline') as any} size={22} color={habit.color ?? colors.primary} />
-        </View>
-        <View style={styles.mgmtMeta}>
-          <Text style={styles.mgmtName}>{habit.name}</Text>
-          <View style={styles.rowBadges}>
-            {imp && (
-              <View style={[styles.impactChip, { backgroundColor: imp.color + '20', borderColor: imp.color + '40' }]}>
-                <View style={[styles.impactChipDot, { backgroundColor: imp.color }]} />
-                <Text style={[styles.impactChipText, { color: imp.color }]}>{imp.label}</Text>
-              </View>
-            )}
-            <View style={styles.wpCostBadge}>
-              <Ionicons name="flash" size={10} color="#f59e0b" />
-              <Text style={styles.wpCostText}>{habit.willpower_cost}</Text>
-            </View>
-            {isMeasurableTracking(habit.tracking_type) && (
-              <View style={styles.measurableBadge}><Text style={styles.measurableBadgeText}>📊 {habit.unit}</Text></View>
-            )}
-          </View>
-          {cue && (
-            <View style={styles.cueRow}>
-              <Ionicons name="link-outline" size={11} color={colors.neutral500} />
-              <Text style={styles.cueText} numberOfLines={1}>{cue}</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.cardActions}>
-          {isCompleted ? (
-            <TouchableOpacity style={styles.moveBtn} onPress={() => handleReopen(habit)}>
-              <Ionicons name="refresh-outline" size={14} color={colors.primary} />
-              <Text style={styles.moveBtnText}>Geri Aç</Text>
-            </TouchableOpacity>
-          ) : isIdea ? (
-            <TouchableOpacity style={styles.moveBtn} onPress={() => handleMoveToWaiting(habit)}>
-              <Ionicons name="arrow-up-circle-outline" size={14} color={colors.primary} />
-              <Text style={styles.moveBtnText}>Beklet</Text>
-            </TouchableOpacity>
-          ) : (
-            <>
-              <TouchableOpacity style={styles.rowIconBtn} onPress={() => handleComplete(habit)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Ionicons name="checkmark-done-circle-outline" size={22} color="#10b981" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.activateBtn} onPress={() => handleActivate(habit)}>
-                <Ionicons name="play-circle" size={26} color="#10b981" />
-              </TouchableOpacity>
-            </>
-          )}
-          <TouchableOpacity style={styles.trashBtn} onPress={() => { setDeleteReason(''); setDeleteTarget(habit); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="trash-outline" size={16} color="#ef4444" />
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
+  // Bekleme/Fikirler/Tamamlanan → sunumsal yönetim kartı (HabitMgmtCard)
+  const renderMgmtCard = (habit: Habit) => (
+    <HabitMgmtCard
+      key={habit.id}
+      habit={habit}
+      cue={cueLabel(habit, habits)}
+      onActivate={(h) => { void handleActivate(h); }}
+      onComplete={(h) => { void handleComplete(h); }}
+      onMoveToWaiting={(h) => { void handleMoveToWaiting(h); }}
+      onReopen={(h) => { void handleReopen(h); }}
+      onRemove={(h) => { setDeleteReason(''); setDeleteTarget(h); }}
+    />
+  );
 
   if (loading) {
     return (
@@ -468,36 +525,36 @@ export default function TimelineScreen() {
           style={[styles.modeChip, viewMode === 'flow' && styles.modeChipActive]}
           onPress={() => { haptic.select(); setViewMode('flow'); }}
           accessibilityRole="button"
-          accessibilityLabel="Günlük Ritim Akışı"
+          accessibilityLabel={t('habits.mode.flow.a11y')}
         >
           <Ionicons name="pulse-outline" size={14} color={viewMode === 'flow' ? colors.primary : colors.neutral400} />
-          <Text style={[styles.modeChipText, viewMode === 'flow' && styles.modeChipTextActive]}>Ritim Akışı</Text>
+          <Text style={[styles.modeChipText, viewMode === 'flow' && styles.modeChipTextActive]}>{t('habits.mode.flow')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.modeChip, viewMode === 'matrix' && styles.modeChipActive]}
           onPress={() => { haptic.select(); setViewMode('matrix'); }}
           accessibilityRole="button"
-          accessibilityLabel="Triage ve Alışkanlık Matrisi"
+          accessibilityLabel={t('habits.mode.matrix.a11y')}
         >
           <Ionicons name="options-outline" size={14} color={viewMode === 'matrix' ? colors.primary : colors.neutral400} />
-          <Text style={[styles.modeChipText, viewMode === 'matrix' && styles.modeChipTextActive]}>Triage Matrisi</Text>
+          <Text style={[styles.modeChipText, viewMode === 'matrix' && styles.modeChipTextActive]}>{t('habits.mode.matrix')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.modeChip}
           onPress={() => { haptic.select(); setShowBadHabits(true); }}
           accessibilityRole="button"
-          accessibilityLabel="Bırakılan Alışkanlıklar ve Dürtü Kalkanı"
+          accessibilityLabel={t('habits.mode.limits.a11y')}
         >
           <Ionicons name="shield-half-outline" size={14} color="#ef4444" />
-          <Text style={styles.modeChipText}>Sınırlarım</Text>
+          <Text style={styles.modeChipText}>{t('habits.mode.limits')}</Text>
         </TouchableOpacity>
       </View>
 
       {viewMode === 'matrix' ? (
         <View style={{ flex: 1 }}>
-          <HabitListView />
+          <HabitListView onAdd={() => setShowOnboarding(true)} />
         </View>
       ) : (
         <>
@@ -505,7 +562,9 @@ export default function TimelineScreen() {
 
           <View style={styles.summaryBar}>
             <Text style={styles.summaryDate}>{format(selectedDate, 'dd MMMM', { locale: tr })}</Text>
-            <Text style={styles.summaryProgress}>{todayDone}/{activeHabits.length} tamamlandı</Text>
+            <Text style={styles.summaryProgress}>
+              {t('habits.summary.progress', { done: todayDone, total: activeHabits.length })}
+            </Text>
           </View>
 
           <ScrollView
@@ -513,23 +572,26 @@ export default function TimelineScreen() {
             contentContainerStyle={{ paddingBottom: 100 }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           >
+            <View style={{ paddingHorizontal: 12 }}>
+              <FormError message={actionError} />
+            </View>
             {(() => {
               const hr = new Date().getHours();
               const slot =
                 hr >= 5 && hr < 11
-                  ? { banner: RITUAL_BANNERS.morning, label: 'Sabah Ritüeli' }
+                  ? { banner: RITUAL_BANNERS.morning, label: t('habits.banner.morning') }
                   : hr >= 11 && hr < 17
-                    ? { banner: RITUAL_BANNERS.afternoon, label: 'Öğle & Üretim Ritüeli' }
+                    ? { banner: RITUAL_BANNERS.afternoon, label: t('habits.banner.afternoon') }
                     : hr >= 17 && hr < 22
-                      ? { banner: RITUAL_BANNERS.evening, label: 'Akşam Sakinleşme Ritüeli' }
-                      : { banner: RITUAL_BANNERS.anytime, label: 'Zamansız Ritüel Akışı' };
+                      ? { banner: RITUAL_BANNERS.evening, label: t('habits.banner.evening') }
+                      : { banner: RITUAL_BANNERS.anytime, label: t('habits.banner.anytime') };
               return (
                 <EditorialBanner
                   source={slot.banner}
                   textureSource={TEXTURES.botanical}
-                  eyebrow="GÜNLÜK RİTÜEL AKIŞI"
+                  eyebrow={t('habits.banner.overline')}
                   title={slot.label}
-                  subtitle={`${todayDone}/${activeHabits.length} aktif alışkanlık tamamlandı`}
+                  subtitle={t('habits.active.progress', { done: todayDone, total: activeHabits.length })}
                   accentColor={colors.primary}
                   minHeight={92}
                   style={{ marginHorizontal: 12, marginTop: 12, marginBottom: 4 }}
@@ -541,17 +603,17 @@ export default function TimelineScreen() {
             <View style={styles.topActionGrid}>
               <TouchableOpacity
                 style={styles.routineBannerHalf}
-                onPress={() => router.push('/screens/routine-runner' as any)}
+                onPress={() => navigateTo(router, 'routine-runner')}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel="Rutin Yürütücüyü Başlat"
+                accessibilityLabel={t('habits.runner.a11y')}
               >
                 <View style={styles.routineIconWrap}>
                   <Ionicons name="play" size={15} color={colors.white} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.routineBannerTitle}>Rutin Yürütücü</Text>
-                  <Text style={styles.routineBannerSub} numberOfLines={1}>Adım adım zamanlayıcılı icra</Text>
+                  <Text style={styles.routineBannerTitle}>{t('habits.runner.title')}</Text>
+                  <Text style={styles.routineBannerSub} numberOfLines={1}>{t('habits.runner.sub')}</Text>
                 </View>
               </TouchableOpacity>
 
@@ -560,15 +622,15 @@ export default function TimelineScreen() {
                 onPress={() => setShowAIRoutine(true)}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel="AI Rutin ve Hazır Paketler"
+                accessibilityLabel={t('habits.aiRoutine.a11y')}
               >
                 <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={78} opacity={0.16} />
                 <View style={[styles.routineIconWrap, { backgroundColor: colors.accent }]}>
                   <Ionicons name="sparkles" size={15} color={colors.white} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.routineBannerTitle}>AI Rutin & Paket</Text>
-                  <Text style={styles.routineBannerSub} numberOfLines={1}>Hedefe göre hazır şablon kur</Text>
+                  <Text style={styles.routineBannerTitle}>{t('habits.aiRoutine.title')}</Text>
+                  <Text style={styles.routineBannerSub} numberOfLines={1}>{t('habits.aiRoutine.sub')}</Text>
                 </View>
               </TouchableOpacity>
             </View>
@@ -576,19 +638,19 @@ export default function TimelineScreen() {
             {/* Keşfet & Koleksiyonlar Vitrini Geçişi (TheFor Tarzı Keşfet) */}
             <TouchableOpacity
               style={styles.exploreStripCard}
-              onPress={() => router.push('/tabs/hub' as any)}
+              onPress={() => navigateTo(router, 'explore')}
               activeOpacity={0.82}
               accessibilityRole="button"
-              accessibilityLabel="Rutin ve Alışkanlık Keşfet Vitrinini Aç"
+              accessibilityLabel={t('habits.explore.a11y')}
             >
               <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={96} opacity={0.16} />
               <View style={[styles.routineIconWrap, { backgroundColor: colors.warning }]}>
                 <Ionicons name="compass" size={16} color={colors.white} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.routineBannerTitle}>✨ Rutin & Alışkanlık Keşfet</Text>
+                <Text style={styles.routineBannerTitle}>{t('habits.explore.title')}</Text>
                 <Text style={styles.routineBannerSub} numberOfLines={1}>
-                  Küratörlü koleksiyonları incele veya tek dokunuşla atomik alışkanlık ekle
+                  {t('habits.explore.sub')}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.neutral400} />
@@ -596,14 +658,14 @@ export default function TimelineScreen() {
 
         {/* Aktif Odak — takip edilebilir */}
         <View style={styles.section}>
-          <SectionHeader title="Aktif Odak" icon="rocket" iconColor={colors.success} count={activeHabits.length} variant="serif" />
+          <SectionHeader title={t('habits.section.active')} icon="rocket" iconColor={colors.success} count={activeHabits.length} variant="serif" />
           {activeHabits.length === 0 ? (
             <EmptyState
               icon="rocket-outline"
               illustration="habits"
-              title="Aktif alışkanlık yok"
-              hint="Bekleme odasından bir alışkanlığı aktifleştir veya + ile yenisini ekle."
-              ctaLabel="Alışkanlık Ekle"
+              title={t('habits.active.empty.title')}
+              hint={t('habits.active.empty.hint')}
+              ctaLabel={t('habits.addCta')}
               onCta={() => setShowOnboarding(true)}
               color={colors.success}
             />
@@ -614,14 +676,14 @@ export default function TimelineScreen() {
 
         {/* Bekleme Odası — her zaman görünür */}
         <View style={styles.section}>
-          <SectionHeader title="Bekleme Odası" icon="hourglass-outline" iconColor={colors.textDim} count={waitingHabits.length} variant="serif" />
+          <SectionHeader title={t('habits.section.waiting')} icon="hourglass-outline" iconColor={colors.textDim} count={waitingHabits.length} variant="serif" />
           {waitingHabits.length === 0 ? (
             <View style={styles.emptySmall}>
-              <Text style={styles.emptyHint}>Bekleme odası boş</Text>
+              <Text style={styles.emptyHint}>{t('habits.waiting.empty')}</Text>
             </View>
           ) : (
             <>
-              <Text style={styles.sectionHint}>Kapasite açılınca aktifleştirebilirsin</Text>
+              <Text style={styles.sectionHint}>{t('habits.waiting.hint')}</Text>
               {waitingHabits.map(renderMgmtCard)}
             </>
           )}
@@ -630,8 +692,8 @@ export default function TimelineScreen() {
         {/* Fikirler */}
         {ideaHabits.length > 0 && (
           <View style={styles.section}>
-            <SectionHeader title="Fikirler" icon="bulb-outline" iconColor={colors.textFaint} count={ideaHabits.length} variant="serif" />
-            <Text style={styles.sectionHint}>Düşük öncelikli — hazır olunca beklemeye al</Text>
+            <SectionHeader title={t('habits.section.ideas')} icon="bulb-outline" iconColor={colors.textFaint} count={ideaHabits.length} variant="serif" />
+            <Text style={styles.sectionHint}>{t('habits.ideas.hint')}</Text>
             {ideaHabits.map(renderMgmtCard)}
           </View>
         )}
@@ -639,8 +701,8 @@ export default function TimelineScreen() {
         {/* Tamamlanan */}
         {completedHabits.length > 0 && (
           <View style={styles.section}>
-            <SectionHeader title="Tamamlanan" icon="checkmark-done-circle-outline" iconColor={colors.success} count={completedHabits.length} variant="serif" />
-            <Text style={styles.sectionHint}>Hedefine ulaştın — gerekirse geri aç</Text>
+            <SectionHeader title={t('habits.section.completed')} icon="checkmark-done-circle-outline" iconColor={colors.success} count={completedHabits.length} variant="serif" />
+            <Text style={styles.sectionHint}>{t('habits.completed.hint')}</Text>
             {completedHabits.map(renderMgmtCard)}
           </View>
         )}
@@ -658,27 +720,45 @@ export default function TimelineScreen() {
         onClose={() => setShowBadHabits(false)}
       />
 
-      <TouchableOpacity style={styles.fab} onPress={() => setShowOnboarding(true)} accessibilityLabel="Alışkanlık ekle">
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => setShowOnboarding(true)}
+        accessibilityRole="button"
+        accessibilityLabel={t('habits.fab.add.a11y')}
+      >
         <Ionicons name="add" size={28} color={colors.white} />
       </TouchableOpacity>
 
       {/* XP animasyonu */}
       {xpAnim !== null && (
-        <Animatable.View animation={reduceMotion ? undefined : 'fadeInUp'} style={styles.xpToast}>
-          <Text style={styles.xpToastText}>+{xpAnim} XP</Text>
-        </Animatable.View>
+        <FadeInUpView disabled={reduceMotion} style={styles.xpToast}>
+          <Text style={styles.xpToastText}>{t('habits.toast.xp', { xp: xpAnim })}</Text>
+        </FadeInUpView>
       )}
 
       {/* Geri Al toast */}
       {pendingDelete && (
-        <Animatable.View animation={reduceMotion ? undefined : 'fadeInUp'} duration={250} style={styles.undoToast}>
+        <FadeInUpView
+          disabled={reduceMotion}
+          duration={250}
+          style={styles.undoToast}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
           <Ionicons name="trash" size={16} color="#ef4444" />
-          <Text style={styles.undoText} numberOfLines={1}>&quot;{pendingDelete.habit.name}&quot; silindi</Text>
-          <TouchableOpacity style={styles.undoBtn} onPress={handleUndoDelete}>
+          <Text style={styles.undoText} numberOfLines={1}>
+            {t('habits.toast.deleted', { name: pendingDelete.habit.name })}
+          </Text>
+          <TouchableOpacity
+            style={styles.undoBtn}
+            onPress={handleUndoDelete}
+            accessibilityRole="button"
+            accessibilityLabel={t('habits.toast.undo.a11y')}
+          >
             <Ionicons name="arrow-undo" size={14} color={colors.primary} />
-            <Text style={styles.undoBtnText}>Geri Al</Text>
+            <Text style={styles.undoBtnText}>{t('common.undo')}</Text>
           </TouchableOpacity>
-        </Animatable.View>
+        </FadeInUpView>
       )}
 
       <HabitOnboarding
@@ -699,17 +779,33 @@ export default function TimelineScreen() {
       />
 
       {/* Silme nedeni modalı */}
-      <Modal visible={!!deleteTarget} animationType="fade" transparent onRequestClose={() => setDeleteTarget(null)}>
-        <View style={styles.delOverlay}>
-          <View style={styles.delSheet}>
+      {(() => {
+        const deleteReasonOptions = getDeleteReasons();
+        return (
+          <SheetModal
+            visible={!!deleteTarget}
+            align="center"
+            onClose={() => setDeleteTarget(null)}
+            sheetStyle={styles.delSheet}
+            accessibilityLabel={t('habits.delete.sheet.a11y')}
+          >
             <View style={styles.delIconWrap}><Ionicons name="trash-outline" size={26} color="#ef4444" /></View>
-            <Text style={styles.delTitle}>Alışkanlığı Sil</Text>
-            <Text style={styles.delSub} numberOfLines={2}>&quot;{deleteTarget?.name}&quot; silinecek. Nedenini seçer misin?</Text>
-            <View style={styles.reasonWrap}>
-              {DELETE_REASONS.map((r) => {
+            <Text style={styles.delTitle}>{t('habits.delete.title')}</Text>
+            <Text style={styles.delSub} numberOfLines={2}>
+              {t('habits.delete.prompt', { name: deleteTarget?.name ?? '' })}
+            </Text>
+            <View style={styles.reasonWrap} accessibilityRole="radiogroup">
+              {deleteReasonOptions.map((r) => {
                 const sel = deleteReason === r;
                 return (
-                  <TouchableOpacity key={r} style={[styles.reasonChip, sel && styles.reasonChipSel]} onPress={() => setDeleteReason(r)}>
+                  <TouchableOpacity
+                    key={r}
+                    style={[styles.reasonChip, sel && styles.reasonChipSel]}
+                    onPress={() => setDeleteReason(r)}
+                    accessibilityRole="radio"
+                    accessibilityLabel={r}
+                    accessibilityState={{ selected: sel, checked: sel }}
+                  >
                     <Text style={[styles.reasonChipText, sel && styles.reasonChipTextSel]}>{r}</Text>
                   </TouchableOpacity>
                 );
@@ -717,23 +813,33 @@ export default function TimelineScreen() {
             </View>
             <TextInput
               style={styles.reasonInput}
-              placeholder="Veya kendi nedenini yaz (opsiyonel)"
-              placeholderTextColor={colors.neutral600}
-              value={DELETE_REASONS.includes(deleteReason) ? '' : deleteReason}
+              placeholder={t('habits.delete.reasonPlaceholder')}
+              placeholderTextColor={colors.textFaint}
+              value={deleteReasonOptions.includes(deleteReason) ? '' : deleteReason}
               onChangeText={setDeleteReason}
             />
             <View style={styles.delActions}>
-              <TouchableOpacity style={styles.delCancelBtn} onPress={() => setDeleteTarget(null)}>
-                <Text style={styles.delCancelText}>Vazgeç</Text>
+              <TouchableOpacity
+                style={styles.delCancelBtn}
+                onPress={() => setDeleteTarget(null)}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.cancel')}
+              >
+                <Text style={styles.delCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.delConfirmBtn} onPress={confirmDelete}>
+              <TouchableOpacity
+                style={styles.delConfirmBtn}
+                onPress={confirmDelete}
+                accessibilityRole="button"
+                accessibilityLabel={t('habits.delete.sheet.a11y')}
+              >
                 <Ionicons name="trash" size={16} color={colors.white} />
-                <Text style={styles.delConfirmText}>Sil</Text>
+                <Text style={styles.delConfirmText}>{t('common.delete')}</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
+          </SheetModal>
+        );
+      })()}
 
       {/* Kapasite Yöneticisi modalı */}
       <Modal visible={!!capacityTarget} animationType="slide" transparent onRequestClose={() => setCapacityTarget(null)}>
@@ -742,15 +848,21 @@ export default function TimelineScreen() {
             <View style={styles.capHeader}>
               <View style={styles.capWarnIcon}><Ionicons name="flash" size={22} color="#ef4444" /></View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.capTitle}>İrade Limitin Dolu</Text>
-                <Text style={styles.capSub}>&quot;{capacityTarget?.name}&quot; ({capacityTarget?.willpower_cost} irade) aktif etmek için yer aç</Text>
+                <Text style={styles.capTitle}>{t('habits.capacity.modal.title')}</Text>
+                <Text style={styles.capSub}>
+                  {t('habits.capacity.modal.sub', {
+                    name: capacityTarget?.name ?? '',
+                    cost: capacityTarget?.willpower_cost ?? 0,
+                  })}
+                </Text>
               </View>
             </View>
-            {wp && capacityTarget && (
+              {/* İrade bütçesi özeti (wp.daily_budget) */}
+              {wp && capacityTarget && (
               <View style={styles.capStatRow}>
-                <View style={styles.capStat}><Text style={styles.capStatVal}>{wp.daily_budget - wp.used}</Text><Text style={styles.capStatLabel}>Boş İrade</Text></View>
-                <View style={styles.capStat}><Text style={styles.capStatVal}>{wp.focus_capacity - wp.active_count}</Text><Text style={styles.capStatLabel}>Boş Slot</Text></View>
-                <View style={styles.capStat}><Text style={[styles.capStatVal, { color: '#f59e0b' }]}>{capacityTarget.willpower_cost}</Text><Text style={styles.capStatLabel}>Gereken</Text></View>
+                <View style={styles.capStat}><Text style={styles.capStatVal}>{wp.daily_budget - wp.used}</Text><Text style={styles.capStatLabel}>{t('habits.capacity.freeWillpower')}</Text></View>
+                <View style={styles.capStat}><Text style={styles.capStatVal}>{wp.focus_capacity - wp.active_count}</Text><Text style={styles.capStatLabel}>{t('habits.capacity.freeSlots')}</Text></View>
+                <View style={styles.capStat}><Text style={[styles.capStatVal, { color: '#f59e0b' }]}>{capacityTarget.willpower_cost}</Text><Text style={styles.capStatLabel}>{t('habits.capacity.required')}</Text></View>
               </View>
             )}
 
@@ -763,18 +875,22 @@ export default function TimelineScreen() {
               return (
                 <View style={styles.capAdviceBox}>
                   <Text style={styles.capAdviceFormula}>
-                    Kapasite (v1 tahmini) · {currentLoad} + {Math.round(advice.incomingPoints)} → {advice.projected}
-                    {bandLabel ? ` · ${bandLabel}` : ''}
+                    {t('habits.capacity.formula', {
+                      current: currentLoad,
+                      incoming: Math.round(advice.incomingPoints),
+                      projected: advice.projected,
+                      band: bandLabel ? ` · ${bandLabel}` : '',
+                    })}
                   </Text>
                   <Text style={styles.capAdviceMsg}>{advice.message}</Text>
                 </View>
               );
             })()}
 
-            <Text style={styles.capListTitle}>AKTİF ALIŞKANLIKLAR — beklemeye al</Text>
+            <Text style={styles.capListTitle}>{t('habits.capacity.activeListTitle')}</Text>
             <ScrollView style={styles.capList}>
               {activeHabits.length === 0 ? (
-                <Text style={styles.capEmpty}>Aktif alışkanlık yok</Text>
+                <Text style={styles.capEmpty}>{t('habits.active.empty.title')}</Text>
               ) : (
                 activeHabits.map((h) => (
                   <View key={h.id} style={styles.capItem}>
@@ -783,29 +899,47 @@ export default function TimelineScreen() {
                     </View>
                     <Text style={styles.capItemName} numberOfLines={1}>{h.name}</Text>
                     <View style={styles.capItemCost}><Ionicons name="flash" size={11} color="#f59e0b" /><Text style={styles.capItemCostText}>{h.willpower_cost}</Text></View>
-                    <TouchableOpacity style={styles.capMoveBtn} onPress={() => handlePause(h)}>
-                      <Ionicons name="arrow-down" size={13} color={colors.neutral400} /><Text style={styles.capMoveText}>Beklet</Text>
+                    <TouchableOpacity
+                      style={styles.capMoveBtn}
+                      onPress={() => handlePause(h)}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('habits.mgmt.pause.a11y', { name: h.name })}
+                    >
+                      <Ionicons name="arrow-down" size={13} color={colors.neutral400} /><Text style={styles.capMoveText}>{t('habits.mgmt.wait')}</Text>
                     </TouchableOpacity>
                   </View>
                 ))
               )}
             </ScrollView>
             <View style={styles.capActions}>
-              <TouchableOpacity style={styles.capCancelBtn} onPress={() => setCapacityTarget(null)}>
-                <Text style={styles.capCancelText}>Vazgeç</Text>
+              <TouchableOpacity
+                style={styles.capCancelBtn}
+                onPress={() => setCapacityTarget(null)}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.cancel')}
+              >
+                <Text style={styles.capCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.capWaitBtn} onPress={handleWaitPending}>
-                <Ionicons name="time-outline" size={15} color="#f59e0b" /><Text style={styles.capWaitText}>Beklemeye Ekle</Text>
+              <TouchableOpacity
+                style={styles.capWaitBtn}
+                onPress={handleWaitPending}
+                accessibilityRole="button"
+                accessibilityLabel={t('habits.capacity.addWaiting.a11y')}
+              >
+                <Ionicons name="time-outline" size={15} color="#f59e0b" /><Text style={styles.capWaitText}>{t('habits.capacity.addWaiting')}</Text>
               </TouchableOpacity>
             </View>
             <TouchableOpacity
               style={[styles.capActivateBtn, !(capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits })) && styles.capActivateDisabled]}
               onPress={handleActivatePending}
               disabled={!(capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits }))}
+              accessibilityRole="button"
+              accessibilityLabel={t('habits.capacity.addActive.a11y')}
+              accessibilityState={{ disabled: !(capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits })) }}
             >
               <Ionicons name="flash" size={16} color={colors.white} />
               <Text style={styles.capActivateText}>
-                {capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits }) ? 'Aktif Olarak Ekle' : 'Yer açınca aktifleşir'}
+                {capacityTarget && canActivate(capacityTarget.willpower_cost, habitsLoading ? undefined : { habit: capacityTarget, activeHabits }) ? t('habits.capacity.addActive') : t('habits.capacity.unlockHint')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -843,13 +977,13 @@ const styles = StyleSheet.create({
   section: { paddingHorizontal: 12, paddingTop: 16 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, paddingHorizontal: 2 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.white, flex: 1 },
-  sectionCount: { fontSize: 13, color: colors.neutral500, fontWeight: '600' },
-  sectionHint: { fontSize: 12, color: colors.neutral500, marginBottom: 10, fontStyle: 'italic', paddingHorizontal: 2 },
+  sectionCount: { fontSize: 13, color: colors.textFaint, fontWeight: '600' },
+  sectionHint: { fontSize: 12, color: colors.textFaint, marginBottom: 10, fontStyle: 'italic', paddingHorizontal: 2 },
 
   empty: { alignItems: 'center', paddingVertical: 32, gap: 8 },
   emptySmall: { alignItems: 'center', paddingVertical: 16 },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: colors.white },
-  emptyHint: { fontSize: 13, color: colors.neutral500 },
+  emptyHint: { fontSize: 13, color: colors.textFaint },
 
   // Takip satırı (aktif)
   habitRow: {
@@ -862,7 +996,7 @@ const styles = StyleSheet.create({
   check: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: colors.coolBlack600, alignItems: 'center', justifyContent: 'center' },
   habitRowInfo: { flex: 1 },
   habitRowName: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 4 },
-  habitRowNameDone: { textDecorationLine: 'line-through', color: colors.neutral500 },
+  habitRowNameDone: { textDecorationLine: 'line-through', color: colors.textFaint },
   rowBadges: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', alignItems: 'center' },
   measurableRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
   measurableTrack: { flex: 1, height: 4, backgroundColor: colors.coolBlack700, borderRadius: 2, overflow: 'hidden' },
@@ -899,7 +1033,7 @@ const styles = StyleSheet.create({
   remBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#8b5cf620', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   remBadgeText: { fontSize: 11, color: '#a78bfa', fontWeight: '600' },
   cueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  cueText: { fontSize: 12, color: colors.neutral500, flex: 1 },
+  cueText: { fontSize: 12, color: colors.textFaint, flex: 1 },
   stackingChainRow: {
     flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6,
     backgroundColor: hexA(colors.primary, 0.10), borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3,
@@ -950,7 +1084,7 @@ const styles = StyleSheet.create({
   },
 
   fab: {
-    position: 'absolute', right: 16, bottom: Platform.OS === 'ios' ? 100 : 80,
+    position: 'absolute', right: 16, bottom: FAB_BOTTOM,
     width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
@@ -960,18 +1094,17 @@ const styles = StyleSheet.create({
   xpToastText: { fontSize: 28, fontWeight: 'bold', color: colors.white },
 
   undoToast: {
-    position: 'absolute', left: 16, right: 16, bottom: Platform.OS === 'ios' ? 100 : 80,
+    position: 'absolute', left: 16, right: 16, bottom: undoToastBottom(FAB_BOTTOM),
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: colors.coolBlack800, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
     borderWidth: 1, borderColor: colors.coolBlack700,
     shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 10,
   },
   undoText: { flex: 1, fontSize: 14, color: colors.neutral200 },
-  undoBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: hexA(colors.primary, 0.12), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: hexA(colors.primary, 0.25) },
+  undoBtn: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: hexA(colors.primary, 0.12), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: hexA(colors.primary, 0.25) },
   undoBtnText: { fontSize: 13, color: colors.primary, fontWeight: '700' },
 
   // Silme modalı
-  delOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 24 },
   delSheet: { backgroundColor: colors.coolBlack800, borderRadius: 20, padding: 22, borderWidth: 1, borderColor: colors.coolBlack700 },
   delIconWrap: { width: 52, height: 52, borderRadius: 16, backgroundColor: '#ef444418', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 12 },
   delTitle: { fontSize: 19, fontWeight: '800', color: colors.white, textAlign: 'center', marginBottom: 4 },
@@ -998,16 +1131,16 @@ const styles = StyleSheet.create({
   capStatRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
   capStat: { flex: 1, backgroundColor: colors.coolBlack900, borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.coolBlack700 },
   capStatVal: { fontSize: 20, fontWeight: '800', color: colors.white },
-  capStatLabel: { fontSize: 11, color: colors.neutral500, marginTop: 2 },
+  capStatLabel: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   capAdviceBox: {
     backgroundColor: colors.coolBlack900, borderRadius: 12, padding: 12, marginBottom: 14,
     borderWidth: 1, borderColor: colors.coolBlack700,
   },
   capAdviceFormula: { fontSize: 13, fontWeight: '700', color: '#f59e0b', marginBottom: 4 },
   capAdviceMsg: { fontSize: 12, color: colors.neutral400, lineHeight: 16 },
-  capListTitle: { fontSize: 11, fontWeight: '700', color: colors.neutral500, letterSpacing: 1, marginBottom: 10 },
+  capListTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
   capList: { maxHeight: 240 },
-  capEmpty: { fontSize: 13, color: colors.neutral500, textAlign: 'center', paddingVertical: 16 },
+  capEmpty: { fontSize: 13, color: colors.textFaint, textAlign: 'center', paddingVertical: 16 },
   capItem: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.coolBlack900, borderRadius: 12, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: colors.coolBlack700 },
   capItemIcon: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   capItemName: { flex: 1, fontSize: 14, color: colors.neutral200, fontWeight: '500' },

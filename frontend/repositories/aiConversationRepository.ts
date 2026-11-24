@@ -61,6 +61,11 @@ const CONV_COLS = 'id,user_id,title,project_id,created_at,updated_at,last_messag
 const MSG_COLS = 'id,conversation_id,user_id,role,content,request_id,created_at';
 const ACTION_COLS = 'id,conversation_id,assistant_message_id,user_id,action_type,payload,status,created_at,resolved_at';
 
+export type MessageCursor = { createdAt: string; id: string };
+
+const MESSAGE_CURSOR_TS_RE = /^\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2})$/;
+const MESSAGE_CURSOR_ID_RE = /^[0-9a-f-]{36}$/i;
+
 /** Titles are metadata, not prose — bounded to match the DB CHECK. */
 export const MAX_TITLE_LENGTH = 200;
 /** One page of a conversation. Enough to fill a screen and scroll a little. */
@@ -179,11 +184,17 @@ export async function fetchConversation(id: string): Promise<RepoResult<Conversa
  */
 export async function fetchMessagesPage(
   conversationId: string,
-  before?: string | null,
+  before?: MessageCursor | null,
   limit: number = MESSAGE_PAGE_SIZE,
 ): Promise<RepoResult<{ rows: MessageRow[]; hasMore: boolean }>> {
   const u = await currentUserId();
   if (!u.ok) return u;
+
+  if (before) {
+    if (!MESSAGE_CURSOR_TS_RE.test(before.createdAt) || !MESSAGE_CURSOR_ID_RE.test(before.id)) {
+      return { ok: false, error: 'Geçersiz sayfa imleci.' };
+    }
+  }
 
   const capped = Math.max(1, Math.min(limit, 100));
   let q = supabase
@@ -195,7 +206,9 @@ export async function fetchMessagesPage(
     .order('id', { ascending: false })
     .limit(capped + 1);
 
-  if (before) q = q.lt('created_at', before);
+  if (before) {
+    q = q.or(`created_at.lt.${before.createdAt},and(created_at.eq.${before.createdAt},id.lt.${before.id})`);
+  }
 
   const { data, error } = await q;
   if (error) return { ok: false, error: error.message };
@@ -217,6 +230,18 @@ export async function insertMessage(input: {
   const content = input.content.trim();
   if (!content) return { ok: false, error: 'Boş mesaj kaydedilemez.' };
 
+  // Kullanıcı rolü: aynı (conversation, request_id) için mevcut satır varsa onu döndür.
+  // 039 uygulanmadan önce DB bunu zorlamaz; 039 sonrası aşağıdaki 23505 dalı yarışı kapatır.
+  if (input.role === 'user' && input.requestId) {
+    const existing = await supabase
+      .from('ai_messages').select(MSG_COLS)
+      .eq('conversation_id', input.conversationId)
+      .eq('user_id', u.userId)
+      .eq('request_id', input.requestId)
+      .eq('role', 'user')
+      .maybeSingle();
+    if (existing.data) return { ok: true, data: existing.data as MessageRow };
+  }
   const { data, error } = await supabase
     .from('ai_messages')
     .insert({
@@ -230,22 +255,17 @@ export async function insertMessage(input: {
     .single();
 
   if (error) {
-    // 23505 is the partial unique index on (conversation_id, request_id) for
-    // assistant rows. It means this exact answer was already stored — a replay
-    // after the app died between the provider answering and React rendering.
-    // That is a SUCCESS for the caller, not a failure, so the stored row is
-    // returned instead of an error.
-    if (error.code === '23505' && input.role === 'assistant' && input.requestId) {
+    if (error.code === '23505' && input.requestId) {
       const existing = await supabase
-        .from('ai_messages')
-        .select(MSG_COLS)
+        .from('ai_messages').select(MSG_COLS)
         .eq('conversation_id', input.conversationId)
+        .eq('user_id', u.userId)
         .eq('request_id', input.requestId)
-        .eq('role', 'assistant')
+        .eq('role', input.role)
         .maybeSingle();
       if (existing.data) return { ok: true, data: existing.data as MessageRow };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: error.message, code: error.code };
   }
   return { ok: true, data: data as MessageRow };
 }

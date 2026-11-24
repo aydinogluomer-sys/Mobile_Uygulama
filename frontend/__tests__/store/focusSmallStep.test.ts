@@ -10,7 +10,12 @@ jest.mock('../../services/focusService', () => ({
     mockWork.calls.push(args);
     return { sessionRecorded: true, taskCompleted: false };
   }),
+  recordPartialWorkPhase: jest.fn(async () => ({ recorded: true })),
   addTask: jest.fn(), completeTask: jest.fn(), listOpenTasks: jest.fn(async () => ({ ok: true, data: [] })), removeTask: jest.fn(),
+}));
+jest.mock('../../lib/notifications', () => ({
+  scheduleFocusEnd: jest.fn(async () => true),
+  cancelFocusEnd: jest.fn(async () => undefined),
 }));
 jest.mock('../../lib/haptics', () => ({ haptic: { success: jest.fn() } }));
 // F04: a focus session is saved under the signed-in user's key; this suite runs as one user.
@@ -19,6 +24,7 @@ jest.mock('../../lib/analytics', () => ({ buildEvent: jest.fn((n: string, p: unk
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as analytics from '../../lib/analytics';
+import { EMPTY_TALLY } from '../../lib/focusRitual';
 import { useFocusStore, DEFAULT_SETTINGS, type FocusTask } from '../../store/focusStore';
 
 const T0 = 1_800_000_000_000;
@@ -38,7 +44,9 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   useFocusStore.setState({
     phase: 'work', status: 'idle', secondsLeft: 1500, sessionsCompleted: 0, sessionStartedAt: null,
-    clock: null, smallStep: null, settings: { ...DEFAULT_SETTINGS, autoStartBreaks: true, autoCheckTasks: true },
+    clock: null, smallStep: null, pausedAt: null, lastPartial: null,
+    intent: null, interruptions: EMPTY_TALLY,
+    settings: { ...DEFAULT_SETTINGS, autoStartBreaks: true, autoCheckTasks: true },
     justCompleted: null, focusTasks: [FOCUS_TASK], selectedTaskId: 'ft1', loadingTasks: false,
   });
 });
@@ -81,7 +89,15 @@ describe('R03.03 — finishing', () => {
 
   it('records one session titled with the step, crediting no focus task', async () => {
     await finishStep();
-    expect(mockWork.calls).toEqual([{ task: undefined, plannedSeconds: 300, completedSeconds: 300, autoCheckTasks: false, title: 'ilk paragraf' }]);
+    expect(mockWork.calls).toEqual([{
+      task: undefined,
+      plannedSeconds: 300,
+      completedSeconds: 300,
+      autoCheckTasks: false,
+      title: 'ilk paragraf',
+      startedAtIso: new Date(T0).toISOString(),
+      endedAtIso: new Date(T0 + 5 * MIN).toISOString(),
+    }]);
   });
 
   it('no break follows; the timer goes back to the plan', async () => {
@@ -92,7 +108,13 @@ describe('R03.03 — finishing', () => {
     expect(s.secondsLeft).toBe(1500);
     expect(s.smallStep).toBeNull();
     expect(s.clock).toBeNull();
-    expect(s.justCompleted).toEqual({ taskTitle: 'ilk paragraf', seconds: 300, sessionNumber: 1 });
+    expect(s.justCompleted).toEqual({
+      taskTitle: 'ilk paragraf',
+      seconds: 300,
+      sessionNumber: 1,
+      intent: null,
+      interruptions: 0,
+    });
   });
 
   it('the selected focus task is untouched', async () => {

@@ -5,9 +5,12 @@
  *   deno test supabase/functions/_shared/aiIdempotency_test.ts
  */
 import {
+  DAILY_LIMIT,
   fingerprintInput,
   INSUFFICIENT_CREDITS,
+  REFUND_PENDING_NOTE,
   runIdempotentAiRequest,
+  TOO_MANY_IN_FLIGHT,
   type IdempotencyDeps,
 } from './aiIdempotency.ts';
 import {
@@ -57,7 +60,8 @@ Deno.test('runIdempotentAiRequest charges once, calls provider once, and replays
       spendCalls += 1;
       return { kind: 'charged', balance: 20 };
     },
-    refund: async () => {},
+    refund: async () => true,
+    expireLease: async () => {},
     callProvider: async () => {
       providerCalls += 1;
       return { ok: true, payload: { reply: 'Harika gidiyorsun!', actions: [] } };
@@ -100,7 +104,8 @@ Deno.test('runIdempotentAiRequest releases claim on insufficient credits and ref
         released = true;
       },
       spend: async () => ({ kind: 'insufficient', balance: 4 }),
-      refund: async () => {},
+      refund: async () => true,
+      expireLease: async () => {},
       callProvider: async () => {
         throw new Error('must not reach provider');
       },
@@ -122,7 +127,9 @@ Deno.test('runIdempotentAiRequest releases claim on insufficient credits and ref
       spend: async () => ({ kind: 'charged', balance: 15 }),
       refund: async ({ reason }) => {
         refundedReason = reason;
+        return true;
       },
+      expireLease: async () => {},
       callProvider: async () => ({ ok: false, reason: 'ai_truncated', message: 'Yarım kaldı' }),
       readBalance: async () => 15,
       describeError: (r) => r,
@@ -130,6 +137,92 @@ Deno.test('runIdempotentAiRequest releases claim on insufficient credits and ref
   );
   assertEquals(failed.status, 500, 'truncated provider status');
   assertEquals(refundedReason, 'ai_truncated', 'refunded with exact reason');
+});
+
+// F07 (EDG-01): a refund that cannot be written must not mark the claim failed.
+function refundCase(refund: IdempotencyDeps['refund'], spendKind: 'charged' | 'replayed' = 'charged') {
+  const calls = { fail: 0, expireLease: 0, refund: 0, provider: 0 };
+  const deps: IdempotencyDeps = {
+    begin: async () => ({ kind: 'claimed' }),
+    complete: async () => {},
+    fail: async () => { calls.fail += 1; },
+    release: async () => {},
+    spend: async () => ({ kind: spendKind, balance: 25 }),
+    refund: async (input) => { calls.refund += 1; return refund(input); },
+    expireLease: async () => { calls.expireLease += 1; },
+    callProvider: async () => { calls.provider += 1; return { ok: false, reason: 'ai_truncated', message: 'Yarım kaldı' }; },
+    readBalance: async () => 25,
+    describeError: (r) => r,
+  };
+  return { deps, calls };
+}
+
+Deno.test('F07 (i): refund returns false -> fail is never called, expireLease once, 500 REFUND_PENDING', async () => {
+  const { deps, calls } = refundCase(async () => false);
+  const res = await runIdempotentAiRequest({ requestId: 'req-f07-1', mode: 'coach', fingerprint: 'fp', cost: 5 }, deps);
+  assertEquals(calls.fail, 0, 'fail never called');
+  assertEquals(calls.expireLease, 1, 'expireLease once');
+  assertEquals(res.status, 500, 'status');
+  assertEquals(res.body.code, 'REFUND_PENDING', 'code');
+  assert(String(res.body.error).includes(REFUND_PENDING_NOTE), 'the error carries the refund note');
+  assertEquals(calls.provider, 1, 'providerCalls');
+});
+
+Deno.test('F07 (ii): refund throws -> the same as (i)', async () => {
+  const { deps, calls } = refundCase(async () => { throw new Error('connection reset'); });
+  const res = await runIdempotentAiRequest({ requestId: 'req-f07-2', mode: 'coach', fingerprint: 'fp', cost: 5 }, deps);
+  assertEquals(calls.fail, 0, 'fail never called');
+  assertEquals(calls.expireLease, 1, 'expireLease once');
+  assertEquals(res.status, 500, 'status');
+  assertEquals(res.body.code, 'REFUND_PENDING', 'code');
+  assert(String(res.body.error).includes(REFUND_PENDING_NOTE), 'the error carries the refund note');
+  assertEquals(calls.provider, 1, 'providerCalls');
+});
+
+Deno.test('F07 (iii): refund returns true -> fail once, expireLease never', async () => {
+  const { deps, calls } = refundCase(async () => true);
+  await runIdempotentAiRequest({ requestId: 'req-f07-3', mode: 'coach', fingerprint: 'fp', cost: 5 }, deps);
+  assertEquals(calls.fail, 1, 'fail once');
+  assertEquals(calls.expireLease, 0, 'expireLease never');
+});
+
+Deno.test('F07 (iv): charged === false (spend replayed) -> refund never called, fail is called', async () => {
+  const { deps, calls } = refundCase(async () => { throw new Error('must not be called'); }, 'replayed');
+  await runIdempotentAiRequest({ requestId: 'req-f07-4', mode: 'coach', fingerprint: 'fp', cost: 5 }, deps);
+  assertEquals(calls.refund, 0, 'refund never called');
+  assertEquals(calls.fail, 1, 'fail called');
+});
+
+Deno.test('F07.1 (v): spend unavailable expires lease instead of releasing claim, and tolerates expireLease throwing', async () => {
+  let released = 0;
+  let expired = 0;
+  const res = await runIdempotentAiRequest(
+    { requestId: 'req-f071-1', mode: 'coach', fingerprint: 'fp', cost: 5 },
+    {
+      begin: async () => ({ kind: 'claimed' }),
+      complete: async () => {},
+      fail: async () => {},
+      release: async () => { released += 1; },
+      spend: async () => ({ kind: 'unavailable', error: 'socket hang up' }),
+      refund: async () => true,
+      expireLease: async () => { expired += 1; throw new Error('expire network error'); },
+      callProvider: async () => { throw new Error('must not reach provider'); },
+      readBalance: async () => 25,
+      describeError: (r) => r,
+    },
+  );
+  assertEquals(released, 0, 'release never called on spend unavailable');
+  assertEquals(expired, 1, 'expireLease called once');
+  assertEquals(res.status, 503, '503 status');
+  assertEquals(res.body.code, 'REFUND_PENDING', 'REFUND_PENDING code');
+
+  const { deps } = refundCase(async () => false);
+  const res2 = await runIdempotentAiRequest(
+    { requestId: 'req-f071-2', mode: 'coach', fingerprint: 'fp', cost: 5 },
+    { ...deps, expireLease: async () => { throw new Error('expireLease threw'); } },
+  );
+  assertEquals(res2.status, 500, 'failAndRefund catches expireLease throw');
+  assertEquals(res2.body.code, 'REFUND_PENDING', 'REFUND_PENDING still returned');
 });
 
 Deno.test('coachContractSchema validates canonical bounds and streams tool_use JSON deltas cleanly', async () => {
@@ -169,5 +262,94 @@ Deno.test('oauthState and redirectAllowlist enforce HMAC uid binding and fail-cl
   const allow = parseAllowlist('*,atlas://notion-callback,https://aderyth.com/callback');
   assert(!isAllowedRedirect('https://evil.example.com/callback', allow), 'wildcard * dropped fail-closed');
   assert(isAllowedRedirect('atlas://notion-callback', allow), 'exact custom scheme allowed');
+});
+
+Deno.test('F21 (EDG-03, EDG-14): admit gate releases claim without charging on 429, skips non-claimed outcomes, and failAndRefund sanitizes dbError', async () => {
+  let releaseCalls = 0;
+  let spendCalls = 0;
+  let providerCalls = 0;
+  let admitCalls = 0;
+
+  const rejected = await runIdempotentAiRequest(
+    { requestId: 'req-cap-1', mode: 'coach', fingerprint: 'fp-cap', cost: 5 },
+    {
+      begin: async () => ({ kind: 'claimed' }),
+      admit: async () => {
+        admitCalls += 1;
+        return {
+          ok: false,
+          status: 429,
+          code: DAILY_LIMIT,
+          message: 'Bugün için AI istek sınırına ulaştın. Yarın yeniden dene; hiçbir ücret alınmadı.',
+        };
+      },
+      complete: async () => {},
+      fail: async () => {},
+      release: async () => { releaseCalls += 1; },
+      spend: async () => { spendCalls += 1; return { kind: 'charged', balance: 20 }; },
+      refund: async () => true,
+      expireLease: async () => {},
+      callProvider: async () => { providerCalls += 1; return { ok: true, payload: { reply: 'ok' } }; },
+      readBalance: async () => 20,
+      describeError: () => 'Güvenli hata',
+    },
+  );
+  assertEquals(rejected.status, 429, 'admit rejection -> 429');
+  assertEquals(rejected.body.code, DAILY_LIMIT, 'DAILY_LIMIT code');
+  assertEquals(admitCalls, 1, 'admit called once on claimed');
+  assertEquals(releaseCalls, 1, 'claim released once on admit rejection');
+  assertEquals(spendCalls, 0, 'spend never called on admit rejection');
+  assertEquals(providerCalls, 0, 'provider never called on admit rejection');
+
+  // Non-claimed begin outcomes must NEVER invoke admit
+  let nonClaimAdmitCalls = 0;
+  for (const outcome of [
+    { kind: 'replay', response: { reply: 'cached' } },
+    { kind: 'mismatch' },
+    { kind: 'in_progress' },
+    { kind: 'consumed', error: 'Önceki hata' },
+  ] as const) {
+    await runIdempotentAiRequest(
+      { requestId: 'req-non-claim', mode: 'coach', fingerprint: 'fp-nc', cost: 5 },
+      {
+        begin: async () => outcome,
+        admit: async () => {
+          nonClaimAdmitCalls += 1;
+          return { ok: false, status: 429, code: TOO_MANY_IN_FLIGHT, message: 'x' };
+        },
+        complete: async () => {},
+        fail: async () => {},
+        release: async () => {},
+        spend: async () => ({ kind: 'charged', balance: 20 }),
+        refund: async () => true,
+        expireLease: async () => {},
+        callProvider: async () => ({ ok: true, payload: {} }),
+        readBalance: async () => 20,
+        describeError: () => 'Güvenli hata',
+      },
+    );
+  }
+  assertEquals(nonClaimAdmitCalls, 0, 'replay/mismatch/in_progress/consumed never invoke admit');
+
+  // Provider exception must pass ONLY describeError(raw) to fail(), never raw message
+  let storedFailError = '';
+  const thrown = await runIdempotentAiRequest(
+    { requestId: 'req-sanitize-err', mode: 'coach', fingerprint: 'fp-err', cost: 5 },
+    {
+      begin: async () => ({ kind: 'claimed' }),
+      complete: async () => {},
+      fail: async ({ error }) => { storedFailError = error; },
+      release: async () => {},
+      spend: async () => ({ kind: 'charged', balance: 20 }),
+      refund: async () => true,
+      expireLease: async () => {},
+      callProvider: async () => { throw new Error('Anthropic 500 apiKey=sk-ant-SECRET-999'); },
+      readBalance: async () => 20,
+      describeError: () => 'AI servisi şu an yanıt veremedi, lütfen sonra tekrar deneyin.',
+    },
+  );
+  assertEquals(thrown.status, 500, 'provider throw -> 500');
+  assertEquals(storedFailError, 'AI servisi şu an yanıt veremedi, lütfen sonra tekrar deneyin.', 'fail receives sanitized error');
+  assert(!storedFailError.includes('sk-ant-SECRET-999'), 'raw secret never reaches fail');
 });
 

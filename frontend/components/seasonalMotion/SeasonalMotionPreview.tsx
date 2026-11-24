@@ -24,7 +24,7 @@ export default function SeasonalMotionPreview({ visible, onClose }: { visible: b
         {/* Canlı önizleme: gerçek görsel + scrim + renderer (store'dan bağımsız) */}
         <Image source={getMonthBackground(monthIdx)} style={StyleSheet.absoluteFill} contentFit="cover" />
         <View style={[StyleSheet.absoluteFill, { backgroundColor: hexA(colors.bgSunk, 0.45) }]} pointerEvents="none" />
-        <SeasonalMotion month={monthNameFromIndex(monthIdx)} intensity={intensity} reduceMotion={simReduce} isVisible />
+        <SeasonalMotion month={monthNameFromIndex(monthIdx)} intensity={intensity} reduceMotion={simReduce} isVisible={visible} />
 
         {/* Merkez okunabilirlik referansı — hareket metni bozuyor mu? */}
         <View style={s.center} pointerEvents="none">

@@ -1,5 +1,5 @@
 /**
- * R04.01 / R04.02 — which habit reminders should be pending right now.
+ * R04.01 / R04.02 / F17 — which habit reminders should be pending right now.
  *
  * KD-04: every habit used to get ONE repeating DAILY trigger at its time,
  * whatever its schedule -- a Mon/Thu habit was reminded on Tuesday, a "3 a
@@ -14,7 +14,12 @@
  *   - not a day whose count period is already met before it
  *   - not today if today already has a log (done / partial / skip / miss)
  *   - only the habit's own weekdays when it set a day group (R04.02)
- *   - not inside quiet hours (R04.02)
+ *   - quiet hours (R04.02 / DOM-15): deferred to `quietEnd` when that falls
+ *     later on the same local day (spread 5 min apart), otherwise quieted
+ *   - Calm-Tech daily cap (DOM-15): fair two-pass selection per day (default 3),
+ *     stable across the day by counting already-past and today-logged slots
+ *   - reconcile keys carry `@<epoch ms>` (DOM-04) so timezone/DST shifts replace
+ *     stale instants cleanly
  *   - not in the past
  * The nearest `maxPending` are kept: the OS caps pending notifications (iOS
  * at 64), and the later days are planned on the next reconcile instead of
@@ -32,9 +37,26 @@ export type ReminderSettings = {
   quietEnd: string | null;
   /** Show "Hatırlatıcı" instead of the habit's name on the lock screen. */
   hideTitles: boolean;
+  /** DOM-15 — günlük en çok hatırlatıcı; null = sınırsız. */
+  maxPerDay: number | null;
 };
 
-export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = { quietStart: null, quietEnd: null, hideTitles: false };
+export const DEFAULT_MAX_PER_DAY = 3;
+export const MAX_PER_DAY_CHOICES: readonly (number | null)[] = [3, 5, 8, null];
+export const MAX_PER_DAY_BOUNDS = { min: 1, max: 12 } as const;
+
+export function normaliseMaxPerDay(raw: unknown, fallback: number = DEFAULT_MAX_PER_DAY): number | null {
+  if (raw === undefined) return fallback;
+  if (raw === null) return null;
+  return typeof raw === 'number' && Number.isInteger(raw) && raw >= MAX_PER_DAY_BOUNDS.min && raw <= MAX_PER_DAY_BOUNDS.max ? raw : fallback;
+}
+
+export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
+  quietStart: null,
+  quietEnd: null,
+  hideTitles: false,
+  maxPerDay: DEFAULT_MAX_PER_DAY,
+};
 
 export type PlannedReminder = {
   /** Stable identity of this reminder -- the reconcile key. */
@@ -44,11 +66,25 @@ export type PlannedReminder = {
   day: string;
   time: string;
   at: Date;
+  /** Sessiz saat yüzünden ertelendiyse özgün saat ('HH:mm'). */
+  shiftedFrom?: string;
 };
 
-export type ReminderPlan = { reminders: PlannedReminder[]; dropped: number };
+export type ReminderPlan = {
+  reminders: PlannedReminder[];
+  /** Bütçe (maxPending) yüzünden bu geçişe sığmayan; sonraki geçişte planlanır. */
+  dropped: number;
+  /** Günlük tavan yüzünden hiç planlanmayan. */
+  capped: number;
+  /** Sessiz saat bitimine ertelenen. */
+  deferred: number;
+  /** Sessiz saate düşüp aynı gün içinde ertelenemediği için gönderilmeyen. */
+  quieted: number;
+};
 
 export type PlanLog = { habit_id: string; completed_at: string; state: string };
+
+export const DEFAULT_HORIZON_DAYS = 7;
 
 export function parseTime(time: string): { hour: number; minute: number } | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(time).trim());
@@ -69,6 +105,74 @@ export function inQuietHours(time: string, s: Pick<ReminderSettings, 'quietStart
   return lo < hi ? x >= lo && x < hi : x >= lo || x < hi;
 }
 
+export function shiftOutOfQuiet(time: string, s: Pick<ReminderSettings, 'quietStart' | 'quietEnd'>): string | null {
+  const t = parseTime(time);
+  if (!t) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const norm = `${pad(t.hour)}:${pad(t.minute)}`;
+  if (!inQuietHours(norm, s)) return norm;
+  const end = s.quietEnd ? parseTime(s.quietEnd) : null;
+  if (!end) return null;
+  // Yalnız AYNI GÜN içinde, o saatten sonra biten pencere ertelenebilir (D5).
+  return minutesOf(end) > minutesOf(t) ? `${pad(end.hour)}:${pad(end.minute)}` : null;
+}
+
+export const SHIFT_STEP_MINUTES = 5;
+
+const byAt = <T extends { at: Date; habitId: string }>(a: T, b: T): number =>
+  a.at.getTime() - b.at.getTime() || a.habitId.localeCompare(b.habitId);
+
+export function applyDailyCap<T extends { habitId: string; at: Date }>(day: readonly T[], cap: number | null): { kept: T[]; removed: T[] } {
+  const sorted = [...day].sort(byAt);
+  if (cap === null || sorted.length <= cap) return { kept: sorted, removed: [] };
+  const picked = new Set<T>();
+  const seen = new Set<string>();
+  for (const c of sorted) {
+    if (picked.size >= cap) break;
+    if (!seen.has(c.habitId)) { seen.add(c.habitId); picked.add(c); }
+  }
+  for (const c of sorted) {
+    if (picked.size >= cap) break;
+    picked.add(c);
+  }
+  return { kept: sorted.filter((c) => picked.has(c)), removed: sorted.filter((c) => !picked.has(c)) };
+}
+
+export function hasReminderHabits(habits: readonly Pick<Habit, 'status' | 'reminders'>[]): boolean {
+  return habits.some((h) => h.status === 'active' && !!h.reminders?.enabled);
+}
+
+export const IOS_PENDING_LIMIT = 64;
+export const HABIT_SLOT_CEILING = 56;
+export const HABIT_SLOT_FLOOR = 8;
+export const RESERVED_SLOTS = 7;
+
+export function habitSlotBudget(others: number): number {
+  const o = Number.isFinite(others) && others > 0 ? Math.floor(others) : 0;
+  return Math.max(HABIT_SLOT_FLOOR, Math.min(HABIT_SLOT_CEILING, IOS_PENDING_LIMIT - RESERVED_SLOTS - o));
+}
+
+export const REENTRY_KIND = 'reentry';
+export const REENTRY_HOUR = 10;
+
+export function reentryTime(now: Date, horizonDays: number, s: Pick<ReminderSettings, 'quietStart' | 'quietEnd'>): Date {
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const wanted = `${pad(REENTRY_HOUR)}:00`;
+  const sameDay = shiftOutOfQuiet(wanted, s);
+  const endP = s.quietEnd ? parseTime(s.quietEnd) : null;
+  const time = sameDay ?? (endP ? `${pad(endP.hour)}:${pad(endP.minute)}` : wanted);
+  const p = parseTime(time)!;
+  let offset = Math.max(0, horizonDays - 1) + (sameDay === null ? 1 : 0);
+  for (let guard = 0; guard < 3; guard++, offset++) {
+    const d = addDaysLocal(base, offset);
+    const at = new Date(d.getFullYear(), d.getMonth(), d.getDate(), p.hour, p.minute, 0, 0);
+    if (at.getTime() > now.getTime()) return at;
+  }
+  const d = addDaysLocal(base, offset);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), p.hour, p.minute, 0, 0);
+}
+
 /** The reminder times a habit asked for: `times` if set, else the single `time`. Valid, unique, sorted. */
 export function reminderTimes(h: Pick<Habit, 'reminders'>): string[] {
   const r = h.reminders;
@@ -85,13 +189,32 @@ export function reminderDays(h: Pick<Habit, 'reminders'>): number[] {
   return (r?.days ?? []).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
 }
 
-export const reminderKey = (habitId: string, day: string, time: string) => `h:${habitId}:${day}:${time}`;
+export function reminderKey(habitId: string, day: string, time: string, at: Date): string {
+  return `h:${habitId}:${day}:${time}@${at.getTime()}`;
+}
 
 /** The earliest day whose logs a plan needs: the week or month containing `now`, whichever starts first. */
 export function planLogsSince(now: Date): string {
   const week = startOfWeekLocal(now);
   const month = new Date(now.getFullYear(), now.getMonth(), 1);
   return ymd(week < month ? week : month);
+}
+
+type Candidate = { habitId: string; day: string; time: string; at: Date; shiftedFrom?: string; logged: boolean };
+const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+const atOf = (date: Date, time: string): Date => {
+  const p = parseTime(time)!;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), p.hour, p.minute, 0, 0);
+};
+
+function spreadShifted(day: Candidate[]): void {
+  const taken = new Set(day.filter((c) => !c.shiftedFrom).map((c) => c.at.getTime()));
+  for (const c of day.filter((x) => x.shiftedFrom).sort(byAt)) {
+    let t = c.at.getTime();
+    while (taken.has(t)) t += SHIFT_STEP_MINUTES * 60_000;
+    taken.add(t);
+    c.at = new Date(t);
+  }
 }
 
 export function planReminders(params: {
@@ -104,14 +227,16 @@ export function planReminders(params: {
   maxPending?: number;
 }): ReminderPlan {
   const { habits, logs, settings, now } = params;
-  const horizon = params.horizonDays ?? 7;
-  const max = params.maxPending ?? 56;
+  const horizon = params.horizonDays ?? DEFAULT_HORIZON_DAYS;
+  const max = params.maxPending ?? HABIT_SLOT_CEILING;
+  const cap = settings.maxPerDay === undefined ? DEFAULT_MAX_PER_DAY : settings.maxPerDay;
   const today = ymd(now);
-  const out: PlannedReminder[] = [];
+  const byDay = new Map<string, Candidate[]>();
+  let quieted = 0;
 
   for (const h of habits) {
     if (h.status !== 'active') continue;
-    const times = reminderTimes(h).filter((t) => !inQuietHours(t, settings));
+    const times = reminderTimes(h);
     if (times.length === 0) continue;
     const days = reminderDays(h);
     const mine = logs ? logs.filter((l) => l.habit_id === h.id) : null;
@@ -120,7 +245,6 @@ export function planReminders(params: {
     for (let i = 0; i < horizon; i++) {
       const date = addDaysLocal(new Date(now.getFullYear(), now.getMonth(), now.getDate()), i);
       const day = ymd(date);
-      if (day === today && loggedToday) continue;
       if (days.length > 0 && !days.includes(weekdayIndex(date))) continue;
       if (!isEligibleOn(h, date)) continue;
       if (mine && isCountBasedSchedule(h)) {
@@ -129,27 +253,60 @@ export function planReminders(params: {
         if (periodStatus(h, before as never, date, { asOf: date }).status === 'satisfied') continue;
       }
       for (const time of times) {
-        const p = parseTime(time)!;
-        const at = new Date(date.getFullYear(), date.getMonth(), date.getDate(), p.hour, p.minute, 0, 0);
-        if (at.getTime() <= now.getTime()) continue;
-        out.push({ key: reminderKey(h.id, day, time), habitId: h.id, day, time, at });
+        const placed = shiftOutOfQuiet(time, settings);
+        if (placed === null) {
+          if (atOf(date, time).getTime() > now.getTime()) quieted += 1;
+          continue;
+        }
+        const c: Candidate = { habitId: h.id, day, time: placed, at: atOf(date, placed), logged: day === today && loggedToday };
+        if (placed !== time) c.shiftedFrom = time;
+        const list = byDay.get(day) ?? [];
+        list.push(c);
+        byDay.set(day, list);
       }
     }
   }
 
+  let capped = 0, deferred = 0;
+  const out: PlannedReminder[] = [];
+  for (const list of byDay.values()) {
+    spreadShifted(list);
+    const { kept, removed } = applyDailyCap(list, cap);
+    capped += removed.filter((c) => c.at.getTime() > now.getTime() && !c.logged).length;
+    for (const c of kept) {
+      if (c.at.getTime() <= now.getTime() || c.logged) continue;
+      const time = c.shiftedFrom ? hhmm(c.at) : c.time;
+      if (c.shiftedFrom) deferred += 1;
+      out.push({
+        key: reminderKey(c.habitId, c.day, time, c.at),
+        habitId: c.habitId,
+        day: c.day,
+        time,
+        at: c.at,
+        ...(c.shiftedFrom ? { shiftedFrom: c.shiftedFrom } : {}),
+      });
+    }
+  }
+
   out.sort((a, b) => a.at.getTime() - b.at.getTime() || a.key.localeCompare(b.key));
-  return { reminders: out.slice(0, max), dropped: Math.max(0, out.length - max) };
+  return { reminders: out.slice(0, max), dropped: Math.max(0, out.length - max), capped, deferred, quieted };
 }
 
 /**
  * Classify a scheduled OS notification by its data. Ours carry
- * `{ kind: 'habit', key }`; the pre-R04 DAILY triggers carry only
- * `{ habitId }`; recovery reminders carry `{ recoveryId }`; snoozes
- * `{ kind: 'snooze' }`. Anything unrecognised is left alone.
+ * `{ kind: 'habit', key }` with `@epoch`; pre-F17 keys without `@` and pre-R04
+ * DAILY triggers carrying only `{ habitId }` are `legacy-habit`; recovery
+ * reminders, snoozes, re-entry nudges and focus-end alerts are `other`.
+ * F36 görev, akşam ve takip bildirimleri `kind` alanlarıyla `other` sınıfında kalır
+ * ve `lib/taskReminderPlan.ts` `reconcileTimeSupport` ile yönetilir; birleşim bilerek
+ * genişletilmez (F17 `others` sayımı ve `habitSlotBudget` buna dayanır).
  */
 export function classifyScheduled(data: Record<string, unknown> | null | undefined): { kind: 'habit' | 'legacy-habit' | 'other'; key: string | null } {
   if (!data) return { kind: 'other', key: null };
-  if (data.kind === 'habit' && typeof data.key === 'string') return { kind: 'habit', key: data.key };
+  if (data.kind === 'habit' && typeof data.key === 'string') {
+    // DOM-04: mutlak an ('@epoch') taşımayan anahtar eski biçimdir: bir kez iptal edilip yeniden kurulur.
+    return data.key.includes('@') ? { kind: 'habit', key: data.key } : { kind: 'legacy-habit', key: null };
+  }
   if (data.kind === undefined && typeof data.habitId === 'string') return { kind: 'legacy-habit', key: null };
   return { kind: 'other', key: null };
 }
@@ -158,6 +315,9 @@ export function classifyScheduled(data: Record<string, unknown> | null | undefin
  * The reconcile diff: what to cancel (ours and no longer wanted, duplicates,
  * and every legacy DAILY habit trigger) and what to add. Recovery reminders,
  * snoozes and anything unrecognised are never touched.
+ * F36 görev, akşam ve takip bildirimleri `kind` alanlarıyla `other` sınıfında kalır
+ * ve `lib/taskReminderPlan.ts` `reconcileTimeSupport` ile yönetilir; birleşim bilerek
+ * genişletilmez (F17 `others` sayımı buna dayanır).
  */
 export function reconcile(
   scheduled: readonly { identifier: string; data: Record<string, unknown> | null | undefined }[],

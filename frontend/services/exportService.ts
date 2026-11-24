@@ -19,16 +19,16 @@
  *
  * Assembled here instead, from the repositories, which are owner-scoped by
  * an explicit filter and by RLS. All three formats are produced on the
- * device; nothing leaves it except through the share sheet the user picks.
+ * device; nothing leaves it except through the share sheet or download the user picks.
  *
  * ## Two decisions worth stating
  *
  * **Pages are drained, not sampled.** Several repositories are keyset
  * paginated. Calling them once would produce a backup holding the most
  * recent 30 notes and quietly calling itself complete — the failure mode of
- * a backup is that you find out at restore time. `drain` follows the cursor
- * to the end, and if it hits the safety cap it says so in `truncated`
- * instead of pretending.
+ * a backup is that you find out at restore time. `drain` and `fetchFullTable`
+ * follow cursors to the empty page, and if they hit the safety cap they say so
+ * in `truncated` instead of pretending.
  *
  * ## Why there is NO full import, and why the word "backup" was removed
  *
@@ -36,82 +36,67 @@
  * presented as a "yedek" (backup), which promises the opposite — and four
  * properties of the file make a faithful restore impossible to write from it:
  *
- *  1. **It is not the account.** Ten collections are exported. The account
- *     also has `okrs`, `key_results`, `recovery_plans`, `reading_list`,
- *     `life_area_logs`, `deep_work_sessions`, `weekly_reviews`,
- *     `monthly_reviews`, `focus_tasks` and `willpower_state`. Restoring this
- *     file would produce an account missing most of its data while reporting
- *     success — which is a fake restore, not a partial one.
+ *  1. **It is not the entire server state.** Every table the registry names is
+ *     exported (`lib/backupFormat.REGISTRY`); the account also has server-owned
+ *     tables listed in `NOT_BACKED_UP` (`willpower_state`, `credit_transactions`,
+ *     `user_subscriptions`, etc.).
  *
- *  2. **Re-inserting `habit_logs` would corrupt XP.** `habit_logs.xp` is
- *     server-owned: a trigger awards it on insert and rolls it into
- *     `profiles.total_xp`. Importing logs re-fires that trigger, inflating a
- *     total the schema has three migrations defending
+ *  2. **Re-inserting `habit_logs` would corrupt XP.** `habit_logs` is now
+ *     exported with ALL states and columns (including notes), yet it is still
+ *     never restored from a file: `habit_logs.xp` is server-owned, a trigger
+ *     awards it on insert and rolls it into `profiles.total_xp`. Importing logs
+ *     re-fires that trigger, inflating a total defended by migrations
  *     (`012_xp_integrity`, `015_ceiling_xp`, `016_xp_drift_survives_purge`).
- *     An import would have to suppress a trigger it cannot see from the
- *     client.
  *
  *  3. **Webhook rows are exported without their headers** — deliberately, see
- *     above. Restoring them recreates registrations that look configured and
+ *     below. Restoring them recreates registrations that look configured and
  *     cannot authenticate.
  *
  *  4. **The file may be `truncated`.** A collection over `MAX_ROWS` is cut and
  *     says so. Importing it would silently establish the truncated set as the
  *     new reality.
  *
- * Any one of those makes "restore" a lie; together they make it a data-loss
- * feature. The honest fix was to stop claiming it: the UI says "Verileri Dışa
- * Aktar" and states in plain words that there is no import.
+ * Any one of those makes "full restore" a lie; together they make it a data-loss
+ * feature. The UI says "Verileri Dışa Aktar" and states plainly what is never
+ * restored.
  *
- * R08 (2026-10-07) did not change any of the above; it added a CHECKED,
- * PARTIAL merge next to it, in `services/restoreService.ts` -- never in this
- * file, which still only goes one way. Format 3 carries a manifest (account,
- * per-collection count + checksum); a dry run verifies it and shows what
- * would be added; only collections whose insert has no side effect are ever
- * written (`lib/backupFormat.REGISTRY`) -- never `habit_logs`, never focus
- * sessions, never webhooks -- and nothing existing is overwritten. That is
- * honest as a partial merge; it is still not a restore of the account.
+ * R08 (2026-10-07) added a CHECKED, PARTIAL merge next to it, in
+ * `services/restoreService.ts` -- never in this file, which still only goes one
+ * way. Format 3 carries a manifest (account, per-collection count + checksum);
+ * a dry run verifies it and shows what would be added; only collections whose
+ * insert has no side effect are ever written (`lib/backupFormat.REGISTRY`) --
+ * never `habit_logs`, never focus sessions, never webhooks -- and nothing
+ * existing is overwritten.
  *
- * A real restore is a separate piece of work: it needs the full collection
- * set, id remapping across the foreign keys (`habit_logs.habit_id`,
- * `tasks.project_id`, `key_results.okr_id`), a server-side path that can
- * insert logs without re-awarding XP, an idempotency key so a re-run does not
- * duplicate, and an explicit destructive-overwrite confirmation. None of that
- * is started here, and pretending otherwise in the UI was the actual defect.
- *
- * **Webhook headers are excluded.** A registration may carry an
- * authorization header for the user's own automation. The export is handed
- * to `Share.share()`, i.e. to whatever application the user taps — mail,
- * notes, a chat. A credential does not belong in a document that leaves by
- * that route, and its absence is recorded in the file.
+ * **Webhook headers are excluded.** A registration may carry an authorization
+ * header for the user's own automation. A credential does not belong in a
+ * document that leaves the device, and its absence is recorded in the file.
  */
-import { fetchHabits } from '../repositories/habitRepository';
-import { fetchTasksPage } from '../repositories/taskRepository';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { buildManifest, type Manifest } from '../lib/backupFormat';
+import { escapeCsvCell } from '../lib/csvImport';
+import { deviceEntries, isDeviceExportKey, type DeviceEntry } from '../lib/deviceExport';
+import { toExcelXML, type ExcelCell, type ExcelSheet } from '../lib/focusReport';
+import { fetchBadHabitsPage } from '../repositories/badHabitRepository';
+import {
+  MAX_EXPORT_ROWS,
+  fetchFullTable,
+  fetchOwnOnboardingForExport,
+  fetchOwnProfileForExport,
+  type ExportFullTable,
+} from '../repositories/exportRepository';
+import { fetchGoalsPage } from '../repositories/goalRepository';
 import { fetchNotesPage } from '../repositories/noteRepository';
 import { fetchProjectsPage } from '../repositories/projectRepository';
-import { fetchGoalsPage } from '../repositories/goalRepository';
-import { fetchJournalEntries } from '../repositories/journalRepository';
-import { fetchAllFocusSessions } from '../repositories/focusSessionRepository';
-import { fetchHabitLogsForHabitsSince } from '../repositories/habitLogRepository';
-import { fetchBadHabitsPage } from '../repositories/badHabitRepository';
-import { fetchWebhooks } from '../repositories/webhookRepository';
+import { EXPORT_EXTRA_TABLES, fetchOwnedTable, isMissingTable, type ExportTable } from '../repositories/restoreRepository';
 import type { Cursor, Page, RepoResult } from '../repositories/shared';
-import { toExcelXML, type ExcelSheet, type ExcelCell } from '../lib/focusReport';
-// R08.01/02 — the manifest (account, per-collection count + checksum) that a
-// later check-and-merge (services/restoreService) verifies before reading.
-import { buildManifest, type Manifest } from '../lib/backupFormat';
-// R08.01 — the rest of the account (full tables) and this device's own data.
-import { fetchOwnedTable, EXPORT_EXTRA_TABLES, isMissingTable, type ExportTable } from '../repositories/restoreRepository';
-import { deviceEntries, type DeviceEntry } from '../lib/deviceExport';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetchTasksPage } from '../repositories/taskRepository';
 
-/** 3: adds `manifest`. The collections themselves are unchanged from 2. */
+/** 3: adds `manifest`. */
 export const EXPORT_FORMAT_VERSION = 3;
 
 /** Hard ceiling per collection, so one huge account cannot exhaust memory. */
-// R08.07: was 5_000 -- an account over that could not be backed up whole.
-// Keyset reads make a larger ceiling safe; past it the file says so and is refused.
-export const MAX_ROWS = 20_000;
+export const MAX_ROWS = MAX_EXPORT_ROWS;
 
 export type Backup = {
   format_version: number;
@@ -150,11 +135,24 @@ export type Backup = {
   habit_goal_versions: unknown[];
   habit_checklist_items: unknown[];
   habit_checklist_checks: unknown[];
+  // F20 (SYN-20)
+  profiles: unknown[];
+  user_onboarding: unknown[];
   /** This device's settings and local-only data (allowlisted keys, see lib/deviceExport). */
   device: DeviceEntry[];
   notes_on_contents: string[];
   /** Absent only when no account could be resolved; such a file can never be read back. */
   manifest?: Manifest;
+};
+
+export const isBackupComplete = (b: Pick<Backup, 'failed' | 'truncated'>): boolean =>
+  b.failed.length === 0 && b.truncated.length === 0;
+
+export type NoteRecord = {
+  id: string;
+  title: string | null;
+  content: string;
+  created_at: string | null;
 };
 
 /**
@@ -169,13 +167,10 @@ export async function drain<T extends { id: string }>(
 ): Promise<{ rows: T[]; truncated: boolean; error?: string }> {
   const rows: T[] = [];
   let cursor: Cursor | null | undefined = null;
-  // A cursor that stops advancing would spin forever; the row cap bounds the
-  // loop independently of the server's behaviour.
   for (let guard = 0; guard < 500; guard++) {
     const res = await page(cursor);
     if (!res.ok) return { rows, truncated: false, error: res.error };
     rows.push(...res.data.rows);
-    // Truncated only when there is more past the ceiling (exactly `max` rows is complete).
     if (rows.length > max || (rows.length === max && res.data.hasMore)) return { rows: rows.slice(0, max), truncated: true };
     if (!res.data.hasMore || !res.data.nextCursor) return { rows, truncated: false };
     cursor = res.data.nextCursor;
@@ -183,8 +178,19 @@ export async function drain<T extends { id: string }>(
   return { rows, truncated: true };
 }
 
+export async function collectAllNotes(
+  opts: { max?: number } = {},
+): Promise<RepoResult<{ rows: NoteRecord[]; truncated: boolean }>> {
+  const r = await drain((c) => fetchNotesPage(c, 200), opts.max ?? MAX_ROWS);
+  if (r.error) return { ok: false, error: r.error };
+  return { ok: true, data: { rows: r.rows, truncated: r.truncated } };
+}
+
 /** Everything the signed-in user owns, as one object. */
-export async function buildBackup(now: Date = new Date(), opts: { userId?: string | null; clock?: () => Date } = {}): Promise<Backup> {
+export async function buildBackup(
+  now: Date = new Date(),
+  opts: { userId?: string | null; clock?: () => Date } = {},
+): Promise<Backup> {
   const clock = opts.clock ?? (() => new Date());
   const startedAt = clock().toISOString();
   const truncated: string[] = [];
@@ -200,7 +206,20 @@ export async function buildBackup(now: Date = new Date(), opts: { userId?: strin
     return r.rows;
   };
 
-  const flat = async <T>(name: string, get: () => Promise<RepoResult<T[]>>): Promise<T[]> => {
+  const readFull = async (table: ExportFullTable): Promise<Record<string, unknown>[]> => {
+    const r = await fetchFullTable(table, MAX_ROWS);
+    if (!r.ok) {
+      failed.push({ collection: table, error: r.error });
+      return [];
+    }
+    if (r.data.truncated) truncated.push(table);
+    return r.data.rows;
+  };
+
+  const readSingle = async (
+    name: string,
+    get: () => Promise<RepoResult<Record<string, unknown>[]>>,
+  ): Promise<Record<string, unknown>[]> => {
     const r = await get();
     if (!r.ok) {
       failed.push({ collection: name, error: r.error });
@@ -209,28 +228,33 @@ export async function buildBackup(now: Date = new Date(), opts: { userId?: strin
     return r.data;
   };
 
-  const [habits, tasks, projects, goals, notes, journal, focus, badHabits, webhooks] =
-    await Promise.all([
-      flat('habits', () => fetchHabits(2000)),
-      collect('tasks', (c) => fetchTasksPage(c, 200)),
-      collect('projects', (c) => fetchProjectsPage(c, 200)),
-      collect('goals', (c) => fetchGoalsPage(c, 200)),
-      collect('notes', (c) => fetchNotesPage(c, 200)),
-      flat('journal_entries', () => fetchJournalEntries(1000)),
-      flat('focus_sessions', () => fetchAllFocusSessions()),
-      collect('bad_habits', (c) => fetchBadHabitsPage(c, 200)),
-      flat('webhooks', () => fetchWebhooks()),
-    ]);
-
-  // Logs are fetched per habit id, so they must wait for the habit list.
-  // 1970 is not a magic date: it is "no lower bound", spelled in the shape
-  // the repository already takes, so the backup is not silently a window.
-  const habitIds = (habits as { id: string }[]).map((h) => h.id);
-  const habitLogs = habitIds.length
-    ? await flat('habit_logs', () =>
-        fetchHabitLogsForHabitsSince({ habitIds, since: '1970-01-01' }),
-      )
-    : [];
+  const [
+    habits,
+    habitLogs,
+    journal,
+    focus,
+    webhooks,
+    tasks,
+    projects,
+    goals,
+    notes,
+    badHabits,
+    profiles,
+    onboarding,
+  ] = await Promise.all([
+    readFull('habits'),
+    readFull('habit_logs'),
+    readFull('journal_entries'),
+    readFull('focus_sessions'),
+    readFull('webhooks'),
+    collect('tasks', (c) => fetchTasksPage(c, 200)),
+    collect('projects', (c) => fetchProjectsPage(c, 200)),
+    collect('goals', (c) => fetchGoalsPage(c, 200)),
+    collect('notes', (c) => fetchNotesPage(c, 200)),
+    collect('bad_habits', (c) => fetchBadHabitsPage(c, 200)),
+    readSingle('profiles', fetchOwnProfileForExport),
+    readSingle('user_onboarding', fetchOwnOnboardingForExport),
+  ]);
 
   const safeWebhooks = (webhooks as { headers?: unknown }[]).map(({ headers: _omitted, ...rest }) => rest);
   const userId = opts.userId ?? null;
@@ -239,16 +263,21 @@ export async function buildBackup(now: Date = new Date(), opts: { userId?: strin
   const extra = {} as Record<ExportTable, Record<string, unknown>[]>;
   for (const t of EXPORT_EXTRA_TABLES) {
     const r = await fetchOwnedTable(t, MAX_ROWS);
-    // A table whose migration has not run yet is not there to back up (not a failure).
-    if (!r.ok) { if (!isMissingTable(r.code)) failed.push({ collection: t, error: r.error }); extra[t] = []; continue; }
+    if (!r.ok) {
+      if (!isMissingTable(r.code)) failed.push({ collection: t, error: r.error });
+      extra[t] = [];
+      continue;
+    }
     if (r.data.truncated) truncated.push(t);
     extra[t] = r.data.rows;
   }
-  // R08.01 — this device's own settings and local-only data (allowlist; never sessions or tokens).
+
+  // R08.01 / F20 (SYN-11) — filter keys BEFORE multiGet so local backup blobs and outbox queues are never read into memory.
   let device: DeviceEntry[] = [];
   if (userId) {
     try {
-      const keys = await AsyncStorage.getAllKeys();
+      const allKeys = await AsyncStorage.getAllKeys();
+      const keys = allKeys.filter((k) => isDeviceExportKey(k, userId));
       device = deviceEntries(await AsyncStorage.multiGet(keys), userId);
     } catch (e) {
       failed.push({ collection: 'device', error: e instanceof Error ? e.message : 'cihaz verisi okunamadı' });
@@ -256,11 +285,27 @@ export async function buildBackup(now: Date = new Date(), opts: { userId?: strin
   }
 
   const manifest = userId
-    ? buildManifest(userId, now.toISOString(), {
-        habits, habit_logs: habitLogs, tasks, projects, goals, notes,
-        journal_entries: journal, focus_sessions: focus, bad_habits: badHabits, webhooks: safeWebhooks,
-        ...(Object.fromEntries(EXPORT_EXTRA_TABLES.map((t) => [t, extra[t]])) as Record<string, unknown[]>), device,
-      }, { startedAt, finishedAt: clock().toISOString() })
+    ? buildManifest(
+        userId,
+        now.toISOString(),
+        {
+          habits,
+          habit_logs: habitLogs,
+          tasks,
+          projects,
+          goals,
+          notes,
+          journal_entries: journal,
+          focus_sessions: focus,
+          bad_habits: badHabits,
+          webhooks: safeWebhooks,
+          ...(Object.fromEntries(EXPORT_EXTRA_TABLES.map((t) => [t, extra[t]])) as Record<string, unknown[]>),
+          profiles,
+          user_onboarding: onboarding,
+          device,
+        },
+        { startedAt, finishedAt: clock().toISOString() },
+      )
     : undefined;
 
   return {
@@ -278,21 +323,35 @@ export async function buildBackup(now: Date = new Date(), opts: { userId?: strin
     journal_entries: journal,
     focus_sessions: focus,
     bad_habits: badHabits,
-    // Registrations without their headers -- see the module note.
     webhooks: safeWebhooks,
-    okrs: extra.okrs, key_results: extra.key_results, reading_list: extra.reading_list,
-    focus_tasks: extra.focus_tasks, recovery_plans: extra.recovery_plans,
-    weekly_reviews: extra.weekly_reviews, monthly_reviews: extra.monthly_reviews,
-    life_area_logs: extra.life_area_logs, deep_work_sessions: extra.deep_work_sessions,
-    ai_conversations: extra.ai_conversations, ai_messages: extra.ai_messages,
-    ai_conversation_actions: extra.ai_conversation_actions, journal_insights: extra.journal_insights,
-    routines: extra.routines, habit_deletions: extra.habit_deletions,
-    habit_pauses: extra.habit_pauses, habit_goal_versions: extra.habit_goal_versions,
-    habit_checklist_items: extra.habit_checklist_items, habit_checklist_checks: extra.habit_checklist_checks,
+    okrs: extra.okrs,
+    key_results: extra.key_results,
+    reading_list: extra.reading_list,
+    focus_tasks: extra.focus_tasks,
+    recovery_plans: extra.recovery_plans,
+    weekly_reviews: extra.weekly_reviews,
+    monthly_reviews: extra.monthly_reviews,
+    life_area_logs: extra.life_area_logs,
+    deep_work_sessions: extra.deep_work_sessions,
+    ai_conversations: extra.ai_conversations,
+    ai_messages: extra.ai_messages,
+    ai_conversation_actions: extra.ai_conversation_actions,
+    journal_insights: extra.journal_insights,
+    routines: extra.routines,
+    habit_deletions: extra.habit_deletions,
+    habit_pauses: extra.habit_pauses,
+    habit_goal_versions: extra.habit_goal_versions,
+    habit_checklist_items: extra.habit_checklist_items,
+    habit_checklist_checks: extra.habit_checklist_checks,
+    profiles,
+    user_onboarding: onboarding,
     device,
     notes_on_contents: [
       'Yalnızca bu hesaba ait kayıtlar. Webhook başlıkları (headers) güvenlik gerekçesiyle dışarıda bırakıldı.',
       'Cihaz bölümü: bu cihazdaki ayarlar ve yerel veriler; oturum ve erişim anahtarları asla dahil edilmez.',
+      'habit_logs: tüm durumlar (yapıldı, kısmen, atlandı, kaçırıldı) ve tüm sütunlar, notlar dahil; arşivlenmiş alışkanlıklar da dosyadadır. Bu uygulama habit_logs kayıtlarını geri yükleyemez (sunucu her kayıt için XP veriyor).',
+      'profiles ve user_onboarding: hesap kimliğin (e-posta, kullanıcı adı, AI kişiliği, son AI bağlamı) ve kurulum yanıtların bilgi için dosyadadır; bildirim belirteci ve kurulum kimlikleri dahil değildir. XP ve sayaçlar sunucu otoritesidir; XP, habit_logs içindeki xp sütunundan yeniden türetilebilir.',
+      'Sunucu otoritesi olan (XP, Focus Point, abonelik, AI istek kaydı), sağlayıcı belirteci taşıyan ve kullanılmayan tablolar dışa aktarılmaz; liste ve nedenleri lib/backupFormat.ts NOT_BACKED_UP içindedir.',
       truncated.length ? `Sınıra takılan ve eksik kalan bölümler: ${truncated.join(', ')}.` : 'Tüm bölümler eksiksiz.',
       failed.length ? `Okunamayan bölümler: ${failed.map((f) => f.collection).join(', ')}.` : 'Okuma hatası yok.',
     ],
@@ -309,7 +368,8 @@ const COLLECTIONS: (keyof Backup)[] = [
   'okrs', 'key_results', 'reading_list', 'focus_tasks', 'recovery_plans', 'weekly_reviews', 'monthly_reviews',
   'life_area_logs', 'deep_work_sessions', 'ai_conversations', 'ai_messages',
   'ai_conversation_actions', 'journal_insights', 'routines', 'habit_deletions',
-  'habit_pauses', 'habit_goal_versions', 'habit_checklist_items', 'habit_checklist_checks', 'device',
+  'habit_pauses', 'habit_goal_versions', 'habit_checklist_items', 'habit_checklist_checks',
+  'profiles', 'user_onboarding', 'device',
 ];
 
 /** Union of the keys present across rows, so a sparse column is not dropped. */
@@ -346,20 +406,12 @@ export function backupToExcelXML(backup: Backup): string {
 
 /**
  * One CSV holding every collection, each under its own header block.
- *
- * CSV has no concept of multiple tables, and the alternative — ten files —
- * cannot travel through a single share sheet. A labelled block per
- * collection keeps it one document without pretending the shapes match.
  */
 export function backupToCSV(backup: Backup): string {
-  const esc = (v: ExcelCell) => {
-    const s = v === null || v === undefined ? '' : String(v);
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
   const out: string[] = [`# Aderyth dışa aktarım,${backup.export_date},format v${backup.format_version}`];
   for (const sheet of backupToSheets(backup)) {
-    out.push('', `## ${sheet.name}`, sheet.headers.map(esc).join(','));
-    for (const row of sheet.rows) out.push(row.map(esc).join(','));
+    out.push('', `## ${sheet.name}`, sheet.headers.map(escapeCsvCell).join(','));
+    for (const row of sheet.rows) out.push(row.map(escapeCsvCell).join(','));
   }
   if (backup.truncated.length) out.push('', `# EKSİK: ${backup.truncated.join(', ')}`);
   if (backup.failed.length) out.push('', `# OKUNAMADI: ${backup.failed.map((f) => `${f.collection} (${f.error})`).join('; ')}`);

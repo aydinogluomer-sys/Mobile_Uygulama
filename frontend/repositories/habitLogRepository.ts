@@ -10,13 +10,18 @@
  */
 import { supabase } from '../lib/supabase';
 import type { HabitLog } from '../lib/supabase';
+import { requireComplete, selectAllPages } from './pagedSelect';
 import { currentUserId, isTransportFailure, updateOwned, type RepoResult } from './shared';
 
 export type ReviewLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
 export type HeatmapLogRow = Pick<HabitLog, 'completed_at' | 'state'>;
 export type HabitIdLogRow = { habit_id: string | null };
 export type StreakLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
-export type HabitDetailLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'>;
+export type HabitDetailLogRow = Pick<HabitLog, 'habit_id' | 'completed_at' | 'state' | 'value'> & {
+  notes: string | null;
+};
+
+const HABIT_ID_BATCH = 100;
 
 /**
  * `habit_id, completed_at, state, value` for a date range -- source for
@@ -30,15 +35,19 @@ export async function fetchHabitLogsForReview(params: {
 }): Promise<RepoResult<ReviewLogRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
-    .from('habit_logs')
-    .select('habit_id, completed_at, state, value')
-    .eq('user_id', u.userId)
-    .gte('completed_at', params.start)
-    .lte('completed_at', `${params.end}T23:59:59`)
-    .in('state', ['done', 'partial', 'miss', 'skip']);
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as ReviewLogRow[] };
+  const r = await selectAllPages<ReviewLogRow>((from, to) =>
+    supabase
+      .from('habit_logs')
+      .select('habit_id, completed_at, state, value')
+      .eq('user_id', u.userId)
+      .gte('completed_at', params.start)
+      .lte('completed_at', `${params.end}T23:59:59`)
+      .in('state', ['done', 'partial', 'miss', 'skip'])
+      .order('completed_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  return requireComplete(r, 'Değerlendirme kayıtları');
 }
 
 /**
@@ -50,14 +59,18 @@ export async function fetchHabitLogsHeatmap(params: {
 }): Promise<RepoResult<HeatmapLogRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
-    .from('habit_logs')
-    .select('completed_at, state')
-    .eq('user_id', u.userId)
-    .in('state', ['done', 'partial'])
-    .gte('completed_at', params.since);
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as HeatmapLogRow[] };
+  const r = await selectAllPages<HeatmapLogRow>((from, to) =>
+    supabase
+      .from('habit_logs')
+      .select('completed_at, state')
+      .eq('user_id', u.userId)
+      .in('state', ['done', 'partial'])
+      .gte('completed_at', params.since)
+      .order('completed_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  return requireComplete(r, 'Isı haritası');
 }
 
 /**
@@ -69,14 +82,18 @@ export async function fetchHabitIdsCompletedSince(params: {
 }): Promise<RepoResult<HabitIdLogRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
-    .from('habit_logs')
-    .select('habit_id')
-    .eq('user_id', u.userId)
-    .in('state', ['done', 'partial'])
-    .gte('completed_at', params.since);
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as HabitIdLogRow[] };
+  const r = await selectAllPages<HabitIdLogRow>((from, to) =>
+    supabase
+      .from('habit_logs')
+      .select('habit_id')
+      .eq('user_id', u.userId)
+      .in('state', ['done', 'partial'])
+      .gte('completed_at', params.since)
+      .order('completed_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  return requireComplete(r, 'Alışkanlık tamamlamaları');
 }
 
 /**
@@ -90,19 +107,34 @@ export async function fetchHabitLogsForHabitsSince(params: {
 }): Promise<RepoResult<StreakLogRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
-    .from('habit_logs')
-    // `value` is required, not cosmetic: without it `recovery.deficitFor` has
-    // nothing to subtract on a `partial` day and reports the FULL target as
-    // owed -- 10.000 instead of plan §9's 2.000.
-    .select('habit_id, completed_at, state, value')
-    .eq('user_id', u.userId)
-    .in('habit_id', params.habitIds)
-    .gte('completed_at', params.since)
-    .in('state', ['done', 'partial'])
-    .order('completed_at', { ascending: false });
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as StreakLogRow[] };
+  if (params.habitIds.length === 0) return { ok: true, data: [] };
+
+  const all: StreakLogRow[] = [];
+  for (let i = 0; i < params.habitIds.length; i += HABIT_ID_BATCH) {
+    const ids = params.habitIds.slice(i, i + HABIT_ID_BATCH);
+    const r = await selectAllPages<StreakLogRow>((from, to) =>
+      supabase
+        .from('habit_logs')
+        // `value` is required, not cosmetic: without it `recovery.deficitFor` has
+        // nothing to subtract on a `partial` day and reports the FULL target as
+        // owed -- 10.000 instead of plan §9's 2.000.
+        .select('habit_id, completed_at, state, value')
+        .eq('user_id', u.userId)
+        .in('habit_id', ids)
+        .gte('completed_at', params.since)
+        .in('state', ['done', 'partial'])
+        .order('completed_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(from, to),
+    );
+    const checked = requireComplete(r, 'Alışkanlık geçmişi');
+    if (!checked.ok) return checked;
+    all.push(...checked.data);
+  }
+  if (params.habitIds.length > HABIT_ID_BATCH) {
+    all.sort((a, b) => b.completed_at.localeCompare(a.completed_at));
+  }
+  return { ok: true, data: all };
 }
 
 /**
@@ -127,17 +159,20 @@ export async function fetchHabitLogsForHabit(params: {
 }): Promise<RepoResult<HabitDetailLogRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const { data, error } = await supabase
-    .from('habit_logs')
-    .select('habit_id, completed_at, state, value')
-    .eq('user_id', u.userId)
-    .eq('habit_id', params.habitId)
-    .gte('completed_at', params.start)
-    .lte('completed_at', `${params.end}T23:59:59`)
-    .in('state', ['done', 'partial', 'miss', 'skip'])
-    .order('completed_at', { ascending: true });
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as HabitDetailLogRow[] };
+  const r = await selectAllPages<HabitDetailLogRow>((from, to) =>
+    supabase
+      .from('habit_logs')
+      .select('habit_id, completed_at, state, value, notes')
+      .eq('user_id', u.userId)
+      .eq('habit_id', params.habitId)
+      .gte('completed_at', params.start)
+      .lte('completed_at', `${params.end}T23:59:59`)
+      .in('state', ['done', 'partial', 'miss', 'skip'])
+      .order('completed_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  return requireComplete(r, 'Alışkanlık detayı');
 }
 
 // ---------------------------------------------------------------------------
@@ -230,4 +265,38 @@ export async function updateHabitLog(
   return updateOwned<HabitLog>({
     table: 'habit_logs', id, userId: u.userId, patch, columns: WRITE_COLS,
   });
+}
+
+/**
+ * F31 (PS-03): updates ONLY `notes` on an existing `habit_logs` row.
+ * Never inserts or upserts, and never touches `xp`, `state`, or `value`.
+ */
+export async function updateLogNote(params: {
+  habitId: string;
+  dateStr: string;
+  note: string | null;
+}): Promise<RepoResult<{ id: string; notes: string | null }>> {
+  const u = await currentUserId();
+  if (!u.ok) return u;
+  const { data, error, status } = await supabase
+    .from('habit_logs')
+    .update({ notes: params.note })
+    .eq('habit_id', params.habitId)
+    .eq('user_id', u.userId)
+    .eq('completed_at', params.dateStr)
+    .select('id,notes')
+    .maybeSingle();
+  if (error) {
+    return {
+      ok: false,
+      error: error.message,
+      offline: isTransportFailure(status, error),
+      status,
+      code: error.code,
+    };
+  }
+  if (!data) {
+    return { ok: false, error: 'Bu gün için kayıt bulunamadı.', code: 'no_row' };
+  }
+  return { ok: true, data };
 }

@@ -22,6 +22,7 @@ export function isDeviceExportKey(key: string, userId: string): boolean {
   if (!userId) return false;
   if (SETTINGS.has(key)) return true;
   return key === `moods.v1.${userId}`
+    || key === `aderyth:time_capsules:v1:${userId}`
     || key === `focus.settings.v1.${userId}`
     || key === `routine.v1.${userId}`
     || key === `review.actions.v1.${userId}`

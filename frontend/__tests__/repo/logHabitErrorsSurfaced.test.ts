@@ -23,6 +23,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { readHabitOnboardingSource } from '../helpers/habitOnboardingSource';
 
 const APP = join(__dirname, '..', '..', 'app');
 
@@ -95,8 +96,7 @@ describe('AC-N04b -- a failed log never completes a plan', () => {
  * F-04 was, four times over, for `ymd`.
  */
 describe('AC-Y05 -- no duplicate willpower arithmetic in HabitOnboarding', () => {
-  const src = readFileSync(
-    join(__dirname, '..', '..', 'components', 'HabitOnboarding.tsx'), 'utf8');
+  const src = readHabitOnboardingSource(join(__dirname, '..', '..'));
 
   it('uses the store rather than reimplementing canActivate', () => {
     expect(src).toContain('useWillpowerStore');

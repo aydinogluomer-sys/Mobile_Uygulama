@@ -80,6 +80,8 @@ jest.mock('../../lib/supabase', () => ({
 import { AppState } from 'react-native';
 import { useWillpowerStore } from '../../store/willpowerStore';
 
+const recordedChangeHandlers = new Set<(s: string) => void>();
+
 const D3 = '2026-08-03';
 const D4 = '2026-08-04';
 
@@ -98,7 +100,15 @@ beforeEach(() => {
   useWillpowerStore.setState({ state: null, loading: false });
   jest.useFakeTimers();
 });
-afterEach(() => { jest.useRealTimers(); });
+afterEach(() => {
+  const calls = (AppState.addEventListener as jest.Mock).mock?.calls ?? [];
+  for (const c of calls) {
+    if (c[0] === 'change' && typeof c[1] === 'function') {
+      recordedChangeHandlers.add(c[1] as (s: string) => void);
+    }
+  }
+  jest.useRealTimers();
+});
 
 describe('AC-Y01/Y02 -- crossing local midnight', () => {
   it('stops exposing yesterday row and refetches', async () => {
@@ -149,9 +159,14 @@ describe('AC-Y04 -- foreground re-evaluates without waiting for the timer', () =
     // Uygulama arka plandan dönüyor. Zamanlayıcıyı beklemeden kontrol etmeli:
     // telefon gece boyunca uykudayken interval güvenilir çalışmaz.
     const calls = (AppState.addEventListener as jest.Mock).mock?.calls ?? [];
-    const handlers = calls.filter((c: unknown[]) => c[0] === 'change').map((c: unknown[]) => c[1]);
+    for (const c of calls) {
+      if (c[0] === 'change' && typeof c[1] === 'function') {
+        recordedChangeHandlers.add(c[1] as (s: string) => void);
+      }
+    }
+    const handlers = [...recordedChangeHandlers];
     expect(handlers.length).toBeGreaterThan(0);
-    for (const h of handlers) (h as (s: string) => void)('active');
+    for (const h of handlers) h('active');
     await flush();
 
     expect(useWillpowerStore.getState().state?.state_date).not.toBe(D3);

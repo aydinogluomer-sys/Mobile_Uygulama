@@ -5,35 +5,39 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 import { useHabitStore } from '../store/habitStore';
+import { useCommandStore } from '../store/commandStore';
+import { navigateTo } from '../lib/destinations';
 import {
   computeTriage, TRIAGE_META, impactMeta, endConditionLabel, IMPACT_LEVELS,
   type ImpactLevel,
 } from '../lib/triage';
 import { LIFE_AREAS } from '../store/lifeAreasStore';
 import type { Habit } from '../lib/supabase';
+import { t } from '../lib/i18n';
 import { colors, space, radius, font, hexA, shadow, fontFamily } from '../lib/tokens';
 import { useReducedMotion } from './seasonalMotion/useReducedMotion';
 import { haptic } from '../lib/haptics';
-import { Chip, Badge, IconCircle, EmptyState } from './ui';
+import { Chip, Badge, IconCircle, EmptyState, LoadErrorState } from './ui';
 import { isMeasurableTracking } from '../lib/habitEngine';
 
 type StatusKey = 'active' | 'waiting' | 'idea' | 'completed';
 type SortKey = 'impact' | 'willpower' | 'name' | 'recent';
 
-const STATUS_META: Record<StatusKey, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  active: { label: 'Yapılıyor', color: colors.success, icon: 'rocket' },
-  waiting: { label: 'Yapılacak', color: colors.warning, icon: 'hourglass-outline' },
-  idea: { label: 'Fikir', color: colors.textFaint, icon: 'bulb-outline' },
-  completed: { label: 'Yapıldı', color: colors.teal, icon: 'checkmark-done-circle-outline' },
+const STATUS_META: Record<StatusKey, { label: () => string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  active: { label: () => t('habits.list.status.active'), color: colors.success, icon: 'rocket' },
+  waiting: { label: () => t('habits.list.status.waiting'), color: colors.warning, icon: 'hourglass-outline' },
+  idea: { label: () => t('habits.list.status.idea'), color: colors.textFaint, icon: 'bulb-outline' },
+  completed: { label: () => t('habits.list.status.completed'), color: colors.teal, icon: 'checkmark-done-circle-outline' },
 };
 const STATUS_ORDER: StatusKey[] = ['active', 'waiting', 'idea', 'completed'];
 
-const SORTS: { key: SortKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: 'impact', label: 'Etki', icon: 'flame-outline' },
-  { key: 'willpower', label: 'İrade', icon: 'flash-outline' },
-  { key: 'name', label: 'İsim', icon: 'text-outline' },
-  { key: 'recent', label: 'Yeni', icon: 'time-outline' },
+const SORTS: { key: SortKey; label: () => string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: 'impact', label: () => t('habits.list.sort.impact'), icon: 'flame-outline' },
+  { key: 'willpower', label: () => t('habits.list.sort.willpower'), icon: 'flash-outline' },
+  { key: 'name', label: () => t('habits.list.sort.name'), icon: 'text-outline' },
+  { key: 'recent', label: () => t('habits.list.sort.recent'), icon: 'time-outline' },
 ];
 
 const IMPACT_RANK: Record<ImpactLevel, number> = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -47,11 +51,31 @@ function areaMeta(key: string | null | undefined) {
   return LIFE_AREAS.find((a) => a.key === key) ?? null;
 }
 
+export type HabitListViewProps = {
+  onAdd?: () => void;
+};
+
 // Tüm alışkanlıkların yönetim/genel-bakış görünümü (İstatistikler → Liste sekmesi).
 // Durum bazlı gruplama + filtre + sıralama: bir kontrol merkezi.
-export default function HabitListView() {
+export default function HabitListView({ onAdd }: HabitListViewProps) {
   const router = useRouter();
-  const { habits, loading, fetchHabits } = useHabitStore();
+  const { habits, loading, error, fetchHabits } = useHabitStore(
+    useShallow((st) => ({
+      habits: st.habits,
+      loading: st.loading,
+      error: st.error,
+      fetchHabits: st.fetchHabits,
+    })),
+  );
+
+  function handleAdd() {
+    if (onAdd) {
+      onAdd();
+      return;
+    }
+    useCommandStore.getState().requestIntent('new-habit');
+    navigateTo(router, 'habits');
+  }
   const [statusFilter, setStatusFilter] = useState<Set<StatusKey>>(new Set());
   const [impactFilter, setImpactFilter] = useState<Set<ImpactLevel>>(new Set());
   const [search, setSearch] = useState('');
@@ -148,7 +172,7 @@ export default function HabitListView() {
             <Chip label={tmeta.label} icon={tmeta.icon as any} color={tmeta.color} size="sm" />
             <Badge label={habit.willpower_cost} icon="flash" color={colors.warning} />
             {isMeasurableTracking(habit.tracking_type) && !!habit.unit && <Badge label={habit.unit} color={colors.primary} />}
-            {habit.estimated_minutes > 0 && <Badge label={`${habit.estimated_minutes}dk`} icon="timer-outline" color={colors.teal} />}
+            {habit.estimated_minutes > 0 && <Badge label={t('habits.minutesShort', { minutes: habit.estimated_minutes })} icon="timer-outline" color={colors.teal} />}
             {habit.reminders?.enabled && <Badge label={habit.reminders.time} icon="notifications" color={colors.accent} />}
             {area && <Chip label={area.label} dot color={area.color} size="sm" />}
           </View>
@@ -172,7 +196,7 @@ export default function HabitListView() {
           <Ionicons name="search-outline" size={16} color={colors.textFaint} />
           <TextInput
             style={s.searchInput}
-            placeholder="Alışkanlık ara..."
+            placeholder={t('habits.list.searchPlaceholder')}
             placeholderTextColor={colors.textFaint}
             value={search}
             onChangeText={setSearch}
@@ -205,7 +229,7 @@ export default function HabitListView() {
               style={[s.statusPill, sel && { backgroundColor: hexA(m.color, 0.16), borderColor: m.color }]}
             >
               <Ionicons name={m.icon} size={13} color={m.color} />
-              <Text style={[s.statusPillLabel, sel && { color: m.color }]}>{m.label}</Text>
+              <Text style={[s.statusPillLabel, sel && { color: m.color }]}>{m.label()}</Text>
               <View style={[s.statusPillCount, sel && { backgroundColor: hexA(m.color, 0.22) }]}>
                 <Text style={[s.statusPillCountText, sel && { color: m.color }]}>{counts[st]}</Text>
               </View>
@@ -217,12 +241,12 @@ export default function HabitListView() {
       {/* Collapsible panel: sırala + etki filtresi + temizle */}
       {showPanel && (
         <View style={s.panel}>
-          <Text style={s.panelLabel}>SIRALA</Text>
+          <Text style={s.panelLabel}>{t('habits.list.sort.overline')}</Text>
           <View style={s.panelRow}>
             {SORTS.map((so) => (
               <Chip
                 key={so.key}
-                label={so.label}
+                label={so.label()}
                 icon={so.icon}
                 color={colors.primaryBright}
                 selected={sortBy === so.key}
@@ -230,7 +254,7 @@ export default function HabitListView() {
               />
             ))}
           </View>
-          <Text style={[s.panelLabel, { marginTop: space.md }]}>ETKİ</Text>
+          <Text style={[s.panelLabel, { marginTop: space.md }]}>{t('habits.list.impact.overline')}</Text>
           <View style={s.panelRow}>
             {IMPACT_LEVELS.map((lv) => (
               <Chip
@@ -246,7 +270,7 @@ export default function HabitListView() {
           {hasFilter && (
             <TouchableOpacity style={s.clearBtn} onPress={clearAll}>
               <Ionicons name="close" size={14} color={colors.error} />
-              <Text style={s.clearText}>Filtreleri temizle</Text>
+              <Text style={s.clearText}>{t('habits.list.clearFilters')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -256,19 +280,23 @@ export default function HabitListView() {
       {loading && habits.length === 0 ? (
         <View style={s.center}><ActivityIndicator size="large" color={colors.primary} /></View>
       ) : noneAtAll ? (
-        <EmptyState
-          icon="albums-outline"
-          title="Henüz alışkanlık yok"
-          hint="İlk alışkanlığını ekleyerek sistemini kurmaya başla."
-          ctaLabel="Alışkanlık Ekle"
-          onCta={() => router.push('/tabs/habits')}
-        />
+        error ? (
+          <LoadErrorState what={t('habits.list.errorWhat')} onRetry={() => { void fetchHabits({ force: true }); }} />
+        ) : (
+          <EmptyState
+            icon="albums-outline"
+            title={t('habits.list.empty.title')}
+            hint={t('habits.list.empty.hint')}
+            ctaLabel={t('habits.addCta')}
+            onCta={handleAdd}
+          />
+        )
       ) : totalShown === 0 ? (
         <EmptyState
           icon="funnel-outline"
-          title="Eşleşen alışkanlık yok"
-          hint="Aramayı değiştir ya da filtreleri temizle."
-          ctaLabel="Filtreleri Temizle"
+          title={t('habits.list.noMatch.title')}
+          hint={t('habits.list.noMatch.hint')}
+          ctaLabel={t('habits.list.noMatch.cta')}
           onCta={clearAll}
           color={colors.warning}
         />
@@ -276,11 +304,14 @@ export default function HabitListView() {
         <ScrollView style={s.list} contentContainerStyle={{ padding: space.md, paddingBottom: 90 }} showsVerticalScrollIndicator={false}>
           <View style={s.resultBar}>
             <Text style={s.resultText}>
-              {totalShown} alışkanlık · {SORTS.find((x) => x.key === sortBy)?.label} sıralı
+              {t('habits.list.resultSummary', {
+                count: totalShown,
+                sort: SORTS.find((x) => x.key === sortBy)?.label() ?? '',
+              })}
             </Text>
             {hasFilter && (
               <TouchableOpacity onPress={clearAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={s.resultClear}>Temizle</Text>
+                <Text style={s.resultClear}>{t('habits.list.clearShort')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -291,7 +322,7 @@ export default function HabitListView() {
               <View key={g.status} style={s.group}>
                 <TouchableOpacity style={s.groupHead} activeOpacity={0.7} onPress={() => toggleCollapse(g.status)}>
                   <Ionicons name={m.icon} size={16} color={m.color} />
-                  <Text style={[s.groupTitle, { color: m.color }]}>{m.label}</Text>
+                  <Text style={[s.groupTitle, { color: m.color }]}>{m.label()}</Text>
                   <View style={s.groupCount}><Text style={s.groupCountText}>{g.items.length}</Text></View>
                   <View style={{ flex: 1 }} />
                   <Ionicons name={isCollapsed ? 'chevron-down' : 'chevron-up'} size={16} color={colors.textFaint} />
@@ -304,7 +335,12 @@ export default function HabitListView() {
       )}
 
       {/* Ekle FAB → alışkanlık akışı */}
-      <TouchableOpacity style={s.fab} onPress={() => router.push('/tabs/habits')} accessibilityLabel="Alışkanlık ekle">
+      <TouchableOpacity
+        style={s.fab}
+        onPress={handleAdd}
+        accessibilityRole="button"
+        accessibilityLabel={t('habits.fab.add.a11y')}
+      >
         <Ionicons name="add" size={28} color={colors.white} />
       </TouchableOpacity>
     </View>

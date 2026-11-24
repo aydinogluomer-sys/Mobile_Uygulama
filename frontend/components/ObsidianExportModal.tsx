@@ -1,17 +1,30 @@
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Alert,
+  View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, ActivityIndicator,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, alphaHex, radius, space, font } from '../lib/tokens';
 import { useHabitStore } from '../store/habitStore';
 import { useTaskStore } from '../store/taskStore';
 import { useJournalStore } from '../store/journalStore';
-import { useNoteStore } from '../store/noteStore';
+import { loadDay } from '../services/habitLogService';
+import { collectAllNotes } from '../services/exportService';
+import { CLIPBOARD_WIPE_MS, copyTextWithWipe } from '../lib/shareFile';
+import {
+  MD_PREVIEW_CHARS,
+  buildDailyNote,
+  buildHabitsCatalog,
+  buildNotesVault,
+  containsPersonalText,
+  isMarkdownEmpty,
+  previewOf,
+  type MdLog,
+  type MdNote,
+  type ObsidianKind,
+} from '../lib/obsidianMarkdown';
 import { todayLocal } from '../lib/date';
 import { haptic } from '../lib/haptics';
-import { EmbeddedFiligree } from './ui';
+import { EmbeddedFiligree } from './spatial';
 import { DECOR } from '../lib/visualAssets';
 
 interface ObsidianExportModalProps {
@@ -19,110 +32,161 @@ interface ObsidianExportModalProps {
   onClose: () => void;
 }
 
-export default function ObsidianExportModal({ visible, onClose }: ObsidianExportModalProps) {
-  const { habits } = useHabitStore();
-  const { tasks } = useTaskStore();
-  const { entries } = useJournalStore();
-  const { notes } = useNoteStore();
+type Load = { state: 'idle' | 'loading' | 'ready' | 'error'; error: string | null };
 
-  const [exportType, setExportType] = useState<'daily' | 'all_habits' | 'notes_vault'>('daily');
+const LOAD_ERROR_TEXT = 'Veriler yüklenemedi; bağlantını kontrol edip yeniden dene.';
+
+export default function ObsidianExportModal({ visible, onClose }: ObsidianExportModalProps) {
+  const { habits, fetchHabits } = useHabitStore();
+  const { tasks, hasMore: tasksHasMore, fetchTasks } = useTaskStore();
+  const { entries, fetchEntries } = useJournalStore();
+
+  const [exportType, setExportType] = useState<ObsidianKind>('daily');
   const [copied, setCopied] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [load, setLoad] = useState<Load>({ state: 'idle', error: null });
+  const [confirming, setConfirming] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [todayLogs, setTodayLogs] = useState<MdLog[]>([]);
+  const [vaultNotes, setVaultNotes] = useState<MdNote[]>([]);
+  const [vaultComplete, setVaultComplete] = useState(true);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runId = useRef(0);
+
+  const loadFor = useCallback(async (kind: ObsidianKind, myRun: number): Promise<Load> => {
+    try {
+      if (kind === 'daily') {
+        const [, , , dayRes] = await Promise.all([
+          fetchHabits(),
+          fetchTasks(),
+          fetchEntries(),
+          loadDay(todayLocal()),
+        ]);
+        if (!dayRes.ok) return { state: 'error', error: LOAD_ERROR_TEXT };
+        if (runId.current === myRun) {
+          setTodayLogs(dayRes.logs.map((l) => ({ habit_id: l.habit_id, state: l.state })));
+        }
+        return { state: 'ready', error: null };
+      }
+      if (kind === 'all_habits') {
+        await fetchHabits();
+        return { state: 'ready', error: null };
+      }
+      const res = await collectAllNotes();
+      if (!res.ok) {
+        if (runId.current === myRun) {
+          setVaultNotes([]);
+          setVaultComplete(false);
+        }
+        return { state: 'error', error: LOAD_ERROR_TEXT };
+      }
+      if (runId.current === myRun) {
+        setVaultNotes(
+          res.data.rows.map((r) => ({
+            id: String(r.id ?? ''),
+            title: r.title == null ? null : String(r.title),
+            content: String(r.content ?? ''),
+            created_at: r.created_at == null ? null : String(r.created_at),
+          })),
+        );
+        setVaultComplete(!res.data.truncated);
+      }
+      return { state: 'ready', error: null };
+    } catch {
+      return { state: 'error', error: LOAD_ERROR_TEXT };
+    }
+  }, [fetchEntries, fetchHabits, fetchTasks]);
+
+  const triggerLoad = useCallback((kind: ObsidianKind) => {
+    const my = ++runId.current;
+    setLoad({ state: 'loading', error: null });
+    setConfirming(false);
+    setStatus(null);
+    void loadFor(kind, my).then((res) => {
+      if (runId.current === my) setLoad(res);
+    });
+  }, [loadFor]);
+
+  useEffect(() => {
+    if (!visible) {
+      runId.current += 1;
+      setConfirming(false);
+      setStatus(null);
+      return;
+    }
+    triggerLoad(exportType);
+    return () => {
+      runId.current += 1;
+      if (copiedTimer.current) {
+        clearTimeout(copiedTimer.current);
+        copiedTimer.current = null;
+      }
+    };
+  }, [visible, exportType, triggerLoad]);
+
+  const today = todayLocal();
+  const todayJournal = useMemo(() => {
+    const found = entries.find((e) => e.date === today);
+    return found ? { date: found.date, content: found.content, mood: found.mood ?? null } : null;
+  }, [entries, today]);
 
   const markdownContent = useMemo(() => {
-    const today = todayLocal();
-
     if (exportType === 'daily') {
-      const todayJournal = entries.find((e) => e.date === today);
-      const pendingTasks = tasks.filter((t) => !t.completed);
-      const doneTasks = tasks.filter((t) => t.completed && t.completed_at?.startsWith(today));
-
-      let md = `---
-type: aderyth-daily
-date: ${today}
-tags:
-  - aderyth
-  - daily-note
-  - habits
----
-
-# 📅 Aderyth Günlük Özeti — ${today}
-
-## ⚡ Alışkanlıklar
-`;
-      habits.forEach((h) => {
-        const isDone = (h as any).completedToday ?? false;
-        const streakCount = h.streak_current ?? h.current_streak ?? 0;
-        md += `- [${isDone ? 'x' : ' '}] **${h.name}** ${streakCount > 0 ? `🔥 ${streakCount} gün` : ''}\n`;
+      return buildDailyNote({
+        today,
+        habits,
+        todayLogs,
+        tasks,
+        tasksComplete: !tasksHasMore,
+        journal: todayJournal,
       });
-
-      md += `\n## 🎯 Görevler\n`;
-      if (pendingTasks.length === 0 && doneTasks.length === 0) {
-        md += `*Bugün için kayıtlı görev yok.*\n`;
-      } else {
-        doneTasks.forEach((t) => {
-          md += `- [x] ${t.title}\n`;
-        });
-        pendingTasks.forEach((t) => {
-          md += `- [ ] ${t.title}${t.due_date ? ` ⏳ (Son: ${t.due_date})` : ''}\n`;
-        });
-      }
-
-      if (todayJournal) {
-        md += `\n## ✍️ Günlük Yansıması\n`;
-        if (todayJournal.mood) md += `*Ruh Hali:* ${todayJournal.mood}/5\n\n`;
-        md += `${todayJournal.content}\n`;
-      }
-
-      return md;
     }
-
     if (exportType === 'all_habits') {
-      let md = `---
-type: aderyth-habits-catalog
-updated_at: ${new Date().toISOString()}
-tags:
-  - aderyth
-  - habits-vault
----
-
-# 🏆 Alışkanlık Sistemi & Ritüeller
-
-| Alışkanlık | Kategori | Durum | Seri |
-|---|---|---|---|
-`;
-      habits.forEach((h) => {
-        md += `| ${h.name} | ${h.life_area || 'Genel'} | ${h.status || 'active'} | ${h.streak_current ?? h.current_streak ?? 0} gün |\n`;
+      return buildHabitsCatalog({
+        nowIso: `${today}T00:00:00.000Z`,
+        habits,
       });
-      return md;
     }
-
-    // notes_vault
-    let md = `---
-type: aderyth-notes-export
-date: ${today}
-tags:
-  - aderyth
-  - personal-knowledge
----
-
-# 📚 Aderyth Bilgi Kütüphanesi & Notlar
-
-`;
-    notes.forEach((n) => {
-      md += `## 📝 ${n.title || 'İsimsiz Not'}\n`;
-      md += `*Oluşturulma: ${n.created_at ? n.created_at.slice(0, 10) : today}*\n\n`;
-      md += `${n.content}\n\n---\n\n`;
+    return buildNotesVault({
+      today,
+      notes: vaultNotes,
+      complete: vaultComplete,
     });
+  }, [exportType, habits, tasks, tasksHasMore, today, todayJournal, todayLogs, vaultComplete, vaultNotes]);
 
-    return md;
-  }, [exportType, habits, tasks, entries, notes]);
+  const empty = useMemo(
+    () => isMarkdownEmpty(exportType, { habits, notes: vaultNotes }),
+    [exportType, habits, vaultNotes],
+  );
+  const needsConfirm = useMemo(
+    () => containsPersonalText(exportType, { journal: todayJournal, notes: vaultNotes }),
+    [exportType, todayJournal, vaultNotes],
+  );
+  const preview = useMemo(() => previewOf(markdownContent, MD_PREVIEW_CHARS), [markdownContent]);
+  const disabled = load.state !== 'ready' || empty || copying;
 
-  async function handleCopy() {
+  async function onCopyPress() {
+    if (disabled) return;
+    if (needsConfirm && !confirming) {
+      setConfirming(true);
+      return;
+    }
+    setCopying(true);
+    const res = await copyTextWithWipe(markdownContent, { wipeAfterMs: CLIPBOARD_WIPE_MS });
+    setCopying(false);
+    setConfirming(false);
+    if (!res.ok) {
+      setStatus(res.error);
+      return;
+    }
     haptic.success();
-    await Clipboard.setStringAsync(markdownContent);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-    Alert.alert('✅ Panoya Kopyalandı', "Markdown formatındaki içerik panoya kopyalandı. Obsidian kasanızdaki bir nota doğrudan yapıştırabilirsiniz.");
+    setStatus('Panoya kopyalandı. Obsidian kasanda bir nota yapıştırabilirsin; pano 60 sn sonra temizlenmeye çalışılır.');
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => {
+      copiedTimer.current = null;
+      setCopied(false);
+    }, 2000);
   }
 
   return (
@@ -148,11 +212,13 @@ tags:
 
           {/* Dışa Aktarma Tipi Seçimi */}
           <View style={s.tabRow}>
-            {[
-              { key: 'daily', label: 'Bugünün Notu' },
-              { key: 'all_habits', label: 'Alışkanlıklar' },
-              { key: 'notes_vault', label: 'Tüm Notlar' },
-            ].map((tab) => {
+            {(
+              [
+                { key: 'daily', label: 'Bugünün Notu' },
+                { key: 'all_habits', label: 'Alışkanlıklar' },
+                { key: 'notes_vault', label: 'Tüm Notlar' },
+              ] as const
+            ).map((tab) => {
               const active = exportType === tab.key;
               return (
                 <TouchableOpacity
@@ -160,7 +226,7 @@ tags:
                   style={[s.tabBtn, active && s.tabBtnActive]}
                   onPress={() => {
                     haptic.select();
-                    setExportType(tab.key as any);
+                    setExportType(tab.key);
                   }}
                   accessibilityRole="button"
                   accessibilityLabel={tab.label}
@@ -171,6 +237,29 @@ tags:
             })}
           </View>
 
+          <Text style={s.plainNotice}>Bu içerik panoya düz metin olarak kopyalanır.</Text>
+
+          {load.state === 'loading' && (
+            <View style={s.loadingRow}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={s.statusText}>Notlar yükleniyor.</Text>
+            </View>
+          )}
+
+          {load.state === 'error' && (
+            <View style={s.noticeBox} accessibilityRole="alert">
+              <Text style={s.errorText}>{load.error}</Text>
+              <TouchableOpacity
+                style={s.secondaryBtn}
+                onPress={() => triggerLoad(exportType)}
+                accessibilityRole="button"
+                accessibilityLabel="Yeniden dene"
+              >
+                <Text style={s.secondaryBtnText}>Yeniden dene</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Önizleme Alanı */}
           <View style={s.previewHeader}>
             <Text style={s.previewLabel}>MARKDOWN ÖNİZLEME</Text>
@@ -179,16 +268,66 @@ tags:
           <View style={s.previewWrap}>
             <EmbeddedFiligree source={DECOR.obsidianPrism} anchor="bottom-right" opacity={0.12} size={110} />
             <ScrollView style={s.previewBox} contentContainerStyle={{ padding: space.sm }}>
-              <Text style={s.codeText}>{markdownContent}</Text>
+              <Text style={s.codeText}>{preview.text}</Text>
+              {preview.hiddenChars > 0 && (
+                <Text style={s.truncNotice}>
+                  +{preview.hiddenChars} karakter daha var; kopya tam metni içerir.
+                </Text>
+              )}
             </ScrollView>
           </View>
 
+          {load.state === 'ready' && empty && (
+            <Text style={s.statusText}>
+              {exportType === 'all_habits' ? 'Dışa aktarılacak alışkanlık yok.' : 'Dışa aktarılacak not yok.'}
+            </Text>
+          )}
+
+          {confirming && (
+            <View style={s.noticeBox} accessibilityRole="alert">
+              <Text style={s.noticeText}>
+                Günlük ve not içeriğin panoya düz metin olarak kopyalanacak. Pano diğer uygulamalar ve klavye yöneticileri tarafından okunabilir. Devam edersen 60 sn sonra, başka bir şey kopyalamadıysan, pano temizlenmeye çalışılır.
+              </Text>
+              <View style={s.confirmActions}>
+                <TouchableOpacity
+                  style={s.secondaryBtn}
+                  onPress={() => setConfirming(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Vazgeç"
+                >
+                  <Text style={s.secondaryBtnText}>Vazgeç</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.secondaryBtn, s.confirmBtn]}
+                  onPress={() => { void onCopyPress(); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Yine de kopyala"
+                >
+                  <Text style={s.confirmBtnText}>Yine de kopyala</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {status !== null && (
+            <Text style={s.statusText} accessibilityLiveRegion="polite">{status}</Text>
+          )}
+
           {/* Alt Aksiyon Butonu */}
           <TouchableOpacity
-            style={[s.copyBtn, copied && s.copyBtnDone]}
-            onPress={handleCopy}
+            style={[s.copyBtn, copied && s.copyBtnDone, disabled && s.copyBtnDisabled]}
+            onPress={() => { void onCopyPress(); }}
+            disabled={disabled}
             accessibilityRole="button"
             accessibilityLabel="Obsidian Markdown formatında panoya kopyala"
+            accessibilityHint={
+              load.state === 'loading'
+                ? 'Notlar yükleniyor'
+                : empty
+                  ? 'Dışa aktarılacak not yok'
+                  : undefined
+            }
+            accessibilityState={{ disabled }}
           >
             <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={colors.white} />
             <Text style={s.copyBtnText}>
@@ -215,7 +354,7 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     padding: space.lg,
     paddingBottom: space.xxl,
-    gap: space.md,
+    gap: space.sm,
     maxHeight: '88%',
     overflow: 'hidden',
     position: 'relative',
@@ -251,7 +390,10 @@ const s = StyleSheet.create({
     marginTop: 1,
   },
   closeBtn: {
-    padding: 6,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   tabRow: {
@@ -263,8 +405,10 @@ const s = StyleSheet.create({
   },
   tabBtn: {
     flex: 1,
+    minHeight: 44,
     paddingVertical: 8,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radius.sm,
   },
   tabBtnActive: {
@@ -282,16 +426,79 @@ const s = StyleSheet.create({
     fontWeight: '700',
   },
 
+  plainNotice: {
+    fontSize: 11,
+    color: colors.textFaint,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statusText: {
+    fontSize: 12,
+    color: colors.textDim,
+    lineHeight: 17,
+  },
+  errorText: {
+    fontSize: 12,
+    color: colors.error,
+    lineHeight: 17,
+  },
+  noticeBox: {
+    gap: 8,
+    padding: space.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  noticeText: {
+    fontSize: 12,
+    color: colors.textDim,
+    lineHeight: 17,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  secondaryBtn: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textDim,
+  },
+  confirmBtn: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  confirmBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.white,
+  },
+
   previewHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 2,
   },
   previewLabel: {
     fontSize: 10,
     fontWeight: '800',
-    color: colors.textGhost,
+    color: colors.textFaint,
     letterSpacing: 1,
   },
   charCount: {
@@ -307,7 +514,7 @@ const s = StyleSheet.create({
     position: 'relative',
   },
   previewBox: {
-    maxHeight: 240,
+    maxHeight: 210,
   },
   codeText: {
     fontFamily: 'monospace',
@@ -315,12 +522,19 @@ const s = StyleSheet.create({
     color: colors.textDim,
     lineHeight: 16,
   },
+  truncNotice: {
+    marginTop: 6,
+    fontSize: 11,
+    color: colors.textFaint,
+    fontStyle: 'italic',
+  },
 
   copyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    minHeight: 48,
     backgroundColor: colors.accent,
     borderRadius: radius.md,
     paddingVertical: space.md,
@@ -328,6 +542,9 @@ const s = StyleSheet.create({
   },
   copyBtnDone: {
     backgroundColor: colors.success,
+  },
+  copyBtnDisabled: {
+    opacity: 0.5,
   },
   copyBtnText: {
     color: colors.white,

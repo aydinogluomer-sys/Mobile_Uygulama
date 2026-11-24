@@ -2,20 +2,22 @@
  * SSE Token-Streaming Client for `generate-routine` (`coach`, `summarize`, `insights`).
  *
  * Contract guarantees:
- * 1. Every network call goes directly through `withEdgeDeadline` (`lib/edgeCall.ts`)
- *    with zero custom `AbortController` instances (`edgeCallDeadline.test.ts`).
- * 2. Preserves `{ data, error }` shape compatible with `isNoAnswer` (`lib/aiAttempt.ts`)
+ * 1. Every network call goes directly through `withEdgeDeadline` or `withStreamDeadline`
+ *    (`lib/edgeCall.ts`) with zero custom `AbortController` instances (`edgeCallDeadline.test.ts`).
+ * 2. Preserves `{ data, error, transport }` shape compatible with `isNoAnswer` (`lib/aiAttempt.ts`)
  *    and `extractInvokeError` (`lib/aiInvoke.ts`):
  *    - Premature stream drop before `done`/`error` -> `FunctionsFetchError` (`isNoAnswer === true`,
  *      preserving `request_id` for zero-cost idempotent replay on resend).
  *    - Definite server error (`event: error` or HTTP 4xx/5xx JSON) -> `FunctionsHttpError`
  *      carrying `context.json()` so `INSUFFICIENT_CREDITS` and `balance` propagate cleanly.
- * 3. Automatically falls back to `supabase.functions.invoke` when `SUPABASE_FUNCTIONS_URL`
- *    is unavailable, when `supabase.functions.invoke` is mocked in unit tests, or when
- *    streaming is disabled.
+ * 3. Transport selection is explicit via `opts.transport` / `EXPO_PUBLIC_AI_TRANSPORT`
+ *    (never inspecting Jest mock internals).
  */
-import { withEdgeDeadline } from '../lib/edgeCall';
+import { withEdgeDeadline, withStreamDeadline } from '../lib/edgeCall';
+import { readPublicEnvLoose } from '../lib/env';
 import { supabase } from '../lib/supabase';
+
+export type StreamTransport = 'stream' | 'buffered' | 'invoke';
 
 export type SseFrame = {
   event: string;
@@ -26,14 +28,41 @@ export type InvokeStreamOptions = {
   body: Record<string, unknown>;
   label?: string;
   onReplyText?: (partialText: string) => void;
-  /** Force SSE `fetch` transport in streaming tests even if env vars are stubbed. */
+  transport?: 'stream' | 'invoke';
+  signal?: AbortSignal;
+  /** Force SSE `fetch` URL in streaming tests even if env vars are stubbed. */
   forceStreamFetchUrl?: string;
 };
 
 export type InvokeStreamResult = {
   data: Record<string, any> | null;
   error: unknown;
+  transport: StreamTransport;
 };
+
+type MinimalStreamReader = {
+  read(): Promise<{ value?: Uint8Array; done: boolean }>;
+  cancel(): Promise<unknown>;
+};
+
+type MinimalFetchResponse = {
+  ok: boolean;
+  status: number;
+  headers?: { get?(name: string): string | null };
+  body?: { getReader?(): MinimalStreamReader } | null;
+  json(): Promise<unknown>;
+  text(): Promise<string>;
+};
+
+type StreamingFetchFn = (
+  url: string,
+  init: {
+    method: string;
+    signal: AbortSignal;
+    headers: Record<string, string>;
+    body: string;
+  },
+) => Promise<MinimalFetchResponse>;
 
 function makeHttpError(payload: Record<string, unknown>): Error & { context: { json: () => Promise<Record<string, unknown>> } } {
   const msg = typeof payload.error === 'string' ? payload.error : 'Yanıt alınamadı, tekrar deneyin.';
@@ -47,6 +76,23 @@ function makeNoAnswerError(message: string): Error {
   const err = new Error(message);
   err.name = 'FunctionsFetchError';
   return err;
+}
+
+let cachedExpoFetch: StreamingFetchFn | null | undefined;
+
+async function resolveStreamingFetch(): Promise<StreamingFetchFn> {
+  if (typeof process !== 'undefined' && process.env?.JEST_WORKER_ID) {
+    return globalThis.fetch;
+  }
+  if (cachedExpoFetch === undefined) {
+    try {
+      const mod = await import('expo/fetch');
+      cachedExpoFetch = typeof mod.fetch === 'function' ? mod.fetch : null;
+    } catch {
+      cachedExpoFetch = null;
+    }
+  }
+  return cachedExpoFetch ?? globalThis.fetch;
 }
 
 /**
@@ -91,30 +137,33 @@ export function drainSseBuffer(buffer: string): { frames: SseFrame[]; rest: stri
   return { frames, rest: normalized.slice(cursor) };
 }
 
-function isJestMockedInvoke(): boolean {
-  const fn = supabase?.functions?.invoke as { _isMockFunction?: boolean; mock?: unknown } | undefined;
-  return Boolean(fn && (fn._isMockFunction || 'mock' in fn));
-}
-
 export async function invokeAiWithStream(opts: InvokeStreamOptions): Promise<InvokeStreamResult> {
   const label = opts.label ?? 'AI Koç';
-  const envUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
-  const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+  const { url: envUrl, anon: anonKey } = readPublicEnvLoose();
   const SUPABASE_FUNCTIONS_URL =
     opts.forceStreamFetchUrl ??
     (envUrl ? `${envUrl.replace(/\/$/, '')}/functions/v1` : '');
 
+  const desiredTransport: 'stream' | 'invoke' =
+    opts.transport ??
+    (opts.forceStreamFetchUrl
+      ? 'stream'
+      : process.env.EXPO_PUBLIC_AI_TRANSPORT === 'invoke'
+        ? 'invoke'
+        : 'stream');
+
   const canUseFetchStream =
+    desiredTransport === 'stream' &&
     Boolean(SUPABASE_FUNCTIONS_URL) &&
-    typeof fetch === 'function' &&
+    typeof globalThis.fetch === 'function' &&
     typeof supabase?.auth?.getSession === 'function' &&
-    (Boolean(opts.forceStreamFetchUrl) || (Boolean(anonKey) && !isJestMockedInvoke()));
+    (Boolean(opts.forceStreamFetchUrl) || Boolean(anonKey));
 
   if (!canUseFetchStream) {
     const { data, error } = await withEdgeDeadline(label, (signal) =>
       supabase.functions.invoke('generate-routine', { signal, body: opts.body }),
     );
-    if (!error && data && typeof data === 'object') {
+    if (!error && !opts.signal?.aborted && data && typeof data === 'object') {
       const fullText =
         typeof (data as Record<string, unknown>).reply === 'string'
           ? ((data as Record<string, unknown>).reply as string)
@@ -125,30 +174,31 @@ export async function invokeAiWithStream(opts: InvokeStreamOptions): Promise<Inv
               : '';
       if (fullText && opts.onReplyText) opts.onReplyText(fullText);
     }
-    return { data: (data as Record<string, any> | null) ?? null, error };
+    return { data: (data as Record<string, any> | null) ?? null, error, transport: 'invoke' };
   }
 
   const sessionRes = await supabase.auth.getSession();
   const accessToken = sessionRes?.data?.session?.access_token;
   if (!accessToken) {
-    return { data: null, error: makeHttpError({ error: 'Oturum bulunamadı.' }) };
+    return { data: null, error: makeHttpError({ error: 'Oturum bulunamadı.' }), transport: 'stream' };
   }
 
+  const fetch = await resolveStreamingFetch();
+
   try {
-    return await withEdgeDeadline(label, async (signal) => {
-      const response = await withEdgeDeadline(label, (innerSignal) =>
-        fetch(`${SUPABASE_FUNCTIONS_URL}/generate-routine`, {
-          method: 'POST',
-          signal: innerSignal ?? signal,
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'text/event-stream, application/json',
-            Authorization: `Bearer ${accessToken}`,
-            ...(anonKey ? { apikey: anonKey } : {}),
-          },
-          body: JSON.stringify({ ...opts.body, stream: true }),
-        }),
-      );
+    return await withStreamDeadline(label, async (signal, touch) => {
+      const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/generate-routine`, {
+        method: 'POST',
+        signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream, application/json',
+          Authorization: `Bearer ${accessToken}`,
+          ...(anonKey ? { apikey: anonKey } : {}),
+        },
+        body: JSON.stringify({ ...opts.body, stream: true }),
+      });
+      touch();
 
       const contentType = (response.headers?.get?.('content-type') ?? '').toLowerCase();
 
@@ -162,15 +212,20 @@ export async function invokeAiWithStream(opts: InvokeStreamOptions): Promise<Inv
         } catch {
           /* keep fallback message */
         }
-        return { data: null, error: makeHttpError(errBody) };
+        return { data: null, error: makeHttpError(errBody), transport: 'stream' };
       }
+
+      const emitReply = (text: string) => {
+        if (!signal.aborted) opts.onReplyText?.(text);
+      };
 
       if (!contentType.includes('text/event-stream')) {
         const jsonData = (await response.json()) as Record<string, any>;
-        if (typeof jsonData?.reply === 'string' && opts.onReplyText) {
-          opts.onReplyText(jsonData.reply);
+        touch();
+        if (typeof jsonData?.reply === 'string') {
+          emitReply(jsonData.reply);
         }
-        return { data: jsonData, error: null };
+        return { data: jsonData, error: null, transport: 'buffered' };
       }
 
       let doneData: Record<string, any> | null = null;
@@ -178,19 +233,21 @@ export async function invokeAiWithStream(opts: InvokeStreamOptions): Promise<Inv
       let accumulatedText = '';
 
       const handleFrames = (frames: SseFrame[]) => {
+        if (signal.aborted) return;
         for (const frame of frames) {
+          if (signal.aborted) return;
           if (frame.event === 'delta') {
             if (typeof frame.data.reply === 'string') {
               accumulatedText = frame.data.reply;
-              opts.onReplyText?.(accumulatedText);
+              emitReply(accumulatedText);
             } else if (typeof frame.data.text === 'string') {
               accumulatedText += frame.data.text;
-              opts.onReplyText?.(accumulatedText);
+              emitReply(accumulatedText);
             }
           } else if (frame.event === 'done') {
             doneData = frame.data as Record<string, any>;
             if (typeof doneData.reply === 'string') {
-              opts.onReplyText?.(doneData.reply);
+              emitReply(doneData.reply);
             }
           } else if (frame.event === 'error') {
             streamError = makeHttpError(frame.data);
@@ -202,34 +259,73 @@ export async function invokeAiWithStream(opts: InvokeStreamOptions): Promise<Inv
       if (reader) {
         const decoder = new TextDecoder('utf-8');
         let buffer = '';
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (value) {
-            buffer += decoder.decode(value, { stream: true });
-            const drained = drainSseBuffer(buffer);
-            buffer = drained.rest;
-            handleFrames(drained.frames);
+        let readerCancelled = false;
+        const cancelReaderOnce = async () => {
+          if (readerCancelled) return;
+          readerCancelled = true;
+          try {
+            await reader.cancel();
+          } catch {
+            /* ignore cancel errors */
           }
+        };
+        const onAbort = () => {
+          void cancelReaderOnce();
+        };
+        if (signal.aborted) {
+          await cancelReaderOnce();
+          return { data: null, error: makeNoAnswerError('Akış iptal edildi.'), transport: 'stream' };
         }
-        buffer += decoder.decode();
-        if (buffer.trim()) {
-          handleFrames(drainSseBuffer(`${buffer}\n\n`).frames);
+        signal.addEventListener('abort', onAbort, { once: true });
+
+        try {
+          while (!signal.aborted) {
+            const { value, done } = await reader.read();
+            if (signal.aborted) break;
+            touch();
+            if (done) break;
+            if (value) {
+              buffer += decoder.decode(value, { stream: true });
+              const drained = drainSseBuffer(buffer);
+              buffer = drained.rest;
+              handleFrames(drained.frames);
+            }
+          }
+          if (!signal.aborted) {
+            buffer += decoder.decode();
+            if (buffer.trim()) {
+              handleFrames(drainSseBuffer(`${buffer}\n\n`).frames);
+            }
+          }
+        } finally {
+          signal.removeEventListener('abort', onAbort);
+          await cancelReaderOnce();
         }
-      } else {
-        const fullSseText = await response.text();
-        handleFrames(drainSseBuffer(`${fullSseText}\n\n`).frames);
+
+        if (signal.aborted) {
+          return { data: null, error: makeNoAnswerError('Akış iptal edildi.'), transport: 'stream' };
+        }
+        if (streamError) return { data: null, error: streamError, transport: 'stream' };
+        if (doneData) return { data: doneData, error: null, transport: 'stream' };
+        return {
+          data: null,
+          error: makeNoAnswerError('Akış tamamlanmadan bağlantı kesildi.'),
+          transport: 'stream',
+        };
       }
 
-      if (streamError) return { data: null, error: streamError };
-      if (doneData) return { data: doneData, error: null };
+      const fullSseText = await response.text();
+      touch();
+      handleFrames(drainSseBuffer(`${fullSseText}\n\n`).frames);
+      if (streamError) return { data: null, error: streamError, transport: 'buffered' };
+      if (doneData) return { data: doneData, error: null, transport: 'buffered' };
       return {
         data: null,
         error: makeNoAnswerError('Akış tamamlanmadan bağlantı kesildi.'),
+        transport: 'buffered',
       };
-    });
+    }, { signal: opts.signal });
   } catch (err) {
-    return { data: null, error: err };
+    return { data: null, error: err, transport: 'stream' };
   }
 }
-

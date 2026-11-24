@@ -1,9 +1,10 @@
 import { registerAccountScoped } from '../lib/accountScope';
-import { withEdgeDeadline } from '../lib/edgeCall';
+import { createLatest } from '../lib/latestOnly';
+import { isSignedIn } from '../lib/session';
 import { newRequestId } from '../services/focusPointService';
-import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE } from '../lib/aiAttempt';
+import { createAttemptKeeper, isNoAnswer, NO_ANSWER_NOTE, IN_PROGRESS_NOTE, retryWhileInProgress } from '../lib/aiAttempt';
 import { create } from 'zustand';
-import { supabase, Routine } from '../lib/supabase';
+import type { Routine } from '../lib/supabase';
 import { useSubscriptionStore } from './subscriptionStore';
 import { useHabitStore } from './habitStore';
 import {
@@ -17,7 +18,11 @@ import {
   type ProposalCompletion,
 } from '../lib/routineProposal';
 import { findRoutinePack, packIcons, packToProposal, type RoutinePackKey } from '../lib/routinePacks';
-import { installProposal, listRoutines as repoFetchRoutines } from '../services/routineService';
+import {
+  installProposal,
+  listRoutines as repoFetchRoutines,
+  requestRoutineGeneration,
+} from '../services/routineService';
 import type { HabitLoadInput } from '../lib/capacity';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 
@@ -119,7 +124,7 @@ type RoutineStore = {
   installing: boolean;
   installError: string | null;
   installed: boolean;
-  confirmInstall: () => Promise<boolean>;
+  confirmInstall: (installId?: string) => Promise<boolean>;
 };
 
 /**
@@ -154,6 +159,7 @@ function activeHabitLoadInputs(): HabitLoadInput[] {
 
 // R09.06 -- one open (unanswered) generation attempt at a time.
 const routineAttempt = createAttemptKeeper(newRequestId);
+const generateLatest = createLatest();
 
 export const useRoutineStore = create<RoutineStore>((set, get) => ({
   routines: [],
@@ -178,14 +184,9 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
   installed: false,
 
   generateRoutine: async (prompt) => {
-    // R09.06 -- a resend of the same prompt after a lost answer reuses the id (one charge).
-    // Oturum kontrolü
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      set({ generateError: 'Bu özelliği kullanmak için giriş yapman gerekiyor.', generating: false });
-      return;
-    }
-
+    // Çift dokunuş: ikinci çağrı ağ çağrısı yapmaz (farklı metinle iki ücretli çağrı olurdu).
+    if (get().generating) return;
+    const run = generateLatest.begin();
     set({
       generating: true,
       generateError: null,
@@ -198,35 +199,41 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       installed: false,
       installError: null,
     });
-    const requestId = routineAttempt.begin(prompt);
     try {
-      const { data, error } = await withEdgeDeadline('AI rutin', (signal) =>
-        supabase.functions.invoke('generate-routine', {
-        signal,
-        body: { prompt, request_id: requestId },
-      }));
+      // R09.06 -- a resend of the same prompt after a lost answer reuses the id (one charge).
+      // Oturum kontrolü
+      const signedIn = await isSignedIn();
+      if (!run.isCurrent()) return;
+      if (!signedIn) {
+        set({ generateError: 'Bu özelliği kullanmak için giriş yapman gerekiyor.', generating: false });
+        return;
+      }
 
-      if (error && isNoAnswer(error)) {
+      const requestId = routineAttempt.begin(prompt);
+      const reply = await requestRoutineGeneration(prompt, requestId, (call, opts) =>
+        retryWhileInProgress(call, opts),
+      );
+      if (!run.isCurrent()) return;
+
+      if (reply.kind === 'no_answer') {
         set({ generateError: NO_ANSWER_NOTE, generating: false });
         return;
       }
+      const stillInProgress = reply.kind === 'in_progress';
+      if (stillInProgress) {
+        set({ generateError: IN_PROGRESS_NOTE, generating: false });
+        return;
+      }
       routineAttempt.answered();
-      if (error) {
-        // FunctionsHttpError içinden sunucunun döndürdüğü mesajı çek
-        let msg = 'Bir hata oluştu, tekrar deneyin.';
-        try {
-          const body = await (error as any).context?.json?.();
-          if (body?.error) msg = body.error;
-          if (typeof body?.balance === 'number') useSubscriptionStore.getState().setBalance(body.balance);
-        } catch {
-          if (error.message) msg = error.message;
-        }
-        set({ generateError: msg, generating: false });
+      if (reply.kind === 'refused') {
+        if (typeof reply.balance === 'number') useSubscriptionStore.getState().setBalance(reply.balance);
+        set({ generateError: reply.message, generating: false });
         return;
       }
 
+      const data = reply.data;
       if (data?.error) {
-        set({ generateError: data.error, generating: false });
+        set({ generateError: String(data.error), generating: false });
         return;
       }
 
@@ -289,7 +296,10 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
         pendingProposal: null,
       });
     } catch (err) {
+      if (!run.isCurrent()) return;
       set({ generateError: isNoAnswer(err) ? NO_ANSWER_NOTE : err instanceof Error ? err.message : 'Sunucu hatası.', generating: false });
+    } finally {
+      run.done();
     }
   },
 
@@ -403,7 +413,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
   // by a validated + capacity-evaluated result above. Capacity-gated:
   // `evaluation.toActivate` habits install as 'active', everything else
   // (`evaluation.toQueue`) installs as 'waiting' -- never force-activated.
-  confirmInstall: async () => {
+  confirmInstall: async (installId?: string) => {
     const { proposal, evaluation, installing, proposalSource, stagedIcons } = get();
     if (!proposal || !evaluation || installing) return false;
     // A pack's icons ride along; any other source has none to add.
@@ -417,6 +427,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
       const result = await installProposal(
         proposal.habits.map((h) => (icons?.[h.name] ? { ...h, icon: icons[h.name] } : h)),
         evaluation.toActivate,
+        installId,
       );
       if (!result.ok) {
         set({ installing: false, installError: result.error });
@@ -425,7 +436,7 @@ export const useRoutineStore = create<RoutineStore>((set, get) => ({
 
       // Reflect the new habits immediately -- same pattern habitStore.addHabit
       // uses (prepend to local state rather than forcing a refetch).
-      useHabitStore.setState((s) => ({ habits: [...result.habits, ...s.habits] }));
+      useHabitStore.getState().addInstalledHabits(result.habits);
 
       set({
         installing: false,

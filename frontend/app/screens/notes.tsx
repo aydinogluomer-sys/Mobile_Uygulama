@@ -1,24 +1,19 @@
 import { colors, alphaHex, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReadingListScreen from './reading-list';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Modal, KeyboardAvoidingView, Platform, Alert, useWindowDimensions,
+  TextInput, Modal, KeyboardAvoidingView, Platform, useWindowDimensions,
 } from 'react-native';
+import { confirm, notify } from '../../lib/dialog';
+import { useFocusParam } from '../../hooks/useFocusParam';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNoteStore, type Note } from '../../store/noteStore';
-import {
-  AtmosphericScreenCanvas,
-  EditorialBanner,
-  EmbeddedFiligree,
-  EmptyState,
-  LoadErrorState,
-  Skeleton,
-  TexturedSurface,
-} from '../../components/ui';
+import { EditorialBanner, EmptyState, FormError, LoadErrorState, Skeleton, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { BENTO_ART, CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import ConflictChoice from '../../components/ConflictChoice';
@@ -45,9 +40,37 @@ export default function NotesScreen() {
   const [editing, setEditing] = useState<Note | null>(null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'notes' | 'reading_list'>('notes');
+  const [initialLoaded, setInitialLoaded] = useState(notes.length > 0);
+  const { id: focusId, consume: consumeFocus } = useFocusParam();
+  const consumedFocusRef = useRef<string | null>(null);
 
-  useEffect(() => { fetchNotes(); }, [fetchNotes]);
+  useEffect(() => {
+    void Promise.resolve(fetchNotes()).finally(() => setInitialLoaded(true));
+  }, [fetchNotes]);
+
+  useEffect(() => {
+    if (!focusId) {
+      consumedFocusRef.current = null;
+      return;
+    }
+    if (consumedFocusRef.current === focusId) return;
+    const match = notes.find((n) => n.id === focusId);
+    if (match) {
+      consumedFocusRef.current = focusId;
+      setViewMode('notes');
+      openEdit(match);
+      consumeFocus();
+      return;
+    }
+    if (initialLoaded && !loading) {
+      consumedFocusRef.current = focusId;
+      consumeFocus();
+      void notify('Öğe bulunamadı', 'Aradığın not silinmiş ya da taşınmış olabilir.');
+    }
+  }, [focusId, notes, initialLoaded, loading, consumeFocus]);
 
   // Search is SERVER-side now, so it cannot be computed during render. The
   // previous `search(query)` filtered the in-memory array, which only ever
@@ -74,6 +97,7 @@ export default function NotesScreen() {
     setEditing(null);
     setTitle('');
     setContent('');
+    setSaveError(null);
     setShowEdit(true);
   }
 
@@ -81,24 +105,28 @@ export default function NotesScreen() {
     setEditing(n);
     setTitle(n.title);
     setContent(n.content);
+    setSaveError(null);
     setShowEdit(true);
   }
 
   async function handleSave() {
     if (!title.trim() && !content.trim()) return;
-    if (editing) {
-      await updateNote(editing.id, { title, content });
-    } else {
-      await addNote(title, content);
+    const ok = editing ? await updateNote(editing.id, { title, content }) : (await addNote(title, content)) !== null;
+    if (!ok) {
+      setSaveError(useNoteStore.getState().error ?? 'Not kaydedilemedi. Yazdıkların burada duruyor, tekrar dene.');
+      return;
     }
+    setSaveError(null);
     setShowEdit(false);
+    // Not satırı eklendi ama yalnız bellekte kaldıysa (cihaza yazılamadı) uyarı liste başında kalır.
+    setActionError(useNoteStore.getState().error);
   }
 
-  function confirmDelete(n: Note) {
-    Alert.alert('Notu Sil', `"${n.title || 'Not'}" silinsin mi?`, [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => removeNote(n.id) },
-    ]);
+  async function confirmDelete(n: Note) {
+    if (await confirm({ title: 'Notu Sil', message: `"${n.title || 'Not'}" silinsin mi?`, confirmText: 'Sil', destructive: true })) {
+      const ok = await removeNote(n.id);
+      setActionError(ok ? null : (useNoteStore.getState().error ?? 'Not silinemedi.'));
+    }
   }
 
   function formatDate(d: string) {
@@ -178,6 +206,9 @@ export default function NotesScreen() {
             data={visible}
             ListHeaderComponent={
               <View>
+                <View style={{ paddingHorizontal: 10 }}>
+                  <FormError message={actionError} />
+                </View>
                 <EditorialBanner
                   source={SCREEN_BANNERS.notesAtelier}
                   textureSource={TEXTURES.archivalPaper}
@@ -318,6 +349,8 @@ export default function NotesScreen() {
               autoFocus={!editing}
             />
 
+            <FormError message={saveError} />
+
             <TouchableOpacity
               style={[s.saveBtn, (!title.trim() && !content.trim()) && s.saveBtnDisabled]}
               onPress={handleSave}
@@ -415,10 +448,10 @@ const s = StyleSheet.create({
   },
   cardTitle: { fontSize: 13, fontWeight: '700', color: colors.white, marginBottom: 6 },
   cardContent: { fontSize: 13, color: colors.textDim, lineHeight: 18, flex: 1 },
-  cardDate: { fontSize: 10, color: colors.textGhost, marginTop: 8 },
+  cardDate: { fontSize: 10, color: colors.textFaint, marginTop: 8 },
 
   empty: { alignItems: 'center', paddingTop: 80, gap: 10 },
-  emptyText: { fontSize: 15, color: colors.textGhost },
+  emptyText: { fontSize: 15, color: colors.textFaint },
 
   fab: {
     position: 'absolute', right: 20, bottom: 20,

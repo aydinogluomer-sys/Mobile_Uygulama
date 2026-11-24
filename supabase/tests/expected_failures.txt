@@ -1,24 +1,4 @@
 # Format: <test result name>   # <finding id> / closing phase
 # A line here means "known red": CI fails if the test turns GREEN while the line remains.
 # The reverse also holds: a red test that is NOT listed fails the run. The list can only shrink.
-# Closing phase for EVERY entry below: F09 (supabase/migrations/040_privilege_hygiene.sql, section 1: ALTER FUNCTION <signature> SET search_path TO 'public', 'pg_temp'); the F09 commit deletes all 20 lines.
-T02b_search_path.buy_shop_item/1                      # TST-01, DB2-13: RPG set (scope-addendum F13 cancelled, no client surface; EXECUTE revoked from client roles); search_path pinned by F09
-T02b_search_path.check_and_award_badges/0             # TST-01, trigger fn
-T02b_search_path.check_and_reset_makeup_credits/0     # TST-01
-T02b_search_path.check_level_up_and_grant_skills/0    # TST-01, trigger fn
-T02b_search_path.claim_quest_reward/1                 # TST-01, RPG
-T02b_search_path.deal_damage_to_active_boss/2         # TST-01, RPG
-T02b_search_path.get_active_boss_status/0             # TST-01, RPG
-T02b_search_path.get_daily_quests/0                   # TST-01, RPG
-T02b_search_path.get_global_leaderboard/1             # TST-01, REACHABLE by authenticated
-T02b_search_path.get_user_gamification/0              # TST-01
-T02b_search_path.get_user_pet_status/0                # TST-01, RPG
-T02b_search_path.get_user_rank/1                      # TST-01, REACHABLE by authenticated
-T02b_search_path.get_user_skill_tree/0                # TST-01, RPG
-T02b_search_path.get_weekly_leaderboard/1             # TST-01, REACHABLE by authenticated
-T02b_search_path.initialize_user_pet/0                # TST-01, trigger fn
-T02b_search_path.interact_with_pet/1                  # TST-01, RPG
-T02b_search_path.log_makeup_completion/5              # TST-01
-T02b_search_path.track_weekly_xp/2                    # TST-V01, service-only
-T02b_search_path.trigger_damage_on_habit_log/0        # TST-01, trigger fn
-T02b_search_path.upgrade_skill/1                      # TST-01, RPG
+# All 20 T02b_search_path.* entries were closed and deleted in F09 (supabase/migrations/040_privilege_hygiene.sql).

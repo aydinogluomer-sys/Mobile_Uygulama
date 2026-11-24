@@ -10,7 +10,6 @@ import {
   refund as capacityRefund,
   spend as capacitySpend,
 } from '../services/capacityService';
-import type { WillpowerStateRow } from '../repositories/willpowerRepository';
 
 /**
  * W2 (task 1-D, Phase 1 wiring) seam: `canActivate`'s legacy fixed-slot rule
@@ -111,7 +110,7 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
     const today = todayLocal();
     set({ loading: true });
     const res = await loadToday(today);
-    if (res.ok) set({ state: res.data as WillpowerState });
+    if (res.ok) set({ state: res.data });
     set({ loading: false });
   },
 
@@ -133,7 +132,7 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
   // The store supplies today's row and reports the boolean the UI wants.
   canActivate: (cost, capacityInput) =>
     evaluateActivation({
-      state: get().state as unknown as WillpowerStateRow | null,
+      state: get().state,
       stale: get().isStale(),
       cost,
       capacityInput,
@@ -151,8 +150,9 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
     if (get().isStale()) return null;
     const s = get().state;
     if (!s) return null;
-    if (s.daily_budget === 0) return 100;
-    return Math.round(((s.daily_budget - s.used) / s.daily_budget) * 100);
+    if (!Number.isFinite(s.daily_budget) || !Number.isFinite(s.used)) return null;
+    if (s.daily_budget <= 0) return 100;
+    return Math.max(0, Math.min(100, Math.round(((s.daily_budget - s.used) / s.daily_budget) * 100)));
   },
 
   spend: async (cost) => {
@@ -166,12 +166,12 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
     // charge the wrong day.
     if (!s || s.state_date !== todayLocal()) return;
 
-    const res = await capacitySpend(s as unknown as WillpowerStateRow, cost);
+    const res = await capacitySpend(s, cost);
     // Local state follows the server: showing willpower as spent when the
     // write was rejected would let the user over-commit against a budget the
     // database never debited.
     if (!res.ok) return;
-    set({ state: res.data as unknown as WillpowerState });
+    set({ state: res.data });
   },
 
   refund: async (cost) => {
@@ -180,9 +180,9 @@ export const useWillpowerStore = create<WillpowerStore>((set, get) => ({
     const s = get().state;
     if (!s || s.state_date !== todayLocal()) return;
 
-    const res = await capacityRefund(s as unknown as WillpowerStateRow, cost);
+    const res = await capacityRefund(s, cost);
     if (!res.ok) return;
-    set({ state: res.data as unknown as WillpowerState });
+    set({ state: res.data });
   },
 }));
 

@@ -19,7 +19,7 @@ const template: RoutineTemplate = {
 } as unknown as RoutineTemplate;
 
 function run(endAt: number, completeAll: boolean) {
-  let s = startSession(template, `sess-${endAt}`, endAt - 10 * 60_000);
+  let s = startSession(template, `sess-${endAt}`, endAt - 10 * 60_000)!;
   s = completeStep(s, endAt - 9 * 60_000);
   if (completeAll) { s = completeStep(s, endAt - 5 * 60_000); s = completeStep(s, endAt - 60_000); }
   return finishSession(s, endAt);
@@ -27,7 +27,7 @@ function run(endAt: number, completeAll: boolean) {
 const entry = (s: ReturnType<typeof run>): RoutineHistoryEntry => ({ id: s.id, templateName: s.templateName, startedAt: s.startedAt, endedAt: s.endedAt!, summary: summarize(s) });
 
 it('a timed step whose time ran out is not done until the user marks it', () => {
-  let s = startSession(template, 'x', T0);
+  let s = startSession(template, 'x', T0)!;
   s = completeStep(s, T0 + 1000);            // s1 done, s2 (timed 60s) is current
   expect(timeUp(s, T0 + 1000 + 61_000)).toBe(true);
   const f = finishSession(s, T0 + 1000 + 61_000);

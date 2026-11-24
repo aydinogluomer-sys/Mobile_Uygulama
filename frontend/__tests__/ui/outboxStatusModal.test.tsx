@@ -12,9 +12,15 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { Alert } from 'react-native';
 import type { OutboxIssue, UnifiedOutboxSummary } from '../../services/unifiedOutbox';
 
+const mockSessionUser: { id: string | null } = { id: null };
 jest.mock('../../lib/supabase', () => ({
   supabase: {
-    auth: { getSession: async () => ({ data: { session: null }, error: null }) },
+    auth: {
+      getSession: async () => ({
+        data: { session: mockSessionUser.id ? { user: { id: mockSessionUser.id }, access_token: 't' } : null },
+        error: null,
+      }),
+    },
     from: () => { throw new Error('no table access in this test'); },
   },
 }));
@@ -48,7 +54,9 @@ jest.mock('../../services/unifiedOutbox', () => {
   };
 });
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import OutboxStatusModal, { DISCARD_CONFIRM_MS } from '../../components/OutboxStatusModal';
+import { contrastRatio, colors } from '../../lib/tokens';
 
 // The first render of the sheet (its textures and icons) takes ~2 s alone and longer under a loaded
 // full run; the same allowance as uiPrimitivesAccessibility.test.tsx. A render stuck for 30 s still fails.
@@ -78,7 +86,9 @@ async function flush(r: R) {
 }
 
 let alertSpy: jest.SpyInstance;
-beforeEach(() => {
+beforeEach(async () => {
+  await AsyncStorage.clear();
+  mockSessionUser.id = null;
   mockOutbox.summary = empty();
   mockOutbox.after = null;
   mockOutbox.issues = [];
@@ -184,6 +194,29 @@ describe('accessibility', () => {
       expect(b.props.hitSlop).toEqual({ top: 8, bottom: 8, left: 8, right: 8 });
     }
     expect(r.root.findAll((n) => n.props.accessibilityLabel === 'Su iç · 2026-08-04. Sunucu kabul etmedi.').length).toBeGreaterThanOrEqual(1);
+    act(() => r.unmount());
+  });
+
+  it('F19 (SYN-04 / TST-15): shows calm quarantine count politely with WCAG AA contrast and reports channel flush errors honestly', async () => {
+    expect(contrastRatio(colors.textDim, colors.surface)).toBeGreaterThanOrEqual(4.5);
+
+    mockSessionUser.id = 'u1';
+    await AsyncStorage.setItem('outbox.v1.core.u1.quarantine.1', 'raw-1');
+    await AsyncStorage.setItem('atlas_sync_queue_v1:u1.quarantine.2', 'raw-2');
+
+    mockOutbox.after = { ...empty(), errors: { habitLogs: 'boom' } };
+    const r = await render();
+    await act(async () => { await Promise.resolve(); });
+
+    const qLine = 'Okunamayan 2 kayıt güvenli yerde saklandı.';
+    expect(texts(r)).toContain(qLine);
+    const qNode = r.root.findAll((n) => n.props.children === qLine && n.props.accessibilityLiveRegion === 'polite');
+    expect(qNode.length).toBeGreaterThanOrEqual(1);
+    expect(flat(qNode[0].props.style).color).toBe(colors.textDim);
+
+    await flush(r);
+    expect(texts(r)).toContain('Bazı değişiklikler gönderilemedi; kalanlar sonra tekrar denenecek.');
+    expect(texts(r)).not.toContain('Her şey eşitlendi.');
     act(() => r.unmount());
   });
 });

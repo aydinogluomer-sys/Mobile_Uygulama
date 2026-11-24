@@ -1,13 +1,23 @@
 import type { PauseInterval, GoalVersion } from './habitPauses';
 import { createClient } from '@supabase/supabase-js';
 import { authStorage } from './authStorage';
-import type { Database } from './database.types';
-import { Platform } from 'react-native';
+import type { Database, TableRow } from './database.types';
 import { signalOnSuccess } from './networkSignal';
-import { AUTH_STORAGE_KEY, CONFIG_MISSING_URL } from './authStorageKey';
+import { AUTH_STORAGE_KEY } from './authStorageKey';
+import {
+  inspectPublicEnv,
+  PLACEHOLDER_SUPABASE_KEY,
+  PLACEHOLDER_SUPABASE_URL,
+  rawPublicEnv,
+  type PublicEnvStatus,
+} from './env';
 
-const rawUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const rawAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+/**
+ * F08 (BLD-02): the environment is validated in lib/env.ts (names only, never values). The root
+ * layout shows ConfigErrorScreen when this is not ok; this module itself never throws on a missing
+ * configuration.
+ */
+export const publicEnvStatus: PublicEnvStatus = inspectPublicEnv(rawPublicEnv());
 
 /**
  * F06 (SYN-23): non-null when the build has no Supabase configuration; the root layout then shows
@@ -15,11 +25,11 @@ const rawAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
  * loading, which took the whole app down before any screen (or error reporter) could render.
  */
 export const SUPABASE_CONFIG_ERROR: string | null =
-  rawUrl && rawAnonKey ? null : 'EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_ANON_KEY tanımlı değil.';
+  publicEnvStatus.ok ? null : 'EXPO_PUBLIC_SUPABASE_URL ve EXPO_PUBLIC_SUPABASE_ANON_KEY tanımlı değil.';
 
 // placeholders only when the configuration is missing: no request to them ever succeeds
-const supabaseUrl = rawUrl || CONFIG_MISSING_URL;
-const supabaseAnonKey = rawAnonKey || 'config-missing';
+const supabaseUrl = publicEnvStatus.ok ? publicEnvStatus.env.supabaseUrl : PLACEHOLDER_SUPABASE_URL;
+const supabaseAnonKey = publicEnvStatus.ok ? publicEnvStatus.env.supabaseAnonKey : PLACEHOLDER_SUPABASE_KEY;
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -28,7 +38,8 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     storageKey: AUTH_STORAGE_KEY,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: Platform.OS === 'web',
+    // URL'deki oturum malzemesini tüm platformlarda yalnız lib/authDeepLink.ts tüketir (GAP2-08)
+    detectSessionInUrl: false,
   },
   // F05 (SYN-15): every successful answer tells lib/syncCoordinator the connection is there, so waiting
   // offline work goes out without the app being reopened. The answer is passed on untouched; a failed
@@ -77,6 +88,8 @@ export type FrequencyConfig = {
   day?: number;
   /** R01.02 — 29 Şubat yıllık tarihi artık yıl olmayan yıllarda: 28 Şubat, 1 Mart ya da atla. 29 Şubat için ZORUNLU. */
   leap_day?: 'feb28' | 'mar1' | 'skip';
+  /** F15 (DOM-12) — yerel YYYY-MM-DD kurulum günü damgası; oluşturma anında depo katmanı yazar, şekle ait değildir. */
+  created_day?: string;
 };
 
 export type EndCondition = {
@@ -182,6 +195,7 @@ export type Profile = {
   willpower_rank: string | null;
   streak_record: number | null;
   created_at: string;
+  time_zone?: string | null;
 };
 
 // profile_badges tablosu — kazanılan rozetler
@@ -205,14 +219,8 @@ export type LeaderboardRow = {
   rank: number;
 };
 
-export type WillpowerState = {
-  user_id: string;
-  state_date: string;     // date string
-  daily_budget: number;
-  used: number;
-  focus_capacity: number;
-  active_count: number;
-};
+/** The willpower_state row: ONE definition (the generated Row), so a column change is a compile error here. */
+export type WillpowerState = TableRow<'willpower_state'>;
 
 export type Routine = {
   id: string;

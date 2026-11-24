@@ -4,11 +4,18 @@
  * without this guard the screen could keep calling them with no logs and every
  * one of those tests would still pass.
  */
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { rendersKey } from '../helpers/catalog';
+import { readSources } from '../helpers/readSources';
 import { stripComments } from '../helpers/sourceText';
 
-const src = stripComments(readFileSync(join(__dirname, '..', '..', 'app/tabs/today.tsx'), 'utf8'));
+const src = stripComments(
+  readSources([
+    'app/tabs/today.tsx',
+    'hooks/useTodayModel.ts',
+    'lib/todaySelectors.ts',
+    'components/today/HabitSection.tsx',
+  ]),
+);
 
 describe('R01.06-b — Today is wired to the period logs', () => {
   it('loads the week+month window through the review service', () => {
@@ -25,7 +32,7 @@ describe('R01.06-b — Today is wired to the period logs', () => {
     expect(src).toMatch(/const periodDoneHabits = selectPeriodDoneHabits\(habits, todayDate, periodLogs\);/);
   });
   it('the period-done group is rendered, dimmed, and still tappable', () => {
-    expect(src).toMatch(/title="BU DÖNEM TAMAM"/);
+    expect(rendersKey(src, 'today.periodDone.overline', 'BU DÖNEM TAMAM')).toBe(true);
     expect(src).toMatch(/style=\{\[s\.habitRow, s\.habitRowPeriodDone\]\}/);
     expect(src).toMatch(/periodDoneHabits\.map\(\(h\) => \(/);
   });

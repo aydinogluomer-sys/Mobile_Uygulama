@@ -1,6 +1,6 @@
 /**
- * Atlas Tasarım Token'ları — "Paper/Clay Editorial" dil sistemi (warm dark).
- * İlham: POS v2 Atlas Design Language. Tek clay accent, sıcak yakın-siyah yüzeyler,
+ * Atlas Tasarım Token'ları — "Paper/Clay Editorial" dil sistemi (warm dark & warm paper light).
+ * İlham: POS v2 Atlas Design Language. Tek clay accent, sıcak yüzeyler,
  * serif editöryel başlıklar, mono tabular sayılar, eyebrow etiketleri, keskin küçük radii.
  * Hardcoded hex yerine bunları kullan.
  */
@@ -47,18 +47,18 @@ export const colors = {
   surfaceHover: '#322F26',
   bgSunk: '#100F0B',
 
-  // Kıl-payı kenarlıklar
+  // Kıl-payı kenarlıklar (borderStrong: bg ve surface üstünde >= 3.0:1)
   border: '#383528',
   borderSubtle: '#28261F',
-  borderStrong: '#56544B',
+  borderStrong: '#69675C',
 
   // Sıcak ink metin
   text: '#EDEAE0',
   textDim: '#BFBBAE',
-  // R06.04: was #827E72 (4.21:1 on surface -- below WCAG AA for small text);
-  // now >= 4.6:1 on bg, surface and surfaceAlt.
-  textFaint: '#928E82',
-  textGhost: '#56544B',
+  // F25 (DSA-05): bg, surface, surfaceAlt ve surfaceHover dahil tüm koyu yüzeylerde >= 4.57:1 AA.
+  textFaint: '#9A978C',
+  // Yalnız metin-dışı (simge, ayraç, devre dışı kenar); bg/surface/surfaceAlt üstünde >= 3.08:1.
+  textGhost: '#737165',
 
   // Marka — tek clay accent (cerrahi kullanım)
   primary: '#D97757',
@@ -79,26 +79,12 @@ export const colors = {
 
   // ── Legacy neutrals ────────────────────────────────────────────────────
   //
-  // These are NOT part of the warm Atlas palette above and are not blessed as
-  // such. They are the Tailwind grey ramp and a cool near-black ramp that the
-  // app was built with before that palette existed, and they are still in use
-  // across the timeline, hub, stats and habits screens.
-  //
-  // They are named here rather than left as bare hexes for one reason: a
-  // colour with a name can be found, counted and changed in one place, and a
-  // literal cannot. The names are the ramps' own — `#9ca3af` IS Tailwind
-  // `gray-400` — so nothing is invented, which is the objection that kept
-  // them unnamed until now.
-  //
-  // The OPEN QUESTION is unchanged and belongs to a designer: whether these
-  // should collapse into `textDim`/`textFaint`/`bg` and friends. Naming them
-  // does not answer it; it makes the question askable with a grep. See
-  // `docs/DESIGN_TOKENS.md`.
+  // ÇÖZÜLDÜ: eski rampalar yalnız geriye uyum içindir; yeni kod kullanamaz
+  // (`LEGACY_TOKEN_KEYS`, `designTokensRatchet.test.ts`). Bkz. `docs/DESIGN_TOKENS.md`.
   neutral200: '#e5e7eb',
   neutral300: '#d1d5db',
   neutral400: '#9ca3af',
   neutral500: '#6b7280',
-  neutral600: '#4b5563',
 
   coolBlack950: '#0a0a0a',
   coolBlack900: '#0f0f0f',
@@ -133,6 +119,84 @@ export const colors = {
   /** Warm amber hint text on the focus screen. */
   amberSoft: '#e0a458',
 } as const;
+
+export type ThemeMode = 'dark' | 'light';
+export type Palette = { -readonly [K in keyof typeof colors]: string };
+
+const lightPalette: Palette = {
+  bg: '#F7F3EA',
+  bgElevated: '#FBF9F3',
+  surface: '#FBF9F3',
+  surfaceAlt: '#EFE9DB',
+  surfaceHover: '#E6DFCE',
+  bgSunk: '#EDE6D6',
+  border: '#D8CFBB',
+  borderSubtle: '#E6DFCE',
+  borderStrong: '#988B6D',
+  text: '#1C1A14',
+  textDim: '#4B473C',
+  textFaint: '#625D50',
+  textGhost: '#7F796A',
+  primary: '#A44425',
+  primaryBright: '#8F3A1F',
+  primaryDeep: '#7F341D',
+  accent: '#A44425',
+  primarySoft: 'rgba(164,68,37,0.12)',
+  success: '#516945',
+  warning: '#7B5D1D',
+  error: '#A93F3F',
+  info: '#436298',
+  teal: '#436298',
+  white: '#ffffff',
+  black: '#000000',
+  neutral200: '#2F333A',
+  neutral300: '#3F444D',
+  neutral400: '#4B5563',
+  neutral500: '#5B616D',
+  coolBlack950: '#EDE6D6',
+  coolBlack900: '#F2EDE0',
+  coolBlack850: '#F5F0E4',
+  coolBlack800: '#EFE9DB',
+  coolBlack750: '#EAE3D3',
+  coolBlack700: '#E0D8C5',
+  coolBlack600: '#D3CAB5',
+  paperSurface: '#FFFCF5',
+  paperBorder: '#E2D8C3',
+  paperLabel: '#7A5E2E',
+  paperText: '#2A241C',
+  paperTextDim: '#4D463A',
+  selectedTint: '#E6ECF8',
+  selectedTintError: '#F8E6E6',
+  selectedTintSuccess: '#E3F1E9',
+  amberSoft: '#875812',
+};
+
+export const palettes: Record<ThemeMode, Palette> = {
+  dark: colors,
+  light: lightPalette,
+};
+
+export function paletteFor(mode: ThemeMode): Palette {
+  return palettes[mode];
+}
+
+export function resolveThemeMode(isDark: boolean, lightEnabled: boolean): ThemeMode {
+  return lightEnabled && !isDark ? 'light' : 'dark';
+}
+
+export const LEGACY_TOKEN_KEYS: readonly string[] = [
+  'neutral200',
+  'neutral300',
+  'neutral400',
+  'neutral500',
+  'coolBlack950',
+  'coolBlack900',
+  'coolBlack850',
+  'coolBlack800',
+  'coolBlack750',
+  'coolBlack700',
+  'coolBlack600',
+];
 
 /**
  * A token colour at an 8-bit alpha, written the way the literal was.
@@ -171,7 +235,40 @@ export const ACCENTS: Record<AccentKey, AccentTheme> = {
   amber: { key: 'amber', label: 'Amber', primary: '#D4A84A', bright: '#DEB661', deep: '#B8842A', soft: 'rgba(212,168,74,0.14)' },
 };
 
+export const ACCENTS_LIGHT: Record<AccentKey, AccentTheme> = {
+  clay:  { key: 'clay',  label: 'Clay',  primary: '#A44425', bright: '#8F3A1F', deep: '#7F341D', soft: 'rgba(164,68,37,0.12)' },
+  moss:  { key: 'moss',  label: 'Moss',  primary: '#516945', bright: '#445A3A', deep: '#3E5035', soft: 'rgba(81,105,69,0.12)' },
+  slate: { key: 'slate', label: 'Slate', primary: '#436298', bright: '#385287', deep: '#334B75', soft: 'rgba(67,98,152,0.12)' },
+  amber: { key: 'amber', label: 'Amber', primary: '#7B5D1D', bright: '#6B5018', deep: '#5F4816', soft: 'rgba(123,93,29,0.12)' },
+};
+
+export function accentsFor(mode: ThemeMode): Record<AccentKey, AccentTheme> {
+  return mode === 'light' ? ACCENTS_LIGHT : ACCENTS;
+}
+
 export const DEFAULT_ACCENT: AccentKey = 'clay';
+
+// Alışkanlık kategorik renk paleti (F31 — Thefor F-7): koyu ve açık yüzeylerde >= 3.05:1 kontrast.
+export type HabitHue = {
+  readonly key: string;
+  readonly label: string;
+  readonly hex: string;
+};
+
+export const habitHues: readonly HabitHue[] = [
+  { key: 'mercan', label: 'Mercan', hex: '#d46e5e' },
+  { key: 'kehribar', label: 'Kehribar', hex: '#bd7c32' },
+  { key: 'hardal', label: 'Hardal', hex: '#a1892b' },
+  { key: 'zeytin', label: 'Zeytin', hex: '#749528' },
+  { key: 'yosun', label: 'Yosun', hex: '#2a9d50' },
+  { key: 'nane', label: 'Nane', hex: '#2a9d86' },
+  { key: 'gökyüzü', label: 'Gökyüzü', hex: '#3195b9' },
+  { key: 'mavi', label: 'Mavi', hex: '#628cd5' },
+  { key: 'indigo', label: 'İndigo', hex: '#8282de' },
+  { key: 'mor', label: 'Mor', hex: '#a576db' },
+  { key: 'orkide', label: 'Orkide', hex: '#d35acf' },
+  { key: 'gül', label: 'Gül', hex: '#d6668f' },
+] as const;
 
 // Gradient çiftleri (LinearGradient yoksa ilk renk solid kullanılır)
 export const gradients = {

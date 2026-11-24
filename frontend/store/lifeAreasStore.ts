@@ -5,6 +5,8 @@ import {
   upsertLifeAreaLogs,
 } from '../repositories/lifeAreaRepository';
 import { todayLocal } from '../lib/date';
+import { createLatest } from '../lib/latestOnly';
+import { safeUserIdOf, writeThrough } from '../lib/outboxEngine';
 import { readCachedSnapshot, setCachedSnapshot } from '../lib/localReadCache';
 import { currentUser } from '../lib/session';
 import { coreOutbox } from '../services/coreOutbox';
@@ -26,6 +28,7 @@ export type AreaValues = Record<AreaKey, number>;
 
 export const LIFE_AREA_ENTITY = 'life_area_log';
 const LIFE_AREAS_CACHE_KEY = 'life_areas:latest';
+const DEVICE_SAVE_WARNING = 'Değişiklik cihaza kaydedilemedi; uygulama kapanırsa kaybolabilir.';
 
 const DEFAULT_VALUES: AreaValues = {
   saglik: 5, kariyer: 5, egitim: 5, finans: 5,
@@ -37,13 +40,9 @@ type CachedLifeAreas = {
   lastSavedDate: string | null;
 };
 
-async function safeUserId(): Promise<string | null> {
-  try {
-    return (await currentUser())?.id ?? null;
-  } catch {
-    return null;
-  }
-}
+const safeUserId = (): Promise<string | null> => safeUserIdOf(currentUser);
+
+const lifeLatest = createLatest();
 
 function applyPendingLifeAreaOverlay(base: CachedLifeAreas): CachedLifeAreas {
   const box = coreOutbox.state();
@@ -53,17 +52,14 @@ function applyPendingLifeAreaOverlay(base: CachedLifeAreas): CachedLifeAreas {
     .sort((a, b) => a.seq - b.seq);
   if (pending.length === 0) return base;
   const last = pending[pending.length - 1];
+  if (base.lastSavedDate && last.entityId < base.lastSavedDate) return base;
   const merged = { ...base.values };
   for (const [k, v] of Object.entries(last.payload)) {
     if (typeof v === 'number') {
       merged[k as AreaKey] = v;
     }
   }
-  const latestDate =
-    !base.lastSavedDate || last.entityId >= base.lastSavedDate
-      ? last.entityId
-      : base.lastSavedDate;
-  return { values: merged, lastSavedDate: latestDate };
+  return { values: merged, lastSavedDate: last.entityId };
 }
 
 type LifeAreasStore = {
@@ -71,9 +67,10 @@ type LifeAreasStore = {
   lastSavedDate: string | null;
   loading: boolean;
   saving: boolean;
+  error: string | null;
   loadLatest: () => Promise<void>;
   setValue: (area: AreaKey, value: number) => void;
-  save: () => Promise<void>;
+  save: () => Promise<boolean>;
 };
 
 export const useLifeAreasStore = create<LifeAreasStore>((set, get) => ({
@@ -81,24 +78,37 @@ export const useLifeAreasStore = create<LifeAreasStore>((set, get) => ({
   lastSavedDate: null,
   loading: false,
   saving: false,
+  error: null,
 
   loadLatest: async () => {
-    await coreOutbox.ensure();
-    const uid = await safeUserId();
-    const cached = uid ? await readCachedSnapshot<CachedLifeAreas>(uid, LIFE_AREAS_CACHE_KEY) : null;
-    if (cached) {
-      const overlaid = applyPendingLifeAreaOverlay(cached.data);
-      set({ values: overlaid.values, lastSavedDate: overlaid.lastSavedDate, loading: false });
-    } else {
-      set({ loading: true });
-    }
+    const run = lifeLatest.begin();
+    try {
+      await coreOutbox.ensure();
+      if (!run.isCurrent()) return;
+      const uid = await safeUserId();
+      if (!run.isCurrent()) return;
+      const cached = uid ? await readCachedSnapshot<CachedLifeAreas>(uid, LIFE_AREAS_CACHE_KEY) : null;
+      if (!run.isCurrent()) return;
+      if (cached) {
+        const overlaid = applyPendingLifeAreaOverlay(cached.data);
+        set({ values: overlaid.values, lastSavedDate: overlaid.lastSavedDate, loading: false, error: null });
+      } else {
+        set({ loading: true, error: null });
+      }
 
-    const res = await fetchRecentLifeAreaLogs();
-    if (res.ok && res.data.length > 0) {
-      const latestDate = res.data[0].date;
+      const res = await fetchRecentLifeAreaLogs();
+      if (!run.isCurrent()) return;
+      if (!res.ok) {
+        set({ loading: false, error: res.offline ? null : res.error });
+        return;
+      }
+
+      const latestDate = res.data.length > 0 ? res.data[0].date : null;
       const vals: Partial<AreaValues> = {};
-      for (const row of res.data.filter((r) => r.date === latestDate)) {
-        vals[row.area as AreaKey] = row.value;
+      if (latestDate) {
+        for (const row of res.data.filter((r) => r.date === latestDate)) {
+          vals[row.area as AreaKey] = row.value;
+        }
       }
       const fresh: CachedLifeAreas = {
         values: { ...DEFAULT_VALUES, ...vals },
@@ -108,10 +118,11 @@ export const useLifeAreasStore = create<LifeAreasStore>((set, get) => ({
         void setCachedSnapshot(uid, LIFE_AREAS_CACHE_KEY, fresh);
       }
       const overlaid = applyPendingLifeAreaOverlay(fresh);
-      set({ values: overlaid.values, lastSavedDate: overlaid.lastSavedDate, loading: false });
-      return;
+      set({ values: overlaid.values, lastSavedDate: overlaid.lastSavedDate, loading: false, error: null });
+    } finally {
+      run.done();
+      if (lifeLatest.pending() === 0 && get().loading) set({ loading: false });
     }
-    set({ loading: false });
   },
 
   setValue: (area, value) => {
@@ -119,46 +130,34 @@ export const useLifeAreasStore = create<LifeAreasStore>((set, get) => ({
   },
 
   save: async () => {
-    set({ saving: true });
+    set({ saving: true, error: null });
     const today = todayLocal();
     const { values } = get();
     const payload = Object.fromEntries(LIFE_AREAS.map((a) => [a.key, values[a.key]]));
 
-    const res = await upsertLifeAreaLogs(today, payload);
-    if (res.ok) {
-      const uid = await safeUserId();
-      if (uid) {
-        void setCachedSnapshot<CachedLifeAreas>(uid, LIFE_AREAS_CACHE_KEY, {
-          values: { ...values },
-          lastSavedDate: today,
-        });
-      }
-      set({ lastSavedDate: today, saving: false });
-      return;
+    const res = await writeThrough({
+      channel: coreOutbox,
+      entity: LIFE_AREA_ENTITY,
+      entityId: today,
+      kind: 'update',
+      payload,
+      online: () => upsertLifeAreaLogs(today, payload),
+      userId: safeUserId,
+    });
+    if (!res.ok) {
+      set({ saving: false, error: res.error });
+      return false;
     }
 
-    if (res.offline) {
-      const queued = await coreOutbox.write({
-        entity: LIFE_AREA_ENTITY,
-        entityId: today,
-        kind: 'update',
-        payload,
+    const error = res.via === 'outbox' && !res.savedOnDevice ? DEVICE_SAVE_WARNING : null;
+    set({ lastSavedDate: today, saving: false, error });
+    if (res.userId) {
+      void setCachedSnapshot<CachedLifeAreas>(res.userId, LIFE_AREAS_CACHE_KEY, {
+        values: { ...values },
+        lastSavedDate: today,
       });
-      if (queued.ok) {
-        const uid = await safeUserId();
-        if (uid) {
-          void setCachedSnapshot<CachedLifeAreas>(uid, LIFE_AREAS_CACHE_KEY, {
-            values: { ...values },
-            lastSavedDate: today,
-          });
-        }
-        set({ lastSavedDate: today, saving: false });
-        return;
-      }
     }
-
-    // A non-offline server rejection still refuses to record `lastSavedDate`.
-    set({ saving: false });
+    return true;
   },
 }));
 

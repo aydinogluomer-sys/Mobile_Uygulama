@@ -14,7 +14,8 @@ const FILES = [
   'repositories/journalRepository.ts', 'repositories/journalInsightRepository.ts', 'repositories/aiConversationRepository.ts',
   'services/journalService.ts', 'services/aiCoachService.ts', 'store/journalStore.ts', 'store/aiConversationStore.ts',
   'app/screens/journal.tsx', 'app/screens/journal-archive.tsx', 'app/screens/journal-reader.tsx', 'app/screens/journal-insights.tsx',
-  'app/screens/ai-coach.tsx', 'components/coach/CoachActionCard.tsx', 'components/coach/CoachActionCardV2.tsx',
+  'app/screens/ai-coach.tsx', 'hooks/useCoachSend.ts', 'components/coach/CoachMessageList.tsx',
+  'components/coach/CoachActionCard.tsx', 'components/coach/CoachActionCardV2.tsx',
   'components/coach/ConversationSheet.tsx', 'lib/journalText.ts', 'lib/coachActions.ts', 'lib/coachActionsV2.ts',
 ];
 const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');

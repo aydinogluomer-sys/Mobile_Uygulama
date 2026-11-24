@@ -1,4 +1,5 @@
 import { addDaysLocal, daysBetweenLocal, parseLocalDate, startOfWeekLocal, ymd } from './date';
+import { habitCreatedDay } from './habitCreatedDay';
 import type { Habit, HabitLog } from './supabase';
 // R01.05 — dated pause/holiday intervals and effective-dated goal versions.
 import { habitOn, isPausedOn, pausedDaysIn, pausedTarget, versionSegments } from './habitPauses';
@@ -81,8 +82,9 @@ export function isWithinRange(habit: Pick<Habit, 'frequency_config'>, date: Date
  */
 function withinLifetime(habit: Habit, date: Date): boolean {
   const ds = ymd(date);
-  // Oluşturulmadan önceki günlerde due değil
-  if (habit.created_at && ymd(new Date(habit.created_at)) > ds) return false;
+  // Oluşturulmadan önceki günlerde due değil (DOM-12: kurulum günü damgası öncelikli)
+  const created = habitCreatedDay(habit);
+  if (created && created > ds) return false;
   // Tarihli bitiş koşulu geçmişse due değil
   const ec = habit.end_condition;
   if (ec && ec.kind === 'date' && typeof ec.value === 'string' && ds > ec.value) return false;
@@ -306,7 +308,8 @@ function dueOnExtended(habit: Habit, date: Date): boolean {
     // başlar (11/14/17/20). Aralık yoksa max = created_at: aralıksız hiçbir
     // alışkanlık etkilenmez. İkisi de yoksa daraltamayız — temel korumaya güven
     // (R01.02-c tuzak 2).
-    const created = habit.created_at ? parseLocalDate(ymd(new Date(habit.created_at))) : null;
+    const createdYmd = habitCreatedDay(habit);
+    const created = createdYmd ? parseLocalDate(createdYmd) : null;
     const rs = habit.frequency_config?.range_start;
     const rangeStart = rs ? parseLocalDate(rs) : null;
     const anchor = created && rangeStart
@@ -545,6 +548,10 @@ export function streakBroken(
  * care about the difference between "never due" and "due and never done"
  * must read `dueDays` — the rate alone cannot carry it, and returning `1` for
  * an empty window would certify a habit that has done nothing.
+ *
+ * Politika: `strict_done`. Kısmi (`partial`) gün payda'ya girer, paya girmez;
+ * bilinçli: ustalık bir sertifikadır (`capacity.ts:618-624`). Rapor ve içgörü
+ * ağırlıklı politikayı kullanır (`completionMetric.ts`).
  */
 export type ScheduledCompletion = {
   /** doneDays / dueDays, or 0 when nothing was due. */
@@ -624,7 +631,7 @@ function scheduledCompletionRateFor(
     if (!countsTowardAverage(habit, log)) continue;
 
     dueDays += 1;
-    if (log?.state === 'done') doneDays += 1;
+    if (log?.state === 'done') doneDays += 1; // Politika: strict_done (ustalık sertifikası); ağırlıklı oran completionMetric.ts içindedir.
   }
 
   return { rate: dueDays === 0 ? 0 : doneDays / dueDays, dueDays, doneDays };

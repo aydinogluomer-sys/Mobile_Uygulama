@@ -10,9 +10,27 @@
 import type { ChecklistCheck, ChecklistItem } from '../lib/habitChecklist';
 import type { GoalVersion, PauseInterval } from '../lib/habitPauses';
 import { supabase, type Habit, type HabitLog, type RecoveryPlan, type WillpowerState } from '../lib/supabase';
-import type { Task } from '../store/taskStore';
+import type { Task } from '../lib/taskTypes';
 import type { ReviewLogRow } from './habitLogRepository';
 import { currentUserId, isTransportFailure } from './shared';
+
+export const TODAY_BOOTSTRAP_KEYS = [
+  'today',
+  'habits',
+  'today_logs',
+  'period_logs',
+  'tasks',
+  'willpower',
+  'recovery_plans',
+  'time_off_available',
+  'pauses',
+  'goal_versions',
+  'checklist_available',
+  'checklist_items',
+  'checklist_checks',
+] as const;
+
+export type TodayBootstrapKey = (typeof TODAY_BOOTSTRAP_KEYS)[number];
 
 export type TodayBootstrapPayload = {
   userId: string;

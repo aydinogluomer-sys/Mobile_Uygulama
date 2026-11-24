@@ -13,6 +13,9 @@
  *   bindAuthAutoRefresh  the refresh ticker follows AppState
  *   currentUserId        the repository side: offline is `offline: true`, not a refusal
  */
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('expo-secure-store', () => require('../helpers/secureStoreFake').createSecureStoreModule());
+
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { Session } from '@supabase/supabase-js';

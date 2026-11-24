@@ -11,17 +11,51 @@
  * the write had succeeded.
  */
 import type { Habit, RecoveryPlan, RecoveryStrategy } from '../lib/supabase';
+import type { Ymd } from '../lib/date';
 import { isMeasurableTracking } from '../lib/habitEngine';
 // R01.03-a's one place where an amount becomes a state. KD-12: the make-up
 // paths go through it too, so a recovery row can never say `done` while its
 // value says 0%.
 import { measuredEntryFor } from './habitLogService';
-import { fetchPlannedRecoveryPlans } from '../repositories/recoveryRepository';
+import {
+  fetchPlannedRecoveryPlans,
+  fetchRecoveryPlanStatesForHabit,
+  type RecoveryPlanStateRow,
+} from '../repositories/recoveryRepository';
 import type { RepoResult } from '../repositories/shared';
 import { coreOutbox } from './coreOutbox';
 import { newOperationId, overlay } from '../lib/outbox';
 
 export const RECOVERY_PLAN_ENTITY = 'recovery_plan';
+
+/**
+ * F31 (PS-07): `source_date` set of completed recovery plans for one habit,
+ * with `coreOutbox` overlaid so offline-completed recoveries appear immediately.
+ */
+export async function repairedSourceDates(params: {
+  habitId: string;
+  since: Ymd;
+}): Promise<RepoResult<ReadonlySet<Ymd>>> {
+  const box = await coreOutbox.ensure();
+  const res = await fetchRecoveryPlanStatesForHabit(params);
+  if (!res.ok && !box) return res;
+
+  const baseRows: RecoveryPlanStateRow[] = res.ok ? res.data : [];
+  const rows = box ? overlay(box, RECOVERY_PLAN_ENTITY, baseRows) : baseRows;
+  const set = new Set<Ymd>();
+  for (const r of rows) {
+    if (
+      r.habit_id === params.habitId &&
+      r.status === 'completed' &&
+      typeof r.source_date === 'string' &&
+      r.source_date >= params.since
+    ) {
+      set.add(r.source_date.slice(0, 10));
+    }
+  }
+  if (!res.ok && set.size === 0) return res;
+  return { ok: true, data: set };
+}
 
 /**
  * Planned plans from the server with this device's unsent changes laid over
@@ -93,10 +127,9 @@ async function queuePlanChange(id: string, kind: 'update' | 'delete', payload?: 
 /**
  * Marks a plan done.
  *
- * Returns the outcome rather than assuming it: the caller cancels the
- * reminder and drops the row from the list ONLY on success, because a plan
- * that is still `planned` on the server with no reminder scheduled is worse
- * than one the user has to complete twice.
+ * Returns the outcome rather than assuming it: the caller (`recoveryStore.completePlan`,
+ * enforced in F13 STO-14/DOM-22) cancels the reminder and drops the row from the
+ * list ONLY on success, returning `false` when the local outbox write fails.
  */
 // 'done' and 'skipped' were the LEGACY spellings. The table now accepts only
 // the v2 vocabulary, so these two calls would have been rejected at runtime —
@@ -106,11 +139,6 @@ async function queuePlanChange(id: string, kind: 'update' | 'delete', payload?: 
 export const completePlan = (id: string) => queuePlanChange(id, 'update', { status: 'completed', completed_at: new Date().toISOString() });
 export const skipPlan = (id: string) => queuePlanChange(id, 'update', { status: 'cancelled', completed_at: null });
 export const removePlan = (id: string) => queuePlanChange(id, 'delete');
-
-/** True when a plan's target day has passed without completion. */
-export function isOverdue(plan: Pick<RecoveryPlan, 'target_date' | 'status'>, today: string): boolean {
-  return plan.status === 'planned' && plan.target_date < today;
-}
 
 /**
  * Does a make-up for this habit need an AMOUNT from the user?

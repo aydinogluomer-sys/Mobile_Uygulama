@@ -528,7 +528,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
     // A skipped flow still gets a real plan, from the documented safe
     // defaults rather than from a second code path.
     const effective: OnboardingAnswers = answers.pace ? answers : { ...SKIP_DEFAULT_ANSWERS, ...answers, pace: answers.pace ?? SKIP_DEFAULT_ANSWERS.pace };
-    const plan = buildStarterPlan(effective, { activeHabits: activeHabitLoadInputs() });
+    const plan = buildStarterPlan(effective, { activeHabits: activeHabitLoadInputs(), asOf: new Date() });
     set({
       plan,
       planReasons: explainPlan(effective, { habitCount: plan.habits.length, requestedMax: plan.requestedMax }),
@@ -724,7 +724,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
           return false;
         }
 
-        useHabitStore.setState((st) => ({ habits: [...result.habits, ...st.habits] }));
+        useHabitStore.getState().addInstalledHabits(result.habits);
 
         // From here the habits EXIST. Recorded before the confirm is
         // attempted, so a failure below lands in a state that knows it.
@@ -805,6 +805,12 @@ export function resolveOnboardingRouting(input: RoutingInput): RoutingDecision {
   if (!input.hasAnySession) {
     return input.inAuthGroup ? { kind: 'stay' } : { kind: 'redirect', to: '/(auth)/login' };
   }
+
+  // F22: kurtarma ekranları, yeni parola kaydedilene kadar oturumun sahibidir (NAV-06).
+  // The 6-digit code creates a session before the new password exists; routing that
+  // session by its onboarding row would send an unfinished account to /onboarding/needs
+  // and leave the password unknown.
+  if (input.inPasswordRecovery) return { kind: 'stay' };
 
   // A Supabase-authenticated user is routed by their onboarding row, and only
   // once that row has been read SUCCESSFULLY. `ready` is the whole condition:

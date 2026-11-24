@@ -99,6 +99,23 @@ jest.mock('../../repositories/focusSessionRepository', () => ({
     return { ok: true, data: { id: row.id } };
   },
 }));
+const mockTaskCredit = {
+  payloads: [] as Record<string, unknown>[],
+  appliedCredits: [] as { taskId: string; seconds: number }[],
+  fail: false,
+};
+jest.mock('../../repositories/focusTaskRepository', () => ({
+  creditFocusTaskForSession: jest.fn(async (row: Record<string, unknown>) => {
+    mockTaskCredit.payloads.push(row);
+    if (row.mode !== 'work' || row.completed !== true || typeof row.task_id !== 'string' || row.task_id.length === 0) {
+      return null;
+    }
+    if (mockTaskCredit.fail) return { ok: false, error: 'CAS_EXHAUSTED', code: 'CAS_EXHAUSTED' };
+    const s = Number(row.completed_seconds);
+    mockTaskCredit.appliedCredits.push({ taskId: row.task_id, seconds: Number.isFinite(s) && s > 0 ? Math.round(s) : 0 });
+    return { ok: true, data: { id: row.task_id } };
+  }),
+}));
 
 import { createOutboxChannel, type OutboxChannel } from '../../services/outboxChannel';
 import { CORE_TRANSPORTS, contentVersion, noteTransport } from '../../services/coreOutbox';
@@ -112,6 +129,9 @@ const fresh = () => createOutboxChannel({ storage, transports: CORE_TRANSPORTS, 
 beforeEach(() => {
   Object.assign(mockServer, { online: true, user: 'u1', calls: 0, tick: 0 });
   mockServer.notes.clear(); mockServer.journal.clear(); mockServer.plans.clear(); mockServer.sessions.clear();
+  mockTaskCredit.payloads = [];
+  mockTaskCredit.appliedCredits = [];
+  mockTaskCredit.fail = false;
   storage = memoryOutboxStorage();
   ch = fresh();
 });
@@ -241,6 +261,34 @@ describe('R02.06 / R02 — accounts and tombstones', () => {
     expect(mockServer.notes.has('nd')).toBe(false);
     expect(ch.state()!.commands).toHaveLength(0);
   });
+
+  it('F19 (SYN-05): clearTombstones releases confirmed tombstones and unsent deletes so restored rows appear and accept edits', async () => {
+    await ch.write({ entity: 'note', entityId: 'n-res', kind: 'create', payload: { title: 'Eski', content: 'v1', tags: [] } });
+    await ch.flush();
+    await ch.write({ entity: 'note', entityId: 'n-res', kind: 'delete' });
+    await ch.flush();
+    expect(ch.state()!.tombstones['note|n-res']).toBeDefined();
+    expect(ch.state()!.confirmedDeletes?.['note|n-res']).toBeDefined();
+
+    // Also queue an unsent delete on another note (let the initial offline flush finish so it is not mid-flight)
+    mockServer.online = false;
+    await ch.write({ entity: 'note', entityId: 'n-unsent', kind: 'delete' });
+    await ch.flush();
+    expect(ch.sync().pending).toBe(1);
+
+    await ch.clearTombstones('note', ['n-res', 'n-unsent']);
+    expect(ch.state()!.tombstones['note|n-res']).toBeUndefined();
+    expect(ch.state()!.confirmedDeletes?.['note|n-res']).toBeUndefined();
+    expect(ch.state()!.tombstones['note|n-unsent']).toBeUndefined();
+    expect(ch.sync().pending).toBe(0);
+
+    // Server row restored directly (e.g. backup restore) now accepts updates again
+    mockServer.online = true;
+    mockServer.notes.set('n-res', { id: 'n-res', user_id: 'u1', title: 'Eski', content: 'v1', tags: [], created_at: stamp(), updated_at: 'v-restored' });
+    await ch.write({ entity: 'note', entityId: 'n-res', kind: 'update', payload: { content: 'düzenlendi' }, baseVersion: 'v-restored' });
+    await ch.flush();
+    expect(mockServer.notes.get('n-res')?.content).toBe('düzenlendi');
+  });
 });
 
 describe('the onApplied hook reports what the server accepted, and only that', () => {
@@ -264,5 +312,68 @@ describe('the onApplied hook reports what the server accepted, and only that', (
     await refused.flush();
     expect(r).toEqual([]);
     expect(refused.state()!.commands[0].lastError).toBe('no');
+  });
+});
+
+describe('F16 (INT-09) — focus_session credits its task on first delivery only', () => {
+  it('credits once when insertFocusSessionRow succeeds and never again on 23505 replay', async () => {
+    const payload = { mode: 'work', completed: true, task_id: 'ft-1', completed_seconds: 1500 };
+    await ch.write({ entity: 'focus_session', entityId: 's-credit-1', kind: 'create', payload });
+    await ch.flush();
+    expect(ch.state()!.commands).toHaveLength(0);
+    expect(mockTaskCredit.payloads).toHaveLength(1);
+    expect(mockTaskCredit.appliedCredits).toEqual([{ taskId: 'ft-1', seconds: 1500 }]);
+
+    // Replay the exact command 5 times against a server that already has the row (23505)
+    const replayCmd = {
+      operationId: 'op-replay',
+      userId: 'u1',
+      entity: 'focus_session',
+      entityId: 's-credit-1',
+      kind: 'create' as const,
+      payload,
+      baseVersion: null,
+      dependsOn: [],
+      seq: 2,
+      attempts: 0,
+      status: 'pending' as const,
+      readyAt: 0,
+      createdAt: 0,
+    };
+    for (let i = 0; i < 5; i++) {
+      expect((await CORE_TRANSPORTS.focus_session(replayCmd)).kind).toBe('applied');
+    }
+    expect(mockTaskCredit.payloads).toHaveLength(1);
+    expect(mockTaskCredit.appliedCredits).toHaveLength(1);
+  });
+
+  it('does not apply task credit on partial, break, or taskless rows', async () => {
+    await ch.write({ entity: 'focus_session', entityId: 's-part', kind: 'create', payload: { mode: 'work', completed: false, task_id: 'ft-1', completed_seconds: 900 } });
+    await ch.write({ entity: 'focus_session', entityId: 's-brk', kind: 'create', payload: { mode: 'shortBreak', completed: true, task_id: 'ft-1', completed_seconds: 300 } });
+    await ch.write({ entity: 'focus_session', entityId: 's-notask', kind: 'create', payload: { mode: 'work', completed: true, task_id: null, completed_seconds: 1500 } });
+    await ch.flush();
+    expect(ch.state()!.commands).toHaveLength(0);
+    expect(mockTaskCredit.appliedCredits).toEqual([]);
+  });
+
+  it('still marks the session applied if crediting fails, and skips crediting when offline', async () => {
+    mockServer.online = false;
+    await ch.write({ entity: 'focus_session', entityId: 's-off', kind: 'create', payload: { mode: 'work', completed: true, task_id: 'ft-2', completed_seconds: 1200 } });
+    await ch.flush();
+    expect(mockTaskCredit.payloads).toHaveLength(0);
+    expect(ch.sync().pending).toBe(1);
+
+    mockServer.online = true;
+    mockTaskCredit.fail = true;
+    const later = createOutboxChannel({
+      storage,
+      transports: CORE_TRANSPORTS,
+      currentUserId: async () => mockServer.user,
+      now: () => Date.now() + 10 * 60_000,
+    });
+    await later.flush();
+    expect(later.state()!.commands).toHaveLength(0);
+    expect(mockServer.sessions.has('s-off')).toBe(true);
+    expect(mockTaskCredit.payloads).toHaveLength(1);
   });
 });

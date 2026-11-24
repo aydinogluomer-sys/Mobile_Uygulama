@@ -11,7 +11,12 @@ jest.mock('../../services/focusService', () => ({
     if (mockWork.gate) await mockWork.gate;
     return { sessionRecorded: true, taskCompleted: false };
   }),
+  recordPartialWorkPhase: jest.fn(async () => ({ recorded: true })),
   addTask: jest.fn(), completeTask: jest.fn(), listOpenTasks: jest.fn(async () => ({ ok: true, data: [] })), removeTask: jest.fn(),
+}));
+jest.mock('../../lib/notifications', () => ({
+  scheduleFocusEnd: jest.fn(async () => true),
+  cancelFocusEnd: jest.fn(async () => undefined),
 }));
 jest.mock('../../lib/haptics', () => ({ haptic: { success: jest.fn() } }));
 jest.mock('../../lib/analytics', () => ({ buildEvent: jest.fn(() => ({})), emitEvent: jest.fn() }));
@@ -25,6 +30,7 @@ import {
   normaliseFocusSettings, type FocusSettings,
 } from '../../store/focusStore';
 import { resetAccountMemory } from '../../lib/accountScope';
+import { EMPTY_TALLY } from '../../lib/focusRitual';
 import { startClock, snapshotOf } from '../../lib/focusTimer';
 
 const SESSION_KEY = sessionKey('u1');
@@ -36,7 +42,8 @@ const at = (ms: number) => { now = T0 + ms; };
 function resetStore(settings: Partial<FocusSettings> = {}) {
   useFocusStore.setState({
     phase: 'work', status: 'idle', secondsLeft: 1500, sessionsCompleted: 0, sessionStartedAt: null,
-    clock: null, settings: { ...DEFAULT_SETTINGS, ...settings }, justCompleted: null,
+    clock: null, pausedAt: null, lastPartial: null, intent: null, interruptions: EMPTY_TALLY,
+    settings: { ...DEFAULT_SETTINGS, ...settings }, justCompleted: null,
     focusTasks: [], selectedTaskId: null, loadingTasks: false,
   });
 }

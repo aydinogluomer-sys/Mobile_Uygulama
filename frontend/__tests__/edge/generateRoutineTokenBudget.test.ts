@@ -40,21 +40,15 @@
  * Source-level, like the rest of `__tests__/edge`: the function is Deno plus a
  * live paid key, and the property being protected is structural.
  */
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { edgeSource } from '../helpers/edgeSource';
 import { stripComments } from '../helpers/sourceText';
 
-const FN = stripComments(
-  readFileSync(
-    join(__dirname, '..', '..', '..', 'supabase', 'functions', 'generate-routine', 'index.ts'),
-    'utf8',
-  ),
-);
+const FN = stripComments(edgeSource('generate-routine'));
 
-/** The `else` arm that builds the routine — from its model call to its parse. */
+/** The `else` arm that builds the routine — from its model call to its structured tool read. */
 function routineBranch(): string {
   const start = FN.indexOf('system: SYSTEM_PROMPT,');
-  const end = FN.indexOf('payload = JSON.parse(');
+  const end = FN.indexOf('payload = routine.payload');
   expect(start).toBeGreaterThan(-1);
   expect(end).toBeGreaterThan(start);
   // Back up to the `client.messages.create({` that owns this call.
@@ -105,15 +99,18 @@ describe('a truncated response is refused, not scraped', () => {
     expect(routineBranch()).toContain("stop_reason === 'max_tokens'");
   });
 
-  it('the check runs BEFORE the greedy match and the parse', () => {
+  it('the check runs BEFORE reading the structured routine_response tool block, with zero regex/JSON.parse scraping', () => {
     const branch = routineBranch();
     const guard = branch.indexOf("stop_reason === 'max_tokens'");
-    const greedy = branch.indexOf('text.match(');
+    const reader = branch.indexOf('readRoutineResponse(');
     expect(guard).toBeGreaterThan(-1);
-    expect(greedy).toBeGreaterThan(-1);
-    // If the guard came after the match, the fragment would already have been
-    // extracted and the parse would still be reached on a later edit.
-    expect(guard).toBeLessThan(greedy);
+    expect(reader).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(reader);
+
+    // GEM-08 negative: never scrape free-text JSON with regex or JSON.parse
+    expect(branch).not.toContain('text.match(');
+    expect(branch).not.toContain('JSON.parse(');
+    expect(branch).not.toContain('\\{[\\s\\S]*\\}');
   });
 
   it('it names a refund reason, because the user got nothing', () => {

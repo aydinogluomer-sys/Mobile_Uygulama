@@ -33,6 +33,7 @@
  * Pure: no I/O, no clock.
  */
 import { addDaysLocal, daysBetweenLocal, parseLocalDate, ymd } from './date';
+import { habitCreatedDay } from './habitCreatedDay';
 import type { FrequencyConfig } from './supabase';
 
 export type PauseKind = 'pause' | 'holiday';
@@ -300,8 +301,8 @@ export function versionRowsForEdit(
 ): GoalVersion[] {
   const rows: GoalVersion[] = [];
   const hasVersions = !!habit.goal_versions && habit.goal_versions.length > 0;
-  const created = ymd(new Date(habit.created_at));
-  if (!hasVersions && created < today) {
+  const created = habitCreatedDay(habit);
+  if (!hasVersions && created !== null && created < today) {
     rows.push({
       habit_id: habit.id,
       effective_from: created,

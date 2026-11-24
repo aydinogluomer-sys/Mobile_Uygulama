@@ -1,502 +1,592 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Platform, View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, useWindowDimensions, Alert, Modal } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
+import { actionSheet, notify, type DialogOption } from '../../lib/dialog';
 import { useHabitStore } from '../../store/habitStore';
 import { useLogStore } from '../../store/logStore';
 import { useTaskStore } from '../../store/taskStore';
 import { useCoreOutboxSync } from '../../hooks/useCoreOutboxSync';
-import { nextActionable, primaryAction, todaySummaryLine, type NextAction } from '../../lib/todayNext';
-import { FLOW_COPY, recentlyEndedBreak } from '../../lib/flowCopy';
+import { type NextAction } from '../../lib/todayNext';
+import { FLOW_COPY } from '../../lib/flowCopy';
 import { useWillpowerStore } from '../../store/willpowerStore';
 import { useFocusStore } from '../../store/focusStore';
 import { useRecoveryStore } from '../../store/recoveryStore';
+import { useDisclosureStore } from '../../store/disclosureStore';
+import { isToolVisible } from '../../lib/disclosure';
+import { currentUser } from '../../lib/session';
 import XPDisplay from '../../components/XPDisplay';
 import TodayHero from '../../components/today/TodayHero';
+import DayCloseEcho from '../../components/today/DayCloseEcho';
+import DayCloseMood from '../../components/today/DayCloseMood';
+import DayCloseTasks from '../../components/today/DayCloseTasks';
 import MetricGrid, { type Metric } from '../../components/today/MetricGrid';
-import NextUpStrip, { type NextUpItem } from '../../components/today/NextUpStrip';
+import NextUpStrip from '../../components/today/NextUpStrip';
+import HabitSection, { HolidayCard, SetAsideCard } from '../../components/today/HabitSection';
 import InlineComposer from '../../components/InlineComposer';
 import RecoveryRailCard from '../../components/today/RecoveryRailCard';
-// R03.03 — start small: first step of a task as its own focus session.
 import SmallStartSheet from '../../components/SmallStartSheet';
-// R02 — task changes that need the user: retry or give up.
 import OutboxIssues from '../../components/OutboxIssues';
-// R05.02 — the routine runner's entry, and a session in progress.
 import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
+import { BUILT_IN_TEMPLATES, suggestTemplate } from '../../lib/routineRunner';
+import { isLowEnergyOn, useLowEnergyStore } from '../../store/lowEnergyStore';
+import { useMoodStore } from '../../store/moodStore';
+import { ENERGY_COPY, lowEnergySuggested } from '../../lib/moods';
+import { useTimeCapsules } from '../../hooks/useTimeCapsules';
+import TimeCapsuleCard from '../../components/recovery/TimeCapsuleCard';
 import type { SmallStepParent } from '../../lib/smallStart';
-// R01.05 — habits on a dated break, and the holiday mode for all of them.
 import TimeOffSheet from '../../components/TimeOffSheet';
-import { activePauseOn, isPausedOn } from '../../lib/habitPauses';
-// R01.04 — a habit with steps opens its checklist instead of a one-tap toggle.
 import ChecklistSheet from '../../components/ChecklistSheet';
 import { itemsOn } from '../../lib/habitChecklist';
 import { buildTodayNarrative } from '../../lib/todayNarrative';
-import { pickDailySparkItem } from '../../lib/focusFlowCatalog';
-import { colors, space, radius, font, hexA } from '../../lib/tokens';
+import { space, radius, font, hexA, onColor, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
+import { useDayClose } from '../../hooks/useDayClose';
+import { useTodayClock, useTodayModel } from '../../hooks/useTodayModel';
 import { haptic } from '../../lib/haptics';
-import { todayLocal, parseLocalDate, startOfWeekLocal, ymd } from '../../lib/date';
 import {
-  Card, SectionHeader, EmptyState, ProgressRing, IconCircle, WillpowerBand, SyncStatusBadge,
-  AtmosphericScreenCanvas, BentoVisualCard, ChapterDivider, EmbeddedFiligree, GoldMendShimmer,
+  Button,
+  Card,
+  Chip,
+  EmptyState,
+  IconCircle,
+  SectionHeader,
+  SyncStatusBadge,
+  WillpowerBand,
 } from '../../components/ui';
-
+import {
+  AtmosphericScreenCanvas,
+  BentoVisualCard,
+  ChapterDivider,
+  EmbeddedFiligree,
+} from '../../components/spatial';
 import { BENTO_ART, CANVASES, DECOR, TEXTURES } from '../../lib/visualAssets';
-
 import { isMeasurableTracking } from '../../lib/habitEngine';
-import { isEligibleOn, scheduleKind, isCountBasedSchedule, periodStatus } from '../../lib/habitSchedule';
-// R01.06-b — the current period's logs, so a "3 a week" already met can step aside.
+import { markNoteHintSeen, normalizeNote, NOTE_MAX_LENGTH, readNoteHintSeen } from '../../lib/habitNote';
 import { logsForPeriod, type ReviewLogRow } from '../../services/reviewService';
 import { bootstrapTodayScreen } from '../../services/todayBootstrapService';
+import { syncAllReminders } from '../../lib/notifications';
+import { navigateTo, type DestinationId } from '../../lib/destinations';
+import { useProjectStore } from '../../store/projectStore';
+import { quickAddToTaskInput } from '../../lib/taskQuickAdd';
 import type { Habit } from '../../lib/supabase';
+import { isoWeekNumber } from '../../lib/date';
+import { fmt, t } from '../../lib/i18n';
+import {
+  periodWindowStart,
+  type PartGroupKey,
+} from '../../lib/todaySelectors';
 
-// =====================================================================================
-// R01.06-a — Bugün takvimi SORAR.
-//
-// Eskiden bu ekran yalnız `status === 'active'` filtresi uyguluyordu: Pzt/Çar/Cum
-// alışkanlığı Salı da "kalan adım" sayılıyor, yüzdenin paydasına giriyordu.
-// Artık günün yüzeyleri `isEligibleOn` (saf, log istemez) ile süzülmüş listeyi
-// kullanır. `carriesDayLoad` BİLEREK kullanılmıyor: dönem logu ister, bu ekran
-// yalnız bugünün logunu yükler. Sonuç: "haftada 3" hedefi dolsa da her gün
-// görünür (loglanabilir); "bu hafta doldu" soluklaştırması ayrı kart (R01.06-b).
-// =====================================================================================
+export {
+  isScheduleAmbiguous,
+  isPeriodDoneBefore,
+  selectTodayHabits,
+  selectOnBreakHabits,
+  setAsideIds,
+  selectSetAsideHabits,
+  periodDoneLabel,
+  selectPeriodDoneHabits,
+  periodWindowStart,
+  summarizeTodayHabits,
+  todayHabitCopy,
+} from '../../lib/todaySelectors';
 
-/**
- * Takvim BELİRSİZ mi — yani `isEligibleOn`'un `false`'u "bugün değil" değil,
- * "bilmiyorum" mu demek?
- *
- *  - sayı modu (`weekly_count`/`monthly_count`) ama hedef yok: `scheduleKind`
- *    ne gün ne sayı taşıyan bir `kind:'weekly'` (ya da sayısız `monthly`)
- *    satırını `count: 0` olarak sınıflar ve `isEligibleOn` her gün `false` döner.
- *  - sabit gün modu ama `days` içinde geçerli (0..6 tamsayı) tek bir gün yok:
- *    `includes` hiçbir gün eşleşmez, yine her gün `false`.
- *
- * İki durumda da kâhinin cevabı "hiçbir gün" olur; bu bir takvim değil, eksik veri.
- */
-export function isScheduleAmbiguous(habit: Habit): boolean {
-  const sk = scheduleKind(habit);
-  if (sk.kind === 'weekly_count' || sk.kind === 'monthly_count') return sk.count <= 0;
-  if (sk.kind === 'weekly_days') {
-    return !sk.days.some((d) => Number.isInteger(d) && d >= 0 && d <= 6);
-  }
-  return false;
-}
+const PRIORITY_TONE: Record<string, keyof Palette> = {
+  high: 'error',
+  medium: 'warning',
+  low: 'success',
+  none: 'textGhost',
+};
 
-/**
- * Bugün'ün alışkanlıkları = aktif ∩ (o güne uygun ∪ takvimi belirsiz).
- *
- * FAIL-OPEN: takvim belirsizse GÖSTER. Belirsiz satırı gizlemek, kullanıcının
- * loglayabildiği (ve bu karttan önce Bugün'de gördüğü) bir alışkanlığı ondan
- * saklamak olur — ve gizlendiğini söyleyen hiçbir yüzey yoktur. Fazladan bir
- * satır görmek, var olan bir işi kaybetmekten ucuzdur. Bu, `isEligibleOn` /
- * `scheduleKind` değiştirilerek değil burada çözülür: kâhinin "belirsizlikte az
- * say" ilkesi raporlar için doğru, "neyi göstereyim" sorusu için yanlış.
- */
-/**
- * R01.06-b — was this count-based habit's CURRENT period already met before
- * `date` began?
- *
- * "3 a week" finished by Wednesday has no work left on Thursday, but R01.06-a
- * had only today's log and kept it in "N adım kaldı" all week. Only logs
- * STRICTLY BEFORE `date` count -- the same "what did the day begin owing" rule
- * as `carriesDayLoad` -- so a habit finished TODAY stays in today's list and
- * reads as done, instead of vanishing the moment it is ticked. Day-based
- * habits are never "period done": they have no period.
- */
-export function isPeriodDoneBefore(habit: Habit, date: Date, periodLogs: readonly ReviewLogRow[]): boolean {
-  if (!isCountBasedSchedule(habit)) return false;
-  const ds = ymd(date);
-  const before = periodLogs.filter((l) => l.habit_id === habit.id && l.completed_at.slice(0, 10) < ds);
-  return periodStatus(habit, before, date, { asOf: date }).status === 'satisfied';
-}
+const EMPTY_GROUPS: ReadonlySet<PartGroupKey> = new Set<PartGroupKey>();
 
-/**
- * Today's work. `periodLogs` (R01.06-b) is optional ON PURPOSE: until the
- * period's logs have loaded -- or if loading fails -- nothing is hidden for
- * lack of evidence, and the list is exactly R01.06-a's. Hiding a habit because
- * a fetch has not answered yet would be the fail-closed mistake fail-open
- * exists to prevent.
- */
-export function selectTodayHabits(
-  habits: Habit[],
-  date: Date,
-  periodLogs: readonly ReviewLogRow[] | null = null,
-  // R03.02 — habits the user set aside for today ("Bugün daha az"). Optional so
-  // every caller that predates the light day keeps its exact behaviour.
-  setAside: ReadonlySet<string> = NO_IDS,
-): Habit[] {
-  return habits.filter(
-    (h) => h.status === 'active'
-      // R01.05 — a dated break wins over the ambiguous-schedule fail-open.
-      && !isPausedOn(h, date)
-      && (isEligibleOn(h, date) || isScheduleAmbiguous(h))
-      && !(periodLogs && isPeriodDoneBefore(h, date, periodLogs))
-      && !setAside.has(h.id),
-  );
-}
-
-/** R01.05 — the active habits on a dated break (own pause or holiday) today. */
-export function selectOnBreakHabits(habits: Habit[], date: Date): Habit[] {
-  return habits.filter((h) => h.status === 'active' && isPausedOn(h, date));
-}
-
-const NO_IDS: ReadonlySet<string> = new Set<string>();
-
-/**
- * R03.02 — "Bugün daha az yapabilirim": the ids whose TODAY log is `skip`.
- *
- * The light day is built on the existing `skip` state rather than a new
- * concept, because `skip` already means exactly what the light day promises
- * everywhere it is read (habitSchedule "skip cezasız (§8.5)"): excluded from
- * both sides of every rate, transparent to the streak (neither counts nor
- * breaks it), and worth 0 XP (`xpFor`). It is per DAY, so no goal changes --
- * the guide's rule that a light day must not permanently alter targets holds
- * by construction.
- */
-export function setAsideIds(habits: Habit[], todayStateOf: (habitId: string) => string | undefined): Set<string> {
-  return new Set(habits.filter((h) => todayStateOf(h.id) === 'skip').map((h) => h.id));
-}
-
-/**
- * R03.02 — the habits set aside today, among those that would otherwise be
- * today's work. A habit whose period is already met stays in the period-done
- * group instead: setting it aside would mean nothing.
- */
-export function selectSetAsideHabits(
-  habits: Habit[],
-  date: Date,
-  periodLogs: readonly ReviewLogRow[] | null,
-  setAside: ReadonlySet<string>,
-): Habit[] {
-  return selectTodayHabits(habits, date, periodLogs).filter((h) => setAside.has(h.id));
-}
-
-/** "bu hafta tamam" / "bu ay tamam" — the period the habit is counted in. */
-export function periodDoneLabel(habit: Habit): string {
-  return scheduleKind(habit).kind === 'monthly_count' ? 'bu ay tamam' : 'bu hafta tamam';
-}
-
-/** R01.06-b — the habits that stepped aside because their period is already met. */
-export function selectPeriodDoneHabits(habits: Habit[], date: Date, periodLogs: readonly ReviewLogRow[] | null): Habit[] {
-  if (!periodLogs) return [];
-  return habits.filter(
-    (h) => h.status === 'active' && isEligibleOn(h, date) && isPeriodDoneBefore(h, date, periodLogs),
-  );
-}
-
-/**
- * The window that covers the current week AND month: a week can start in the
- * previous month (Mon 28 Sep .. Sun 4 Oct), so the month alone would miss its
- * first days.
- */
-export function periodWindowStart(date: Date): string {
-  const week = startOfWeekLocal(date);
-  const month = new Date(date.getFullYear(), date.getMonth(), 1);
-  return ymd(week < month ? week : month);
-}
-
-export type TodayHabitSummary = { total: number; completed: number; remaining: number; pct: number };
-
-/**
- * Yüzde ve "N adım kaldı" TEK paydadan gelir (`total` = Bugün'ün listesi);
- * ayrı ayrı hesaplanırsa biri takvimi sorar, öteki sormaz ve birbirini yalanlar.
- * `total === 0` iken yüzde 0'dır — sıfıra bölme yok.
- *
- * Pay, paydanın içinden sayılır: `completedHabits`'te olup Bugün'ün listesinde
- * olmayan bir alışkanlık (ör. Salı başka ekrandan loglanmış bir Pzt/Çar/Cum)
- * yüzdeyi 100'ün üstüne ya da "kalan"ı eksiye itemez.
- */
-export function summarizeTodayHabits(todayHabits: Habit[], completedHabits: Habit[]): TodayHabitSummary {
-  const total = todayHabits.length;
-  const doneIds = new Set(completedHabits.map((h) => h.id));
-  const completed = todayHabits.filter((h) => doneIds.has(h.id)).length;
-  return { total, completed, remaining: total - completed, pct: total > 0 ? completed / total : 0 };
-}
-
-/**
- * Metrik kartı ve halka kartının alt metni.
- *
- * `activeCount` (toplam aktif) burada GERÇEKTEN kastedilen sayıdır: "hiç
- * ritüelin yok, oluştur" ile "ritüellerin var ama bugün planlı değil" farklı
- * cümlelerdir. İkincisinde kullanıcıya oluşturma önermek yanlış olur.
- */
-export function todayHabitCopy(summary: TodayHabitSummary, activeCount: number): { metricSub: string; ringSub: string } {
-  if (activeCount === 0) return { metricSub: 'ilk ritüelini oluştur', ringSub: 'Henüz aktif bir ritüel yok' };
-  if (summary.total === 0) return { metricSub: 'bugün planlı ritüel yok', ringSub: 'Bugün planlı ritüel yok' };
-  if (summary.remaining === 0) return { metricSub: 'günlük seri tamam', ringSub: 'Günlük seri tamamlandı' };
-  return {
-    metricSub: `${summary.remaining} adım kaldı`,
-    ringSub: `${summary.completed}/${summary.total} tamamlandı`,
-  };
-}
-
-// ISO hafta numarası (1–53)
-function isoWeek(d: Date): number {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  return Math.ceil((((date as any) - (yearStart as any)) / 86400000 + 1) / 7);
-}
-
-const DAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
-const MONTHS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-
-const PRIORITY_COLOR: Record<string, string> = {
-  high: colors.error, medium: colors.warning, low: colors.success, none: colors.textGhost,
+const MORE_MENU_DESTINATIONS: Readonly<Record<string, DestinationId>> = {
+  focus: 'focus',
+  weekly: 'weekly-review',
+  recovery: 'recovery',
+  projects: 'projects',
+  notes: 'notes',
 };
 
 export default function TodayScreen() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const c = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const priorityColor = (p: string): string => c[PRIORITY_TONE[p] ?? 'textGhost'];
+  const { width, height: windowHeight } = useWindowDimensions();
   const pagePadding = width < 480 ? space.md : width < 900 ? space.lg : space.xl;
   const isWide = width >= 1180;
-  const today = todayLocal();
+  const clock = useTodayClock();
+  const today = clock.today;
   const scrollY = useRef(new Animated.Value(0)).current;
-  const now = new Date();
 
-  const { habits, fetchHabits, pauses, timeOffAvailable, addTimeOff, endTimeOff, checklistItems } = useHabitStore();
+  const { fetchHabits, timeOffAvailable, addTimeOff, endTimeOff, checklistItems } = useHabitStore(
+    useShallow((st) => ({
+      fetchHabits: st.fetchHabits,
+      timeOffAvailable: st.timeOffAvailable,
+      addTimeOff: st.addTimeOff,
+      endTimeOff: st.endTimeOff,
+      checklistItems: st.checklistItems,
+    })),
+  );
   const [checklistFor, setChecklistFor] = useState<Habit | null>(null);
   const runnerSession = useRoutineRunnerStore((st) => st.session);
-  // §18: `pendingSyncCount` / `deadSyncCount` burada okunuyor çünkü alışkanlık
-  // tamamlama bu ekranda oluyor (`onHabitTap` -> `logHabit`). Dokunuşun
-  // yapıldığı yerde durumu göstermek, kullanıcının "kaydedildi mi?" sorusunu
-  // sorduğu tek yer.
-  const { fetchLogsForDate, getLogForHabit, logHabit, pendingSyncCount, deadSyncCount } = useLogStore();
-  const { tasks, fetchTasks, toggleDone, dueToday, overdue, addTask, sync: taskSync } = useTaskStore();
+  const runnerActiveTemplateId = useRoutineRunnerStore((st) => st.activeTemplateId);
+  const runnerUserTemplates = useRoutineRunnerStore((st) => st.templates);
+  const suggestedRoutineName = useMemo(() => {
+    if (runnerSession && runnerSession.status !== 'finished') return null;
+    const templates = [...BUILT_IN_TEMPLATES, ...runnerUserTemplates];
+    const sug = suggestTemplate(templates, clock.hour, runnerActiveTemplateId);
+    if (!sug) return null;
+    return templates.find((tpl) => tpl.id === sug.templateId)?.name ?? null;
+  }, [runnerSession, runnerUserTemplates, clock.hour, runnerActiveTemplateId]);
+
+  const { fetchLogsForDate, getLogForHabit, logHabit, pendingSyncCount, deadSyncCount } = useLogStore(
+    useShallow((st) => ({
+      fetchLogsForDate: st.fetchLogsForDate,
+      getLogForHabit: st.getLogForHabit,
+      logHabit: st.logHabit,
+      pendingSyncCount: st.pendingSyncCount,
+      deadSyncCount: st.deadSyncCount,
+    })),
+  );
+  const { fetchTasks, toggleDone, addTask, sync: taskSync } = useTaskStore(
+    useShallow((st) => ({
+      fetchTasks: st.fetchTasks,
+      toggleDone: st.toggleDone,
+      addTask: st.addTask,
+      sync: st.sync,
+    })),
+  );
   const coreSync = useCoreOutboxSync();
-  const { state: wp, fetchToday } = useWillpowerStore();
-  const { sessionsCompleted, status: focusStatus, smallStep: focusSmallStep, focusTasks, selectedTaskId } = useFocusStore();
-  const { plans: recoveryPlans, fetchPlans } = useRecoveryStore();
+  const rawProjects = useProjectStore((st) => st.projects);
+  const quickProjects = useMemo(
+    () =>
+      rawProjects
+        .filter((p) => !p.status || p.status === 'active')
+        .map((p) => ({ id: p.id, name: p.name })),
+    [rawProjects],
+  );
+  const wp = useWillpowerStore((st) => st.state);
+  const fetchToday = useWillpowerStore((st) => st.fetchToday);
+  const { recoveryPlans, fetchPlans } = useRecoveryStore(
+    useShallow((st) => ({ recoveryPlans: st.plans, fetchPlans: st.fetchPlans })),
+  );
+
+  const { stage, choices, legacyNoticeSeen, dismissLegacyNotice } = useDisclosureStore(
+    useShallow((st) => ({
+      stage: st.stage,
+      choices: st.choices,
+      legacyNoticeSeen: st.legacyNoticeSeen,
+      dismissLegacyNotice: st.dismissLegacyNotice,
+    })),
+  );
 
   const [refreshing, setRefreshing] = useState(false);
-  // R01.06-b — null until loaded, and on failure: see `selectTodayHabits`.
   const [periodLogs, setPeriodLogs] = useState<ReviewLogRow[] | null>(null);
-  // R03.02 — the light-day sheet: which of today's open habits the user is setting aside.
   const [lightDayPick, setLightDayPick] = useState<Set<string> | null>(null);
+  const [lightDayNote, setLightDayNote] = useState('');
+  const [lightDayHintVisible, setLightDayHintVisible] = useState(false);
   const [smallStartFor, setSmallStartFor] = useState<SmallStepParent | null>(null);
   const [lightDaySaving, setLightDaySaving] = useState(false);
-
-  // Segmented control state for quick focus
-  const [activeSegment, setActiveSegment] = useState<'all' | 'habits' | 'tasks' | 'balance'>('all');
-  const [showPeriodDone, setShowPeriodDone] = useState(true);
-  const [showOnBreak, setShowOnBreak] = useState(true);
-  const [showSetAside, setShowSetAside] = useState(true);
-  const [lowEnergyFilter, setLowEnergyFilter] = useState(false);
-  const [shutdownOpen, setShutdownOpen] = useState(false);
-
-  // Toplam aktif — YALNIZ "hiç ritüel yok" boş-durumunu ayırt etmek için
-  // (`todayHabitCopy`). Hiçbir gün-yüzeyinde payda değildir.
-  const activeHabits = habits.filter((h) => h.status === 'active');
-  // Günün yüzeyleri (liste, sayaç, yüzde, kalan, anlatı) bunu kullanır.
-  const todayDate = parseLocalDate(today) ?? now;
-  // R03.02 — today's `skip` logs are the light day; read from the same store as the list.
-  const lightDayIds = setAsideIds(habits, (id) => getLogForHabit(id)?.state);
-  const todayHabits = selectTodayHabits(habits, todayDate, periodLogs, lightDayIds);
-  const setAsideHabits = selectSetAsideHabits(habits, todayDate, periodLogs, lightDayIds);
-  const periodDoneHabits = selectPeriodDoneHabits(habits, todayDate, periodLogs);
-  // R01.05
-  const onBreakHabits = selectOnBreakHabits(habits, todayDate);
-  const holiday = activePauseOn({ pause_intervals: pauses.filter((p) => p.habit_id === null) }, todayDate);
   const [holidayOpen, setHolidayOpen] = useState(false);
-  const completedHabits = todayHabits.filter((h) => {
-    const log = getLogForHabit(h.id);
-    return log?.state === 'done' || log?.state === 'partial';
-  });
-  const habitSummary = summarizeTodayHabits(todayHabits, completedHabits);
-  const habitCopy = todayHabitCopy(habitSummary, activeHabits.length);
 
-  const todayTasks = dueToday();
-  const overdueList = overdue();
-  const pendingTasks = tasks.filter((t) => !t.completed && t.status === 'pending').slice(0, 5);
+  const [activeSegment, setActiveSegment] = useState<'all' | 'habits' | 'tasks' | 'balance'>('all');
+  const lowEnergyFilter = useLowEnergyStore((st) => isLowEnergyOn(st, clock.today));
+  const setLowEnergy = useLowEnergyStore((st) => st.set);
+  const moodCheckins = useMoodStore((st) => st.checkins);
+  const energySuggested = useMemo(
+    () => lowEnergySuggested(moodCheckins, today),
+    [moodCheckins, today],
+  );
+  const caps = useTimeCapsules();
+  const [capsuleMoment, setCapsuleMoment] = useState(false);
+  const [shutdownOpen, setShutdownOpen] = useState(false);
+  const closeFlow = useDayClose(shutdownOpen);
+  const lightDayFromCloseRef = useRef(false);
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<PartGroupKey>>(EMPTY_GROUPS);
+  const lightDayOpen = lightDayPick !== null;
+
+  useEffect(() => {
+    void useMoodStore.getState().hydrate();
+  }, [clock.today]);
+
+  useEffect(() => {
+    setExpandedGroups(EMPTY_GROUPS);
+    setCapsuleMoment(false);
+  }, [clock.today]);
+
+  useEffect(() => {
+    if (!lightDayOpen) return;
+    let alive = true;
+    void currentUser().then(async (u) => {
+      if (!u || !alive) return;
+      const seen = await readNoteHintSeen(u.id);
+      if (!seen && alive) {
+        setLightDayHintVisible(true);
+        await markNoteHintSeen(u.id);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [lightDayOpen]);
+
+  useEffect(() => {
+    void currentUser().then((u) => {
+      if (u) void useDisclosureStore.getState().hydrate(u, clock.today);
+    });
+  }, [clock.today]);
+
+  useEffect(() => {
+    useDisclosureStore.getState().recordActiveDay(clock.today);
+  }, [clock.today]);
+
+  const routineActive = Boolean(runnerSession && runnerSession.status !== 'finished');
+  const sparkEnabled = isToolVisible('spark', stage, choices.spark, {
+    itemCount: 0,
+    routineActive,
+  });
+
+  const model = useTodayModel({
+    clock,
+    periodLogs,
+    lowEnergy: lowEnergyFilter,
+    expandedGroups,
+    sparkEnabled,
+  });
+
+  const {
+    todayDate,
+    habits,
+    todayHabits,
+    completedHabits,
+    setAsideHabits,
+    periodDoneHabits,
+    onBreakHabits,
+    lightDayCandidates,
+    holiday,
+    afterBreak,
+    habitSummary,
+    habitCopy,
+    groups,
+    todayTasks,
+    overdueList,
+    pendingTasks,
+    nextUpItems,
+    nowAction,
+    primary,
+    summaryLine,
+    dailySpark,
+    plannedRecovery,
+    sessionsCompleted,
+    stateOf,
+  } = model;
+
+  const toolCtx = useMemo(
+    () => ({
+      itemCount: todayHabits.length + todayTasks.length + overdueList.length,
+      routineActive,
+    }),
+    [todayHabits.length, todayTasks.length, overdueList.length, routineActive],
+  );
+
+  const showSpark = isToolVisible('spark', stage, choices.spark, toolCtx);
+  const showMetrics = isToolVisible('metrics', stage, choices.metrics, toolCtx);
+  const showSegments = isToolVisible('segments', stage, choices.segments, toolCtx);
+  const showBalance = isToolVisible('balance', stage, choices.balance, toolCtx);
+  const showRoutine = isToolVisible('routine', stage, choices.routine, toolCtx);
+  const showStrategy = isToolVisible('strategy', stage, choices.strategy, toolCtx);
+
+  useEffect(() => {
+    if (!showSegments && activeSegment !== 'all') {
+      setActiveSegment('all');
+    } else if (activeSegment === 'balance' && !showBalance && !showRoutine && !showStrategy) {
+      setActiveSegment('all');
+    }
+  }, [showSegments, showBalance, showRoutine, showStrategy, activeSegment]);
+
+  const effectiveSegment = showSegments ? activeSegment : 'all';
 
   const loadPeriodLogs = useCallback(async () => {
-    const res = await logsForPeriod({ start: periodWindowStart(parseLocalDate(today) ?? new Date()), end: today });
+    const res = await logsForPeriod({ start: periodWindowStart(todayDate), end: today });
     setPeriodLogs(res.ok ? res.data : null);
-  }, [today]);
+  }, [today, todayDate]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { force?: boolean }) => {
     const boot = await bootstrapTodayScreen(today);
     if (boot.ok) {
       setPeriodLogs(boot.periodLogs);
       return;
     }
-    await Promise.all([fetchHabits(), fetchLogsForDate(today), fetchTasks(), fetchToday(), fetchPlans(), loadPeriodLogs()]);
+    await Promise.all([fetchHabits(opts), fetchLogsForDate(today), fetchTasks(), fetchToday(), fetchPlans(), loadPeriodLogs()]);
   }, [fetchHabits, fetchLogsForDate, fetchPlans, fetchTasks, fetchToday, loadPeriodLogs, today]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function onRefresh() {
     setRefreshing(true);
-    await load();
+    await load({ force: true });
     setRefreshing(false);
   }
 
   const habitPct = habitSummary.pct;
   const remainingHabits = habitSummary.remaining;
-  const plannedRecovery = recoveryPlans.filter((p) => p.status === 'planned').length;
-  // R03.07 — a holiday, or a break of a habit still on today's list, that just ended.
-  const afterBreak = recentlyEndedBreak(
-    pauses.filter((p) => p.habit_id === null || todayHabits.some((h) => h.id === p.habit_id)), today,
+
+  const onHabitTap = useCallback(
+    async function onHabitTap(h: typeof habits[number]) {
+      if (itemsOn(checklistItems, h.id, today).length > 0) {
+        setChecklistFor(h);
+        return;
+      }
+      if (isMeasurableTracking(h.tracking_type)) {
+        router.push('/tabs/timeline' as any);
+        return;
+      }
+      const log = getLogForHabit(h.id);
+      const done = log?.state === 'done' || log?.state === 'partial';
+      haptic.success();
+      const res = await logHabit({ habitId: h.id, date: new Date(), state: done ? 'miss' : 'done' });
+      if (!res.ok) void notify(t('today.saveFailed'), res.error);
+    },
+    [checklistItems, getLogForHabit, logHabit, router, today],
   );
 
-  // R03.01 — the ONE next step (lib/todayNext): an open focus session or
-  // routine first, then today's make-up, overdue work, today's habits and tasks.
-  const nowAction: NextAction | null = nextActionable({
-    focus: { status: focusStatus, title: focusSmallStep?.title ?? focusTasks.find((t) => t.id === selectedTaskId)?.title ?? null },
-    routine: runnerSession ? { status: runnerSession.status, templateName: runnerSession.templateName, done: Object.keys(runnerSession.results).length, total: runnerSession.steps.length } : null,
-    recoveryToday: recoveryPlans
-      .filter((p) => p.status === 'planned' && p.target_date === today)
-      .map((p) => ({ id: p.id, habitName: habits.find((h) => h.id === p.habit_id)?.name ?? 'Telafi' })),
-    overdueTasks: overdueList.map((t) => ({ id: t.id, title: t.title })),
-    habitsToDo: todayHabits.filter((h) => !completedHabits.some((c) => c.id === h.id)).map((h) => ({ id: h.id, name: h.name })),
-    tasksToday: todayTasks.filter((t) => !t.completed).map((t) => ({ id: t.id, title: t.title })),
-  });
-  const primary = primaryAction(nowAction);
-  const summaryLine = todaySummaryLine({
-    used: wp?.used ?? null, budget: wp?.daily_budget ?? null,
-    habitsLeft: remainingHabits, tasksLeft: overdueList.length + todayTasks.filter((t) => !t.completed).length,
-  });
-  const dailySpark = pickDailySparkItem({
-    hour: now.getHours(),
-    overdueCount: overdueList.length,
-    lowEnergy: lowEnergyFilter,
-    activeHabitCount: habits.filter((h) => h.status === 'active').length,
-    focusSessionsToday: sessionsCompleted,
-  });
-  // R06.02 — the secondary jobs, one tap away instead of on the hero.
-  function openMoreMenu() {
-    Alert.alert('Diğer', undefined, [
-      ...(nowAction?.kind !== 'focus' ? [{ text: 'Odağa geç', onPress: () => router.push('/tabs/focus' as any) }] : []),
-      { text: 'Haftayı değerlendir', onPress: () => router.push('/screens/weekly-review' as any) },
-      { text: 'Denge planı', onPress: () => router.push('/screens/recovery' as any) },
-      { text: 'Projeler', onPress: () => router.push('/screens/projects' as any) },
-      { text: 'Notlar', onPress: () => router.push('/screens/notes' as any) },
-      { text: 'Vazgeç', style: 'cancel' },
-    ]);
-  }
-  function openNowAction(a: NextAction) {
-    if (a.kind === 'focus') router.push('/tabs/focus' as any);
-    else if (a.kind === 'routine') router.push('/screens/routine-runner' as any);
-    else if (a.kind === 'recovery') router.push('/screens/recovery' as any);
-    else if (a.kind === 'task') router.push('/tabs/tasks' as any);
-    else { const h = habits.find((x) => x.id === a.id); if (h) void onHabitTap(h); }
-  }
+  const openMoreMenu = useCallback(async () => {
+    const options: DialogOption[] = [
+      ...(nowAction?.kind !== 'focus' ? [{ id: 'focus', label: t('today.more.focus'), icon: 'timer-outline' }] : []),
+      { id: 'shutdown', label: t('today.more.dayClose'), icon: 'moon-outline' },
+      { id: 'weekly', label: t('today.more.weeklyReview'), icon: 'calendar-outline' },
+      { id: 'recovery', label: t('today.more.recovery'), icon: 'leaf-outline' },
+      { id: 'projects', label: t('today.more.projects'), icon: 'folder-outline' },
+      { id: 'notes', label: t('today.more.notes'), icon: 'document-text-outline' },
+    ];
+    const picked = await actionSheet({ title: t('today.more.title'), options });
+    if (picked === 'shutdown') {
+      setShutdownOpen(true);
+      return;
+    }
+    const destId = picked !== null ? MORE_MENU_DESTINATIONS[picked] : undefined;
+    if (destId) {
+      navigateTo(router, destId);
+    }
+  }, [nowAction?.kind, router]);
 
-  const eyebrow = `${DAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]} · ${isoWeek(now)}. hafta`;
+  const openNowAction = useCallback(
+    (a: NextAction) => {
+      if (a.kind === 'focus') router.push('/tabs/focus' as any);
+      else if (a.kind === 'routine') router.push('/screens/routine-runner' as any);
+      else if (a.kind === 'recovery') navigateTo(router, 'recovery');
+      else if (a.kind === 'task') router.push('/tabs/tasks' as any);
+      else {
+        const h = habits.find((x) => x.id === a.id);
+        if (h) void onHabitTap(h);
+      }
+    },
+    [habits, onHabitTap, router],
+  );
 
-  const narrative = buildTodayNarrative({
-    hour: now.getHours(),
-    overdueCount: overdueList.length,
-    todayTaskCount: todayTasks.length,
+  const eyebrow = useMemo(
+    () =>
+      t('today.hero.eyebrow', {
+        weekday: fmt.date(todayDate, 'weekdayShort'),
+        day: todayDate.getDate(),
+        month: fmt.date(todayDate, 'monthLong'),
+        week: isoWeekNumber(todayDate),
+      }),
+    [todayDate],
+  );
+
+  const narrative = useMemo(
+    () =>
+      buildTodayNarrative({
+        hour: clock.hour,
+        overdueCount: overdueList.length,
+        todayTaskCount: todayTasks.length,
+        remainingHabits,
+        totalHabits: habitSummary.total,
+        focusSessions: sessionsCompleted,
+      }),
+    [clock.hour, overdueList.length, todayTasks.length, remainingHabits, habitSummary.total, sessionsCompleted],
+  );
+
+  const heroCtas = useMemo(
+    () => [
+      {
+        label: primary.label,
+        icon: (primary.verb === 'Devam et' ? 'play-forward' : 'play') as 'play-forward' | 'play',
+        variant: 'primary' as const,
+        onPress: () => (nowAction ? openNowAction(nowAction) : router.push('/tabs/focus' as any)),
+      },
+      {
+        label: t('today.more.title'),
+        icon: 'ellipsis-horizontal' as const,
+        variant: 'ghost' as const,
+        onPress: openMoreMenu,
+      },
+    ],
+    [nowAction, openMoreMenu, openNowAction, primary.label, primary.verb, router],
+  );
+
+  const metrics = useMemo<Metric[] | null>(() => {
+    if (!showMetrics) return null;
+    return [
+      {
+        eyebrow: t('today.metrics.tasks.eyebrow'),
+        value: String(todayTasks.length + overdueList.length),
+        sub:
+          overdueList.length > 0
+            ? t('today.metrics.tasks.subOverdue', { overdue: overdueList.length, today: todayTasks.length })
+            : t('today.metrics.tasks.subToday', { count: todayTasks.length }),
+        tone: 'mute',
+        onPress: () => router.push('/tabs/tasks' as any),
+      },
+      {
+        eyebrow: t('today.metrics.focus.eyebrow'),
+        value: sessionsCompleted > 0 ? String(sessionsCompleted) : '—',
+        sub: sessionsCompleted > 0 ? t('today.metrics.focus.subDone') : t('today.metrics.focus.subIdle'),
+        tone: sessionsCompleted > 0 ? 'accent' : 'mute',
+        onPress: () => router.push('/tabs/focus' as any),
+      },
+      {
+        eyebrow: t('today.metrics.habits.eyebrow'),
+        value: `${Math.round(habitPct * 100)}%`,
+        sub: habitCopy.metricSub,
+        tone: habitSummary.total > 0 && remainingHabits === 0 ? 'ok' : 'mute',
+        onPress: () => router.push('/tabs/timeline' as any),
+      },
+      {
+        eyebrow: t('today.metrics.recovery.eyebrow'),
+        value: plannedRecovery > 0 ? String(plannedRecovery) : '—',
+        sub: plannedRecovery > 0 ? t('today.metrics.recovery.subPlanned') : t('today.metrics.recovery.subCalm'),
+        tone: plannedRecovery > 0 ? 'warn' : 'mute',
+        onPress: () => navigateTo(router, 'recovery'),
+      },
+    ];
+  }, [
+    showMetrics,
+    todayTasks.length,
+    overdueList.length,
+    sessionsCompleted,
+    habitPct,
+    habitCopy.metricSub,
+    habitSummary.total,
     remainingHabits,
-    totalHabits: habitSummary.total,
-    focusSessions: sessionsCompleted,
-  });
+    plannedRecovery,
+    router,
+  ]);
 
-  const metrics: Metric[] = [
-    {
-      eyebrow: 'Açık görev',
-      value: String(todayTasks.length + overdueList.length),
-      sub: overdueList.length > 0 ? `${overdueList.length} gecikmiş · ${todayTasks.length} bugün` : `${todayTasks.length} görev bugün`,
-      tone: overdueList.length > 0 ? 'bad' : 'mute',
-      onPress: () => router.push('/tabs/tasks' as any),
-    },
-    {
-      eyebrow: 'Odak · bugün',
-      value: sessionsCompleted > 0 ? String(sessionsCompleted) : '—',
-      sub: sessionsCompleted > 0 ? 'odak seansı tamamlandı' : 'ilk seansını başlat',
-      tone: sessionsCompleted > 0 ? 'accent' : 'mute',
-      onPress: () => router.push('/tabs/focus' as any),
-    },
-    {
-      eyebrow: 'Alışkanlık',
-      value: `${Math.round(habitPct * 100)}%`,
-      sub: habitCopy.metricSub,
-      tone: habitSummary.total > 0 && remainingHabits === 0 ? 'ok' : 'mute',
-      onPress: () => router.push('/tabs/timeline' as any),
-    },
-    {
-      eyebrow: 'Telafi',
-      value: plannedRecovery > 0 ? String(plannedRecovery) : '—',
-      sub: plannedRecovery > 0 ? 'planlı telafi var' : 'denge korunuyor',
-      tone: plannedRecovery > 0 ? 'warn' : 'mute',
-      onPress: () => router.push('/screens/recovery' as any),
-    },
-  ];
+  const handleNextUpPress = useCallback(() => {
+    router.push('/tabs/tasks' as any);
+  }, [router]);
 
-  // "Sırada" şeridi — gecikmiş → bugün → en yakın son-tarihli görevler
-  const upcoming = tasks
-    .filter((t) => !t.completed && t.status !== 'cancelled' && t.due_date && t.due_date > today)
-    .sort((a, b) => (a.due_date! < b.due_date! ? -1 : 1));
+  const blockTasks = useMemo(() => todayTasks.filter((task) => !!task.time_block_start), [todayTasks]);
 
-  const dueLabel = (iso: string): string => {
-    const d = new Date(iso + 'T00:00:00');
-    const diff = Math.round((d.getTime() - new Date(today + 'T00:00:00').getTime()) / 86400000);
-    if (diff <= 0) return diff < 0 ? 'gecikmiş' : 'bugün';
-    if (diff < 7) return DAYS[d.getDay()];
-    return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`;
-  };
+  const handleToggleGroup = useCallback((key: PartGroupKey) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
-  const nextUpItems: NextUpItem[] = [
-    ...overdueList.map((t) => ({ id: t.id, title: t.title, dueLabel: 'gecikmiş', dotColor: PRIORITY_COLOR[t.priority], overdue: true })),
-    ...todayTasks.map((t) => ({ id: t.id, title: t.title, dueLabel: 'bugün', dotColor: PRIORITY_COLOR[t.priority] })),
-    ...upcoming.map((t) => ({ id: t.id, title: t.title, dueLabel: dueLabel(t.due_date!), dotColor: PRIORITY_COLOR[t.priority] })),
-  ].slice(0, 8);
-
-  // Binary alışkanlık → yerinde tamamla; numerik → timeline'a yönlen.
-  async function onHabitTap(h: typeof habits[number]) {
-    if (itemsOn(checklistItems, h.id, today).length > 0) {
-      setChecklistFor(h);
-      return;
-    }
-    if (isMeasurableTracking(h.tracking_type)) {
-      router.push('/tabs/timeline' as any);
-      return;
-    }
-    const log = getLogForHabit(h.id);
-    const done = log?.state === 'done' || log?.state === 'partial';
-    haptic.success();
-    const res = await logHabit({ habitId: h.id, date: new Date(), state: done ? 'miss' : 'done' });
-    if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
-  }
-
-  // R03.02 — what can be set aside: today's work that is not done yet.
-  const lightDayCandidates = todayHabits.filter((h) => !completedHabits.some((c) => c.id === h.id));
+  const handleEndHoliday = useCallback(async () => {
+    if (!holiday) return;
+    const res = await endTimeOff(holiday.id);
+    if (!res.ok) void notify(t('today.saveFailed'), res.error);
+  }, [endTimeOff, holiday]);
 
   function toggleLightDay(id: string) {
     setLightDayPick((cur) => {
       const next = new Set(cur ?? []);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
 
-  /**
-   * R03.02 — writes a `skip` for TODAY for each chosen habit, and nothing else.
-   * Explicit choice only: nothing is set aside on the user's behalf, and no
-   * target, schedule or future day is touched. A failed write is reported by
-   * name and the sheet stays open with what failed still selected.
-   */
+  function closeLightDaySheet() {
+    setLightDayPick(null);
+    setLightDayNote('');
+    if (lightDayFromCloseRef.current) {
+      lightDayFromCloseRef.current = false;
+      setShutdownOpen(true);
+    }
+  }
+
   async function confirmLightDay() {
     if (!lightDayPick || lightDayPick.size === 0) return;
     setLightDaySaving(true);
+    const normalizedNote = normalizeNote(lightDayNote) ?? undefined;
     const failed: string[] = [];
     for (const id of lightDayPick) {
-      const res = await logHabit({ habitId: id, date: new Date(), state: 'skip' });
+      const res = await logHabit({ habitId: id, date: new Date(), state: 'skip', note: normalizedNote });
       if (!res.ok) failed.push(id);
     }
     setLightDaySaving(false);
     if (failed.length > 0) {
       const names = habits.filter((h) => failed.includes(h.id)).map((h) => h.name).join(', ');
-      Alert.alert('Bir kısmı kaydedilemedi', names);
+      void notify(t('today.lightDay.partialSaveFailed'), names);
       setLightDayPick(new Set(failed));
       return;
     }
     haptic.success();
-    setLightDayPick(null);
+    setCapsuleMoment(true);
+    closeLightDaySheet();
   }
+
+  const closeRows = useMemo(
+    () =>
+      closeFlow.rows.map((r) => ({
+        id: r.task.id,
+        title: r.task.title,
+        priority: r.task.priority,
+        decision: r.decision,
+      })),
+    [closeFlow.rows],
+  );
+
+  async function onFinishClose() {
+    haptic.success();
+    useDisclosureStore.getState().markFirstClose(clock.today);
+    setShutdownOpen(false);
+    await closeFlow.finish(setAsideHabits.length);
+    if (typeof syncAllReminders === 'function') {
+      void syncAllReminders([]);
+    }
+  }
+
+  const eligibleCapsuleItem = caps.eligible;
+  const hasContext = Boolean(
+    !legacyNoticeSeen ||
+      afterBreak ||
+      holiday ||
+      setAsideHabits.length > 0 ||
+      (capsuleMoment && eligibleCapsuleItem),
+  );
+  const hasAnyShelfTool = showBalance || showRoutine || showStrategy;
+  const completeTaskA11y = (title: string) => t('today.tasks.complete.a11y', { title });
+  const smallStartTaskA11y = (title: string) => t('today.tasks.smallStart.a11y', { title });
+  const dueTodayLabel = t('today.tasks.dueToday');
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -505,8 +595,8 @@ export default function TodayScreen() {
         textureSource={TEXTURES.clay}
         scrim={0.62}
         scrollY={scrollY}
-        tintColor={colors.primary}
-        ambientMotion
+        tintColor={c.primary}
+        ambientMotion={!lowEnergyFilter}
       />
       <Animated.ScrollView
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: Platform.OS !== 'web' })}
@@ -514,257 +604,354 @@ export default function TodayScreen() {
         style={s.scroll}
         contentContainerStyle={[s.content, { paddingHorizontal: pagePadding }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.primary} />}
       >
         {/* Üst Başlık & Hızlı Erişim */}
         <View style={s.masthead}>
           <View>
-            <Text style={s.productLabel}>ADERYTH / GÜNLÜK PUSULA</Text>
-            <Text style={s.productHint}>Ritmini gör, sıradaki doğru adımı seç.</Text>
+            <Text style={s.productLabel}>{t('today.masthead.overline')}</Text>
+            <Text style={s.productHint}>{t('today.masthead.hint')}</Text>
           </View>
           <View style={s.mastheadActions}>
             <SyncStatusBadge pending={pendingSyncCount + taskSync.pending + coreSync.pending} dead={deadSyncCount + taskSync.dead + taskSync.conflict + coreSync.dead + coreSync.conflict} />
             <TouchableOpacity
-              onPress={() => router.push('/screens/journal' as any)}
+              onPress={() => navigateTo(router, 'journal')}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel="Günlüğü aç"
+              accessibilityLabel={t('today.masthead.journal.a11y')}
             >
-              <IconCircle icon="journal-outline" color={colors.accent} size={40} />
+              <IconCircle icon="journal-outline" color={c.accent} size={40} />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => router.push('/screens/profile' as any)}
+              onPress={() => navigateTo(router, 'profile')}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel="Profili aç"
+              accessibilityLabel={t('today.masthead.profile.a11y')}
             >
-              <IconCircle icon="person-outline" color={colors.textDim} size={40} />
+              <IconCircle icon="person-outline" color={c.textDim} size={40} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* 🔥 Inflow Odak Akışı — Açar Açmaz Yakalayan 60 Sn Kıvılcım */}
-        <TouchableOpacity
-          style={[
-            s.sparkCard,
-            { borderColor: hexA(dailySpark.item.accentColor, 0.42) },
-          ]}
-          activeOpacity={0.85}
-          onPress={() => {
-            haptic.select();
-            router.push(`/screens/focus-flow?item=${dailySpark.item.id}` as any);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Günün Odak Akışını İzle"
-        >
-          <View
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
-            {...(Platform.OS === 'web'
-              ? { 'aria-hidden': true }
-              : { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const })}
-          >
-            {process.env?.NODE_ENV !== 'test' ? (
-              <Image
-                source={BENTO_ART.sparkReels}
-                style={s.sparkArt}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-              />
-            ) : null}
-            <View style={s.sparkArtScrim} />
-          </View>
-          <View
+        {/* 🔥 Inflow Odak Akışı — Yalnız spark aracı açıkken görünür */}
+        {showSpark && dailySpark && (
+          <TouchableOpacity
             style={[
-              s.sparkPlayRing,
-              {
-                borderColor: dailySpark.item.accentColor,
-                backgroundColor: hexA(dailySpark.item.accentColor, 0.16),
-              },
+              s.sparkCard,
+              { borderColor: hexA(dailySpark.item.accentColor, 0.42) },
             ]}
+            activeOpacity={0.85}
+            onPress={() => {
+              haptic.select();
+              router.push(`/screens/focus-flow?item=${dailySpark.item.id}` as any);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={t('today.spark.watch.a11y')}
           >
-            <Ionicons name="play" size={18} color={dailySpark.item.accentColor} />
-          </View>
-          <View style={s.sparkTextCol}>
-            <Text
-              style={[s.sparkEyebrow, { color: dailySpark.item.accentColor }]}
-              numberOfLines={1}
+            <View
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+              {...(Platform.OS === 'web'
+                ? { 'aria-hidden': true }
+                : { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const })}
             >
-              🔥 ODAK AKIŞI · {dailySpark.reasonTag}
-            </Text>
-            <Text style={s.sparkTitle} numberOfLines={1}>
-              {dailySpark.item.hookTitle}
-            </Text>
-          </View>
-          <View
-            style={[
-              s.sparkWatchPill,
-              { backgroundColor: hexA(dailySpark.item.accentColor, 0.18) },
-            ]}
-          >
-            <Text style={[s.sparkWatchText, { color: dailySpark.item.accentColor }]}>
-              {dailySpark.item.durationSec} sn →
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Günün Odağı & Editöryel Hero */}
-        <TodayHero
-          eyebrow={eyebrow}
-          narrative={narrative}
-          ctas={[
-            {
-              label: primary.label, icon: primary.verb === 'Devam et' ? 'play-forward' : 'play', variant: 'primary',
-              onPress: () => (nowAction ? openNowAction(nowAction) : router.push('/tabs/focus' as any)),
-            },
-            { label: 'Diğer', icon: 'ellipsis-horizontal', variant: 'ghost', onPress: openMoreMenu },
-          ]}
-        />
-        <View style={s.summaryPillRow}>
-          <View style={s.summaryPill}>
-            <Ionicons name="sparkles" size={13} color={colors.accent} />
-            <Text style={s.breakNote} accessibilityLabel={`${primary.hint}. ${summaryLine}`}>
-              {primary.hint} · {summaryLine}
-            </Text>
-          </View>
-
-          <View style={s.calmModesRow}>
-            <TouchableOpacity
-              style={[s.calmModeChip, lowEnergyFilter && s.calmModeChipActive]}
-              onPress={() => { haptic.select(); setLowEnergyFilter((v) => !v); }}
-              accessibilityRole="button"
-              accessibilityLabel="Düşük enerji filtresi: yalnız hafif alışkanlıkları öne çıkar"
-            >
-              <Ionicons name="battery-half-outline" size={13} color={lowEnergyFilter ? colors.success : colors.textDim} />
-              <Text style={[s.calmModeChipText, lowEnergyFilter && { color: colors.success }]}>
-                Düşük Enerji Modu
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={s.calmModeChip}
-              onPress={() => { haptic.select(); setShutdownOpen(true); }}
-              accessibilityRole="button"
-              accessibilityLabel="Günü kapat: akşam kapanış ritüelini başlat"
-            >
-              <Ionicons name="moon-outline" size={13} color={colors.accent} />
-              <Text style={s.calmModeChipText}>
-                Günü Kapat
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* R03.07 — "mola sonrası dön": the first days after a dated break or holiday */}
-        {afterBreak && (
-          <Card padding="lg" accessibilityLabel={`${FLOW_COPY.afterBreakTitle}. ${FLOW_COPY.afterBreak}`}>
-            <SectionHeader title={FLOW_COPY.afterBreakTitle.toLocaleUpperCase('tr-TR')} variant="overline" />
-            <Text style={s.breakNote}>{FLOW_COPY.afterBreak}</Text>
-          </Card>
-        )}
-
-        {lowEnergyFilter && (
-          <BentoVisualCard
-            artSource={BENTO_ART.lowEnergyMoss}
-            bleedMode="right-vignette"
-            scrim={0.5}
-            accentColor={colors.success}
-            padding="md"
-            style={{ marginBottom: space.sm }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-              <Ionicons name="leaf" size={18} color={colors.success} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.lowEnergyTitle}>Yumuşak Ritim · Düşük Enerji Filtresi Açık</Text>
-                <Text style={s.breakNote}>Yalnızca hafif adımlar öne çıkarıldı; serilerin güvende.</Text>
-              </View>
+              {process.env?.NODE_ENV !== 'test' ? (
+                <Image
+                  source={BENTO_ART.sparkReels}
+                  style={s.sparkArt}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                />
+              ) : null}
+              <View style={s.sparkArtScrim} />
             </View>
-          </BentoVisualCard>
+            <View
+              style={[
+                s.sparkPlayRing,
+                {
+                  borderColor: dailySpark.item.accentColor,
+                  backgroundColor: hexA(dailySpark.item.accentColor, 0.16),
+                },
+              ]}
+            >
+              <Ionicons name="play" size={18} color={dailySpark.item.accentColor} />
+            </View>
+            <View style={s.sparkTextCol}>
+              <Text
+                style={[s.sparkEyebrow, { color: dailySpark.item.accentColor }]}
+                numberOfLines={1}
+              >
+                {t('today.spark.eyebrow', { reason: dailySpark.reasonTag })}
+              </Text>
+              <Text style={s.sparkTitle} numberOfLines={1}>
+                {dailySpark.item.hookTitle}
+              </Text>
+            </View>
+            <View
+              style={[
+                s.sparkWatchPill,
+                { backgroundColor: hexA(dailySpark.item.accentColor, 0.18) },
+              ]}
+            >
+              <Text style={[s.sparkWatchText, { color: dailySpark.item.accentColor }]}>
+                {t('today.spark.duration', { seconds: dailySpark.item.durationSec })}
+              </Text>
+            </View>
+          </TouchableOpacity>
         )}
 
-        {/* Sakin Metrik Kartları */}
-        <MetricGrid metrics={metrics} />
+        {/* Blok 1: Günün Odağı & Editöryel Hero + Sırada */}
+        <View testID="today-block-hero">
+          <TodayHero
+            eyebrow={eyebrow}
+            narrative={narrative}
+            ctas={heroCtas}
+          />
+          <DayCloseEcho />
+          <View style={s.summaryPillRow}>
+            <View style={s.summaryPill}>
+              <Ionicons name="sparkles" size={13} color={c.accent} />
+              <Text style={s.breakNote} accessibilityLabel={`${primary.hint}. ${summaryLine}`}>
+                {primary.hint} · {summaryLine}
+              </Text>
+            </View>
 
-        <ChapterDivider source={DECOR.dividerSundial} label="GÜNÜN ÇALIŞMA TEZGAHI" />
+            <View style={s.calmModesRow}>
+              <Chip
+                label={t('today.calm.lowEnergy')}
+                icon="battery-half-outline"
+                color={lowEnergyFilter ? c.success : c.textDim}
+                selected={lowEnergyFilter}
+                onPress={() => {
+                  haptic.select();
+                  setLowEnergy(!lowEnergyFilter, clock.today);
+                }}
+                accessibilityLabel={t('today.calm.lowEnergy.a11y')}
+                accessibilityHint={energySuggested && !lowEnergyFilter ? ENERGY_COPY.suggest : undefined}
+                style={[s.calmChip, energySuggested && !lowEnergyFilter && s.calmModeChipSuggested]}
+              />
 
-        {/* Akıllı Segment Filtresi (Hızlı Odaklanma) */}
-        <View style={s.segmentedRow}>
-          <TouchableOpacity
-            style={[s.segmentBtn, activeSegment === 'all' && s.segmentBtnActive]}
-            onPress={() => { haptic.select(); setActiveSegment('all'); }}
-            accessibilityRole="button"
-            accessibilityLabel="Tümünü göster"
-          >
-            <Ionicons name="layers-outline" size={14} color={activeSegment === 'all' ? colors.primary : colors.textDim} />
-            <Text style={[s.segmentText, activeSegment === 'all' && s.segmentTextActive]}>Tümü</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[s.segmentBtn, activeSegment === 'habits' && s.segmentBtnActive]}
-            onPress={() => { haptic.select(); setActiveSegment('habits'); }}
-            accessibilityRole="button"
-            accessibilityLabel="Sadece ritüelleri göster"
-          >
-            <Ionicons name="repeat-outline" size={14} color={activeSegment === 'habits' ? colors.primary : colors.textDim} />
-            <Text style={[s.segmentText, activeSegment === 'habits' && s.segmentTextActive]}>Ritüeller</Text>
-            {remainingHabits > 0 && (
-              <View style={s.badgePill}>
-                <Text style={s.badgeText}>{remainingHabits}</Text>
-              </View>
+              {clock.hour >= 17 && (
+                <Chip
+                  label={t('today.calm.dayClose')}
+                  icon="moon-outline"
+                  color={c.accent}
+                  onPress={() => {
+                    haptic.select();
+                    setShutdownOpen(true);
+                  }}
+                  accessibilityLabel={t('today.calm.dayClose.a11y')}
+                  style={s.calmChip}
+                />
+              )}
+            </View>
+            {energySuggested && !lowEnergyFilter && (
+              <Text style={s.breakNote}>{ENERGY_COPY.suggest}</Text>
             )}
-          </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={[s.segmentBtn, activeSegment === 'tasks' && s.segmentBtnActive]}
-            onPress={() => { haptic.select(); setActiveSegment('tasks'); }}
-            accessibilityRole="button"
-            accessibilityLabel="Sadece görevleri göster"
-          >
-            <Ionicons name="checkbox-outline" size={14} color={activeSegment === 'tasks' ? colors.primary : colors.textDim} />
-            <Text style={[s.segmentText, activeSegment === 'tasks' && s.segmentTextActive]}>Görevler</Text>
-            {pendingTasks.length > 0 && (
-              <View style={s.badgePill}>
-                <Text style={s.badgeText}>{pendingTasks.length}</Text>
+          {lowEnergyFilter && (
+            <BentoVisualCard
+              artSource={BENTO_ART.lowEnergyMoss}
+              bleedMode="right-vignette"
+              scrim={0.5}
+              accentColor={c.success}
+              padding="md"
+              style={{ marginBottom: space.sm }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                <Ionicons name="leaf" size={18} color={c.success} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.lowEnergyTitle}>{t('today.lowEnergy.title')}</Text>
+                  <Text style={s.breakNote}>{t('today.lowEnergy.body')}</Text>
+                </View>
               </View>
-            )}
-          </TouchableOpacity>
+            </BentoVisualCard>
+          )}
 
-          <TouchableOpacity
-            style={[s.segmentBtn, activeSegment === 'balance' && s.segmentBtnActive]}
-            onPress={() => { haptic.select(); setActiveSegment('balance'); }}
-            accessibilityRole="button"
-            accessibilityLabel="Denge ve rutini göster"
-          >
-            <Ionicons name="compass-outline" size={14} color={activeSegment === 'balance' ? colors.primary : colors.textDim} />
-            <Text style={[s.segmentText, activeSegment === 'balance' && s.segmentTextActive]}>Denge</Text>
-          </TouchableOpacity>
+          <NextUpStrip items={nextUpItems} blockTasks={blockTasks} onPress={handleNextUpPress} />
         </View>
 
-        {/* Ana İçerik Bloğu */}
+        {/* Bağlamsal 4. Blok — yalnız doluysa tek kapsayıcı */}
+        {hasContext && (
+          <View testID="today-block-context" style={s.contextBlock}>
+            {!legacyNoticeSeen && (
+              <Card padding="lg">
+                <Text style={s.breakNote}>{t('today.legacyNotice.body')}</Text>
+                <View style={s.legacyNoticeBtnWrap}>
+                  <Button
+                    label={t('today.legacyNotice.ok')}
+                    variant="ghost"
+                    size="sm"
+                    onPress={dismissLegacyNotice}
+                  />
+                </View>
+              </Card>
+            )}
+
+            {afterBreak && (
+              <Card padding="lg" accessibilityLabel={`${FLOW_COPY.afterBreakTitle}. ${FLOW_COPY.afterBreak}`}>
+                <SectionHeader title={fmt.upper(FLOW_COPY.afterBreakTitle)} variant="overline" />
+                <Text style={s.breakNote}>{FLOW_COPY.afterBreak}</Text>
+              </Card>
+            )}
+
+            {holiday && (
+              <HolidayCard endDate={holiday.end_date ?? null} onEnd={handleEndHoliday} />
+            )}
+
+            {setAsideHabits.length > 0 && (
+              <SetAsideCard habits={setAsideHabits} onHabitTap={onHabitTap} />
+            )}
+
+            {capsuleMoment && eligibleCapsuleItem && (
+              <TimeCapsuleCard
+                capsule={eligibleCapsuleItem}
+                onRead={() => {
+                  void caps.open(eligibleCapsuleItem.id);
+                  setCapsuleMoment(false);
+                }}
+                onLater={() => setCapsuleMoment(false)}
+              />
+            )}
+          </View>
+        )}
+
+        {/* Sakin Metrik Kartları — yalnız metrics aracı açıkken */}
+        {showMetrics && metrics && (
+          <>
+            <MetricGrid metrics={metrics} />
+            <ChapterDivider source={DECOR.dividerSundial} label={t('today.workbench.overline')} />
+          </>
+        )}
+
+        {/* Akıllı Segment Filtresi — yalnız segments aracı açıkken */}
+        {showSegments && (
+          <View style={s.segmentedRow}>
+            <TouchableOpacity
+              style={[s.segmentBtn, effectiveSegment === 'all' && s.segmentBtnActive]}
+              onPress={() => { haptic.select(); setActiveSegment('all'); }}
+              accessibilityRole="button"
+              accessibilityLabel={t('today.segments.all.a11y')}
+            >
+              <Ionicons name="layers-outline" size={14} color={effectiveSegment === 'all' ? c.primary : c.textDim} />
+              <Text style={[s.segmentText, effectiveSegment === 'all' && s.segmentTextActive]}>{t('today.segments.all')}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.segmentBtn, effectiveSegment === 'habits' && s.segmentBtnActive]}
+              onPress={() => { haptic.select(); setActiveSegment('habits'); }}
+              accessibilityRole="button"
+              accessibilityLabel={t('today.segments.habits.a11y')}
+            >
+              <Ionicons name="repeat-outline" size={14} color={effectiveSegment === 'habits' ? c.primary : c.textDim} />
+              <Text style={[s.segmentText, effectiveSegment === 'habits' && s.segmentTextActive]}>{t('today.segments.habits')}</Text>
+              {remainingHabits > 0 && (
+                <View style={s.badgePill}>
+                  <Text style={s.badgeText}>{remainingHabits}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.segmentBtn, effectiveSegment === 'tasks' && s.segmentBtnActive]}
+              onPress={() => { haptic.select(); setActiveSegment('tasks'); }}
+              accessibilityRole="button"
+              accessibilityLabel={t('today.segments.tasks.a11y')}
+            >
+              <Ionicons name="checkbox-outline" size={14} color={effectiveSegment === 'tasks' ? c.primary : c.textDim} />
+              <Text style={[s.segmentText, effectiveSegment === 'tasks' && s.segmentTextActive]}>{t('today.segments.tasks')}</Text>
+              {pendingTasks.length > 0 && (
+                <View style={s.badgePill}>
+                  <Text style={s.badgeText}>{pendingTasks.length}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {showBalance && (
+              <TouchableOpacity
+                style={[s.segmentBtn, effectiveSegment === 'balance' && s.segmentBtnActive]}
+                onPress={() => { haptic.select(); setActiveSegment('balance'); }}
+                accessibilityRole="button"
+                accessibilityLabel={t('today.segments.balance.a11y')}
+              >
+                <Ionicons name="compass-outline" size={14} color={effectiveSegment === 'balance' ? c.primary : c.textDim} />
+                <Text style={[s.segmentText, effectiveSegment === 'balance' && s.segmentTextActive]}>{t('today.segments.balance')}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Ana İçerik: DOM sırası önce Ritüeller (Blok 2), sonra Ekleyici & Masadakiler (Blok 3) */}
         <View style={[s.dashboardBody, isWide && s.dashboardBodyWide]}>
-          {/* Sol / Ana Kolon: Görevler */}
-          {(activeSegment === 'all' || activeSegment === 'tasks') && (
-            <View style={s.mainColumn}>
+          {(effectiveSegment === 'all' || effectiveSegment === 'habits') && (
+            <View
+              testID="today-block-habits"
+              style={[s.mainColumn, isWide && effectiveSegment === 'all' && s.mainColumn]}
+            >
+              <HabitSection
+                isWide={isWide}
+                lowEnergy={lowEnergyFilter}
+                showRing={showMetrics}
+                todayDate={todayDate}
+                todayHabits={todayHabits}
+                groups={groups}
+                habitSummary={habitSummary}
+                habitCopy={habitCopy}
+                lightDayCandidateCount={lightDayCandidates.length}
+                holidayActive={Boolean(holiday)}
+                onBreakHabits={onBreakHabits}
+                periodDoneHabits={periodDoneHabits}
+                stateOf={stateOf}
+                onHabitTap={onHabitTap}
+                onToggleGroup={handleToggleGroup}
+                onOpenRing={() => router.push('/tabs/timeline' as any)}
+                onOpenTimeline={() => router.push('/tabs/timeline' as any)}
+                onOpenLightDay={() => setLightDayPick(new Set())}
+                onOpenHoliday={() => setHolidayOpen(true)}
+              />
+            </View>
+          )}
+
+          {(effectiveSegment === 'all' || effectiveSegment === 'tasks') && (
+            <View
+              testID="today-block-composer"
+              style={[
+                s.railColumn,
+                isWide && effectiveSegment === 'all' && s.railColumnWide,
+                effectiveSegment !== 'all' && { flex: 1 },
+              ]}
+            >
               <View style={s.mainSection}>
                 <View style={s.sectionIntro}>
                   <View>
-                    <Text style={s.sectionEyebrow}>BUGÜN · {pendingTasks.length}</Text>
-                    <Text style={s.sectionTitle}>Masadakiler</Text>
+                    <Text style={s.sectionEyebrow}>{t('today.tasks.eyebrow', { count: pendingTasks.length })}</Text>
+                    <Text style={s.sectionTitle}>{t('today.tasks.title')}</Text>
                   </View>
-                  <TouchableOpacity
+                  <Button
+                    label={t('today.seeAll')}
+                    variant="ghost"
+                    size="sm"
                     onPress={() => router.push('/tabs/tasks' as any)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Tüm görevleri aç"
-                    style={s.moreLink}
-                  >
-                    <Text style={s.sectionAction}>Tümü →</Text>
-                  </TouchableOpacity>
+                    accessibilityLabel={t('today.tasks.openAll.a11y')}
+                  />
                 </View>
                 <OutboxIssues />
                 <View style={{ marginBottom: space.sm }}>
                   <InlineComposer
-                    placeholder="Bugün için hızlı bir adım ekle…"
-                    onSubmit={async (t) => { await addTask({ title: t, priority: 'none', list_type: 'inbox', due_date: today }); }}
+                    placeholder={t('today.tasks.composerPlaceholder')}
+                    quickAdd={{ projects: quickProjects }}
+                    voice
+                    onSubmit={async (text, quick) => {
+                      await addTask(
+                        quickAddToTaskInput(
+                          text,
+                          quick,
+                          { priority: 'none', list_type: 'inbox', due_date: today, project_id: null },
+                          today,
+                        ),
+                      );
+                    }}
                   />
                 </View>
                 {pendingTasks.length === 0 ? (
@@ -772,11 +959,11 @@ export default function TodayScreen() {
                     <EmptyState
                       variant="editorial"
                       icon="checkmark-circle-outline"
-                      title="Bugünün açık döngüsü kalmadı."
-                      hint="Bir sonraki odak bloğunu planlayabilir veya günü kısa bir notla kapatabilirsin."
-                      ctaLabel="Yeni adım ekle"
+                      title={t('today.tasks.empty.title')}
+                      hint={t('today.tasks.empty.hint')}
+                      ctaLabel={t('today.tasks.empty.cta')}
                       onCta={() => router.push('/tabs/tasks' as any)}
-                      color={colors.success}
+                      color={c.success}
                       compact
                     />
                   </Card>
@@ -787,16 +974,16 @@ export default function TodayScreen() {
                         <View style={s.taskRow}>
                           <TouchableOpacity
                             style={s.taskMain}
-                            onPress={() => { haptic.light(); toggleDone(t.id); }}
+                            onPress={() => { haptic.light(); void toggleDone(t.id); }}
                             accessibilityRole="button"
-                            accessibilityLabel={`${t.title}, tamamlamak için dokun`}
+                            accessibilityLabel={completeTaskA11y(t.title)}
                           >
-                            <View style={[s.taskDot, { borderColor: PRIORITY_COLOR[t.priority] }]} />
+                            <View style={[s.taskDot, { borderColor: priorityColor(t.priority) }]} />
                             <Text style={s.taskTitle} numberOfLines={1}>{t.title}</Text>
                             {t.due_date && (
                               <View style={[s.dueBadge, t.due_date < today && s.dueBadgeOverdue]}>
-                                <Text style={[s.taskDate, t.due_date < today && { color: colors.error }]}>
-                                  {t.due_date === today ? 'Bugün' : t.due_date}
+                                <Text style={[s.taskDate, t.due_date < today && { color: c.error }]}>
+                                  {t.due_date === today ? dueTodayLabel : t.due_date}
                                 </Text>
                               </View>
                             )}
@@ -806,9 +993,9 @@ export default function TodayScreen() {
                             onPress={() => setSmallStartFor({ kind: 'task', id: t.id, title: t.title })}
                             hitSlop={8}
                             accessibilityRole="button"
-                            accessibilityLabel={`${t.title} için küçük başla`}
+                            accessibilityLabel={smallStartTaskA11y(t.title)}
                           >
-                            <Ionicons name="play-circle-outline" size={22} color={colors.accent} />
+                            <Ionicons name="play-circle-outline" size={22} color={c.accent} />
                           </TouchableOpacity>
                         </View>
                       </Card>
@@ -816,289 +1003,74 @@ export default function TodayScreen() {
                   </View>
                 )}
               </View>
-
-              <NextUpStrip items={nextUpItems} onPress={() => router.push('/tabs/tasks' as any)} />
-            </View>
-          )}
-
-          {/* Sağ Kolon / Yan Panel: Ritüeller ve Denge */}
-          {(activeSegment === 'all' || activeSegment === 'habits' || activeSegment === 'balance') && (
-            <View style={[s.railColumn, isWide && s.railColumnWide, activeSegment !== 'all' && { flex: 1 }]}>
-              {/* Ritüeller Grubu */}
-              {(activeSegment === 'all' || activeSegment === 'habits') && (
-                <>
-                  <Card padding="lg" onPress={() => router.push('/tabs/timeline' as any)}>
-                    <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={118} opacity={0.18} />
-                    <GoldMendShimmer triggerKey={habitSummary.completed} color={colors.success} />
-                    <View style={s.ringCard}>
-                      <ProgressRing progress={habitPct} size={64} stroke={7} color={colors.success}>
-                        <Text style={s.ringPct}>{Math.round(habitPct * 100)}%</Text>
-                      </ProgressRing>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.ringTitle}>Bugünün ritüelleri</Text>
-                        <Text style={s.ringSub}>
-                          {habitCopy.ringSub}
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-                    </View>
-                  </Card>
-
-                  {todayHabits.length > 0 && (
-                    <Card padding="lg">
-                      <SectionHeader
-                        title="RİTÜELLER · BUGÜN"
-                        variant="overline"
-                        actionLabel="Tümü →"
-                        onAction={() => router.push('/tabs/timeline' as any)}
-                      />
-                      <View style={{ gap: space.sm }}>
-                        {(lowEnergyFilter
-                          ? todayHabits.filter((h) => (h.willpower_cost ?? 1) <= 2 || completedHabits.some((c) => c.id === h.id)).slice(0, isWide ? 4 : todayHabits.length)
-                          : todayHabits.slice(0, isWide ? 4 : todayHabits.length)
-                        ).map((h) => {
-                          const log = getLogForHabit(h.id);
-                          const done = log?.state === 'done' || log?.state === 'partial';
-                          const col = h.color ?? colors.primary;
-                          return (
-                            <TouchableOpacity
-                              key={h.id}
-                              activeOpacity={0.75}
-                              style={[s.habitRow, done && { borderColor: hexA(colors.success, 0.4), backgroundColor: hexA(colors.success, 0.06) }]}
-                              onPress={() => onHabitTap(h)}
-                              accessibilityRole="checkbox"
-                              accessibilityState={{ checked: done }}
-                              accessibilityLabel={`${h.name}${isMeasurableTracking(h.tracking_type) ? ', değer gir' : ''}`}
-                            >
-                              <View style={[
-                                s.habitCheck,
-                                { borderColor: done ? colors.success : colors.borderStrong },
-                                done && { backgroundColor: colors.success },
-                              ]}>
-                                {done
-                                  ? <Ionicons name="checkmark" size={16} color={colors.white} />
-                                  : <Ionicons name={(h.icon ?? 'ellipse-outline') as any} size={15} color={col} />}
-                              </View>
-                              <Text style={[s.habitName, done && s.habitNameDone]} numberOfLines={1}>{h.name}</Text>
-                              <Ionicons name={done ? "checkmark-circle" : "ellipse-outline"} size={16} color={done ? colors.success : colors.textGhost} />
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                      <View style={s.ritualActionRow}>
-                        {lightDayCandidates.length > 0 && (
-                          <TouchableOpacity
-                            style={s.lightDayBtn}
-                            onPress={() => { haptic.select(); setLightDayPick(new Set()); }}
-                            accessibilityRole="button"
-                            accessibilityLabel="Bugün daha az yapabilirim. Bugünkü ritüellerden bazılarını kenara koy."
-                          >
-                            <Ionicons name="leaf-outline" size={14} color={colors.accent} />
-                            <Text style={s.lightDayBtnText}>Bugün daha az yapabilirim</Text>
-                          </TouchableOpacity>
-                        )}
-                        {!holiday && (
-                          <TouchableOpacity
-                            style={s.lightDayBtn}
-                            onPress={() => { haptic.select(); setHolidayOpen(true); }}
-                            accessibilityRole="button"
-                            accessibilityLabel="Tatil modu. Birkaç gün bütün alışkanlıklara ara ver."
-                          >
-                            <Ionicons name="airplane-outline" size={14} color={colors.textDim} />
-                            <Text style={s.lightDayBtnText}>Tatil modu</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </Card>
-                  )}
-
-                  {/* R03.02 — bugün için kenara konanlar */}
-                  {setAsideHabits.length > 0 && (
-                    <Card padding="lg">
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => setShowSetAside(!showSetAside)}
-                        style={s.accordionHeader}
-                      >
-                        <SectionHeader title="BUGÜN HAFİFLETİLDİ" variant="overline" />
-                        <Ionicons name={showSetAside ? "chevron-up" : "chevron-down"} size={16} color={colors.textFaint} />
-                      </TouchableOpacity>
-                      {showSetAside && (
-                        <View style={{ gap: space.sm }}>
-                          {setAsideHabits.map((h) => (
-                            <TouchableOpacity
-                              key={h.id}
-                              activeOpacity={0.75}
-                              style={[s.habitRow, s.habitRowPeriodDone]}
-                              onPress={() => onHabitTap(h)}
-                              accessibilityRole="button"
-                              accessibilityLabel={`${h.name}, bugün için kenara konuldu. Yine de yaptıysan dokun.`}
-                            >
-                              <View style={[s.habitCheck, { borderColor: colors.borderStrong }]}>
-                                <Ionicons name="pause-outline" size={14} color={colors.textDim} />
-                              </View>
-                              <Text style={s.habitName} numberOfLines={1}>{h.name}</Text>
-                              <Text style={s.setAsideTag}>bugün kenarda</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                    </Card>
-                  )}
-
-                  {/* R01.05 — tatil modu açıksa söyle, tek dokunuşla bitirilebilsin */}
-                  {holiday && (
-                    <Card padding="lg">
-                      <SectionHeader title="TATİL MODU" variant="overline" />
-                      <Text style={s.breakNote}>
-                        {holiday.end_date ? `${holiday.end_date} tarihine kadar` : 'Sen bitirene kadar'} bütün alışkanlıklar arada:
-                        hesaba girmez, seriler köprü kurar, hatırlatıcı gelmez.
-                      </Text>
-                      <TouchableOpacity
-                        style={s.lightDayBtn}
-                        onPress={async () => {
-                          const res = await endTimeOff(holiday.id);
-                          if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Tatili bugün bitir"
-                      >
-                        <Ionicons name="play-outline" size={14} color={colors.textDim} />
-                        <Text style={s.lightDayBtnText}>Tatili bugün bitir</Text>
-                      </TouchableOpacity>
-                    </Card>
-                  )}
-
-                  {/* R01.05 — kendi arası (ya da tatil) olan alışkanlıklar */}
-                  {onBreakHabits.length > 0 && (
-                    <Card padding="lg">
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => setShowOnBreak(!showOnBreak)}
-                        style={s.accordionHeader}
-                      >
-                        <SectionHeader title="ARADA" variant="overline" />
-                        <View style={s.counterBadge}>
-                          <Text style={s.counterBadgeText}>{onBreakHabits.length}</Text>
-                          <Ionicons name={showOnBreak ? "chevron-up" : "chevron-down"} size={14} color={colors.textFaint} />
-                        </View>
-                      </TouchableOpacity>
-                      {showOnBreak && (
-                        <View style={{ gap: space.sm }}>
-                          {onBreakHabits.map((h) => {
-                            const p = activePauseOn(h, todayDate);
-                            return (
-                              <View key={h.id} style={[s.habitRow, s.habitRowPeriodDone]} accessible accessibilityLabel={`${h.name}, arada${p?.end_date ? `, ${p.end_date} tarihine kadar` : ''}.`}>
-                                <View style={[s.habitCheck, { borderColor: colors.borderStrong }]}>
-                                  <Ionicons name="cafe-outline" size={14} color={colors.textDim} />
-                                </View>
-                                <Text style={s.habitName} numberOfLines={1}>{h.name}</Text>
-                                <Text style={s.setAsideTag}>{p?.end_date ? `${p.end_date}'e kadar` : 'arada'}</Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                      )}
-                    </Card>
-                  )}
-
-                  {/* R01.06-b — dönemi bugünden önce dolmuş sayı hedefleri */}
-                  {periodDoneHabits.length > 0 && (
-                    <Card padding="lg">
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => setShowPeriodDone(!showPeriodDone)}
-                        style={s.accordionHeader}
-                      >
-                        <SectionHeader title="BU DÖNEM TAMAM" variant="overline" />
-                        <View style={s.counterBadge}>
-                          <Text style={s.counterBadgeText}>{periodDoneHabits.length}</Text>
-                          <Ionicons name={showPeriodDone ? "chevron-up" : "chevron-down"} size={14} color={colors.textFaint} />
-                        </View>
-                      </TouchableOpacity>
-                      {showPeriodDone && (
-                        <View style={{ gap: space.sm }}>
-                          {periodDoneHabits.map((h) => (
-                            <TouchableOpacity
-                              key={h.id}
-                              activeOpacity={0.75}
-                              style={[s.habitRow, s.habitRowPeriodDone]}
-                              onPress={() => onHabitTap(h)}
-                              accessibilityRole="button"
-                              accessibilityLabel={`${h.name}, ${periodDoneLabel(h)}. Yine de kaydetmek için dokun.`}
-                            >
-                              <View style={[s.habitCheck, { borderColor: colors.success, backgroundColor: hexA(colors.success, 0.25) }]}>
-                                <Ionicons name="checkmark-done" size={14} color={colors.success} />
-                              </View>
-                              <Text style={[s.habitName, s.habitNameDone]} numberOfLines={1}>{h.name}</Text>
-                              <Text style={s.periodDoneTag}>{periodDoneLabel(h)}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
-                    </Card>
-                  )}
-                </>
-              )}
-
-              {/* Denge & Rutin Grubu */}
-              {(activeSegment === 'all' || activeSegment === 'balance') && (
-                <>
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={() => router.push('/screens/profile' as any)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Profil ve deneyim puanını aç"
-                  >
-                    <XPDisplay />
-                  </TouchableOpacity>
-
-                  {wp && (
-                    <Card padding="lg" onPress={() => router.push('/tabs/timeline' as any)}>
-                      <View style={s.wpHead}>
-                        <Text style={s.wpHeadText}>İrade dengesi</Text>
-                        <Text style={s.wpHeadHint}>günlük bütçe</Text>
-                      </View>
-                      <WillpowerBand wp={wp} />
-                    </Card>
-                  )}
-
-                  <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => router.push('/screens/routine-runner' as any)}>
-                    <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={108} opacity={0.16} />
-                    <SectionHeader title="RUTİN" variant="overline" />
-                    <Text style={s.breakNote}>
-                      {runnerSession && runnerSession.status !== 'finished'
-                        ? `${runnerSession.templateName} sürüyor · ${Object.keys(runnerSession.results).length}/${runnerSession.steps.length} — devam et`
-                        : 'Sabah, akşam ya da çalışma rutinini adım adım başlat.'}
-                    </Text>
-                  </Card>
-
-                  <RecoveryRailCard
-                    plans={recoveryPlans}
-                    today={today}
-                    onOpen={() => router.push('/screens/recovery' as any)}
-                  />
-
-                  <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => router.push('/screens/okr' as any)}>
-                    <EmbeddedFiligree source={DECOR.cornerBlueprint} anchor="bottom-right" size={108} opacity={0.17} />
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <SectionHeader title="STRATEJİ & OKR" variant="overline" />
-                      <Ionicons name="chevron-forward" size={14} color={colors.textGhost} />
-                    </View>
-                    <Text style={s.breakNote}>
-                      Çeyreklik hedefler, Key Results ve vizyon ilerlemeni incele.
-                    </Text>
-                  </Card>
-                </>
-              )}
             </View>
           )}
         </View>
 
+        {/* İlerleyici Araç Rafı — yalnız açık olan araçlar */}
+        {(effectiveSegment === 'all' || effectiveSegment === 'balance') && hasAnyShelfTool && (
+          <View style={s.toolShelf}>
+            {showBalance && (
+              <>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => navigateTo(router, 'profile')}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('today.balance.xp.a11y')}
+                >
+                  <XPDisplay />
+                </TouchableOpacity>
 
+                {wp && (
+                  <Card padding="lg" onPress={() => router.push('/tabs/timeline' as any)}>
+                    <View style={s.wpHead}>
+                      <Text style={s.wpHeadText}>{t('today.willpower.title')}</Text>
+                      <Text style={s.wpHeadHint}>{t('today.willpower.hint')}</Text>
+                    </View>
+                    <WillpowerBand wp={wp} />
+                  </Card>
+                )}
+
+                <RecoveryRailCard
+                  plans={recoveryPlans}
+                  today={today}
+                  onOpen={() => navigateTo(router, 'recovery')}
+                />
+              </>
+            )}
+
+            {showRoutine && (
+              <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => router.push('/screens/routine-runner' as any)}>
+                <EmbeddedFiligree source={DECOR.cornerBotanical} anchor="bottom-right" size={108} opacity={0.16} />
+                <SectionHeader title={t('today.routine.overline')} variant="overline" />
+                <Text style={s.breakNote}>
+                  {runnerSession && runnerSession.status !== 'finished'
+                    ? t('today.routine.active', {
+                        name: runnerSession.templateName,
+                        done: Object.keys(runnerSession.results).length,
+                        total: runnerSession.steps.length,
+                      })
+                    : suggestedRoutineName
+                      ? t('today.routine.suggested', { name: suggestedRoutineName })
+                      : t('today.routine.idle')}
+                </Text>
+              </Card>
+            )}
+
+            {showStrategy && (
+              <Card padding="lg" style={{ overflow: 'hidden', position: 'relative' }} onPress={() => navigateTo(router, 'okr')}>
+                <EmbeddedFiligree source={DECOR.cornerBlueprint} anchor="bottom-right" size={108} opacity={0.17} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.xs }}>
+                  <SectionHeader title={t('today.strategy.overline')} variant="overline" />
+                  <Ionicons name="chevron-forward" size={14} color={c.textGhost} />
+                </View>
+                <Text style={s.breakNote}>{t('today.strategy.body')}</Text>
+              </Card>
+            )}
+          </View>
+        )}
       </Animated.ScrollView>
 
-      {/* R03.02 — "Bugün daha az yapabilirim" */}
       <ChecklistSheet habit={checklistFor} day={today} onClose={() => setChecklistFor(null)} />
 
       <TimeOffSheet
@@ -1118,22 +1090,18 @@ export default function TodayScreen() {
         parent={smallStartFor}
         onClose={() => setSmallStartFor(null)}
         onStart={(parent, draft) => {
-          // Starts a focus session only; the task itself is not written.
           const started = useFocusStore.getState().startSmallStep(parent, draft);
           if (started) { setSmallStartFor(null); router.push('/tabs/focus' as any); }
           return started;
         }}
       />
 
-      <Modal visible={lightDayPick !== null} transparent animationType="slide" onRequestClose={() => setLightDayPick(null)}>
-        <View style={s.sheetOverlay}>
+      <Modal visible={lightDayPick !== null} transparent animationType="slide" onRequestClose={closeLightDaySheet}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.sheetOverlay}>
           <View style={s.sheet}>
-            <Text style={s.sheetTitle}>Bugün daha az yapabilirim</Text>
+            <Text style={s.sheetTitle}>{t('today.lightDay.title')}</Text>
             <Text style={s.sheetBody}>{FLOW_COPY.lighten}</Text>
-            <Text style={s.sheetNote}>
-              Kapasite; alışkanlıklarının zorluğu, süresi ve sıklığından tahmin edilen bir sayıdır.
-              Bir sağlık ölçümü ya da kesin bir irade bütçesi değildir.
-            </Text>
+            <Text style={s.sheetNote}>{t('today.lightDay.capacityNote')}</Text>
             <ScrollView style={{ maxHeight: 320 }} accessibilityRole="list">
               {lightDayCandidates.map((h) => {
                 const picked = lightDayPick?.has(h.id) ?? false;
@@ -1144,128 +1112,168 @@ export default function TodayScreen() {
                     onPress={() => toggleLightDay(h.id)}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: picked }}
-                    accessibilityLabel={`${h.name} bugün için kenara konsun`}
+                    accessibilityLabel={t('today.lightDay.pick.a11y', { name: h.name })}
                   >
-                    <View style={[s.habitCheck, { borderColor: picked ? colors.accent : colors.borderStrong }, picked && { backgroundColor: colors.accent }]}>
-                      {picked && <Ionicons name="checkmark" size={14} color={colors.white} />}
+                    <View style={[s.habitCheck, { borderColor: picked ? c.accent : c.borderStrong }, picked && { backgroundColor: c.accent }]}>
+                      {picked && <Ionicons name="checkmark" size={14} color={c.white} />}
                     </View>
                     <Text style={s.habitName} numberOfLines={1}>{h.name}</Text>
                   </TouchableOpacity>
                 );
               })}
-      
             </ScrollView>
+            <View style={s.lightDayNoteWrap}>
+              {lightDayHintVisible && (
+                <Text style={s.sheetNote}>{t('today.lightDay.noteHint')}</Text>
+              )}
+              <TextInput
+                value={lightDayNote}
+                onChangeText={setLightDayNote}
+                placeholder={t('today.lightDay.notePlaceholder')}
+                placeholderTextColor={c.textFaint}
+                maxLength={NOTE_MAX_LENGTH}
+                returnKeyType="done"
+                accessibilityLabel={t('today.lightDay.note.a11y')}
+                style={s.lightDayNoteInput}
+              />
+              <Text style={s.lightDayNoteSub}>{t('today.lightDay.noteSub')}</Text>
+            </View>
             <View style={s.sheetActions}>
               <TouchableOpacity
                 style={s.sheetCancel}
-                onPress={() => setLightDayPick(null)}
+                onPress={closeLightDaySheet}
                 accessibilityRole="button"
-                accessibilityLabel="Vazgeç"
+                accessibilityLabel={t('common.cancel')}
               >
-                <Text style={s.sheetCancelText}>Vazgeç</Text>
+                <Text style={s.sheetCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.sheetSave, (!lightDayPick || lightDayPick.size === 0 || lightDaySaving) && s.sheetSaveDisabled]}
                 onPress={confirmLightDay}
                 disabled={!lightDayPick || lightDayPick.size === 0 || lightDaySaving}
                 accessibilityRole="button"
-                accessibilityLabel="Seçilenleri bugün için kenara koy"
+                accessibilityLabel={t('today.lightDay.confirm.a11y')}
                 accessibilityState={{ disabled: !lightDayPick || lightDayPick.size === 0 || lightDaySaving }}
               >
-                <Text style={s.sheetSaveText}>{lightDaySaving ? 'Kaydediliyor…' : 'Kenara koy'}</Text>
+                <Text style={s.sheetSaveText}>{lightDaySaving ? t('today.lightDay.saving') : t('today.lightDay.confirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Sunsama & Things 3 İlhamlı: Akşam Kapanış Ritüeli (Shutdown Ritual) Modalı */}
+      {/* Akşam Kapanış Ritüeli (Shutdown Ritual) Modalı */}
       <Modal visible={shutdownOpen} transparent animationType="slide" onRequestClose={() => setShutdownOpen(false)}>
         <View style={s.sheetOverlay}>
           <View style={s.sheet}>
-            <View
-              style={s.shutdownHero}
-              pointerEvents="none"
-              {...(Platform.OS === 'web'
-                ? { 'aria-hidden': true }
-                : { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const })}
+            <ScrollView
+              style={{ maxHeight: Math.round(0.68 * windowHeight) }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              {process.env?.NODE_ENV !== 'test' ? (
-                <Image source={BENTO_ART.eveningShutdown} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
-              ) : null}
-              <View style={s.shutdownHeroScrim} />
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <Ionicons name="moon" size={20} color={colors.accent} />
-              <Text style={[s.sheetTitle, { marginBottom: 0 }]}>Günü Kapat · Zihinsel Kapanış</Text>
-            </View>
-            <Text style={s.sheetBody}>
-              Bugün {completedHabits.length}/{habitSummary.total} ritüel ve {sessionsCompleted} odak seansı tamamladın.
-              Açık kalan döngüleri yarına devredip zihnini dinlenme moduna alabilirsin.
-            </Text>
+              <View
+                style={s.shutdownHero}
+                pointerEvents="none"
+                {...(Platform.OS === 'web'
+                  ? { 'aria-hidden': true }
+                  : { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const })}
+              >
+                {process.env?.NODE_ENV !== 'test' ? (
+                  <Image source={BENTO_ART.eveningShutdown} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
+                ) : null}
+                <View style={s.shutdownHeroScrim} />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.xs }}>
+                <Ionicons name="moon" size={20} color={c.accent} />
+                <Text style={s.shutdownTitle}>{t('today.shutdown.title')}</Text>
+              </View>
+              <Text style={s.sheetBody}>
+                {t('today.shutdown.summary', {
+                  done: completedHabits.length,
+                  total: habitSummary.total,
+                  sessions: sessionsCompleted,
+                })}
+              </Text>
 
-            <View style={{ gap: space.sm, marginVertical: space.md }}>
-              {remainingHabits > 0 && (
+              <DayCloseMood value={closeFlow.mood} onChoose={closeFlow.chooseMood} />
+
+              {closeRows.length > 0 && (
+                <DayCloseTasks
+                  rows={closeRows}
+                  hasMore={closeFlow.hasMore}
+                  waitingForSync={closeFlow.waitingForSync}
+                  onDecide={closeFlow.decide}
+                  onUndo={closeFlow.undo}
+                  onMoveAll={closeFlow.moveVisibleToTomorrow}
+                />
+              )}
+
+              <View style={{ gap: space.sm, marginVertical: space.md }}>
+                {remainingHabits > 0 && (
+                  <TouchableOpacity
+                    style={s.shutdownOptionCard}
+                    onPress={() => {
+                      lightDayFromCloseRef.current = true;
+                      setShutdownOpen(false);
+                      setLightDayPick(new Set(lightDayCandidates.map((h) => h.id)));
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('today.shutdown.lighten.a11y')}
+                  >
+                    <Ionicons name="leaf-outline" size={18} color={c.success} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.shutdownOptionTitle}>
+                        {t('today.shutdown.lighten.title', { count: remainingHabits })}
+                      </Text>
+                      <Text style={s.shutdownOptionSub}>{t('today.shutdown.lighten.sub')}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
                   style={s.shutdownOptionCard}
                   onPress={() => {
                     setShutdownOpen(false);
-                    setLightDayPick(new Set(lightDayCandidates.map((h) => h.id)));
+                    navigateTo(router, 'journal');
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Kalan ritüelleri cezasız olarak bugünlük kenara koy"
+                  accessibilityLabel={t('today.shutdown.journal.a11y')}
                 >
-                  <Ionicons name="leaf-outline" size={18} color={colors.success} />
+                  <Ionicons name="journal-outline" size={18} color={c.accent} />
                   <View style={{ flex: 1 }}>
-                    <Text style={s.shutdownOptionTitle}>Kalan {remainingHabits} ritüeli bugünlük hafiflet</Text>
-                    <Text style={s.shutdownOptionSub}>Serilerin bozulmaz; bugün cezasız kapanır.</Text>
+                    <Text style={s.shutdownOptionTitle}>{t('today.shutdown.journal.title')}</Text>
+                    <Text style={s.shutdownOptionSub}>{t('today.shutdown.journal.sub')}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+                  <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
                 </TouchableOpacity>
-              )}
 
-              <TouchableOpacity
-                style={s.shutdownOptionCard}
-                onPress={() => {
-                  setShutdownOpen(false);
-                  router.push('/screens/journal' as any);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Günü tek cümlelik günlük yansımasıyla kapat"
-              >
-                <Ionicons name="journal-outline" size={18} color={colors.accent} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.shutdownOptionTitle}>1 Cümlelik Akşam Yansıması Yaz</Text>
-                  <Text style={s.shutdownOptionSub}>Zihnindeki son düşünceleri kağıda bırak.</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={s.shutdownOptionCard}
-                onPress={() => {
-                  setShutdownOpen(false);
-                  router.push('/screens/recovery' as any);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Telafi kalkanını ve yarının planını incele"
-              >
-                <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.shutdownOptionTitle}>Telafi & Yarın Pusulası</Text>
-                  <Text style={s.shutdownOptionSub}>Kaçan adımları yarına veya iki güne böl.</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={s.shutdownOptionCard}
+                  onPress={() => {
+                    setShutdownOpen(false);
+                    navigateTo(router, 'recovery');
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('today.shutdown.recovery.a11y')}
+                >
+                  <Ionicons name="shield-checkmark-outline" size={18} color={c.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.shutdownOptionTitle}>{t('today.shutdown.recovery.title')}</Text>
+                    <Text style={s.shutdownOptionSub}>{t('today.shutdown.recovery.sub')}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
 
             <TouchableOpacity
-              style={s.sheetSave}
-              onPress={() => { haptic.success(); setShutdownOpen(false); }}
+              style={[s.sheetSave, s.shutdownFinishBtn]}
+              onPress={onFinishClose}
               accessibilityRole="button"
-              accessibilityLabel="Bugünlük bitti, ekranı kapat"
+              accessibilityLabel={t('today.shutdown.finish.a11y')}
             >
-              <Text style={s.sheetSaveText}>Bugünlük Bitti · İyi Dinlenmeler ✨</Text>
+              <Text style={s.sheetSaveText}>{t('today.shutdown.finish')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1274,147 +1282,161 @@ export default function TodayScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  // R01.06-b — dimmed, not hidden: the work is done, the habit is still there.
-  habitRowPeriodDone: { opacity: 0.55 },
-  periodDoneTag: { fontSize: 11, color: colors.success, fontWeight: '600', marginLeft: 'auto' },
-  // R03.02
-  setAsideTag: { fontSize: 11, color: colors.textDim, fontWeight: '600', marginLeft: 'auto' },
-  lightDayBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: space.xs, paddingHorizontal: space.sm, borderRadius: radius.sm, backgroundColor: hexA(colors.surfaceAlt, 0.5) },
-  lightDayBtnText: { fontSize: 12, color: colors.textDim, fontWeight: '600' },
-  ritualActionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.md },
-  breakNote: { fontSize: 13, color: colors.textDim, lineHeight: 19 },
+const makeStyles = (c: Palette) => StyleSheet.create({
+  breakNote: { ...font.bodySm, color: c.textDim, lineHeight: 19 },
   summaryPillRow: {
-    gap: space.xs, marginTop: space.sm, marginBottom: space.sm,
+    gap: space.xs,
+    marginTop: space.sm,
+    marginBottom: space.sm,
   },
   summaryPill: {
-    flexDirection: 'row', alignItems: 'center', gap: space.sm,
-    backgroundColor: hexA(colors.surfaceAlt, 0.7), paddingVertical: space.xs, paddingHorizontal: space.md,
-    borderRadius: radius.full, alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    backgroundColor: hexA(c.surfaceAlt, 0.7),
+    paddingVertical: space.xs,
+    paddingHorizontal: space.md,
+    borderRadius: radius.full,
+    alignSelf: 'flex-start',
   },
   calmModesRow: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: space.xs, marginTop: 4,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: space.xs,
+    marginTop: space.xs,
   },
-  calmModeChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 11, paddingVertical: 6, borderRadius: radius.full,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+  calmChip: {
+    borderRadius: radius.full,
+    minHeight: 44,
   },
-  calmModeChipActive: {
-    borderColor: colors.success, backgroundColor: hexA(colors.success, 0.12),
+  calmModeChipSuggested: {
+    borderColor: c.accent,
   },
-  calmModeChipText: {
-    fontSize: 11, fontWeight: '700', color: colors.textDim,
+  contextBlock: {
+    gap: space.md,
+    marginTop: space.md,
+  },
+  legacyNoticeBtnWrap: {
+    marginTop: space.sm,
+    alignSelf: 'flex-start',
+  },
+  toolShelf: {
+    gap: space.md,
+    marginTop: space.lg,
+  },
+  shutdownTitle: {
+    ...font.h2,
+    color: c.text,
   },
   shutdownOptionCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: colors.surface, borderRadius: radius.md,
-    borderWidth: 1, borderColor: colors.border, padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    backgroundColor: c.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: c.border,
+    padding: space.md,
   },
-  shutdownOptionTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
-  shutdownOptionSub: { fontSize: 11, color: colors.textDim, marginTop: 2 },
-  sheetOverlay: { flex: 1, backgroundColor: hexA(colors.black, 0.65), justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg },
-  sheetTitle: { ...font.title, fontSize: 18, color: colors.text, marginBottom: space.sm },
-  sheetBody: { fontSize: 13, color: colors.textDim, lineHeight: 19, marginBottom: space.sm },
-  sheetNote: { fontSize: 11, color: colors.textFaint, lineHeight: 16, marginBottom: space.md },
+  shutdownOptionTitle: { ...font.bodySm, fontWeight: '700', color: c.text },
+  shutdownOptionSub: { ...font.caption, color: c.textDim, marginTop: space.xs },
+  sheetOverlay: { flex: 1, backgroundColor: hexA(c.black, 0.65), justifyContent: 'flex-end' },
+  sheet: { backgroundColor: c.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg },
+  sheetTitle: { ...font.h2, color: c.text, marginBottom: space.sm },
+  sheetBody: { ...font.bodySm, color: c.textDim, lineHeight: 19, marginBottom: space.sm },
+  sheetNote: { ...font.caption, color: c.textFaint, lineHeight: 16, marginBottom: space.md },
+  lightDayNoteWrap: { marginTop: space.md, gap: space.xs },
+  lightDayNoteInput: {
+    ...font.bodySm,
+    color: c.text,
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.border,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    minHeight: 44,
+  },
+  lightDayNoteSub: { ...font.caption, color: c.textFaint },
   sheetActions: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
-  sheetCancel: { flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  sheetCancelText: { color: colors.textDim, fontWeight: '600' },
-  sheetSave: { flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', backgroundColor: colors.accent },
+  sheetCancel: { flex: 1, paddingVertical: space.md, borderRadius: radius.md, alignItems: 'center', borderWidth: 1, borderColor: c.border, minHeight: 48, justifyContent: 'center' },
+  sheetCancelText: { color: c.textDim, fontWeight: '600' },
+  sheetSave: { flex: 1, paddingVertical: space.md, borderRadius: radius.md, alignItems: 'center', backgroundColor: c.accent, minHeight: 48, justifyContent: 'center' },
+  shutdownFinishBtn: { flex: 0, marginTop: space.sm },
   sheetSaveDisabled: { opacity: 0.4 },
-  sheetSaveText: { color: colors.white, fontWeight: '700' },
-  safe: { flex: 1, backgroundColor: colors.bg },
+  sheetSaveText: { color: onColor(c.accent), fontWeight: '700' },
+  safe: { flex: 1, backgroundColor: c.bg },
   scroll: { flex: 1 },
   content: { width: '100%', maxWidth: 1240, alignSelf: 'center', paddingVertical: space.lg, paddingBottom: 96 },
 
   masthead: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingBottom: space.md, marginBottom: space.lg,
-    borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
+    borderBottomWidth: 1, borderBottomColor: c.borderSubtle,
   },
   mastheadActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  productLabel: { ...font.overline, color: colors.primaryBright, marginBottom: 4 },
-  productHint: { ...font.bodySm, color: colors.textFaint },
+  productLabel: { ...font.overline, color: c.primaryBright, marginBottom: space.xs },
+  productHint: { ...font.bodySm, color: c.textFaint },
 
-  // Segmented control bar
   segmentedRow: {
     flexDirection: 'row', alignItems: 'center', gap: space.xs,
-    backgroundColor: colors.surfaceAlt, borderRadius: radius.full,
+    backgroundColor: c.surfaceAlt, borderRadius: radius.full,
     padding: space.xs, marginTop: space.lg, marginBottom: space.md,
   },
   segmentBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: space.sm, borderRadius: radius.full, minHeight: 40,
+    gap: 6, paddingVertical: space.sm, borderRadius: radius.full, minHeight: 44,
   },
   segmentBtnActive: {
-    backgroundColor: colors.surfaceHover,
-    shadowColor: colors.black, shadowOpacity: 0.25, shadowRadius: 4, elevation: 2,
+    backgroundColor: c.surfaceHover,
+    shadowColor: c.black, shadowOpacity: 0.25, shadowRadius: 4, elevation: 2,
   },
-  segmentText: { ...font.caption, color: colors.textFaint, fontWeight: '600' },
-  segmentTextActive: { color: colors.text, fontWeight: '700' },
+  segmentText: { ...font.caption, color: c.textFaint, fontWeight: '600' },
+  segmentTextActive: { color: c.text, fontWeight: '700' },
   badgePill: {
-    backgroundColor: colors.primary, borderRadius: radius.full,
-    paddingHorizontal: 6, paddingVertical: 2, minWidth: 18, alignItems: 'center',
+    backgroundColor: c.primary, borderRadius: radius.full,
+    paddingHorizontal: space.xs, paddingVertical: space.xs, minWidth: 18, alignItems: 'center',
   },
-  badgeText: { fontSize: 10, color: colors.white, fontWeight: '700' },
+  badgeText: { ...font.overline, color: onColor(c.primary), fontWeight: '700' },
 
-  dashboardBody: { marginTop: space.sm, gap: space.lg },
+  dashboardBody: { marginTop: space.md, gap: space.lg },
   dashboardBodyWide: { flexDirection: 'row', alignItems: 'flex-start', gap: space.hh },
   mainColumn: { flex: 1, minWidth: 0, gap: space.md },
   railColumn: { gap: space.md },
-  railColumnWide: { width: 340 },
-  mainSection: { marginTop: 0 },
+  railColumnWide: { width: 380 },
+  mainSection: { gap: space.xs },
   sectionIntro: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: space.md, marginBottom: space.md },
-  sectionEyebrow: { ...font.overline, color: colors.textFaint, marginBottom: 4 },
-  sectionTitle: { ...font.title, color: colors.text },
-  sectionAction: { ...font.bodySm, color: colors.primaryBright, fontWeight: '700' },
-  moreLink: { paddingVertical: 4, paddingHorizontal: 6 },
-
-  ringCard: { flexDirection: 'row', alignItems: 'center', gap: space.lg },
-  ringPct: { ...font.metric, fontSize: 18, color: colors.success },
-  ringTitle: { ...font.h3, color: colors.text, marginBottom: 3 },
-  ringSub: { ...font.bodySm, color: colors.textFaint },
+  sectionEyebrow: { ...font.overline, color: c.textFaint, marginBottom: space.xs },
+  sectionTitle: { ...font.title, color: c.text },
 
   wpHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: space.md },
-  wpHeadText: { ...font.h3, color: colors.text },
-  wpHeadHint: { ...font.caption, color: colors.textFaint },
+  wpHeadText: { ...font.h3, color: c.text },
+  wpHeadHint: { ...font.caption, color: c.textFaint },
 
   habitRow: {
     flexDirection: 'row', alignItems: 'center', gap: space.md,
-    backgroundColor: colors.surface, borderRadius: radius.md, padding: space.md,
-    borderWidth: 1, borderColor: colors.border, minHeight: 52,
+    backgroundColor: c.surface, borderRadius: radius.md, padding: space.md,
+    borderWidth: 1, borderColor: c.border, minHeight: 52,
   },
   habitCheck: {
     width: 32, height: 32, borderRadius: radius.sm, borderWidth: 2,
     alignItems: 'center', justifyContent: 'center',
   },
-  habitName: { flex: 1, ...font.body, color: colors.text },
-  habitNameDone: { color: colors.textFaint, textDecorationLine: 'line-through' },
-
-  accordionHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: space.xs,
-  },
-  counterBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: hexA(colors.surfaceAlt, 0.7), paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.full,
-  },
-  counterBadgeText: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
+  habitName: { flex: 1, ...font.body, color: c.text },
 
   taskRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44 },
   taskMain: { flexDirection: 'row', alignItems: 'center', gap: space.md, flex: 1, minHeight: 44 },
-  taskDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
-  taskTitle: { flex: 1, ...font.body, color: colors.text },
+  taskDot: { width: 12, height: 12, borderRadius: radius.xs, borderWidth: 2 },
+  taskTitle: { flex: 1, ...font.body, color: c.text },
   dueBadge: {
-    backgroundColor: hexA(colors.surfaceAlt, 0.8),
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm,
+    backgroundColor: hexA(c.surfaceAlt, 0.8),
+    paddingHorizontal: space.sm, paddingVertical: space.xs, borderRadius: radius.sm,
   },
   dueBadgeOverdue: {
-    backgroundColor: hexA(colors.error, 0.15),
+    backgroundColor: hexA(c.error, 0.15),
   },
-  taskDate: { ...font.caption, color: colors.textFaint, fontWeight: '500' },
-  lowEnergyTitle: { fontSize: 13, fontWeight: '700', color: colors.success, marginBottom: 2 },
+  taskDate: { ...font.caption, color: c.textFaint, fontWeight: '500' },
+  lowEnergyTitle: { ...font.bodySm, fontWeight: '700', color: c.success, marginBottom: space.xs },
   shutdownHero: {
     height: 112,
     borderRadius: radius.md,
@@ -1422,11 +1444,11 @@ const s = StyleSheet.create({
     position: 'relative',
     marginBottom: space.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   shutdownHeroScrim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: hexA(colors.bgSunk, 0.34),
+    backgroundColor: hexA(c.bgSunk, 0.34),
   },
   sparkArt: {
     position: 'absolute',
@@ -1438,7 +1460,7 @@ const s = StyleSheet.create({
   },
   sparkArtScrim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: hexA(colors.surface, 0.56),
+    backgroundColor: hexA(c.surface, 0.56),
   },
   sparkCard: {
     overflow: 'hidden',
@@ -1446,16 +1468,17 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radius.lg,
     borderWidth: 1,
     paddingHorizontal: space.md,
-    paddingVertical: 11,
+    paddingVertical: space.md,
+    marginBottom: space.md,
   },
   sparkPlayRing: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: radius.full,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1465,22 +1488,21 @@ const s = StyleSheet.create({
     gap: 2,
   },
   sparkEyebrow: {
-    fontSize: 10.5,
+    ...font.overline,
     fontWeight: '700',
-    letterSpacing: 0.4,
   },
   sparkTitle: {
     ...font.bodySm,
-    color: colors.text,
+    color: c.text,
     fontWeight: '600',
   },
   sparkWatchPill: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
     borderRadius: radius.full,
   },
   sparkWatchText: {
-    fontSize: 11.5,
+    ...font.caption,
     fontWeight: '700',
   },
   smallStartBtn: {

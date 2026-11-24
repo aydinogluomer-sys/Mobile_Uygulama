@@ -17,14 +17,17 @@
  *
  * Rather than blocklist known-sensitive keys (`note`, `journal`, `content`…),
  * which fails the moment someone adds a new one, this ALLOWLISTS by VALUE
- * SHAPE: a string is only permitted if it is structurally an identifier
- * (uuid), a short enum token, or an ISO date. Anything else — prose, a habit
- * title, a note — is dropped. A blocklist forgets; a shape allowlist does not.
+ * SHAPE and KEYED ENUM VOCABULARY: a string is only permitted if it is
+ * structurally an identifier (uuid), an ISO date, or a closed enum token
+ * listed under its own property key in `ANALYTICS_ENUMS`. Anything else —
+ * prose, a habit title, a single-word note like "spor" — is dropped.
  *
  * Dropping is deliberate rather than throwing: a careless call site should not
  * crash the app, but it must not leak either. Dropped keys are reported on the
  * event so a test (and a developer) can see what was refused.
  */
+import type { BarrierId, PaceId } from './onboarding';
+import type { Habit, HabitLog, RecoveryStrategy } from './supabase';
 
 export const ANALYTICS_EVENTS = [
   'habit_created',
@@ -62,27 +65,102 @@ export type AnalyticsEvent = {
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** A short, lowercase, underscore/hyphen token — i.e. an enum, not prose. */
+/** A short, lowercase, underscore/hyphen token — structural pre-check before `ANALYTICS_ENUMS[key]`. */
 const ENUM_RE = /^[a-z][a-z0-9_-]{0,31}$/;
 /** `yyyy-MM-dd` or a full ISO timestamp. */
 const DATE_RE = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/;
 
-/**
- * A string is permitted only if its SHAPE proves it is not prose.
- * Note the deliberate order: uuid and ISO date are checked before the enum
- * pattern, because both would otherwise fail it (hyphens, digits, length).
- */
-function isPermittedString(v: string): boolean {
-  if (UUID_RE.test(v)) return true;
-  if (DATE_RE.test(v)) return true;
-  return ENUM_RE.test(v);
+function exhaustiveList<T extends string>(record: Record<T, true>): readonly string[] {
+  return Object.keys(record);
 }
 
-function isPermitted(v: unknown): v is AnalyticsValue {
+/**
+ * Closed vocabulary per prop KEY (F23, EDG-18).
+ * A string prop passes only if it is a UUID, an ISO date, or listed here under its own key.
+ * Note: `reminder_intent` in `onboardingStore` is `boolean | null` (`lib/onboarding.ts`),
+ * so it passes through the boolean/null branch rather than this string map.
+ */
+export const ANALYTICS_ENUMS: Readonly<Record<string, readonly string[]>> = {
+  state: exhaustiveList<HabitLog['state']>({
+    done: true,
+    partial: true,
+    miss: true,
+    skip: true,
+  }),
+  entry: exhaustiveList<'first_run' | 'settings'>({
+    first_run: true,
+    settings: true,
+  }),
+  step: exhaustiveList<'needs' | 'preferences'>({
+    needs: true,
+    preferences: true,
+  }),
+  behavior_type: exhaustiveList<Habit['behavior_type']>({
+    positive: true,
+    negative: true,
+  }),
+  tracking_type: exhaustiveList<Habit['tracking_type'] | 'binary'>({
+    boolean: true,
+    binary: true,
+    numeric: true,
+    duration: true,
+    abstinence: true,
+  }),
+  status: exhaustiveList<Habit['status']>({
+    active: true,
+    waiting: true,
+    paused: true,
+    completed: true,
+    archived: true,
+    idea: true,
+  }),
+  phase: exhaustiveList<'work' | 'short_break' | 'long_break'>({
+    work: true,
+    short_break: true,
+    long_break: true,
+  }),
+  barrier: exhaustiveList<BarrierId>({
+    getting_started: true,
+    consistency: true,
+    forgetting: true,
+    motivation: true,
+    oversized_goals: true,
+    lack_of_time: true,
+    unsure_where_to_start: true,
+  }),
+  pace: exhaustiveList<PaceId>({
+    gentle: true,
+    balanced: true,
+    intensive: true,
+  }),
+  strategy: exhaustiveList<RecoveryStrategy>({
+    complete_today: true,
+    push_tomorrow: true,
+    split_two_days: true,
+    skip: true,
+  }),
+  source: exhaustiveList<'ai' | 'pack' | 'coach'>({
+    ai: true,
+    pack: true,
+    coach: true,
+  }),
+};
+
+/**
+ * A string is permitted only if it is a UUID, an ISO date, or an allowed enum
+ * token for `key` in `ANALYTICS_ENUMS`.
+ */
+export function isPermittedString(key: string, v: string): boolean {
+  if (UUID_RE.test(v)) return true;
+  if (DATE_RE.test(v)) return true;
+  return ENUM_RE.test(v) && ANALYTICS_ENUMS[key]?.includes(v) === true;
+}
+
+function isPermitted(key: string, v: unknown): v is AnalyticsValue {
   if (v === null) return true;
   if (typeof v === 'boolean') return true;
   if (typeof v === 'number') return Number.isFinite(v);
-  if (typeof v === 'string') return isPermittedString(v);
+  if (typeof v === 'string') return isPermittedString(key, v);
   // objects, arrays, functions, symbols, undefined: never emitted
   return false;
 }
@@ -111,7 +189,7 @@ export function buildEvent(
       dropped.push(k);
       continue;
     }
-    if (isPermitted(v)) clean[k] = v;
+    if (isPermitted(k, v)) clean[k] = v;
     else dropped.push(k);
   }
   return { name, props: clean, dropped };

@@ -244,7 +244,7 @@ const RAW_ENTITY_IN_JS_STRING: RegExp[] = [
   // entity inside a quoted string argument to a call that is unambiguously
   // JS-string territory (dialog / log / thrown error) -- never JSX, never
   // decoded.
-  /(?:Alert\.alert|console\.(?:log|warn|error|info)|throw new Error|new Error)\([^)]*?['"][^'"\n]*&(?:quot|apos|amp);[^'"\n]*['"]/,
+  /(?:Alert\.alert|\bnotify|\bconfirm|\bactionSheet|console\.(?:log|warn|error|info)|throw new Error|new Error)\([^)]*?['"][^'"\n]*&(?:quot|apos|amp);[^'"\n]*['"]/,
 ];
 
 function entityViolations(): string[] {
@@ -279,10 +279,34 @@ describe('W1 regression guard -- no HTML entity ever lands inside a JS string/te
     expect(flags("<Text>{'Merhaba &quot; Dünya'}</Text>")).toBe(true);
     expect(flags('title={"A &quot; B"}')).toBe(true);
     expect(flags('Alert.alert("Başlık", "İçerik &quot; metni")')).toBe(true);
+    expect(flags('void notify("Başlık", "İçerik &quot; metni")')).toBe(true);
+    expect(flags("void notify('Başlık', 'İçerik')")).toBe(false);
   });
 
   it('scans a non-trivial number of files', () => {
     const count = ['app', 'components'].reduce((n, d) => n + walk(join(ROOT, d)).length, 0);
     expect(count).toBeGreaterThan(50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7 -- F25 (PRF-07): SeasonalMotion must never receive a bare `isVisible` prop
+// ---------------------------------------------------------------------------
+
+const BARE_IS_VISIBLE_PROP = /<SeasonalMotion\b[^>]*\bisVisible(?:\s*(?:\/>|\n)|\s+(?!=))/;
+
+describe('F25 (PRF-07) -- SeasonalMotion never receives a bare boolean-shorthand isVisible prop', () => {
+  it('every <SeasonalMotion> site passes an explicit isVisible={expr} expression', () => {
+    const offenders = ['app', 'components']
+      .flatMap((d) => walk(join(ROOT, d)))
+      .map(rel)
+      .filter((p) => BARE_IS_VISIBLE_PROP.test(read(p)));
+    expect(offenders).toEqual([]);
+  });
+
+  it('proves BARE_IS_VISIBLE_PROP catches shorthand isVisible and accepts isVisible={expr}', () => {
+    expect(BARE_IS_VISIBLE_PROP.test('<SeasonalMotion month={m} intensity="subtle" reduceMotion={r} isVisible />')).toBe(true);
+    expect(BARE_IS_VISIBLE_PROP.test('<SeasonalMotion\n  month={m}\n  isVisible\n/>')).toBe(true);
+    expect(BARE_IS_VISIBLE_PROP.test('<SeasonalMotion month={m} intensity="subtle" reduceMotion={r} isVisible={active} />')).toBe(false);
   });
 });

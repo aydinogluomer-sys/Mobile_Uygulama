@@ -1,7 +1,6 @@
 /**
  * The recovery backlog: past DUE days that were missed or only partly done.
- * (R01.07 — moved out of `app/screens/recovery.tsx` so the same date fixtures
- * that pin Today, reports, capacity and the reminder planner pin this too.)
+ * (R01.07; F13 DOM-08, DOM-16 — skip exclusion and progressive 7-item cap.)
  *
  * Pure: the clock is a parameter (`today`), never `new Date()`. Days are
  * walked back with `addDaysLocal` and keyed with `ymd` -- the local-day
@@ -13,6 +12,7 @@ import { addDaysLocal, ymd } from './date';
 import { isCountBasedSchedule, isEligibleOn, isMissedOn } from './habitSchedule';
 
 export const RECOVERY_LOOKBACK = 14;
+export const BACKLOG_PAGE_SIZE = 7;
 
 export type BacklogEntry = { habit: Habit; date: string; kind: 'missed' | 'partial' };
 
@@ -24,6 +24,8 @@ export type BacklogInput = {
   doneSet: ReadonlySet<string>;
   partialSet: ReadonlySet<string>;
   missedSet: ReadonlySet<string>;
+  /** Deliberately skipped (`state === 'skip'`) days — neither missed nor partial (DOM-08). */
+  skippedSet?: ReadonlySet<string>;
   /** days that already have a make-up plan (`source_date`). */
   plannedKeys?: ReadonlySet<string>;
   lookback?: number;
@@ -33,7 +35,8 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
 
 /**
  * Past due days with no completion, newest first. Unlogged days of a NEGATIVE
- * habit are unknown, not missed (`isMissedOn`); a logged failure still counts.
+ * habit are unknown, not missed (`isMissedOn`); explicitly skipped days are
+ * excused (`skippedSet`).
  */
 export function recoveryBacklog(p: BacklogInput): BacklogEntry[] {
   const lookback = p.lookback ?? RECOVERY_LOOKBACK;
@@ -51,6 +54,7 @@ export function recoveryBacklog(p: BacklogInput): BacklogEntry[] {
       const d = ymd(dObj);
       const key = `${h.id}|${d}`;
       if (p.doneSet.has(key)) continue;
+      if (p.skippedSet?.has(key)) continue;
       if (p.plannedKeys?.has(key)) continue;
       const isPartial = p.partialSet.has(key);
       if (!isPartial && !isMissedOn(h, p.missedSet.has(key) ? { state: 'miss' } : undefined)) continue;
@@ -60,10 +64,10 @@ export function recoveryBacklog(p: BacklogInput): BacklogEntry[] {
   return out.sort((a, b) => b.date.localeCompare(a.date));
 }
 
-/** Consecutive missed DUE days back from yesterday; a done/partial day ends the run. */
+/** Consecutive missed DUE days back from yesterday; done/partial ends the run, skip is transparent. */
 export function consecutiveMissedDue(
   h: Habit,
-  p: Pick<BacklogInput, 'today' | 'doneSet' | 'partialSet' | 'lookback'>,
+  p: Pick<BacklogInput, 'today' | 'doneSet' | 'partialSet' | 'skippedSet' | 'lookback'>,
 ): number {
   // Undefined for a count schedule -- 0 means "no day-level run", not "doing fine".
   if (isCountBasedSchedule(h)) return 0;
@@ -76,7 +80,22 @@ export function consecutiveMissedDue(
     if (!isEligibleOn(h, dObj)) continue;
     const key = `${h.id}|${ymd(dObj)}`;
     if (p.doneSet.has(key) || p.partialSet.has(key)) break;
+    if (p.skippedSet?.has(key)) continue;
     run++;
   }
   return run;
+}
+
+/**
+ * Progressive disclosure cap for backlog rows (`entries` sorted newest -> oldest).
+ * When `visible <= 0`, `shown` is empty; `hidden` is always `>= 0`.
+ */
+export function capBacklog(
+  entries: readonly BacklogEntry[],
+  visible: number = BACKLOG_PAGE_SIZE,
+): { shown: BacklogEntry[]; hidden: number } {
+  const limit = Math.max(0, Math.floor(visible));
+  const shown = entries.slice(0, limit);
+  const hidden = Math.max(0, entries.length - shown.length);
+  return { shown, hidden };
 }

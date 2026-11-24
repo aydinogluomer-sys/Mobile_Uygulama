@@ -48,29 +48,34 @@ jest.mock('../../lib/supabase', () => ({
         return q;
       },
       upsert: () => ({
+        then: (onOk: (v: unknown) => unknown) => Promise.resolve({ data: null, error: null }).then(onOk),
         select: () => ({ single: async () => ({ data: null, error: null }) }),
       }),
       // Chainable + thenable: `updateHabit` calls `.update().eq('id', ...)`
-      // (one `.eq()`), `willpowerStore.spend`/`refund` call
+      // (one `.eq()`), `willpowerStore.spend`/`refund` fallback call
       // `.update().eq('user_id', ...).eq('state_date', ...)` (two, chained).
-      // The write is only recorded once, inside `.then()`, so it fires
-      // exactly when the caller actually `await`s the chain -- regardless
-      // of how many `.eq()` links precede it.
       update: (patch: unknown) => {
         const record = () => { mockCalls.push({ table, patch }); };
-        // The row is echoed back with the id it was filtered on. Returning a
-        // fixed id made the store replace a habit with a differently-keyed
-        // one, because it now stores the row the server confirmed rather than
-        // merging the patch locally.
         const filters: Record<string, unknown> = {};
         const q: any = {
           eq: (col: string, val: unknown) => { filters[col] = val; return q; },
-          // `habitRepository.updateHabit` reads the row back through
-          // `.select(cols).maybeSingle()` so a rejected write is visible
-          // instead of assumed; the recorded call is unchanged.
           select: () => ({
             maybeSingle: async () => {
               record();
+              if (table === 'willpower_state') {
+                return {
+                  data: {
+                    user_id: (filters.user_id as string) ?? 'u1',
+                    state_date: (filters.state_date as string) ?? '2026-08-30',
+                    daily_budget: 1000,
+                    used: 5,
+                    focus_capacity: 10,
+                    active_count: 5,
+                    ...(patch as Record<string, unknown>),
+                  },
+                  error: null,
+                };
+              }
               return {
                 data: { id: (filters.id as string) ?? 'h1', ...(patch as Record<string, unknown>) },
                 error: null,

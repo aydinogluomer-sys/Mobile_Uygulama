@@ -90,7 +90,7 @@ type RecoveryStore = {
   loading: boolean;
   fetchPlans: () => Promise<void>;
   addPlan: (input: AddPlanInput) => Promise<RecoveryPlan | null>;
-  completePlan: (id: string) => Promise<void>;
+  completePlan: (id: string) => Promise<boolean>;
   skipPlan: (id: string) => Promise<void>;
   deletePlan: (id: string) => Promise<void>;
   planForHabit: (habitId: string) => RecoveryPlan | undefined;
@@ -106,6 +106,7 @@ type RecoveryStore = {
     target?: number | null;
     value?: number | null;
     state?: HabitLog['state'] | null;
+    direction?: 'at_least' | 'at_most' | null;
     fromDate: string;
   }) => RecoveryOption[];
 };
@@ -167,11 +168,15 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
     const plan = get().plans.find((p) => p.id === id);
     completionMeta.set(id, { habit_id: plan?.habit_id ?? null, strategy: plan?.strategy ?? null, target_date: plan?.target_date ?? null });
     const res = await svcCompletePlan(id);
-    if (!res.ok) completionMeta.delete(id);
+    if (!res.ok) {
+      completionMeta.delete(id);
+      return false;
+    }
     cancelRecoveryReminder(id);
     set((s) => ({ plans: s.plans.filter((p) => p.id !== id) }));
     // §22 `recovery_completed` is emitted when the server applies the
     // completion (`coreOutbox.onApplied`), never for a refused one.
+    return true;
   },
 
   skipPlan: async (id) => {
@@ -192,8 +197,8 @@ export const useRecoveryStore = create<RecoveryStore>((set, get) => ({
 
   planForHabit: (habitId) => get().plans.find((p) => p.habit_id === habitId && p.status === 'planned'),
 
-  recoveryOptionsFor: ({ trackingType, target, value, state, fromDate }) => {
-    const deficit = deficitFor({ trackingType, target, value, state });
+  recoveryOptionsFor: ({ trackingType, target, value, state, direction, fromDate }) => {
+    const deficit = deficitFor({ trackingType, target, value, state, direction });
     return recoveryOptions(deficit, { fromDate });
   },
 }));

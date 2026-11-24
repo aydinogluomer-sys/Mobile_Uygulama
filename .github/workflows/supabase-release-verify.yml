@@ -17,24 +17,32 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-release-verify
+  cancel-in-progress: false
+
 jobs:
   release-parity:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       SUPABASE_PROJECT_REF: kbcuolhjjnmhjaarxxmu
     steps:
       - name: Checkout (full history for last-commit staleness comparison)
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
-      - name: Setup Node 22 (LTS)
-        uses: actions/setup-node@v6
+      - name: Setup Node (.nvmrc)
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .nvmrc
 
       - name: Setup Deno 2
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
         with:
           deno-version: v2.x
 
@@ -50,20 +58,11 @@ jobs:
           env -u SUPABASE_PROJECT_REF bash supabase/predeploy_guard.sh
 
       - name: Typecheck & test Edge Functions before checking live parity
+        env:
+          DENO_NO_PACKAGE_JSON: '1'
         run: |
-          deno check \
-            supabase/functions/_shared/aiIdempotency.ts \
-            supabase/functions/_shared/coachContractSchema.ts \
-            supabase/functions/_shared/oauthState.ts \
-            supabase/functions/_shared/redirectAllowlist.ts \
-            supabase/functions/delete-account/index.ts \
-            supabase/functions/generate-routine/index.ts \
-            supabase/functions/google-auth/index.ts \
-            supabase/functions/notion-auth/index.ts \
-            supabase/functions/notion-sync/index.ts \
-            supabase/functions/spotify-auth/index.ts \
-            supabase/functions/subscription-webhook/index.ts
-          deno test supabase/functions/_shared/aiIdempotency_test.ts
+          deno task --config supabase/functions/deno.json check
+          deno task --config supabase/functions/deno.json test
 
       - name: Verify live Edge Function deployment parity against DEPLOYMENT.json
         env:

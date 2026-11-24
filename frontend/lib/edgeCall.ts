@@ -40,12 +40,33 @@
  */
 export const EDGE_TIMEOUT_MS = 20_000;
 
+/** Stream lifecycle deadlines (F21: EDG-09, REP-07). */
+export const STREAM_FIRST_BYTE_MS = 20_000;
+export const STREAM_IDLE_MS = 20_000;
+export const STREAM_TOTAL_MS = 90_000;
+
+/**
+ * 409 REQUEST_IN_PROGRESS alınca AYNI request_id ile beklenecek süreler (ms).
+ * Toplam ~9,5 sn: 20 sn'lik istemci süresinin içinde değil, her çağrıdan SONRA; sunucudaki ilk
+ * istek tipik olarak birkaç saniyede biter. Bütçe dolarsa anahtar korunur, kullanıcı elle tekrar dener.
+ */
+export const REQUEST_IN_PROGRESS_RETRY_DELAYS_MS = [1_500, 3_000, 5_000] as const;
+
 /** Thrown when the deadline passes. Distinguishable from a transport error. */
 export class EdgeTimeoutError extends Error {
   constructor(public readonly label: string) {
     super(`${label}: sunucu yanıt vermedi (${EDGE_TIMEOUT_MS / 1000} sn). Bağlantını kontrol edip tekrar dene.`);
     this.name = 'EdgeTimeoutError';
   }
+}
+
+/**
+ * Constructs a caller-owned `AbortController` inside `lib/edgeCall.ts` so UI
+ * hooks (e.g. `useCoachSend`) can cancel in-flight streams on unmount or turn
+ * replacement without constructing raw controllers outside this module.
+ */
+export function createEdgeAbortController(): AbortController {
+  return new AbortController();
 }
 
 /**
@@ -102,5 +123,77 @@ export async function withEdgeDeadline<T>(
     throw e;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+export type StreamDeadlineOptions = {
+  firstByteMs?: number;
+  idleMs?: number;
+  totalMs?: number;
+  signal?: AbortSignal;
+};
+
+/**
+ * Runs a streaming edge call under a single `AbortController` governed by
+ * first-byte (20s), inter-frame idle (20s, reset by `touch()`), and total
+ * wall-clock (90s) deadlines, plus an optional caller cancellation `signal`.
+ */
+export async function withStreamDeadline<T>(
+  label: string,
+  run: (signal: AbortSignal, touch: () => void) => Promise<T>,
+  opts?: StreamDeadlineOptions,
+): Promise<T> {
+  const controller = new AbortController();
+  const firstByteMs = opts?.firstByteMs ?? STREAM_FIRST_BYTE_MS;
+  const idleMs = opts?.idleMs ?? STREAM_IDLE_MS;
+  const totalMs = opts?.totalMs ?? STREAM_TOTAL_MS;
+
+  let timedOut = false;
+  let fire: (() => void) | null = null;
+
+  const deadline = new Promise<never>((_resolve, reject) => {
+    fire = () => reject(new EdgeTimeoutError(label));
+  });
+
+  const triggerTimeout = () => {
+    if (timedOut || controller.signal.aborted) return;
+    timedOut = true;
+    controller.abort();
+    fire?.();
+  };
+
+  let firstByteTimer: ReturnType<typeof setTimeout> | null = setTimeout(triggerTimeout, firstByteMs);
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const totalTimer = setTimeout(triggerTimeout, totalMs);
+
+  const touch = () => {
+    if (controller.signal.aborted) return;
+    if (firstByteTimer !== null) {
+      clearTimeout(firstByteTimer);
+      firstByteTimer = null;
+    }
+    if (idleTimer !== null) clearTimeout(idleTimer);
+    idleTimer = setTimeout(triggerTimeout, idleMs);
+  };
+
+  const ext = opts?.signal;
+  const onExternalAbort = () => {
+    if (!controller.signal.aborted) controller.abort();
+  };
+  if (ext) {
+    if (ext.aborted) controller.abort();
+    else ext.addEventListener('abort', onExternalAbort, { once: true });
+  }
+
+  try {
+    return await Promise.race([run(controller.signal, touch), deadline]);
+  } catch (e) {
+    if (timedOut && !(e instanceof EdgeTimeoutError)) throw new EdgeTimeoutError(label);
+    throw e;
+  } finally {
+    if (firstByteTimer !== null) clearTimeout(firstByteTimer);
+    if (idleTimer !== null) clearTimeout(idleTimer);
+    clearTimeout(totalTimer);
+    if (ext) ext.removeEventListener('abort', onExternalAbort);
   }
 }

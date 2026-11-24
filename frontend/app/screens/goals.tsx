@@ -5,22 +5,14 @@ import OKRScreen from './okr';
 import LifeAreasScreen from './life-areas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Modal, TextInput, Alert,
+  TextInput,
 } from 'react-native';
+import { confirm } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useGoalStore, Goal, GoalKind } from '../../store/goalStore';
-import {
-  AtmosphericScreenCanvas,
-  EmptyState,
-  Skeleton,
-  FormError,
-  FormPreview,
-  LoadErrorState,
-  EditorialBanner,
-  EmbeddedFiligree,
-  EmblemMedallion,
-} from '../../components/ui';
+import { EmptyState, Skeleton, FormError, FormPreview, LoadErrorState, EditorialBanner, EmblemMedallion, SheetModal } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { goalProgress } from '../../lib/progressModel';
 
@@ -145,11 +137,10 @@ export default function GoalsScreen() {
     setModal(false);
   }
 
-  function handleDelete(id: string) {
-    Alert.alert('Sil', 'Bu hedef silinsin mi?', [
-      { text: 'İptal' },
-      { text: 'Sil', style: 'destructive', onPress: () => removeGoal(id) },
-    ]);
+  async function handleDelete(id: string) {
+    if (await confirm({ title: 'Sil', message: 'Bu hedef silinsin mi?', confirmText: 'Sil', destructive: true })) {
+      await removeGoal(id);
+    }
   }
 
   const QUICK_PCT = [0, 25, 50, 75, 100];
@@ -302,81 +293,83 @@ export default function GoalsScreen() {
       )}
 
       {/* Modal */}
-      <Modal visible={modal} transparent animationType="slide" onRequestClose={closeForm}>
-        <View style={s.modalBg}>
-          <View style={s.modalCard}>
-            <View style={s.modalHead}>
-              <Text style={s.modalTitle}>{editGoal ? 'Hedefi Güncelle' : 'Yeni Hedef'}</Text>
-              <TouchableOpacity
-                onPress={closeForm}
-                accessibilityRole="button"
-                accessibilityLabel="Kapat"
-              >
-                <Ionicons name="close" size={20} color={colors.textFaint} />
-              </TouchableOpacity>
-            </View>
+      <SheetModal
+        visible={modal}
+        align="bottom"
+        onClose={closeForm}
+        sheetStyle={s.modalCard}
+        accessibilityLabel={editGoal ? 'Hedefi Güncelle' : 'Yeni Hedef'}
+      >
+        <View style={s.modalHead}>
+          <Text style={s.modalTitle}>{editGoal ? 'Hedefi Güncelle' : 'Yeni Hedef'}</Text>
+          <TouchableOpacity
+            onPress={closeForm}
+            accessibilityRole="button"
+            accessibilityLabel="Kapat"
+          >
+            <Ionicons name="close" size={20} color={colors.textFaint} />
+          </TouchableOpacity>
+        </View>
 
-            {!editGoal && (
-              <>
-                <Text style={s.fieldLabel}>Başlık</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder={`${tabInfo.label} hedefini yaz...`}
-                  placeholderTextColor={colors.textFaint}
-                  value={title}
-                  onChangeText={setTitle}
-                  autoFocus
-                  multiline
-                />
-              </>
-            )}
-
-            {editGoal && (
-              <Text style={s.editTitle} numberOfLines={3}>{editGoal.title}</Text>
-            )}
-
-            <Text style={s.fieldLabel}>İlerleme (%)</Text>
-            <View style={s.quickRow}>
-              {QUICK_PCT.map((p) => (
-                <TouchableOpacity
-                  key={p}
-                  style={[s.quickBtn, progress === String(p) && { backgroundColor: alphaHex(tabInfo.color, '20'), borderColor: tabInfo.color }]}
-                  onPress={() => setProgress(String(p))}
-                  accessibilityRole="radio"
-                  accessibilityLabel={`İlerlemeyi yüzde ${p} yap`}
-                  accessibilityState={{ selected: progress === String(p), checked: progress === String(p) }}
-                >
-                  <Text style={[s.quickText, progress === String(p) && { color: tabInfo.color }]}>
-                    {p}%
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+        {!editGoal && (
+          <>
+            <Text style={s.fieldLabel}>Başlık</Text>
             <TextInput
               style={s.input}
-              placeholder="Özel % gir (0-100)"
+              placeholder={`${tabInfo.label} hedefini yaz...`}
               placeholderTextColor={colors.textFaint}
-              value={progress}
-              onChangeText={setProgress}
-              keyboardType="numeric"
+              value={title}
+              onChangeText={setTitle}
+              autoFocus
+              multiline
             />
+          </>
+        )}
 
-            <FormPreview>{`Kaydedilecek: ${goalProgress({ progress: parseInt(progress, 10) || 0 }).label}`}</FormPreview>
-            <FormError message={formError} />
+        {editGoal && (
+          <Text style={s.editTitle} numberOfLines={3}>{editGoal.title}</Text>
+        )}
 
+        <Text style={s.fieldLabel}>İlerleme (%)</Text>
+        <View style={s.quickRow}>
+          {QUICK_PCT.map((p) => (
             <TouchableOpacity
-              style={[s.saveBtn, { backgroundColor: tabInfo.color }, !title.trim() && !editGoal && s.saveBtnDisabled]}
-              onPress={handleSave}
-              disabled={saving || (!title.trim() && !editGoal)}
-              accessibilityRole="button"
-              accessibilityLabel={editGoal ? 'Hedefi kaydet' : 'Hedefi ekle'}
-              accessibilityState={{ disabled: !title.trim() && !editGoal }}
+              key={p}
+              style={[s.quickBtn, progress === String(p) && { backgroundColor: alphaHex(tabInfo.color, '20'), borderColor: tabInfo.color }]}
+              onPress={() => setProgress(String(p))}
+              accessibilityRole="radio"
+              accessibilityLabel={`İlerlemeyi yüzde ${p} yap`}
+              accessibilityState={{ selected: progress === String(p), checked: progress === String(p) }}
             >
-              <Text style={s.saveBtnText}>{editGoal ? 'Kaydet' : 'Ekle'}</Text>
+              <Text style={[s.quickText, progress === String(p) && { color: tabInfo.color }]}>
+                {p}%
+              </Text>
             </TouchableOpacity>
-          </View>
+          ))}
         </View>
-      </Modal>
+        <TextInput
+          style={s.input}
+          placeholder="Özel % gir (0-100)"
+          placeholderTextColor={colors.textFaint}
+          value={progress}
+          onChangeText={setProgress}
+          keyboardType="numeric"
+        />
+
+        <FormPreview>{`Kaydedilecek: ${goalProgress({ progress: parseInt(progress, 10) || 0 }).label}`}</FormPreview>
+        <FormError message={formError} />
+
+        <TouchableOpacity
+          style={[s.saveBtn, { backgroundColor: tabInfo.color }, !title.trim() && !editGoal && s.saveBtnDisabled]}
+          onPress={handleSave}
+          disabled={saving || (!title.trim() && !editGoal)}
+          accessibilityRole="button"
+          accessibilityLabel={editGoal ? 'Hedefi kaydet' : 'Hedefi ekle'}
+          accessibilityState={{ disabled: !title.trim() && !editGoal }}
+        >
+          <Text style={s.saveBtnText}>{editGoal ? 'Kaydet' : 'Ekle'}</Text>
+        </TouchableOpacity>
+      </SheetModal>
     </SafeAreaView>
   );
 }
@@ -455,8 +448,8 @@ const s = StyleSheet.create({
     alignItems: 'center', gap: 8, padding: 40,
     backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginTop: 20,
   },
-  emptyText: { fontSize: 14, color: colors.textGhost, fontWeight: '600' },
-  emptyHint: { fontSize: 12, color: colors.textGhost, textAlign: 'center' },
+  emptyText: { fontSize: 14, color: colors.textFaint, fontWeight: '600' },
+  emptyHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center' },
 
   fab: {
     position: 'absolute', bottom: 24, right: 20,
@@ -465,7 +458,6 @@ const s = StyleSheet.create({
     shadowColor: colors.black, shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
   },
 
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderWidth: 1, borderColor: colors.border },
   modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 18, fontWeight: '700', color: colors.white },

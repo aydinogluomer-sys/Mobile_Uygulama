@@ -7,14 +7,27 @@
  * repositories it happened to need, which is why the AI Coach screen imported
  * two repositories directly.
  */
+import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 import { fetchHabitLogsForReview, type ReviewLogRow } from '../repositories/habitLogRepository';
 import { fetchRecoveryPlansForReview } from '../repositories/recoveryRepository';
-import { fetchFocusSessionsSince } from '../repositories/focusSessionRepository';
-import { fetchWeeklyReview, upsertWeeklyReview } from '../repositories/reviewRepository';
+import { fetchWeeklyReview, upsertWeeklyReview, type WeeklyReviewInput } from '../repositories/reviewRepository';
 import { fetchMonthlyReview, upsertMonthlyReview } from '../repositories/monthlyReviewRepository';
+import type { RepoResult } from '../repositories/shared';
 import { currentUser } from '../lib/session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RecoveryPlan } from '../lib/supabase';
+
+function emitAnalytics(name: AnalyticsEventName, props: Record<string, unknown>): void {
+  try {
+    emitEvent(buildEvent(name, props));
+  } catch {
+    /* §22: an analytics failure is never a product failure. */
+  }
+}
+
+function answered(v: string | null): boolean {
+  return typeof v === 'string' && v.trim().length > 0;
+}
 
 export type { ReviewLogRow };
 export type ReviewWindow = { start: string; end: string };
@@ -44,37 +57,23 @@ export async function loadReviewData(
 }
 
 
-/**
- * The same window, plus focus minutes — what the weekly and monthly review
- * screens render.
- *
- * Focus is fetched but NOT required: a review without focus data is still a
- * useful review, whereas a review missing habit logs or recovery would
- * understate the period. The distinction is deliberate and is why this does
- * not simply `Promise.all` everything and fail on any error.
- */
-export async function loadPeriodReview(
-  window: ReviewWindow,
-): Promise<
-  | { ok: true; data: ReviewData & { focusSeconds: number } }
-  | { ok: false; error: string }
-> {
-  const core = await loadReviewData(window);
-  if (!core.ok) return core;
-
-  const focus = await fetchFocusSessionsSince({ sinceIso: `${window.start}T00:00:00.000Z` });
-  const focusSeconds = focus.ok
-    ? focus.data.reduce((sum, f) => sum + (f.completed_seconds || 0), 0)
-    : 0;
-
-  return { ok: true, data: { ...core.data, focusSeconds } };
-}
-
 /** The user's saved reflections for one week. */
 export const loadWeeklyReflection = (params: Parameters<typeof fetchWeeklyReview>[0]) =>
   fetchWeeklyReview(params);
-export const saveWeeklyReflection = (params: Parameters<typeof upsertWeeklyReview>[0]) =>
-  upsertWeeklyReview(params);
+
+export async function saveWeeklyReflection(params: WeeklyReviewInput): Promise<RepoResult<void>> {
+  const res = await upsertWeeklyReview(params);
+  if (!res.ok) return res;
+  if (res.data.created) {
+    emitAnalytics('weekly_review_completed', {
+      week_key: params.weekKey,
+      has_wins: answered(params.wins),
+      has_challenges: answered(params.challenges),
+      has_next_week: answered(params.next_week),
+    });
+  }
+  return { ok: true, data: undefined };
+}
 
 
 /**
@@ -111,7 +110,9 @@ export type MonthlyReflection = {
   answers: Record<string, string>;
   savedAt: string | null;
   /** Where the answers on screen came from — the screen labels the state. */
-  source: 'cloud' | 'draft' | 'legacy' | 'empty';
+  source: 'cloud' | 'draft' | 'legacy' | 'empty' | 'error';
+  /** Set when the cloud read failed; the screen keeps draft editing open and disables overwrite saves. */
+  cloudError?: string;
 };
 
 function asStringMap(value: unknown): Record<string, string> {
@@ -146,6 +147,8 @@ function asStringMap(value: unknown): Record<string, string> {
 export async function loadMonthlyReflection(monthKey: string): Promise<MonthlyReflection> {
   const cloud = await fetchMonthlyReview(monthKey);
   const user = await currentUser();
+  const cloudError = cloud.ok ? undefined : cloud.error;
+  const withCloudError = cloudError ? { cloudError } : {};
 
   const cloudAnswers = cloud.ok && cloud.data ? asStringMap(cloud.data.answers) : null;
   const cloudSavedAt = cloud.ok && cloud.data ? cloud.data.updated_at : null;
@@ -156,10 +159,15 @@ export async function loadMonthlyReflection(monthKey: string): Promise<MonthlyRe
       try {
         const parsed = JSON.parse(rawDraft) as { answers?: unknown; savedAt?: string | null };
         const draftAt = parsed.savedAt ?? null;
-        const newerThanCloud =
-          !cloudSavedAt || (draftAt !== null && draftAt > cloudSavedAt);
+        const newerThanCloud = !cloud.ok || !cloudSavedAt || (draftAt !== null && draftAt > cloudSavedAt);
         if (newerThanCloud) {
-          return { answers: asStringMap(parsed.answers), savedAt: draftAt, source: 'draft' };
+          // Bulut cevapları varsa taslağın altında kalır: taslakta olmayan anahtarlar kaybolmaz.
+          return {
+            answers: { ...(cloudAnswers ?? {}), ...asStringMap(parsed.answers) },
+            savedAt: draftAt,
+            source: 'draft',
+            ...withCloudError,
+          };
         }
       } catch {
         // A corrupt draft is not a reason to show nothing; fall through.
@@ -178,14 +186,19 @@ export async function loadMonthlyReflection(monthKey: string): Promise<MonthlyRe
       const parsed = JSON.parse(legacy) as { answers?: unknown; savedAt?: string | null };
       const answers = asStringMap(parsed.answers);
       if (Object.keys(answers).length > 0) {
-        return { answers, savedAt: parsed.savedAt ?? null, source: 'legacy' };
+        return { answers, savedAt: parsed.savedAt ?? null, source: 'legacy', ...withCloudError };
       }
     } catch {
       // ignore
     }
   }
 
-  return { answers: {}, savedAt: cloudSavedAt, source: cloudAnswers ? 'cloud' : 'empty' };
+  return {
+    answers: {},
+    savedAt: cloudSavedAt,
+    source: cloudAnswers ? 'cloud' : cloud.ok ? 'empty' : 'error',
+    ...withCloudError,
+  };
 }
 
 /** Keeps the in-progress text on the device without touching the cloud. */
@@ -210,7 +223,14 @@ export async function saveMonthlyReflection(
   monthKey: string,
   answers: Record<string, string>,
 ): Promise<{ ok: true; savedAt: string } | { ok: false; error: string }> {
-  const res = await upsertMonthlyReview({ monthKey, answers: asStringMap(answers) });
+  // Körlemesine yazmak, bu cihazın görmediği cevapları siler: önce bulut satırını oku.
+  const current = await fetchMonthlyReview(monthKey);
+  if (!current.ok) {
+    return { ok: false, error: 'Bulut okunamadı; kaydedilmedi. Yazdıkların cihazda taslak olarak duruyor.' };
+  }
+  // Yerel `answers` içinde HİÇ bulunmayan bulut anahtarları korunur; bulunanlar (boş dize dahil) bulutun üstüne yazar.
+  const merged = { ...asStringMap(current.data?.answers), ...asStringMap(answers) };
+  const res = await upsertMonthlyReview({ monthKey, answers: merged });
   if (!res.ok) return { ok: false, error: res.error };
 
   const user = await currentUser();

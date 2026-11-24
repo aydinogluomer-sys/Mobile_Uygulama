@@ -1,8 +1,7 @@
 import { registerAccountScoped } from '../lib/accountScope';
-import { withEdgeDeadline } from '../lib/edgeCall';
 import { SPOTIFY_OAUTH_ENABLED, SPOTIFY_OAUTH_DISABLED_REASON } from '../lib/featureGates';
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
+import { callEdgeFunction } from '../services/edgeFunctions';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 
@@ -39,26 +38,42 @@ type SpotifyStore = {
   playContext: (uri: string) => Promise<string | null>; // hata anahtarı döner, null=başarı
 };
 
-const FN_URL = process.env.EXPO_PUBLIC_SUPABASE_URL + '/functions/v1/spotify-auth';
+const SPOTIFY_FN = 'spotify-auth';
 const REDIRECT_URI = Linking.createURL('spotify-callback');
 
-async function callFn(action: string, body?: Record<string, unknown>): Promise<any> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Oturum açmanız gerekiyor');
-  const res = await withEdgeDeadline('Spotify', (signal) => fetch(`${FN_URL}?action=${action}`, { signal,
+type SpotifyTrackPayload = {
+  name: string;
+  artists: string;
+  album_art?: string | null;
+  uri?: string | null;
+};
+
+type SpotifyFnBody = {
+  connected?: boolean;
+  display_name?: string;
+  product?: string | null;
+  url?: string;
+  success?: boolean;
+  ok?: boolean;
+  error?: string;
+  is_playing?: boolean;
+  track?: SpotifyTrackPayload | null;
+};
+
+type SpotifyFnReply = SpotifyFnBody & { __ok: boolean; __status: number };
+
+async function callFn(action: string, body?: Record<string, unknown>): Promise<SpotifyFnReply> {
+  const res = await callEdgeFunction<SpotifyFnBody>(SPOTIFY_FN, {
+    label: 'Spotify',
+    action,
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body ?? {}),
-  }));
-  const parsed = await res.json().catch(() => ({}));
+    body: body ?? {},
+  });
   // The HTTP status was previously discarded, so a 401/500 came back looking
   // exactly like a successful empty body and every caller read it as success.
   // Carried rather than thrown, because the playback actions legitimately
   // tolerate soft failures (`no_active_device`) — but `disconnect` must not.
-  return { ...parsed, __ok: res.ok, __status: res.status };
+  return Object.assign({}, res.body ?? {}, { __ok: res.ok, __status: res.status });
 }
 
 export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
@@ -103,13 +118,14 @@ export const useSpotifyStore = create<SpotifyStore>((set, get) => ({
 
     set({ status: 'connecting', error: null });
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Oturum açmanız gerekiyor');
-
-      const urlRes = await withEdgeDeadline('Spotify', (signal) => fetch(
-        `${FN_URL}?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`, { signal, method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: '{}' }
-      ));
-      const { url: oauthUrl, error } = await urlRes.json();
+      const urlRes = await callEdgeFunction<SpotifyFnBody>(SPOTIFY_FN, {
+        label: 'Spotify',
+        action: 'url',
+        query: { redirect_uri: REDIRECT_URI },
+        method: 'POST',
+        body: {},
+      });
+      const { url: oauthUrl, error } = urlRes.body ?? {};
       if (!oauthUrl) throw new Error(error ?? 'OAuth URL alınamadı');
 
       const result = await WebBrowser.openAuthSessionAsync(oauthUrl, REDIRECT_URI);

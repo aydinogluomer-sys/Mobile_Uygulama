@@ -22,9 +22,20 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
     defaults:
       run:
         working-directory: frontend
@@ -37,26 +48,32 @@ jobs:
       # that declare `node24`, which is what actually clears it.
       #
       # This is about the ACTIONS' runtime. The version the app builds with is
-      # `node-version` below, and the two are unrelated.
+      # `.nvmrc` below, and the two are unrelated.
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      # Node 20 reached end of life in April 2026 — no more security patches —
-      # so a gate pinned to it verifies the app on a runtime nobody should be
-      # shipping from. 22 is the LTS Expo SDK 54 supports; 24 is deliberately
-      # NOT chosen here just because it is newer, since nothing in this repo
-      # has been run against it.
-      - name: Setup Node 22 (LTS)
-        uses: actions/setup-node@v6
+      # Single Node contract across `.nvmrc`, `frontend/package.json#engines`,
+      # `frontend/eas.json` and CI (BLD-07): react-native@0.86.3 and metro@0.84.5
+      # require `^20.19.4 || ^22.13.0 || ^24.3.0 || >=25.0.0`, pinned to 22.13.0 LTS.
+      - name: Setup Node (.nvmrc)
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: .nvmrc
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      # `npm ci` runs the `postinstall` script (node ./scripts/fix-expo-tsconfig.js)
-      # by default — do not add --ignore-scripts here, Gate A depends on it running.
+      - name: Align npm with packageManager (npm@11.16.0)
+        run: npm install -g npm@11.16.0
+
+      # There is no `postinstall` any more (BLD-08): nothing rewrites files inside
+      # node_modules after install, so this step installs exactly what the lockfile
+      # names and the gates below check that tree, the same tree a clean clone gets.
+      # frontend/__tests__/repo/noInstallTimePatching.test.ts keeps it that way.
       - name: Install dependencies (npm ci)
         run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
 
       # Uses tsconfig.ci.json, NOT the default tsconfig.json. See that file's
       # header for the full reasoning; the short version is that
@@ -94,19 +111,111 @@ jobs:
       # reproducible in isolation. A hosted runner has more headroom, but the
       # same cliff is there and a gate that goes red at random is not a gate.
       - name: Unit tests (jest --ci)
-        run: npx jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB
+        run: npx jest --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB --coverage
+
+      - name: Test count floor (guards against a silently shrunken roots/testMatch)
+        run: test "$(npx jest --ci --listTests | wc -l)" -ge 462
 
       - name: Structural gate (run-tests.js)
         run: node run-tests.js
 
       - name: Export — Android
-        run: npx expo export --platform android
+        run: |
+          npx expo export --platform android
+          inlined="$(grep -rl "127.0.0.1:54321" dist | head -1)"
+          test -n "$inlined"
 
       - name: Export — iOS
         run: npx expo export --platform ios
 
+      - name: Export — Web
+        run: npx expo export --platform web
+
+      - name: Expo SDK alignment
+        run: npx expo install --check
+
+      - name: Config plugins resolve
+        run: npx expo prebuild --no-install --platform all
+
+      - name: Doctor
+        run: npx expo-doctor
+
+  tz-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        zone: [America/New_York, Pacific/Auckland, UTC]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup Node (.nvmrc)
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Align npm with packageManager (npm@11.16.0)
+        run: npm install -g npm@11.16.0
+
+      - name: Install dependencies (npm ci)
+        run: npm ci
+
+      - name: Timezone matrix suites in ${{ matrix.zone }}
+        run: node scripts/run-tz-matrix.js ${{ matrix.zone }}
+
+  web-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: e2e-anon-key
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup Node (.nvmrc)
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Align npm with packageManager (npm@11.16.0)
+        run: npm install -g npm@11.16.0
+
+      - name: Install dependencies (npm ci)
+        run: npm ci
+
+      - name: Export — Web (hermetic env, inlined at build time)
+        run: npx expo export --platform web
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Web smoke (Playwright, mobile 375 and reduced motion)
+        run: npx playwright test -c e2e/playwright.config.ts --project=mobile-375 --project=reduced-motion-375
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7
+
   edge-deno-verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # The repo-root package.json (a tooling dependency, playwright) makes Deno 2 switch to "manual"
     # node_modules: every npm: package must already be installed there. jsr:@supabase/supabase-js
     # 2.118.0 pulls in npm:@supabase/realtime-js, which is not, so `deno check` failed before it
@@ -117,10 +226,10 @@ jobs:
       DENO_NO_PACKAGE_JSON: '1'
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Deno 2
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
         with:
           deno-version: v2.x
 
@@ -150,25 +259,18 @@ jobs:
           fi
 
       - name: Typecheck Edge Functions & _shared modules (deno check)
-        run: |
-          deno check \
-            supabase/functions/_shared/aiIdempotency.ts \
-            supabase/functions/_shared/coachContractSchema.ts \
-            supabase/functions/_shared/oauthState.ts \
-            supabase/functions/_shared/redirectAllowlist.ts \
-            supabase/functions/delete-account/index.ts \
-            supabase/functions/generate-routine/index.ts \
-            supabase/functions/google-auth/index.ts \
-            supabase/functions/notion-auth/index.ts \
-            supabase/functions/notion-sync/index.ts \
-            supabase/functions/spotify-auth/index.ts \
-            supabase/functions/subscription-webhook/index.ts
+        env:
+          DENO_NO_PACKAGE_JSON: '1'
+        run: deno task --config supabase/functions/deno.json check
 
       - name: Run Deno 2 Edge unit tests
-        run: deno test supabase/functions/_shared/aiIdempotency_test.ts
+        env:
+          DENO_NO_PACKAGE_JSON: '1'
+        run: deno task --config supabase/functions/deno.json test
 
   db-migrations-verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:17
@@ -191,7 +293,7 @@ jobs:
       PGDATABASE: aderyth_ci
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Bootstrap local Postgres 17 auth/extensions stubs
         run: |
@@ -297,6 +399,18 @@ jobs:
           grep -q "038 requires 036" "$err"
           psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_after_038_refusal.txt"
           diff -u "$RUNNER_TEMP/fp_before_038_refusal.txt" "$RUNNER_TEMP/fp_after_038_refusal.txt"
+
+      - name: 040 refuses to run before its prerequisites (precondition, negative control)
+        run: |
+          set -euo pipefail
+          err="$RUNNER_TEMP/m040_precondition.err"
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_before_040_refusal.txt"
+          if psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/040_privilege_hygiene.sql 2>"$err"; then
+            echo "040 ran although 036..039 and 028..031 are not applied" >&2; exit 1
+          fi
+          grep -q "040 requires 036" "$err"
+          psql -X -At -v ON_ERROR_STOP=1 -f supabase/rollbacks/catalog_fingerprint.sql > "$RUNNER_TEMP/fp_after_040_refusal.txt"
+          diff -u "$RUNNER_TEMP/fp_before_040_refusal.txt" "$RUNNER_TEMP/fp_after_040_refusal.txt"
 
       - name: Apply forward migrations 028+ and verify RLS-isolated single-RTT bootstrap
         run: |
@@ -453,6 +567,21 @@ jobs:
                 echo "038 rollback ran a second time" >&2; exit 1
               fi
               grep -q "038 is not applied" "$err"
+            elif [ "${num}" = "040" ]; then
+              if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb" 2>"$err"; then
+                echo "040 rollback ran a second time" >&2; exit 1
+              fi
+              grep -q "040 is not applied" "$err"
+            elif [ "${num}" = "042" ]; then
+              if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb" 2>"$err"; then
+                echo "042 rollback ran a second time" >&2; exit 1
+              fi
+              grep -q "042 is not applied" "$err"
+            elif [ "${num}" = "043" ]; then
+              if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb" 2>"$err"; then
+                echo "043 rollback ran a second time" >&2; exit 1
+              fi
+              grep -q "043 is not applied" "$err"
             else
               psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb"
             fi
@@ -488,6 +617,8 @@ jobs:
           set -euo pipefail
           err="$RUNNER_TEMP/rollback_036_drift.err"
           uid='f2000000-0000-4000-8000-000000000001'
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '043'" -f supabase/rollbacks/043_profile_time_zone.rollback.sql
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '042'" -f supabase/rollbacks/042_numeric_measures_and_willpower.rollback.sql
           psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '038'" -f supabase/rollbacks/038_xp_streak_integrity.rollback.sql
           test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regprocedure('public.fn_habit_log_guard()') IS NULL")" = "t"
           psql -X -v ON_ERROR_STOP=1 <<'SQL'
@@ -605,6 +736,8 @@ jobs:
           # forward again for the steps below
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/036_live_audit_hardening.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/038_xp_streak_integrity.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/042_numeric_measures_and_willpower.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/043_profile_time_zone.sql
           test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
 
       # The no-data-loss contract of the coach CHECK rollbacks (032, 034, 035), on a real row. A row of
@@ -633,6 +766,132 @@ jobs:
           fi
           grep -q "ai_actions_type_check" "$err"
           psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO public.ai_conversation_actions (conversation_id, user_id, action_type, payload) VALUES ('f2cccccc-0000-4000-8000-000000000002', 'f2000000-0000-4000-8000-000000000002', 'log_habit', '{}'::jsonb)"
+
+      # F07.1: behavioural proof of migration 039's pre-existing data dedupe and unrefunded-failure heal
+      # (plan 07 cases 3-5, which cannot use \i inside supabase/tests/07_focus_point_039.sql).
+      - name: Migration 039 deduplicates resent user messages and refunds only post-claim failed charges (F07.1)
+        run: |
+          set -euo pipefail
+          uid='f7000000-0000-4000-8000-000000000001'
+          cid='f7cccccc-0000-4000-8000-000000000001'
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '039'" -f supabase/rollbacks/039_focus_point_hardening.rollback.sql
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO auth.users (id, email) VALUES ('f7000000-0000-4000-8000-000000000001', 'f07@aderyth.test');
+          SELECT public.get_or_init_subscription_for('f7000000-0000-4000-8000-000000000001');
+          UPDATE public.user_subscriptions SET focus_points = 50 WHERE user_id = 'f7000000-0000-4000-8000-000000000001';
+          INSERT INTO public.ai_conversations (id, user_id, title)
+          VALUES ('f7cccccc-0000-4000-8000-000000000001', 'f7000000-0000-4000-8000-000000000001', 'F07 dedupe');
+          -- Case 3: duplicate user messages before 039's unique index exists (earliest id must survive)
+          INSERT INTO public.ai_messages (id, conversation_id, user_id, role, content, request_id, created_at) VALUES
+            ('f7aaaaaa-0000-4000-8000-000000000001', 'f7cccccc-0000-4000-8000-000000000001', 'f7000000-0000-4000-8000-000000000001', 'user', 'Ayni soru', 'f07-dup-req', now() - interval '2 minutes'),
+            ('f7aaaaaa-0000-4000-8000-000000000002', 'f7cccccc-0000-4000-8000-000000000001', 'f7000000-0000-4000-8000-000000000001', 'user', 'Ayni soru', 'f07-dup-req', now() - interval '1 minute');
+          -- Case 4: failed claim whose charge (created_at >= claim.created_at) was never refunded -> 039 must refund +5
+          INSERT INTO public.ai_requests (user_id, request_id, mode, input_fingerprint, status, error, created_at)
+          VALUES ('f7000000-0000-4000-8000-000000000001', 'f07-heal-req', 'coach', 'fp-heal', 'failed', 'provider timeout', now() - interval '10 minutes');
+          UPDATE public.user_subscriptions SET focus_points = 45 WHERE user_id = 'f7000000-0000-4000-8000-000000000001';
+          INSERT INTO public.credit_transactions (user_id, delta, reason, balance_after, request_id, created_at)
+          VALUES ('f7000000-0000-4000-8000-000000000001', -5, 'ai_coach', 45, 'f07-heal-req', now() - interval '9 minutes');
+          -- Case 5: charge OLDER than the claim row (pre-023 key) -> 039 must NOT refund it
+          UPDATE public.user_subscriptions SET focus_points = 40 WHERE user_id = 'f7000000-0000-4000-8000-000000000001';
+          INSERT INTO public.credit_transactions (user_id, delta, reason, balance_after, request_id, created_at)
+          VALUES ('f7000000-0000-4000-8000-000000000001', -5, 'ai_coach', 40, 'f07-preclaim-req', now() - interval '20 minutes');
+          INSERT INTO public.ai_requests (user_id, request_id, mode, input_fingerprint, status, error, created_at)
+          VALUES ('f7000000-0000-4000-8000-000000000001', 'f07-preclaim-req', 'coach', 'fp-preclaim', 'failed', 'later fail', now() - interval '5 minutes');
+          SQL
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/039_focus_point_hardening.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT id FROM public.ai_messages WHERE conversation_id = '${cid}' AND request_id = 'f07-dup-req'")" = "f7aaaaaa-0000-4000-8000-000000000001"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT focus_points FROM public.user_subscriptions WHERE user_id = '${uid}'")" = "45"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.credit_transactions WHERE user_id = '${uid}' AND request_id = 'f07-heal-req:refund' AND delta = 5")" = "1"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.credit_transactions WHERE user_id = '${uid}' AND request_id = 'f07-preclaim-req:refund'")" = "0"
+          # Idempotency: running 039 a second time returns 0 additional FP
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/039_focus_point_hardening.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT focus_points FROM public.user_subscriptions WHERE user_id = '${uid}'")" = "45"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+
+      # F09: behavioural proof of migration 040's pre-existing username repair + backup table,
+      # VALIDATE CONSTRAINT compatibility, idempotent second apply, and lossless rollback restore.
+      - name: Migration 040 repairs invalid usernames with backup and restores them on rollback (F09)
+        run: |
+          set -euo pipefail
+          u_short='f9000000-0000-4000-8000-000000000001'
+          u_clean='f9000000-0000-4000-8000-000000000002'
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '040'" -f supabase/rollbacks/040_privilege_hygiene.rollback.sql
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO auth.users (id, email) VALUES
+            ('f9000000-0000-4000-8000-000000000001', 'f09short@aderyth.test'),
+            ('f9000000-0000-4000-8000-000000000002', 'f09clean@aderyth.test');
+          BEGIN;
+          SET LOCAL session_replication_role = replica;
+          INSERT INTO public.profiles (id, email, username) VALUES
+            ('f9000000-0000-4000-8000-000000000001', 'f09short@aderyth.test', '  <x>  '),
+            ('f9000000-0000-4000-8000-000000000002', 'f09clean@aderyth.test', '  <Ayşe_K>  ');
+          COMMIT;
+          SQL
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/040_privilege_hygiene.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT username IS NULL FROM public.profiles WHERE id = '${u_short}'")" = "t"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT username FROM public.profiles WHERE id = '${u_clean}'")" = "Ayşe_K"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM archive_040.profiles_username_backup WHERE id IN ('${u_short}', '${u_clean}')")" = "2"
+          psql -X -v ON_ERROR_STOP=1 -c "ALTER TABLE public.profiles VALIDATE CONSTRAINT profiles_username_shape"
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/040_privilege_hygiene.sql
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '040'" -f supabase/rollbacks/040_privilege_hygiene.rollback.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT username FROM public.profiles WHERE id = '${u_short}'")" = "  <x>  "
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT username FROM public.profiles WHERE id = '${u_clean}'")" = "  <Ayşe_K>  "
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/040_privilege_hygiene.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
+
+      # F10: behavioural proof of migration 041's idempotent second apply, post-condition guard against
+      # bare per-row auth.uid()/auth.role() policies, and negative control proving EXPLAIN omits InitPlan
+      # on a bare policy (which 09_rls_initplan_041.sql cannot run directly because sqlBehaviorTestsWired
+      # forbids ALTER POLICY and \i meta-commands inside supabase/tests/).
+      - name: Migration 041 enforces InitPlan post-condition and re-applies idempotently (F10)
+        run: |
+          set -euo pipefail
+          err="$RUNNER_TEMP/m041_bare_policy.err"
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          BEGIN;
+          ALTER POLICY "Users can view own logs" ON public.habit_logs USING (user_id = auth.uid());
+          SET LOCAL ROLE authenticated;
+          SELECT set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+          SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+          DO $$
+          DECLARE
+            v_line text;
+            v_plan text := '';
+          BEGIN
+            FOR v_line IN EXECUTE 'EXPLAIN (COSTS OFF) SELECT * FROM public.habit_logs' LOOP
+              v_plan := v_plan || v_line || E'\n';
+            END LOOP;
+            IF v_plan ~ 'InitPlan' THEN
+              RAISE EXCEPTION 'Expected no InitPlan on bare habit_logs policy, got: %', v_plan;
+            END IF;
+          END $$;
+          ROLLBACK;
+          SQL
+          psql -X -v ON_ERROR_STOP=1 -c 'ALTER POLICY "Users can view own logs" ON public.habit_logs USING (user_id = auth.uid())'
+          if psql -X -v ON_ERROR_STOP=1 <<'SQL' 2>"$err"; then
+          DO $$
+          DECLARE v_bad text;
+          BEGIN
+            SELECT string_agg(p.schemaname || '.' || p.tablename || ' / ' || p.policyname, '; ')
+              INTO v_bad
+              FROM pg_policies p
+             WHERE p.schemaname IN ('public', 'archive_f13')
+               AND regexp_replace(coalesce(p.qual, '') || ' ' || coalesce(p.with_check, ''),
+                                  '\(\s*SELECT\s+auth\.(uid|role)\(\)\s+AS\s+(uid|role)\s*\)', '', 'gi')
+                   ~* 'auth\.(uid|role)\(\)';
+            IF v_bad IS NOT NULL THEN
+              RAISE EXCEPTION '041: policies still call auth.uid()/auth.role() per row: %', v_bad;
+            END IF;
+          END $$;
+          SQL
+            echo "041 post-condition accepted a bare policy" >&2; exit 1
+          fi
+          grep -q "public.habit_logs / Users can view own logs" "$err"
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/041_rls_initplan_and_indexes.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/041_rls_initplan_and_indexes.sql
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_policies WHERE schemaname = 'public' AND tablename = 'tasks'")" = "1"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT confdeltype FROM pg_constraint WHERE conname = 'tasks_parent_task_id_fkey'")" = "c"
+          test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
 
       # The fingerprint must not tell "never touched" (a NULL ACL) from "revoked and granted back" (the
       # explicit default ACL): a rollback that REVOKEs and GRANTs an object back would otherwise show a

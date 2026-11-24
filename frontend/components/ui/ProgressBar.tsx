@@ -1,5 +1,6 @@
 import { View, ViewStyle, StyleProp, type AccessibilityProps } from 'react-native';
-import { colors, hexA } from '../../lib/tokens';
+import { hexA } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 
 type Props = AccessibilityProps & {
   /** 0–1 arası ilerleme */
@@ -22,8 +23,10 @@ type Props = AccessibilityProps & {
  * kavuşur. İki mod da testlerle sabitlendi.
  */
 export default function ProgressBar({
-  progress, color = colors.primary, trackColor, height = 4, style, ...a11y
+  progress, color, trackColor, height = 4, style, ...a11y
 }: Props) {
+  const c = useThemeColors();
+  const resolvedColor = color ?? c.primary;
   const pct = Math.max(0, Math.min(1, progress)) * 100;
   const described =
     a11y.accessibilityLabel !== undefined ||
@@ -40,11 +43,11 @@ export default function ProgressBar({
         : { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const })}
       {...a11y}
       style={[
-        { height, borderRadius: height, backgroundColor: trackColor ?? hexA(colors.white, 0.08), overflow: 'hidden' },
+        { height, borderRadius: height, backgroundColor: trackColor ?? hexA(c.text, 0.08), overflow: 'hidden' },
         style,
       ]}
     >
-      <View style={{ height: '100%', width: `${pct}%`, borderRadius: height, backgroundColor: color }} />
+      <View style={{ height: '100%', width: `${pct}%`, borderRadius: height, backgroundColor: resolvedColor }} />
     </View>
   );
 }

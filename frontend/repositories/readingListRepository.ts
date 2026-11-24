@@ -61,16 +61,28 @@ export async function fetchReadingCounts(): Promise<
 > {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const statuses: ReadingStatus[] = ['want_to_read', 'reading', 'completed'];
-  const out = { want_to_read: 0, reading: 0, completed: 0 } as Record<ReadingStatus, number>;
-  for (const status of statuses) {
-    const { count, error, status: httpStatus } = await supabase
+  const statuses: readonly ReadingStatus[] = ['want_to_read', 'reading', 'completed'];
+  const countByStatus = (status: ReadingStatus) =>
+    supabase
       .from('reading_list')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', u.userId)
       .eq('status', status);
-    if (error) return { ok: false, error: error.message, offline: isTransportFailure(httpStatus, error), status: httpStatus, code: error.code };
-    out[status] = count ?? 0;
+
+  const results = await Promise.all(statuses.map((status) => countByStatus(status)));
+  const out = { want_to_read: 0, reading: 0, completed: 0 } as Record<ReadingStatus, number>;
+  for (let i = 0; i < statuses.length; i += 1) {
+    const { count, error, status: httpStatus } = results[i];
+    if (error) {
+      return {
+        ok: false,
+        error: error.message,
+        offline: isTransportFailure(httpStatus, error),
+        status: httpStatus,
+        code: error.code,
+      };
+    }
+    out[statuses[i]] = count ?? 0;
   }
   return { ok: true, data: out };
 }

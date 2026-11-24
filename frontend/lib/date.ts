@@ -15,7 +15,9 @@
  *
  * That single mistake is the root of the date-cluster defects across habits,
  * tasks, focus, journal, life areas and deep work.  **No function in this
- * module may use `toISOString()` to derive a calendar date.**
+ * module may use `toISOString()` to derive a calendar date**; deriving a UTC
+ * instant *from* a local day boundary (`localDayStartIso` / `localDayRangeIso`)
+ * is the valid inverse for half-open server `timestamptz` queries.
  *
  * The mirror-image trap is parsing: `new Date('2026-08-04')` is specified to
  * parse as UTC midnight, so in a negative-offset zone it yields the day
@@ -57,6 +59,22 @@ export function deviceTimeZone(): string | null {
     return typeof tz === 'string' && tz.length >= 1 && tz.length <= 64 ? tz : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * F15 — Intl bu bölgeyi tanıyor mu? Boş, null ve 64 karakterden uzun girdi false.
+ * `deviceTimeZone` tek `resolvedOptions().timeZone` noktası olarak korunur.
+ */
+export function isValidTimeZone(zone: string | null | undefined): zone is string {
+  if (typeof zone !== 'string') return false;
+  const trimmed = zone.trim();
+  if (trimmed.length < 1 || trimmed.length > 64 || trimmed !== zone) return false;
+  try {
+    new Intl.DateTimeFormat('tr-TR', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -142,6 +160,21 @@ export function weekStartYmd(d: Date = new Date()): Ymd {
   return ymd(startOfWeekLocal(d));
 }
 
+/**
+ * ISO-8601 week number (1..53) of `d`'s LOCAL calendar day.
+ *
+ * Reads local `getFullYear`/`getMonth`/`getDate` so 00:30 and 23:30 on the same
+ * local date always agree; uses `Date.UTC` solely as a DST-immune integer day
+ * counter (23- and 25-hour days never skew the 86_400_000 division).
+ */
+export function isoWeekNumber(d: Date): number {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil(((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+}
+
 /** `n` days from `d`, preserving local midnight. Negative `n` goes back. */
 export function addDaysLocal(d: Date, n: number): Date {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -159,6 +192,25 @@ export function daysBetweenLocal(a: Date, b: Date): number {
 /** True when both dates fall on the same local calendar day. */
 export function isSameLocalDay(a: Date, b: Date): boolean {
   return ymd(a) === ymd(b);
+}
+
+/** Yerel günün İLK anı (UTC ISO). Gerçek olmayan tarih için null. */
+export function localDayStartIso(day: Ymd): string | null {
+  const d = parseLocalDate(day);
+  return d ? d.toISOString() : null;
+}
+
+/** [startDay 00:00 yerel, endDay + 1 gün 00:00 yerel) -- üst sınır HARİÇ. start > end ya da geçersiz ise null. */
+export function localDayRangeIso(
+  startDay: Ymd,
+  endDay: Ymd,
+): { startIso: string; endExclusiveIso: string } | null {
+  const start = parseLocalDate(startDay);
+  const end = parseLocalDate(endDay);
+  if (!start || !end || startDay > endDay) return null;
+  const endExclusiveIso = localDayStartIso(ymd(addDaysLocal(end, 1)));
+  if (!endExclusiveIso) return null;
+  return { startIso: start.toISOString(), endExclusiveIso };
 }
 
 // ---------------------------------------------------------------------------

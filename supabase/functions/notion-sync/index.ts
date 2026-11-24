@@ -34,8 +34,7 @@
  *    them, but tasks and habits both filter explicitly and a query that
  *    depends on an invisible mechanism is one policy change from leaking.
  */
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from '@supabase/supabase-js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -75,7 +74,7 @@ type TaskRow = {
   title: string; status: string; priority: string; due_date: string | null; completed: boolean;
 };
 
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   const authHeader = req.headers.get('Authorization');

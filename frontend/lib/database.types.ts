@@ -1,10 +1,20 @@
 /**
- * Canonical Supabase PostgREST schema types for Aderyth.
+ * Aderyth PostgREST schema types.
  *
- * Aligned with `supabase/live_schema.sql` and forward additive migrations
- * `supabase/migrations/028..037`. Wired into `createClient<Database>` in
- * `frontend/lib/supabase.ts` and guarded against drift by
- * `frontend/__tests__/repo/databaseTypesWired.test.ts`.
+ * Hand-maintained, NOT produced by `supabase gen types`. It is checked against the SQL
+ * files in both directions by `__tests__/repo/databaseTypesDrift.test.ts`.
+ *
+ * Provenance: one `// @source` comment above every table, every RPC and every column that
+ * was added after its table was created.
+ *   live             exists in `supabase/live_schema.sql`, the owner's dump of the canonical project
+ *   migration:<NNN>  created by `supabase/migrations/<NNN>_*.sql`; WRITTEN, NOT APPLIED until the
+ *                    owner applies it (`supabase/migrations/README.md`). The client reads such
+ *                    objects fail-open (PGRST205 / 42P01) until then.
+ *
+ * After the owner applies a migration and refreshes `live_schema.sql`, the drift test names
+ * every tag that must change from `migration:<NNN>` to `live`.
+ *
+ * One live table is left out on purpose: see the note above `deep_work_sessions`.
  */
 
 export type Json =
@@ -21,6 +31,7 @@ export type Database = {
   };
   public: {
     Tables: {
+      // @source live
       ai_calls: {
         Row: {
           id: string;
@@ -39,6 +50,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       ai_conversation_actions: {
         Row: {
           id: string;
@@ -75,6 +87,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       ai_conversations: {
         Row: {
           id: string;
@@ -108,6 +121,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       ai_messages: {
         Row: {
           id: string;
@@ -138,6 +152,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       ai_requests: {
         Row: {
           user_id: string;
@@ -177,6 +192,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       bad_habits: {
         Row: {
           id: string;
@@ -210,27 +226,7 @@ export type Database = {
         };
         Relationships: [];
       };
-      boss_contributors: {
-        Row: {
-          id: number;
-          boss_id: number | null;
-          user_id: string | null;
-          total_damage: number | null;
-        };
-        Insert: {
-          id: number;
-          boss_id?: number | null;
-          user_id?: string | null;
-          total_damage?: number | null;
-        };
-        Update: {
-          id?: number;
-          boss_id?: number | null;
-          user_id?: string | null;
-          total_damage?: number | null;
-        };
-        Relationships: [];
-      };
+      // @source live
       calendars: {
         Row: {
           id: string;
@@ -261,6 +257,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       challenges: {
         Row: {
           id: string;
@@ -294,6 +291,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       credit_transactions: {
         Row: {
           id: string;
@@ -327,6 +325,7 @@ export type Database = {
       // Note: the derived capacity snapshot table is intentionally excluded
       // from client types so `lib/capacity.ts` (`dailyLoad`) remains the sole
       // client source of truth (enforced by `capacitySingleSourceOfTruth.test.ts`).
+      // @source live
       deep_work_sessions: {
         Row: {
           id: string;
@@ -354,6 +353,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       event_templates: {
         Row: {
           id: string;
@@ -378,6 +378,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       events: {
         Row: {
           id: string;
@@ -438,6 +439,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       focus_sessions: {
         Row: {
           id: string;
@@ -480,6 +482,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       focus_tasks: {
         Row: {
           id: string;
@@ -522,6 +525,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       global_bosses: {
         Row: {
           id: number;
@@ -536,7 +540,7 @@ export type Database = {
           created_at: string | null;
         };
         Insert: {
-          id: number;
+          id?: number;
           name: string;
           description?: string | null;
           max_hp?: number;
@@ -561,6 +565,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       goals: {
         Row: {
           id: string;
@@ -600,6 +605,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       google_calendar_integrations: {
         Row: {
           user_id: string;
@@ -639,6 +645,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source migration:029
       habit_checklist_checks: {
         Row: {
           id: string;
@@ -666,6 +673,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source migration:029
       habit_checklist_items: {
         Row: {
           id: string;
@@ -699,6 +707,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       habit_deletions: {
         Row: {
           id: string;
@@ -726,6 +735,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source migration:028
       habit_goal_versions: {
         Row: {
           id: string;
@@ -759,6 +769,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       habit_logs: {
         Row: {
           id: string;
@@ -777,6 +788,7 @@ export type Database = {
           is_makeup: boolean | null;
           state: string;
           xp: number | null;
+          // @source migration:033
           tz: string | null;
         };
         Insert: {
@@ -796,6 +808,7 @@ export type Database = {
           is_makeup?: boolean | null;
           state?: string;
           xp?: number | null;
+          // @source migration:033
           tz?: string | null;
         };
         Update: {
@@ -815,10 +828,12 @@ export type Database = {
           is_makeup?: boolean | null;
           state?: string;
           xp?: number | null;
+          // @source migration:033
           tz?: string | null;
         };
         Relationships: [];
       };
+      // @source migration:028
       habit_pauses: {
         Row: {
           id: string;
@@ -849,6 +864,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       habit_reminders: {
         Row: {
           id: string;
@@ -873,6 +889,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       habit_templates: {
         Row: {
           id: string;
@@ -918,6 +935,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source migration:036
       habit_xp_awards: {
         Row: {
           user_id: string;
@@ -926,6 +944,8 @@ export type Database = {
           xp_awarded: number;
           streak_counted: boolean;
           updated_at: string;
+          // @source migration:038
+          habit_fp: string | null;
         };
         Insert: {
           user_id: string;
@@ -934,6 +954,8 @@ export type Database = {
           xp_awarded?: number;
           streak_counted?: boolean;
           updated_at?: string;
+          // @source migration:038
+          habit_fp?: string | null;
         };
         Update: {
           user_id?: string;
@@ -942,9 +964,12 @@ export type Database = {
           xp_awarded?: number;
           streak_counted?: boolean;
           updated_at?: string;
+          // @source migration:038
+          habit_fp?: string | null;
         };
         Relationships: [];
       };
+      // @source live
       habits: {
         Row: {
           id: string;
@@ -1095,6 +1120,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       journal_entries: {
         Row: {
           id: string;
@@ -1125,6 +1151,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       journal_insights: {
         Row: {
           id: string;
@@ -1158,6 +1185,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       key_results: {
         Row: {
           id: string;
@@ -1191,6 +1219,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       life_area_logs: {
         Row: {
           id: string;
@@ -1215,6 +1244,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       monthly_reviews: {
         Row: {
           id: string;
@@ -1242,6 +1272,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source migration:031
       mood_checkins: {
         Row: {
           id: string;
@@ -1278,6 +1309,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source migration:031
       mood_definitions: {
         Row: {
           id: string;
@@ -1308,6 +1340,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       notes: {
         Row: {
           id: string;
@@ -1338,6 +1371,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       notion_integrations: {
         Row: {
           id: string;
@@ -1386,6 +1420,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       okrs: {
         Row: {
           id: string;
@@ -1413,6 +1448,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       pet_stages: {
         Row: {
           id: number;
@@ -1423,7 +1459,7 @@ export type Database = {
           color: string;
         };
         Insert: {
-          id: number;
+          id?: number;
           name: string;
           description?: string | null;
           min_level: number;
@@ -1440,6 +1476,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       profile_badges: {
         Row: {
           id: string;
@@ -1467,6 +1504,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       profiles: {
         Row: {
           id: string;
@@ -1487,6 +1525,8 @@ export type Database = {
           coins: number | null;
           skill_points: number | null;
           purged_xp: number;
+          // @source migration:043
+          time_zone: string | null;
         };
         Insert: {
           id: string;
@@ -1507,6 +1547,7 @@ export type Database = {
           coins?: number | null;
           skill_points?: number | null;
           purged_xp?: number;
+          time_zone?: string | null;
         };
         Update: {
           id?: string;
@@ -1527,9 +1568,11 @@ export type Database = {
           coins?: number | null;
           skill_points?: number | null;
           purged_xp?: number;
+          time_zone?: string | null;
         };
         Relationships: [];
       };
+      // @source live
       projects: {
         Row: {
           id: string;
@@ -1560,6 +1603,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       quests: {
         Row: {
           id: string;
@@ -1590,6 +1634,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       reading_list: {
         Row: {
           id: string;
@@ -1632,6 +1677,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       recovery_plans: {
         Row: {
           id: string;
@@ -1686,6 +1732,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       reminders: {
         Row: {
           id: string;
@@ -1707,6 +1754,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source migration:031
       review_next_actions: {
         Row: {
           id: string;
@@ -1740,6 +1788,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       routine_items: {
         Row: {
           id: string;
@@ -1758,6 +1807,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source migration:030
       routine_sessions: {
         Row: {
           id: string;
@@ -1800,6 +1850,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source migration:030
       routine_template_versions: {
         Row: {
           id: string;
@@ -1827,6 +1878,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source migration:030
       routine_templates: {
         Row: {
           id: string;
@@ -1851,6 +1903,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       routines: {
         Row: {
           id: string;
@@ -1875,6 +1928,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       shop_items: {
         Row: {
           id: string;
@@ -1905,6 +1959,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       skills: {
         Row: {
           id: number;
@@ -1915,7 +1970,7 @@ export type Database = {
           max_level: number | null;
         };
         Insert: {
-          id: number;
+          id?: number;
           key: string;
           name: string;
           description?: string | null;
@@ -1932,6 +1987,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       spotify_accounts: {
         Row: {
           user_id: string;
@@ -1971,6 +2027,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       tasks: {
         Row: {
           id: string;
@@ -2043,39 +2100,7 @@ export type Database = {
         };
         Relationships: [];
       };
-      user_challenges: {
-        Row: {
-          id: string;
-          user_id: string | null;
-          challenge_id: string | null;
-          start_date: string;
-          status: string | null;
-          progress: number | null;
-          created_at: string | null;
-          habit_id: string | null;
-        };
-        Insert: {
-          id?: string;
-          user_id?: string | null;
-          challenge_id?: string | null;
-          start_date?: string;
-          status?: string | null;
-          progress?: number | null;
-          created_at?: string | null;
-          habit_id?: string | null;
-        };
-        Update: {
-          id?: string;
-          user_id?: string | null;
-          challenge_id?: string | null;
-          start_date?: string;
-          status?: string | null;
-          progress?: number | null;
-          created_at?: string | null;
-          habit_id?: string | null;
-        };
-        Relationships: [];
-      };
+      // @source live
       user_gamification: {
         Row: {
           user_id: string;
@@ -2097,30 +2122,7 @@ export type Database = {
         };
         Relationships: [];
       };
-      user_inventory: {
-        Row: {
-          id: string;
-          user_id: string | null;
-          item_id: string | null;
-          quantity: number | null;
-          purchased_at: string | null;
-        };
-        Insert: {
-          id?: string;
-          user_id?: string | null;
-          item_id?: string | null;
-          quantity?: number | null;
-          purchased_at?: string | null;
-        };
-        Update: {
-          id?: string;
-          user_id?: string | null;
-          item_id?: string | null;
-          quantity?: number | null;
-          purchased_at?: string | null;
-        };
-        Relationships: [];
-      };
+      // @source live
       user_onboarding: {
         Row: {
           user_id: string;
@@ -2172,87 +2174,7 @@ export type Database = {
         };
         Relationships: [];
       };
-      user_pets: {
-        Row: {
-          id: string;
-          user_id: string | null;
-          pet_name: string | null;
-          current_stage_id: number | null;
-          health: number | null;
-          happiness: number | null;
-          created_at: string | null;
-          last_interaction_at: string | null;
-        };
-        Insert: {
-          id?: string;
-          user_id?: string | null;
-          pet_name?: string | null;
-          current_stage_id?: number | null;
-          health?: number | null;
-          happiness?: number | null;
-          created_at?: string | null;
-          last_interaction_at?: string | null;
-        };
-        Update: {
-          id?: string;
-          user_id?: string | null;
-          pet_name?: string | null;
-          current_stage_id?: number | null;
-          health?: number | null;
-          happiness?: number | null;
-          created_at?: string | null;
-          last_interaction_at?: string | null;
-        };
-        Relationships: [];
-      };
-      user_quests: {
-        Row: {
-          id: string;
-          user_id: string | null;
-          quest_id: string | null;
-          progress: number | null;
-          is_completed: boolean | null;
-          assigned_date: string | null;
-          created_at: string | null;
-        };
-        Insert: {
-          id?: string;
-          user_id?: string | null;
-          quest_id?: string | null;
-          progress?: number | null;
-          is_completed?: boolean | null;
-          assigned_date?: string | null;
-          created_at?: string | null;
-        };
-        Update: {
-          id?: string;
-          user_id?: string | null;
-          quest_id?: string | null;
-          progress?: number | null;
-          is_completed?: boolean | null;
-          assigned_date?: string | null;
-          created_at?: string | null;
-        };
-        Relationships: [];
-      };
-      user_skills: {
-        Row: {
-          user_id: string;
-          skill_id: number;
-          current_level: number | null;
-        };
-        Insert: {
-          user_id: string;
-          skill_id: number;
-          current_level?: number | null;
-        };
-        Update: {
-          user_id?: string;
-          skill_id?: number;
-          current_level?: number | null;
-        };
-        Relationships: [];
-      };
+      // @source live
       user_subscriptions: {
         Row: {
           user_id: string;
@@ -2298,6 +2220,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       webhooks: {
         Row: {
           id: string;
@@ -2328,6 +2251,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       weekly_reviews: {
         Row: {
           id: string;
@@ -2358,6 +2282,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       weekly_xp: {
         Row: {
           id: string;
@@ -2382,6 +2307,7 @@ export type Database = {
         };
         Relationships: [];
       };
+      // @source live
       willpower_state: {
         Row: {
           user_id: string;
@@ -2412,6 +2338,7 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      // @source live
       activate_subscription: {
         Args: {
           p_user_id: string;
@@ -2422,6 +2349,7 @@ export type Database = {
         };
         Returns: Database['public']['Tables']['user_subscriptions']['Row'];
       };
+      // @source live
       ai_request_begin: {
         Args: {
           p_user_id: string;
@@ -2431,22 +2359,27 @@ export type Database = {
         };
         Returns: { outcome: string; response: Json | null; error: string | null }[];
       };
+      // @source live
       ai_request_complete: {
         Args: { p_user_id: string; p_request_id: string; p_response: Json };
         Returns: boolean;
       };
+      // @source live
       ai_request_fail: {
         Args: { p_user_id: string; p_request_id: string; p_error: string };
         Returns: boolean;
       };
+      // @source live
       ai_request_reconcile_stale: {
         Args: { p_user_id: string; p_limit?: number };
         Returns: number;
       };
+      // @source live
       ai_request_release: {
         Args: { p_user_id: string; p_request_id: string };
         Returns: boolean;
       };
+      // @source live
       get_global_leaderboard: {
         Args: { limit_val?: number };
         Returns: {
@@ -2458,22 +2391,27 @@ export type Database = {
           rank: number;
         }[];
       };
+      // @source live
       get_or_init_subscription: {
         Args: Record<string, never>;
         Returns: Database['public']['Tables']['user_subscriptions']['Row'];
       };
+      // @source live
       get_or_init_subscription_for: {
         Args: { p_user_id: string };
         Returns: Database['public']['Tables']['user_subscriptions']['Row'];
       };
+      // @source migration:037
       get_today_bootstrap: {
         Args: { p_today?: string };
         Returns: Json;
       };
+      // @source live
       get_user_rank: {
         Args: { target_user_id: string };
         Returns: { rank: number; total_xp: number; level: number }[];
       };
+      // @source live
       get_weekly_leaderboard: {
         Args: { limit_val?: number };
         Returns: {
@@ -2486,17 +2424,30 @@ export type Database = {
           rank: number;
         }[];
       };
+      // @source live
       mock_activate_subscription: {
         Args: { p_tier: string; p_period: string };
         Returns: Database['public']['Tables']['user_subscriptions']['Row'];
       };
+      // @source live
       refund_focus_points: {
         Args: { p_user_id: string; p_request_id: string; p_reason: string };
         Returns: { ok: boolean; balance: number; already: boolean }[];
       };
+      // @source migration:043
+      set_profile_time_zone: {
+        Args: { p_time_zone: string };
+        Returns: boolean;
+      };
+      // @source live
       spend_focus_points_v2: {
         Args: { p_user_id: string; p_amount: number; p_reason: string; p_request_id: string };
         Returns: { ok: boolean; balance: number; replayed: boolean }[];
+      };
+      // @source migration:042
+      spend_willpower: {
+        Args: { p_day: string; p_amount: number; p_active_delta?: number | null; p_clamp?: boolean };
+        Returns: Database['public']['Tables']['willpower_state']['Row'];
       };
     };
     Enums: Record<string, never>;

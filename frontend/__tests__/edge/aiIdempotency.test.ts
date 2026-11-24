@@ -40,6 +40,7 @@
  *   G  response lost in transit -> the stored answer, no provider call
  *   H  provider failure     -> refunded, exactly as before
  *   I  no credit            -> no provider call, and the key stays usable
+ *   J  a refund that cannot be recorded leaves the claim open (F07)
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -49,6 +50,8 @@ import {
   IDEMPOTENCY_MISMATCH,
   REQUEST_IN_PROGRESS,
   INSUFFICIENT_CREDITS,
+  IDEMPOTENCY_CONSUMED,
+  REFUND_PENDING,
   type AiMode,
   type BeginOutcome,
   type IdempotencyDeps,
@@ -82,12 +85,34 @@ function makeHarness(opts: {
   provider?: () => ProviderResult;
   /** Held open so a second caller arrives while the first is mid-flight. */
   hold?: Promise<void>;
+  /** F07: the refund RPC fails, `refund` returns false. */
+  refundFails?: boolean;
 }) {
   const rows = new Map<string, Row>();
   const ledger = new Map<string, number>();
   let balance = opts.balance;
   let providerCalls = 0;
   const released: string[] = [];
+  /** F07: the claims whose lease `expireLease` ended. */
+  const leaseExpired: string[] = [];
+
+  /**
+   * F07: `ai_request_reconcile_stale`, which `ai_request_begin` runs first: an in_progress claim
+   * whose lease has ended is marked failed and its charge refunded, in one statement.
+   */
+  const reconcileExpired = () => {
+    for (const requestId of leaseExpired) {
+      const row = rows.get(requestId);
+      if (!row || row.status !== 'in_progress') continue;
+      row.status = 'failed';
+      row.error = 'Kurulum yarida kaldi: istek suresi doldu ve ucreti iade edildi.';
+      const spent = ledger.get(requestId);
+      if (spent !== undefined && !ledger.has(`${requestId}:refund`)) {
+        balance += -spent;
+        ledger.set(`${requestId}:refund`, -spent);
+      }
+    }
+  };
 
   const provider = opts.provider ?? (() => ({
     ok: true as const,
@@ -96,6 +121,7 @@ function makeHarness(opts: {
 
   const deps: IdempotencyDeps = {
     begin: ({ requestId, mode, fingerprint }) => {
+      reconcileExpired();
       const existing = rows.get(requestId);
       if (!existing) {
         rows.set(requestId, { mode, fingerprint, status: 'in_progress' });
@@ -155,12 +181,16 @@ function makeHarness(opts: {
 
     // `refund_focus_points`, transcribed, including the already-refunded guard.
     refund: async ({ requestId }) => {
+      if (opts.refundFails) return false;
       const spent = ledger.get(requestId);
-      if (spent === undefined) return;
-      if (ledger.has(`${requestId}:refund`)) return;
+      if (spent === undefined) return true;
+      if (ledger.has(`${requestId}:refund`)) return true;
       balance += -spent;
       ledger.set(`${requestId}:refund`, -spent);
+      return true;
     },
+
+    expireLease: async ({ requestId }) => { leaseExpired.push(requestId); },
 
     callProvider: async () => {
       providerCalls += 1;
@@ -176,6 +206,7 @@ function makeHarness(opts: {
     deps,
     rows,
     released,
+    leaseExpired,
     get providerCalls() { return providerCalls; },
     get balance() { return balance; },
     debits: () => [...ledger.entries()].filter(([k]) => !k.endsWith(':refund')),
@@ -453,6 +484,38 @@ describe('CASE H — a genuine failure still refunds', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('CASE J — a refund that cannot be recorded leaves the claim open', () => {
+  const refused = () => ({ ok: false as const, reason: 'ai_truncated', message: 'AI yanıtı yarım kaldı, tekrar deneyin.' });
+
+  it('(+) refundFails with a provider failure: the row stays in_progress, its lease is ended, the answer is REFUND_PENDING', async () => {
+    const h = makeHarness({ balance: 30, provider: refused, refundFails: true });
+    const res = await run(h, { requestId: 'k1' });
+
+    expect(h.rows.get('k1')!.status).toBe('in_progress');
+    expect(h.leaseExpired).toContain('k1');
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe(REFUND_PENDING);
+  });
+
+  it('(+) then the same key (the lease has run out): consumed, and the ledger holds exactly one :refund row', async () => {
+    const h = makeHarness({ balance: 30, provider: refused, refundFails: true });
+    await run(h, { requestId: 'k1' });
+    const again = await run(h, { requestId: 'k1' });
+
+    expect(again.body.code).toBe(IDEMPOTENCY_CONSUMED);
+    expect(h.refunds()).toEqual([['k1:refund', 25]]);
+  });
+
+  it('(-) a refund that succeeds: no lease is ended and the row is failed', async () => {
+    const h = makeHarness({ balance: 30, provider: refused });
+    await run(h, { requestId: 'k1' });
+
+    expect(h.leaseExpired).toEqual([]);
+    expect(h.rows.get('k1')!.status).toBe('failed');
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('CASE I — no credit means no provider call', () => {
   it('402 before the provider, with no ledger movement', async () => {
     const h = makeHarness({ balance: 5 });
@@ -492,6 +555,87 @@ describe('the claim is taken before anything can be spent or called', () => {
     expect(res.status).toBe(503);
     expect(h.providerCalls).toBe(0);
     expect(h.debits()).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('CASE K — F07.1: lost spend response and throwing expireLease never leak credit or crash', () => {
+  it('(+) spend commits on the server then loses its HTTP response (unavailable): claim stays in_progress, lease expires, next call refunds', async () => {
+    const h = makeHarness({ balance: 30 });
+    const realSpend = h.deps.spend;
+    const deps: IdempotencyDeps = {
+      ...h.deps,
+      spend: async (input) => {
+        await realSpend(input); // server committed -25 FP!
+        return { kind: 'unavailable', error: 'FunctionsFetchError: socket hang up' };
+      },
+    };
+
+    const first = await runIdempotentAiRequest(
+      { requestId: 'k-lost', mode: 'routine', fingerprint: await fingerprintInput('routine', [ROUTINE_PROMPT]), cost: 25 },
+      deps,
+    );
+    expect(first.status).toBe(503);
+    expect(first.body.code).toBe(REFUND_PENDING);
+    expect(h.providerCalls).toBe(0);
+    expect(h.released).toEqual([]);
+    expect(h.rows.get('k-lost')?.status).toBe('in_progress');
+    expect(h.leaseExpired).toContain('k-lost');
+
+    // Reconcile runs on next begin: user gets their 25 FP back instead of losing it forever.
+    const next = await run(h, { requestId: 'k-lost' });
+    expect(next.status).toBe(409);
+    expect(next.body.code).toBe(IDEMPOTENCY_CONSUMED);
+    expect(h.refunds()).toEqual([['k-lost:refund', 25]]);
+    expect(h.balance).toBe(30);
+  });
+
+  it('(+) spend fails before committing on the server (0 debit): lease expires, reconcile marks failed with 0 refund', async () => {
+    const h = makeHarness({ balance: 30 });
+    const deps: IdempotencyDeps = {
+      ...h.deps,
+      spend: async () => ({ kind: 'unavailable', error: 'connection refused' }),
+    };
+
+    const first = await runIdempotentAiRequest(
+      { requestId: 'k-uncommitted', mode: 'routine', fingerprint: await fingerprintInput('routine', [ROUTINE_PROMPT]), cost: 25 },
+      deps,
+    );
+    expect(first.status).toBe(503);
+    expect(first.body.code).toBe(REFUND_PENDING);
+    expect(h.released).toEqual([]);
+
+    const next = await run(h, { requestId: 'k-uncommitted' });
+    expect(next.body.code).toBe(IDEMPOTENCY_CONSUMED);
+    expect(h.debits()).toEqual([]);
+    expect(h.refunds()).toEqual([]);
+    expect(h.balance).toBe(30);
+  });
+
+  it('(+) expireLease throwing does not escape failAndRefund or spend.unavailable', async () => {
+    const h = makeHarness({
+      balance: 30,
+      provider: () => ({ ok: false, reason: 'ai_truncated', message: 'Yarım kaldı' }),
+      refundFails: true,
+    });
+    const throwingDeps: IdempotencyDeps = {
+      ...h.deps,
+      expireLease: async () => { throw new Error('network down during expireLease'); },
+    };
+
+    const res = await runIdempotentAiRequest(
+      { requestId: 'k-throw-1', mode: 'routine', fingerprint: 'fp-throw-1', cost: 25 },
+      throwingDeps,
+    );
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe(REFUND_PENDING);
+
+    const res2 = await runIdempotentAiRequest(
+      { requestId: 'k-throw-2', mode: 'routine', fingerprint: 'fp-throw-2', cost: 25 },
+      { ...throwingDeps, spend: async () => ({ kind: 'unavailable', error: 'timeout' }) },
+    );
+    expect(res2.status).toBe(503);
+    expect(res2.body.code).toBe(REFUND_PENDING);
   });
 });
 

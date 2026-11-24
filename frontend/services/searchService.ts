@@ -22,6 +22,7 @@
  */
 import { searchHabits } from './habitService';
 import { searchTasks } from './taskService';
+import { likeContains, normalizeSearchTerm } from '../repositories/likePattern';
 import { searchNotes } from '../repositories/noteRepository';
 import { searchProjects } from '../repositories/projectRepository';
 import { searchJournalEntries } from '../repositories/journalRepository';
@@ -52,9 +53,9 @@ export async function searchEverything(
   query: string,
   perSource = PER_SOURCE,
 ): Promise<SearchResults> {
-  const q = query.trim();
+  const q = normalizeSearchTerm(query);
   const empty: SearchResults = { tasks: [], habits: [], notes: [], projects: [], journal: [], failed: [] };
-  if (!q) return empty;
+  if (q === null || likeContains(q) === null) return empty;
 
   const limit = Math.max(1, perSource);
 

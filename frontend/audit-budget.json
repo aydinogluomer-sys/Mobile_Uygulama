@@ -1,0 +1,27 @@
+{
+  "generatedFor": "frontend/package-lock.json",
+  "measuredAt": "2026-11-21",
+  "prod": { "critical": 0, "high": 3, "moderate": 3 },
+  "all": { "critical": 0, "high": 3, "moderate": 5 },
+  "ciAuditLevel": "critical",
+  "triage": [
+    {
+      "package": "decode-uri-component",
+      "severity": "high",
+      "reason": "Shipped path expo-router -> query-string@7 -> decode-uri-component@0.2.2. The patched 0.5.1 is ESM-only; query-string 7 require()s it and calls it as a function, which throws 'decodeComponent is not a function' (verified with a scoped override), so the override would break deep links. Accepted until the SDK 58 / expo-router 58.0.29 migration.",
+      "expires": "2027-01-31"
+    },
+    {
+      "package": "query-string",
+      "severity": "high",
+      "reason": "Flagged only for its decode-uri-component dependency (same path, same fix: expo-router 58). Accepted until the SDK 58 / expo-router 58.0.29 migration.",
+      "expires": "2027-01-31"
+    },
+    {
+      "package": "expo-router",
+      "severity": "high",
+      "reason": "Flagged only for query-string -> decode-uri-component; the fix is the expo-router 58 major (SDK 58), out of F08 scope. Accepted until the SDK 58 / expo-router 58.0.29 migration.",
+      "expires": "2027-01-31"
+    }
+  ]
+}

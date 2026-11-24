@@ -2,52 +2,16 @@
  * `weekly_reviews` select + upsert.  (Phase 1 repository layer, plan §5 Rule 4)
  *
  * Also backs `app/screens/monthly-review.tsx`'s DB-side metrics load
- * (`fetchHabitLogsForReview` / `fetchFocusSecondsForReview` in the sibling
- * repositories) -- monthly-review's own reflection text is persisted to
- * AsyncStorage, not this table, so this file only covers the weekly screen's
- * `weekly_reviews` row.
+ * (`fetchHabitLogsForReview` in the sibling repository) -- monthly-review's
+ * reflection text lives in `monthly_reviews` (`monthlyReviewRepository.ts`),
+ * so this file only covers the weekly screen's `weekly_reviews` row.
  *
- * Phase 4 addition: this file is also where §22's `weekly_review_completed`
- * is emitted. See the block comment on `upsertWeeklyReview` for why it is
- * here and not in a store or a screen.
+ * F12 (REP-18): `weekly_review_completed` analitik olayı artık `services/reviewService.ts`
+ * içinde üretilir; satırın ilk kayıt olup olmadığını belirleyen yoklama (`select('id')`)
+ * veri sorusu olduğu için burada kalır ve `{ created: boolean }` olarak döner.
  */
 import { supabase } from '../lib/supabase';
-import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
 import { currentUserId, RepoResult } from './shared';
-
-/**
- * §22 analytics emission seam -- byte-for-byte the wrapper used in
- * `store/habitStore.ts`, `store/recoveryStore.ts` and `store/routineStore.ts`,
- * and for the same three reasons: run the payload through `buildEvent` (which
- * drops free text BY SHAPE, here, at the call site), hand the result to
- * `lib/analytics.ts`'s sink funnel, and never let `buildEvent`'s deliberate
- * throw on an undeclared name escape into the user's action. `emitEvent`
- * already swallows a SINK's throw; `buildEvent`'s throw happens before it is
- * reached, which is exactly what this `try` is for.
- *
- * The one difference from the store copies is WHERE it sits. The other ten
- * §22 events all have a store to hang off; `weekly_review_completed` has
- * none -- there is no weekly-review store (a grep over `store/` finds zero
- * references), and the screen is not a funnel because a screen can be
- * bypassed. This repository is the only code path through which a weekly
- * review actually reaches the database, so it is the honest seam.
- */
-function emitAnalytics(name: AnalyticsEventName, props: Record<string, unknown>): void {
-  try {
-    emitEvent(buildEvent(name, props));
-  } catch {
-    /* §22: an analytics failure is never a product failure. */
-  }
-}
-
-/**
- * "Did the user actually answer this question?" -- `''` and `'   '` are a
- * blank box, not an answer. A boolean, deliberately: the answer TEXT is the
- * one thing §22 forbids putting on an event.
- */
-function answered(v: string | null): boolean {
-  return typeof v === 'string' && v.trim().length > 0;
-}
 
 export type WeeklyReviewRow = {
   id: string;
@@ -59,6 +23,19 @@ export type WeeklyReviewRow = {
   created_at: string;
 };
 
+export type WeeklyReviewInput = {
+  weekKey: string;
+  wins: string | null;
+  challenges: string | null;
+  next_week: string | null;
+};
+
+export type WeeklyReviewSaved = {
+  created: boolean;
+};
+
+export const WEEKLY_REVIEW_COLUMNS = 'id,user_id,week_key,wins,challenges,next_week,created_at';
+
 /** The saved weekly review for one `week_key`, or `null` if none exists yet. */
 export async function fetchWeeklyReview(params: {
   weekKey: string;
@@ -67,7 +44,7 @@ export async function fetchWeeklyReview(params: {
   if (!u.ok) return u;
   const { data, error } = await supabase
     .from('weekly_reviews')
-    .select('*')
+    .select(WEEKLY_REVIEW_COLUMNS)
     .eq('user_id', u.userId)
     .eq('week_key', params.weekKey)
     .maybeSingle();
@@ -134,13 +111,13 @@ export async function fetchWeeklyReview(params: {
  *    Analytics does not get to add a failure mode to the thing it measures.
  *  - `ON CONFLICT ... RETURNING xmax = 0`, the exact answer in raw SQL, is
  *    not expressible through PostgREST's select syntax. It would need an RPC.
+ *
+ * F12 (REP-18): Olay artık `services/reviewService.ts` içinde üretilir; yoklama
+ * burada kalır çünkü "bu satır önceden var mıydı" sorusu veri sorusudur.
  */
-export async function upsertWeeklyReview(params: {
-  weekKey: string;
-  wins: string | null;
-  challenges: string | null;
-  next_week: string | null;
-}): Promise<RepoResult<void>> {
+export async function upsertWeeklyReview(
+  params: WeeklyReviewInput,
+): Promise<RepoResult<WeeklyReviewSaved>> {
   const u = await currentUserId();
   if (!u.ok) return u;
 
@@ -175,25 +152,5 @@ export async function upsertWeeklyReview(params: {
   );
   if (error) return { ok: false, error: error.message };
 
-  // Emitted only AFTER the write came back clean. Emitting alongside the
-  // request -- or on the optimistic assumption that an upsert works -- would
-  // report a review the database rejected as a completed one.
-  if (isFirstSave) {
-    emitAnalytics('weekly_review_completed', {
-      // 'yyyy-MM-dd' (the week's Monday, per the screen's `getWeekKey`), so
-      // it is date-shaped and survives `buildEvent`'s allowlist.
-      week_key: params.weekKey,
-      // Which questions got an answer -- three booleans, never the answers.
-      // `params.wins` / `challenges` / `next_week` are the user's own
-      // reflection prose and are the exact thing §22 keeps off an event
-      // payload; they are persisted to the user's row above and go no
-      // further. `buildEvent` would drop them anyway, but the point is not
-      // to hand them over in the first place.
-      has_wins: answered(params.wins),
-      has_challenges: answered(params.challenges),
-      has_next_week: answered(params.next_week),
-    });
-  }
-
-  return { ok: true, data: undefined };
+  return { ok: true, data: { created: isFirstSave } };
 }

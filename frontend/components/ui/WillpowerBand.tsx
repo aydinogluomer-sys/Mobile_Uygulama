@@ -1,6 +1,7 @@
 import { View, Text, StyleProp, ViewStyle, TouchableOpacity, type AccessibilityProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, space, font } from '../../lib/tokens';
+import { space, font, type Palette } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { TEXTURES } from '../../lib/visualAssets';
 import ProgressBar from './ProgressBar';
 import TexturedSurface from './TexturedSurface';
@@ -18,25 +19,19 @@ type Props = AccessibilityProps & {
   style?: StyleProp<ViewStyle>;
 };
 
-function wpColor(ratio: number) {
-  if (ratio < 0.5) return colors.success;
-  if (ratio < 0.8) return colors.warning;
-  return colors.error;
+function wpColor(ratio: number, c: Palette) {
+  if (ratio < 0.5) return c.success;
+  if (ratio < 0.8) return c.warning;
+  return c.error;
 }
 
 /**
  * İrade bandı — today + timeline paylaşır. Kullanım oranına göre renk.
- *
- * ERİŞİLEBİLİRLİK. Bant üç ayrı parçaya bölünmüş bir tek bilgi: "3/5" ve
- * "2/3 aktif" metinleri ile aradaki çubuk. Gruplanmadan bunlar ekran
- * okuyucuda birbirinden kopuk iki sayı çifti olarak okunur ve neyin neye ait
- * olduğu kaybolur. Bu yüzden bant `accessible` bir tek öğe olarak duyuruluyor,
- * etiketi Türkçe tam cümle, değeri de `accessibilityValue` ile sayısal.
- * `onPress` varsa rol `button`, yoksa `progressbar`.
  */
 export default function WillpowerBand({ wp, onPress, style, ...a11y }: Props) {
+  const c = useThemeColors();
   const ratio = wp.daily_budget > 0 ? wp.used / wp.daily_budget : 0;
-  const col = wpColor(ratio);
+  const col = wpColor(ratio, c);
   const Wrapper: any = onPress ? TouchableOpacity : View;
 
   return (
@@ -61,7 +56,7 @@ export default function WillpowerBand({ wp, onPress, style, ...a11y }: Props) {
         </Text>
       </View>
       <ProgressBar progress={ratio} color={col} height={5} style={{ flex: 1 }} />
-      <Text style={{ ...font.caption, color: colors.textFaint, minWidth: 58, textAlign: 'right' }}>
+      <Text style={{ ...font.caption, color: c.textFaint, minWidth: 58, textAlign: 'right' }}>
         {wp.active_count}/{wp.focus_capacity} aktif
       </Text>
     </Wrapper>

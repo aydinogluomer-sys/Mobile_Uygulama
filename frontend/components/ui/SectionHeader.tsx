@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, space, font, tabularNums } from '../../lib/tokens';
+import { space, font, tabularNums } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 
 type Props = {
   title: string;
@@ -27,14 +28,16 @@ type Props = {
 
 /** Bölüm başlığı — overline/serif başlık + opsiyonel count/aksiyon. */
 export default function SectionHeader({
-  title, icon, iconColor = colors.textFaint, count, actionLabel, onAction,
+  title, icon, iconColor, count, actionLabel, onAction,
   actionAccessibilityLabel, actionAccessibilityHint, variant = 'title', style,
 }: Props) {
+  const c = useThemeColors();
+  const resolvedIconColor = iconColor ?? c.textFaint;
   const titleStyle = variant === 'overline'
-    ? { ...font.overline, color: colors.textFaint }
+    ? { ...font.overline, color: c.textFaint }
     : variant === 'serif'
-      ? { ...font.title, fontSize: 19, color: colors.text }
-      : { ...font.h3, color: colors.text };
+      ? { ...font.title, fontSize: 19, color: c.text }
+      : { ...font.h3, color: c.text };
 
   return (
     <View style={[{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.md }, style]}>
@@ -43,14 +46,14 @@ export default function SectionHeader({
         <Ionicons
           name={icon}
           size={18}
-          color={iconColor}
+          color={resolvedIconColor}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         />
       )}
       <Text style={[titleStyle, { flex: 1 }]}>{title}</Text>
       {typeof count === 'number' && (
-        <Text style={{ ...tabularNums, fontSize: 13, color: colors.textFaint }}>{count}</Text>
+        <Text style={{ ...tabularNums, fontSize: 13, color: c.textFaint }}>{count}</Text>
       )}
       {actionLabel && (
         <TouchableOpacity
@@ -60,7 +63,7 @@ export default function SectionHeader({
           accessibilityLabel={actionAccessibilityLabel ?? actionLabel}
           accessibilityHint={actionAccessibilityHint}
         >
-          <Text style={{ fontSize: 12, color: colors.primaryBright, fontWeight: '600' }}>{actionLabel}</Text>
+          <Text style={{ fontSize: 12, color: c.primaryBright, fontWeight: '600' }}>{actionLabel}</Text>
         </TouchableOpacity>
       )}
     </View>

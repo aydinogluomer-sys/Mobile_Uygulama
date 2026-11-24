@@ -3,7 +3,8 @@ import { Platform, View, Text, StyleSheet, ScrollView, TouchableOpacity, type Im
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, font, hexA, radius, space } from '../../lib/tokens';
-import { AtmosphericScreenCanvas, Button, EmbeddedFiligree } from '../ui';
+import { Button } from '../ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../spatial';
 import { CANVASES, DECOR, TEXTURES } from '../../lib/visualAssets';
 
 const decorativeA11y =

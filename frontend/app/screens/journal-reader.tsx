@@ -1,18 +1,20 @@
 import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, FlatList, Dimensions, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, FlatList, useWindowDimensions, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { navigateTo } from '../../lib/destinations';
 // R07.01 — formatting, tags and habit links in the reader.
 import JournalBody from '../../components/JournalBody';
 import { useHabitStore } from '../../store/habitStore';
 import { useJournalStore, JournalEntry } from '../../store/journalStore';
 import { moodMeta } from '../../lib/journalMoods';
 import { Image } from 'expo-image';
-import { AtmosphericScreenCanvas, EmptyState, EmbeddedFiligree, TexturedSurface } from '../../components/ui';
+import { EmptyState, TexturedSurface } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, getMoodSeal, TEXTURES } from '../../lib/visualAssets';
 
 const DAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
@@ -23,13 +25,13 @@ function parseDate(d: string): Date {
   return new Date(y, m - 1, day);
 }
 
-const W = Dimensions.get('window').width;
-
 export default function JournalReaderScreen() {
+  const { width: W } = useWindowDimensions();
   const { date } = useLocalSearchParams<{ date?: string }>();
   const { entries, fetchEntries } = useJournalStore();
   const listRef = useRef<FlatList<JournalEntry>>(null);
   const positioned = useRef(false);
+  const prevWidthRef = useRef(W);
 
   useEffect(() => { if (entries.length === 0) fetchEntries(); }, [entries.length, fetchEntries]);
 
@@ -39,6 +41,14 @@ export default function JournalReaderScreen() {
   );
   const [idx, setIdx] = useState(0);
   useEffect(() => { setIdx(startIndex); }, [startIndex]);
+
+  useEffect(() => {
+    if (prevWidthRef.current === W) return;
+    prevWidthRef.current = W;
+    if (entries.length > 0) {
+      listRef.current?.scrollToIndex({ index: idx, animated: false });
+    }
+  }, [W, entries.length, idx]);
 
   // Store sonradan dolarsa hedefe konumlan (bir kez)
   useEffect(() => {
@@ -91,7 +101,7 @@ export default function JournalReaderScreen() {
           setTimeout(() => listRef.current?.scrollToIndex({ index, animated: false }), 80);
         }}
         onMomentumScrollEnd={(e) => setIdx(Math.round(e.nativeEvent.contentOffset.x / W))}
-        renderItem={({ item }) => <Page entry={item} />}
+        renderItem={({ item }) => <Page entry={item} width={W} />}
       />
 
       {/* Sayfa çevirme barı */}
@@ -127,7 +137,7 @@ export default function JournalReaderScreen() {
   );
 }
 
-function Page({ entry }: { entry: JournalEntry }) {
+function Page({ entry, width: W }: { entry: JournalEntry; width: number }) {
   const router = useRouter();
   const habits = useHabitStore((st) => st.habits);
   const dt = parseDate(entry.date);
@@ -160,7 +170,7 @@ function Page({ entry }: { entry: JournalEntry }) {
               habits={habits}
               bodyStyle={s.body}
               onOpenHabit={(id) => router.push(`/screens/habit-detail?id=${id}` as never)}
-              onTag={(t) => router.push(`/screens/journal-archive?tag=${encodeURIComponent(t)}` as never)}
+              onTag={(t) => navigateTo(router, 'journal-archive', { tag: t })}
             />
           ) : (
             <Text style={s.body}>(boş sayfa)</Text>
@@ -207,7 +217,7 @@ const s = StyleSheet.create({
   navBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingVertical: 4, minWidth: 64 },
   navBtnOff: { opacity: 0.5 },
   navText: { fontSize: 14, fontWeight: '700', color: colors.warning },
-  navTextOff: { color: colors.textGhost },
+  navTextOff: { color: colors.textFaint },
   pageIndicator: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 30 },

@@ -29,25 +29,34 @@ function walk(dir: string): string[] {
 }
 const FILES = DIRS.flatMap(walk);
 const CONSOLE = /\bconsole\.(log|warn|error|info|debug|trace)\(/;
-const ALLOWED = ['lib/crashReporting.ts', 'lib/analytics.ts', 'components/ui/ErrorBoundary.tsx'];
+const ALLOWED = [
+  'lib/crashReporting.ts',
+  'lib/analytics.ts',
+  'components/ui/ErrorBoundary.tsx',
+  'components/ConfigErrorScreen.tsx',
+];
 
 it('scans the real tree', () => {
   expect(FILES.length).toBeGreaterThan(250);
   for (const f of ALLOWED) expect(FILES).toContain(f);
 });
 
-it('no raw console call outside the three that exist for it', () => {
+it('no raw console call outside the four that exist for it', () => {
   const offenders = FILES.filter((f) => !ALLOWED.includes(f) && CONSOLE.test(strip(fs.readFileSync(path.join(ROOT, f), 'utf8'))));
   expect(offenders).toEqual([]);
 });
 
-it('the allowed ones stay what they claim: the boundary only in __DEV__, the analytics sink opt-in', () => {
+it('the allowed ones stay what they claim: the boundary only in __DEV__, the analytics sink opt-in, config screen names-only', () => {
   const eb = strip(fs.readFileSync(path.join(ROOT, 'components/ui/ErrorBoundary.tsx'), 'utf8'));
   expect(eb).toMatch(/if \(__DEV__ && info\?\.componentStack\) \{\s*console\.error\(/);
   expect((eb.match(CONSOLE_G()) ?? []).length).toBe(1);
   const an = strip(fs.readFileSync(path.join(ROOT, 'lib/analytics.ts'), 'utf8'));
   expect((an.match(CONSOLE_G()) ?? []).length).toBe(1);
   expect(an).toMatch(/export const consoleAnalyticsSink: AnalyticsSink = \(event\) => \{\s*console\.log\(/);
+  const cfg = strip(fs.readFileSync(path.join(ROOT, 'components/ConfigErrorScreen.tsx'), 'utf8'));
+  expect((cfg.match(CONSOLE_G()) ?? []).length).toBe(1);
+  expect(cfg).toContain('/^[A-Z0-9_]+$/.test(n)');
+  expect(cfg).toContain('console.error(`[config] Eksik ortam değişkeni: ${names}`)');
 });
 
 it('no file builds an error message out of the text it holds', () => {

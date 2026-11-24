@@ -14,6 +14,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { readHabitOnboardingSource } from '../helpers/habitOnboardingSource';
 import { stripComments } from '../helpers/sourceText';
 
 const ROOT = join(__dirname, '..', '..');
@@ -31,10 +32,9 @@ const ROOT = join(__dirname, '..', '..');
  * The three screens still call `canActivate` directly for their disabled
  * states, so they stay here.
  */
-const FILES: [string, string][] = [
-  ['app/tabs/habits.tsx', join(ROOT, 'app', 'tabs', 'habits.tsx')],
-  ['app/tabs/timeline.tsx', join(ROOT, 'app', 'tabs', 'timeline.tsx')],
-  ['components/HabitOnboarding.tsx', join(ROOT, 'components', 'HabitOnboarding.tsx')],
+const FILES: [string, () => string][] = [
+  ['app/tabs/timeline.tsx', () => readFileSync(join(ROOT, 'app', 'tabs', 'timeline.tsx'), 'utf8')],
+  ['components/HabitOnboarding.tsx', () => readHabitOnboardingSource(ROOT)],
 ];
 
 /**
@@ -85,13 +85,13 @@ function tracedIdentifiers(text: string): string[] {
 }
 
 describe('W1 -- canActivate call sites pass activeHabits-derived capacity data', () => {
-  it.each(FILES)('%s calls canActivate at least once', (_name, path) => {
-    const src = stripComments(readFileSync(path, 'utf8'));
+  it.each(FILES)('%s calls canActivate at least once', (_name, load) => {
+    const src = stripComments(load());
     expect(extractCanActivateCalls(src).length).toBeGreaterThan(0);
   });
 
-  it.each(FILES)('%s: every canActivate( call site references activeHabits (directly, or via a local variable traced back to it)', (_name, path) => {
-    const src = stripComments(readFileSync(path, 'utf8'));
+  it.each(FILES)('%s: every canActivate( call site references activeHabits (directly, or via a local variable traced back to it)', (_name, load) => {
+    const src = stripComments(load());
     const traced = tracedIdentifiers(src);
     const calls = extractCanActivateCalls(src);
     const missing = calls.filter((c) => !traced.some((name) => new RegExp(`\\b${name}\\b`).test(c)));
@@ -127,12 +127,13 @@ describe('the service, not the store, now applies the capacity rule', () => {
     expect(service).toContain('params.useCapacityRule');
   });
 
-  it('willpower is charged AFTER the status write, never before', () => {
-    // Charging first and then failing the write debits a budget for a habit
-    // that never activated.
-    const writeAt = service.indexOf("status: 'active'");
+  it('willpower is charged atomically BEFORE the status write, with a compensating refund on failure (F14)', () => {
     const spendAt = service.indexOf('await spend(');
-    expect(spendAt).toBeGreaterThan(writeAt);
+    const writeAt = service.indexOf("status: 'active'");
+    const refundAt = service.indexOf('await refund(');
+    expect(spendAt).toBeGreaterThan(-1);
+    expect(writeAt).toBeGreaterThan(spendAt);
+    expect(refundAt).toBeGreaterThan(writeAt);
   });
 });
 

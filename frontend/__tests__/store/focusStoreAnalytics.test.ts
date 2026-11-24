@@ -57,6 +57,7 @@ jest.mock('../../lib/supabase', () => {
       eq: () => q,
       order: () => q,
       limit: () => q,
+      maybeSingle: async () => ({ data: mockState.tasks[0] ?? null, error: null }),
       select: () => ({
         maybeSingle: async () => {
           const r = result() as { data: unknown; error: unknown };
@@ -98,6 +99,11 @@ jest.mock('../../lib/supabase', () => {
   };
 });
 
+jest.mock('../../lib/notifications', () => ({
+  scheduleFocusEnd: jest.fn(async () => true),
+  cancelFocusEnd: jest.fn(async () => undefined),
+}));
+
 jest.mock('../../lib/haptics', () => ({
   haptic: { success: jest.fn(), light: jest.fn(), medium: jest.fn(), warning: jest.fn(), error: jest.fn(), selection: jest.fn() },
 }));
@@ -117,6 +123,7 @@ jest.mock('../../lib/analytics', () => ({
 
 import * as analytics from '../../lib/analytics';
 import type { AnalyticsEvent } from '../../lib/analytics';
+import { EMPTY_TALLY } from '../../lib/focusRitual';
 import { useFocusStore, DEFAULT_SETTINGS, type FocusSettings, type FocusTask } from '../../store/focusStore';
 
 const emit = (analytics as unknown as { emitEvent: jest.Mock }).emitEvent;
@@ -145,6 +152,12 @@ function resetStore(settings: Partial<FocusSettings> = {}) {
     secondsLeft: DEFAULT_SETTINGS.workMinutes * 60,
     sessionsCompleted: 0,
     sessionStartedAt: null,
+    clock: null,
+    smallStep: null,
+    pausedAt: null,
+    lastPartial: null,
+    intent: null,
+    interruptions: EMPTY_TALLY,
     settings: { ...DEFAULT_SETTINGS, ...settings },
     justCompleted: null,
     focusTasks: [],

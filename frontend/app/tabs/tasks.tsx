@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Modal, KeyboardAvoidingView, Platform, Alert,
+  TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { confirm, notify } from '../../lib/dialog';
+import { useFocusParam } from '../../hooks/useFocusParam';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore, type Task, type ListType, type TaskPriority } from '../../store/taskStore';
@@ -11,10 +13,13 @@ import { colors, space, alphaHex, hexA } from '../../lib/tokens';
 import { haptic } from '../../lib/haptics';
 import InlineComposer from '../../components/InlineComposer';
 import { todayLocal } from '../../lib/date';
+import { quickAddToTaskInput } from '../../lib/taskQuickAdd';
+import { SMART_LISTS, dueDay, filterSmartList, type SmartListKey } from '../../lib/smartTaskLists';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import ADHDTaskSplitter from '../../components/ADHDTaskSplitter';
 import EisenhowerScreen from '../screens/eisenhower';
-import { AtmosphericScreenCanvas, EditorialBanner, EmbeddedFiligree, EmblemMedallion } from '../../components/ui';
+import { Chip, EditorialBanner, EmblemMedallion } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, EMPTY_VIGNETTES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const TABS: { key: ListType | 'done'; label: string }[] = [
@@ -28,39 +33,71 @@ const PRIORITY_META: Record<TaskPriority, { color: string; label: string }> = {
   high: { color: colors.error, label: 'Yüksek' },
   medium: { color: colors.warning, label: 'Orta' },
   low: { color: colors.success, label: 'Düşük' },
-  none: { color: colors.textGhost, label: 'Yok' },
+  none: { color: colors.textFaint, label: 'Yok' },
 };
 
 export default function TasksScreen() {
   const [viewMode, setViewMode] = useState<'list' | 'matrix'>('list');
   const [activeTab, setActiveTab] = useState<ListType | 'done'>('inbox');
+  const [smartList, setSmartList] = useState<SmartListKey | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('none');
   const [listType, setListType] = useState<ListType>('inbox');
-  /**
-   * The task being split, or null.
-   *
-   * `ADHDTaskSplitter` and the decomposition engine behind it
-   * (`lib/taskDecomposition.ts`, 39 tests) were complete and wired all the
-   * way to `tasks` — validation gate, preview step, explicit confirm,
-   * `insertSplitTasks` — and unreachable, because nothing rendered the
-   * component. A tested engine with no entry point is not a feature.
-   *
-   * The row is where it belongs: splitting is an operation ON a task, so it
-   * is offered next to the task rather than behind a global button that
-   * would then have to ask which one.
-   */
   const [splitTarget, setSplitTarget] = useState<Task | null>(null);
 
-  const { tasks, loadingMore, hasMore, loadMore, fetchTasks, addTask, toggleDone, removeTask, byList } = useTaskStore();
+  const { tasks, loading, loadingMore, hasMore, loadMore, fetchTasks, addTask, toggleDone, removeTask, archiveTask, byList } = useTaskStore();
   const { projects, fetchProjects } = useProjectStore();
+  const [initialLoaded, setInitialLoaded] = useState(tasks.length > 0);
+  const { id: focusId, consume: consumeFocus } = useFocusParam();
+  const consumedFocusRef = useRef<string | null>(null);
 
-  useEffect(() => { fetchTasks(); fetchProjects(); }, [fetchTasks, fetchProjects]);
+  useEffect(() => {
+    void Promise.resolve(fetchTasks()).finally(() => setInitialLoaded(true));
+    void fetchProjects();
+  }, [fetchTasks, fetchProjects]);
 
-  const visibleTasks = activeTab === 'done'
-    ? tasks.filter((t) => t.completed || t.status === 'cancelled')
-    : byList(activeTab as ListType);
+  useEffect(() => {
+    if (!focusId) {
+      consumedFocusRef.current = null;
+      return;
+    }
+    if (consumedFocusRef.current === focusId) return;
+    const match = tasks.find((t) => t.id === focusId);
+    if (match) {
+      consumedFocusRef.current = focusId;
+      setViewMode('list');
+      setSmartList(null);
+      setActiveTab(match.completed || match.status === 'cancelled' ? 'done' : match.list_type);
+      setSplitTarget(match);
+      consumeFocus();
+      return;
+    }
+    if (initialLoaded && !loading) {
+      consumedFocusRef.current = focusId;
+      consumeFocus();
+      void notify('Öğe bulunamadı', 'Aradığın görev silinmiş ya da taşınmış olabilir.');
+    }
+  }, [focusId, tasks, initialLoaded, loading, consumeFocus]);
+
+  const activeProjects = useMemo(
+    () =>
+      projects
+        .filter((p) => !p.status || p.status === 'active')
+        .map((p) => ({ id: p.id, name: p.name })),
+    [projects],
+  );
+
+  const today = todayLocal();
+  const visibleTasks = smartList
+    ? filterSmartList(smartList, tasks, today)
+    : activeTab === 'done'
+      ? tasks.filter((t) => t.completed || t.status === 'cancelled')
+      : byList(activeTab as ListType);
+
+  const activeSmartDef = smartList ? SMART_LISTS.find((sl) => sl.key === smartList) : null;
+  const showComposer = activeTab !== 'done' && smartList !== 'waiting' && smartList !== 'quick';
+  const composerListType: ListType = activeTab === 'done' ? 'inbox' : activeTab;
 
   async function handleAdd() {
     if (!title.trim()) return;
@@ -76,24 +113,19 @@ export default function TasksScreen() {
     setShowAdd(true);
   }
 
-  /**
-   * Re-reads from the server rather than trusting the rows handed back.
-   *
-   * The splitter returns exactly what the insert returned, so pushing those
-   * into the store would also show them — but it would show them whether or
-   * not the list the user is looking at is the list they landed in. A refetch
-   * proves the subtasks are really in `tasks` and puts them in the right tab.
-   */
-  async function handleSplit() {
+  async function handleSplit(_subtasks: Task[], options?: { archiveParent: boolean }) {
+    const parent = splitTarget;
     setSplitTarget(null);
+    if (options?.archiveParent && parent && typeof archiveTask === 'function') {
+      await archiveTask(parent.id);
+    }
     await fetchTasks();
   }
 
-  function confirmDelete(t: Task) {
-    Alert.alert('Görevi Sil', `"${t.title}" silinsin mi?`, [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => removeTask(t.id) },
-    ]);
+  async function confirmDelete(t: Task) {
+    if (await confirm({ title: 'Görevi Sil', message: `"${t.title}" silinsin mi?`, confirmText: 'Sil', destructive: true })) {
+      await removeTask(t.id);
+    }
   }
 
   return (
@@ -140,23 +172,49 @@ export default function TasksScreen() {
               const count = tab.key === 'done'
                 ? tasks.filter((t) => t.completed).length
                 : byList(tab.key as ListType).length;
+              const isSelected = smartList === null && activeTab === tab.key;
               return (
                 <TouchableOpacity
                   key={tab.key}
-                  style={[s.tabBtn, activeTab === tab.key && s.tabBtnActive]}
-                  onPress={() => setActiveTab(tab.key)}
+                  style={[s.tabBtn, isSelected && s.tabBtnActive]}
+                  onPress={() => {
+                    setSmartList(null);
+                    setActiveTab(tab.key);
+                  }}
                   accessibilityRole="button"
                   accessibilityLabel={`${tab.label}, ${count} görev`}
+                  accessibilityState={{ selected: isSelected }}
                 >
-                  <Text style={[s.tabLabel, activeTab === tab.key && s.tabLabelActive]}>
+                  <Text style={[s.tabLabel, isSelected && s.tabLabelActive]}>
                     {tab.label}
                   </Text>
                   {count > 0 && (
-                    <View style={[s.tabBadge, activeTab === tab.key && s.tabBadgeActive]}>
+                    <View style={[s.tabBadge, isSelected && s.tabBadgeActive]}>
                       <Text style={s.tabBadgeText}>{count}</Text>
                     </View>
                   )}
                 </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Akıllı Liste Süzgeçleri (PS-13 — sayı, kırmızı ve "gecikmiş" yok) */}
+          <View style={s.smartRow}>
+            {SMART_LISTS.map((sl) => {
+              const selected = smartList === sl.key;
+              return (
+                <Chip
+                  key={sl.key}
+                  label={sl.label}
+                  color={selected ? colors.accent : colors.textDim}
+                  selected={selected}
+                  onPress={() => {
+                    haptic.select();
+                    setSmartList((cur) => (cur === sl.key ? null : sl.key));
+                  }}
+                  accessibilityHint={sl.hint}
+                  style={s.smartChip}
+                />
               );
             })}
           </View>
@@ -182,11 +240,29 @@ export default function TasksScreen() {
               minHeight={90}
               style={{ marginBottom: space.md }}
             />
-            {activeTab !== 'done' ? (
+            {showComposer ? (
               <View style={{ marginBottom: space.md }}>
                 <InlineComposer
                   placeholder="Hızlı görev ekle…"
-                  onSubmit={async (t) => { await addTask({ title: t, priority: 'none', list_type: activeTab as ListType }); }}
+                  quickAdd={{ projects: activeProjects }}
+                  projects={activeProjects}
+                  voice
+                  onSubmit={async (t, quick) => {
+                    const nowDay = todayLocal();
+                    await addTask(
+                      quickAddToTaskInput(
+                        t,
+                        quick,
+                        {
+                          priority: 'none',
+                          list_type: composerListType,
+                          due_date: smartList === 'today' ? nowDay : null,
+                          project_id: null,
+                        },
+                        nowDay,
+                      ),
+                    );
+                  }}
                 />
               </View>
             ) : null}
@@ -200,72 +276,80 @@ export default function TasksScreen() {
               unlocked
               accentColor={colors.accent}
             />
-            <Text style={s.emptyText}>Görev yok</Text>
-            {activeTab !== 'done' && (
+            <Text style={s.emptyText}>{activeSmartDef ? activeSmartDef.empty : 'Görev yok'}</Text>
+            {showComposer && (
               <TouchableOpacity onPress={() => openAdd(activeTab as ListType)} style={s.emptyAdd}>
                 <Text style={s.emptyAddText}>+ Görev Ekle</Text>
               </TouchableOpacity>
             )}
           </View>
         }
-        renderItem={({ item }) => (
-          <View style={[s.row, item.completed && s.rowDone]}>
-            <EmbeddedFiligree source={DECOR.cornerBlueprint} size={78} opacity={0.12} />
-            <TouchableOpacity style={s.check} onPress={() => { haptic.success(); toggleDone(item.id); }}>
-              <View style={[
-                s.checkBox,
-                { borderColor: PRIORITY_META[item.priority].color },
-                item.completed && { backgroundColor: PRIORITY_META[item.priority].color, borderColor: PRIORITY_META[item.priority].color },
-              ]}>
-                {item.completed && <Ionicons name="checkmark" size={12} color={colors.white} />}
-              </View>
-            </TouchableOpacity>
-
-            <View style={s.rowBody}>
-              <Text style={[s.rowTitle, item.completed && s.rowTitleDone]} numberOfLines={2}>
-                {item.title}
-              </Text>
-              <View style={s.rowMeta}>
-                {item.priority !== 'none' && (
-                  <View style={[s.priorityDot, { backgroundColor: PRIORITY_META[item.priority].color }]} />
-                )}
-                {item.due_date && (
-                  <Text style={[
-                    s.dueText,
-                    item.due_date < todayLocal() && !item.completed && s.duePast,
-                  ]}>
-                    {item.due_date}
-                  </Text>
-                )}
-                {item.project_id && (
-                  <Text style={s.projectLabel}>
-                    {projects.find((p) => p.id === item.project_id)?.name ?? ''}
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            {!item.completed && (
-              <TouchableOpacity
-                style={s.splitBtn}
-                onPress={() => setSplitTarget(item)}
-                accessibilityRole="button"
-                accessibilityLabel={`${item.title} görevini alt adımlara böl`}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="git-branch-outline" size={16} color={colors.primaryBright} />
+        renderItem={({ item }) => {
+          const itemDay = dueDay(item.due_date);
+          return (
+            <View style={[s.row, item.completed && s.rowDone]}>
+              <EmbeddedFiligree source={DECOR.cornerBlueprint} size={78} opacity={0.12} />
+              <TouchableOpacity style={s.check} onPress={() => { haptic.success(); toggleDone(item.id); }}>
+                <View style={[
+                  s.checkBox,
+                  { borderColor: PRIORITY_META[item.priority].color },
+                  item.completed && { backgroundColor: PRIORITY_META[item.priority].color, borderColor: PRIORITY_META[item.priority].color },
+                ]}>
+                  {item.completed && <Ionicons name="checkmark" size={12} color={colors.white} />}
+                </View>
               </TouchableOpacity>
-            )}
 
-            <TouchableOpacity style={s.deleteBtn} onPress={() => confirmDelete(item)}>
-              <Ionicons name="trash-outline" size={16} color={colors.textGhost} />
-            </TouchableOpacity>
-          </View>
-        )}
+              <View style={s.rowBody}>
+                <Text style={[s.rowTitle, item.completed && s.rowTitleDone]} numberOfLines={2}>
+                  {item.title}
+                </Text>
+                <View style={s.rowMeta}>
+                  {item.priority !== 'none' && (
+                    <View style={[s.priorityDot, { backgroundColor: PRIORITY_META[item.priority].color }]} />
+                  )}
+                  {itemDay ? (
+                    <Text style={[
+                      s.dueText,
+                      smartList !== 'waiting' && itemDay < today && !item.completed && s.duePast,
+                    ]}>
+                      {itemDay}
+                    </Text>
+                  ) : null}
+                  {item.time_block_start ? (
+                    <Text style={s.dueText}>
+                      {item.time_block_end ? `${item.time_block_start}–${item.time_block_end}` : item.time_block_start}
+                    </Text>
+                  ) : null}
+                  {item.project_id && (
+                    <Text style={s.projectLabel}>
+                      {projects.find((p) => p.id === item.project_id)?.name ?? ''}
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {!item.completed && (
+                <TouchableOpacity
+                  style={s.splitBtn}
+                  onPress={() => setSplitTarget(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.title} görevini alt adımlara böl`}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="git-branch-outline" size={16} color={colors.primaryBright} />
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity style={s.deleteBtn} onPress={() => confirmDelete(item)}>
+                <Ionicons name="trash-outline" size={16} color={colors.textGhost} />
+              </TouchableOpacity>
+            </View>
+          );
+        }}
       />
 
       {/* FAB */}
-      {viewMode === 'list' && activeTab !== 'done' && (
+      {viewMode === 'list' && showComposer && (
         <TouchableOpacity
           style={s.fab}
           onPress={() => openAdd(activeTab as ListType)}
@@ -413,6 +497,19 @@ const s = StyleSheet.create({
   tabBadgeActive: { backgroundColor: alphaHex(colors.accent, '30') },
   tabBadgeText: { fontSize: 11, color: colors.textDim },
 
+  smartRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    gap: space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSubtle,
+  },
+  smartChip: {
+    minHeight: 44,
+  },
+
   list: { flex: 1 },
   listContent: { padding: 16, paddingBottom: 100 },
 
@@ -430,7 +527,7 @@ const s = StyleSheet.create({
   },
   rowBody: { flex: 1 },
   rowTitle: { fontSize: 14, color: colors.text, marginBottom: 4 },
-  rowTitleDone: { textDecorationLine: 'line-through', color: colors.textGhost },
+  rowTitleDone: { textDecorationLine: 'line-through', color: colors.textFaint },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   priorityDot: { width: 6, height: 6, borderRadius: 3 },
   dueText: { fontSize: 11, color: colors.textFaint },
@@ -440,7 +537,7 @@ const s = StyleSheet.create({
   splitBtn: { padding: 4, marginRight: 2 },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 64, gap: 12 },
-  emptyText: { fontSize: 15, color: colors.textGhost },
+  emptyText: { fontSize: 15, color: colors.textFaint },
   emptyAdd: { marginTop: 8 },
   emptyAddText: { fontSize: 14, color: colors.accent },
 

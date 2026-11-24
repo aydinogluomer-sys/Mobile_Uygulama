@@ -96,11 +96,16 @@ describe('the scan sees the production tree', () => {
 });
 
 describe('daily_capacity is not written by the client', () => {
-  it('no production file names the table outside a comment', () => {
+  it('no production file names the table outside a comment (except backupFormat NOT_BACKED_UP exclusion)', () => {
     const hits = FILES
       .filter((f) => stripComments(readFileSync(f, 'utf8')).includes('daily_capacity'))
-      .map(rel);
+      .map(rel)
+      .filter((p) => p !== 'lib/backupFormat.ts');
     expect(hits).toEqual([]);
+    const bf = stripComments(readFileSync(join(ROOT, 'lib/backupFormat.ts'), 'utf8'));
+    expect((bf.match(/daily_capacity/g) ?? []).length).toBe(1);
+    expect(bf).toMatch(/\bdaily_capacity\s*:/);
+    expect(bf).not.toContain("'daily_capacity'");
   });
 
   it('no repository exists for it', () => {

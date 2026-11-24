@@ -1,5 +1,6 @@
 import { Text, StyleProp, ViewStyle, type AccessibilityProps } from 'react-native';
-import { colors, space, font } from '../../lib/tokens';
+import { space, font } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import Card from './Card';
 import ProgressBar from './ProgressBar';
 
@@ -25,14 +26,17 @@ type Props = AccessibilityProps & {
 
 /** Metrik kartı — büyük tabular değer + label (+ opsiyonel sub / progress bar). */
 export default function StatTile({
-  value, label, sub, subColor, progress, progressColor = colors.primary, accent, onPress, style, ...a11y
+  value, label, sub, subColor, progress, progressColor, accent, onPress, style, ...a11y
 }: Props) {
+  const c = useThemeColors();
+  const resolvedProgressColor = progressColor ?? c.primary;
+
   return (
     <Card onPress={onPress} padding="lg" style={[{ flex: 1 }, style]} {...a11y}>
-      <Text style={{ ...font.overline, color: colors.textFaint, marginBottom: space.sm }}>{label}</Text>
-      <Text style={{ ...font.metric, color: accent ?? colors.text, marginBottom: typeof progress === 'number' ? space.sm : 0 }}>{value}</Text>
-      {sub && <Text style={{ fontSize: 11, color: subColor ?? colors.textGhost, marginTop: 3 }}>{sub}</Text>}
-      {typeof progress === 'number' && <ProgressBar progress={progress} color={progressColor} height={3} />}
+      <Text style={{ ...font.overline, color: c.textFaint, marginBottom: space.sm }}>{label}</Text>
+      <Text style={{ ...font.metric, color: accent ?? c.text, marginBottom: typeof progress === 'number' ? space.sm : 0 }}>{value}</Text>
+      {sub && <Text style={{ fontSize: 11, color: subColor ?? c.textFaint, marginTop: 3 }}>{sub}</Text>}
+      {typeof progress === 'number' && <ProgressBar progress={progress} color={resolvedProgressColor} height={3} />}
     </Card>
   );
 }

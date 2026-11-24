@@ -390,8 +390,8 @@ describe('bandFor — exact boundaries and out-of-range input (clean)', () => {
     expect(bandFor(1e9)).toBe('asiri');
   });
 
-  it('NaN input falls through every comparison and hits the documented defensive fallback ("asiri"), not a crash or undefined', () => {
-    expect(bandFor(NaN)).toBe('asiri');
+  it('NaN input returns the calm defensive floor ("dusuk") after F14 INT-18, not a crash or false overload ("asiri")', () => {
+    expect(bandFor(NaN)).toBe('dusuk');
   });
 });
 

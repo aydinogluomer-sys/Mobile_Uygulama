@@ -1,14 +1,24 @@
 /**
- * R08.02 — the automatic local backup copy (see lib/backupRotation for the
- * rules). The copy is the same versioned JSON as the shared export, stored in
- * this app's own storage (app sandbox; see R08_BACKUP_PROTECTION.md for what
- * that does and does not protect), and read back + verified before it counts.
+ * R08.02 / F20 (SYN-11) — the automatic local backup copy (see lib/backupRotation
+ * for the rules). Enforces a per-copy and total UTF-8 byte budget BEFORE writing
+ * to AsyncStorage so outbox queues are never starved, and reads back + verifies
+ * before counting a copy as complete.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { buildBackup } from './exportService';
+import { Platform } from 'react-native';
+import { accountEpoch } from '../lib/accountScope';
 import { verifyBackupText } from '../lib/backupFormat';
-import { EMPTY_STATUS, rotate, shouldRun, type LocalBackupStatus } from '../lib/backupRotation';
+import {
+  EMPTY_STATUS,
+  LOCAL_BACKUP_MAX_BYTES,
+  planEviction,
+  rotate,
+  shouldRun,
+  utf8Bytes,
+  type LocalBackupStatus,
+} from '../lib/backupRotation';
 import { currentUser } from '../lib/session';
+import { buildBackup, isBackupComplete } from './exportService';
 
 export const statusKey = (uid: string) => `backup.local.v1.${uid}.status`;
 const slotKey = (uid: string, iso: string) => `backup.local.v1.${uid}.${iso}`;
@@ -18,34 +28,62 @@ export async function loadLocalBackupStatus(uid: string): Promise<LocalBackupSta
     const raw = await AsyncStorage.getItem(statusKey(uid));
     const o = raw ? JSON.parse(raw) : null;
     return o && Array.isArray(o.slots) ? { ...EMPTY_STATUS, ...o } : EMPTY_STATUS;
-  } catch { return EMPTY_STATUS; }
+  } catch {
+    return EMPTY_STATUS;
+  }
 }
 
-export type LocalBackupResult = { ok: true; status: LocalBackupStatus; complete: boolean } | { ok: false; error: string; status: LocalBackupStatus };
+export type LocalBackupResult =
+  | { ok: true; status: LocalBackupStatus; complete: boolean }
+  | { ok: false; error: string; status: LocalBackupStatus };
 
 /** Make a copy now. Success is recorded only for a complete copy that was written and read back. */
 export async function runLocalBackup(now: Date = new Date()): Promise<LocalBackupResult> {
+  const startEpoch = accountEpoch();
   const me = await currentUser();
-  if (!me) return { ok: false, error: 'Oturum yok.', status: EMPTY_STATUS };
+  if (!me || startEpoch !== accountEpoch()) return { ok: false, error: 'Oturum yok.', status: EMPTY_STATUS };
   const prev = await loadLocalBackupStatus(me.id);
   const attempt = now.toISOString();
+  let currentSlots = prev.slots;
   const fail = async (error: string): Promise<LocalBackupResult> => {
-    const status = { ...prev, lastAttemptAt: attempt, lastError: error };
-    try { await AsyncStorage.setItem(statusKey(me.id), JSON.stringify(status)); } catch { /* status is best effort */ }
+    const status = { ...prev, slots: currentSlots, lastAttemptAt: attempt, lastError: error };
+    if (startEpoch === accountEpoch()) {
+      try {
+        await AsyncStorage.setItem(statusKey(me.id), JSON.stringify(status));
+      } catch {
+        /* status is best effort */
+      }
+    }
     return { ok: false, error, status };
   };
+  const key = slotKey(me.id, attempt);
   try {
     const backup = await buildBackup(now, { userId: me.id });
+    if (startEpoch !== accountEpoch()) {
+      return { ok: false, error: 'Oturum değişti.', status: prev };
+    }
     const text = JSON.stringify(backup);
-    const complete = backup.failed.length === 0 && backup.truncated.length === 0;
-    const key = slotKey(me.id, attempt);
+    const bytes = utf8Bytes(text);
+    if (bytes > LOCAL_BACKUP_MAX_BYTES) {
+      return fail("Yedek yerel depo için çok büyük; Ayarlar'dan dışa aktararak paylaş.");
+    }
+    const ev = planEviction(prev.slots, bytes);
+    if (!ev.fits) {
+      return fail("Cihaz depolamasında yedek için yer yok; Ayarlar'dan dışa aktararak paylaş.");
+    }
+    if (ev.drop.length) {
+      await AsyncStorage.multiRemove(ev.drop);
+      currentSlots = prev.slots.filter((s) => !ev.drop.includes(s.key));
+    }
+    const complete = isBackupComplete(backup);
     await AsyncStorage.setItem(key, text);
     // read back: a copy that cannot be verified is not a backup
     const back = await AsyncStorage.getItem(key);
-    if (!back || !verifyBackupText(back, me.id).ok) {
-      if (complete) { await AsyncStorage.removeItem(key); return fail('Kopya geri okunup doğrulanamadı.'); }
+    if (!back || back !== text || (complete && !verifyBackupText(back, me.id).ok)) {
+      await AsyncStorage.removeItem(key);
+      return fail('Kopya geri okunup doğrulanamadı.');
     }
-    const r = rotate(prev.slots, { key, created_at: attempt, complete, bytes: text.length });
+    const r = rotate(currentSlots, { key, created_at: attempt, complete, bytes });
     if (r.drop.length) await AsyncStorage.multiRemove(r.drop);
     const status: LocalBackupStatus = {
       slots: r.slots,
@@ -56,12 +94,18 @@ export async function runLocalBackup(now: Date = new Date()): Promise<LocalBacku
     await AsyncStorage.setItem(statusKey(me.id), JSON.stringify(status));
     return { ok: true, status, complete };
   } catch (e) {
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch {
+      /* ignore cleanup failure */
+    }
     return fail(e instanceof Error ? e.message : 'Yerel yedek yazılamadı (cihaz depolaması dolu olabilir).');
   }
 }
 
-/** On app open: a copy if one is due. Never in the background. */
+/** On app open: a copy if one is due. Never in the background, and never into shared browser localStorage on web. */
 export async function maybeRunDailyLocalBackup(now: Date = new Date()): Promise<LocalBackupResult | null> {
+  if (Platform.OS === 'web') return null;
   const me = await currentUser();
   if (!me) return null;
   const status = await loadLocalBackupStatus(me.id);

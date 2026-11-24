@@ -43,6 +43,7 @@ function keepEnvelope(fc: FrequencyConfig): Partial<FrequencyConfig> {
   if (fc.part_of_day !== undefined) out.part_of_day = fc.part_of_day;
   if (fc.range_start !== undefined) out.range_start = fc.range_start;
   if (fc.range_end !== undefined) out.range_end = fc.range_end;
+  if (fc.created_day !== undefined) out.created_day = fc.created_day;
   return out;
 }
 
@@ -214,8 +215,10 @@ export function setRangeEnd(fc: FrequencyConfig, ymdOrNull: string | null): Freq
  * (the validator alone accepts `{ kind: 'monthly' }`, a target-less shape).
  */
 export function isFrequencyComplete(fc: FrequencyConfig): boolean {
-  if (validateFrequencyConfig(fc, 'frequency_config').frequency === null) return false;
-  const sk = scheduleKind({ frequency_config: fc } as Parameters<typeof scheduleKind>[0]);
+  // F15: the creation-day stamp is not part of the schedule shape and the validator refuses unknown keys
+  const { created_day: _stamp, ...shape } = fc;
+  if (validateFrequencyConfig(shape, 'frequency_config').frequency === null) return false;
+  const sk = scheduleKind({ frequency_config: shape } as Parameters<typeof scheduleKind>[0]);
   if (sk.kind === 'weekly_count' || sk.kind === 'monthly_count') return sk.count > 0;
   if (sk.kind === 'weekly_days') return sk.days.length > 0;
   if (sk.kind === 'monthly_days') return sk.days.length > 0;

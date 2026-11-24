@@ -48,7 +48,7 @@ function walk(dir: string): string[] {
   return out;
 }
 
-const UI_FILES = UI_DIRS.flatMap((d) => walk(join(ROOT, d)));
+const UI_FILES = [...UI_DIRS.flatMap((d) => walk(join(ROOT, d))), join(ROOT, 'locales', 'tr.json')];
 
 /**
  * Yorumsuz kaynaktaki tek/çift tırnaklı ve şablon dizelerin içeriği.
@@ -113,6 +113,17 @@ describe('eski ad kullanıcıya görünen hiçbir dizede yok', () => {
       }
     }
     expect(hits).toEqual([]);
+  });
+
+  it('locales/tr.json UI_FILES içindedir ve sahte eski-marka katalog satırını yakalar', () => {
+    const relPaths = UI_FILES.map((f) => relative(ROOT, f).split(sep).join('/'));
+    expect(relPaths).toContain('locales/tr.json');
+
+    const fakeCatalog = '{"today.bad": "Atlas Günlüğü", "today.ok": "Aderyth Günlüğü"}';
+    const syntheticHits = userFacingStrings(fakeCatalog).filter(
+      (s) => (s.includes(OLD_NAME) || s.includes(OLD_NAME.toUpperCase())) && !FROZEN.some((re) => re.test(s)),
+    );
+    expect(syntheticHits).toEqual(['Atlas Günlüğü']);
   });
 
   it('dışa aktarım dosyasının başlığı yeni ad ve dürüst kelime', () => {

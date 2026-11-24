@@ -8,18 +8,25 @@
  * animation site gated on the system "reduce motion" setting.
  * docs/implementation-v3/R06_ACCESSIBILITY.md
  */
-import React from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
 import * as fs from 'fs';
 import * as path from 'path';
+import React from 'react';
 
+jest.setTimeout(30_000);
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 
-import { colors, contrastRatio, onColor, ACCENTS } from '../../lib/tokens';
 import Button, { MIN_TOUCH } from '../../components/ui/Button';
 import Chip from '../../components/ui/Chip';
+import { ACCENTS, colors, contrastRatio, onColor } from '../../lib/tokens';
+import { blankNonCode, scanTouchableSource, scanTouchables } from '../helpers/a11yScan';
+import { renderWithProviders } from '../helpers/renderWithProviders';
 
-const BGS = { bg: colors.bg, surface: colors.surface, surfaceAlt: colors.surfaceAlt };
+const BGS = {
+  bg: colors.bg,
+  surface: colors.surface,
+  surfaceAlt: colors.surfaceAlt,
+  surfaceHover: colors.surfaceHover,
+};
 
 describe('contrast (WCAG 2.1)', () => {
   it('body and secondary text reach AA 4.5:1 on every background', () => {
@@ -47,22 +54,22 @@ describe('contrast (WCAG 2.1)', () => {
 });
 
 describe('touch targets', () => {
-  it('every Button size is at least 44pt to touch; it grows with large text instead of clipping', async () => {
+  it('every Button size is at least 44pt to touch; it grows with large text instead of clipping', () => {
     for (const size of ['sm', 'md', 'lg'] as const) {
-      let r!: TestRenderer.ReactTestRenderer;
-      await act(async () => { r = TestRenderer.create(<Button label="x" size={size} onPress={() => {}} />); });
-      const t = r.root.findAll((n) => typeof n.props?.onPress === 'function' && n.props?.style)[0];
+      const r = renderWithProviders(<Button label="x" size={size} onPress={() => {}} />);
+      const t = r.getByRole('button', { name: 'x' });
       const style = Object.assign({}, ...[t.props.style].flat(3).filter(Boolean));
       expect(style.height).toBeUndefined();
       const slop = t.props.hitSlop ?? { top: 0, bottom: 0 };
       expect(style.minHeight + slop.top + slop.bottom).toBeGreaterThanOrEqual(MIN_TOUCH);
+      r.unmount();
     }
   });
-  it('a pressable Chip extends its touch area', async () => {
-    let r!: TestRenderer.ReactTestRenderer;
-    await act(async () => { r = TestRenderer.create(<Chip label="x" onPress={() => {}} />); });
-    const t = r.root.findAll((n) => typeof n.props?.onPress === 'function' && n.props?.hitSlop)[0];
+  it('a pressable Chip extends its touch area', () => {
+    const r = renderWithProviders(<Chip label="x" onPress={() => {}} />);
+    const t = r.getByRole('button', { name: 'x' });
     expect(t.props.hitSlop.top + t.props.hitSlop.bottom).toBeGreaterThanOrEqual(20);
+    r.unmount();
   });
 });
 
@@ -73,27 +80,108 @@ function files(): string[] {
   const walk = (d: string) => {
     for (const e of fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })) {
       const rel = `${d}/${e.name}`;
-      if (e.isDirectory()) walk(rel); else if (e.name.endsWith('.tsx')) out.push(rel);
+      if (e.isDirectory()) walk(rel);
+      else if (e.name.endsWith('.tsx')) out.push(rel);
     }
   };
-  walk('app'); walk('components');
+  walk('app');
+  walk('components');
   return out;
 }
 
 describe('large text', () => {
   it('font scaling is never switched off', () => {
-    const offenders = files().filter((f) => /allowFontScaling=\{false\}|maxFontSizeMultiplier=\{1(\.0)?\}/.test(read(f)));
+    const offenders = files().filter((f) =>
+      /allowFontScaling=\{false\}|maxFontSizeMultiplier=\{1(\.0)?\}/.test(read(f)),
+    );
     expect(offenders).toEqual([]);
   });
 });
 
 describe('reduced motion', () => {
   it('every file that animates also honours the system setting', () => {
-    const ANIMATES = /Animated\.(timing|spring|loop|decay)\(|LayoutAnimation\.configureNext|<Animatable\.\w+[^>]*animation=/;
+    const ANIMATES =
+      /Animated\.(timing|spring|loop|decay)\(|LayoutAnimation\.configureNext|<Animatable\.\w+[^>]*animation=/;
     const animating = files().filter((f) => ANIMATES.test(read(f)));
     expect(animating.length).toBeGreaterThanOrEqual(8); // scanner sanity
-    // the hook is CALLED in the file, or the file takes the setting as a declared prop
     const ungated = animating.filter((f) => !/useReducedMotion\(\)|reduceMotion: boolean/.test(read(f)));
     expect(ungated).toEqual([]);
+  });
+});
+
+const FIRST_WAVE_A11Y = [
+  'components/focus/FocusSettingsModal.tsx',
+  'app/(auth)/reset-password.tsx',
+  'app/tabs/focus.tsx',
+  'app/tabs/timeline.tsx',
+] as const;
+
+export const TOUCHABLE_CEILINGS = {
+  noRole: 93,
+  noLabel: 113,
+  iconOnlyNoLabel: 22,
+} as const;
+
+describe('touchable roles and labels ratchet (F26 / DSA-02)', () => {
+  const scan = scanTouchables(['app', 'components']);
+
+  it('(+) scanner is live (> 500 touchables across app/ and components/)', () => {
+    expect(scan.total).toBeGreaterThan(500);
+  });
+
+  it('(+) all four first-wave F26 files have zero missing accessibilityRole and accessibilityLabel', () => {
+    for (const rel of FIRST_WAVE_A11Y) {
+      const fileScan = scanTouchableSource(rel, read(rel));
+      expect({
+        rel,
+        noRole: fileScan.noRole,
+        noLabel: fileScan.noLabel,
+        offenders: fileScan.offenders[rel] ?? [],
+      }).toEqual({
+        rel,
+        noRole: 0,
+        noLabel: 0,
+        offenders: [],
+      });
+    }
+  });
+
+  it('(+) repo-wide missing role, missing label, and icon-only unlabeled counts stay within monotonic ceilings and are not stale (> 5 slack)', () => {
+    expect(scan.noRole).toBeLessThanOrEqual(TOUCHABLE_CEILINGS.noRole);
+    expect(scan.noLabel).toBeLessThanOrEqual(TOUCHABLE_CEILINGS.noLabel);
+    expect(scan.iconOnlyNoLabel).toBeLessThanOrEqual(TOUCHABLE_CEILINGS.iconOnlyNoLabel);
+
+    expect(TOUCHABLE_CEILINGS.noRole - scan.noRole).toBeLessThanOrEqual(5);
+    expect(TOUCHABLE_CEILINGS.noLabel - scan.noLabel).toBeLessThanOrEqual(5);
+    expect(TOUCHABLE_CEILINGS.iconOnlyNoLabel - scan.iconOnlyNoLabel).toBeLessThanOrEqual(5);
+  });
+
+  it('(+) FocusSettingsModal carries semantic tab, switch, checked, and selected accessibility contracts', () => {
+    const modalCode = blankNonCode(read('components/focus/FocusSettingsModal.tsx')).blanked;
+    const modalRaw = read('components/focus/FocusSettingsModal.tsx');
+    expect(modalRaw).toContain('accessibilityRole="tab"');
+    expect(modalRaw).toContain('accessibilityRole="switch"');
+    expect(modalCode).toMatch(/accessibilityState=\{\{\s*checked:/);
+    expect(modalCode).toMatch(/accessibilityState=\{\{\s*selected:/);
+  });
+
+  it('(-) synthetic unlabelled / roleless touchables are caught while comments, strings, and accessible={false} are ignored', () => {
+    const bad = scanTouchableSource(
+      'synthetic.tsx',
+      [
+        '// accessibilityRole="button" accessibilityLabel="Sahte"',
+        '<TouchableOpacity title="accessibilityRole accessibilityLabel" onPress={fn}>',
+        '  <Ionicons name="close" size={18} />',
+        '</TouchableOpacity>',
+        '<TouchableOpacity accessibilityRole="button" accessibilityLabel="" onPress={fn}>',
+        '  <Text>Boş</Text>',
+        '</TouchableOpacity>',
+        '<Pressable accessible={false} onPress={fn} />',
+      ].join('\n'),
+    );
+    expect(bad.total).toBe(2);
+    expect(bad.noRole).toBe(1);
+    expect(bad.noLabel).toBe(2);
+    expect(bad.iconOnlyNoLabel).toBe(1);
   });
 });

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { AppState } from 'react-native';
 import { accountEpoch, registerAccountScoped, registerAccountStorage } from '../lib/accountScope';
 import { currentUser } from '../lib/session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,17 +8,45 @@ import {
   completeTask as repoCompleteFocusTask,
   completeWorkPhase,
   listOpenTasks as fetchOpenFocusTasks,
+  recordPartialWorkPhase,
   removeTask as repoDeleteFocusTask,
 } from '../services/focusService';
 import { haptic } from '../lib/haptics';
 import { buildEvent, emitEvent, type AnalyticsEventName } from '../lib/analytics';
-// R05.03 / KD-03 — the timer is running segments, not a decrementing counter.
+import { cancelFocusEnd, scheduleFocusEnd, type FocusEndKind } from '../lib/notifications';
+// R05.03 / KD-03 / F16 — the timer is running segments, not a decrementing counter.
 import {
-  startClock, pauseClock, resumeClock, clockFromRemaining, completedSeconds as clockCompletedSeconds,
-  remainingSeconds, snapshotOf, parseSnapshot, restoredClock, type TimerClock,
+  AWAY_MIN_MS,
+  FOCUS_END_GRACE_MS,
+  MIN_PARTIAL_SECONDS,
+  SESSION_MAX_AGE_MS,
+  clockFromRemaining,
+  completedSeconds as clockCompletedSeconds,
+  expectedEndMs,
+  isSnapshotFresh,
+  parseSnapshot,
+  pauseClock,
+  remainingSeconds,
+  restoredClock,
+  resumeClock,
+  snapshotOf,
+  startClock,
+  type SessionSnapshot,
+  type TimerClock,
 } from '../lib/focusTimer';
 // R03.03 — a small step is a focus session of its own, separate from its task.
 import { validateSmallStep, type SmallStep, type SmallStepParent, type SmallStepDraft } from '../lib/smallStart';
+import {
+  EMPTY_TALLY,
+  classifyAway as classifyAwayTally,
+  focusIntentKey,
+  normalizeIntent,
+  parseIntent,
+  recordAway,
+  serializeIntent,
+  type InterruptionCause,
+  type InterruptionTally,
+} from '../lib/focusRitual';
 
 type Phase = 'work' | 'shortBreak' | 'longBreak';
 type Status = 'idle' | 'running' | 'paused';
@@ -78,6 +107,8 @@ export type FocusSettings = {
   autoStartBreaks: boolean;
   autoStartPomodoros: boolean;
   longBreakInterval: number;
+  pauseInBackground: boolean;
+  intentPrompt: boolean;
   // Görev
   requireTaskBeforeStart: boolean;
   autoCheckTasks: boolean;
@@ -102,6 +133,8 @@ export const DEFAULT_SETTINGS: FocusSettings = {
   autoStartBreaks: false,
   autoStartPomodoros: false,
   longBreakInterval: 4,
+  pauseInBackground: false,
+  intentPrompt: true,
   requireTaskBeforeStart: false,
   autoCheckTasks: false,
   soundOnFinish: true,
@@ -123,8 +156,17 @@ export const FOCUS_SETTING_BOUNDS = {
 } as const;
 
 const BOOLEAN_SETTINGS = [
-  'autoStartBreaks', 'autoStartPomodoros', 'requireTaskBeforeStart', 'autoCheckTasks',
-  'soundOnFinish', 'notifyOnFinish', 'enableLocalReports', 'showFocusChart', 'showRanking',
+  'autoStartBreaks',
+  'autoStartPomodoros',
+  'pauseInBackground',
+  'intentPrompt',
+  'requireTaskBeforeStart',
+  'autoCheckTasks',
+  'soundOnFinish',
+  'notifyOnFinish',
+  'enableLocalReports',
+  'showFocusChart',
+  'showRanking',
 ] as const;
 
 /**
@@ -161,13 +203,15 @@ export function phaseSeconds(s: FocusSettings, phase: Phase): number {
     shortBreak: s.shortBreakMinutes,
     longBreak: s.longBreakMinutes,
   };
-  return minutes[phase] * 60;
+  return Math.max(1, Math.round(minutes[phase])) * 60;
 }
 
 export type CompletedSession = {
   taskTitle: string | null;
   seconds: number;
   sessionNumber: number;
+  intent?: string | null;
+  interruptions?: number;
 };
 
 export type FocusTask = {
@@ -183,6 +227,8 @@ export type FocusTask = {
   created_at: string;
 };
 
+export type FocusTaskResult = { ok: true } | { ok: false; error: string };
+
 type FocusStore = {
   // Timer state
   phase: Phase;
@@ -194,11 +240,24 @@ type FocusStore = {
   clock: TimerClock | null;
   /** R03.03 — set while the open session is a small step. */
   smallStep: SmallStep | null;
+  /** F16 — epoch ms the open session was paused; null while running or idle. */
+  pausedAt: number | null;
+  /** F16 — shown once when abandoned effort (>= 60s) was saved as partial focus. */
+  lastPartial: { seconds: number } | null;
+  /** F33 (PS-11) — one-line pre-focus intent for the active work session. */
+  intent: string | null;
+  /** F33 (PS-15) — compassionate away/return tally for the active work session. */
+  interruptions: InterruptionTally;
   settings: FocusSettings;
 
   // Tamamlanan seans sinyali (UI 'Seans Tamamlandı' raporunu açar)
   justCompleted: CompletedSession | null;
   clearJustCompleted: () => void;
+
+  // Ritual actions (F33)
+  setIntent: (text: string | null) => Promise<void>;
+  loadLastIntent: () => Promise<string | null>;
+  classifyAway: (cause: InterruptionCause | null) => void;
 
   // Focus tasks
   focusTasks: FocusTask[];
@@ -223,24 +282,127 @@ type FocusStore = {
   tick: () => void;
   nextPhase: () => Promise<void>;
   setPhase: (phase: Phase) => void;
+  /** F16 — app left foreground. */
+  onBackground: () => void;
+  /** F16 — app returned to foreground: reconciles clock; returns `{ awayMs }` if >= 10s (F33 seam). */
+  onForeground: () => { awayMs: number } | null;
 
   // Task actions
-  fetchFocusTasks: () => Promise<void>;
-  addFocusTask: (title: string, estimatedPomodoros?: number) => Promise<void>;
-  removeFocusTask: (id: string) => Promise<void>;
-  completeFocusTask: (id: string) => Promise<void>;
+  fetchFocusTasks: () => Promise<FocusTaskResult>;
+  addFocusTask: (title: string, estimatedPomodoros?: number) => Promise<FocusTaskResult>;
+  removeFocusTask: (id: string) => Promise<FocusTaskResult>;
+  completeFocusTask: (id: string) => Promise<FocusTaskResult>;
   selectTask: (id: string | null) => void;
 };
 
 let lastHeartbeat = 0;
 /** One `nextPhase` at a time: ticks keep firing while it awaits the write. */
 let advancing = false;
+let leftAt: number | null = null;
+let strictLeftAt: number | null = null;
+const armedEnds = new Set<FocusEndKind>();
+let endChain: Promise<unknown> = Promise.resolve();
+const runEndOp = (fn: () => Promise<unknown>): void => {
+  endChain = endChain.then(fn, fn).catch(() => undefined);
+};
+const kindOf = (phase: Phase): FocusEndKind => (phase === 'work' ? 'work' : 'break');
 
-function persistSession(st: Pick<FocusStore, 'phase' | 'clock' | 'sessionStartedAt' | 'sessionsCompleted' | 'smallStep'>): void {
+function syncEndNotice(): void {
+  const { status, clock, phase, settings } = useFocusStore.getState();
+  const endsAt = status === 'running' && clock ? expectedEndMs(clock) : null;
+  if (!settings.notifyOnFinish || endsAt === null || !clock) {
+    disarmEnd(kindOf(phase));
+    return;
+  }
+  armedEnds.add(kindOf(phase));
+  runEndOp(() =>
+    typeof scheduleFocusEnd === 'function'
+      ? scheduleFocusEnd({
+          phase,
+          endsAtMs: endsAt + FOCUS_END_GRACE_MS,
+          plannedSeconds: clock.plannedSeconds,
+          withSound: settings.soundOnFinish,
+        })
+      : Promise.resolve(false),
+  );
+}
+
+function disarmEnd(kind?: FocusEndKind, force = false): void {
+  const kinds: FocusEndKind[] = kind ? [kind] : ['work', 'break'];
+  for (const k of kinds) {
+    if (!force && !armedEnds.has(k)) continue;
+    armedEnds.delete(k);
+    runEndOp(() => (typeof cancelFocusEnd === 'function' ? cancelFocusEnd(k) : Promise.resolve()));
+  }
+}
+
+/** >= MIN_PARTIAL_SECONDS çalışılmış açık çalışma oturumunu kısmi odak olarak yazar; yazdığını döner. */
+function recordAbandoned(
+  st: Pick<FocusStore, 'phase' | 'status' | 'clock' | 'sessionStartedAt' | 'smallStep' | 'selectedTaskId' | 'focusTasks'>,
+  endedAtMs: number,
+): { seconds: number } | null {
+  if (advancing || st.status === 'idle' || st.phase !== 'work' || !st.clock) return null;
+  const seconds = clockCompletedSeconds(st.clock, endedAtMs);
+  if (seconds < MIN_PARTIAL_SECONDS) return null;
+  const task = st.smallStep ? undefined : st.focusTasks.find((t) => t.id === st.selectedTaskId);
+  void recordPartialWorkPhase({
+    startedAtIso: st.sessionStartedAt ?? new Date(endedAtMs - seconds * 1000).toISOString(),
+    endedAtIso: new Date(endedAtMs).toISOString(),
+    plannedSeconds: st.clock.plannedSeconds,
+    completedSeconds: seconds,
+    taskId: task?.id ?? null,
+    taskTitle: task?.title ?? st.smallStep?.title ?? null,
+  }).catch(() => undefined);
+  return { seconds };
+}
+
+function recordStaleSnapshot(snap: SessionSnapshot): void {
+  const seconds = clockCompletedSeconds(restoredClock(snap), snap.lastSeenAt);
+  if (seconds < MIN_PARTIAL_SECONDS) return;
+  void recordPartialWorkPhase({
+    startedAtIso: snap.sessionStartedAt,
+    endedAtIso: new Date(snap.pausedAt ?? snap.lastSeenAt).toISOString(),
+    plannedSeconds: snap.clock.plannedSeconds,
+    completedSeconds: seconds,
+    taskTitle: snap.step?.title ?? null,
+  }).catch(() => undefined);
+  useFocusStore.setState({ lastPartial: { seconds } });
+}
+
+function expireStalePaused(now: number): void {
+  const st = useFocusStore.getState();
+  if (st.status !== 'paused' || st.pausedAt === null || now - st.pausedAt <= SESSION_MAX_AGE_MS) return;
+  const saved = recordAbandoned(st, st.pausedAt);
+  disarmEnd(undefined, true);
+  clearSession();
+  useFocusStore.setState({
+    status: 'idle',
+    secondsLeft: phaseSeconds(st.settings, st.phase),
+    clock: null,
+    sessionStartedAt: null,
+    smallStep: null,
+    pausedAt: null,
+    lastPartial: saved,
+    intent: null,
+    interruptions: EMPTY_TALLY,
+  });
+}
+
+function persistSession(
+  st: Pick<FocusStore, 'phase' | 'clock' | 'sessionStartedAt' | 'sessionsCompleted' | 'smallStep' | 'pausedAt'>,
+): void {
   if (!st.clock || !st.sessionStartedAt) return;
   const now = Date.now();
   lastHeartbeat = now;
-  const snap = snapshotOf({ phase: st.phase, clock: st.clock, sessionStartedAt: st.sessionStartedAt, sessionsCompleted: st.sessionsCompleted, now, step: st.smallStep });
+  const snap = snapshotOf({
+    phase: st.phase,
+    clock: st.clock,
+    sessionStartedAt: st.sessionStartedAt,
+    sessionsCompleted: st.sessionsCompleted,
+    now,
+    step: st.smallStep,
+    pausedAt: st.pausedAt,
+  });
   const payload = JSON.stringify(snap);
   // F04: under the signed-in user's key; a write that resolves after an account boundary is dropped.
   const epoch = accountEpoch();
@@ -279,6 +441,10 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   sessionStartedAt: null,
   clock: null,
   smallStep: null,
+  pausedAt: null,
+  lastPartial: null,
+  intent: null,
+  interruptions: EMPTY_TALLY,
   settings: { ...DEFAULT_SETTINGS },
   justCompleted: null,
   focusTasks: [],
@@ -287,8 +453,46 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
 
   clearJustCompleted: () => set({ justCompleted: null }),
 
+  setIntent: async (text) => {
+    const normalized = normalizeIntent(text ?? '');
+    set({ intent: normalized });
+    const epoch = accountEpoch();
+    try {
+      const uid = (await currentUser())?.id;
+      if (!uid || epoch !== accountEpoch()) return;
+      if (normalized !== null) {
+        await AsyncStorage.setItem(
+          focusIntentKey(uid),
+          serializeIntent(normalized, Date.now()),
+        );
+      } else {
+        await AsyncStorage.removeItem(focusIntentKey(uid));
+      }
+    } catch {
+      /* ignore storage errors */
+    }
+  },
+
+  loadLastIntent: async () => {
+    try {
+      const epoch = accountEpoch();
+      const user = await currentUser();
+      if (!user || epoch !== accountEpoch()) return null;
+      const raw = await AsyncStorage.getItem(focusIntentKey(user.id));
+      if (epoch !== accountEpoch()) return null;
+      return parseIntent(raw)?.text ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  classifyAway: (cause) => {
+    set((st) => ({ interruptions: classifyAwayTally(st.interruptions, cause) }));
+  },
+
   updateSettings: (patch) => {
-    const next = { ...get().settings, ...patch };
+    const prev = get().settings;
+    const next = normaliseFocusSettings({ ...prev, ...patch });
     set({ settings: next });
     // Kalıcı kaydet (yangın-ve-unut) -- F04: kullanıcının kendi anahtarına
     const payload = JSON.stringify(next);
@@ -302,6 +506,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     if (get().status === 'idle') {
       set({ secondsLeft: phaseSeconds(next, get().phase) });
     }
+    if (prev.notifyOnFinish !== next.notifyOnFinish) syncEndNotice();
   },
 
   loadSettings: async () => {
@@ -329,7 +534,19 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
       if (!snap || epoch !== accountEpoch()) return;
       // A session already open in memory wins over the stored one.
       if (get().status !== 'idle') return;
+      disarmEnd(undefined, true);
+      if (!isSnapshotFresh(snap, Date.now())) {
+        await AsyncStorage.removeItem(sessionKey(uid)).catch(() => {});
+        clearSession();
+        if (snap.phase === 'work') recordStaleSnapshot(snap);
+        return;
+      }
       const clock = restoredClock(snap);
+      const restoredIntent =
+        snap.phase === 'work' && !snap.step
+          ? parseIntent(await AsyncStorage.getItem(focusIntentKey(uid)))?.text ?? null
+          : null;
+      if (epoch !== accountEpoch()) return;
       set({
         phase: snap.phase,
         status: 'paused',
@@ -338,6 +555,9 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
         sessionStartedAt: snap.sessionStartedAt,
         sessionsCompleted: Math.max(get().sessionsCompleted, snap.sessionsCompleted),
         smallStep: snap.step ?? null,
+        pausedAt: snap.pausedAt ?? snap.lastSeenAt,
+        intent: restoredIntent,
+        interruptions: EMPTY_TALLY,
       });
       persistSession(get());
     } catch { /* yoksay */ }
@@ -345,28 +565,28 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
 
   start: () => {
     const { status, phase, settings, selectedTaskId } = get();
-    // `app/tabs/focus.tsx` calls `start()` for BOTH "Başla" and "Devam Et",
-    // and `nextPhase` routes its auto-start through here too -- so this is
-    // the store's one session-start funnel. A resume ('paused' -> 'running')
-    // continues the SAME session, so only an idle -> running transition
-    // counts as a start; without this guard every pause/resume pair would
-    // report an extra session.
     const isNewSession = status === 'idle';
     if (status === 'running') return;
     const now = Date.now();
     if (isNewSession) {
       // KD-03: `sessionStartedAt` is written ONLY here. A resume keeps it --
       // rewriting it on "Devam Et" made a session report its last segment.
-      set({ status: 'running', sessionStartedAt: new Date(now).toISOString(), clock: startClock(phaseSeconds(settings, phase), now) });
+      set({
+        status: 'running',
+        sessionStartedAt: new Date(now).toISOString(),
+        clock: startClock(phaseSeconds(settings, phase), now),
+        pausedAt: null,
+        lastPartial: null,
+        interruptions: EMPTY_TALLY,
+      });
     } else {
       const { clock, secondsLeft } = get();
       const base = clock ?? clockFromRemaining(phaseSeconds(settings, phase), secondsLeft);
-      set({ status: 'running', clock: resumeClock(base, now) });
+      set({ status: 'running', clock: resumeClock(base, now), pausedAt: null });
     }
     persistSession(get());
+    syncEndNotice();
     if (isNewSession) {
-      // §22 `focus_started`. No task title -- that is user prose; the task's
-      // id and a boolean are enough to analyse "started with a target".
       emitAnalytics('focus_started', {
         phase: PHASE_TOKEN[phase],
         planned_seconds: phaseSeconds(settings, phase),
@@ -375,14 +595,13 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
       });
     }
   },
+
   startSmallStep: (parent, draft) => {
     if (get().status !== 'idle') return false;
     const check = validateSmallStep(parent, draft);
     if (!check.ok) return false;
     const now = Date.now();
     const plannedSeconds = check.step.minutes * 60;
-    // The step's own length -- not the configured pomodoro -- and no focus
-    // task: the step is not the task and does not credit one.
     set({
       phase: 'work',
       status: 'running',
@@ -390,8 +609,13 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
       clock: startClock(plannedSeconds, now),
       secondsLeft: plannedSeconds,
       sessionStartedAt: new Date(now).toISOString(),
+      pausedAt: null,
+      lastPartial: null,
+      intent: null,
+      interruptions: EMPTY_TALLY,
     });
     persistSession(get());
+    syncEndNotice();
     emitAnalytics('focus_started', {
       phase: PHASE_TOKEN.work,
       planned_seconds: plannedSeconds,
@@ -408,14 +632,32 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     // KD-03: the pause closes the running segment; the time until "Devam Et"
     // is not focus.
     const paused = clock ? pauseClock(clock, now) : null;
-    set({ status: 'paused', clock: paused, ...(paused ? { secondsLeft: remainingSeconds(paused, now) } : {}) });
+    set({
+      status: 'paused',
+      clock: paused,
+      pausedAt: now,
+      ...(paused ? { secondsLeft: remainingSeconds(paused, now) } : {}),
+    });
     persistSession(get());
+    disarmEnd(kindOf(get().phase));
   },
 
   reset: () => {
-    const { phase, settings } = get();
+    const st = get();
+    const saved = recordAbandoned(st, st.pausedAt ?? Date.now());
+    disarmEnd(kindOf(st.phase));
     // KD-03: the configured length, not the 25/5/15 constants.
-    set({ status: 'idle', secondsLeft: phaseSeconds(settings, phase), sessionStartedAt: null, clock: null, smallStep: null });
+    set({
+      status: 'idle',
+      secondsLeft: phaseSeconds(st.settings, st.phase),
+      sessionStartedAt: null,
+      clock: null,
+      smallStep: null,
+      pausedAt: null,
+      lastPartial: saved,
+      intent: null,
+      interruptions: EMPTY_TALLY,
+    });
     clearSession();
   },
 
@@ -445,43 +687,99 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   },
 
   setPhase: (phase) => {
-    set({ phase, secondsLeft: phaseSeconds(get().settings, phase), status: 'idle', sessionStartedAt: null, clock: null, smallStep: null });
+    const st = get();
+    const saved = recordAbandoned(st, st.pausedAt ?? Date.now());
+    disarmEnd(kindOf(st.phase));
+    set({
+      phase,
+      secondsLeft: phaseSeconds(st.settings, phase),
+      status: 'idle',
+      sessionStartedAt: null,
+      clock: null,
+      smallStep: null,
+      pausedAt: null,
+      lastPartial: saved,
+      intent: null,
+      interruptions: EMPTY_TALLY,
+    });
     clearSession();
+  },
+
+  onBackground: () => {
+    const { status, settings } = get();
+    if (status !== 'running') {
+      leftAt = null;
+      strictLeftAt = null;
+      return;
+    }
+    if (settings.pauseInBackground) {
+      leftAt = null;
+      strictLeftAt = Date.now();
+      get().pause();
+      return;
+    }
+    strictLeftAt = null;
+    leftAt = Date.now();
+    persistSession(get());
+  },
+
+  onForeground: () => {
+    const now = Date.now();
+    const away = leftAt !== null ? now - leftAt : 0;
+    const strictAway = strictLeftAt !== null ? now - strictLeftAt : 0;
+    leftAt = null;
+    strictLeftAt = null;
+    expireStalePaused(now);
+    const awayForTally = away > 0 ? away : strictAway;
+    if (
+      awayForTally >= AWAY_MIN_MS &&
+      get().phase === 'work' &&
+      get().sessionStartedAt !== null
+    ) {
+      set({ interruptions: recordAway(get().interruptions, awayForTally) });
+    }
+    get().tick();
+    return away >= AWAY_MIN_MS ? { awayMs: away } : null;
   },
 
   fetchFocusTasks: async () => {
     set({ loadingTasks: true });
     const res = await fetchOpenFocusTasks();
-    if (!res.ok) { set({ loadingTasks: false }); return; }
+    if (!res.ok) {
+      set({ loadingTasks: false });
+      return { ok: false, error: res.error };
+    }
     set({ focusTasks: res.data as FocusTask[], loadingTasks: false });
+    return { ok: true };
   },
 
   addFocusTask: async (title, estimatedPomodoros = 1) => {
     const trimmed = title.trim();
-    if (!trimmed) return;
+    if (!trimmed) return { ok: false, error: 'Başlık boş olamaz.' };
     const res = await repoInsertFocusTask(trimmed, estimatedPomodoros);
-    if (!res.ok) return;
+    if (!res.ok) return { ok: false, error: res.error };
     set((s) => ({ focusTasks: [...s.focusTasks, res.data as FocusTask] }));
+    return { ok: true };
   },
 
   removeFocusTask: async (id) => {
     const res = await repoDeleteFocusTask(id);
-    if (!res.ok) return;
+    if (!res.ok) return { ok: false, error: res.error };
     set((s) => ({
       focusTasks: s.focusTasks.filter((t) => t.id !== id),
       selectedTaskId: s.selectedTaskId === id ? null : s.selectedTaskId,
     }));
+    return { ok: true };
   },
 
   completeFocusTask: async (id) => {
     const res = await repoCompleteFocusTask(id);
-    // A failed write leaves the task in the list instead of removing it for a
-    // completion the server never accepted.
-    if (!res.ok) return;
+    if (!res.ok) return { ok: false, error: res.error };
     set((s) => ({
       focusTasks: s.focusTasks.filter((t) => t.id !== id),
       selectedTaskId: s.selectedTaskId === id ? null : s.selectedTaskId,
     }));
+    return { ok: true };
   },
 
   selectTask: (id) => set({ selectedTaskId: id }),
@@ -491,7 +789,20 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
 async function advancePhase(): Promise<void> {
   const set = useFocusStore.setState;
   const get = useFocusStore.getState;
-  const { phase, status, clock, sessionsCompleted, selectedTaskId, focusTasks, settings, smallStep } = get();
+  const {
+    phase,
+    status,
+    clock,
+    sessionsCompleted,
+    selectedTaskId,
+    focusTasks,
+    settings,
+    smallStep,
+    sessionStartedAt,
+    intent,
+    interruptions,
+  } = get();
+  const startedAtIso = sessionStartedAt ?? undefined;
   const customDurations: Record<Phase, number> = {
     work: phaseSeconds(settings, 'work'),
     shortBreak: phaseSeconds(settings, 'shortBreak'),
@@ -501,9 +812,14 @@ async function advancePhase(): Promise<void> {
   // The plan the session started with; settings edited mid-session do not
   // move the goalposts of a session already running.
   const plannedSeconds = openClock ? openClock.plannedSeconds : customDurations[phase];
+  const nowMs = Date.now();
+  const plannedEnd = openClock ? expectedEndMs(openClock) : null;
+  const endedMs = plannedEnd !== null ? Math.min(nowMs, plannedEnd) : nowMs;
+  const endedAtIso = new Date(endedMs).toISOString();
   // KD-03: running segments only -- pauses are not focus time.
-  const completedSeconds = openClock ? clockCompletedSeconds(openClock, Date.now()) : plannedSeconds;
+  const completedSeconds = openClock ? clockCompletedSeconds(openClock, nowMs) : plannedSeconds;
   clearSession();
+  if (AppState.currentState === 'active') disarmEnd(kindOf(phase));
 
   // R03.03 — a small step records its own session and nothing else: no focus
   // task is credited or auto-completed, the parent task is not touched, and
@@ -515,6 +831,8 @@ async function advancePhase(): Promise<void> {
       completedSeconds,
       autoCheckTasks: false,
       title: smallStep.title,
+      startedAtIso,
+      endedAtIso,
     });
     if (outcome.sessionRecorded) {
       emitAnalytics('focus_completed', {
@@ -528,10 +846,23 @@ async function advancePhase(): Promise<void> {
     }
     if (settings.soundOnFinish) { try { haptic.success(); } catch { /* yoksay */ } }
     set({
-      phase: 'work', status: 'idle', secondsLeft: customDurations.work,
+      phase: 'work',
+      status: 'idle',
+      secondsLeft: customDurations.work,
       sessionsCompleted: sessionsCompleted + 1,
-      sessionStartedAt: null, clock: null, smallStep: null,
-      justCompleted: { taskTitle: smallStep.title, seconds: completedSeconds, sessionNumber: sessionsCompleted + 1 },
+      sessionStartedAt: null,
+      clock: null,
+      smallStep: null,
+      pausedAt: null,
+      intent: null,
+      interruptions: EMPTY_TALLY,
+      justCompleted: {
+        taskTitle: smallStep.title,
+        seconds: completedSeconds,
+        sessionNumber: sessionsCompleted + 1,
+        intent: intent ?? null,
+        interruptions: interruptions.total,
+      },
     });
     return;
   }
@@ -543,16 +874,14 @@ async function advancePhase(): Promise<void> {
   if (phase === 'work') {
     const selectedTask = focusTasks.find((t) => t.id === selectedTaskId);
     const outcome = await completeWorkPhase({
-      task: selectedTask as never,
+      task: selectedTask,
       plannedSeconds,
       completedSeconds,
       autoCheckTasks: settings.autoCheckTasks,
+      startedAtIso,
+      endedAtIso,
     });
 
-    // §22 `focus_completed`. Gated on the session row existing: a rejected
-    // insert leaves no row and must leave no event either. `task_title` IS
-    // written to the row (the user's own data, their own table) and is
-    // deliberately NOT put on the event -- exactly the boundary §22 draws.
     if (outcome.sessionRecorded) {
       emitAnalytics('focus_completed', {
         phase: PHASE_TOKEN[phase],
@@ -570,6 +899,18 @@ async function advancePhase(): Promise<void> {
           focusTasks: s.focusTasks.filter((t) => t.id !== selectedTaskId),
           selectedTaskId: null,
         }));
+      } else if (outcome.sessionQueued) {
+        set((s) => ({
+          focusTasks: s.focusTasks.map((t) =>
+            t.id === selectedTaskId
+              ? {
+                  ...t,
+                  completed_pomodoros: (t.completed_pomodoros ?? 0) + 1,
+                  total_focus_seconds: (t.total_focus_seconds ?? 0) + completedSeconds,
+                }
+              : t,
+          ),
+        }));
       } else {
         await get().fetchFocusTasks();
       }
@@ -586,27 +927,34 @@ async function advancePhase(): Promise<void> {
     const auto = settings.autoStartBreaks;
     const doneTitle = focusTasks.find((t) => t.id === selectedTaskId)?.title ?? null;
     set({
-      phase: next, secondsLeft: customDurations[next],
+      phase: next,
+      secondsLeft: customDurations[next],
       status: 'idle',
       sessionsCompleted: completed,
       sessionStartedAt: null,
       clock: null,
-      justCompleted: { taskTitle: doneTitle, seconds: completedSeconds, sessionNumber: completed },
+      pausedAt: null,
+      intent: null,
+      interruptions: EMPTY_TALLY,
+      justCompleted: {
+        taskTitle: doneTitle,
+        seconds: completedSeconds,
+        sessionNumber: completed,
+        intent: intent ?? null,
+        interruptions: interruptions.total,
+      },
     });
-    // Auto-start now goes through `start()` instead of inlining
-    // `status: 'running'` + a fresh `sessionStartedAt` here. Identical
-    // resulting state, but it keeps `start()` the ONE place a session
-    // begins -- otherwise an auto-started chain would produce
-    // `focus_completed` events with no matching `focus_started`.
     if (auto) get().start();
   } else {
     const hasTask = !!get().selectedTaskId;
     const auto = settings.autoStartPomodoros && (!settings.requireTaskBeforeStart || hasTask);
     set({
-      phase: 'work', secondsLeft: customDurations.work,
+      phase: 'work',
+      secondsLeft: customDurations.work,
       status: 'idle',
       sessionStartedAt: null,
       clock: null,
+      pausedAt: null,
     });
     if (auto) get().start();
   }
@@ -620,6 +968,10 @@ registerAccountScoped({
   onReset: () => {
     lastHeartbeat = 0;
     advancing = false;
+    leftAt = null;
+    strictLeftAt = null;
+    armedEnds.clear();
+    if (typeof cancelFocusEnd === 'function') void cancelFocusEnd().catch(() => undefined);
   },
 });
 // the half-finished session goes on every account boundary; the settings stay under their user's key

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -32,7 +33,7 @@ const decorativeA11y =
       } as const);
 
 /** Editöryel Bugün hero — eyebrow + anlatısal serif başlık (clay vurgulu) + alt-metin + bağlamsal CTA'lar. */
-export default function TodayHero({ eyebrow, narrative, ctas }: Props) {
+function TodayHero({ eyebrow, narrative, ctas }: Props) {
   const accent = useAccent();
   const { width } = useWindowDimensions();
   const isCompact = width < 480;
@@ -84,6 +85,8 @@ export default function TodayHero({ eyebrow, narrative, ctas }: Props) {
     </View>
   );
 }
+
+export default memo(TodayHero);
 
 const s = StyleSheet.create({
   wrap: {

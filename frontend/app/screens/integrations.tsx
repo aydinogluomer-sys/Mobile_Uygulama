@@ -2,15 +2,17 @@ import { colors, alphaHex } from '../../lib/tokens';
 import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
-  Linking, ActivityIndicator, Alert,
+  Linking, ActivityIndicator,
 } from 'react-native';
+import { confirm, notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { INTEGRATION_CATEGORIES, type IntegrationCategory, type IntegrationItem } from '../../constants/integrations';
 import IntegrationCategoryCard from '../../components/IntegrationCategoryCard';
 import IntegrationItemCard from '../../components/IntegrationItemCard';
 import IntegrationDetailModal from '../../components/IntegrationDetailModal';
-import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { useNotionStore } from '../../store/notionStore';
 import { useGoogleCalendarStore } from '../../store/googleCalendarStore';
@@ -75,31 +77,29 @@ export default function IntegrationsScreen() {
 
   async function handleConnect() {
     const ok = await connect();
-    if (ok) Alert.alert('✅ Notion Bağlandı', `${connection?.workspaceName ?? 'Workspace'} bağlandı. Alışkanlık ve görev veritabanları Notion'a eklendi.`);
+    if (ok) void notify('✅ Notion Bağlandı', `${connection?.workspaceName ?? 'Workspace'} bağlandı. Alışkanlık ve görev veritabanları Notion'a eklendi.`);
   }
 
   async function handleGoogleConnect() {
     const ok = await connectGoogle();
-    if (ok) Alert.alert('✅ Google Calendar Bağlandı', 'Google Calendar hesabınız başarıyla bağlandı.');
+    if (ok) void notify('✅ Google Calendar Bağlandı', 'Google Calendar hesabınız başarıyla bağlandı.');
   }
 
-  function handleGoogleDisconnect() {
-    Alert.alert('Bağlantıyı Kes', 'Google Calendar bağlantısı kaldırılsın mı?', [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Kes', style: 'destructive', onPress: disconnectGoogle },
-    ]);
+  async function handleGoogleDisconnect() {
+    if (await confirm({ title: 'Bağlantıyı Kes', message: 'Google Calendar bağlantısı kaldırılsın mı?', confirmText: 'Kes', destructive: true })) {
+      await disconnectGoogle();
+    }
   }
 
   async function handleSync() {
     const result = await sync();
-    if (result) Alert.alert('✅ Senkronlandı', `${result.habits} alışkanlık ve ${result.tasks} görev Notion'a aktarıldı.`);
+    if (result) void notify('✅ Senkronlandı', `${result.habits} alışkanlık ve ${result.tasks} görev Notion'a aktarıldı.`);
   }
 
-  function handleDisconnect() {
-    Alert.alert("Bağlantıyı Kes", "Notion entegrasyonu kaldırılsın mı?", [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Kes', style: 'destructive', onPress: disconnect },
-    ]);
+  async function handleDisconnect() {
+    if (await confirm({ title: 'Bağlantıyı Kes', message: 'Notion entegrasyonu kaldırılsın mı?', confirmText: 'Kes', destructive: true })) {
+      await disconnect();
+    }
   }
 
   return (
@@ -552,7 +552,7 @@ const s = StyleSheet.create({
     marginTop: 4, padding: 12, borderRadius: 10,
     backgroundColor: colors.coolBlack850, borderWidth: 1, borderColor: colors.borderSubtle,
   },
-  hintText: { flex: 1, fontSize: 12, color: colors.textGhost, lineHeight: 18 },
+  hintText: { flex: 1, fontSize: 12, color: colors.textFaint, lineHeight: 18 },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40 },
@@ -614,7 +614,7 @@ const s = StyleSheet.create({
   errorText: { flex: 1, fontSize: 12, color: colors.error, lineHeight: 17 },
 
   // Obsidian
-  sectionLabel: { fontSize: 10, fontWeight: '700', color: colors.textGhost, letterSpacing: 1.2, marginTop: 4, marginBottom: 4 },
+  sectionLabel: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1.2, marginTop: 4, marginBottom: 4 },
   featureChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: colors.surface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
@@ -632,7 +632,7 @@ const s = StyleSheet.create({
   stepTitle: { fontSize: 14, fontWeight: '600', color: colors.text },
   stepDesc: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
   pathBox: { backgroundColor: colors.coolBlack950, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.borderSubtle },
-  pathLabel: { fontSize: 10, fontWeight: '700', color: colors.textGhost, letterSpacing: 1, marginBottom: 4 },
+  pathLabel: { fontSize: 10, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 4 },
   pathValue: { fontSize: 13, fontFamily: 'monospace', color: colors.accent },
   docsBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

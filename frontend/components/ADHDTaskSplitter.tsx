@@ -1,5 +1,6 @@
-import { colors, alphaHex } from '../lib/tokens';
-import { EmbeddedFiligree, TexturedSurface } from './ui';
+import { colors, alphaHex, space, radius, font } from '../lib/tokens';
+import { TexturedSurface } from './ui';
+import { EmbeddedFiligree } from './spatial';
 import { DECOR, TEXTURES } from '../lib/visualAssets';
 import React, { useState } from 'react';
 import {
@@ -10,6 +11,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Task } from '../store/taskStore';
@@ -26,43 +28,8 @@ interface ADHDTaskSplitterProps {
   task: Task;
   visible: boolean;
   onClose: () => void;
-  onSplit: (subtasks: Task[]) => void;
+  onSplit: (subtasks: Task[], options?: { archiveParent: boolean }) => void;
 }
-
-/**
- * ADHD Task Splitter V2.  (Phase 3, CODER-L, plan §15)
- *
- * BEFORE this change: tapping a duration button built three rows straight
- * from a hard-coded label table and called `insertSplitTasks` immediately --
- * no validation step, no preview, the "result" screen showed
- * already-inserted database rows. Plan §15's architecture is
- *
- *   task -> task decomposition service -> AI -> validated subtasks -> preview -> save
- *
- * so this component now goes through three phases instead of one:
- *
- *  1. 'select'  -- unchanged duration presets (same Turkish copy, same
- *     three options). Tapping one calls `lib/taskDecomposition.ts`'s
- *     `buildLocalSplitProposal` (today's stand-in for a real AI call -- see
- *     that function's own doc) and immediately runs the result through
- *     `validateSubtaskProposal`, exactly as a real AI response would have
- *     to be. A rejection (should never happen with today's trusted
- *     generator, but the gate applies unconditionally) surfaces an inline
- *     Turkish error and leaves 'select' fully usable -- nothing is written.
- *  2. 'preview' -- the validated subtasks are shown for review, NOT yet
- *     saved. The user must explicitly tap "Onayla ve Ekle" to proceed, or
- *     "Vazgeç" to go back and pick a different duration. This is the step
- *     that did not exist before.
- *  3. 'done'    -- unchanged success screen, now showing the rows the
- *     repository actually returned after the explicit confirm.
- *
- * Nothing reaches `insertSplitTasks` (the only DB write in this component)
- * except from an explicit `handleConfirm()` tap on an already-validated
- * proposal -- matching plan §13's rule for AI output in general, applied
- * here even though today's proposal source is the deterministic local
- * generator, not a live AI call (see `buildLocalSplitProposal`'s doc for
- * why the gate still applies).
- */
 
 type Phase = 'select' | 'preview' | 'done';
 
@@ -78,16 +45,13 @@ export default function ADHDTaskSplitter({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [subtasks, setSubtasks] = useState<Task[]>([]);
+  const [archiveParent, setArchiveParent] = useState(true);
 
-  // Phase 1: 'AI' (today: the local decomposition service) proposes, this
-  // gate validates. Never writes anything -- see file doc.
+  // Phase 1: local decomposition proposes, this gate validates. Never writes anything.
   const handlePick = (minutes: number) => {
     const raw = buildLocalSplitProposal(task.title, minutes);
     const result = validateSubtaskProposal(raw);
     if (!result.ok) {
-      // Gate D: a rejected/garbage proposal degrades gracefully -- an
-      // inline Turkish message, 'select' stays fully usable, nothing about
-      // to be written.
       setProposalError(
         result.errors.map((e) => e.message).join(' '),
       );
@@ -109,6 +73,7 @@ export default function ADHDTaskSplitter({
     setSaveError(null);
     try {
       const rows = toSplitTaskInputs(proposal, {
+        id: task.id,
         priority: task.priority,
         due_date: task.due_date ?? null,
         project_id: task.project_id ?? null,
@@ -120,7 +85,7 @@ export default function ADHDTaskSplitter({
         return;
       }
       setSubtasks(res.data);
-      onSplit(res.data);
+      onSplit(res.data, { archiveParent });
       setPhase('done');
     } catch (error) {
       // R10.03 — through the scrubbing funnel, never raw to the device log.
@@ -135,6 +100,7 @@ export default function ADHDTaskSplitter({
     setPhase('select');
     setProposal(null);
     setSaveError(null);
+    setArchiveParent(true);
   };
 
   const handleClose = () => {
@@ -143,6 +109,7 @@ export default function ADHDTaskSplitter({
     setProposalError(null);
     setSaveError(null);
     setSubtasks([]);
+    setArchiveParent(true);
     onClose();
   };
 
@@ -243,6 +210,24 @@ export default function ADHDTaskSplitter({
                 ))}
               </ScrollView>
 
+              <View style={styles.archiveRow}>
+                <View style={styles.archiveTextCol}>
+                  <Text style={styles.archiveLabel}>Ana görev listemden kalksın</Text>
+                  <Text style={styles.archiveHint}>
+                    Adımlar onun yerini alır. Ana görev silinmez, arşivde durur.
+                  </Text>
+                </View>
+                <Switch
+                  value={archiveParent}
+                  onValueChange={setArchiveParent}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Ana görev listemden kalksın"
+                  accessibilityState={{ checked: archiveParent }}
+                  trackColor={{ false: colors.border, true: alphaHex(colors.accent, '60') }}
+                  thumbColor={archiveParent ? colors.accent : colors.textDim}
+                />
+              </View>
+
               {saveError && (
                 <View style={styles.errorBox}>
                   <Ionicons name="warning-outline" size={16} color={colors.error} />
@@ -276,6 +261,11 @@ export default function ADHDTaskSplitter({
           {phase === 'done' && (
             <View style={styles.subtasks}>
               <Text style={styles.subtasksTitle}>Görev başarıyla bölündü! 🎯</Text>
+              <Text style={styles.doneSubtitle}>
+                {archiveParent
+                  ? 'Ana görev arşive alındı; adımlar listende.'
+                  : 'Adımlar ana görevin yanında duruyor.'}
+              </Text>
               <ScrollView style={styles.subtasksList}>
                 {subtasks.map((subtask, index) => (
                   <View key={subtask.id} style={styles.subtaskCard}>
@@ -415,11 +405,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.success,
-    marginBottom: 16,
+    marginBottom: space.xs,
     textAlign: 'center',
   },
+  doneSubtitle: {
+    ...font.bodySm,
+    color: colors.textDim,
+    textAlign: 'center',
+    marginBottom: space.md,
+  },
   subtasksList: {
-    maxHeight: 300,
+    maxHeight: 260,
   },
   subtaskCard: {
     flexDirection: 'row',
@@ -454,6 +450,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textFaint,
     marginTop: 2,
+  },
+  archiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.md,
+    minHeight: 44,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    marginTop: space.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  archiveTextCol: {
+    flex: 1,
+    gap: space.xs,
+  },
+  archiveLabel: {
+    ...font.bodySm,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  archiveHint: {
+    ...font.caption,
+    color: colors.textDim,
   },
   previewActions: {
     flexDirection: 'row',

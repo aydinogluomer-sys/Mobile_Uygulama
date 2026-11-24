@@ -1,7 +1,6 @@
 import { registerAccountScoped } from '../lib/accountScope';
-import { withEdgeDeadline } from '../lib/edgeCall';
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
+import { callEdgeFunction, EdgeSessionError, invokeEdgeFunction } from '../services/edgeFunctions';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 
@@ -27,8 +26,29 @@ type NotionStore = {
   sync: (date?: string) => Promise<{ habits: number; tasks: number } | null>;
 };
 
-const SUPABASE_FUNCTIONS_URL = process.env.EXPO_PUBLIC_SUPABASE_URL + '/functions/v1';
 const REDIRECT_URI = Linking.createURL('notion-callback');
+
+type NotionAuthBody = {
+  url?: string;
+  state?: string;
+  connected?: boolean;
+  habits_url?: string;
+  tasks_url?: string;
+  workspace_name?: string;
+  workspace_icon?: string | null;
+  success?: boolean;
+  error?: string;
+};
+
+type NotionSyncSegment = { synced?: number; failed?: number; error?: string };
+type NotionSyncBody = {
+  success?: boolean;
+  habits?: NotionSyncSegment;
+  tasks?: NotionSyncSegment;
+  synced_habits?: number;
+  synced_tasks?: number;
+  error?: string;
+};
 
 export const useNotionStore = create<NotionStore>((set, get) => ({
   connection: null,
@@ -40,18 +60,14 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
   // OAuth URL'ini önceden çek (modal açılırken çağrılır, gecikme olmadan anında bağlan)
   prefetchAuthUrl: async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      
-      const res = await withEdgeDeadline('Notion', (signal) => fetch(
-        `${SUPABASE_FUNCTIONS_URL}/notion-auth?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`, { signal, headers: { Authorization: `Bearer ${session.access_token}` } }
-      ));
-      
+      const res = await callEdgeFunction<NotionAuthBody>('notion-auth', {
+        label: 'Notion',
+        action: 'url',
+        query: { redirect_uri: REDIRECT_URI },
+      });
       if (!res.ok) return; // Başarısız olsa da connect() üretecek
-      
-      const data = await res.json();
-      if (data.url) {
-        set({ _pendingOAuthUrl: data.url });
+      if (res.body?.url) {
+        set({ _pendingOAuthUrl: res.body.url });
       }
     } catch {
       // sessizce geç, connect() kendi URL'ini üretecek
@@ -61,23 +77,17 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
   // Mevcut bağlantı durumunu kontrol et
   fetchStatus: async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        set({ connection: null, status: 'idle' });
-        return;
-      }
-      
-      const res = await withEdgeDeadline('Notion', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=status`, { signal,
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      }));
-      
+      const res = await callEdgeFunction<NotionAuthBody>('notion-auth', {
+        label: 'Notion',
+        action: 'status',
+      });
+
       if (!res.ok) {
-        const errorData = await res.json();
-        set({ connection: null, status: 'idle', error: errorData.error });
+        set({ connection: null, status: 'idle', error: res.body?.error ?? null });
         return;
       }
-      
-      const data = await res.json();
+
+      const data = res.body ?? {};
       if (data.connected && data.habits_url && data.tasks_url) {
         set({
           connection: {
@@ -93,6 +103,10 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
         set({ connection: null, status: 'idle', error: null });
       }
     } catch (e) {
+      if (e instanceof EdgeSessionError) {
+        set({ connection: null, status: 'idle' });
+        return;
+      }
       const msg = e instanceof Error ? e.message : String(e);
       set({ connection: null, status: 'idle', error: msg });
     }
@@ -102,26 +116,24 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
   connect: async () => {
     set({ status: 'connecting', error: null });
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Oturum açmanız gerekiyor');
-
       // Önceden çekilen URL varsa kullan, yoksa şimdi çek
       let oauthUrl = get()._pendingOAuthUrl;
       if (!oauthUrl) {
-        const urlRes = await withEdgeDeadline('Notion', (signal) => fetch(
-          `${SUPABASE_FUNCTIONS_URL}/notion-auth?action=url&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`, { signal, headers: { Authorization: `Bearer ${session.access_token}` } }
-        ));
+        const urlRes = await callEdgeFunction<NotionAuthBody>('notion-auth', {
+          label: 'Notion',
+          action: 'url',
+          query: { redirect_uri: REDIRECT_URI },
+        });
         if (!urlRes.ok) {
-          const error = await urlRes.json();
-          throw new Error(error.error ?? 'OAuth URL alınamadı');
+          throw new Error(urlRes.body?.error ?? 'OAuth URL alınamadı');
         }
-        const data = await urlRes.json();
-        oauthUrl = data.url;
+        oauthUrl = urlRes.body?.url ?? null;
+        if (!oauthUrl) throw new Error('OAuth URL alınamadı');
       }
       set({ _pendingOAuthUrl: null }); // kullanıldı, temizle
 
       // Tarayıcıda OAuth sayfasını aç
-      const result = await WebBrowser.openAuthSessionAsync(oauthUrl!, REDIRECT_URI);
+      const result = await WebBrowser.openAuthSessionAsync(oauthUrl, REDIRECT_URI);
 
       if (result.type !== 'success') {
         set({ status: 'idle', error: null });
@@ -138,21 +150,18 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
       if (!returnedState) throw new Error('OAuth state alınamadı');
 
       // Code'u token ile değiştir ve veritabanları kur
-      const callbackRes = await withEdgeDeadline('Notion', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=callback`, { signal,
+      const callbackRes = await callEdgeFunction<NotionAuthBody>('notion-auth', {
+        label: 'Notion',
+        action: 'callback',
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ code, redirect_uri: REDIRECT_URI, state: returnedState }),
-      }));
-      
+        body: { code, redirect_uri: REDIRECT_URI, state: returnedState },
+      });
+
       if (!callbackRes.ok) {
-        const errorData = await callbackRes.json();
-        throw new Error(errorData.error ?? 'Bağlantı kurulamadı');
+        throw new Error(callbackRes.body?.error ?? 'Bağlantı kurulamadı');
       }
-      
-      const callbackData = await callbackRes.json();
+
+      const callbackData = callbackRes.body ?? {};
       if (!callbackData.success) {
         throw new Error(callbackData.error ?? 'Notion bağlantı başarısız');
       }
@@ -178,24 +187,22 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
   // Bağlantıyı kes
   disconnect: async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      const res = await callEdgeFunction<NotionAuthBody>('notion-auth', {
+        label: 'Notion',
+        action: 'disconnect',
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        throw new Error(res.body?.error || 'Bağlantı kesme başarısız');
+      }
+
+      set({ connection: null, status: 'idle', lastSynced: null, error: null });
+    } catch (e) {
+      if (e instanceof EdgeSessionError) {
         set({ connection: null, status: 'idle', lastSynced: null, error: null });
         return;
       }
-      
-      const res = await withEdgeDeadline('Notion', (signal) => fetch(`${SUPABASE_FUNCTIONS_URL}/notion-auth?action=disconnect`, { signal,
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      }));
-      
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Bağlantı kesme başarısız');
-      }
-      
-      set({ connection: null, status: 'idle', lastSynced: null, error: null });
-    } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       set({ error: msg });
       // Yine de local state'i temizle
@@ -213,11 +220,10 @@ export const useNotionStore = create<NotionStore>((set, get) => ({
     
     set({ status: 'syncing', error: null });
     try {
-      const { data, error } = await withEdgeDeadline('Notion', (signal) =>
-        supabase.functions.invoke('notion-sync', {
-        signal,
+      const { data, error } = await invokeEdgeFunction<NotionSyncBody>('notion-sync', {
+        label: 'Notion',
         body: { date },
-      }));
+      });
       
       if (error) {
         throw new Error(error.message || 'Senkronizasyon hatası');

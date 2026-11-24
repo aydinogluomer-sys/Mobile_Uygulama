@@ -25,19 +25,29 @@
  * fit). Every tab/range below derives its view from that same in-memory log
  * array; switching ranges or tabs never re-fetches.
  */
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import { confirm, notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 
+import { currentUser } from '../../lib/session';
 import { useHabitStore } from '../../store/habitStore';
 import type { Habit, FrequencyConfig } from '../../lib/supabase';
 import { colors, space, radius, font, hexA } from '../../lib/tokens';
-import { AtmosphericScreenCanvas, Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines, EditorialBanner } from '../../components/ui';
+import { Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines, EditorialBanner, Button } from '../../components/ui';
+import { AtmosphericScreenCanvas } from '../../components/spatial';
+import KintsugiYearGrid from '../../components/habits/KintsugiYearGrid';
+import HabitDayNote from '../../components/habits/HabitDayNote';
+import HabitColorPicker from '../../components/habits/HabitColorPicker';
 import { CANVASES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { haptic } from '../../lib/haptics';
-import { addDaysLocal, parseLocalDate, ymd, ymdFromIso, type Ymd } from '../../lib/date';
+import { addDaysLocal, parseLocalDate, ymd, type Ymd } from '../../lib/date';
+import { habitCreatedDay } from '../../lib/habitCreatedDay';
+import { hueLabel } from '../../lib/habitColors';
+import { previewNote } from '../../lib/habitNote';
+import { buildHabitYearGrid, formatDayLongTR, formatDayShortTR } from '../../lib/yearGrid';
 import { isCountBasedSchedule, isEligibleOn } from '../../lib/habitSchedule';
 // KD-09 — the schedule is shown with the same sentence the form uses, and edited
 // with the same controls (one component, one set of pure transitions).
@@ -49,11 +59,12 @@ import TimeOffSheet from '../../components/TimeOffSheet';
 import ChecklistEditor from '../../components/ChecklistEditor';
 // R04.02 — several times a day and a day group, per habit.
 import ReminderEditor from '../../components/ReminderEditor';
-import { hasPermission } from '../../lib/notifications';
+import { notificationAccess, type NotificationAccess } from '../../lib/notifications';
 import { reminderTimes } from '../../lib/reminderPlan';
 import { activePauseOn } from '../../lib/habitPauses';
 import { completionPercent, isMeasurableTracking } from '../../lib/habitEngine';
-import { habitStrength, type StrengthLog } from '../../lib/habitStrength';
+import { habitStrengthFor } from '../../lib/habitStrength';
+import { insufficientText, type InsufficientKind } from '../../lib/metricCopy';
 import {
   habitCompletionRate,
   weekdayBreakdown,
@@ -67,9 +78,18 @@ import {
   type Result,
 } from '../../lib/behaviorIntelligence';
 import { logsForHabit, type HabitDetailLogRow } from '../../services/habitService';
+import { saveLogNote } from '../../services/habitLogService';
+import { repairedSourceDates } from '../../services/recoveryService';
 import { LIFE_AREAS } from '../../store/lifeAreasStore';
 import { endConditionLabel } from '../../lib/triage';
 import { DOW_TR } from '../../lib/focusReport';
+
+const useSafeFocusEffect: typeof useFocusEffect =
+  typeof useFocusEffect === 'function'
+    ? useFocusEffect
+    : (effect) => {
+        useEffect(effect, [effect]);
+      };
 
 // ---------------------------------------------------------------------------
 // tabs
@@ -102,7 +122,7 @@ type CalendarDayState = 'full' | 'partial' | 'miss' | 'skip' | 'not_scheduled';
 const CALENDAR_STATE_COLORS: Record<CalendarDayState, string> = {
   full: colors.success,
   partial: colors.warning,
-  miss: colors.error,
+  miss: colors.textFaint,
   skip: colors.info,
   not_scheduled: colors.textGhost,
 };
@@ -220,8 +240,30 @@ function trendIcon(direction: 'improving' | 'declining' | 'flat'): keyof typeof 
 // ui/ primitives (plan: reuse ui/, do not invent new ones)
 // ---------------------------------------------------------------------------
 
-function InfoRow({ icon, label, value, onEdit, editLabel, editIcon = 'create-outline' }: {
+function CalNavBtn({
+  icon,
+  label,
+  onStep,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onStep: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onStep}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Ionicons name={icon} size={20} color={colors.textDim} />
+    </TouchableOpacity>
+  );
+}
+
+function InfoRow({ icon, label, value, colorDot, onEdit, editLabel, editIcon = 'create-outline' }: {
   icon: keyof typeof Ionicons.glyphMap; label: string; value: string;
+  colorDot?: string;
   /** KD-09 — when set, the row offers an edit button with this a11y label. */
   onEdit?: () => void; editLabel?: string;
   /** R01.05 — the button's glyph, when it is not an edit. */
@@ -230,7 +272,15 @@ function InfoRow({ icon, label, value, onEdit, editLabel, editIcon = 'create-out
   return (
     <View style={s.infoRow}>
       {/* süs ikonu — etiket/değer zaten okunuyor, ekran okuyucuda tekrar etmesin */}
-      <Ionicons name={icon} size={15} color={colors.textFaint} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+      {colorDot ? (
+        <View
+          style={[s.colorDot, { backgroundColor: colorDot }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
+      ) : (
+        <Ionicons name={icon} size={15} color={colors.textFaint} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+      )}
       <Text style={s.infoLabel}>{label}</Text>
       <Text style={s.infoValue} numberOfLines={1}>{value}</Text>
       {onEdit && (
@@ -252,12 +302,15 @@ function InfoRow({ icon, label, value, onEdit, editLabel, editIcon = 'create-out
  * Renders one İÇGÖRÜ metric. On `{ ok: false }` it renders `result.reason`
  * -- never a substituted number -- which is the single choke point that
  * keeps every İÇGÖRÜ metric on this screen honest about insufficient data.
+ * F13 (INT-07): with `kind`, the reason is shown as the calm Turkish sentence
+ * from `metricCopy.ts` (`insufficientText`), not the developer string.
  */
-function InsightRow<T>({ icon, label, result, formatOk }: {
+function InsightRow<T>({ icon, label, result, formatOk, kind }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   result: Result<T>;
   formatOk: (value: T) => string;
+  kind?: InsufficientKind;
 }) {
   return (
     <Card padding="md" style={s.insightCard}>
@@ -268,7 +321,7 @@ function InsightRow<T>({ icon, label, result, formatOk }: {
       {result.ok ? (
         <Text style={s.insightValue}>{formatOk(result.value)}</Text>
       ) : (
-        <Text style={s.insightReason}>{result.reason}</Text>
+        <Text style={s.insightReason}>{insufficientText(kind, result.reason)}</Text>
       )}
     </Card>
   );
@@ -285,16 +338,30 @@ export default function HabitDetailScreen() {
   // R01.05 — this habit's current or upcoming break, and any holiday today.
   const [timeOffOpen, setTimeOffOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
-  const [notifPermission, setNotifPermission] = useState<boolean | null>(null);
-  useEffect(() => { void hasPermission().then(setNotifPermission); }, []);
+  const [notifAccess, setNotifAccess] = useState<NotificationAccess | null>(null);
+  useEffect(() => { void notificationAccess().then(setNotifAccess); }, []);
 
   const [logs, setLogs] = useState<HabitDetailLogRow[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
+  const [logsError, setLogsError] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
+  const [repaired, setRepaired] = useState<ReadonlySet<Ymd>>(() => new Set());
+  const [selectedDay, setSelectedDay] = useState<Ymd | null>(null);
+  const [noteEditing, setNoteEditing] = useState<Ymd | null>(null);
+  const [historyVisible, setHistoryVisible] = useState<number>(14);
+  const [colorOpen, setColorOpen] = useState(false);
+  const [colorDraft, setColorDraft] = useState<string | null>(null);
+  const [savingColor, setSavingColor] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>('genel');
   // KD-09 — the schedule draft while the editor is open; null = closed.
   const [freqDraft, setFreqDraft] = useState<FrequencyConfig | null>(null);
   const [savingFreq, setSavingFreq] = useState(false);
   const [rangeKey, setRangeKey] = useState<string>('30');
+
+  useEffect(() => {
+    void currentUser().then((u) => setUserId(u?.id ?? null));
+  }, []);
 
   const today = new Date();
   const todayYmd = ymd(today);
@@ -306,7 +373,7 @@ export default function HabitDetailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sinceYmd: Ymd = habit?.created_at ? ymdFromIso(habit.created_at) : todayYmd;
+  const sinceYmd: Ymd = (habit ? habitCreatedDay(habit) : null) ?? todayYmd;
 
   useEffect(() => {
     let cancelled = false;
@@ -315,14 +382,72 @@ export default function HabitDetailScreen() {
       return;
     }
     setLoadingLogs(true);
+    setLogsError(false);
     logsForHabit({ habitId: habit.id, start: sinceYmd, end: todayYmd }).then((res) => {
       if (cancelled) return;
-      if (res.ok) setLogs(res.data);
+      if (res.ok) {
+        setLogs(res.data);
+        setLogsError(false);
+      } else {
+        setLogs([]);
+        setLogsError(true);
+      }
       setLoadingLogs(false);
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [habit?.id, sinceYmd, todayYmd]);
+  }, [habit?.id, sinceYmd, todayYmd, retryTick]);
+
+  const habitIdForFocus = habit?.id ?? null;
+  useSafeFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      if (!habitIdForFocus) {
+        setRepaired(new Set());
+        return;
+      }
+      void repairedSourceDates({ habitId: habitIdForFocus, since: sinceYmd }).then((res) => {
+        if (cancelled) return;
+        setRepaired(res.ok ? res.data : new Set());
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [habitIdForFocus, sinceYmd]),
+  );
+
+  const logIndex = useMemo(() => {
+    const idx = new Map<Ymd, HabitDetailLogRow>();
+    for (const l of logs) idx.set(l.completed_at.slice(0, 10), l);
+    return idx;
+  }, [logs]);
+
+  const yearModel = useMemo(() => {
+    if (!habit) return null;
+    return buildHabitYearGrid({
+      habit,
+      todayYmd,
+      createdYmd: sinceYmd,
+      cellFor: (d) => dayCellFor(habit, logIndex, d, todayYmd),
+      logStateOn: (day) => logIndex.get(day)?.state ?? null,
+      noteOn: (day) => Boolean(logIndex.get(day)?.notes),
+      repairedDates: repaired,
+    });
+  }, [habit, todayYmd, sinceYmd, logIndex, repaired]);
+
+  // GEM-10 — strength and streaks walk up to 90 days / the whole history, so
+  // they are memoised on the habit, its logs and the local DAY (`todayYmd`,
+  // not the per-render `today` object). Declared before the early return
+  // below so the hook order never changes; `null` until a habit exists.
+  const engine = useMemo(() => {
+    if (!habit) return null;
+    const asOf = parseLocalDate(todayYmd) ?? new Date();
+    return {
+      strength: habitStrengthFor(habit, logs, { asOf }),
+      curStreak: currentStreak(habit, logs, asOf),
+      bestStreak: longestStreak(habit, logs, { asOf }),
+    };
+  }, [habit, logs, todayYmd]);
 
   if (!habit) {
     return (
@@ -363,28 +488,25 @@ export default function HabitDetailScreen() {
 
   // From here on `habit` is narrowed to `Habit` (non-null) for the rest of the render.
 
-  const logIndex = new Map<Ymd, HabitDetailLogRow>();
-  for (const l of logs) logIndex.set(l.completed_at.slice(0, 10), l); // last wins, same tie-break as behaviorIntelligence.buildLogIndex
-
-  const strengthLogs: StrengthLog[] = logs.map((l) => ({ completed_at: l.completed_at, state: l.state }));
-  const createdDate = habit.created_at ? parseLocalDate(ymdFromIso(habit.created_at)) : null;
-  const strength = habitStrength(strengthLogs, { asOf: today, since: createdDate ?? undefined });
-  const curStreak = currentStreak(habit, logs, today);
-  const bestStreak = longestStreak(habit, logs, { asOf: today });
-  const overallCompletion: Result<number> = habitCompletionRate(habit, logs, { start: sinceYmd, end: todayYmd });
+  // F13 (DOM-06, DOM-07): schedule-aware strength (null = no data yet) and
+  // streaks where an unlogged today is pending, from the memo above.
+  const strength = engine?.strength ?? null;
+  const curStreak = engine?.curStreak ?? 0;
+  const bestStreak = engine?.bestStreak ?? 0;
+  const overallCompletion: Result<number> = habitCompletionRate(habit, logs, { start: sinceYmd, end: todayYmd }, { asOf: today });
 
   const area = LIFE_AREAS.find((a) => a.key === habit.life_area) ?? null;
 
   const selectedRange = RANGE_OPTIONS.find((r) => r.key === rangeKey) ?? RANGE_OPTIONS[1];
   const rangeStart = rangeStartFor(selectedRange.days, sinceYmd, today);
-  const rangeCompletion: Result<number> = habitCompletionRate(habit, logs, { start: rangeStart, end: todayYmd });
+  const rangeCompletion: Result<number> = habitCompletionRate(habit, logs, { start: rangeStart, end: todayYmd }, { asOf: today });
   const stripDays = daysInRangeCapped(rangeStart, todayYmd, MAX_STRIP_DAYS);
   const isNumeric = isMeasurableTracking(habit.tracking_type);
 
-  const weekdayStats = weekdayBreakdown([habit], logs, { start: sinceYmd, end: todayYmd });
+  const weekdayStats = weekdayBreakdown([habit], logs, { start: sinceYmd, end: todayYmd }, { asOf: today });
   const bestDay = bestWeekday(weekdayStats);
   const worstDay = worstWeekday(weekdayStats);
-  const fragility = habitFragility(habit, logs);
+  const fragility = habitFragility(habit, logs, { asOf: today });
   const trend4 = completionTrend([habit], logs, { weeks: 4, asOf: today });
   const trend12 = completionTrend([habit], logs, { weeks: 12, asOf: today });
   const stability = streakStability(habit, logs, { asOf: today });
@@ -416,11 +538,12 @@ export default function HabitDetailScreen() {
     if (!habit || !freqDraft || !isFrequencyComplete(freqDraft)) return;
     setSavingFreq(true);
     try {
-      await updateHabit(habit.id, frequencyEditPatch(habit, freqDraft));
+      const res = await updateHabit(habit.id, frequencyEditPatch(habit, freqDraft));
+      if (!res.ok) throw new Error(res.error);
       haptic.success();
       setFreqDraft(null);
     } catch (e) {
-      Alert.alert('Kaydedilemedi', e instanceof Error ? e.message : 'Sıklık güncellenemedi.');
+      void notify('Kaydedilemedi', e instanceof Error ? e.message : 'Sıklık güncellenemedi.');
     } finally {
       setSavingFreq(false);
     }
@@ -432,18 +555,57 @@ export default function HabitDetailScreen() {
   ) ?? null;
   const holidayToday = activePauseOn({ pause_intervals: pauses.filter((p) => p.habit_id === null) }, today);
 
-  function confirmEndBreak(pauseId: string) {
-    Alert.alert('Arayı bitir', 'Bu alışkanlık bugünden itibaren yeniden takvimine döner.', [
-      { text: 'Vazgeç', style: 'cancel' },
-      {
-        text: 'Bitir',
-        onPress: async () => {
-          const res = await endTimeOff(pauseId);
-          if (!res.ok) Alert.alert('Kaydedilemedi', res.error);
-        },
-      },
-    ]);
+  async function confirmEndBreak(pauseId: string) {
+    if (await confirm({ title: 'Arayı bitir', message: 'Bu alışkanlık bugünden itibaren yeniden takvimine döner.', confirmText: 'Bitir' })) {
+      const res = await endTimeOff(pauseId);
+      if (!res.ok) void notify('Kaydedilemedi', res.error);
+    }
   }
+
+  async function handleSaveNote(
+    day: Ymd,
+    note: string | null,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (!habit) return { ok: false, error: 'Alışkanlık bulunamadı.' };
+    const res = await saveLogNote({ habitId: habit.id, dateStr: day, note });
+    if (res.ok) {
+      setLogs((prev) =>
+        prev.map((l) => (l.completed_at.slice(0, 10) === day ? { ...l, notes: res.notes } : l)),
+      );
+      setNoteEditing(null);
+      return { ok: true };
+    }
+    if (res.offline) {
+      return { ok: false, error: 'Çevrimdışıyken not kaydedilemez, bağlanınca tekrar dene.' };
+    }
+    if (res.code === 'no_row') {
+      return { ok: false, error: 'Bu gün için kayıt bulunamadı. Birkaç saniye sonra tekrar dene.' };
+    }
+    return { ok: false, error: res.error || 'Not kaydedilemedi. Bağlantını kontrol edip tekrar dene.' };
+  }
+
+  async function handleSaveColor() {
+    if (!habit || savingColor) return;
+    setSavingColor(true);
+    try {
+      const res = await updateHabit(habit.id, { color: colorDraft });
+      if (!res.ok) {
+        void notify('Kaydedilemedi', res.error);
+        return;
+      }
+      haptic.success();
+      setColorOpen(false);
+    } finally {
+      setSavingColor(false);
+    }
+  }
+
+  const historyRows = [...logIndex.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([day, row]) => ({ day, row }));
+  const visibleHistoryRows = historyRows.slice(0, historyVisible);
+  const remainingHistoryCount = Math.max(0, historyRows.length - visibleHistoryRows.length);
+  const selectedDayLog = selectedDay ? (logIndex.get(selectedDay) ?? null) : null;
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -468,10 +630,10 @@ export default function HabitDetailScreen() {
         <View style={s.header}>
           <Text style={s.habitName} accessibilityRole="header">{habit.name}</Text>
           <Text style={s.headerMetrics}>
-            Strength {strength} · Current {curStreak} gün · Best {bestStreak} gün · Completion{' '}
+            Strength {strength ?? '—'} · Current {curStreak} gün · Best {bestStreak} gün · Completion{' '}
             {overallCompletion.ok ? `%${completionPercent(overallCompletion.value)}` : '—'}
           </Text>
-          {!overallCompletion.ok && <Text style={s.headerReason}>{overallCompletion.reason}</Text>}
+          {!overallCompletion.ok && <Text style={s.headerReason}>{insufficientText('rate', overallCompletion.reason)}</Text>}
         </View>
 
         <View style={s.tabRow}>
@@ -495,7 +657,12 @@ export default function HabitDetailScreen() {
         {tab === 'genel' && (
           <View style={s.tabBody}>
             <View style={s.statGrid}>
-              <StatTile label="STRENGTH" value={strength} accent={colors.primary} />
+              <StatTile
+                label="STRENGTH"
+                value={strength ?? '—'}
+                accent={colors.primary}
+                accessibilityLabel={strength === null ? 'Strength: veri yok' : `Strength: ${strength}`}
+              />
               <StatTile label="MEVCUT STREAK" value={`${curStreak} gün`} accent={colors.success} />
             </View>
             <View style={s.statGrid}>
@@ -504,9 +671,55 @@ export default function HabitDetailScreen() {
                 label="TAMAMLAMA"
                 value={overallCompletion.ok ? `%${completionPercent(overallCompletion.value)}` : '—'}
                 accent={colors.info}
+                accessibilityLabel={overallCompletion.ok ? `Tamamlama: yüzde ${completionPercent(overallCompletion.value)}` : 'Tamamlama: veri yok'}
               />
             </View>
-            {!overallCompletion.ok && <Text style={s.reasonHint}>{overallCompletion.reason}</Text>}
+            {!overallCompletion.ok && <Text style={s.reasonHint}>{insufficientText('rate', overallCompletion.reason)}</Text>}
+
+            <SectionHeader title="Yıl izi" variant="title" style={{ marginTop: space.lg }} />
+            <Card padding="md" style={s.yearCard}>
+              <KintsugiYearGrid
+                mode="habit"
+                model={yearModel}
+                accent={habit.color ?? colors.primary}
+                selected={selectedDay}
+                onSelect={(d) => {
+                  setSelectedDay(d);
+                  setNoteEditing(null);
+                }}
+                status={loadingLogs ? 'loading' : logsError ? 'error' : 'ready'}
+                onRetry={() => setRetryTick((n) => n + 1)}
+                repairedCount={yearModel?.summary.repaired ?? 0}
+              />
+              {!loadingLogs && !logsError && selectedDay && selectedDayLog && (
+                noteEditing === selectedDay ? (
+                  <HabitDayNote
+                    variant="inline"
+                    dayLabel={formatDayLongTR(selectedDay)}
+                    initial={selectedDayLog.notes ?? null}
+                    userId={userId}
+                    onDismiss={() => setNoteEditing(null)}
+                    onSave={(note) => handleSaveNote(selectedDay, note)}
+                  />
+                ) : (
+                  <View style={s.dayStrip}>
+                    {selectedDayLog.notes ? (
+                      <Text style={s.historyNote} numberOfLines={1}>
+                        {previewNote(selectedDayLog.notes, 60)}
+                      </Text>
+                    ) : null}
+                    <Button
+                      label={selectedDayLog.notes ? 'Notu düzenle' : 'Not ekle'}
+                      variant="ghost"
+                      size="md"
+                      onPress={() => setNoteEditing(selectedDay)}
+                      accessibilityLabel={selectedDayLog.notes ? 'Notu düzenle' : 'Not ekle'}
+                      style={s.stepperBtn}
+                    />
+                  </View>
+                )
+              )}
+            </Card>
 
             <SectionHeader title="Alışkanlık Bilgisi" variant="title" style={{ marginTop: space.lg }} />
             <Card padding="md">
@@ -538,10 +751,22 @@ export default function HabitDetailScreen() {
                 icon="notifications-outline"
                 label="Hatırlatıcı"
                 value={reminderTimes(habit).length > 0
-                  ? `${reminderTimes(habit).join(', ')}${notifPermission === false ? ' · izin kapalı' : ''}`
+                  ? `${reminderTimes(habit).join(', ')}${notifAccess === 'ask' || notifAccess === 'blocked' ? ' · izin kapalı' : ''}${notifAccess === 'unsupported' ? ' · bildirim yalnız mobilde' : ''}`
                   : 'Kapalı'}
-                onEdit={() => setReminderOpen(true)}
+                onEdit={() => { void notificationAccess().then(setNotifAccess); setReminderOpen(true); }}
                 editLabel="Hatırlatıcıyı düzenle"
+              />
+              <InfoRow
+                icon="color-palette-outline"
+                colorDot={habit.color ?? colors.primary}
+                label="Renk"
+                value={hueLabel(habit.color)}
+                onEdit={() => {
+                  haptic.select();
+                  setColorDraft(habit.color ?? null);
+                  setColorOpen(true);
+                }}
+                editLabel="Rengi değiştir"
               />
               <InfoRow icon="compass-outline" label="Yaşam Alanı" value={area ? area.label : '—'} />
               <InfoRow icon="flash-outline" label="İrade Maliyeti" value={String(habit.willpower_cost)} />
@@ -572,7 +797,7 @@ export default function HabitDetailScreen() {
             </ScrollView>
 
             <Text style={s.rangeSummary}>
-              {rangeCompletion.ok ? `%${completionPercent(rangeCompletion.value)} tamamlama` : rangeCompletion.reason}
+              {rangeCompletion.ok ? `%${completionPercent(rangeCompletion.value)} tamamlama` : insufficientText('rate', rangeCompletion.reason)}
             </Text>
 
             {loadingLogs ? (
@@ -604,29 +829,82 @@ export default function HabitDetailScreen() {
                 })}
               </ScrollView>
             )}
+
+            <SectionHeader title="Son kayıtlar" variant="title" style={{ marginTop: space.lg }} />
+            {loadingLogs ? (
+              <SkeletonLines count={3} />
+            ) : historyRows.length === 0 ? (
+              <EmptyState icon="document-text-outline" title="Henüz kayıt yok" compact />
+            ) : (
+              <Card padding="md" style={s.yearCard}>
+                {visibleHistoryRows.map(({ day, row }) => {
+                  const calState: CalendarDayState =
+                    row.state === 'done'
+                      ? 'full'
+                      : row.state === 'partial'
+                        ? 'partial'
+                        : row.state === 'skip'
+                          ? 'skip'
+                          : 'miss';
+                  const valText =
+                    isNumeric && row.value != null
+                      ? ` · ${row.value}${habit.unit ? ` ${habit.unit}` : ''}`
+                      : '';
+                  return (
+                    <View key={day} style={s.historyItemWrap}>
+                      <View style={s.historyRow}>
+                        <View style={s.historyRowMain}>
+                          <Text style={s.historyDateText}>
+                            {`${formatDayShortTR(day)} · ${STATE_LABELS[calState]}${valText}`}
+                          </Text>
+                          {row.notes ? (
+                            <Text style={s.historyNote} numberOfLines={1}>
+                              {previewNote(row.notes, 60)}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Button
+                          label={row.notes ? 'Notu düzenle' : 'Not ekle'}
+                          variant="ghost"
+                          size="md"
+                          onPress={() => setNoteEditing(noteEditing === day ? null : day)}
+                          accessibilityLabel={`${formatDayShortTR(day)} ${row.notes ? 'Notu düzenle' : 'Not ekle'}`}
+                          style={s.stepperBtn}
+                        />
+                      </View>
+                      {noteEditing === day && (
+                        <HabitDayNote
+                          variant="inline"
+                          dayLabel={formatDayLongTR(day)}
+                          initial={row.notes ?? null}
+                          userId={userId}
+                          onDismiss={() => setNoteEditing(null)}
+                          onSave={(note) => handleSaveNote(day, note)}
+                        />
+                      )}
+                    </View>
+                  );
+                })}
+                {remainingHistoryCount > 0 && (
+                  <Button
+                    label={`Daha fazla göster (${remainingHistoryCount})`}
+                    variant="tonal"
+                    size="md"
+                    onPress={() => setHistoryVisible((n) => n + 14)}
+                    accessibilityLabel={`Daha fazla göster (${remainingHistoryCount})`}
+                  />
+                )}
+              </Card>
+            )}
           </View>
         )}
 
         {tab === 'takvim' && (
           <View style={s.tabBody}>
             <View style={s.calNav}>
-              <TouchableOpacity
-                onPress={prevMonth}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Önceki ay"
-              >
-                <Ionicons name="chevron-back" size={20} color={colors.textDim} />
-              </TouchableOpacity>
+              <CalNavBtn icon="chevron-back" label="Önceki ay" onStep={prevMonth} />
               <Text style={s.calNavLabel}>{MONTHS_TR[calMonth]} {calYear}</Text>
-              <TouchableOpacity
-                onPress={nextMonth}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Sonraki ay"
-              >
-                <Ionicons name="chevron-forward" size={20} color={colors.textDim} />
-              </TouchableOpacity>
+              <CalNavBtn icon="chevron-forward" label="Sonraki ay" onStep={nextMonth} />
             </View>
 
             <View style={s.calDowRow}>
@@ -663,30 +941,35 @@ export default function HabitDetailScreen() {
               icon="trending-up-outline"
               label="En başarılı gün"
               result={bestDay}
+              kind="weekday"
               formatOk={(v) => `${DOW_TR[v.weekday]} · %${Math.round(v.rate * 100)}`}
             />
             <InsightRow
               icon="trending-down-outline"
               label="En zayıf gün"
               result={worstDay}
+              kind="weekday"
               formatOk={(v) => `${DOW_TR[v.weekday]} · %${Math.round(v.rate * 100)}`}
             />
             <InsightRow
               icon="pulse-outline"
               label="Kırılganlık (son 8 hafta)"
               result={fragility}
+              kind="fragility"
               formatOk={(v) => `%${Math.round(v.volatility * 100)} oynaklık · ${v.weeksUsed} hafta veri`}
             />
             <InsightRow
               icon={trendIcon(trend4.ok ? trend4.value.direction : 'flat')}
               label="4 haftalık trend"
               result={trend4}
+              kind="trend"
               formatOk={(v) => `${trendLabel(v.direction)} · ${v.magnitude >= 0 ? '+' : ''}${Math.round(v.magnitude * 100)} puan${v.partialWindow ? ` (${v.weeksUsed}/${v.weeksRequested} hafta)` : ''}`}
             />
             <InsightRow
               icon={trendIcon(trend12.ok ? trend12.value.direction : 'flat')}
               label="12 haftalık trend"
               result={trend12}
+              kind="trend"
               formatOk={(v) => `${trendLabel(v.direction)} · ${v.magnitude >= 0 ? '+' : ''}${Math.round(v.magnitude * 100)} puan${v.partialWindow ? ` (${v.weeksUsed}/${v.weeksRequested} hafta)` : ''}`}
             />
             <InsightRow
@@ -739,9 +1022,14 @@ export default function HabitDetailScreen() {
       {reminderOpen && (
         <ReminderEditor
           habit={habit}
-          permission={notifPermission}
+          permission={notifAccess === null ? null : notifAccess === 'granted'}
+          access={notifAccess}
           onClose={() => setReminderOpen(false)}
-          onSave={async (config) => { await updateHabit(habit.id, { reminders: config }); setReminderOpen(false); }}
+          onSave={async (config) => {
+            const res = await updateHabit(habit.id, { reminders: config });
+            if (res.ok) setReminderOpen(false);
+            return res;
+          }}
         />
       )}
 
@@ -758,6 +1046,37 @@ export default function HabitDetailScreen() {
           return res;
         }}
       />
+
+      <Modal visible={colorOpen} transparent animationType="slide" onRequestClose={() => setColorOpen(false)}>
+        <View style={s.sheetOverlay}>
+          <View style={s.sheet}>
+            <Text style={s.sheetTitle}>Rengi değiştir</Text>
+            <ScrollView style={s.sheetBody} keyboardShouldPersistTaps="handled">
+              <HabitColorPicker value={colorDraft} onChange={setColorDraft} disabled={savingColor} />
+            </ScrollView>
+            <View style={s.sheetActions}>
+              <Button
+                label="Vazgeç"
+                variant="ghost"
+                size="md"
+                full
+                disabled={savingColor}
+                onPress={() => setColorOpen(false)}
+                accessibilityLabel="Vazgeç"
+              />
+              <Button
+                label={savingColor ? 'Kaydediliyor…' : 'Kaydet'}
+                variant="primary"
+                size="md"
+                full
+                disabled={savingColor}
+                onPress={() => { void handleSaveColor(); }}
+                accessibilityLabel="Rengi kaydet"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -844,4 +1163,52 @@ const s = StyleSheet.create({
   insightLabel: { fontSize: 13, color: colors.textDim, fontWeight: '600', flex: 1 },
   insightValue: { fontSize: 15, color: colors.text, fontWeight: '700' },
   insightReason: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+
+  colorDot: {
+    width: space.md,
+    height: space.md,
+    borderRadius: radius.pill,
+  },
+  yearCard: {
+    gap: space.sm,
+  },
+  yearSummary: {
+    ...font.caption,
+    color: colors.textDim,
+  },
+  dayStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.sm,
+  },
+  historyItemWrap: {
+    gap: space.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSubtle,
+    paddingBottom: space.xs,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.sm,
+  },
+  historyRowMain: {
+    flex: 1,
+    gap: space.xs,
+  },
+  historyDateText: {
+    ...font.bodySm,
+    color: colors.text,
+  },
+  historyNote: {
+    ...font.caption,
+    color: colors.textDim,
+    flex: 1,
+  },
+  stepperBtn: {
+    minWidth: space.hh + space.xs,
+    minHeight: space.hh + space.xs,
+  },
 });

@@ -71,13 +71,21 @@ jest.mock('../../lib/supabase', () => ({
         return q;
       },
       upsert(row: Row) {
+        const applyUpsert = () => {
+          const exists = mockDb.rows.some((r) => r.user_id === row.user_id && r.state_date === row.state_date);
+          if (!exists) {
+            mockDb.rows.push(row);
+            mockDb.inserted.push(row);
+          }
+          return row;
+        };
         return {
+          then: (onOk: (v: unknown) => unknown) => {
+            applyUpsert();
+            return Promise.resolve({ data: null, error: null }).then(onOk);
+          },
           select: () => ({
-            single: async () => {
-              mockDb.rows.push(row);
-              mockDb.inserted.push(row);
-              return { data: row, error: null };
-            },
+            single: async () => ({ data: applyUpsert(), error: null }),
           }),
         };
       },

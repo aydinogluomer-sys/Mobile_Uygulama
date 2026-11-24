@@ -7,15 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useProfileStore, LeaderboardScope } from '../../store/profileStore';
 import { rankMeta } from '../../lib/ranks';
-import {
-  AtmosphericScreenCanvas,
-  ChapterDivider,
-  EditorialBanner,
-  EmbeddedFiligree,
-  EmblemMedallion,
-  EmptyState,
-  Skeleton,
-} from '../../components/ui';
+import { EditorialBanner, EmblemMedallion, EmptyState, Skeleton } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, getRankCrest, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 
 const MEDALS = ['🥇', '🥈', '🥉'];

@@ -1,6 +1,7 @@
 import { Text, View, TouchableOpacity, ViewStyle, StyleProp, type AccessibilityProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, hexA } from '../../lib/tokens';
+import { radius, hexA } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 
 /**
  * `AccessibilityProps` ile genişletildi: prop tipi kapalıyken çağıran taraf
@@ -21,10 +22,12 @@ type Props = AccessibilityProps & {
 
 /** Tonal pill — durum/etiket/seçim. dot veya icon ile zenginleşir. */
 export default function Chip({
-  label, color = colors.textDim, icon, dot, selected, onPress, size = 'md', style, ...a11y
+  label, color, icon, dot, selected, onPress, size = 'md', style, ...a11y
 }: Props) {
+  const c = useThemeColors();
+  const resolvedColor = color ?? c.textDim;
   const isAccent = selected || !!dot || !!icon;
-  const fg = isAccent ? color : colors.textDim;
+  const fg = isAccent ? resolvedColor : c.textDim;
   const py = size === 'sm' ? 3 : 6;
   const px = size === 'sm' ? 8 : 11;
   const fs = size === 'sm' ? 11 : 12;
@@ -43,7 +46,7 @@ export default function Chip({
         <View
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
-          style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }}
+          style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: resolvedColor }}
         />
       )}
       {icon && (
@@ -62,9 +65,9 @@ export default function Chip({
   const base: ViewStyle = {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: px, paddingVertical: py, borderRadius: radius.xs,
-    backgroundColor: selected ? hexA(color, 0.16) : isAccent ? hexA(color, 0.14) : colors.surfaceAlt,
+    backgroundColor: selected ? hexA(resolvedColor, 0.16) : isAccent ? hexA(resolvedColor, 0.14) : c.surfaceAlt,
     borderWidth: 1,
-    borderColor: selected ? color : isAccent ? hexA(color, 0.26) : colors.border,
+    borderColor: selected ? resolvedColor : isAccent ? hexA(resolvedColor, 0.26) : c.border,
   };
 
   if (onPress) {

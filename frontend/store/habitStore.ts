@@ -1,4 +1,4 @@
-import { registerAccountScoped } from '../lib/accountScope';
+import { accountEpoch, registerAccountScoped } from '../lib/accountScope';
 import { create } from 'zustand';
 import type { Habit } from '../lib/supabase';
 import { scheduleHabitReminder, cancelHabitReminder } from '../lib/notifications';
@@ -62,9 +62,25 @@ function emitAnalytics(name: AnalyticsEventName, props: Record<string, unknown>)
 
 type HabitInsert = Omit<Habit, 'id' | 'created_at' | 'user_id'>;
 
+export type HabitActionResult = { ok: true } | { ok: false; error: string; reason?: string };
+export type HabitUpdateResult = { ok: true } | { ok: false; error: string };
+
+const ACTIVATION_MESSAGES: Record<string, string> = {
+  no_state: 'Bugünkü irade bütçesi okunamadı; bağlantı gelince tekrar dene.',
+  stale: 'Bütçe bilgisi eski; yenilenince tekrar dene.',
+  over_budget: 'Bugünkü irade bütçesi doldu; yarın ya da bir alışkanlığı beklemeye alınca olur.',
+  over_capacity: 'Aynı anda taşıyabileceğin yük doldu; önce birini beklemeye al.',
+  write_failed: 'Kaydedilemedi; bütçen değişmedi. Bağlantını kontrol edip tekrar dene.',
+};
+
+const inFlight = new Set<string>();
+
 type HabitStore = {
   habits: Habit[];
   loading: boolean;
+  habitsLoaded: boolean;
+  error: string | null;
+  hasLoaded: boolean;
   /** R01.05 — every pause and holiday of this user. */
   pauses: PauseInterval[];
   goalVersions: GoalVersion[];
@@ -81,31 +97,54 @@ type HabitStore = {
   /** Tick/untick; returns the day's progress after the write. */
   toggleCheck: (habitId: string, itemId: string, day: string) => Promise<{ ok: true; progress: ChecklistProgress } | { ok: false; error: string }>;
   endTimeOff: (pauseId: string) => Promise<{ ok: true } | { ok: false; error: string }>;
-  fetchHabits: () => Promise<void>;
+  fetchHabits: (opts?: { force?: boolean }) => Promise<void>;
+  addInstalledHabits: (habits: Habit[]) => void;
   addHabit: (habit: HabitInsert) => Promise<Habit | null>;
-  updateHabit: (id: string, updates: Partial<Habit>) => Promise<void>;
+  updateHabit: (id: string, updates: Partial<Habit>) => Promise<HabitUpdateResult>;
   removeHabit: (id: string) => Promise<void>;
   restoreHabit: (habit: Habit) => Promise<void>;
   purgeHabit: (habit: Habit, reason: string) => Promise<void>;
   /** R03.04 — `override`: the user chose "Yine de etkinleştir" over the load suggestion. */
-  activateHabit: (id: string, willpowerCost: number, opts?: { override?: boolean }) => Promise<void>;
-  pauseHabit: (id: string, willpowerCost: number) => Promise<void>;
+  activateHabit: (id: string, willpowerCost: number, opts?: { override?: boolean }) => Promise<HabitActionResult>;
+  pauseHabit: (id: string, willpowerCost: number) => Promise<HabitActionResult>;
 };
 
-export const useHabitStore = create<HabitStore>((set, get) => ({
-  habits: [],
-  loading: false,
-  pauses: [],
-  goalVersions: [],
-  timeOffAvailable: null,
-  checklistItems: [],
-  checklistChecks: [],
-  checklistAvailable: null,
+export const HABITS_TTL_MS = 30_000;
+let habitsInflight: { epoch: number; promise: Promise<void> } | null = null;
+let habitsFetchedAt = 0;
+let habitsFetchedEpoch = -1;
+let habitsMutationSeq = 0;
+let internalHabitSetDepth = 0;
 
-  fetchHabits: async () => {
+/** Yerel bir alışkanlık değişikliği tamamlandıkça artar; bootstrap ve fetchHabits "yanıt bayatladı mı" için karşılaştırır. */
+export function habitMutationEpoch(): number { return habitsMutationSeq; }
+/** Alışkanlıkları depo dışından yazan akışlar (geri yükleme, demo tohum) TTL'yi geçersiz kılar. */
+export function invalidateHabitsFetch(): void { habitsFetchedAt = 0; }
+function touchHabits(): void { habitsMutationSeq += 1; habitsFetchedAt = 0; }
+
+type HabitSet = (partial: Partial<HabitStore> | ((s: HabitStore) => Partial<HabitStore>)) => void;
+type HabitGet = () => HabitStore;
+
+function wrapInternalSet(rawSet: HabitSet): HabitSet {
+  return (partial) => {
+    internalHabitSetDepth += 1;
+    try {
+      rawSet(partial);
+    } finally {
+      internalHabitSetDepth -= 1;
+    }
+  };
+}
+
+async function runFetchHabits(set: HabitSet, get: HabitGet, epoch: number): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const seqAtStart = habitsMutationSeq;
     set({ loading: true });
     const since = ymd(addDaysLocal(new Date(), -35));
     const [res, off, lists] = await Promise.all([repoFetchHabits(), loadTimeOff(), loadChecklists(since)]);
+    if (epoch !== accountEpoch()) return; // hesap değişti: hiçbir şey yazılmaz
+    // Yanıt, tamamlanmış bir yerel değişiklikten ÖNCE okunduysa eskidir: bir kez daha çek.
+    if (attempt === 0 && seqAtStart !== habitsMutationSeq) continue;
     if (lists.ok) {
       set({ checklistItems: lists.data.items, checklistChecks: lists.data.checks, checklistAvailable: lists.data.available });
     }
@@ -116,15 +155,60 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     // the first time) rather than presenting "no pauses" as a fact.
     if (res.ok) {
       const { pauses, goalVersions } = get();
-      set({ habits: attachTimeOff(res.data, pauses, goalVersions) });
+      set({ habits: attachTimeOff(res.data, pauses, goalVersions), error: null, hasLoaded: true, habitsLoaded: true });
+      habitsFetchedAt = Date.now();
+      habitsFetchedEpoch = epoch;
+    } else {
+      // Eski liste korunur; boş durum "veri yok" diye okunmasın diye hata görünür olur (STO-12).
+      set({ error: res.error });
     }
-    set({ loading: false });
+    break;
+  }
+  set({ loading: false });
+}
+
+export const useHabitStore = create<HabitStore>((rawSet, get) => {
+  const set = wrapInternalSet(rawSet);
+  return {
+  habits: [],
+  loading: false,
+  habitsLoaded: false,
+  error: null,
+  hasLoaded: false,
+  pauses: [],
+  goalVersions: [],
+  timeOffAvailable: null,
+  checklistItems: [],
+  checklistChecks: [],
+  checklistAvailable: null,
+
+  fetchHabits: (opts) => {
+    const epoch = accountEpoch();
+    // 1) Uçuştaki istek paylaşılır (20 çağrı noktası 3 sorguyu bir kez çalıştırır).
+    if (habitsInflight && habitsInflight.epoch === epoch) return habitsInflight.promise;
+    // 2) 30 sn içinde başarılı çekme varsa ve zorlanmadıysa yeniden çekilmez.
+    if (!opts?.force && habitsFetchedEpoch === epoch && Date.now() - habitsFetchedAt < HABITS_TTL_MS) return Promise.resolve();
+    const promise: Promise<void> = runFetchHabits(set, get, epoch).finally(() => {
+      if (habitsInflight?.promise === promise) habitsInflight = null;
+    });
+    habitsInflight = { epoch, promise };
+    return promise;
+  },
+
+  addInstalledHabits: (incoming) => {
+    touchHabits();
+    set((s) => {
+      const ids = new Set(incoming.map((h) => h.id));
+      // Gelenler başa, aynı kimlikli eski satırlar düşer: eşzamanlı fetchHabits çift satır üretemez.
+      return { habits: [...incoming, ...s.habits.filter((h) => !ids.has(h.id))] };
+    });
   },
 
   addTimeOff: async (habitId, draft) => {
     if (get().timeOffAvailable !== true) return { ok: false, error: 'Bu özellik sunucu güncellemesini bekliyor.' };
     const res = await addTimeOffOp({ habitId, draft, today: todayLocal(), existing: get().pauses });
     if (!res.ok) return res;
+    touchHabits();
     const pauses = [...get().pauses, res.pause];
     set((st) => ({ pauses, habits: attachTimeOff(st.habits, pauses, st.goalVersions) }));
     return { ok: true };
@@ -134,6 +218,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     if (get().checklistAvailable !== true) return { ok: false, error: 'Bu özellik sunucu güncellemesini bekliyor.' };
     const res = await addChecklistItemOp({ habitId, title, required, existing: get().checklistItems });
     if (!res.ok) return res;
+    touchHabits();
     set((st) => ({ checklistItems: [...st.checklistItems, res.item] }));
     return { ok: true };
   },
@@ -141,6 +226,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
   setChecklistItemRequired: async (itemId, required) => {
     const res = await editChecklistItem(itemId, { required });
     if (!res.ok) return { ok: false, error: res.error };
+    touchHabits();
     set((st) => ({ checklistItems: st.checklistItems.map((i) => (i.id === itemId ? { ...i, required } : i)) }));
     return { ok: true };
   },
@@ -149,6 +235,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     const at = new Date().toISOString();
     const res = await editChecklistItem(itemId, { archived_at: at });
     if (!res.ok) return { ok: false, error: res.error };
+    touchHabits();
     set((st) => ({ checklistItems: st.checklistItems.map((i) => (i.id === itemId ? { ...i, archived_at: at } : i)) }));
     return { ok: true };
   },
@@ -160,6 +247,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     const res = await setCheck(check, on);
     // A refused write leaves the tick as it was -- never shown as saved.
     if (!res.ok) return { ok: false, error: res.error };
+    touchHabits();
     const checks = on
       ? [...get().checklistChecks, check]
       : get().checklistChecks.filter((c) => !(c.item_id === itemId && c.day === day));
@@ -172,6 +260,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     if (!target) return { ok: false, error: 'Kayıt bulunamadı.' };
     const res = await endTimeOffOp(target, todayLocal());
     if (!res.ok) return res;
+    touchHabits();
     const pauses = res.pause
       ? get().pauses.map((p) => (p.id === pauseId ? res.pause! : p))
       : get().pauses.filter((p) => p.id !== pauseId);
@@ -183,6 +272,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     const res = await repoInsertHabit(habitData);
     if (res.ok) {
       const h = res.data;
+      touchHabits();
       set((state) => ({ habits: [h, ...state.habits] }));
       if (h.reminders?.enabled && (h.status === 'active' || h.status === 'waiting')) {
         scheduleHabitReminder(h);
@@ -227,6 +317,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
       }
     }
     if (res.ok) {
+      touchHabits();
       let merged: Habit | undefined;
       set((state) => ({
         habits: state.habits.map((h) => {
@@ -241,13 +332,16 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
         if (merged.reminders?.enabled && active) scheduleHabitReminder(merged);
         else cancelHabitReminder(merged.id);
       }
+      return { ok: true };
     }
+    return { ok: false, error: res.offline ? 'Bağlantı yok; değişiklik kaydedilmedi.' : (res.error || 'Kaydedilemedi.') };
   },
 
   removeHabit: async (id) => {
     const res = await repoArchiveHabit(id);
     if (!res.ok) return;
     cancelHabitReminder(id);
+    touchHabits();
     set((state) => ({ habits: state.habits.filter((h) => h.id !== id) }));
   },
 
@@ -257,6 +351,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     // Restoring is an undo: if the write fails the habit stays archived
     // rather than reappearing in the list as though it had come back.
     if (!res.ok) return;
+    touchHabits();
     set((state) => ({ habits: [habit, ...state.habits.filter((h) => h.id !== habit.id)] }));
     if (habit.reminders?.enabled && (habit.status === 'active' || habit.status === 'waiting')) {
       scheduleHabitReminder(habit);
@@ -268,6 +363,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     const res = await repoPurgeHabit(habit, reason || null);
     if (!res.ok) return;
     cancelHabitReminder(habit.id);
+    touchHabits();
     set((state) => ({ habits: state.habits.filter((h) => h.id !== habit.id) }));
   },
 
@@ -286,35 +382,89 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
   // willpowerStore with each screen deciding whether to supply the capacity
   // input at all.
   activateHabit: async (id, willpowerCost, opts) => {
+    if (inFlight.has(id)) return { ok: false, error: 'İşlem sürüyor.' };
     const wp = useWillpowerStore.getState();
     const { habits, loading } = get();
     const target = habits.find((h) => h.id === id);
-    if (!target) return;
-    const res = await activateHabitOp({
-      habit: target,
-      cost: willpowerCost,
-      willpower: { state: wp.state as never, stale: wp.isStale() },
-      activeHabits: habits.filter((h) => h.status === 'active'),
-      // A half-loaded habit list under-reports load, so the strict rule is
-      // only used once the set is known to be complete.
-      useCapacityRule: !loading,
-      override: opts?.override === true,
-    });
-    if (!res.ok) return;
-    set((state) => ({ habits: state.habits.map((h) => (h.id === id ? res.habit : h)) }));
-    await wp.fetchToday();
+    if (!target) return { ok: false, error: 'Alışkanlık bulunamadı.' };
+    inFlight.add(id);
+    try {
+      const res = await activateHabitOp({
+        habit: target,
+        cost: willpowerCost,
+        willpower: { state: wp.state, stale: wp.isStale() },
+        activeHabits: habits.filter((h) => h.status === 'active'),
+        // A half-loaded habit list under-reports load, so the strict rule is
+        // only used once the set is known to be complete.
+        useCapacityRule: !loading,
+        override: opts?.override === true,
+      });
+      if (!res.ok) {
+        const reason = res.verdict.allowed ? undefined : res.verdict.reason;
+        return {
+          ok: false,
+          reason,
+          error: (reason ? ACTIVATION_MESSAGES[reason] : undefined) ?? 'Alışkanlık etkinleştirilemedi.',
+        };
+      }
+      touchHabits();
+      set((state) => ({ habits: state.habits.map((h) => (h.id === id ? res.habit : h)) }));
+      await wp.fetchToday();
+      return { ok: true };
+    } finally {
+      inFlight.delete(id);
+    }
   },
 
   pauseHabit: async (id, willpowerCost) => {
-    const wp = useWillpowerStore.getState();
-    const res = await pauseHabitOp({
-      habitId: id, cost: willpowerCost, willpower: { state: wp.state as never },
-    });
-    if (!res.ok) return;
-    set((state) => ({ habits: state.habits.map((h) => (h.id === id ? res.habit : h)) }));
-    await wp.fetchToday();
+    if (inFlight.has(id)) return { ok: false, error: 'İşlem sürüyor.' };
+    inFlight.add(id);
+    try {
+      const wp = useWillpowerStore.getState();
+      const res = await pauseHabitOp({
+        habitId: id, cost: willpowerCost, willpower: { state: wp.state },
+      });
+      if (!res.ok) return { ok: false, error: res.error };
+      touchHabits();
+      set((state) => ({ habits: state.habits.map((h) => (h.id === id ? res.habit : h)) }));
+      await wp.fetchToday();
+      return { ok: true };
+    } finally {
+      inFlight.delete(id);
+    }
   },
-}));
+  };
+});
+
+// Depo dışından doğrudan `useHabitStore.setState(...)` çağrıldığında 30 sn TTL geçersiz kılınır.
+useHabitStore.subscribe(() => {
+  if (internalHabitSetDepth === 0) {
+    habitsFetchedAt = 0;
+  }
+});
 
 // F04: this store belongs to the signed-in account; every account boundary resets it (lib/accountScope.ts).
-registerAccountScoped({ name: 'habit', store: useHabitStore });
+registerAccountScoped({ name: 'habit', store: useHabitStore, onReset: () => { inFlight.clear(); } });
+
+export const HABITS_WAIT_MS = 5000;
+
+/** Habit listesi yüklenince (veya zaman aşımında mevcut listeyle) çözülür; yüklenmiyorsa fetchHabits() başlatır. */
+export function whenHabitsLoaded(timeoutMs: number = HABITS_WAIT_MS): Promise<readonly Habit[]> {
+  const first = useHabitStore.getState();
+  if (first.habitsLoaded) return Promise.resolve(first.habits);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      unsub();
+      clearTimeout(timer);
+      resolve(useHabitStore.getState().habits);
+    };
+    const unsub = useHabitStore.subscribe((st) => {
+      if (st.habitsLoaded) finish();
+    });
+    const timer = setTimeout(finish, timeoutMs);
+    if (!first.loading) void first.fetchHabits();
+  });
+}

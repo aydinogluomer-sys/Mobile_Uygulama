@@ -7,8 +7,9 @@ import {
   type ReviewLogRow,
 } from '../../services/reviewService';
 import { currentUser } from '../../lib/session';
+import { createLatest } from '../../lib/latestOnly';
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,9 +36,12 @@ import {
   type Trend, type Result,
 } from '../../lib/behaviorIntelligence';
 import { planFromRow } from '../../lib/recovery';
-import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
-import { ChapterDivider, EmptyState, EmbeddedFiligree, EmblemMedallion } from '../../components/ui';
+import { sessionsBetween } from '../../services/focusService';
+import { EmptyState, EmblemMedallion, FormError } from '../../components/ui';
+import { ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { DECOR, SCREEN_BANNERS } from '../../lib/visualAssets';
+import { reportError } from '../../lib/crashReporting';
+import { MAX_REFLECTION_CHARS } from '../../lib/inputLimits';
 
 const MONTHS_TR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
@@ -149,7 +153,7 @@ export default function MonthlyReviewScreen() {
 
   const [monthOffset, setMonthOffset] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [habitCompletionRate, setHabitCompletionRate] = useState(0);
+  const [habitCompletionRate, setHabitCompletionRate] = useState<number | null>(null);
   const [focusMinutes, setFocusMinutes] = useState(0);
   const [habitStats, setHabitStats] = useState<{ id: string; name: string; color: string; percent: number; completedDays: number; possibleDays: number }[]>([]);
   const [badge, setBadge] = useState<ReportBadge | null>(null);
@@ -159,6 +163,9 @@ export default function MonthlyReviewScreen() {
   // Ekranda gorunen metin buluta HENUZ yazilmadi: kaydedilmemis taslak ya
   // da tasima oncesi kalmis yerel kayit.
   const [unsavedDraft, setUnsavedDraft] = useState(false);
+  const [cloudError, setCloudError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const reflectionLatest = useRef(createLatest()).current;
 
   // Defter sayfası animasyonu: girişte "açılma", ay değişiminde yön bazlı "sayfa çevirme" (bkz. calendar.tsx).
   const reduceMotion = useReducedMotion();
@@ -228,19 +235,27 @@ export default function MonthlyReviewScreen() {
   // Bulut kaynak, AsyncStorage yalnizca taslak. Sira ve gerekcesi
   // services/reviewService.loadMonthlyReflection icinde.
   async function loadReflection() {
-    const r = await loadMonthlyReflection(monthKey);
-    setAnswers(r.answers);
-    setSavedAt(r.savedAt ? format(new Date(r.savedAt), 'dd.MM.yyyy') : null);
-    setUnsavedDraft(r.source === 'draft' || r.source === 'legacy');
+    const run = reflectionLatest.begin();
+    try {
+      const r = await loadMonthlyReflection(monthKey);
+      if (!run.isCurrent()) return;
+      setAnswers(r.answers);
+      setSavedAt(r.savedAt ? format(new Date(r.savedAt), 'dd.MM.yyyy') : null);
+      setUnsavedDraft(r.source === 'draft' || r.source === 'legacy');
+      setCloudError(r.cloudError ?? null);
+      setSaveError(null);
+    } finally {
+      run.done();
+    }
   }
 
   async function loadMonthMetrics() {
     const user = await currentUser();
     if (!user) {
-      setHabitCompletionRate(0);
+      setHabitCompletionRate(null);
       setFocusMinutes(0);
       setHabitStats([]);
-      setBadge(reportBadge({ habitRate: 0, focusMinutes: 0, completedTasks: completedTasks.length }));
+      setBadge(reportBadge({ habitRate: null, focusMinutes: 0, completedTasks: completedTasks.length }));
       setAnalysis(EMPTY_ANALYSIS);
       return;
     }
@@ -256,18 +271,19 @@ export default function MonthlyReviewScreen() {
 
     const [logsRes, sessionsRes, recoveryRes] = await Promise.all([
       logsForPeriod({ start: wideStart, end }),
-      fetchFocusSessionsSince({ sinceIso: prevStart }),
+      sessionsBetween({ startYmd: prevStart, endYmd: end }),
       recoveryForPeriod({ start: prevStart, end }),
     ]);
 
     const logsForBI = logsRes.ok ? logsRes.data : [];
     setMeasured(logsRes.ok ? measuredRows(habits, logsRes.data, { start, end, asOf: new Date() }) : []);
-    const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end) : 0;
+    const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end, { asOf }) : null;
 
-    // `fetchFocusSessionsSince` has no upper bound -- clip to `end` client-side.
-    const allSessions = sessionsRes.ok ? sessionsRes.data.filter((sess: { started_at: string }) => sess.started_at <= `${end}T23:59:59`) : [];
-    const monthSessions = allSessions.filter((sess) => sess.started_at >= start);
-    const prevMonthSessions = allSessions.filter((sess) => sess.started_at >= prevStart);
+    const allSessions = sessionsRes.ok ? sessionsRes.data : [];
+    const monthSessions = allSessions.filter((sess) => ymdFromIso(sess.started_at) >= start);
+    const prevMonthSessions = allSessions.filter(
+      (sess) => ymdFromIso(sess.started_at) >= prevStart && ymdFromIso(sess.started_at) <= prevEnd,
+    );
     const minutes = focusMinutesFromSessions(monthSessions);
     const nextBadge = reportBadge({ habitRate: rate, focusMinutes: minutes, completedTasks: completedTasks.length });
 
@@ -275,7 +291,7 @@ export default function MonthlyReviewScreen() {
     setFocusMinutes(minutes);
     setBadge(nextBadge);
 
-    const stats = summarizeHabitProgress(habits, logsForBI, start, end).map((row) => ({
+    const stats = summarizeHabitProgress(habits, logsForBI, start, end, { asOf }).map((row) => ({
       id: row.id,
       name: row.name,
       color: row.color,
@@ -317,7 +333,9 @@ export default function MonthlyReviewScreen() {
   }
 
   async function handleSave() {
+    if (cloudError) return;
     setSaving(true);
+    setSaveError(null);
     try {
       // Once cloud write, sonra arsiv kopyasi. Sira onemli: arsiv kaydi
       // render edilmis bir OZET, cevaplarin kendisi degil -- once o yazilip
@@ -344,7 +362,8 @@ export default function MonthlyReviewScreen() {
       );
       setSavedAt(stamp);
     } catch (error) {
-      Alert.alert('Hata', error instanceof Error ? error.message : 'Kayıt başarısız');
+      setSaveError('Değerlendirmen kaydedilemedi. Bağlantını kontrol edip tekrar dene; yazdıkların ekranda duruyor.');
+      reportError(error, 'manual', 'monthly-review-save');
     } finally {
       setSaving(false);
     }
@@ -424,7 +443,12 @@ export default function MonthlyReviewScreen() {
               <Text style={s.metricLabel}>Görev{'\n'}Tamamlandı</Text>
             </View>
             <View style={s.metric}>
-              <Text style={[s.metricValue, { color: colors.success }]}>{habitCompletionRate}%</Text>
+              <Text
+                style={[s.metricValue, { color: habitCompletionRate === null ? colors.textDim : colors.success }]}
+                accessibilityLabel={habitCompletionRate === null ? 'Alışkanlık oranı: veri yok' : `Alışkanlık oranı: yüzde ${habitCompletionRate}`}
+              >
+                {habitCompletionRate === null ? '—' : `${habitCompletionRate}%`}
+              </Text>
               <Text style={s.metricLabel}>Alışkanlık{'\n'}Oran</Text>
             </View>
             <View style={s.metric}>
@@ -566,6 +590,7 @@ export default function MonthlyReviewScreen() {
                   placeholder={question.placeholder}
                   placeholderTextColor={colors.textFaint}
                   multiline
+                  maxLength={MAX_REFLECTION_CHARS}
                   value={answers[question.key] ?? ''}
                   onChangeText={(value) => {
                     setAnswers((current) => {
@@ -579,23 +604,46 @@ export default function MonthlyReviewScreen() {
                   }}
                   textAlignVertical="top"
                 />
+                {(answers[question.key]?.length ?? 0) > 1800 && (
+                  <Text style={s.charCounter} accessibilityLiveRegion="polite">
+                    {answers[question.key]?.length ?? 0}/{MAX_REFLECTION_CHARS}
+                  </Text>
+                )}
               </View>
             ))}
           </View>
 
+          {cloudError !== null && (
+            <View style={s.cloudErrorBanner} accessibilityRole="alert">
+              <Text style={s.cloudErrorText}>
+                Bu ayın kaydı yüklenemedi. Yazdıkların cihazda taslak olarak saklanıyor; bağlantı gelince tekrar dene.
+              </Text>
+              <TouchableOpacity
+                style={s.cloudRetryBtn}
+                onPress={() => { void loadReflection(); }}
+                accessibilityRole="button"
+                accessibilityLabel="Aylık kaydı yeniden yükle"
+              >
+                <Text style={s.cloudRetryText}>Yeniden dene</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          <FormError message={saveError} />
+
           {/* Kaydederken içerik yalnızca spinner'a düşüyor — etiketi durumdan üretiyoruz */}
           <TouchableOpacity
-            style={[s.saveBtn, saving && s.saveBtnLoading]}
+            style={[s.saveBtn, (saving || cloudError !== null) && s.saveBtnLoading]}
             onPress={handleSave}
-            disabled={saving}
+            disabled={saving || cloudError !== null}
             accessibilityRole="button"
             accessibilityLabel={
               saving ? 'Aylık rapor kaydediliyor'
+              : cloudError !== null ? 'Bulut kaydı yüklenemediği için kaydetme devre dışı'
               : unsavedDraft ? 'Kaydedilmemiş değişiklikler var, aylık raporu kaydet'
               : savedAt ? `Kaydedildi, ${savedAt}`
               : 'Aylık raporu kaydet'
             }
-            accessibilityState={{ disabled: saving, busy: saving }}
+            accessibilityState={{ disabled: saving || cloudError !== null, busy: saving }}
           >
             {saving ? (
               <ActivityIndicator color={colors.white} size="small" />
@@ -655,7 +703,7 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
   taskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 6 },
   taskTitle: { flex: 1, fontSize: 14, color: colors.textDim },
-  moreText: { fontSize: 12, color: colors.textGhost, paddingLeft: 4, marginTop: 4 },
+  moreText: { fontSize: 12, color: colors.textFaint, paddingLeft: 4, marginTop: 4 },
   habitRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   medal: { fontSize: 16, width: 22 },
   habitDot: { width: 8, height: 8, borderRadius: 4 },
@@ -674,6 +722,19 @@ const s = StyleSheet.create({
   questionCard: { marginBottom: 14 },
   questionLabel: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 8 },
   questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },
+  charCounter: { fontSize: 11, color: colors.textFaint, textAlign: 'right', marginTop: 4 },
+  cloudErrorBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: hexA(colors.error, 0.45),
+    paddingVertical: 10, paddingHorizontal: 14, marginBottom: 10, flexWrap: 'wrap',
+  },
+  cloudErrorText: { flex: 1, minWidth: 180, fontSize: 13, lineHeight: 19, color: colors.textDim },
+  cloudRetryBtn: {
+    minHeight: 44, minWidth: 44, paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  cloudRetryText: { fontSize: 13, fontWeight: '700', color: colors.accent },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 15, marginTop: 4 },
   saveBtnLoading: { opacity: 0.7 },
   saveBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },

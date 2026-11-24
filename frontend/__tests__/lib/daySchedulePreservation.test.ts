@@ -6,6 +6,12 @@
  * byte-for-byte what it was before. `EXPECTED_AT_FC6DDFF` below is NOT
  * hand-written: it is `a7Outputs(A7_HABITS, A7_LOGS)` serialised by running
  * it against HEAD fc6ddff, before the swap, and pasted verbatim.
+ * F13'te dört anahtar grubu bilinçli olarak yeniden kaydedildi:
+ * `habitAveragePercent` (skip dışlama), `per.mwf.habitCompletionRate` ve
+ * `per.neg.habitCompletionRate` (kısmi 0,5 kredi, kayıtsız olumsuz gün
+ * paydadan düşer), `weekdayBreakdown[*].completed` ve `rate` (+ `scheduled`
+ * kayıtsız olumsuz gün dışlaması ve yeni `distinctDates`), `per.neg.currentStreak`
+ * ve `longestStreak`.
  *
  * Covers habitAveragePercent, summarizeHabitProgress, scheduledCompletionRate,
  * habitCompletionRate, weekdayBreakdown, currentStreak, longestStreak and
@@ -15,7 +21,7 @@
 import { A7_HABITS, A7_LOGS, a7Outputs } from '../helpers/a7DayBasedFixture';
 
 const EXPECTED_AT_FC6DDFF = {
-  "habitAveragePercent": 77,
+  "habitAveragePercent": 80,
   "summarizeHabitProgress": [
     {
       "id": "neg",
@@ -46,44 +52,51 @@ const EXPECTED_AT_FC6DDFF = {
     {
       "weekday": 0,
       "scheduled": 11,
-      "completed": 9,
-      "rate": 0.8181818181818182
+      "completed": 8.5,
+      "distinctDates": 4,
+      "rate": 0.7727272727272727
     },
     {
       "weekday": 1,
       "scheduled": 10,
       "completed": 8,
+      "distinctDates": 4,
       "rate": 0.8
     },
     {
       "weekday": 2,
       "scheduled": 11,
-      "completed": 10,
-      "rate": 0.9090909090909091
+      "completed": 9.5,
+      "distinctDates": 4,
+      "rate": 0.8636363636363636
     },
     {
       "weekday": 3,
-      "scheduled": 10,
+      "scheduled": 9,
       "completed": 7,
-      "rate": 0.7
+      "distinctDates": 4,
+      "rate": 0.7777777777777778
     },
     {
       "weekday": 4,
-      "scheduled": 12,
-      "completed": 9,
-      "rate": 0.75
+      "scheduled": 11,
+      "completed": 8.5,
+      "distinctDates": 4,
+      "rate": 0.7727272727272727
     },
     {
       "weekday": 5,
-      "scheduled": 8,
+      "scheduled": 7,
       "completed": 6,
-      "rate": 0.75
+      "distinctDates": 4,
+      "rate": 0.8571428571428571
     },
     {
       "weekday": 6,
-      "scheduled": 8,
+      "scheduled": 7,
       "completed": 5,
-      "rate": 0.625
+      "distinctDates": 4,
+      "rate": 0.7142857142857143
     }
   ],
   "per": {
@@ -109,7 +122,7 @@ const EXPECTED_AT_FC6DDFF = {
       },
       "habitCompletionRate": {
         "ok": true,
-        "value": 0.8181818181818182
+        "value": 0.6818181818181818
       },
       "currentStreak": 4,
       "longestStreak": 4,
@@ -123,10 +136,10 @@ const EXPECTED_AT_FC6DDFF = {
       },
       "habitCompletionRate": {
         "ok": true,
-        "value": 0.8076923076923077
+        "value": 0.9545454545454546
       },
-      "currentStreak": 3,
-      "longestStreak": 5,
+      "currentStreak": 12,
+      "longestStreak": 12,
       "carriesDayLoad": "0011111111111111111111111111"
     },
     "tt": {

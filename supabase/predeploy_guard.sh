@@ -57,12 +57,17 @@ if [ "$ref" != "$CANONICAL" ]; then
 fi
 
 # A stale foreign link elsewhere in the tree is a live footgun even when the
-# resolved ref is correct - report it, but do not touch it.
-if [ -f "$repo/backend/supabase/.temp/linked-project.json" ] \
-   && grep -q "$DENIED" "$repo/backend/supabase/.temp/linked-project.json" 2>/dev/null; then
-  echo "WARNING: backend/supabase/.temp/ still links to $DENIED." >&2
-  echo "         Deploying from that directory would hit Mas Technic." >&2
-  echo "         Retiring it is task OPS-0B-001 / Phase 2C - not this guard's job." >&2
-fi
+# resolved ref is correct - report it, but do not touch it. Every
+# linked-project.json is scanned (node_modules skipped); the old fixed
+# backend/supabase/.temp path no longer exists (F08, BLD-23). An empty `find`
+# result is normal, hence `|| true` under `set -euo pipefail`.
+while IFS= read -r linked; do
+  [ -n "$linked" ] || continue
+  if grep -q "$DENIED" "$linked" 2>/dev/null; then
+    echo "WARNING: ${linked#"$repo"/} still links to $DENIED." >&2
+    echo "         Deploying from that directory would hit Mas Technic." >&2
+    echo "         Retiring it is task OPS-0B-001 / Phase 2C - not this guard's job." >&2
+  fi
+done < <(find "$repo" -path '*/node_modules' -prune -o -name linked-project.json -print 2>/dev/null || true)
 
 echo "deploy target OK: $ref"

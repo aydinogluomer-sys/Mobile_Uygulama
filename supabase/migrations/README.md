@@ -57,6 +57,12 @@ old filenames.
 | 036 | `036_live_audit_hardening.sql` | **NOT APPLIED** (proposal from the read-only live audit 2026-10-09) | — |
 | 037 | `037_today_bootstrap_rpc.sql` | **NOT APPLIED** (DB frozen, S1/S2 — single-RTT Today bootstrap RPC) | — |
 | 038 | `038_xp_streak_integrity.sql` | **NOT APPLIED** (P0 XP/seri bütünlüğü; 036 önkoşul) | — |
+| 039 | `039_focus_point_hardening.sql` | **NOT APPLIED** (DB frozen, S1/S2 — Focus Point credit integrity) | — |
+| 040 | `040_privilege_hygiene.sql` | **NOT APPLIED** (DB frozen, S1/S2 — privilege, search_path & sensitive-column hygiene + F07-R3; 028–039 prerequisite) | — |
+| 041 | `041_rls_initplan_and_indexes.sql` | **NOT APPLIED** (DB frozen, S1/S2 — RLS initplan wrapping, duplicate policies removed, FK indexes) | — |
+| 042 | `042_numeric_measures_and_willpower.sql` | **NOT APPLIED** (DB frozen, S1/S2 — numeric(12,2) measurable columns & atomic spend_willpower RPC) | — |
+| 043 | `043_profile_time_zone.sql` | **NOT APPLIED** (DB frozen, S1/S2 — profiles.time_zone, local-day window and week) | — |
+| 044 | `044_ai_messages_and_retention.sql` | **NOT APPLIED** (DB frozen, S1/S2 — AI message insert policy + AI retention function) | — |
 
 Keep this table when adding a migration: the old names are cited throughout
 `docs/audit/`, `docs/plan/`, `PROGRESS.md` and the audit reports, which are
@@ -72,6 +78,21 @@ SQL editor. The ledger's nineteen earliest rows (`20260606075913` through
 created later, by `006`). That gap is pre-existing and documented in
 `docs/audit/07_ARCHITECTURE_AND_DATA_MODEL_REVIEW.md`; renumbering neither
 created nor closed it.
+
+### Source of truth for the live schema
+
+`supabase/live_schema.sql` is the owner's `pg_dump` of the canonical project and the only complete
+description of the live schema (58 tables, 51 functions). `001` and `002` cannot rebuild it on
+their own: they are deltas on top of a base that was created by hand in the Supabase SQL editor
+(see the note above), which is why CI builds its test database by applying `live_schema.sql` first
+and `028+` after it. The migrations marked **NOT APPLIED** in the table above are NOT in
+`live_schema.sql` until the owner applies them and dumps again.
+
+`frontend/lib/database.types.ts` tags every table, RPC and late column `live` or
+`migration:<NNN>`, and `frontend/__tests__/repo/databaseTypesDrift.test.ts` checks it against
+these files in both directions. After every owner apply: refresh `live_schema.sql`, run the
+frontend tests, and change the tags the drift test lists from `migration:<NNN>` to `live`. Never
+edit an applied migration to silence a drift: add a new one.
 
 ## Rollbacks
 
@@ -104,6 +125,18 @@ all twenty-seven. This mismatch predates the renumbering (`20260825_phase1…` w
 recorded as `20260830051844`) and renumbering does not change it. Migrations are
 applied through the Supabase MCP `apply_migration` tool or the dashboard, and
 the ledger version is recorded in the table above.
+
+**Do not run `supabase config push` against the canonical project.** `supabase/config.toml` is local CLI configuration. Live Auth and API settings (email confirmation, password rules, captcha, exposed schemas) are changed in the dashboard, checked with the read-only list in `docs/implementation-v3/SQL_FOR_OWNER.md` section 9, and the local file is kept at least as strict as the live project so an accidental push can only tighten.
+
+**Explicit function and table grants (after `040`).** Migration `040_privilege_hygiene.sql` closes
+the global `PUBLIC EXECUTE` default on functions and removes `anon` write/`MAINTAIN` rights on
+tables. Every new `SECURITY DEFINER` function must pin `search_path` (`''`, `'public'`, or
+`'public', 'pg_temp'`), write an explicit `REVOKE EXECUTE ON FUNCTION <sig> FROM PUBLIC, anon;`,
+and — only when clients call it directly and the body checks `(SELECT auth.uid())` — follow with
+`GRANT EXECUTE ON FUNCTION <sig> TO authenticated;`. Every new `public` table must write an
+explicit `REVOKE ALL ON public.<t> FROM anon, PUBLIC;` immediately followed by
+`GRANT SELECT, INSERT, UPDATE, DELETE ON public.<t> TO authenticated;` (enforced by
+`migrationRlsGuard.test.ts`, OD-05).
 
 **`supabase functions deploy` has renamed files in this directory** as a side
 effect — it rewrote fourteen of them in one run during Step 11B. Check

@@ -12,7 +12,7 @@
  */
 import { currentUser } from '../lib/session';
 import { supabase } from '../lib/supabase';
-import { currentUserId, type RepoResult } from './shared';
+import { currentUserId, isTransportFailure, type RepoResult } from './shared';
 
 export async function fetchOrCreateProfile<T>(): Promise<RepoResult<T>> {
   const u = await currentUserId();
@@ -35,10 +35,36 @@ export async function fetchOrCreateProfile<T>(): Promise<RepoResult<T>> {
   return { ok: true, data: created.data as T };
 }
 
+/**
+ * DB1-11 (F09): what the server accepts. Migration 040 adds
+ * `profiles_username_shape` (NULL, or trimmed, 3..32 characters, no control
+ * character and no `<` / `>`). The product limit stays 24 characters; the
+ * database allows 32 so an older client can never be refused by it.
+ */
+const USERNAME_MIN_CHARS = 3;
+const USERNAME_MAX_CHARS = 24;
+// C0 and C1 control characters plus `<` and `>`, silently dropped (no Unicode
+// normalisation: Turkish letters stay exactly as typed).
+const USERNAME_STRIPPED = /[\u0000-\u001f\u007f-\u009f<>]/g;
+
+/**
+ * Cleans a username the way the server's CHECK expects it: drop the stripped
+ * characters, trim, cap at 24 characters (code points, so an emoji is never cut
+ * in half), and trim again so a space at the cut cannot break `btrim(username)`.
+ */
+function cleanUsername(name: string): string {
+  const cleaned = name.replace(USERNAME_STRIPPED, '').trim();
+  return Array.from(cleaned).slice(0, USERNAME_MAX_CHARS).join('').trim();
+}
+
 export async function updateUsername<T>(name: string): Promise<RepoResult<T>> {
   const u = await currentUserId();
   if (!u.ok) return u;
-  const trimmed = name.trim().slice(0, 24);
+  const trimmed = cleanUsername(name);
+  // An empty name removes it (allowed); 1-2 characters would be refused by the server.
+  if (trimmed !== '' && Array.from(trimmed).length < USERNAME_MIN_CHARS) {
+    return { ok: false, error: 'Kullanıcı adı en az 3 karakter olmalı.' };
+  }
   const { data, error } = await supabase
     .from('profiles')
     .update({ username: trimmed || null })
@@ -48,6 +74,52 @@ export async function updateUsername<T>(name: string): Promise<RepoResult<T>> {
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: 'Profil bulunamadı.' };
   return { ok: true, data: data as T };
+}
+
+export type ProfileTimeZoneResult =
+  | { ok: true; data: { stored: boolean } }
+  | {
+      ok: false;
+      error: string;
+      kind: 'missing_rpc' | 'invalid' | 'unauthenticated' | 'offline' | 'unknown';
+    };
+
+/**
+ * F15 (DB2-11): reports the device's IANA time zone through `set_profile_time_zone`.
+ * Direct UPDATE on `profiles.time_zone` is closed to clients; only this RPC writes it.
+ */
+export async function setProfileTimeZone(zone: string): Promise<ProfileTimeZoneResult> {
+  if (typeof supabase?.rpc !== 'function') {
+    return { ok: false, error: 'RPC kullanılamıyor.', kind: 'missing_rpc' };
+  }
+  try {
+    const { data, error, status } = await supabase.rpc('set_profile_time_zone', {
+      p_time_zone: zone,
+    });
+    if (error) {
+      const code = error.code ?? '';
+      if (code === 'PGRST202' || code === '42883') {
+        return { ok: false, error: error.message, kind: 'missing_rpc' };
+      }
+      if (code === '22023') {
+        return { ok: false, error: error.message, kind: 'invalid' };
+      }
+      if (code === '42501') {
+        return { ok: false, error: error.message, kind: 'unauthenticated' };
+      }
+      if (isTransportFailure(status, error)) {
+        return { ok: false, error: error.message, kind: 'offline' };
+      }
+      return { ok: false, error: error.message, kind: 'unknown' };
+    }
+    return { ok: true, data: { stored: data === true } };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (isTransportFailure(null, err)) {
+      return { ok: false, error: msg, kind: 'offline' };
+    }
+    return { ok: false, error: msg, kind: 'unknown' };
+  }
 }
 
 export async function fetchBadges<T>(limit = 100): Promise<RepoResult<T[]>> {

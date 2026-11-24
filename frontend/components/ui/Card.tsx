@@ -1,5 +1,6 @@
 import { View, TouchableOpacity, ViewStyle, StyleProp, type AccessibilityProps } from 'react-native';
-import { colors, radius, space, shadow } from '../../lib/tokens';
+import { radius, space, shadow } from '../../lib/tokens';
+import { useThemeColors } from '../../hooks/useThemeColors';
 
 type Variant = 'plain' | 'elevated' | 'glass';
 
@@ -26,13 +27,14 @@ export default function Card({
   children, variant = 'plain', padding = 'lg', radiusKey = 'md',
   selected, accent, onPress, style, ...a11y
 }: Props) {
+  const c = useThemeColors();
   const pad = typeof padding === 'number' ? padding : space[padding];
   const base: ViewStyle = {
-    backgroundColor: variant === 'elevated' ? colors.surfaceAlt : colors.surface,
+    backgroundColor: variant === 'elevated' ? c.surfaceAlt : c.surface,
     borderRadius: radius[radiusKey],
     padding: pad,
     borderWidth: 1,
-    borderColor: selected ? (accent ?? colors.primary) : colors.border,
+    borderColor: selected ? (accent ?? c.primary) : c.border,
     ...(variant === 'elevated' ? shadow.md : null),
   };
 

@@ -3,20 +3,15 @@ import { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Modal, KeyboardAvoidingView, Platform,
-  Alert,
 } from 'react-native';
+import { confirm } from '../../lib/dialog';
+import { checkHttpUrl, MAX_URL_CHARS, URL_PROBLEM_TR } from '../../lib/inputLimits';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useReadingListStore, ReadingType, ReadingStatus, ReadingItem } from '../../store/readingListStore';
-import {
-  AtmosphericScreenCanvas,
-  EditorialBanner,
-  EmbeddedFiligree,
-  EmptyState,
-  LoadErrorState,
-  Skeleton,
-} from '../../components/ui';
+import { EditorialBanner, EmptyState, FormError, LoadErrorState, Skeleton } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { BENTO_ART, CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 
@@ -72,7 +67,10 @@ export default function ReadingListScreen() {
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [url, setUrl] = useState('');
+  const [urlProblem, setUrlProblem] = useState<string | null>(null);
   const [type, setType] = useState<ReadingType>('book');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Load the tab the user is actually looking at, and re-load when it
   // changes -- filtering happens server-side, so switching tabs is a fetch.
@@ -84,16 +82,28 @@ export default function ReadingListScreen() {
 
   async function handleAdd() {
     if (!title.trim()) return;
-    await addItem({ title, author, type, url });
+    const urlCheck = checkHttpUrl(url);
+    if (!urlCheck.ok) {
+      setUrlProblem(URL_PROBLEM_TR[urlCheck.problem]);
+      return;
+    }
+    setUrlProblem(null);
+    const ok = await addItem({ title, author, type, url: urlCheck.url ?? undefined });
+    if (!ok) {
+      setSaveError(useReadingListStore.getState().error ?? 'Listeye eklenemedi. Yazdıkların burada duruyor, tekrar dene.');
+      return;
+    }
+    setSaveError(null);
+    setUrlProblem(null);
     setTitle(''); setAuthor(''); setUrl(''); setType('book');
     setShowAdd(false);
   }
 
-  function handleDelete(item: ReadingItem) {
-    Alert.alert('Sil', `"${item.title}" listeden kaldırılsın mı?`, [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => removeItem(item.id) },
-    ]);
+  async function handleDelete(item: ReadingItem) {
+    if (await confirm({ title: 'Sil', message: `"${item.title}" listeden kaldırılsın mı?`, confirmText: 'Sil', destructive: true })) {
+      const ok = await removeItem(item.id);
+      setActionError(ok ? null : (useReadingListStore.getState().error ?? 'Kayıt listeden kaldırılamadı.'));
+    }
   }
 
   function nextStatus(current: ReadingStatus): ReadingStatus {
@@ -135,6 +145,7 @@ export default function ReadingListScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.content}>
+        <FormError message={actionError} />
         <EditorialBanner
           source={SCREEN_BANNERS.readingLibrary}
           textureSource={TEXTURES.archivalPaper}
@@ -172,7 +183,7 @@ export default function ReadingListScreen() {
             }
             hint="Kitap, makale, video ya da podcast ekleyip buradan takip et."
             ctaLabel="Listeye ekle"
-            onCta={() => setShowAdd(true)}
+            onCta={() => { setSaveError(null); setUrlProblem(null); setShowAdd(true); }}
             color={STATUS_TABS.find((t) => t.key === activeTab)?.color}
           />
         ) : (
@@ -244,7 +255,7 @@ export default function ReadingListScreen() {
       {/* FAB */}
       <TouchableOpacity
         style={s.fab}
-        onPress={() => setShowAdd(true)}
+        onPress={() => { setSaveError(null); setUrlProblem(null); setShowAdd(true); }}
         accessibilityRole="button"
         accessibilityLabel="Okuma listesine yeni kayıt ekle"
       >
@@ -278,10 +289,19 @@ export default function ReadingListScreen() {
               placeholder="URL (opsiyonel)"
               placeholderTextColor={colors.textFaint}
               value={url}
-              onChangeText={setUrl}
+              onChangeText={(v) => {
+                setUrl(v);
+                if (urlProblem) setUrlProblem(null);
+              }}
               autoCapitalize="none"
               keyboardType="url"
+              maxLength={MAX_URL_CHARS}
             />
+            {urlProblem ? (
+              <Text style={s.urlHint} accessibilityLiveRegion="polite">
+                {urlProblem}
+              </Text>
+            ) : null}
 
             <Text style={s.fieldLabel}>TÜR</Text>
             <View style={s.typeRow}>
@@ -299,6 +319,8 @@ export default function ReadingListScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            <FormError message={saveError} />
 
             <View style={s.sheetActions}>
               <TouchableOpacity
@@ -339,8 +361,8 @@ const s = StyleSheet.create({
   content: { padding: 16, paddingBottom: 100 },
 
   empty: { alignItems: 'center', gap: 8, paddingTop: 60 },
-  emptyTitle: { fontSize: 16, color: colors.textGhost, fontWeight: '600' },
-  emptySub: { fontSize: 13, color: colors.textGhost },
+  emptyTitle: { fontSize: 16, color: colors.textFaint, fontWeight: '600' },
+  emptySub: { fontSize: 13, color: colors.textFaint },
 
   card: {
     flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
@@ -387,6 +409,7 @@ const s = StyleSheet.create({
   },
   sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 16 },
   input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 12 },
+  urlHint: { fontSize: 12, color: colors.warning, marginTop: -6, marginBottom: 10 },
   fieldLabel: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 8 },
   typeRow: { flexDirection: 'row', gap: 6, marginBottom: 20, flexWrap: 'wrap' },
   typeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border },

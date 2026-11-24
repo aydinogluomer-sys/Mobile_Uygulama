@@ -1,28 +1,9 @@
 /**
  * Habit completion — the domain operation.  (plan §8 service layer)
- *
- * ## What belongs here and what does not
- *
- * The store used to own all of this. That put four different kinds of
- * decision in one file: how a value becomes a state, how a state becomes XP,
- * how a write resolves against an existing row, and what the screen shows
- * while any of it is in flight. Only the last is UI state.
- *
- * What moved here:
- *   - deriving the log state from a value against its target AND direction
- *   - the XP the completion is worth
- *   - the insert / update / 23505-recovery decision
- *
- * What stayed in the store:
- *   - optimistic rows, the serialise chain, the offline queue, sync counts
- *
- * The split matters beyond tidiness: the write decision is shared by a live
- * tap and an offline replay, and both must reach the same answer. Having it
- * in one exported function makes that structural rather than a convention
- * two code paths happen to follow.
  */
 import { notify } from './webhookService';
 import { LOG_TIMEZONE_ENABLED } from '../lib/featureGates';
+import { roundToScale } from '../lib/localeNumber';
 import type { Habit, HabitLog } from '../lib/supabase';
 import {
   adaptTrackingType,
@@ -35,7 +16,10 @@ import {
   findHabitLog as repoFindHabitLog,
   insertHabitLog as repoInsertHabitLog,
   updateHabitLog as repoUpdateHabitLog,
+  updateLogNote as repoUpdateLogNote,
 } from '../repositories/habitLogRepository';
+import { normalizeNote } from '../lib/habitNote';
+import { habitLogEntityId } from '../lib/outboxEngine';
 import { describeHabitLogError } from '../lib/pgErrors';
 import { isTransientStatus } from '../repositories/shared';
 
@@ -49,6 +33,8 @@ export type LogPatch = {
   is_completed: boolean;
   /** R01.06 — tap-time zone; sent only while LOG_TIMEZONE_ENABLED. */
   tz?: string;
+  /** F31 (PS-03) — optional private single-line note; omitted when untouched. */
+  notes?: string | null;
 };
 
 export type CompletionIntent = {
@@ -58,20 +44,11 @@ export type CompletionIntent = {
   baseXp?: number;
   targetDirection?: TargetDirection;
   tz?: string;
+  note?: string | null;
 };
 
 export const DEFAULT_BASE_XP = 30;
 
-/**
- * XP for one completion.
- *
- * A `done` day is worth the full base. A `partial` day is worth the base
- * scaled by the completion ratio — which is where `direction` matters: for a
- * ceiling ("at most 2"), an at_least ratio clamps any overshoot to 1 and
- * would award FULL XP for exceeding the limit.
- *
- * Anything else is worth nothing. `miss` and `skip` are not partial credit.
- */
 export function xpFor(intent: CompletionIntent): number {
   const base = intent.baseXp ?? DEFAULT_BASE_XP;
   if (intent.state === 'done') return base;
@@ -96,20 +73,10 @@ export function toPatch(intent: CompletionIntent): LogPatch {
     is_completed: intent.state === 'done',
     // R01.06 — only a sane zone (a hydrated queue is untrusted input).
     ...(typeof intent.tz === 'string' && intent.tz.length >= 1 && intent.tz.length <= 64 ? { tz: intent.tz } : {}),
+    ...(intent.note !== undefined ? { notes: normalizeNote(intent.note) ?? null } : {}),
   };
 }
 
-/**
- * The state a logged VALUE implies for a habit, given its own tracking type,
- * target and direction. `value` is the DAY'S TOTAL (see `measuredEntryFor`).
- *
- * Screens used to work this out themselves — `value >= remaining ? 'done' :
- * 'partial'`, which is floor arithmetic and calls a perfect ceiling day
- * partial. There is one answer and it lives here. (R01.03-a: this doc used to
- * claim that while `app/tabs/timeline.tsx` still did it; the screen now hands
- * the day total to `measuredEntryFor` and no screen decides a state. Pinned by
- * `__tests__/repo/measurableStateAuthority.test.ts`.)
- */
 export function stateForValue(
   habit: Pick<Habit, 'tracking_type' | 'behavior_type' | 'daily_goal' | 'target_direction'>,
   value: number,
@@ -137,38 +104,12 @@ export function completionFor(
   };
 }
 
-/**
- * R01.03-a — THE CONTRACT: `habit_logs.value` is THE DAY'S TOTAL, never the
- * amount of one entry. (Owner decision.)
- *
- * Why: `completionRatio`, `habitLogPercent` and `habitStrength` already read
- * `value` against `daily_goal` as a same-day ratio; a ceiling (`at_most`)
- * already reads it as absolute; and with `UNIQUE (habit_id, date)` a row
- * describes a DAY, not an event. Writing an increment made the row lie: "6 then
- * 4 more" against 10 was stored as `value: 4, state: 'done'` -- 40% to every
- * ratio reader, "done" to every state reader -- and the day's real total was
- * lost.
- *
- * Adding is still how the user enters it ("4 ekle"); this is where the add
- * happens, once. `priorDayValue` is the value already on the day's row
- * (`undefined`/`null` = none). A non-finite or negative prior counts as 0; a
- * non-finite or negative entry adds nothing. Rounded to 1e-6 so 0.1 + 0.2 is
- * not written as 0.30000000000000004.
- */
 export function dayTotalAfterEntry(priorDayValue: number | null | undefined, entered: number): number {
   const prior = typeof priorDayValue === 'number' && Number.isFinite(priorDayValue) && priorDayValue > 0 ? priorDayValue : 0;
   const add = Number.isFinite(entered) && entered > 0 ? entered : 0;
-  return Math.round((prior + add) * 1e6) / 1e6;
+  return roundToScale(prior + add, 2);
 }
 
-/**
- * The intent for one measurable entry: the day total after it, and the state,
- * XP and target derived FROM THAT TOTAL by `completionFor`. Screens call this
- * and pass the result to `logStore.logHabit` unchanged -- they never decide a
- * state themselves. Same rule for both directions: for a ceiling ("en çok 2")
- * a second entry adds to the day as well (2 then 1 more is 3, over the limit),
- * where the old screen wrote the latest entry alone and hid the overshoot.
- */
 export function measuredEntryFor(
   habit: Pick<Habit, 'tracking_type' | 'behavior_type' | 'daily_goal' | 'target_direction'>,
   priorDayValue: number | null | undefined,
@@ -181,71 +122,33 @@ export function measuredEntryFor(
 
 export type PersistResult =
   | { ok: true; log: HabitLog }
-  /**
-   * `offline` = the request never reached the server. See `isTransportFailure`.
-   * `retryable` (F05, SYN-03) = the server answered with a transient failure
-   * (408/425/429/5xx): the queue keeps the tap and tries later without spending an attempt.
-   */
   | { ok: false; error: string; offline?: boolean; retryable?: boolean };
 
-/**
- * Writes one completion, resolving insert vs update against what is already
- * stored.
- *
- * `confirmedId` is the caller's existing CONFIRMED row for this (habit, day)
- * — never an optimistic placeholder, which is a guess and not something to
- * update against.
- *
- * The 23505 branch is the reason this is one function. A unique violation
- * means the row exists in the database but not in the caller's state: another
- * device wrote it, the date was never fetched, or an earlier session's write
- * landed before the app was killed and this is that same intent replaying.
- * Recovering and updating is what makes a cold-start replay idempotent
- * against `UNIQUE (habit_id, completed_at)` whether or not this process has
- * ever seen the row.
- */
-/**
- * Tells the user's own automations that a habit was completed.
- *
- * Only for `done`. A partial or a miss is not a completion, and the legacy
- * service fired on the same condition, so an existing n8n flow keeps its
- * meaning. Never awaited -- see `notify` in webhookService.
- */
-/**
- * F05 (SYN-03): `retryable: true` on a transient server answer (408/425/429/5xx). Carried only when
- * true, so every other failure keeps exactly the shape it had before (F03's tests pin it).
- */
 function transient(status: number | null | undefined): { retryable?: true } {
   return isTransientStatus(status) ? { retryable: true } : {};
 }
 
-type AnnounceCtx = {
-  /**
-   * F05 (DOM-21, SYN-26): the day's state before this write. `done` -> `done` is not a new
-   * completion (a measurable habit past its target, a replayed write): nothing is announced.
-   * `undefined` (an op queued by an older build) keeps the old behaviour.
-   */
-  priorState?: HabitLog['state'] | null;
-  /** The same id for every attempt of one queued write, so the receiver can de-duplicate. */
-  deliveryKey?: string;
-};
-
-function announce(habitId: string, dateStr: string, log: HabitLog, ctx: AnnounceCtx = {}): void {
+/**
+ * F46 (DOM-21, SYN-26): announces every `done` row with deterministic `subjectKey`
+ * (`habitId|dateStr`). Same-day repeat completions and 23505 lost-response replays
+ * map to the same `wh1.habit_completed.<habitId|date>.<webhookId>` operation ID in
+ * `effectChannel`, so the first real completion is never skipped after a lost response
+ * and a second completion on the same day is deduplicated for 14 days.
+ */
+function announce(habitId: string, dateStr: string, log: HabitLog): void {
   if (log.state !== 'done') return;
-  if (ctx.priorState === 'done') return;
-  notify('habit_completed', {
-    habit_id: habitId,
-    date: dateStr,
-    state: log.state,
-    value: log.value ?? null,
-  }, ctx.deliveryKey ? { deliveryId: ctx.deliveryKey } : undefined);
+  notify(
+    'habit_completed',
+    {
+      habit_id: habitId,
+      date: dateStr,
+      state: log.state,
+      value: log.value ?? null,
+    },
+    { subjectKey: habitLogEntityId(habitId, dateStr) },
+  );
 }
 
-/**
- * R01.06 — what actually goes over the wire. The zone is dropped until
- * migration 033 adds the column (LOG_TIMEZONE_ENABLED); everything else is
- * the patch unchanged.
- */
 function wirePatch(patch: LogPatch): Record<string, unknown> {
   if (LOG_TIMEZONE_ENABLED) return patch as Record<string, unknown>;
   const { tz: _held, ...rest } = patch;
@@ -257,19 +160,8 @@ type PersistParams = {
   dateStr: string;
   patch: LogPatch;
   confirmedId?: string;
-  /** F05: the day's state before this write (see `AnnounceCtx`). */
-  priorState?: HabitLog['state'] | null;
-  /** F05: a stable id of the queued write (its op id). */
-  deliveryKey?: string;
 };
 
-/**
- * F03 — every failure of a write leaves through this one door, so a server refusal
- * of migration 038 (`habit_log_day_out_of_range`, `habit_log_key_immutable`) reaches
- * the user as calm Turkish copy whichever branch produced it (update, insert, or the
- * 23505 recovery). One wrapper rather than one call per `return`: a fourth failure
- * branch added later cannot forget it. `offline` and every other field are kept.
- */
 export async function persistCompletion(params: PersistParams): Promise<PersistResult> {
   const res = await persistCompletionRaw(params);
   if (res.ok) return res;
@@ -281,7 +173,7 @@ async function persistCompletionRaw(params: PersistParams): Promise<PersistResul
   if (params.confirmedId) {
     const updated = await repoUpdateHabitLog(params.confirmedId, params.patch as Record<string, unknown>);
     if (!updated.ok) return { ok: false, error: updated.error, offline: updated.offline, ...transient(updated.status) };
-    announce(params.habitId, params.dateStr, updated.data, { priorState: params.priorState, deliveryKey: params.deliveryKey });
+    announce(params.habitId, params.dateStr, updated.data);
     return { ok: true, log: updated.data };
   }
 
@@ -291,8 +183,7 @@ async function persistCompletionRaw(params: PersistParams): Promise<PersistResul
     patch: params.patch as Record<string, unknown>,
   });
   if (inserted.ok) {
-    // there was no row for the day: a completion is new whatever the caller remembered
-    announce(params.habitId, params.dateStr, inserted.data, { priorState: null, deliveryKey: params.deliveryKey });
+    announce(params.habitId, params.dateStr, inserted.data);
     return { ok: true, log: inserted.data };
   }
 
@@ -301,8 +192,7 @@ async function persistCompletionRaw(params: PersistParams): Promise<PersistResul
     if (found.ok && found.data) {
       const updated = await repoUpdateHabitLog(found.data.id, params.patch as Record<string, unknown>);
       if (!updated.ok) return { ok: false, error: updated.error, offline: updated.offline, ...transient(updated.status) };
-      // the real previous state comes from the server: a replay that finds `done` announces nothing
-      announce(params.habitId, params.dateStr, updated.data, { priorState: found.data.state, deliveryKey: params.deliveryKey });
+      announce(params.habitId, params.dateStr, updated.data);
       return { ok: true, log: updated.data };
     }
   }
@@ -316,4 +206,34 @@ export async function loadDay(dateStr: string): Promise<
 > {
   const res = await repoFetchLogsForDate(dateStr);
   return res.ok ? { ok: true, logs: res.data } : { ok: false, error: res.error };
+}
+
+export type SaveLogNoteResult =
+  | { ok: true; notes: string | null }
+  | { ok: false; error: string; offline?: boolean; code?: string };
+
+/**
+ * F31 (PS-03) — edits ONLY `notes` on an existing `habit_logs` row.
+ * Never sends `xp`, `state`, or `value`, never inserts, and never fires webhooks.
+ */
+export async function saveLogNote(params: {
+  habitId: string;
+  dateStr: string;
+  note: string | null;
+}): Promise<SaveLogNoteResult> {
+  const normalized = normalizeNote(params.note) ?? null;
+  const res = await repoUpdateLogNote({
+    habitId: params.habitId,
+    dateStr: params.dateStr,
+    note: normalized,
+  });
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: describeHabitLogError(res.error),
+      ...(res.offline ? { offline: true } : {}),
+      ...(res.code ? { code: res.code } : {}),
+    };
+  }
+  return { ok: true, notes: res.data.notes };
 }

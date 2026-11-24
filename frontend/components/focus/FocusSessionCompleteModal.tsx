@@ -4,10 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { currentUser } from '../../lib/session';
-import { colors, fontFamily, hexA } from '../../lib/tokens';
+import { colors, font, fontFamily, hexA, radius, space } from '../../lib/tokens';
 import { DECOR, FOCUS_COMPLETE_GONG } from '../../lib/visualAssets';
-import { EmbeddedFiligree } from '../ui';
+import { EmbeddedFiligree } from '../spatial';
+import { Button } from '../ui';
 import { CompletedSession, useFocusStore } from '../../store/focusStore';
+import { FLOW_COPY } from '../../lib/flowCopy';
+import { t } from '../../lib/i18n';
+import { acknowledgementFor, interruptionSummary, type IntentAnswer } from '../../lib/focusRitual';
 import { FocusSessionRow, inRange, summary, byTask, buckets, fmtDuration, fmtHours } from '../../lib/focusReport';
 import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
 
@@ -24,6 +28,13 @@ const CHART_H = 120;
 export default function FocusSessionCompleteModal({ visible, session, accent, onClose, onOpenReport }: Props) {
   const settings = useFocusStore((st) => st.settings);
   const [rows, setRows] = useState<FocusSessionRow[]>([]);
+  const [answer, setAnswer] = useState<IntentAnswer | null>(null);
+
+  useEffect(() => {
+    setAnswer(null);
+  }, [session?.sessionNumber, visible]);
+
+  const awayNote = interruptionSummary(session?.interruptions ?? 0);
 
   // Açılınca son 1 haftanın gerçek seanslarını çek (rapor mantığının aynısı)
   useEffect(() => {
@@ -60,12 +71,13 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
                 <Ionicons name="checkmark" size={26} color={accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.title}>Seans Tamamlandı</Text>
+                <Text style={s.title}>{t('focus.complete.title')}</Text>
                 <Text style={s.sub} numberOfLines={1}>
-                  {session?.taskTitle ? session.taskTitle : 'Odak seansı'} · {session ? fmtDuration(session.seconds) : ''}
+                  {session?.taskTitle ? session.taskTitle : t('focus.complete.defaultTask')} · {session ? fmtDuration(session.seconds) : ''}
                 </Text>
+                {awayNote ? <Text style={s.awayNote}>{awayNote}</Text> : null}
               </View>
-              <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Tamamlandı penceresini kapat">
+              <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('focus.complete.close.a11y')}>
                 <Ionicons name="close" size={22} color={colors.textFaint} />
               </TouchableOpacity>
             </View>
@@ -74,15 +86,15 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
           <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
             {/* İstatistik kartları (bu hafta — gerçek veri) */}
             <View style={s.statRow}>
-              <Stat value={`${fmtHours(sum.totalSeconds)}s`} label="Toplam odak" />
-              <Stat value={`${sum.totalSessions}`} label="Oturum" />
-              <Stat value={`${sum.daysFocused}`} label="Odaklı gün" />
+              <Stat value={t('focus.stat.hoursValue', { hours: fmtHours(sum.totalSeconds) })} label={t('focus.stat.totalFocus')} />
+              <Stat value={`${sum.totalSessions}`} label={t('focus.stat.sessions')} />
+              <Stat value={`${sum.daysFocused}`} label={t('focus.stat.daysFocused')} />
             </View>
 
             {/* ODAK SAATLERİ — gerçek veriyle bar grafiği */}
             {settings.showFocusChart && (
               <>
-                <Text style={s.sectionTitle}>ODAK SAATLERİ</Text>
+                <Text style={s.sectionTitle}>{t('focus.complete.hours.overline')}</Text>
                 <View style={[s.chart, { height: CHART_H }]}>
                   {chart.map((b, i) => (
                     <View key={i} style={s.chartCol}>
@@ -94,17 +106,57 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
               </>
             )}
 
+            {/* PS-11 — Odak öncesi niyet geri çağrısı */}
+            {session?.intent ? (
+              <View style={s.intentBox}>
+                <Text style={s.intentTitle}>{FLOW_COPY.intentRecallTitle}</Text>
+                <Text style={s.intentQuote}>{session.intent}</Text>
+                {answer === null ? (
+                  <>
+                    <Text style={s.intentAsk}>{FLOW_COPY.intentRecallAsk}</Text>
+                    <View style={s.intentAnswersRow}>
+                      <Button
+                        label={FLOW_COPY.intentAnswerYes}
+                        size="md"
+                        variant="secondary"
+                        color={accent}
+                        onPress={() => setAnswer('yes')}
+                      />
+                      <Button
+                        label={FLOW_COPY.intentAnswerPartly}
+                        size="md"
+                        variant="secondary"
+                        color={accent}
+                        onPress={() => setAnswer('partly')}
+                      />
+                      <Button
+                        label={FLOW_COPY.intentAnswerNo}
+                        size="md"
+                        variant="secondary"
+                        color={accent}
+                        onPress={() => setAnswer('no')}
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <Text style={s.intentAck} accessibilityLiveRegion="polite">
+                    {acknowledgementFor(answer)}
+                  </Text>
+                )}
+              </View>
+            ) : null}
+
             {/* GÖREVE GÖRE SÜRE — gerçek veri */}
             {tasks.length > 0 && (
               <>
-                <Text style={s.sectionTitle}>GÖREVE GÖRE SÜRE</Text>
-                {tasks.slice(0, 5).map((t) => (
-                  <View key={t.title} style={s.ttRow}>
-                    <Text style={s.ttName} numberOfLines={1}>{t.title}</Text>
+                <Text style={s.sectionTitle}>{t('focus.complete.byTask.overline')}</Text>
+                {tasks.slice(0, 5).map((tk) => (
+                  <View key={tk.title} style={s.ttRow}>
+                    <Text style={s.ttName} numberOfLines={1}>{tk.title}</Text>
                     <View style={s.ttBar}>
-                      <View style={[s.ttBarFill, { width: `${Math.round((t.totalSeconds / Math.max(1, tasks[0].totalSeconds)) * 100)}%`, backgroundColor: accent }]} />
+                      <View style={[s.ttBarFill, { width: `${Math.round((tk.totalSeconds / Math.max(1, tasks[0].totalSeconds)) * 100)}%`, backgroundColor: accent }]} />
                     </View>
-                    <Text style={s.ttVal}>{fmtDuration(t.totalSeconds)}</Text>
+                    <Text style={s.ttVal}>{fmtDuration(tk.totalSeconds)}</Text>
                   </View>
                 ))}
               </>
@@ -115,10 +167,10 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
           <View style={s.foot}>
             <TouchableOpacity style={[s.primaryBtn, { backgroundColor: accent }]} onPress={onOpenReport}>
               <Ionicons name="stats-chart-outline" size={18} color={colors.white} />
-              <Text style={s.primaryText}>Tam Raporu Gör</Text>
+              <Text style={s.primaryText}>{t('focus.complete.openReport')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.secondaryBtn} onPress={onClose}>
-              <Text style={s.secondaryText}>Kapat</Text>
+              <Text style={s.secondaryText}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -158,6 +210,22 @@ const s = StyleSheet.create({
   badge: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 19, fontWeight: '800', color: colors.text },
   sub: { fontSize: 12.5, color: colors.textFaint, marginTop: 3 },
+  awayNote: { ...font.caption, color: colors.textDim, marginTop: space.xs },
+
+  intentBox: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: space.md,
+    marginBottom: space.lg,
+    gap: space.sm,
+  },
+  intentTitle: { ...font.overline, color: colors.textFaint },
+  intentQuote: { ...font.body, color: colors.text, fontWeight: '600' },
+  intentAsk: { ...font.bodySm, color: colors.textDim },
+  intentAnswersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  intentAck: { ...font.bodySm, color: colors.textDim },
 
   body: { paddingBottom: 16 },
   statRow: { flexDirection: 'row', gap: 10, marginBottom: 22 },
@@ -169,7 +237,7 @@ const s = StyleSheet.create({
   chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginBottom: 22 },
   chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 5 },
   chartBar: { width: '70%', maxWidth: 22, borderRadius: 3, minHeight: 2 },
-  chartLabel: { fontSize: 9, color: colors.textGhost, fontFamily: fontFamily.mono },
+  chartLabel: { fontSize: 9, color: colors.textFaint, fontFamily: fontFamily.mono },
 
   ttRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   ttName: { flex: 1.2, fontSize: 13, color: colors.textDim },

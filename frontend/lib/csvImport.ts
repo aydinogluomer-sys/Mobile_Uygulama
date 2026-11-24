@@ -77,7 +77,7 @@ export function normalizeDate(raw: string): string | null {
   return d.getMonth() === Number(m[2]) - 1 && d.getDate() === Number(m[1]) ? ymd(d) : null;
 }
 
-export type ImportRow = { line: number; values: Record<string, unknown> };
+export type ImportRow = { line: number; values: Record<string, unknown>; id?: string };
 export type ImportReport = {
   ok: ImportRow[];
   invalid: { line: number; reason: string }[];
@@ -142,4 +142,18 @@ export function mapRows(params: {
 
 export function existingKeysFor(target: ImportTarget, rows: readonly Record<string, unknown>[]): Set<string> {
   return new Set(rows.map((r) => keyOf(target, r)));
+}
+
+/** CSV hücresinin başında formül gibi yorumlanabilecek karakterler: = + - @ sekme satır-başı. */
+export const FORMULA_PREFIX = /^(?:[\t\r]|\s*[=+\-@])/;
+
+/**
+ * Bir CSV hücresini yazar. YALNIZ `string` değerlere formül öneki (`'`) eklenir; `number` ve `boolean`
+ * dokunulmaz (negatif sayı bozulmaz). Virgül, tırnak, \n ve \r içeren hücre tırnaklanır.
+ */
+export function escapeCsvCell(v: string | number | boolean | null | undefined): string {
+  if (v === null || v === undefined) return '';
+  let s = String(v);
+  if (typeof v === 'string' && FORMULA_PREFIX.test(s)) s = `'${s}`;
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }

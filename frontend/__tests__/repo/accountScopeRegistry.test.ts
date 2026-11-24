@@ -16,6 +16,7 @@
  */
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { rendersKey } from '../helpers/catalog';
 import { stripComments } from '../helpers/sourceText';
 
 const FRONTEND = join(__dirname, '..', '..');
@@ -23,17 +24,19 @@ const read = (p: string): string => readFileSync(join(FRONTEND, p), 'utf8').repl
 const code = (p: string): string => stripComments(read(p));
 
 /** Stores that describe this device, not the person using it. */
-const DEVICE_LEVEL_STORES = ['themeStore.ts', 'drawerStore.ts', 'commandStore.ts'];
+const DEVICE_LEVEL_STORES = ['themeStore.ts', 'commandStore.ts'];
 
 /**
  * Constant storage keys that carry no user id, each with its reason. A new one makes this test red
  * until someone decides: does it belong to a user (then the key gets the uid), or to the device?
  */
 const KNOWN_UNSCOPED_KEYS: Record<string, string> = {
+  app_theme_mode: 'device display preference',
   app_theme_dark: 'device display preference',
   app_seasonal_motion: 'device display preference',
   app_accent: 'device display preference',
-  'aderyth:drawer_shortcuts_v1': 'device navigation preference',
+  app_haptics: 'device haptic feedback preference',
+  'aderyth:drawer_shortcuts_v1': 'legacy unscoped drawer shortcuts key, read once to migrate to aderyth:drawer_shortcuts_v1:<uid> (F28)',
   app_cmd_recents: 'device command palette history',
   'aderyth:focus_flow_saved_v1': 'device focus-flow bookmarks',
   'reminders.settings.v1': 'device reminder preference',
@@ -46,6 +49,7 @@ const KNOWN_UNSCOPED_KEYS: Record<string, string> = {
   'focus.session.v1': 'prefix: the uid follows (F04)',
   'aderyth.coach.lastConversationId': 'prefix: the uid follows (F04)',
   'aderyth.deflected_urges_count': 'prefix: the uid follows (F04)',
+  'aderyth:disclosure:v1:': 'prefix: the uid follows (F27)',
   'today_bootstrap:v1:': 'prefix of a read-cache entry name',
   'goals:p1': 'read-cache entry name, stored under the user id',
   'life_areas:latest': 'read-cache entry name, stored under the user id',
@@ -55,6 +59,9 @@ const KNOWN_UNSCOPED_KEYS: Record<string, string> = {
   'pending-': 'not a storage key: a local id prefix',
   key_result: 'not a storage key: an outbox entity name',
   habit_log_key_immutable: 'not a storage key: a server error token',
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: 'not a storage key: build-time public env variable name (lib/env.ts)',
+  'config-missing': 'not a storage key: placeholder anon key when public env is missing (lib/env.ts)',
+  created_day: 'not a storage key: frequency_config jsonb property name for habit creation day (lib/habitCreatedDay.ts)',
 };
 
 // ---------------------------------------------------------------------------------------
@@ -121,8 +128,12 @@ describe('every store is registered or named device-level', () => {
   });
 
   it('registered names are unique', () => {
-    const names = registeredNames([...stores.map((s) => s.text), code('services/coreOutbox.ts')]);
-    expect(names.length).toBeGreaterThanOrEqual(27);
+    const names = registeredNames([
+      ...stores.map((s) => s.text),
+      code('services/coreOutbox.ts'),
+      code('services/timeZoneSyncService.ts'),
+    ]);
+    expect(names.length).toBeGreaterThanOrEqual(28);
     expect(names.filter((n, i) => names.indexOf(n) !== i)).toEqual([]);
   });
 
@@ -205,11 +216,18 @@ describe('every account boundary goes through the registry', () => {
   });
 
   it('Settings: the sign-out sits above the deletion and uses the modal, not Alert', () => {
-    const settings = code('app/tabs/settings.tsx');
+    const settings = [
+      code('app/tabs/settings.tsx'),
+      code('components/settings/AccountSection.tsx'),
+    ].join('\n');
     expect(settings).toContain('signOutCurrentAccount');
     expect(settings).toContain('<SignOutConfirmModal');
-    expect(settings.indexOf('Oturumu Kapat')).toBeGreaterThan(-1);
-    expect(settings.indexOf('Oturumu Kapat')).toBeLessThan(settings.indexOf('Hesabı Sil'));
+    expect(rendersKey(settings, 'settings.account.signOut.label', 'Oturumu Kapat')).toBe(true);
+    expect(rendersKey(settings, 'settings.account.delete.label', 'Hesabı Sil')).toBe(true);
+    expect(settings.indexOf("'settings.account.signOut.label'")).toBeGreaterThan(-1);
+    expect(settings.indexOf("'settings.account.signOut.label'")).toBeLessThan(
+      settings.indexOf("'settings.account.delete.label'"),
+    );
     const modal = code('components/SignOutConfirmModal.tsx');
     expect(modal).not.toMatch(/Alert\.alert/);
     expect(modal).toContain('accessibilityViewIsModal');

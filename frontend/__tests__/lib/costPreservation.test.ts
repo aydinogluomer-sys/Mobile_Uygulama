@@ -27,19 +27,24 @@ import type { FrequencyConfig } from '../../lib/supabase';
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 
-const SHA_ALL_AT_70BD0D6 = '9df41d212a3fdbfe05a758c4bf1748743257e7a89855f973d84efbfe36a060d8';
+// F14 (INT-04): MIN_DURATION_MINUTES = 1 replaces 0-minute zero-load items in
+// LOAD_CORPUS / DAY_CORPUS (days 0 and 1 include estimated_minutes = 0); every
+// estimated_minutes > 0 item (including day 2 = 354.8030786559038) and all of
+// occurrencesPerWeek, frequencyWeight, costBreakdown, and computeWillpowerCost
+// remain byte-identical to HEAD 70bd0d6.
+const SHA_ALL_AT_70BD0D6 = 'afeb7105fe01b8109010b737ac62109b46396f1652116f4f49868eeba4ed7bbf';
 const SHA_PART_AT_70BD0D6: Record<string, string> = {
   "occurrencesPerWeek": "acf9f71387c2ef52912c83a1c672273d2a4b26fe20d44439e502fe3bc9911ad4",
   "frequencyWeight": "77d44a1cacf14d45f524f74b4a3a1b3a01cf7ee8170395d6d54caafbce37ce6f",
-  "habitLoad": "a86bcdaba47e82c058da25a48074ea13d83a6d87c21c79343b5258b8174926d7",
-  "habitLoadPoints": "35e2a55ae1b17a896fc212a312235b0a64865061a0ee2d874cbc9a256458fea3",
-  "dailyLoad": "344e4106f3f307c0442b2f01df50df04652f07a8a31c5d7a8b75bb5fd0b13db2",
+  "habitLoad": "f89b95e9502d7be732235f40b44476081320c4588c5f2265adbcafcaa4ecd79c",
+  "habitLoadPoints": "537261f8a98108325c0fe7de4b342eeb18ecf936b03369ea4a880d7c9a9525b6",
+  "dailyLoad": "2afb2f5e7e088c6afe0411e0891282e81707ef9db201572a3333cac05cdebff5",
   "costBreakdown": "221c5b93c741e5ad401d2063fd99a0e061448bb5e3b1a858be52c9d2d16b2664",
   "computeWillpowerCost": "7f554c110e2daf4d3028b3670c95308b183add21105e3f2de3c840a1ed56c7af"
 };
 const OCCURRENCES_PER_WEEK_AT_70BD0D6 = [7,7,7,14,35,7,7,7,7,7,7,14,3,0.9198423127463863,1,3,7,1,4,1,3,7,1,3,0.22996057818659657,0.22996057818659657,2.299605781865966,7.128777923784494,2.299605781865966,7];
 const FREQUENCY_WEIGHT_AT_70BD0D6 = [1,1,1,1,1,1,1,1,1,1,1,1,0.42857142857142855,0.1314060446780552,0.14285714285714285,0.42857142857142855,1,0.14285714285714285,0.5714285714285714,0.14285714285714285,0.42857142857142855,1,0.14285714285714285,0.42857142857142855,0.0328515111695138,0.0328515111695138,0.328515111695138,1,0.328515111695138,1];
-const DAILY_LOAD_AT_70BD0D6 = [{"raw":103.82110888268573,"normalised":100,"band":"asiri"},{"raw":302.42655196463465,"normalised":100,"band":"asiri"},{"raw":354.8030786559038,"normalised":100,"band":"asiri"},{"raw":0,"normalised":0,"band":"dusuk"}];
+const DAILY_LOAD_AT_70BD0D6 = [{"raw":109.46357334724956,"normalised":100,"band":"asiri"},{"raw":319.5348435038679,"normalised":100,"band":"asiri"},{"raw":354.8030786559038,"normalised":100,"band":"asiri"},{"raw":0,"normalised":0,"band":"dusuk"}];
 
 describe('R01.02-d2 A7 — cost and load are unchanged for every input without an effective interval', () => {
   const now = {

@@ -5,6 +5,7 @@
   },
   "build": {
     "validation": {
+      "node": "22.13.0",
       "distribution": "internal",
       "environment": "production",
       "env": {
@@ -18,6 +19,7 @@
       }
     },
     "production": {
+      "node": "22.13.0",
       "distribution": "store",
       "environment": "production",
       "autoIncrement": true,

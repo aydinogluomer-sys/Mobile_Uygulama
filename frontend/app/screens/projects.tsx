@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Modal, KeyboardAvoidingView, Platform, Alert,
+  TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { confirm, notify } from '../../lib/dialog';
+import { useFocusParam } from '../../hooks/useFocusParam';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useProjectStore, type Project } from '../../store/projectStore';
 import { useTaskStore } from '../../store/taskStore';
 import InlineComposer from '../../components/InlineComposer';
-import { AtmosphericScreenCanvas, EmptyState, LoadErrorState, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { EmptyState, FormError, LoadErrorState, EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
 import { colors, hexA } from '../../lib/tokens';
@@ -26,27 +29,63 @@ export default function ProjectsScreen() {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const [color, setColor] = useState(PRESET_COLORS[0]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [initialLoaded, setInitialLoaded] = useState(projects.length > 0);
+  const { id: focusId, consume: consumeFocus } = useFocusParam();
+  const consumedFocusRef = useRef<string | null>(null);
 
   const detailProject = projects.find((p) => p.id === detailId) ?? null;
   const detailTasks = detailId ? tasks.filter((t) => t.project_id === detailId) : [];
   const detailDone = detailTasks.filter((t) => t.completed).length;
   const detailPct = detailTasks.length > 0 ? detailDone / detailTasks.length : 0;
 
-  useEffect(() => { fetchProjects(); fetchTasks(); }, [fetchProjects, fetchTasks]);
+  useEffect(() => {
+    void Promise.all([fetchProjects(), fetchTasks()]).finally(() => setInitialLoaded(true));
+  }, [fetchProjects, fetchTasks]);
+
+  useEffect(() => {
+    if (!focusId) {
+      consumedFocusRef.current = null;
+      return;
+    }
+    if (consumedFocusRef.current === focusId) return;
+    const match = projects.find((p) => p.id === focusId);
+    if (match) {
+      consumedFocusRef.current = focusId;
+      setDetailId(match.id);
+      consumeFocus();
+      return;
+    }
+    if (initialLoaded) {
+      consumedFocusRef.current = focusId;
+      consumeFocus();
+      void notify('Öğe bulunamadı', 'Aradığın proje silinmiş ya da arşivlenmiş olabilir.');
+    }
+  }, [focusId, projects, initialLoaded, consumeFocus]);
 
   async function handleAdd() {
     if (!name.trim()) return;
-    await addProject({ name: name.trim(), color, description: desc.trim() || undefined });
+    const created = await addProject({ name: name.trim(), color, description: desc.trim() || undefined });
+    if (!created) {
+      setSaveError(useProjectStore.getState().error ?? 'Proje oluşturulamadı. Yazdıkların burada duruyor, tekrar dene.');
+      return;
+    }
+    setSaveError(null);
     setName(''); setDesc(''); setColor(PRESET_COLORS[0]);
     setShowAdd(false);
   }
 
-  function confirmDelete(p: Project) {
-    Alert.alert('Projeyi Sil', `"${p.name}" silinsin mi?`, [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => removeProject(p.id) },
-    ]);
+  async function confirmArchive(p: Project) {
+    if (await confirm({
+      title: 'Projeyi Arşivle',
+      message: `"${p.name}" arşivlensin mi? Proje listeden kalkar; görevlerin silinmez.`,
+      confirmText: 'Arşivle',
+    })) {
+      const ok = await removeProject(p.id);
+      setActionError(ok ? null : (useProjectStore.getState().error ?? 'Proje arşivlenemedi.'));
+    }
   }
 
   const taskCount = (pid: string) => tasks.filter((t) => t.project_id === pid && !t.completed).length;
@@ -65,16 +104,19 @@ export default function ProjectsScreen() {
         style={s.list}
         contentContainerStyle={s.listContent}
         ListHeaderComponent={
-          <EditorialBanner
-            source={SCREEN_BANNERS.projectsWorkshop}
-            textureSource={TEXTURES.sacredGrid}
-            eyebrow="PROJE ATÖLYESİ"
-            title="Projeler"
-            subtitle="Görevlerini anlamlı çıktılar etrafında grupla."
-            accentColor={colors.primary}
-            minHeight={90}
-            style={{ marginBottom: 12 }}
-          />
+          <View>
+            <FormError message={actionError} />
+            <EditorialBanner
+              source={SCREEN_BANNERS.projectsWorkshop}
+              textureSource={TEXTURES.sacredGrid}
+              eyebrow="PROJE ATÖLYESİ"
+              title="Projeler"
+              subtitle="Görevlerini anlamlı çıktılar etrafında grupla."
+              accentColor={colors.primary}
+              minHeight={90}
+              style={{ marginBottom: 12 }}
+            />
+          </View>
         }
         ListEmptyComponent={loadError ? (
           // R06.06 — not reached is not the same as empty
@@ -85,17 +127,17 @@ export default function ProjectsScreen() {
             title="Henüz proje yok"
             hint="Görevlerini bir projede toplamak için ilk projeni oluştur."
             ctaLabel="Yeni Proje"
-            onCta={() => setShowAdd(true)}
+            onCta={() => { setSaveError(null); setShowAdd(true); }}
           />
         )}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={s.row}
             onPress={() => setDetailId(item.id)}
-            onLongPress={() => confirmDelete(item)}
+            onLongPress={() => confirmArchive(item)}
             accessibilityRole="button"
             accessibilityLabel={`${item.name}, ${taskCount(item.id)} açık görev, ${progressOf(item.id).label}`}
-            accessibilityHint="Açmak için dokun, silmek için uzun bas"
+            accessibilityHint="Açmak için dokun, arşivlemek için uzun bas"
           >
             <EmbeddedFiligree source={DECOR.cornerBlueprint} size={92} opacity={0.14} />
             <View style={[s.colorDot, { backgroundColor: item.color ?? colors.primary }]} />
@@ -114,7 +156,7 @@ export default function ProjectsScreen() {
 
       <TouchableOpacity
         style={s.fab}
-        onPress={() => setShowAdd(true)}
+        onPress={() => { setSaveError(null); setShowAdd(true); }}
         accessibilityRole="button"
         accessibilityLabel="Yeni proje ekle"
       >
@@ -157,6 +199,8 @@ export default function ProjectsScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            <FormError message={saveError} />
 
             <View style={s.actions}>
               <TouchableOpacity
@@ -274,7 +318,7 @@ const s = StyleSheet.create({
   },
   badgeText: { fontSize: 12, color: colors.textDim },
   empty: { alignItems: 'center', paddingTop: 80, gap: 10 },
-  emptyText: { fontSize: 15, color: colors.textGhost },
+  emptyText: { fontSize: 15, color: colors.textFaint },
   emptyAdd: { marginTop: 8 },
   emptyAddText: { fontSize: 14, color: colors.accent },
   fab: {
@@ -311,7 +355,7 @@ const s = StyleSheet.create({
   progressPct: { fontSize: 13, color: colors.text, fontWeight: '700', fontVariant: ['tabular-nums'] },
   progressTrack: { height: 6, borderRadius: 3, backgroundColor: colors.borderSubtle, marginTop: 6, overflow: 'hidden' },
   progressFill: { height: 6, borderRadius: 3 },
-  detailEmpty: { fontSize: 13, color: colors.textGhost, textAlign: 'center', paddingVertical: 24 },
+  detailEmpty: { fontSize: 13, color: colors.textFaint, textAlign: 'center', paddingVertical: 24 },
   taskRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11,
     borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
@@ -321,5 +365,5 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   taskTitle: { flex: 1, fontSize: 14, color: colors.text },
-  taskTitleDone: { color: colors.textGhost, textDecorationLine: 'line-through' },
+  taskTitleDone: { color: colors.textFaint, textDecorationLine: 'line-through' },
 });

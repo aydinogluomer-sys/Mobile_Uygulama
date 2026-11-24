@@ -11,9 +11,14 @@
  * explicit filter matters here more than anywhere: a policy change that
  * loosened `journal_entries` would have leaked through this query silently.
  */
-import type { TableInsert } from '../lib/database.types';
+import type { TableInsert, TableUpdate } from '../lib/database.types';
 import { supabase } from '../lib/supabase';
+import { likeContains } from './likePattern';
 import { currentUserId, isTransportFailure, wrongAccountFor, type RepoResult } from './shared';
+
+export const JOURNAL_CAS_MISMATCH = 'CAS_MISMATCH';
+/** `baseContent: null` means the row did not exist when read. */
+export type JournalWriteGuard = { baseContent: string | null };
 
 export type JournalEntryRow = {
   id: string;
@@ -26,15 +31,17 @@ export type JournalEntryRow = {
   created_at: string;
 };
 
-const COLS = '*';
+export const JOURNAL_FETCH_LIMIT = 365;
+export const JOURNAL_ENTRY_COLUMNS = 'id,user_id,date,content,mood,created_at,ai_summary';
+export const COLS = JOURNAL_ENTRY_COLUMNS;
 
 /** Newest first, bounded to a year — the window the journal screen renders. */
-export async function fetchJournalEntries(limit = 365): Promise<RepoResult<JournalEntryRow[]>> {
+export async function fetchJournalEntries(limit = JOURNAL_FETCH_LIMIT): Promise<RepoResult<JournalEntryRow[]>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   const { data, error } = await supabase
     .from('journal_entries')
-    .select(COLS)
+    .select(JOURNAL_ENTRY_COLUMNS)
     .eq('user_id', u.userId)
     .order('date', { ascending: false })
     .limit(Math.max(1, Math.min(limit, 1000)));
@@ -49,24 +56,22 @@ export async function fetchJournalEntries(limit = 365): Promise<RepoResult<Journ
  * filter is explicit here for the same reason it is on `fetchJournalEntries`:
  * RLS is the backstop, not the only scope.
  *
- * `%` is stripped along with the `or()` delimiters — without it a lone `%`
- * typed into the palette becomes a wildcard matching every entry the user has
- * ever written, which is not what someone searching for a percent sign meant.
+ * Pattern escaping (`\`, `%`, `_`) and PostgREST delimiter sanitization go
+ * through `repositories/likePattern.ts` (`likeContains`).
  */
 export async function searchJournalEntries(
   query: string,
   limit = 8,
 ): Promise<RepoResult<JournalEntryRow[]>> {
+  const pattern = likeContains(query);
+  if (pattern === null) return { ok: true, data: [] };
   const u = await currentUserId();
   if (!u.ok) return u;
-  const term = query.trim();
-  if (!term) return { ok: true, data: [] };
-  const safe = term.replace(/[,()%]/g, ' ');
   const { data, error } = await supabase
     .from('journal_entries')
-    .select(COLS)
+    .select(JOURNAL_ENTRY_COLUMNS)
     .eq('user_id', u.userId)
-    .ilike('content', `%${safe}%`)
+    .ilike('content', pattern)
     .order('date', { ascending: false })
     .limit(Math.max(1, Math.min(limit, 50)));
   if (error) return { ok: false, error: error.message };
@@ -78,7 +83,7 @@ export async function fetchJournalEntry(date: string): Promise<RepoResult<Journa
   if (!u.ok) return u;
   const { data, error, status } = await supabase
     .from('journal_entries')
-    .select(COLS)
+    .select(JOURNAL_ENTRY_COLUMNS)
     .eq('user_id', u.userId)
     .eq('date', date)
     .maybeSingle();
@@ -93,12 +98,16 @@ export async function fetchJournalEntry(date: string): Promise<RepoResult<Journa
  * `user_id` is supplied here, never by the caller, so the conflict target
  * cannot be satisfied against another account's row.
  */
-export async function upsertJournalEntry(input: {
-  date: string;
-  content: string;
-  mood?: number | null;
-  aiSummary?: boolean;
-}, expectedUserId?: string): Promise<RepoResult<JournalEntryRow>> {
+export async function upsertJournalEntry(
+  input: {
+    date: string;
+    content: string;
+    mood?: number | null;
+    aiSummary?: boolean;
+  },
+  expectedUserId?: string,
+  guard?: JournalWriteGuard,
+): Promise<RepoResult<JournalEntryRow>> {
   const u = await currentUserId();
   if (!u.ok) return u;
   // R02.06 — a queued entry is only ever written as the account that queued it.
@@ -111,10 +120,38 @@ export async function upsertJournalEntry(input: {
     mood: input.mood ?? null,
   };
   if (input.aiSummary !== undefined) row.ai_summary = input.aiSummary;
+
+  if (guard !== undefined) {
+    if (guard.baseContent === null) {
+      // Row did not exist on read: insert only. A concurrent writer triggers UNIQUE(user_id, date) -> 23505.
+      const { data, error, status } = await supabase
+        .from('journal_entries')
+        .insert(row)
+        .select(JOURNAL_ENTRY_COLUMNS)
+        .single();
+      if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
+      return { ok: true, data: data as unknown as JournalEntryRow };
+    }
+    // Row existed on read: compare-and-swap against the exact content we read.
+    const patch: TableUpdate<'journal_entries'> = { content: input.content, mood: input.mood ?? null };
+    if (input.aiSummary !== undefined) patch.ai_summary = input.aiSummary;
+    const { data, error, status } = await supabase
+      .from('journal_entries')
+      .update(patch)
+      .eq('user_id', u.userId)
+      .eq('date', input.date)
+      .eq('content', guard.baseContent)
+      .select(JOURNAL_ENTRY_COLUMNS)
+      .maybeSingle();
+    if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
+    if (!data) return { ok: false, error: 'Bu günün kaydı başka bir yerde değişti.', status: 409, code: JOURNAL_CAS_MISMATCH };
+    return { ok: true, data: data as unknown as JournalEntryRow };
+  }
+
   const { data, error, status } = await supabase
     .from('journal_entries')
     .upsert(row, { onConflict: 'user_id,date' })
-    .select(COLS)
+    .select(JOURNAL_ENTRY_COLUMNS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
   return { ok: true, data: data as unknown as JournalEntryRow };

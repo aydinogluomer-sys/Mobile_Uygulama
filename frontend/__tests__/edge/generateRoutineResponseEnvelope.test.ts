@@ -54,11 +54,10 @@ import { supabase } from '../../lib/supabase';
 import { useRoutineStore } from '../../store/routineStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 
+import { edgeSource } from '../helpers/edgeSource';
+
 const ROOT = join(__dirname, '..', '..');
-const FN_SRC = readFileSync(
-  join(ROOT, '..', 'supabase', 'functions', 'generate-routine', 'index.ts'),
-  'utf8',
-);
+const FN_SRC = edgeSource('generate-routine');
 /** The file that now builds the response body around the AI payload. */
 const ORCH_SRC = readFileSync(
   join(ROOT, '..', 'supabase', 'functions', '_shared', 'aiIdempotency.ts'),

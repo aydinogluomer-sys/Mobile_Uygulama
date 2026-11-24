@@ -11,16 +11,23 @@ const mockInsertFail = new Set<string>();
 
 jest.mock('../../lib/supabase', () => ({ supabase: {} }));
 jest.mock('../../lib/session', () => ({ currentUser: jest.fn(async () => ({ id: 'u1', email: null })) }));
-jest.mock('../../repositories/habitRepository', () => ({ fetchHabits: jest.fn(async () => ({ ok: true, data: [{ id: 'h1', user_id: 'u1', name: 'Su' }] })) }));
+jest.mock('../../repositories/exportRepository', () => ({
+  MAX_EXPORT_ROWS: 20_000,
+  EXPORT_FULL_TABLES: ['habits', 'habit_logs', 'journal_entries', 'focus_sessions', 'webhooks'],
+  fetchFullTable: jest.fn(async (t: string) => {
+    const o = mockOwned[t];
+    if (o) return o.ok ? { ok: true, data: { rows: o.rows ?? [], truncated: false } } : { ok: false, error: o.error ?? 'x', code: o.code };
+    if (t === 'habits') return { ok: true, data: { rows: [{ id: 'h1', user_id: 'u1', name: 'Su' }], truncated: false } };
+    return { ok: true, data: { rows: [], truncated: false } };
+  }),
+  fetchOwnProfileForExport: jest.fn(async () => ({ ok: true, data: [] })),
+  fetchOwnOnboardingForExport: jest.fn(async () => ({ ok: true, data: [] })),
+}));
 jest.mock('../../repositories/taskRepository', () => ({ fetchTasksPage: jest.fn(async () => ({ ok: true, data: { rows: [], hasMore: false, nextCursor: null } })) }));
 jest.mock('../../repositories/noteRepository', () => ({ fetchNotesPage: jest.fn(async () => ({ ok: true, data: { rows: [], hasMore: false, nextCursor: null } })) }));
 jest.mock('../../repositories/projectRepository', () => ({ fetchProjectsPage: jest.fn(async () => ({ ok: true, data: { rows: [], hasMore: false, nextCursor: null } })) }));
 jest.mock('../../repositories/goalRepository', () => ({ fetchGoalsPage: jest.fn(async () => ({ ok: true, data: { rows: [], hasMore: false, nextCursor: null } })) }));
 jest.mock('../../repositories/badHabitRepository', () => ({ fetchBadHabitsPage: jest.fn(async () => ({ ok: true, data: { rows: [], hasMore: false, nextCursor: null } })) }));
-jest.mock('../../repositories/journalRepository', () => ({ fetchJournalEntries: jest.fn(async () => ({ ok: true, data: [] })) }));
-jest.mock('../../repositories/focusSessionRepository', () => ({ fetchAllFocusSessions: jest.fn(async () => ({ ok: true, data: [] })) }));
-jest.mock('../../repositories/webhookRepository', () => ({ fetchWebhooks: jest.fn(async () => ({ ok: true, data: [] })) }));
-jest.mock('../../repositories/habitLogRepository', () => ({ fetchHabitLogsForHabitsSince: jest.fn(async () => ({ ok: true, data: [] })) }));
 jest.mock('../../repositories/restoreRepository', () => ({
   ...jest.requireActual('../../repositories/restoreRepository'),
   fetchOwnedTable: jest.fn(async (t: string) => {
@@ -78,7 +85,9 @@ describe('export', () => {
 
   it('device data: this account\'s settings and local data, never sessions, queues or other accounts', async () => {
     await AsyncStorage.multiSet([
-      ['moods.v1.u1', JSON.stringify({ v: 1, checkins: [{ id: 'c' }] })],
+      ['moods.v1.u1', JSON.stringify({ v: 1, checkins: [{ id: 'c', energy: 'low' }] })],
+      ['aderyth:time_capsules:v1:u1', JSON.stringify({ v: 1, items: [{ id: 'tc1', text: 'Not', day: '2026-10-07', createdAt: '2026-10-07T09:00:00.000Z' }] })],
+      ['aderyth:time_capsules:v1:u2', JSON.stringify({ v: 1, items: [{ id: 'tc2', text: 'Başka hesap', day: '2026-10-07', createdAt: '2026-10-07T09:00:00.000Z' }] })],
       ['routine.v1.u1', JSON.stringify({ v: 1, history: [] })],
       // F04: focus settings are per user; the old unscoped key and another account's key stay out
       ['focus.settings.v1.u1', JSON.stringify({ work: 25 })],
@@ -93,7 +102,7 @@ describe('export', () => {
       ['focus.session.v1.u1', '{}'],
     ]);
     const b = await buildBackup(new Date(), { userId: 'u1' });
-    expect(b.device.map((d) => d.key)).toEqual(['focus.settings.v1.u1', 'journal.draft.v1.u1.2026-10-08', 'moods.v1.u1', 'routine.v1.u1']);
+    expect(b.device.map((d) => d.key)).toEqual(['aderyth:time_capsules:v1:u1', 'focus.settings.v1.u1', 'journal.draft.v1.u1.2026-10-08', 'moods.v1.u1', 'routine.v1.u1']);
     expect(JSON.stringify(b)).not.toMatch(/SECRET/);
   });
 });

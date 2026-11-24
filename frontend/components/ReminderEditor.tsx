@@ -1,29 +1,41 @@
 /**
- * R04.02 — a habit's reminders: on/off, up to four times a day, and an
- * optional day group. Reminders still only come on days the habit is
- * scheduled (and not on a break); the day group narrows that further.
+ * R04.02 / F17 — a habit's reminders: on/off, up to four times a day, and an
+ * optional day group, with permission/settings guidance (DOM-18), web notice
+ * (GAP2-10), and resilient save error handling (GAP1-03).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput } from 'react-native';
 import { colors, space, radius } from '../lib/tokens';
 import { buildReminderConfig, MAX_REMINDER_TIMES } from '../lib/reminderPlan';
+import { openNotificationSettings, type NotificationAccess } from '../lib/notifications';
 import type { Habit } from '../lib/supabase';
 
 const DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
+type SaveOutcome = void | { ok: true } | { ok: false; error: string };
+
 interface Props {
   habit: Habit | null;
-  /** false when notifications are not allowed on this device -- said, not hidden. */
+  /** Eski tek bayrak (true açık, false kapalı, null bilinmiyor). `access` verilirse o geçerlidir. */
   permission: boolean | null;
+  access?: NotificationAccess | null;
   onClose: () => void;
-  onSave: (config: NonNullable<Habit['reminders']>) => Promise<void>;
+  onSave: (config: NonNullable<Habit['reminders']>) => Promise<SaveOutcome>;
 }
 
-export default function ReminderEditor({ habit, permission, onClose, onSave }: Props) {
+const accessOf = (permission: boolean | null, access?: NotificationAccess | null): NotificationAccess | null =>
+  access !== undefined ? access : permission === true ? 'granted' : permission === false ? 'ask' : null;
+
+const failed = (o: unknown): o is { ok: false; error: string } =>
+  typeof o === 'object' && o !== null && (o as { ok?: unknown }).ok === false;
+
+export default function ReminderEditor({ habit, permission, access, onClose, onSave }: Props) {
   const [enabled, setEnabled] = useState(true);
   const [times, setTimes] = useState<string[]>(['08:00']);
   const [days, setDays] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   useEffect(() => {
     if (!habit) return;
@@ -32,14 +44,30 @@ export default function ReminderEditor({ habit, permission, onClose, onSave }: P
     setTimes(r?.times?.length ? r.times : [r?.time ?? '08:00']);
     setDays(r?.days ?? []);
     setError(null);
+    setSaving(false);
+    savingRef.current = false;
   }, [habit]);
 
   if (!habit) return null;
 
+  const acc = accessOf(permission, access);
+
   async function save() {
+    if (saving || savingRef.current) return;
     const res = buildReminderConfig(enabled, times, days);
     if (!res.ok) { setError(res.reason); return; }
-    await onSave(res.config);
+    savingRef.current = true;
+    setSaving(true);
+    setError(null);
+    try {
+      const out: unknown = await onSave(res.config);
+      if (failed(out)) setError(out.error || 'Kaydedilemedi. Bağlantını kontrol edip tekrar dene.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Kaydedilemedi. Bağlantını kontrol edip tekrar dene.');
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   }
 
   return (
@@ -47,10 +75,27 @@ export default function ReminderEditor({ habit, permission, onClose, onSave }: P
       <View style={s.backdrop}>
         <View style={s.sheet}>
           <Text style={s.title} accessibilityRole="header">Hatırlatıcı</Text>
-          {permission === false && (
-            <Text style={s.warn} accessibilityRole="alert">
-              Bu cihazda bildirim izni kapalı; hatırlatıcılar gönderilemez. İzni cihaz ayarlarından açabilirsin.
+          {acc === 'unsupported' && (
+            <Text style={s.note}>
+              Tarayıcıda hatırlatıcı bildirimleri desteklenmiyor. Ayarın burada saklanır; bildirimler mobil uygulamada gelir.
             </Text>
+          )}
+          {(acc === 'ask' || acc === 'blocked') && (
+            <View style={s.warnWrap}>
+              <Text style={s.warn} accessibilityRole="alert">
+                Bu cihazda bildirim izni kapalı; hatırlatıcılar gönderilemez. İzni cihaz ayarlarından açabilirsin.
+              </Text>
+              {acc === 'blocked' && (
+                <TouchableOpacity
+                  style={s.settingsBtn}
+                  onPress={() => void openNotificationSettings()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Bildirim ayarlarını aç"
+                >
+                  <Text style={s.settingsBtnText}>Ayarları aç</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           )}
           <TouchableOpacity style={[s.toggle, enabled && s.toggleOn]} onPress={() => setEnabled((e) => !e)}
             accessibilityRole="switch" accessibilityState={{ checked: enabled }} accessibilityLabel="Hatırlatıcı açık">
@@ -94,7 +139,16 @@ export default function ReminderEditor({ habit, permission, onClose, onSave }: P
           {error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}
           <View style={s.row}>
             <TouchableOpacity style={s.cancel} onPress={onClose} accessibilityRole="button" accessibilityLabel="Vazgeç"><Text style={s.cancelText}>Vazgeç</Text></TouchableOpacity>
-            <TouchableOpacity style={s.save} onPress={save} accessibilityRole="button" accessibilityLabel="Hatırlatıcıyı kaydet"><Text style={s.saveText}>Kaydet</Text></TouchableOpacity>
+            <TouchableOpacity
+              style={[s.save, saving && s.saveDisabled]}
+              onPress={save}
+              disabled={saving}
+              accessibilityRole="button"
+              accessibilityLabel="Hatırlatıcıyı kaydet"
+              accessibilityState={{ disabled: saving, busy: saving }}
+            >
+              <Text style={s.saveText}>{saving ? 'Kaydediliyor' : 'Kaydet'}</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -106,7 +160,10 @@ const s = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
   sheet: { backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: space.sm },
   title: { fontSize: 18, fontWeight: '700', color: colors.text },
+  warnWrap: { gap: space.xs },
   warn: { fontSize: 12, color: colors.warning, lineHeight: 17 },
+  settingsBtn: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+  settingsBtnText: { fontSize: 13, color: colors.accent, fontWeight: '600' },
   toggle: { alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
   toggleOn: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
   toggleText: { color: colors.text, fontWeight: '600' },
@@ -120,8 +177,9 @@ const s = StyleSheet.create({
   dayText: { fontSize: 12, color: colors.text },
   note: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
   error: { fontSize: 12, color: colors.error },
-  cancel: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+  cancel: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingVertical: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
   cancelText: { color: colors.textDim, fontWeight: '600' },
-  save: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: radius.md, backgroundColor: colors.accent },
+  save: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingVertical: 12, borderRadius: radius.md, backgroundColor: colors.accent },
+  saveDisabled: { opacity: 0.6 },
   saveText: { color: colors.bg, fontWeight: '700' },
 });

@@ -26,6 +26,30 @@ where table_schema='public' and table_name='habit_logs' and column_name='tz';
 -- 0 satır değilse 038 uygulanmaz. 036 tek başına silinmiş bir günün XP'sini purged_xp'ye taşımaz (DB2-07);
 -- önce rebuild_profile_xp(uuid) ile onarım gerekir ve bu ayrı bir sahip kararıdır.
 select * from public.xp_drift();
+
+-- 0.5 039 öncesi (F07)
+-- (a) silinecek yinelenen kullanıcı mesajı sayısı
+SELECT coalesce(sum(n - 1), 0) AS fazla_satir
+FROM (SELECT count(*) AS n FROM public.ai_messages
+      WHERE role = 'user' AND request_id IS NOT NULL
+      GROUP BY conversation_id, request_id HAVING count(*) > 1) d;
+
+-- (b) iade edilecek kullanıcı ve FP
+SELECT count(*) AS istek, coalesce(sum(-t.delta), 0) AS fp
+FROM public.ai_requests a
+JOIN public.credit_transactions t
+  ON t.user_id = a.user_id AND t.request_id = a.request_id AND t.delta < 0 AND t.created_at >= a.created_at
+WHERE a.status = 'failed'
+  AND NOT EXISTS (SELECT 1 FROM public.credit_transactions t2
+                  WHERE t2.user_id = a.user_id AND t2.request_id = a.request_id || ':refund');
+
+-- 0.6 042 öncesi (F14): habit_logs veya habits tablolarına bağımlı görünüm var mı? (beklenen: 0 satır)
+select distinct c.relname as dependent_relation, c.relkind
+  from pg_depend d
+  join pg_rewrite r on r.oid = d.objid
+  join pg_class c on c.oid = r.ev_class
+ where d.refobjid in ('public.habit_logs'::regclass, 'public.habits'::regclass)
+   and c.relname not in ('habit_logs', 'habits');
 ```
 
 ## 1. Uygulama sırası
@@ -43,6 +67,12 @@ select * from public.xp_drift();
 | 036 | `036_live_audit_hardening.sql` | **canlı denetimden öneri** (`LIVE_SCHEMA_AUDIT.md`): XP/seri (alışkanlık, gün) defteri — S11 çiftliğini kapatır; `weekly_xp` istemci yazımı kapanır; kullanılmayan/tetikleyici SECURITY DEFINER fonksiyonlarda EXECUTE alınır; grant hijyeni. 028–035'ten bağımsız. **Önce bir branch'te dene.** | yok (R01.03-b geri alma bundan sonra açılabilir); **038 ile birlikte** uygulanır: 036 tek başına silinen bir logun XP'sini `purged_xp`'ye taşımaz (DB2-06/07) | §2.9 | `supabase/rollbacks/036_live_audit_hardening.rollback.sql` — önce 038 geri alınır (varsa); **geri alma açıkları yeniden açar** (weekly_xp yazımı, istemci EXECUTE hakları), yalnız 036 branch denemesinde sorun çıkarsa kullanılır ve ardından F03 (038) uygulanamaz |
 | 037 | `037_today_bootstrap_rpc.sql` | tek gidiş-dönüşlü Bugün önyüklemesi `get_today_bootstrap(date)` (çağıranın kendi RLS bağlamında, SECURITY INVOKER; 028/029 tabloları yoksa `to_regclass` ile atlar) | yok (istemci RPC yoksa tablo okumalarına düşer: `todayBootstrapRepository.ts`, `isMissingRpcError`) | `ci.yml` bootstrap adımı (`get_today_bootstrap`) | `supabase/rollbacks/037_today_bootstrap_rpc.rollback.sql` |
 | 038 | `038_xp_streak_integrity.sql` | XP/seri bütünlüğü (F03): gün penceresi (sunucu `CURRENT_DATE - 15`..`+ 1`, istemci bugün ve önceki 14 gün), XP'yi yalnız sunucu hesaplar, günlük XP tavanı (2000), defter alışkanlığı silinse de kalır (sil-yeniden-yaz ve aynı adla yeniden oluşturma ikinci kez ödenmez), seri defterdeki ardışık günlerden, `streak_current`/`streak_best` istemciden yazılamaz, log silinince XP `purged_xp`'ye geçer, boss tetikleyicisi kapanır. **036 önkoşul** (betik kendisi denetler). Sıra 036 → 037 → 038; §0.4 `xp_drift()` boş değilse uygulanmaz. Pencere/tavan/çarpan değerleri OD-04 önerisidir. | yok | §2.11 | `supabase/rollbacks/038_xp_streak_integrity.rollback.sql` — 036'nınkinden ÖNCE; **XP sahteciliğini yeniden açar** (pencere, tavan, seri sütunları) |
+| 039 | `039_focus_point_hardening.sql` | Focus Point kredi bütünlüğü (F07): aynı (konuşma, `request_id`) için tek kullanıcı mesajı (`ai_messages_user_request_uniq`, önce yinelenen kopyalar silinir), iadesi yazılmamış başarısız AI isteklerine `refund_focus_points` ile tek seferlik iade, eski `spend_focus_points(integer, text)` istemcilere kapanır (036 ile aynı). İstemci sürümünden SONRA (§5). | yok | §2.12 | `supabase/rollbacks/039_focus_point_hardening.rollback.sql` |
+| 040 | `040_privilege_hygiene.sql` | Ayrıcalık, `search_path` ve hassas sütun hijyeni + F07-R3 (F09): 20 SECURITY DEFINER fonksiyonda `search_path` sabitlenir, anon yazma/`MAINTAIN` ve küresel `PUBLIC EXECUTE` kapanır, liderlik ve sıra RPC'leri oturum zorunlu ve 1..100 sınırlı olur, `profiles` kullanıcı adı şekil kısıtı (`NOT VALID`, bozuk adlar `archive_040` yedeğiyle onarılır), 028–031'in 10 tablosuna dar yetki, OAuth belirteç tablolarında istemci gizli sütun erişimi kapanır, `add_xp` ve abonelik yenilemesi satır kilidi alır, `ai_request_reconcile_stale` mod duyarlı ileti yazar, iptal edilen F13 tablolarında yazma kapanır ve 6 tablo `archive_f13` şemasına taşınır. Uygulamadan önce §3'teki üç ön sorguyu çalıştırın; 028–039 (özellikle 036, 038, 039) uygulanmış olmalı; sonra `select * from public.xp_drift();` 0 satır. | yok (Notion yeniden açılmadan önce `notion-sync` F45'te service-role'e taşınmalı) | §2.13 | `supabase/rollbacks/040_privilege_hygiene.rollback.sql` — en başta (039/038/036'dan önce) geri alınır; **güvenlik açıklarını yeniden açar** |
+| 041 | `041_rls_initplan_and_indexes.sql` | RLS performansı: 45 politika `(SELECT auth.uid())` biçimine geçer, 6 kopya politika düşer, `tasks` alt görev FK'si ON DELETE CASCADE olur, 26 yabancı anahtar indeksi eklenir, yinelenen `idx_habit_logs_habit_date` düşer; veri ve yetki değişmez | yok | §2.14 | `supabase/rollbacks/041_rls_initplan_and_indexes.rollback.sql` |
+| 042 | `042_numeric_measures_and_willpower.sql` | Ölçülebilir ondalık değerler ve atomik irade bütçesi (F14): `habit_logs.value` ve `habits.daily_goal` `numeric(12,2)` olur, `habit_xp_value(uuid, text, numeric)` istemciye kapalı (`SECURITY INVOKER`) kurulur, `spend_willpower(date, numeric, integer, boolean)` atomik harcama/iade RPC'si eklenir | yok — **ondalık kabul eden istemci sürümünden ÖNCE uygulanır** (§5) | §2.15 | `supabase/rollbacks/042_numeric_measures_and_willpower.rollback.sql` — kayıplı (kesirler tam sayıya yuvarlanır; önce yedek) |
+| 043 | `043_profile_time_zone.sql` | Kullanıcı saat dilimi ve yerel gün/hafta sınırları (F15, DB2-11): `profiles.time_zone` (1..64 IANA), `set_profile_time_zone(text)` (`pg_timezone_names` doğrulamalı RPC), `local_date_in_zone` ve `week_start_in_zone` (geçersiz/boş -> UTC), `fn_habit_log_guard` yerel gün penceresi, `track_weekly_xp` ve `get_weekly_leaderboard` yerel hafta sınırı. **038 önkoşul.** | yok (istemci RPC yoksa sessizce atlar, uygulanınca kendiliğinden çalışır; `LOG_TIMEZONE_ENABLED` 033'e bağlıdır ve ayrıdır) | §2.16 | `supabase/rollbacks/043_profile_time_zone.rollback.sql` — kayıtlı saat dilimleri düşer (uygulama bir sonraki açılışta yeniden bildirir) |
+| 044 | `044_ai_messages_and_retention.sql` | AI ileti yazım doğrulaması ve operasyonel saklama temizliği (F21, EDG-03/EDG-07/EDG-19/DB1-22/DB2-20): `ai_messages_insert_own` asistan satırlarını tamamlanmış `ai_requests` (`mode='coach'`, `status='completed'`, `left(r.response ->> 'reply', 8000) = ai_messages.content`) kaydına bağlar, `ai_requests_user_created_idx` kullanıcı başına 24s kota/eşzamanlılık indeksini kurar, `cleanup_old_ai_calls()` istemci EXECUTE haklarını kapatır, yalnız servis çağrılabilir `purge_ai_retention()` (30g `response`/`error` boşaltma, 400g bitmiş `ai_requests` + `request_id`li `credit_transactions` silme, 7g `ai_calls` silme) kurar. **039 ve 040 sonrası.** | yok (`COACH_ACTIONS_V2_ENABLED` bu fazda kapalı kalır; `pg_cron` zamanlaması sahip kararıdır — OD-25, §5) | §2.17 | `supabase/rollbacks/044_ai_messages_and_retention.rollback.sql` |
 
 ### Geri alma nasıl çalıştırılır
 
@@ -51,8 +81,8 @@ tek kullanımlık Postgres 17'de sınanır: ileri uygula, sondan başa geri al, 
 yeniden ileri uygula. **Canlıda hiçbiri çalıştırılmadı; yalnız sahip çalıştırır (OD-02).**
 
 1. Önce yedek (S1), sonra `select * from public.xp_drift();` (0 satır beklenir).
-2. Sıra **büyükten küçüğe**: 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 036'dan önce 038 geri alınır
-   (036 betiği, `fn_habit_log_guard` varken reddeder).
+2. Sıra **büyükten küçüğe**: 044 (F21), 043 (F15), 042 (F14), 041 (F10), 040 (F09), 039 (F07), 038 (F03), 037, 036, 035, 034, 033, 032, 031, 030, 029, 028. 044 en başta, ardından 043, 042, 041 ve 040,
+   036'dan önce de 038 geri alınır (036 betiği, `fn_habit_log_guard` varken reddeder).
 3. Her betik için **aynı oturumda** önce onay, sonra dosya. Onay değeri betiğin kendi numarası değilse betik `P0001` ile durur
    ve hiçbir şey değiştirmez:
 
@@ -143,12 +173,113 @@ from pg_proc p where p.proname in ('fn_habit_log_guard','fn_habit_log_set_xp','f
 select conname, convalidated from pg_constraint where conname = 'weekly_xp_xp_earned_sane';
 -- drift yine boş
 select * from public.xp_drift();
+
+-- 2.12 (039) sonrası doğrulama
+SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'ai_messages_user_request_uniq';  -- 1 satır
+SELECT count(*) FROM (SELECT 1 FROM public.ai_messages WHERE role = 'user' AND request_id IS NOT NULL
+                      GROUP BY conversation_id, request_id HAVING count(*) > 1) d;                            -- 0
+SELECT has_function_privilege('anon', 'public.spend_focus_points(integer, text)', 'EXECUTE') AS anon_exec,
+       has_function_privilege('authenticated', 'public.spend_focus_points(integer, text)', 'EXECUTE') AS auth_exec;  -- f, f
+SELECT * FROM public.xp_drift();                                                                               -- 0 satır
+
+-- 2.13 (040) sonrası doğrulama + kullanıcı adı kısıtını geçerli işaretleme
+SELECT p.oid::regprocedure FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'public' AND p.prosecdef
+   AND (has_function_privilege('anon', p.oid, 'EXECUTE')
+        OR NOT EXISTS (SELECT 1 FROM unnest(coalesce(p.proconfig, ARRAY[]::text[])) c WHERE c LIKE 'search_path=%')); -- 0 satır
+SELECT conname, convalidated FROM pg_constraint WHERE conname = 'profiles_username_shape';                     -- 1 satır
+-- §3 ön sorgusu incelendikten sonra sahip tarafından çalıştırılır:
+-- ALTER TABLE public.profiles VALIDATE CONSTRAINT profiles_username_shape;
+SELECT count(*) FROM information_schema.tables WHERE table_schema = 'archive_f13';                             -- 6
+SELECT * FROM public.xp_drift();                                                                               -- 0 satır
+
+-- 2.14 (041) çıplak auth.uid()/auth.role() çağrısı kalan politika (beklenen: 0 satır)
+select schemaname, tablename, policyname
+from pg_policies
+where schemaname in ('public', 'archive_f13')
+  and regexp_replace(coalesce(qual, '') || ' ' || coalesce(with_check, ''),
+        '\(\s*SELECT\s+auth\.(uid|role)\(\)\s+AS\s+(uid|role)\s*\)', '', 'gi') ~* 'auth\.(uid|role)\(\)';
+
+-- 2.14-b kopya politika kalmadı (beklenen: tasks 1, challenges 1, habit_templates 1)
+select tablename, count(*) as politika
+from pg_policies
+where schemaname = 'public' and tablename in ('tasks', 'challenges', 'habit_templates')
+group by 1 order by 1;
+
+-- 2.14-c weekly_xp'te istemci yazma politikası yok (beklenen: 0 satır)
+select policyname from pg_policies
+where schemaname = 'public' and tablename = 'weekly_xp' and policyname = 'System can manage weekly xp';
+
+-- 2.14-d alt görev kuralı (beklenen: confdeltype = 'c')
+select conname, confdeltype from pg_constraint where conname = 'tasks_parent_task_id_fkey';
+
+-- 2.14-e yinelenen indeks yok (beklenen: 0 satır) ve 26 yeni indeksten canlıda var olanlar
+select indexname from pg_indexes where schemaname = 'public' and indexname = 'idx_habit_logs_habit_date';
+select count(*) as yeni_indeks from pg_indexes where schemaname = 'public' and indexname in (
+  'ai_conversation_actions_conversation_idx', 'ai_conversation_actions_assistant_message_idx',
+  'ai_conversations_project_idx', 'deep_work_sessions_user_idx', 'focus_sessions_task_idx',
+  'focus_tasks_user_idx', 'goals_user_idx', 'habit_deletions_user_idx', 'habit_reminders_habit_idx',
+  'habits_cue_habit_idx', 'key_results_user_idx', 'okrs_user_idx', 'projects_user_idx',
+  'recovery_plans_source_log_idx', 'routine_items_routine_idx', 'routines_user_idx',
+  'tasks_parent_task_idx', 'tasks_project_idx');   -- beklenen: 18; 028-037 uygulandıysa ayrıca 8 indeks
+
+-- 2.14-f xp_drift hâlâ boş (beklenen: 0 satır)
+select * from public.xp_drift();
+
+-- 2.15 (042) sütun tipleri numeric(12,2), iki fonksiyon SECURITY INVOKER, ACL ve xp_drift kontrolü
+select table_name, column_name, data_type, numeric_precision, numeric_scale
+  from information_schema.columns
+ where table_schema = 'public'
+   and ((table_name = 'habit_logs' and column_name = 'value') or (table_name = 'habits' and column_name = 'daily_goal'));
+select p.oid::regprocedure as signature, p.prosecdef as security_definer
+  from pg_proc p
+ where p.pronamespace = 'public'::regnamespace and p.proname in ('habit_xp_value', 'spend_willpower')
+ order by 1;
+select has_function_privilege('authenticated', 'public.spend_willpower(date, numeric, integer, boolean)', 'execute') as authenticated_can_spend,
+       has_function_privilege('anon', 'public.spend_willpower(date, numeric, integer, boolean)', 'execute') as anon_can_spend,
+       has_function_privilege('authenticated', 'public.habit_xp_value(uuid, text, numeric)', 'execute') as authenticated_can_score;
+select * from public.xp_drift();
+
+-- 2.16 (043) profiles.time_zone, set_profile_time_zone, yerel gün/hafta yardımcıları, ACL ve xp_drift kontrolü
+select column_name, data_type from information_schema.columns
+ where table_schema = 'public' and table_name = 'profiles' and column_name = 'time_zone';
+select count(*) filter (where time_zone is null) as without_zone,
+       count(*) filter (where time_zone is not null) as with_zone
+  from public.profiles;
+select p.oid::regprocedure as signature, p.prosecdef as security_definer
+  from pg_proc p
+ where p.pronamespace = 'public'::regnamespace
+   and p.proname in ('set_profile_time_zone', 'local_date_in_zone', 'week_start_in_zone', 'track_weekly_xp', 'get_weekly_leaderboard', 'fn_habit_log_guard')
+ order by 1;
+select has_function_privilege('anon', 'public.set_profile_time_zone(text)', 'execute') as anon_can_set,
+       has_function_privilege('authenticated', 'public.set_profile_time_zone(text)', 'execute') as authenticated_can_set;
+select name from pg_timezone_names where name in ('Europe/Istanbul', 'America/New_York', 'Pacific/Auckland', 'UTC') order by 1;
+select * from public.xp_drift();
+
+-- 2.17 (044) ai_messages_insert_own asistan kısıtı, ai_requests indeksi, purge_ai_retention ve cleanup_old_ai_calls ACL, xp_drift kontrolü
+select policyname, with_check from pg_policies
+ where schemaname = 'public' and tablename = 'ai_messages' and policyname = 'ai_messages_insert_own';
+select indexname from pg_indexes
+ where schemaname = 'public' and indexname = 'ai_requests_user_created_idx';   -- 1 satır
+select has_function_privilege('anon', 'public.purge_ai_retention()', 'execute') as anon_purge,
+       has_function_privilege('authenticated', 'public.purge_ai_retention()', 'execute') as auth_purge,
+       has_function_privilege('service_role', 'public.purge_ai_retention()', 'execute') as svc_purge,
+       has_function_privilege('anon', 'public.cleanup_old_ai_calls()', 'execute') as anon_cleanup,
+       has_function_privilege('authenticated', 'public.cleanup_old_ai_calls()', 'execute') as auth_cleanup;  -- f, f, t, f, f
+select * from public.xp_drift();
+
+-- 2.18 (F36 / OD-22) tasks.time_block_start değer biçimi dağılımı (salt-okunur; ajan çalıştırmaz)
+select time_block_start, count(*)
+from public.tasks
+where time_block_start is not null
+group by 1
+order by 2 desc
+limit 20;
 ```
 
-## 3. BLOCKED — tanımı repoda olmayan nesneler (yalnız okuma sorguları)
+## 3. BLOCKED / ÖN SORGU — tanımı repoda olmayan ya da 040 öncesi denetlenecek nesneler (yalnız okuma sorguları)
 
-Bu nesnelere dokunan SQL **yazılmadı**; gerçek tanımlar gelmeden yazılırsa körlemesine
-olur. Önce aşağıdakileri çalıştırıp çıktıyı paylaşın.
+Bu nesnelere dokunan körlemesine SQL **yazılmadı**; gerçek tanımlar/sayımlar görülmeden uygulama yapılmaz. Önce aşağıdakileri çalıştırıp çıktıyı kontrol edin.
 
 ```sql
 -- S11 (R01.03-b log geri alma): silmede XP geri alınıyor mu?
@@ -159,7 +290,47 @@ where n.nspname = 'public' and p.proname in ('fn_habit_log_award', 'fn_habit_log
 select tgname, pg_get_triggerdef(t.oid)
 from pg_trigger t join pg_class c on c.oid = t.tgrelid
 where c.relname = 'habit_logs' and not t.tgisinternal;
+
+-- DB1-13: auth.users üzerindeki profil tetikleyicisi canlıda var mı? (salt okunur)
+select t.tgname, pg_get_triggerdef(t.oid) as definition
+from pg_trigger t
+where t.tgrelid = 'auth.users'::regclass and not t.tgisinternal;
+
+-- DB1-11: 040'ın onaracağı kullanıcı adları (salt okunur; sayı ve uzunluklar)
+select count(*) filter (where username is not null) as with_name,
+       count(*) filter (where username <> btrim(username)
+                           or char_length(username) not between 3 and 32
+                           or username ~ '[[:cntrl:]<>]') as will_be_repaired
+from public.profiles;
+
+-- DB2-12: 040'ın archive_f13 şemasına taşıyacağı tabloların satır sayısı (salt okunur)
+select 'user_pets' as t, count(*) from public.user_pets
+union all select 'user_inventory', count(*) from public.user_inventory
+union all select 'user_quests', count(*) from public.user_quests
+union all select 'user_skills', count(*) from public.user_skills
+union all select 'boss_contributors', count(*) from public.boss_contributors
+union all select 'user_challenges', count(*) from public.user_challenges;
 ```
+
+Birinci `DB1-13` sorgusu boş dönerse `auth.users` üzerinde profil tetikleyicisi YOKTUR; bu durumda yeni kayıtlar profil satırı almaz (istemci `fetchOrCreateProfile` ile yaratır, `add_xp` 040'tan sonra profil yoksa satırı kendisi oluşturur). Tetikleyici ancak sahip onayıyla ayrı bir migrasyonla eklenir. `notion-sync`, 040'tan sonra `access_token` okuyamaz; Notion yeniden açılmadan önce service-role'e taşınmalıdır (F45).
+
+```sql
+-- F08 (BLD-12): geçmişte izlenen test betiklerindeki hesapların canlı auth.users üzerinde salt-okunur kontrolü
+select id, email, created_at, last_sign_in_at
+from auth.users
+where email in (
+  'demo@aderyth.app',
+  'testci@habitapp.dev',
+  'testci@gmail.com',
+  'testci@supatest.com'
+)
+or email like 'dev_%@aderyth.app'
+or email like 'aitest%@gmail.com';
+```
+
+Satır dönerse ilgili test hesaplarının parolalarını sıfırlayın ya da Supabase Auth panelinden silin.
+
+**F22 (OD-19) — Supabase Auth Redirect URL İzin Listesi (SQL yok, Dashboard ayarı):** Kayıt onayı (`signUp` / `resend`) ve parola kurtarma (`resetPasswordForEmail`) bağlantılarının uygulamaya dönebilmesi için **Supabase Dashboard → Authentication → URL Configuration → Redirect URLs** izin listesine `atlas://**` (üretim native), **yalnızca** geliştirme projesinde `exp://**`, ve OD-12 sonrası `https://<web-sitesi>/reset-password` ile `https://<web-sitesi>/login` adreslerini ekleyin (`frontend/vercel.json` SPA rewrite karşılığı aktif olmalı; Site URL çalışan bir web adresi olmalı).
 
 ## 4. KD-10 / KD-11 — salt-okunur sayımlar (S4; backfill ayrı karar)
 
@@ -193,6 +364,19 @@ where h.tracking_type in ('numeric','duration')
 | 1 | 028, 029, 030, 031 uygulandı + §2.1–2.4 doğrulandı | yok — istemci tabloları fail-open okur (PGRST205/42P01), tablo gelince kendiliğinden açılır |
 | 2 | 033 uygulandı + §2.6 | `LOG_TIMEZONE_ENABLED = true` |
 | 3 | 032 → 034 → 035 uygulandı + §2.8 `has_lighten_week = true` **ve** `generate-routine` edge function deploy edildi (S3) | `COACH_ACTIONS_V2_ENABLED = true` |
+| 4 | 043 uygulandı + §2.16 | yok — istemci RPC yoksa sessizce atlar, uygulanınca kendiliğinden çalışır (`LOG_TIMEZONE_ENABLED` 033'e bağlıdır ve bu fazla çevrilmez) |
+| 5 | 044 uygulandı + §2.17 + `generate-routine`, `delete-account`, `subscription-webhook` Edge deploy (OD-03 / S3) | yok — `COACH_ACTIONS_V2_ENABLED` yalnız 032 + 034 + 035 uygulandıktan ve `generate-routine` deploy edildikten sonra çevrilir (adım 3) |
+
+**F21 (OD-25) — Günlük `pg_cron` saklama temizliği (sahip onayıyla, 044 uygulandıktan sonra):** 044 yalnız `public.purge_ai_retention()` fonksiyonunu kurar; zamanlayıcıyı kendiliğinden açmaz. `pg_cron` uzantısı canlı projede etkinleştirildikten sonra Dashboard SQL editöründe bir kez çalıştırın (ve bu çalıştırılana dek uygulama içi gizlilik ekranında 30/400 gün otomatik silme sözü yayınlanmaz):
+
+```sql
+-- OD-25 (sahip çalıştırır; her gece 03:17 UTC):
+select cron.schedule('purge-ai-retention', '17 3 * * *', $$select public.purge_ai_retention()$$);
+```
+
+**F21 (OD-03 / S3 & OD-19) — Edge Function deploy sırası:** `supabase/config.toml` içindeki `[functions.*]` blokları (`generate-routine`, `delete-account`, `notion-sync`, `subscription-webhook`) `DEPLOYMENT.json` ile birebir eşleşir (`import_map = "./functions/deno.json"`). Sahip `bash supabase/predeploy_guard.sh` doğrulamasından sonra yalnız `deploy: true` olan bu dört fonksiyonu deploy eder ve `node tools/verify-edge-deployment.mjs` ile canlı eşliği doğrular (`deploy: false` olan `google-auth`, `notion-auth`, `spotify-auth` deploy edilmez). Auth tarafında e-posta onayı, parola kuralları ve bot/oran koruması §9 tablosundan (OD-19) denetlenir.
+
+039'u uygulamadan ÖNCE istemci sürümü mağazalarda olmalı; sonra 039; Edge deploy (S3) sıradan bağımsızdır. **042 (F14) ise tersine ondalık girdiyi kabul eden istemci sürümünden ÖNCE uygulanır** (böylece ondalık `daily_goal` ve `habit_logs.value` yazımları veritabanında reddedilmez ve `spend_willpower` atomik RPC hazır olur); hemen ardından `select * from public.xp_drift();` 0 satır olmalıdır. **043 (F15), 038 uygulandıktan sonra uygulanır; ardından `select * from public.xp_drift();` 0 satır; `LOG_TIMEZONE_ENABLED` 033'e bağlıdır ve bu fazla çevrilmez.** Her adımdan sonra `select * from public.xp_drift();` 0 satır.
 
 Mevcut beş kapı (`SPOTIFY_OAUTH_ENABLED`, `NOTION_INTEGRATION_ENABLED`, `GOOGLE_CALENDAR_INTEGRATION_ENABLED`,
 `PAID_SUBSCRIPTIONS_ENABLED`, `PUBLIC_SITE_URLS_LIVE`) bu migration'larla **ilgisizdir** ve kapalı kalır.
@@ -232,25 +416,32 @@ gerçek `tasks` tanımı gelince bir FK + sahiplik kontrolü ayrı migration'la 
 
 F01 ile `db-migrations-verify` işi (Postgres 17, `ci.yml`) son adım olarak `bash supabase/tests/run.sh`
 koşar. Bu bölüm yalnız o testleri anlatır; **burada çalıştırılacak bir sorgu yoktur ve canlıya hiçbir
-şey yazılmaz.** Testler geçici Postgres'te `live_schema.sql` + 028–038 üzerinde koşar (bugünkü canlı
-değil: canlıda 028–038 uygulanmamıştır). Canlıdaki açıklar (örneğin `weekly_xp`, TST-V01) 036 sizin
-tarafınızdan uygulanana kadar canlıda açık kalır; test CI'da 036 uygulanmış halin kapalı olduğunu kanıtlar,
+şey yazılmaz.** Testler geçici Postgres'te `live_schema.sql` + 028–041 üzerinde koşar (bugünkü canlı
+değil: canlıda 028–041 uygulanmamıştır). Canlıdaki açıklar (örneğin `weekly_xp`, TST-V01) 036/040 sizin
+tarafınızdan uygulanana kadar canlıda açık kalır; test CI'da uygulanmış halin kapalı olduğunu kanıtlar,
 canlıyı denetlemez. Canlı doğrulama §2'dir.
 
 | Dosya | Ne denetler | Bugünkü beklenti |
 |---|---|---|
 | `01_client_cannot_write_server_tables.sql` | `authenticated` / `anon` rolü `weekly_xp`, `profiles.total_xp·level·coins`, `user_subscriptions`, `credit_transactions` tablolarına yazamaz (SQLSTATE 42501); sahibin kendi `user_subscriptions` satırını silememesi ile `credit_transactions` ve `ai_requests` satırlarını değiştirememesi (tablo yetkisi açıktır, satırı RLS korur: hiçbir satır değişmez); bu "satır değişmedi" denemelerinin boş geçmediğini gösteren pozitif kontroller | 22 sonuç, hepsi PASS |
-| `02_security_definer_hygiene.sql` | anon'un `public` SECURITY DEFINER fonksiyonunda EXECUTE hakkı yok (`T02a`); hepsinde `search_path` sabit (`T02b`); yalnız-servis fonksiyonlar istemciye kapalı (`T02c`–`T02e`) | `T02a` PASS; `T02b` 20 FAIL (listede) |
+| `02_security_definer_hygiene.sql` | anon'un `public` SECURITY DEFINER fonksiyonunda EXECUTE hakkı yok (`T02a`); hepsinde `search_path` sabit (`T02b`); yalnız-servis fonksiyonlar istemciye kapalı (`T02c`–`T02e`) | 5 PASS (`T02a.all` ve `T02b.all` dahil; F09 kapattı) |
 | `03_xp_drift_zero.sql` | gerçek `habit_logs` yazma / güncelleme / silme sonrası `xp_drift()` boş (tetikleyici zinciri olduğu gibi) | 4 PASS |
 | `04_today_bootstrap_isolation.sql` | `get_today_bootstrap` iki kullanıcı izolasyonu, doğrudan tablo izolasyonu, JWT'siz çağrının fonksiyonun KENDİ `authentication required` hatasıyla reddi (bekçi satırı kalkarsa başka bir 42501 gelir ve test kırmızı olur), anon çağrı reddi | 6 PASS |
 | `05_concurrency_spend.sh` | 8 eşzamanlı oturumla `spend_focus_points_v2` (tek kazanan, bakiye eksiye düşmez, aynı `request_id` tek borç) ve `ai_request_begin` (tek `claimed`) yarışı | 5 PASS + 1 INFO |
 | `06_xp_integrity_038.sql` | 038 (F03): `authenticated` rolüyle `weekly_xp` yazımı, gün penceresi (−16/+2 red, −15/+1 kabul), istemci `xp` değerinin yok sayılması, sil-yeniden-yaz ve aynı adla yeniden oluşturmanın ikinci kez ödenmemesi, günlük tavan (25 x 100 -> 2000), seri sütunlarının istemciden yazılamaması, done/miss/partial gidip gelmenin seriyi bir kez artırması, boşluğun seriyi sıfırlaması ve x1,2 basamağı, silmelerin XP'yi bir kez `purged_xp`'ye taşıması, boss tetikleyicisinin kalkması, tetikleyici fonksiyonlarının istemciye kapalı ve `search_path`'inin sabit olması, `weekly_xp` makullük kısıtı, log anahtarının taşınamaması, eski günde not düzenlemenin serbest ama durum değişikliğinin reddi, notla yeniden puanlama olmaması; her senaryodan sonra `xp_drift()` boş | 24 PASS |
+| `07_focus_point_039.sql` | 039 (F07): aynı `(conversation_id, request_id)` için ikinci kullanıcı mesajı reddedilir (`23505`), asistan yanıtı ve başka konuşma serbesttir, çapraz kiracı mesaj okuma/yazma ve eski/servis FP RPC'leri istemciye kapalıdır, `xp_drift()` boş | 8 PASS |
+| `08_privilege_hygiene_040.sql` | 040 (F09 + F07-R3): anon yazma/`MAINTAIN` ve `PUBLIC EXECUTE` kapalı, 20 `SECURITY DEFINER` `search_path` sabit, liderlik ve sıra RPC'leri oturum zorunlu + 1..100 sınırlı + yalnız kendi sırası, `profiles` dar sütun INSERT + kullanıcı adı şekil kısıtı + `handle_new_user` temizliği, 028–031'in 10 tablosu dar yetki ve RLS, OAuth belirteç tabloları gizli sütun yalıtımı, 17 F13 tablosu yazma yasağı ve 6 tablonun `archive_f13`'e taşınması, `add_xp` ve abonelik yenileme satır kilidi, `ai_request_reconcile_stale` mod duyarlı ileti (`routine` vs diğer modlar), `get_today_bootstrap` salt-okunur (`STABLE`), `xp_drift()` boş | 37 PASS |
+| `09_rls_initplan_041.sql` | 041 (F10): `public` ve `archive_f13` şemalarında çıplak `auth.uid()`/`auth.role()` politikası yok (`InitPlan` plan şekli ve negatif kontroller dahil), çakışan kopya politikalar (`tasks`, `challenges`, `habit_templates`, `weekly_xp`, `user_challenges`) kalktı, `anon` katalog okuması kapalı, 26 FK öncü indeksi var, yinelenen `idx_habit_logs_habit_date` düştü, `tasks_parent_task_id_fkey` `ON DELETE CASCADE` ve bölücü düz yükü çalışıyor, `xp_drift()` boş | ~69 PASS |
+| `10_numeric_and_willpower_042.sql` | 042 (F14): `habit_logs.value` ve `habits.daily_goal` `numeric(12,2)` (yuvarlama ve aralık reddi dahil), `habit_xp_value(uuid, text, numeric)` puanlaması ve istemci erişim yasağı, `get_today_bootstrap` JSON sayı taşıması, `spend_willpower` harcama/birikim/aşım reddi/clamp/iade tabanı/girdi sınırları/kiracı yalıtımı/`anon` ve kimliksiz çağrı reddi, `xp_drift()` boş | 26 PASS |
+| `10_willpower_concurrency_042.sh` | 042 (F14): 8 eşzamanlı oturumla `spend_willpower` sert harcama yarışı (tek kazanan, 7 red, `used = 8`) ve `clamp` yarışı (`used = 15`, 0 hata, `active_count = 8`) | 2 PASS |
+| `11_profile_time_zone_043.sql` | 043 (F15): `profiles.time_zone` sütunu ve `1..64` CHECK, `local_date_in_zone` ve `week_start_in_zone` sabit anlar ve DST kenarları, `set_profile_time_zone` geçerli IANA kaydı / idempotensi / bilinmeyen ve kısaltma reddi / doğrudan `UPDATE` yasağı / kiracı yalıtımı / `anon` reddi, `fn_habit_log_guard` uç saat dilimlerinde yerel gün penceresi (`Pacific/Kiritimati`, `Pacific/Pago_Pago`), geçersiz kayıtlı bölgede UTC'ye düşüş, `track_weekly_xp` ve `get_weekly_leaderboard` yerel hafta uyumu, `xp_drift()` boş | 25 PASS |
+| `12_ai_retention_044.sql` | 044 (F21): `ai_messages_insert_own` sahte/başarısız/yanlış mod/başka kiracı `assistant` mesajı reddi (`42501`), geçerli `coach` + `succeeded` `assistant` ve `user` mesajı kabulü, `purge_ai_retention()` 30g yanıt metni boşaltma + 400g bitmiş `ai_requests` ve AI `credit_transactions` silme (`in_progress` ve AI dışı işlemler korunur) + 7g `ai_calls` silme + idempotensi, `purge_ai_retention` ve `cleanup_old_ai_calls` istemci erişim yasağı (`service_role` açık), `ai_requests_user_created_idx` varlığı, `xp_drift()` boş | 31 PASS |
 
 **`supabase/tests/expected_failures.txt` ne demek.** Bilinen açıkların test adı listesidir; her satır bulgu
 kimliğini taşır ve başlıkta kapatan faz yazar. Koşucu iki yönlü karşılaştırır: listede olmayan bir test kırmızıysa
 `UNEXPECTED FAILURES`, listede olup yeşile dönmüş bir satır kalmışsa `STALE` ile CI kırmızı olur. Yani liste yalnız
-küçülebilir; bir açığı kapatan migration aynı commit'te kendi satırlarını siler. Bugün listede 20 satır vardır
-(`T02b_search_path.*`: `search_path` sabitlenmemiş 20 SECURITY DEFINER fonksiyon); hepsini F09 kapatır. Sizin
+küçülebilir; bir açığı kapatan migration aynı commit'te kendi satırlarını siler. F09 (`040_privilege_hygiene.sql`)
+20 `T02b_search_path.*` satırının tamamını sabitleyip sildiği için liste artık boştur (`0` beklenen kırmızı). Sizin
 canlıya uyguladığınız bir migration bu listeyi değiştirmez: liste canlıyı değil CI'daki şemayı anlatır.
 
 **Yerel koşum (yalnız geçici veritabanı).** Koşucu `PGHOST` yerel değilse (`127.0.0.1`, `localhost`, `::1`),
@@ -274,5 +465,19 @@ docker rm -f aderyth-pg17
 
 Çıkış kodları: `0` başarılı; `1` beklenmeyen kırmızı ya da bayat liste satırı; `2` `REFUSED` (yerel olmayan ya da
 CI'daki geçici veritabanına benzemeyen hedef); `3` bir test dosyası fixture / tetikleyici / sözdizimi hatasıyla düştü ya da
-veritabanına ulaşılamadı (bulgudur, fixture gevşetilmez); `4` sonuç akışı kullanılamaz (30'dan az, ayrıştırılamayan,
+veritabanına ulaşılamadı (bulgudur, fixture gevşetilmez); `4` sonuç akışı kullanılamaz (140'tan az, ayrıştırılamayan,
 tekrarlanan ya da hiç rapor vermeyen test ya da `T02a` / `T02b` sonuç ailesi).
+
+## 9. Auth ve API ayarları — salt-okunur kontrol listesi
+
+Sahip dashboard'da bakar; ajan hiçbir canlı ayarı değiştirmez; sonuçlar OD-19'a girdi olur:
+
+| Ayar | `supabase/config.toml` (yerel, 041 sonrası) | Dashboard yolu | Beklenen canlı değer | Sahip bildirir |
+|---|---|---|---|---|
+| E-posta onayı | `enable_confirmations = true` (`[auth.email]`) | Authentication → Sign In / Providers → Email → "Confirm email" | açık | ☐ |
+| Parola değişiminde yeniden doğrulama | `secure_password_change = true` | Authentication → Sign In / Providers → Email | açık (kurtarma bağlantısı akışı etkilenmez) | ☐ |
+| Asgari parola uzunluğu | `minimum_password_length = 6` (istemci tabanı ile aynı; yükseltme OD-19) | Authentication → Sign In / Providers → Email → "Minimum password length" | 6 ya da OD-19 kararı | ☐ |
+| Parola gereksinimleri | `password_requirements = ""` | aynı sayfa | boş ya da OD-19 kararı | ☐ |
+| Bot koruması | yok (yorum satırı `[auth.captcha]`; F21 ekler) | Authentication → Attack Protection → CAPTCHA | OD-19 kararı | ☐ |
+| Kayıt oran sınırı | `sign_in_sign_ups = 30` (yerel) | Authentication → Rate Limits | OD-19 kararı | ☐ |
+| Açık şemalar | `schemas = ["public"]` | Project Settings → API → Exposed schemas | `graphql_public` kaldırılabilir (istemci GraphQL çağırmaz) | ☐ |

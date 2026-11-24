@@ -1,9 +1,11 @@
 import { colors, alphaHex, hexA } from '../../lib/tokens';
-import { AtmosphericScreenCanvas, ChapterDivider, EditorialBanner, EmbeddedFiligree } from '../../components/ui';
+import { EditorialBanner } from '../../components/ui';
+import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { currentUser } from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, startOfWeek, endOfWeek, subWeeks, eachDayOfInterval } from 'date-fns';
@@ -33,7 +35,13 @@ import {
   loadWeeklyReflection as fetchWeeklyReview,
   saveWeeklyReflection as upsertWeeklyReview,
 } from '../../services/reviewService';
-import { sessionsSince as fetchFocusSessionsSince } from '../../services/focusService';
+import { sessionsBetween } from '../../services/focusService';
+import TimeDistributionBar from '../../components/review/TimeDistributionBar';
+import {
+  buildTimeDistribution,
+  habitDurationMinutes,
+  type TimeDistribution,
+} from '../../lib/timeDistribution';
 
 function getWeekKey(date = new Date()) {
   return format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -150,17 +158,20 @@ export default function WeeklyReviewScreen() {
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [habitCompletionRate, setHabitCompletionRate] = useState(0);
+  const [habitCompletionRate, setHabitCompletionRate] = useState<number | null>(null);
   const [focusMinutes, setFocusMinutes] = useState(0);
   const [badge, setBadge] = useState<ReportBadge | null>(null);
   const [autoMetrics, setAutoMetrics] = useState<AutoMetrics>(EMPTY_AUTO_METRICS);
   // R07.04 — amount/duration per measured habit, from the R01 engine.
   const [measured, setMeasured] = useState<MeasuredRow[]>([]);
+  const [weekTime, setWeekTime] = useState<TimeDistribution | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
   const targetDate = subWeeks(new Date(), weekOffset);
   const weekKey = getWeekKey(targetDate);
+  const currentWeekKeyRef = useRef(weekKey);
+  currentWeekKeyRef.current = weekKey;
   const { start, end } = getWeekRange(targetDate);
   const isCurrentWeek = weekOffset === 0;
   // R05.07 — routine sessions, from the summary each session stored when it finished.
@@ -197,7 +208,7 @@ export default function WeeklyReviewScreen() {
   useEffect(() => {
     void loaders.current.loadReview();
     void loaders.current.loadWeekMetrics();
-  }, [weekOffset, habits.length, tasks.length]);
+  }, [weekOffset, habits.length, tasks.length, routineHistory.length]);
 
   async function loadReview() {
     const user = await currentUser();
@@ -224,29 +235,44 @@ export default function WeeklyReviewScreen() {
   }
 
   async function loadWeekMetrics() {
+    const keyAtStart = weekKey;
     const user = await currentUser();
     if (!user) {
-      setHabitCompletionRate(0);
+      if (keyAtStart !== currentWeekKeyRef.current) return;
+      setHabitCompletionRate(null);
       setFocusMinutes(0);
-      setBadge(reportBadge({ habitRate: 0, focusMinutes: 0, completedTasks: completedTasks.length }));
+      setBadge(reportBadge({ habitRate: null, focusMinutes: 0, completedTasks: completedTasks.length }));
       setAutoMetrics(EMPTY_AUTO_METRICS);
+      setWeekTime(null);
       return;
     }
 
     const [logsRes, sessionsRes, recoveryRes] = await Promise.all([
       logsForPeriod({ start, end }),
-      fetchFocusSessionsSince({ sinceIso: start }),
+      sessionsBetween({ startYmd: start, endYmd: end }),
       recoveryForPeriod({ start, end }),
     ]);
 
-    const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end) : 0;
-    // `fetchFocusSessionsSince` has no upper bound -- clip to this week's `end`
-    // client-side, same window `fetchFocusSecondsForReview` used to filter server-side.
-    const weekSessions = sessionsRes.ok
-      ? sessionsRes.data.filter((sess: { started_at: string }) => sess.started_at <= `${end}T23:59:59`)
-      : [];
+    if (keyAtStart !== currentWeekKeyRef.current) return;
+
+    const rate = logsRes.ok ? calculateHabitCompletionRate(habits, logsRes.data, start, end, { asOf: new Date() }) : null;
+    const weekSessions = sessionsRes.ok ? sessionsRes.data : [];
     const minutes = focusMinutesFromSessions(weekSessions);
     const nextBadge = reportBadge({ habitRate: rate, focusMinutes: minutes, completedTasks: completedTasks.length });
+
+    const todayYmd = ymd(new Date());
+    const clampedEnd = end < todayYmd ? end : todayYmd;
+    const habitDur = logsRes.ok
+      ? habitDurationMinutes(habits, logsRes.data, { start, end: clampedEnd })
+      : null;
+    setWeekTime(
+      buildTimeDistribution({
+        focusMinutes: sessionsRes.ok ? minutes : null,
+        routineMinutes: routines.activeMinutes,
+        habitMinutes: habitDur ? habitDur.minutes : null,
+        excludedHabits: habitDur ? habitDur.excluded : 0,
+      }),
+    );
 
     setHabitCompletionRate(rate);
     setFocusMinutes(minutes);
@@ -310,7 +336,7 @@ export default function WeeklyReviewScreen() {
 
       setSavedAt(format(new Date(), 'dd.MM.yyyy'));
     } catch (error) {
-      Alert.alert('Hata', error instanceof Error ? error.message : 'Kayıt başarısız');
+      void notify('Hata', error instanceof Error ? error.message : 'Kayıt başarısız');
     } finally {
       setSaving(false);
     }
@@ -366,7 +392,12 @@ export default function WeeklyReviewScreen() {
             <Text style={s.metricLabel}>Görev{'\n'}Tamamlandı</Text>
           </View>
           <View style={s.metric}>
-            <Text style={[s.metricValue, { color: colors.success }]}>{habitCompletionRate}%</Text>
+            <Text
+              style={[s.metricValue, { color: habitCompletionRate === null ? colors.textDim : colors.success }]}
+              accessibilityLabel={habitCompletionRate === null ? 'Alışkanlık oranı: veri yok' : `Alışkanlık oranı: yüzde ${habitCompletionRate}`}
+            >
+              {habitCompletionRate === null ? '—' : `${habitCompletionRate}%`}
+            </Text>
             <Text style={s.metricLabel}>Alışkanlık{'\n'}Oran</Text>
           </View>
           <View style={s.metric}>
@@ -398,7 +429,7 @@ export default function WeeklyReviewScreen() {
               label="Toplam Tamamlama"
               value={autoMetrics.totalCompletions != null ? String(autoMetrics.totalCompletions) : 'Veri yok'}
             />
-            <AutoMetricTile label="Alışkanlık Tamamlama" value={`%${habitCompletionRate}`} />
+            <AutoMetricTile label="Alışkanlık Tamamlama" value={habitCompletionRate != null ? `%${habitCompletionRate}` : 'Veri yok'} />
             <AutoMetricTile
               label="Görev Tamamlama"
               value={autoMetrics.taskCompletionRate != null ? `%${autoMetrics.taskCompletionRate}` : 'Veri yok'}
@@ -412,6 +443,15 @@ export default function WeeklyReviewScreen() {
             <AutoMetricTile label="Aşırı Yüklenme Günü" value={`${autoMetrics.overloadDays} gün`} />
           </View>
         </View>
+
+        {weekTime && (
+          <View style={s.section}>
+            <TimeDistributionBar
+              distribution={weekTime}
+              weekLabel={isCurrentWeek ? 'Bu hafta' : 'O hafta'}
+            />
+          </View>
+        )}
 
         <ChapterDivider source={DECOR.dividerSundial} label="HAFTALIK ÖLÇÜM" />
         <MeasuredReportSection rows={measured} />
@@ -509,7 +549,7 @@ const s = StyleSheet.create({
   autoMetricLabel: { fontSize: 9.5, color: colors.textFaint, textAlign: 'center', lineHeight: 12 },
   taskItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 6 },
   taskTitle: { flex: 1, fontSize: 14, color: colors.textDim },
-  moreText: { fontSize: 12, color: colors.textGhost, paddingLeft: 4, marginTop: 4 },
+  moreText: { fontSize: 12, color: colors.textFaint, paddingLeft: 4, marginTop: 4 },
   questionCard: { marginBottom: 14 },
   questionLabel: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 8 },
   questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },

@@ -1,7 +1,9 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+jest.mock('expo-sqlite', () => require('../helpers/sqliteAdapter').createExpoSqliteModule());
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SQLite from 'expo-sqlite';
+import { resetAccountMemory } from '../../lib/accountScope';
 import { clearReadCacheMemory } from '../../lib/localReadCache';
 import { coreOutbox } from '../../services/coreOutbox';
 import { bootstrapTodayScreen } from '../../services/todayBootstrapService';
@@ -10,6 +12,8 @@ import { useLogStore } from '../../store/logStore';
 import { useRecoveryStore } from '../../store/recoveryStore';
 import { useTaskStore } from '../../store/taskStore';
 import { useWillpowerStore } from '../../store/willpowerStore';
+import { readSource, sqlKeywordsOf, stripComments } from '../helpers/sourceText';
+import { buildTodayBootstrapFixture } from '../helpers/todayBootstrapFixture';
 
 const mockRpcState: {
   result: { data: unknown; error: { message: string; code?: string } | null; status: number };
@@ -44,10 +48,11 @@ jest.mock('../../lib/supabase', () => ({
   },
 }));
 
-describe('Item #5 — Atomic Single-RTT Today Bootstrap RPC (get_today_bootstrap)', () => {
+describe('Atomic Single-RTT Today Bootstrap RPC (get_today_bootstrap)', () => {
   beforeEach(async () => {
     mockRpcState.calls.length = 0;
     mockFromCalls.length = 0;
+    resetAccountMemory('user_changed');
     coreOutbox.reset();
     clearReadCacheMemory();
     await AsyncStorage.clear();
@@ -74,82 +79,7 @@ describe('Item #5 — Atomic Single-RTT Today Bootstrap RPC (get_today_bootstrap
     mockRpcState.result = {
       status: 200,
       error: null,
-      data: {
-        today,
-        habits: [
-          {
-            id: 'h1',
-            user_id: 'u1',
-            name: 'Sabah Koşusu',
-            status: 'active',
-            behavior_type: 'positive',
-            tracking_type: 'boolean',
-            frequency_config: { kind: 'daily' },
-            willpower_cost: 2,
-            difficulty: 2,
-            estimated_minutes: 20,
-            created_at: '2026-10-01T08:00:00Z',
-          },
-        ],
-        today_logs: [
-          {
-            id: 'l1',
-            habit_id: 'h1',
-            user_id: 'u1',
-            completed_at: today,
-            state: 'done',
-            value: 1,
-            xp: 10,
-            is_completed: true,
-          },
-        ],
-        period_logs: [
-          { habit_id: 'h1', completed_at: today, state: 'done', value: 1 },
-        ],
-        tasks: [
-          {
-            id: 't1',
-            user_id: 'u1',
-            title: 'Mimari raporu tamamla',
-            status: 'pending',
-            priority: 'high',
-            list_type: 'inbox',
-            due_date: today,
-            completed: false,
-            created_at: '2026-10-31T09:00:00Z',
-          },
-        ],
-        willpower: {
-          user_id: 'u1',
-          state_date: today,
-          daily_budget: 15,
-          used: 3,
-          focus_capacity: 3,
-          active_count: 1,
-        },
-        recovery_plans: [
-          {
-            id: 'rp1',
-            user_id: 'u1',
-            habit_id: 'h1',
-            source_date: '2026-10-30',
-            target_date: today,
-            strategy: 'micro_version',
-            status: 'planned',
-            created_at: '2026-10-30T21:00:00Z',
-          },
-        ],
-        time_off_available: true,
-        pauses: [
-          { id: 'p1', habit_id: 'h1', kind: 'pause', start_date: '2026-11-05', end_date: '2026-11-07' },
-        ],
-        goal_versions: [],
-        checklist_available: true,
-        checklist_items: [
-          { id: 'ci1', habit_id: 'h1', title: 'Su iç', required: true, position: 0, created_at: '2026-10-01', archived_at: null },
-        ],
-        checklist_checks: [],
-      },
+      data: buildTodayBootstrapFixture(today),
     };
 
     const boot = await bootstrapTodayScreen(today);
@@ -167,6 +97,10 @@ describe('Item #5 — Atomic Single-RTT Today Bootstrap RPC (get_today_bootstrap
     expect(useTaskStore.getState().tasks).toHaveLength(1);
     expect(useWillpowerStore.getState().state?.used).toBe(3);
     expect(useRecoveryStore.getState().plans).toHaveLength(1);
+
+    // Wait for fire-and-forget SQLite cache write to settle before testing cold restart
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 10));
 
     // Offline cold restart: hydrates from SQLite SWR snapshot without hitting PostgREST
     clearReadCacheMemory();
@@ -186,10 +120,13 @@ describe('Item #5 — Atomic Single-RTT Today Bootstrap RPC (get_today_bootstrap
     expect(useTaskStore.getState().tasks).toHaveLength(1);
   });
 
-  it('falls back cleanly when migration 037 is not yet applied on a frozen DB (PGRST202)', async () => {
+  it('returns ok:false on PGRST202 so the screen takes the table path', async () => {
     mockRpcState.result = {
       data: null,
-      error: { message: 'Could not find the function public.get_today_bootstrap(p_today) in the schema cache', code: 'PGRST202' },
+      error: {
+        message: 'Could not find the function public.get_today_bootstrap(p_today) in the schema cache',
+        code: 'PGRST202',
+      },
       status: 404,
     };
     const boot = await bootstrapTodayScreen('2026-10-31');
@@ -197,17 +134,14 @@ describe('Item #5 — Atomic Single-RTT Today Bootstrap RPC (get_today_bootstrap
   });
 
   it('wires bootstrapTodayScreen into app/tabs/today.tsx and defines 037_today_bootstrap_rpc.sql as SECURITY INVOKER', () => {
-    const todaySrc = readFileSync(join(__dirname, '..', '..', 'app', 'tabs', 'today.tsx'), 'utf8');
+    const todaySrc = stripComments(readSource('app', 'tabs', 'today.tsx'));
     expect(todaySrc).toContain('bootstrapTodayScreen(today)');
 
-    const sqlSrc = readFileSync(
-      join(__dirname, '..', '..', '..', 'supabase', 'migrations', '037_today_bootstrap_rpc.sql'),
-      'utf8',
-    );
-    expect(sqlSrc).toContain('SECURITY INVOKER');
-    expect(sqlSrc).not.toContain('SECURITY DEFINER');
+    const sqlSrc = readSource('..', 'supabase', 'migrations', '037_today_bootstrap_rpc.sql');
+    const kw = sqlKeywordsOf(sqlSrc);
+    expect(kw).toContain('SECURITY INVOKER');
+    expect(kw).not.toContain('SECURITY DEFINER');
     expect(sqlSrc).toContain("to_regclass('public.habit_pauses')");
     expect(sqlSrc).toContain("to_regclass('public.habit_checklist_items')");
   });
 });
-

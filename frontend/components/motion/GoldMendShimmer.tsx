@@ -73,12 +73,48 @@ export default function GoldMendShimmer({ triggerKey, color = colors.warning }: 
   );
 }
 
+export type GoldVeinProps = {
+  length: number;
+  thickness?: number;
+  color?: string;
+  angle?: number;
+};
+
+/**
+ * Kintsugi statik altın damar çizgisi — Reduce Motion açıkken de görünür kalır.
+ */
+export function GoldVein({
+  length,
+  thickness = 1.5,
+  color = colors.warning,
+  angle = -45,
+}: GoldVeinProps) {
+  return (
+    <View
+      pointerEvents="none"
+      {...decorativeA11y}
+      style={[
+        s.vein,
+        {
+          width: length,
+          height: thickness,
+          backgroundColor: color,
+          transform: [{ rotate: `${angle}deg` }],
+        },
+      ]}
+    />
+  );
+}
+
 const s = StyleSheet.create({
   beam: {
     position: 'absolute',
     top: -10,
     bottom: -10,
     width: 96,
+  },
+  vein: {
+    position: 'absolute',
   },
 });
 

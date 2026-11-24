@@ -3,17 +3,17 @@ import { View, Text, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platfor
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { supabase } from '../../lib/supabase';
 import { signOutLocal } from '../../services/accountService';
 import { colors, space, radius, font, shadow, fontFamily } from '../../lib/tokens';
-import {
-  AtmosphericScreenCanvas,
-  Button,
-  EmbeddedFiligree,
-  EmblemMedallion,
-} from '../../components/ui';
+import { Button, EmblemMedallion } from '../../components/ui';
+import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, ONBOARDING_ART, TEXTURES } from '../../lib/visualAssets';
 import FloatingLabelInput from '../../components/ui/FloatingLabelInput';
+import PasswordToggle from '../../components/auth/PasswordToggle';
+import { recoveryErrorMessage } from '../../lib/authErrors';
+import { establishSessionFromAuthUrl, useAuthLinkUrl } from '../../lib/authDeepLink';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -25,63 +25,51 @@ export default function ResetPasswordScreen() {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [sessionReady, setSessionReady] = useState(false);
+  const linkUrl = useAuthLinkUrl();
 
   useEffect(() => {
     let mounted = true;
 
+    // F22 (NAV-07, GAP2-08): every platform spends the link through lib/authDeepLink.ts.
+    // On a native cold start `useURL` is still null on the first render, so the initial URL
+    // is asked for directly -- otherwise "verify the code first" would flash for a user who
+    // did open a valid link. Repeats of the same URL share one request.
     async function initializeRecoverySession() {
       let initError = '';
-
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const url = new URL(window.location.href);
-        const queryParams = url.searchParams;
-        const hashParams = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : '');
-        const accessToken = hashParams.get('access_token') ?? queryParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token') ?? queryParams.get('refresh_token');
-        const authCode = queryParams.get('code');
-        const tokenHash = queryParams.get('token_hash');
-        const linkType = queryParams.get('type') ?? hashParams.get('type');
-
-        if (accessToken && refreshToken) {
-          const { error: setSessionError } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-          if (setSessionError) initError = setSessionError.message;
-        } else if (authCode) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
-          if (exchangeError) initError = exchangeError.message;
-        } else if (tokenHash && linkType === 'recovery') {
-          const { error: verifyError } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' });
-          if (verifyError) initError = verifyError.message;
-        }
+      let url = linkUrl;
+      if (!url && Platform.OS !== 'web') {
+        url = await Linking.getInitialURL().catch(() => null);
       }
 
-      if (!initError) {
+      const result = await establishSessionFromAuthUrl(url, supabase.auth, { expect: 'recovery' });
+      if (result.ok || result.reason === 'empty' || result.reason === 'no_auth_params') {
+        // No link (the 6-digit code path) or a link just spent: the session decides.
         const { data } = await supabase.auth.getSession();
         if (!data.session) initError = 'Önce e-postana gönderilen kodu doğrula.';
+      } else {
+        initError = result.message;
       }
 
       if (!mounted) return;
 
       if (initError) {
+        setInfo('');
         setError(initError);
         setSessionReady(false);
         return;
       }
 
+      setError('');
       setSessionReady(true);
       setInfo('Kod doğrulandı. Şimdi yeni şifreni belirleyebilirsin.');
-
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-        window.history.replaceState({}, document.title, cleanUrl);
-      }
     }
 
-    initializeRecoverySession();
+    void initializeRecoverySession();
 
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [linkUrl]);
 
   async function handleResetPassword() {
     if (!sessionReady) {
@@ -113,11 +101,7 @@ export default function ResetPasswordScreen() {
     setLoading(false);
 
     if (error) {
-      if (error.message.toLowerCase().includes('auth session missing')) {
-        setError('Sıfırlama oturumu bulunamadı. Kodu yeniden doğrulayıp tekrar deneyin.');
-      } else {
-        setError(error.message);
-      }
+      setError(recoveryErrorMessage(error.message));
       return;
     }
 
@@ -169,31 +153,38 @@ export default function ResetPasswordScreen() {
               label="Yeni şifre"
               icon="lock-closed-outline"
               secureTextEntry={!showPassword}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              autoCapitalize="none"
+              autoCorrect={false}
               value={password}
               onChangeText={(text) => { setPassword(text); setError(''); setInfo(''); }}
-              rightElement={(
-                <TouchableOpacity onPress={() => setShowPassword((value) => !value)}>
-                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textFaint} />
-                </TouchableOpacity>
-              )}
+              rightElement={<PasswordToggle visible={showPassword} onToggle={() => setShowPassword((value) => !value)} />}
             />
 
             <FloatingLabelInput
               label="Şifre tekrar"
               icon="shield-checkmark-outline"
               secureTextEntry={!showConfirmPassword}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              autoCapitalize="none"
+              autoCorrect={false}
               value={confirmPassword}
               onChangeText={(text) => { setConfirmPassword(text); setError(''); setInfo(''); }}
               onSubmitEditing={handleResetPassword}
               rightElement={(
-                <TouchableOpacity onPress={() => setShowConfirmPassword((value) => !value)}>
-                  <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.textFaint} />
-                </TouchableOpacity>
+                <PasswordToggle
+                  visible={showConfirmPassword}
+                  onToggle={() => setShowConfirmPassword((value) => !value)}
+                  showLabel="Şifre tekrarını göster"
+                  hideLabel="Şifre tekrarını gizle"
+                />
               )}
             />
 
             {!!error && (
-              <View style={s.errorRow}>
+              <View style={s.errorRow} accessibilityRole="alert">
                 <Ionicons name="alert-circle" size={15} color={colors.error} />
                 <Text style={s.errorText}>{error}</Text>
               </View>
@@ -209,7 +200,7 @@ export default function ResetPasswordScreen() {
             <Button label="Yeni Şifreyi Kaydet" onPress={handleResetPassword} loading={loading} disabled={!sessionReady} size="lg" style={{ marginTop: space.sm }} />
 
             <Link href="/(auth)/login" asChild>
-              <TouchableOpacity style={s.backBtn}>
+              <TouchableOpacity style={s.backBtn} accessibilityRole="link" accessibilityLabel="Giriş ekranına dön">
                 <Ionicons name="arrow-back" size={14} color={colors.textDim} />
                 <Text style={s.backText}>Giriş ekranına dön</Text>
               </TouchableOpacity>
@@ -262,6 +253,6 @@ const s = StyleSheet.create({
   errorText: { color: colors.error, fontSize: 13, flex: 1 },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 },
   infoText: { color: colors.success, fontSize: 13, flex: 1, lineHeight: 18 },
-  backBtn: { marginTop: space.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  backBtn: { marginTop: space.sm, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   backText: { color: colors.textDim, fontSize: 14 },
 });

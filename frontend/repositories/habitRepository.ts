@@ -18,9 +18,13 @@
  * gets the same typed `RepoResult` convention every other repository uses,
  * instead of a second ad-hoc insert call site.
  */
+import { todayLocal } from '../lib/date';
+import { stampCreatedDay } from '../lib/habitCreatedDay';
 import { stripTimeOff } from '../lib/habitPauses';
 import { supabase } from '../lib/supabase';
 import type { Habit, FrequencyConfig } from '../lib/supabase';
+import { likeContains } from './likePattern';
+import { SERVER_MAX_ROWS } from './pagedSelect';
 import { currentUserId, deleteOwned, updateOwned, type RepoResult } from './shared';
 
 /** Column list mirrors `store/habitStore.ts`'s `addHabit`/`fetchHabits` --
@@ -72,6 +76,7 @@ export async function insertRoutineHabits(
   const u = await currentUserId();
   if (!u.ok) return u;
 
+  const today = todayLocal();
   const inserts = rows.map((r) => ({
     user_id: u.userId,
     name: r.name,
@@ -81,7 +86,7 @@ export async function insertRoutineHabits(
     unit: r.unit,
     daily_goal: r.daily_goal,
     target_direction: r.target_direction,
-    frequency_config: r.frequency_config,
+    frequency_config: stampCreatedDay(r.frequency_config, today),
     willpower_cost: r.willpower_cost,
     status: r.status,
     impact_level: 'medium' as const,
@@ -95,7 +100,20 @@ export async function insertRoutineHabits(
     .from('habits')
     .insert(inserts)
     .select(HABIT_COLUMNS);
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    if (error.code === '23505' && installId) {
+      const existing = await supabase
+        .from('habits')
+        .select(HABIT_COLUMNS)
+        .eq('user_id', u.userId)
+        .eq('install_id', installId)
+        .limit(20);
+      if (!existing.error && Array.isArray(existing.data) && existing.data.length > 0) {
+        return { ok: true, data: existing.data as Habit[] };
+      }
+    }
+    return { ok: false, error: error.message };
+  }
   return { ok: true, data: (data ?? []) as Habit[] };
 }
 
@@ -159,17 +177,21 @@ export async function fetchHabits(limit = 500): Promise<RepoResult<Habit[]>> {
     .eq('user_id', u.userId)
     .not('status', 'eq', 'archived')
     .order('created_at', { ascending: false })
-    .limit(Math.max(1, Math.min(limit, 2000)));
+    .limit(Math.max(1, Math.min(limit, SERVER_MAX_ROWS)));
   if (error) return { ok: false, error: error.message };
   return { ok: true, data: (data ?? []) as unknown as Habit[] };
 }
 
 /** Creates one habit, attaching `user_id` here rather than from the caller. */
 export async function insertHabit(
-  habit: Omit<Habit, 'id' | 'created_at' | 'user_id'>,
+  rawHabit: Omit<Habit, 'id' | 'created_at' | 'user_id'>,
 ): Promise<RepoResult<Habit>> {
   const u = await currentUserId();
   if (!u.ok) return u;
+  const habit = {
+    ...rawHabit,
+    frequency_config: stampCreatedDay(rawHabit.frequency_config, todayLocal()),
+  };
   const { data, error } = await supabase
     .from('habits')
     .insert({ ...stripTimeOff(habit), user_id: u.userId })
@@ -181,17 +203,16 @@ export async function insertHabit(
 
 /** Server-side name search — see `taskRepository.searchTasks` for why. */
 export async function searchHabits(query: string, limit = 8): Promise<RepoResult<Habit[]>> {
+  const pattern = likeContains(query);
+  if (pattern === null) return { ok: true, data: [] };
   const u = await currentUserId();
   if (!u.ok) return u;
-  const term = query.trim();
-  if (!term) return { ok: true, data: [] };
-  const safe = term.replace(/[,()%]/g, ' ');
   const { data, error } = await supabase
     .from('habits')
     .select(HABIT_COLUMNS)
     .eq('user_id', u.userId)
     .not('status', 'eq', 'archived')
-    .ilike('name', `%${safe}%`)
+    .ilike('name', pattern)
     .order('created_at', { ascending: false })
     .limit(Math.min(limit, 25));
   if (error) return { ok: false, error: error.message };

@@ -4,33 +4,52 @@
  * ... Son başarılı yedeği koruyan sınırlı otomatik yerel rotasyon ve son
  * başarı durumu ekle; OS çalıştırmadığında yedek alınmış gibi gösterme."
  */
-const mockFail = { collection: null as string | null };
+const mockFail = { collection: null as string | null, truncated: null as string | null, hugeBytes: 0 };
 jest.mock('../../lib/supabase', () => ({ supabase: {} }));
 jest.mock('../../lib/session', () => ({ currentUser: jest.fn(async () => ({ id: 'u1', email: null })) }));
-jest.mock('../../repositories/habitRepository', () => ({ fetchHabits: jest.fn(async () => ({ ok: true, data: [{ id: 'h1', user_id: 'u1' }] })) }));
+jest.mock('../../repositories/exportRepository', () => ({
+  MAX_EXPORT_ROWS: 20_000,
+  EXPORT_FULL_TABLES: ['habits', 'habit_logs', 'journal_entries', 'focus_sessions', 'webhooks'],
+  fetchFullTable: jest.fn(async (t: string) => {
+    if (mockFail.collection === t) return { ok: false, error: 'timeout', code: '57014' };
+    if (t === 'habits') {
+      const rows = mockFail.hugeBytes > 0
+        ? [{ id: 'h1', user_id: 'u1', pad: 'x'.repeat(mockFail.hugeBytes) }]
+        : [{ id: 'h1', user_id: 'u1' }];
+      return { ok: true, data: { rows, truncated: mockFail.truncated === t } };
+    }
+    return { ok: true, data: { rows: [], truncated: mockFail.truncated === t } };
+  }),
+  fetchOwnProfileForExport: jest.fn(async () => ({ ok: true, data: [] })),
+  fetchOwnOnboardingForExport: jest.fn(async () => ({ ok: true, data: [] })),
+}));
 jest.mock('../../repositories/taskRepository', () => ({ fetchTasksPage: jest.fn(async () => ({ ok: true, data: { rows: [{ id: 't1', user_id: 'u1', project_id: 'p1' }], hasMore: false, nextCursor: null } })) }));
 jest.mock('../../repositories/noteRepository', () => ({ fetchNotesPage: jest.fn(async () => ({ ok: true, data: { rows: [], hasMore: false, nextCursor: null } })) }));
 jest.mock('../../repositories/projectRepository', () => ({ fetchProjectsPage: jest.fn(async () => ({ ok: true, data: { rows: [{ id: 'p1', user_id: 'u1' }], hasMore: false, nextCursor: null } })) }));
 jest.mock('../../repositories/goalRepository', () => ({ fetchGoalsPage: jest.fn(async () => ({ ok: true, data: { rows: [], hasMore: false, nextCursor: null } })) }));
 jest.mock('../../repositories/badHabitRepository', () => ({ fetchBadHabitsPage: jest.fn(async () => ({ ok: true, data: { rows: [], hasMore: false, nextCursor: null } })) }));
-jest.mock('../../repositories/journalRepository', () => ({ fetchJournalEntries: jest.fn(async () => ({ ok: true, data: [] })) }));
-jest.mock('../../repositories/focusSessionRepository', () => ({ fetchAllFocusSessions: jest.fn(async () => ({ ok: true, data: [] })) }));
-jest.mock('../../repositories/webhookRepository', () => ({ fetchWebhooks: jest.fn(async () => ({ ok: true, data: [] })) }));
-jest.mock('../../repositories/habitLogRepository', () => ({ fetchHabitLogsForHabitsSince: jest.fn(async () => ({ ok: true, data: [] })) }));
 jest.mock('../../repositories/restoreRepository', () => ({
   ...jest.requireActual('../../repositories/restoreRepository'),
-  fetchOwnedTable: jest.fn(async (t: string) => (mockFail.collection === t ? { ok: false, error: 'timeout', code: '57014' } : { ok: true, data: { rows: [], truncated: false } })),
+  fetchOwnedTable: jest.fn(async (t: string) => (
+    mockFail.collection === t
+      ? { ok: false, error: 'timeout', code: '57014' }
+      : { ok: true, data: { rows: [], truncated: mockFail.truncated === t } }
+  )),
 }));
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as fs from 'fs';
 import * as path from 'path';
+import { rendersKey } from '../helpers/catalog';
 import { runLocalBackup, maybeRunDailyLocalBackup, loadLocalBackupStatus, latestCompleteLocalBackup } from '../../services/localBackupService';
 import { buildBackup } from '../../services/exportService';
-import { rotate, shouldRun, statusText, EMPTY_STATUS, LOCAL_BACKUP_KEEP } from '../../lib/backupRotation';
+import {
+  rotate, shouldRun, statusText, planEviction, utf8Bytes,
+  EMPTY_STATUS, LOCAL_BACKUP_KEEP, LOCAL_BACKUP_MAX_BYTES, LOCAL_BACKUP_TOTAL_BYTES,
+} from '../../lib/backupRotation';
 import { verifyBackupText } from '../../lib/backupFormat';
 
-beforeEach(async () => { await AsyncStorage.clear(); mockFail.collection = null; });
+beforeEach(async () => { await AsyncStorage.clear(); mockFail.collection = null; mockFail.truncated = null; mockFail.hugeBytes = 0; });
 
 describe('manifest', () => {
   it('names every relation and the consistency window', async () => {
@@ -110,9 +129,48 @@ describe('the local copy', () => {
     expect(keys).toHaveLength(LOCAL_BACKUP_KEEP);
     expect(keys.some((k) => k.includes('2026-10-01'))).toBe(false);
   });
+
+  it('F20 (SYN-11) — refuses a copy over 1 MB without writing to AsyncStorage, marks truncated copies incomplete, and protects the newest complete copy during budget eviction', async () => {
+    expect(utf8Bytes('çğıöşü')).toBe(12);
+
+    // 1 MB üstü kopya AsyncStorage'a hiç yazılmaz
+    mockFail.hugeBytes = LOCAL_BACKUP_MAX_BYTES;
+    const tooBig = await runLocalBackup(new Date('2026-10-08T09:00:00Z'));
+    expect(tooBig.ok).toBe(false);
+    if (!tooBig.ok) expect(tooBig.error).toMatch(/çok büyük/);
+    const storedAfterBig = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith('backup.local.v1.u1.') && !k.endsWith('.status'));
+    expect(storedAfterBig).toEqual([]);
+
+    // Kırpılmış kopya complete=false olur
+    mockFail.hugeBytes = 0;
+    mockFail.truncated = 'habit_logs';
+    const cutRes = await runLocalBackup(new Date('2026-10-08T10:00:00Z'));
+    expect(cutRes.ok && !cutRes.complete).toBe(true);
+    mockFail.truncated = null;
+
+    // planEviction en yeni TAM kopyayı korur, daha yeni bile olsa eksik olanları siler
+    const slots = [
+      { key: 'k-new-incomplete', created_at: '2026-10-04T00:00:00Z', complete: false, bytes: 900_000 },
+      { key: 'k-mid-incomplete', created_at: '2026-10-03T00:00:00Z', complete: false, bytes: 900_000 },
+      { key: 'k-old-complete', created_at: '2026-10-01T00:00:00Z', complete: true, bytes: 900_000 },
+    ];
+    const ev = planEviction(slots, 900_000, LOCAL_BACKUP_TOTAL_BYTES);
+    expect(ev.fits).toBe(true);
+    expect(ev.drop).not.toContain('k-old-complete');
+    expect(ev.drop).toEqual(['k-mid-incomplete', 'k-new-incomplete']);
+
+    // Tek korumalı kopyayla bile bütçeye sığmıyorsa fits=false döner
+    const tight = planEviction(
+      [{ key: 'k-protected', created_at: '2026-10-01T00:00:00Z', complete: true, bytes: 900_000 }],
+      900_000,
+      1_500_000,
+    );
+    expect(tight).toEqual({ drop: [], fits: false });
+  });
 });
 
-it('the manual export says when a collection hit the 5.000-row ceiling (no silent cut)', () => {
+it('the manual export says when a collection hit the row ceiling (no silent cut)', () => {
   const src = fs.readFileSync(path.join(__dirname, '../../app/tabs/settings.tsx'), 'utf8');
-  expect(src).toMatch(/if \(backup\.truncated\.length > 0\) \{\s*Alert\.alert\(\s*'Dışa aktarım tam değil'/);
+  expect(rendersKey(src, 'settings.export.truncated.title', 'Dışa aktarım tam değil')).toBe(true);
+  expect(src).toMatch(/if \(backup\.truncated\.length > 0\) \{[\s\S]*?void notify\(\s*t\(\s*'settings\.export\.truncated\.title'\s*\)/);
 });

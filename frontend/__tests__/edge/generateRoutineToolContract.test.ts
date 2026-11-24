@@ -23,13 +23,9 @@
  * that it is still ONE call, that the schema says what the app's validator
  * expects, and that nothing here is trusted downstream.
  */
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { edgeSource } from '../helpers/edgeSource';
 
-const SRC = readFileSync(
-  join(__dirname, '..', '..', '..', 'supabase', 'functions', 'generate-routine', 'index.ts'),
-  'utf8',
-);
+const SRC = edgeSource('generate-routine');
 
 /** The coach branch of the request handler. */
 const COACH_BRANCH = (() => {
@@ -203,5 +199,27 @@ describe('the response is read defensively', () => {
 
   it('an empty reply is still a provider failure, so the charge is refunded', () => {
     expect(COACH_BRANCH).toMatch(/if \(!reply\)[\s\S]{0,160}ai_empty_response/);
+  });
+});
+
+describe('F21 (GEM-08) — routine mode is also a forced tool call with bounded schema', () => {
+  const ROUTINE_SCHEMA = (() => {
+    const start = SRC.indexOf('export const ROUTINE_TOOL = {');
+    expect(start).toBeGreaterThan(-1);
+    return SRC.slice(start, SRC.indexOf('\n} as const;', start));
+  })();
+  const ROUTINE_BRANCH = (() => {
+    const start = SRC.indexOf('system: SYSTEM_PROMPT,', SRC.indexOf('const callAi'));
+    const callStart = SRC.lastIndexOf('client.messages.create({', start);
+    return SRC.slice(callStart, SRC.indexOf('payload = routine.payload', start));
+  })();
+
+  it('forces routine_response via tool_choice and caps items at maxItems: 4 without text.match or JSON.parse', () => {
+    expect(ROUTINE_SCHEMA).toContain("name: 'routine_response'");
+    expect(ROUTINE_SCHEMA).toContain('maxItems: 4');
+    expect(ROUTINE_SCHEMA).toContain('additionalProperties: false');
+    expect(ROUTINE_BRANCH).toMatch(/tool_choice:\s*\{\s*type:\s*'tool',\s*name:\s*ROUTINE_TOOL\.name\s*\}/);
+    expect(ROUTINE_BRANCH).not.toContain('text.match(');
+    expect(ROUTINE_BRANCH).not.toContain('JSON.parse(');
   });
 });

@@ -17,7 +17,8 @@
  */
 
 import type { Habit, HabitLog, FrequencyConfig } from './supabase';
-import { ymd, ymdFromIso, parseLocalDate, addDaysLocal, daysBetweenLocal } from './date';
+import { ymd, parseLocalDate, addDaysLocal, daysBetweenLocal } from './date';
+import { habitCreatedDay } from './habitCreatedDay';
 import { scheduledCompletionRate, isWithinRange } from './habitSchedule';
 
 function clamp(n: number, min: number, max: number): number {
@@ -133,9 +134,10 @@ export function occurrencesPerWeek(freq: FrequencyConfig): number {
  * alone, which is not how a day's worth of habits actually competes for
  * attention.
  */
+export const MIN_DURATION_MINUTES = 1;
 const DURATION_REFERENCE_MINUTES = 90;
 function durationWeight(minutes: number): number {
-  const m = Math.max(0, minutes);
+  const m = Number.isFinite(minutes) ? Math.max(MIN_DURATION_MINUTES, minutes) : MIN_DURATION_MINUTES;
   return Math.log(1 + m) / Math.log(1 + DURATION_REFERENCE_MINUTES);
 }
 
@@ -358,7 +360,8 @@ export function makeupLoadPreview(params: {
 
 /** Which band a 0-100 load value falls in. Clamps out-of-range input. */
 export function bandFor(n: number): LoadBandKey {
-  const v = clamp(n, 0, 100);
+  if (!Number.isFinite(n)) return 'dusuk';
+  const v = clamp(Math.round(n), 0, 100);
   const band = LOAD_BANDS.find((b) => v >= b.min && v <= b.max);
   // Unreachable given LOAD_BANDS covers [0,100] with no gaps, but keeps the
   // function total instead of possibly-undefined.
@@ -444,6 +447,7 @@ export const CAPACITY_CEILING_DEFAULT = 85;
 /**
  * Max-capacity replacement for `willpowerStore.canActivate`'s fixed
  * `active_count < focus_capacity` rule.
+ * Keşfet atomik ekleme de bu kuralı kullanır (`exploreCatalog.buildAtomicHabitInsert`).
  *
  * NOTE: `willpowerStore.ts` is NOT modified by this change (out of scope
  * for the domain layer per the phase-1 task split). This function is the
@@ -602,7 +606,8 @@ export function masteryStatus(
   logs: HabitLog[],
   { asOf = new Date() }: { asOf?: Date } = {}
 ): MasteryResult {
-  const createdDate = parseLocalDate(ymdFromIso(habit.created_at));
+  const createdYmd = habitCreatedDay(habit);
+  const createdDate = createdYmd ? parseLocalDate(createdYmd) : null;
   const asOfDate = parseLocalDate(ymd(asOf))!;
   const ageDays = createdDate ? daysBetweenLocal(createdDate, asOfDate) : 0;
 

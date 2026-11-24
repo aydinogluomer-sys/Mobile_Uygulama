@@ -6,6 +6,7 @@ import { Animated, Easing, StyleSheet, View, type LayoutChangeEvent } from 'reac
 import type { MonthNameTR, SeasonalMotionIntensity, AmbientParticle, AmbientBand } from './types';
 import { getSeasonalConfig } from './config';
 import { generateScene } from './particles';
+import { useAppActive } from '../../hooks/useScreenActive';
 
 type Props = {
   month: MonthNameTR;
@@ -15,9 +16,10 @@ type Props = {
 };
 
 export default function SeasonalMotion({ month, intensity, reduceMotion, isVisible }: Props) {
+  const appActive = useAppActive();
   // Erişilebilirlik: sistem reduce-motion açıksa zorla kapat (contract §6)
   const effective: SeasonalMotionIntensity = reduceMotion ? 'off' : intensity;
-  const active = isVisible && effective !== 'off';
+  const active = isVisible && appActive && effective !== 'off';
 
   const [size, setSize] = useState({ w: 0, h: 0 });
 

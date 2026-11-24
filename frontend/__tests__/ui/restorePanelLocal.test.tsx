@@ -8,7 +8,13 @@ import TestRenderer, { act } from 'react-test-renderer';
 jest.mock('../../lib/supabase', () => ({ supabase: {} }));
 jest.mock('../../lib/session', () => ({ currentUser: jest.fn(async () => ({ id: 'u1' })) }));
 const mockRun = jest.fn(async () => ({ ok: true, complete: true, status: { lastSuccessAt: new Date().toISOString(), lastAttemptAt: null, lastError: null, slots: [{ key: 'k', created_at: 'x', complete: true, bytes: 1 }] } }));
-const mockDry = jest.fn(async () => ({ ok: true, plan: { collections: [], inserts: 0, blockedRows: 0 }, summary: ['Hepsi zaten hesabında.'] }));
+const mockDry = jest.fn(async () => ({
+  ok: true,
+  plan: { userId: 'u1', collections: [], inserts: 0, blockedRows: 12 },
+  summary: ['Hepsi zaten hesabında.'],
+  notices: ['habit_logs: 12 kayıt (tarihçen) dosyada duruyor ama bu uygulamada geri yüklenemez.'],
+  job: { id: 'restore-1', fileCreatedAt: '2026-10-08T09:00:00Z', resumes: false },
+}));
 jest.mock('../../services/localBackupService', () => ({
   loadLocalBackupStatus: jest.fn(async () => ({ lastSuccessAt: null, lastAttemptAt: null, lastError: null, slots: [] })),
   runLocalBackup: (...a: unknown[]) => (mockRun as any)(...a),
@@ -40,10 +46,14 @@ it('says there is no copy yet, takes one on request, then says it is there', asy
   expect(textOf(r)).toMatch(/Son tam yerel yedek: az önce \(cihazda 1 tam kopya\)/);
 });
 
-it('checks the newest complete local copy with the dry run (nothing written)', async () => {
+it('checks the newest complete local copy with the dry run (nothing written, paste input stays empty, blocked notices shown)', async () => {
   let r!: TestRenderer.ReactTestRenderer;
   await act(async () => { r = TestRenderer.create(<RestorePanel />); });
   await press(r, 'Son yerel yedeği doğrula');
   expect(mockDry).toHaveBeenCalledWith('{"manifest":{}}');
   expect(textOf(r)).toMatch(/Hepsi zaten hesabında/);
+  expect(textOf(r)).toMatch(/Bu dosyadan geri yüklenemeyenler/);
+  expect(textOf(r)).toMatch(/habit_logs: 12 kayıt/);
+  const pasteInput = r.root.findAll((n) => n.props?.accessibilityLabel === 'Dışa aktarım metni' && 'value' in n.props)[0];
+  expect(pasteInput.props.value).toBe('');
 });

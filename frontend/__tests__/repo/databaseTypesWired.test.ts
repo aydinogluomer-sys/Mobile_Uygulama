@@ -59,5 +59,22 @@ describe('Canonical Supabase <Database> typing & hardware auth storage wiring', 
     const missing = [...referencedFns].filter((fn) => !definedFns.has(fn));
     expect(missing).toEqual([]);
   });
+
+  it('names the real drift guard and carries a provenance tag on every table and RPC', () => {
+    const header = dbTypesSrc.split('export type Json')[0] ?? '';
+    expect(header).toContain('databaseTypesDrift.test.ts');
+
+    const tablesBlock = dbTypesSrc.split('Tables: {')[1]?.split('Views:')[0] ?? '';
+    const fnsBlock = dbTypesSrc.split('Functions: {')[1]?.split('Enums:')[0] ?? '';
+    const definedTables = [...tablesBlock.matchAll(/^\s{6}([a-z0-9_]+):\s*\{/gm)];
+    const definedFns = [...fnsBlock.matchAll(/^\s{6}([a-z0-9_]+):\s*\{/gm)];
+    const memberTags = [
+      ...tablesBlock.matchAll(/^\s{6}\/\/\s*@source\s+(?:live|migration:\d{3})\s*$/gm),
+      ...fnsBlock.matchAll(/^\s{6}\/\/\s*@source\s+(?:live|migration:\d{3})\s*$/gm),
+    ];
+
+    expect(memberTags.length).toBeGreaterThanOrEqual(77);
+    expect(memberTags.length).toBe(definedTables.length + definedFns.length);
+  });
 });
 

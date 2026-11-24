@@ -23,21 +23,24 @@ jest.mock('../../lib/supabase', () => {
 
   function select(cols: string) {
     const eqFilters: Record<string, unknown> = {};
-    const rangeFilters: { col: string; op: 'gte' | 'lte'; val: unknown }[] = [];
-    let orderCol: string | null = null;
-    let orderAsc = true;
+    const rangeFilters: { col: string; op: 'gte' | 'lte' | 'lt'; val: unknown }[] = [];
+    const orders: { col: string; asc: boolean }[] = [];
     let limitN: number | null = null;
+    let sliceRange: [number, number] | null = null;
 
     const q: any = {
       eq(col: string, val: unknown) { eqFilters[col] = val; return q; },
       gte(col: string, val: unknown) { rangeFilters.push({ col, op: 'gte', val }); return q; },
       lte(col: string, val: unknown) { rangeFilters.push({ col, op: 'lte', val }); return q; },
+      lt(col: string, val: unknown) { rangeFilters.push({ col, op: 'lt', val }); return q; },
       order(col: string, opts?: { ascending?: boolean }) {
-        orderCol = col; orderAsc = opts?.ascending ?? true; return q;
+        orders.push({ col, asc: opts?.ascending ?? true });
+        return q;
       },
       // The export reads are capped now -- "read everything" without a bound
       // is one large account away from a memory failure.
       limit(n: number) { limitN = n; return q; },
+      range(from: number, to: number) { sliceRange = [from, to]; return q; },
       then(onOk: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) {
         if (mockDb.error) return Promise.resolve({ data: null, error: mockDb.error }).then(onOk, onErr);
         let rows = mockDb.rows.filter((r) => {
@@ -46,18 +49,23 @@ jest.mock('../../lib/supabase', () => {
             const v = r[f.col] as string;
             if (f.op === 'gte' && !(v >= (f.val as string))) return false;
             if (f.op === 'lte' && !(v <= (f.val as string))) return false;
+            if (f.op === 'lt' && !(v < (f.val as string))) return false;
           }
           return true;
         });
-        if (orderCol) {
-          const col = orderCol;
+        if (orders.length > 0) {
           rows = [...rows].sort((a, b) => {
-            const av = a[col] as string; const bv = b[col] as string;
-            const cmp = av < bv ? -1 : av > bv ? 1 : 0;
-            return orderAsc ? cmp : -cmp;
+            for (const o of orders) {
+              const av = String(a[o.col] ?? '');
+              const bv = String(b[o.col] ?? '');
+              if (av !== bv) return o.asc ? (av < bv ? -1 : 1) : (av > bv ? -1 : 1);
+            }
+            return 0;
           });
         }
-        const capped = limitN == null ? rows : rows.slice(0, limitN);
+        const capped = sliceRange
+          ? rows.slice(sliceRange[0], sliceRange[1] + 1)
+          : limitN == null ? rows : rows.slice(0, limitN);
         return Promise.resolve({ data: capped.map((r) => project(r, cols)), error: null }).then(onOk, onErr);
       },
     };
@@ -91,37 +99,18 @@ jest.mock('../../lib/supabase', () => {
 });
 
 import {
-  fetchFocusSecondsForReview,
   fetchFocusSessionsSince,
+  fetchFocusSessionsBetween,
   fetchAllFocusSessions,
   deleteAllFocusSessions,
 } from '../../repositories/focusSessionRepository';
+import { localDayStartIso } from '../../lib/date';
 
 beforeEach(() => {
   mockDb.rows = [];
   mockDb.error = null;
   mockDb.user = { id: 'u1' };
   mockDb.deleteCalls = [];
-});
-
-describe('fetchFocusSecondsForReview', () => {
-  it('returns completed_seconds for the range, scoped to the current user', async () => {
-    mockDb.rows = [
-      { user_id: 'u1', started_at: '2026-08-04T10:00:00', completed_seconds: 1200 },
-      { user_id: 'u1', started_at: '2026-07-01T10:00:00', completed_seconds: 999 }, // out of range
-      { user_id: 'u2', started_at: '2026-08-04T10:00:00', completed_seconds: 500 }, // other user
-    ];
-    const res = await fetchFocusSecondsForReview({ start: '2026-08-01', end: '2026-08-07' });
-    expect(res.ok).toBe(true);
-    if (res.ok) expect(res.data).toEqual([{ completed_seconds: 1200 }]);
-  });
-
-  it('surfaces an error instead of swallowing it', async () => {
-    mockDb.error = { message: 'boom' };
-    const res = await fetchFocusSecondsForReview({ start: '2026-08-01', end: '2026-08-07' });
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error).toBe('boom');
-  });
 });
 
 describe('fetchFocusSessionsSince', () => {
@@ -139,6 +128,26 @@ describe('fetchFocusSessionsSince', () => {
     mockDb.user = null;
     const res = await fetchFocusSessionsSince({ sinceIso: '2026-07-01T00:00:00Z' });
     expect(res.ok).toBe(false);
+  });
+});
+
+describe('fetchFocusSessionsBetween', () => {
+  it('filters by half-open local-day UTC boundaries [startIso, endExclusiveIso)', async () => {
+    const startIso = localDayStartIso('2026-08-03')!;
+    const endExclusiveIso = localDayStartIso('2026-08-05')!;
+    mockDb.rows = [
+      { id: 'before', user_id: 'u1', task_id: null, task_title: null, mode: 'work', started_at: new Date(Date.parse(startIso) - 1000).toISOString(), ended_at: null, planned_seconds: 1500, completed_seconds: 1500, completed: true },
+      { id: 'inside', user_id: 'u1', task_id: null, task_title: null, mode: 'work', started_at: startIso, ended_at: null, planned_seconds: 1500, completed_seconds: 1500, completed: true },
+      { id: 'atEndExclusive', user_id: 'u1', task_id: null, task_title: null, mode: 'work', started_at: endExclusiveIso, ended_at: null, planned_seconds: 1500, completed_seconds: 1500, completed: true },
+    ];
+    const res = await fetchFocusSessionsBetween({ startYmd: '2026-08-03', endYmd: '2026-08-04' });
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.data.map((r) => r.id)).toEqual(['inside']);
+  });
+
+  it('rejects malformed or inverted date bounds', async () => {
+    expect((await fetchFocusSessionsBetween({ startYmd: '2026-02-30', endYmd: '2026-03-01' })).ok).toBe(false);
+    expect((await fetchFocusSessionsBetween({ startYmd: '2026-08-05', endYmd: '2026-08-04' })).ok).toBe(false);
   });
 });
 
