@@ -63,6 +63,7 @@ old filenames.
 | 042 | `042_numeric_measures_and_willpower.sql` | **NOT APPLIED** (DB frozen, S1/S2 — numeric(12,2) measurable columns & atomic spend_willpower RPC) | — |
 | 043 | `043_profile_time_zone.sql` | **NOT APPLIED** (DB frozen, S1/S2 — profiles.time_zone, local-day window and week) | — |
 | 044 | `044_ai_messages_and_retention.sql` | **NOT APPLIED** (DB frozen, S1/S2 — AI message insert policy + AI retention function) | — |
+| 045 | `045_task_estimated_minutes.sql` | **NOT APPLIED** (DB frozen, S1/S2 — nullable tasks.estimated_minutes & estimate_source + get_today_bootstrap task projection) | — |
 
 Keep this table when adding a migration: the old names are cited throughout
 `docs/audit/`, `docs/plan/`, `PROGRESS.md` and the audit reports, which are

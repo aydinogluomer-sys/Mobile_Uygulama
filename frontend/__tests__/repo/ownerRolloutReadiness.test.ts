@@ -4,9 +4,9 @@
  * Proves:
  *   (+) Live repository passes all four offline readiness invariants and exits 0 (human & `--json`).
  *   (-) Negative synthetic mutations fail closed (exit 1):
- *       - missing rollback file for a `028..044` migration,
+ *       - missing rollback file for a `028..045` migration,
  *       - rollback script missing `aderyth.rollback_confirm` check or carrying mismatched number,
- *       - `028..044` migration undocumented in `docs/implementation-v3/SQL_FOR_OWNER.md`,
+ *       - `028..045` migration undocumented in `docs/implementation-v3/SQL_FOR_OWNER.md`,
  *       - undeclared edge function directory missing from `DEPLOYMENT.json` or missing `index.ts`,
  *       - missing `deno.lock` (or `deno.json`),
  *       - broken `predeploy_guard.sh` (`set -euo pipefail` absent, non-canonical ref, or fail-open),
@@ -201,7 +201,11 @@ describe('Owner Rollout Readiness Preflight (`tools/verify-owner-rollout-readine
       expect(report.prerequisiteChecklists).toEqual([]);
 
       expect(report.checks.migrationRollbackParity.ok).toBe(true);
-      expect(report.checks.migrationRollbackParity.checkedMigrations).toBe(17);
+      expect(report.checks.migrationRollbackParity.checkedMigrations).toBe(18);
+      expect(verifier.EXPECTED_PENDING_MIGRATION_NUMBERS).toHaveLength(18);
+      expect(report.checks.migrationRollbackParity.migrations[17]).toBe(
+        '045_task_estimated_minutes.sql',
+      );
 
       expect(report.checks.predeployGuard.ok).toBe(true);
       expect(report.checks.edgeDeployment.ok).toBe(true);
@@ -237,10 +241,10 @@ describe('Owner Rollout Readiness Preflight (`tools/verify-owner-rollout-readine
       const parsed = JSON.parse(jsonRaw) as ReadinessReport;
       expect(parsed.ok).toBe(true);
       expect(parsed.problems).toEqual([]);
-      expect(parsed.checks.migrationRollbackParity.checkedMigrations).toBe(17);
+      expect(parsed.checks.migrationRollbackParity.checkedMigrations).toBe(18);
     });
 
-    it('ships OWNER_ROLLOUT_QUICKSTART.md referencing SQL_FOR_OWNER.md and all 6 rollout steps', () => {
+    it('ships OWNER_ROLLOUT_QUICKSTART.md and SQL_FOR_OWNER.md covering 028..045 and Y01/Y02/Y06 contracts', () => {
       expect(existsSync(QUICKSTART_PATH)).toBe(true);
       const quickstart = readFileSync(QUICKSTART_PATH, 'utf8');
       expect(quickstart.includes('\r')).toBe(false);
@@ -250,15 +254,27 @@ describe('Owner Rollout Readiness Preflight (`tools/verify-owner-rollout-readine
       expect(quickstart).toContain('xp_drift()');
       expect(quickstart).toContain('042');
       expect(quickstart).toContain('039');
+      expect(quickstart).toContain('045');
+      expect(quickstart).toContain('Y02');
       expect(quickstart).toContain('verify-edge-deployment.mjs');
       expect(quickstart).toContain('purge_ai_retention()');
       expect(quickstart).toContain('LOG_TIMEZONE_ENABLED');
       expect(quickstart).toContain('COACH_ACTIONS_V2_ENABLED');
+
+      const ownerSqlDoc = readFileSync(
+        join(REPO_ROOT, 'docs', 'implementation-v3', 'SQL_FOR_OWNER.md'),
+        'utf8',
+      );
+      expect(ownerSqlDoc.includes('\r')).toBe(false);
+      expect(ownerSqlDoc).toContain('045_task_estimated_minutes.sql');
+      expect(ownerSqlDoc).toContain('Y01');
+      expect(ownerSqlDoc).toContain('Y02');
+      expect(ownerSqlDoc).toContain('Y06');
     });
   });
 
   describe('(-) negative synthetic mutations fail closed (exit 1)', () => {
-    it('catches a missing rollback file for a 028..044 migration', () => {
+    it('catches a missing rollback file for a 028..045 migration', () => {
       withTempDir('rollout-missing-rb-', (dir) => {
         const migrationsDir = join(dir, 'migrations');
         const rollbacksDir = join(dir, 'rollbacks');
@@ -328,7 +344,7 @@ describe('Owner Rollout Readiness Preflight (`tools/verify-owner-rollout-readine
       });
     });
 
-    it('catches a 028..044 migration omitted from SQL_FOR_OWNER.md', () => {
+    it('catches a 028..045 migration omitted from SQL_FOR_OWNER.md', () => {
       withTempDir('rollout-undoc-sql-', (dir) => {
         const docPath = join(dir, 'SQL_FOR_OWNER.md');
         const strippedDoc = readFileSync(
