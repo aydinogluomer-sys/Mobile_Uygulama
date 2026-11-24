@@ -71,12 +71,7 @@ export default function NextActionPicker({
       setError('Görev için bir başlık yaz.');
       return;
     }
-    const created = await addTask({
-      title: t,
-      due_date: nextWeekMonday(weekKey),
-      list_type: 'this_week',
-      priority: 'none',
-    });
+    const created = await addTask({ title: t, due_date: nextWeekMonday(weekKey), list_type: 'this_week', priority: 'none' });
     if (!created) {
       setError('Görev eklenemedi.');
       return;

@@ -73,7 +73,7 @@ describe('the screen keeps the promises', () => {
   });
 
   it('Today has the entry', () => {
-    expect(code('app/tabs/today.tsx')).toMatch(/router\.push\('\/screens\/routine-runner' as any\)/);
+    expect(code('app/tabs/today.tsx')).toMatch(/router\.push\('\/screens\/routine-runner'(?:\s+as\s+any)?\)/);
     expect(code('app/tabs/today.tsx')).toMatch(/suggestTemplate\(/);
   });
 

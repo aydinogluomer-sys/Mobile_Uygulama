@@ -178,21 +178,21 @@ describe('every colour without a token is accounted for', () => {
     // Recorded rather than merely bounded: if a category's population moves,
     // the number that moved is in the diff, and somebody has to say why.
     // F28 unified habits.tsx & dashboard.tsx into redirects: category-hue 79 -> 74, category-tint 29 -> 25.
+    // Shards A–E migrated remaining untokened screen/component hexes to dynamic Palette tokens: 181 -> 100.
     expect(counts).toEqual({
-      'category-hue': 74,
+      'category-hue': 41,
       'illustration': 30,
-      'category-tint': 25,
+      'category-tint': 1,
       'theme-palette': 24,
-      'third-party-brand': 13,
+      'third-party-brand': 4,
     });
   });
 
   /**
-   * The count on the day the second tokenise pass ran: 385 -> 181. It may go
-   * DOWN if the categorical palette is ever named too; it must not go up,
-   * because going up means a new off-palette colour was introduced by hand.
+   * Lowered from 181 -> 100 after Shards A–E dynamic theme tokenisation pass.
+   * It may go DOWN if the categorical palette is ever named too; it must not go up.
    */
-  const CEILING = 181;
+  const CEILING = 100;
 
   it('does not grow', () => {
     expect(untokened.length).toBeLessThanOrEqual(CEILING);

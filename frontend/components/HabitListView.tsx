@@ -167,7 +167,7 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
         style={s.row}
         activeOpacity={0.75}
         accessibilityRole="button"
-        accessibilityLabel={`${habit.name} alışkanlık detayı`}
+        accessibilityLabel={t('habits.list.rowDetail.a11y', { name: habit.name })}
         onPress={() => { haptic.light(); router.push({ pathname: '/screens/habit-detail', params: { id: habit.id } } as Href); }}
       >
         <View style={[s.accent, { backgroundColor: accent }]} />
@@ -212,7 +212,7 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
               onPress={() => setSearch('')}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
-              accessibilityLabel="Aramayı temizle"
+              accessibilityLabel={t('habits.list.clearSearch.a11y')}
             >
               <Ionicons name="close-circle" size={16} color={colors.textFaint} />
             </TouchableOpacity>
@@ -222,7 +222,7 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
           style={[s.panelBtn, (showPanel || impactFilter.size > 0) && s.panelBtnActive]}
           onPress={() => { haptic.select(); animate(); setShowPanel((v) => !v); }}
           accessibilityRole="button"
-          accessibilityLabel="Sıralama ve filtre panelini aç veya kapat"
+          accessibilityLabel={t('habits.list.togglePanel.a11y')}
           accessibilityState={{ expanded: showPanel }}
         >
           <Ionicons name="options-outline" size={18} color={showPanel || impactFilter.size > 0 ? colors.primaryBright : colors.textDim} />
@@ -243,7 +243,7 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
               activeOpacity={0.75}
               onPress={() => toggleStatus(st)}
               accessibilityRole="button"
-              accessibilityLabel={`${pillLabel}, ${counts[st]} alışkanlık`}
+              accessibilityLabel={t('habits.list.statusPill.a11y', { label: pillLabel, count: counts[st] })}
               accessibilityState={{ selected: sel }}
               style={[s.statusPill, sel && { backgroundColor: hexA(toneColor, 0.16), borderColor: toneColor }]}
             >
@@ -356,7 +356,7 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
                   activeOpacity={0.7}
                   onPress={() => toggleCollapse(g.status)}
                   accessibilityRole="button"
-                  accessibilityLabel={`${groupLabel} grubu, ${g.items.length} alışkanlık`}
+                  accessibilityLabel={t('habits.list.groupHeader.a11y', { label: groupLabel, count: g.items.length })}
                   accessibilityState={{ expanded: !isCollapsed }}
                 >
                   <Ionicons name={m.icon} size={16} color={toneColor} />

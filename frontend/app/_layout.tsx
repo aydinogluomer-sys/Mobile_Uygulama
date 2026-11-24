@@ -463,17 +463,7 @@ function RootLayoutInner() {
    * aştıysa "Tekrar dene"; sonra bu kapı; en son spinner.
    */
   if (SUPABASE_CONFIG_ERROR) return <BootGate variant="config" detail={SUPABASE_CONFIG_ERROR} />;
-  if (loading && bootStalled) {
-    return (
-      <BootGate
-        variant="stalled"
-        onRetry={() => {
-          setBootStalled(false);
-          setBootAttempt((n) => n + 1);
-        }}
-      />
-    );
-  }
+  if (loading && bootStalled) return <BootGate variant="stalled" onRetry={() => { setBootStalled(false); setBootAttempt((n) => n + 1); }} />;
   if (!!session && onboardingHydration === 'error') {
     return (
       <OnboardingGate

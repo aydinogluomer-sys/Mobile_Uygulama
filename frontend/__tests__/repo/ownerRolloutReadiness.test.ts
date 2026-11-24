@@ -28,6 +28,7 @@ import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { pathToFileURL } from 'url';
 import { runInThisContext } from 'vm';
+import { stripComments } from '../helpers/sourceText';
 
 type PrerequisiteChecklist = {
   gate: string;
@@ -215,6 +216,10 @@ describe('Owner Rollout Readiness Preflight (`tools/verify-owner-rollout-readine
       for (const gate of verifier.ALL_FEATURE_GATES) {
         expect(report.checks.featureGates.values[gate]).toBe(false);
       }
+      const strippedGates = stripComments(
+        readFileSync(join(REPO_ROOT, 'frontend', 'lib', 'featureGates.ts'), 'utf8'),
+      );
+      expect(strippedGates).not.toMatch(/=\s*true\s*;/);
     });
 
     it('executes as a Node ESM CLI in both human and --json modes with exit code 0', () => {

@@ -49,7 +49,7 @@ export default function FocusReportModal({ visible, onClose, accent }: Props) {
   const [loading, setLoading] = useState(false);
   const [exportNote, setExportNote] = useState<string | null>(null);
 
-  const openKey = visible ? `open:${settings.defaultReportRange}` : 'closed';
+  const openKey = visible ? settings.defaultReportRange : '';
   const [prevOpenKey, setPrevOpenKey] = useState('');
   if (prevOpenKey !== openKey) {
     setPrevOpenKey(openKey);
