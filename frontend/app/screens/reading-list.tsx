@@ -423,7 +423,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     shadowColor: colors.accent, shadowOpacity: 0.4, shadowRadius: 10, elevation: 8,
   },
 
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
+  overlay: { flex: 1, backgroundColor: alphaHex(colors.bg, 'CC'), justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: 24, paddingBottom: 40, overflow: 'hidden', position: 'relative',

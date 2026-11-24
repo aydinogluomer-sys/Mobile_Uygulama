@@ -2473,3 +2473,5 @@ export type PublicFunctionName = keyof Database['public']['Functions'];
 export type TableRow<T extends PublicTableName> = Database['public']['Tables'][T]['Row'];
 export type TableInsert<T extends PublicTableName> = Database['public']['Tables'][T]['Insert'];
 export type TableUpdate<T extends PublicTableName> = Database['public']['Tables'][T]['Update'];
+
+export const POSTGREST_CLIENT_VERSION = '12' as const;

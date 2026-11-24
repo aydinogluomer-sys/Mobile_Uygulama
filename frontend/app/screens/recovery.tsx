@@ -27,7 +27,7 @@ import {
   returnNudgeMany,
   returnNudgeOne,
 } from '../../lib/metricCopy';
-import { space, radius, font, hexA, type Palette } from '../../lib/tokens';
+import { alphaHex, space, radius, font, hexA, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
 import { Image } from 'expo-image';
@@ -1755,7 +1755,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   taskActions: { flexDirection: 'row', gap: space.sm },
 
   // Planlama sheet'i
-  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
+  sheetOverlay: { flex: 1, backgroundColor: alphaHex(colors.bg, 'CC'), justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
     padding: space.xl, paddingBottom: Platform.OS === 'ios' ? 36 : space.xxl,

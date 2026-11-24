@@ -15,7 +15,7 @@ import { EmptyState, FormError, LoadErrorState, EditorialBanner } from '../../co
 import { AtmosphericScreenCanvas, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import LoadMoreFooter from '../../components/LoadMoreFooter';
-import { hexA, type Palette } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { projectProgress } from '../../lib/progressModel';
 
@@ -363,7 +363,7 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     shadowColor: colors.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8,
   },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
+  overlay: { flex: 1, backgroundColor: alphaHex(colors.bg, 'CC'), justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
   sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 16 },
   input: {

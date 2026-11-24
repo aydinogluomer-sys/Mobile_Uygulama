@@ -2,6 +2,7 @@ export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 export type TaskPriority = 'high' | 'medium' | 'low' | 'none';
 export type ListType = 'inbox' | 'this_week' | 'someday';
 export type QuadrantType = 'UI' | 'NI' | 'UN' | 'NN' | null;
+export const TASK_ESTIMATE_SOURCES = ['user', 'ai', 'block', 'default'] as const;
 export type TaskEstimateSource = 'user' | 'ai' | 'block' | 'default';
 
 export type Task = {

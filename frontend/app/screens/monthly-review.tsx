@@ -26,7 +26,7 @@ import MeasuredReportSection from '../../components/MeasuredReportSection';
 import MonthBackground from '../../components/MonthBackground';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
-import { hexA, type Palette } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions, reportBadge, summarizeHabitProgress, type ReportBadge } from '../../lib/reportMetrics';
 import { ymdFromIso, ymd, parseLocalDate } from '../../lib/date';
@@ -698,15 +698,15 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   heroCover: { minHeight: 132, alignItems: 'center', justifyContent: 'center', paddingVertical: 20, marginBottom: 18 },
   heroMonth: {
     fontSize: 34, fontWeight: '800', color: colors.white, letterSpacing: 0.5, textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 10, textShadowOffset: { width: 0, height: 2 },
+    textShadowColor: alphaHex(colors.bg, '8C'), textShadowRadius: 10, textShadowOffset: { width: 0, height: 2 },
   },
   heroYear: {
     fontSize: 14, fontWeight: '600', color: hexA(colors.white, 0.82), marginTop: 4, letterSpacing: 3,
-    textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6,
+    textShadowColor: alphaHex(colors.bg, '80'), textShadowRadius: 6,
   },
   heroTagline: {
     fontSize: 12, color: hexA(colors.white, 0.85), marginTop: 8, fontStyle: 'italic', textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 6,
+    textShadowColor: alphaHex(colors.bg, '80'), textShadowRadius: 6,
   },
 
   hero: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },

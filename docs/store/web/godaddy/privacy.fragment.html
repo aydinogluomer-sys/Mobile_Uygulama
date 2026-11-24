@@ -34,7 +34,7 @@
 <nav><a href="/">Aderyth</a><a href="/support">Destek</a><a href="/delete-account">Hesap Silme</a></nav>
 
 <h1>Gizlilik Politikası</h1>
-<p class="updated">Aderyth · Son güncelleme: 13 Eylül 2026</p>
+<p class="updated">Aderyth · Son güncelleme: 24 Kasım 2026</p>
 
 <h2>Kısaca</h2>
 <div class="card">
@@ -51,6 +51,9 @@
 sağlayıcımız Supabase tarafından şifrelenmiş (hash) olarak saklanır; Aderyth
 parolanı düz metin olarak görmez. Ayrıca hesabına bağlı bir kullanıcı kimliği
 (id) ve isteğe bağlı bir kullanıcı adı tutulur.</p>
+<p>Gün ve hafta sınırlarını senin saatine göre hesaplamak için cihazının saat
+diliminin adı (örneğin <code>Europe/Istanbul</code>) hesabına kaydedilir; bu bir
+konum bilgisi değildir.</p>
 
 <h2>Uygulamada oluşturduğun içerik</h2>
 <p>Alışkanlıkların ve tamamlama kayıtların, görevlerin, projelerin, notların,
@@ -59,8 +62,10 @@ seansların, irade/kapasite kayıtların, bıraktığın alışkanlıklar, okuma
 yaşam alanı kayıtların, takvim etkinliklerin ve haftalık/aylık
 değerlendirmelerin hesabına bağlı olarak saklanır. Günlük (journal) kayıtların
 serbest metindir ve hesabına bağlı saklanır.</p>
-<p>Bu verilere yalnızca sen erişebilirsin. Veritabanı satır düzeyinde güvenlik
-(RLS) ile korunur: her sorgu oturumdaki kimliğe göre sınırlanır.</p>
+<p>Veritabanı satır düzeyinde güvenlik (RLS) ile korunur: başka kullanıcılar bu
+verilere erişemez; her sorgu oturumundaki kimliğe göre sınırlanır. Tek istisna
+senin başlattığın yapay zekâ özellikleridir (aşağıdaki “AI Koç” ve “Günlük
+İçgörüsü” bölümleri).</p>
 
 <h2>AI Koç</h2>
 <p>AI Koç’a yazdığın mesajlar ve koçun yanıtları hesabına bağlı olarak
@@ -80,6 +85,21 @@ sildiğinde silinir.</p>
 harcanan Focus Point) tutulur. Bu kayıt faturalandırma ve tekrar koruması
 içindir.</p>
 
+<h2>Günlük İçgörüsü</h2>
+<p>Günlük İçgörüsü’nü yalnızca sen başlattığında, seçtiğin dönemdeki günlük
+kayıtlarının metni yapay zekâ sağlayıcımız <strong>Anthropic</strong>’e
+gönderilir. Hangi günlerin gideceğini ekranda kendin seçersin; çıkardığın
+günlerin metni gönderilmez.</p>
+<p>Gönderilen alanlar: seçili günlük kayıtlarının metni (en fazla 8000
+karakter), dönem adı ve teknik bir istek kimliği.</p>
+<p>Aderyth gönderilen günlük metnini veritabanında ayrıca saklamaz; AI
+isteğinin teknik kaydında (istek kimliği, mod, durum, harcanan Focus Point)
+metnin yalnızca tek yönlü özeti tutulur. Üretilen içgörü hesabına bağlı
+saklanır ve hesabını sildiğinde silinir.</p>
+<p>Anthropic’in bu metni kendi tarafında ne kadar süre işlediği/sakladığı
+Aderyth’in kontrolünde değildir ve burada bir taahhüt olarak sunulmaz. İçgörü
+oluşturmazsan hiçbir şey gönderilmez.</p>
+
 <h2>Sesle yazdırma</h2>
 <p>Mikrofon yalnızca sen mikrofon düğmesine bastığında açılır. Sürekli dinleme
 yoktur. Konuşmayı yazıya çevirme işini cihazının işletim sistemi yapar (iOS
@@ -87,8 +107,8 @@ Speech, Android konuşma tanıma); cihaz ve sistem ayarlarına bağlı olarak bu
 işlem cihaz üzerinde ya da işletim sistemi sağlayıcısının sunucusunda
 gerçekleşebilir ve bu kısım Aderyth’in kontrolünde değildir.</p>
 <p>Aderyth ses kaydı tutmaz ve ses dosyası sunucuya göndermez. Yalnızca ortaya
-çıkan metin yazı kutusuna gelir; onu gönderip göndermemeye sen karar
-verirsin.</p>
+çıkan metin yazı kutusuna gelir; onu gönderip göndermemeye sen karar verirsin.
+Gönderirsen, sohbet mesajı olarak saklanır.</p>
 
 <h2>Çökme raporları</h2>
 <p>Uygulama beklenmedik şekilde çökerse, teknik bir hata raporu çökme izleme
@@ -114,8 +134,10 @@ cihaz modeli, işletim sistemi sürümü ve uygulama sürümü.</p>
 
 <h2>Abonelik ve Focus Point</h2>
 <p>Plan durumun ve Focus Point bakiyen hesabına bağlı saklanır. Focus Point
-harcamaların ve iadeleri bir işlem kaydı olarak tutulur. Bu sürümde uygulama
-içi satın alma bulunmamaktadır; ödeme bilgisi toplanmaz.</p>
+harcamaların ve iadeleri bir işlem kaydı olarak tutulur.</p>
+<p>Aderyth bu sürümde ücretsizdir. Uygulama içi satın alma, abonelik ve reklam
+yoktur; ödeme bilgisi toplanmaz. Yapay zekâ özellikleri her ay yenilenen
+ücretsiz Focus Point bakiyesiyle çalışır.</p>
 
 <h2>Bildirimler</h2>
 <p>Hatırlatıcılar cihazında yerel olarak zamanlanır. Aderyth uzaktan bildirim
@@ -133,6 +155,8 @@ alışkanlık adların liderlik tablosunda paylaşılmaz.</p>
   <li>Konum verisi, kişiler, fotoğraflar veya cihaz depolamandaki dosyalar
   toplanmaz.</li>
   <li>Ödeme bilgisi toplanmaz.</li>
+  <li>Çökme raporlaması yalnızca teknik hata bilgisi gönderir; içeriklerini ya
+  da kimliğini göndermez (bkz. “Çökme raporları”).</li>
 </ul>
 
 <h2>Verilerin nerede saklanıyor</h2>
@@ -140,24 +164,42 @@ alışkanlık adların liderlik tablosunda paylaşılmaz.</p>
 saklanır. Uygulama ile sunucu arasındaki tüm trafik HTTPS/TLS ile şifrelenir.
 Cihazında ayrıca oturum bilgin, çevrimdışı kayıt kuyruğun ve bazı tercihlerin
 yerel olarak saklanır.</p>
+<p>Mobilde oturum anahtarın cihazın güvenli deposunda (Keychain / Keystore)
+saklanır; web’de tarayıcının yerel depolamasında (<code>localStorage</code>)
+tutulur. Ortak bir bilgisayarda işin bitince
+<strong>Ayarlar → Hesap → Oturumu Kapat</strong>’ı kullan.</p>
+<p>Oturumu kapattığında bu cihazdaki önbellek temizlenir ve hatırlatıcıların
+iptal edilir; henüz sunucuya gitmemiş değişikliklerin cihazda güvende kalır ve
+aynı hesapla tekrar girdiğinde gönderilir.</p>
 
 <h2>Hizmet sağlayıcılar</h2>
 <ul>
   <li><strong>Supabase</strong> — barındırma, veritabanı ve kimlik doğrulama.</li>
-  <li><strong>Anthropic</strong> — AI Koç ve AI rutin oluşturma isteklerinin
-  işlenmesi.</li>
+  <li><strong>Anthropic</strong> — AI Koç, AI rutin oluşturma ve Günlük
+  İçgörüsü isteklerinin işlenmesi.</li>
   <li><strong>Sentry</strong> — çökme raporlama.</li>
 </ul>
 
 <h2>Verilerini dışa aktarma</h2>
 <p>Ayarlar → Veri ve Gizlilik bölümünden verilerini JSON, CSV veya Excel
-biçiminde dışa aktarabilirsin. Bu dosya bir yedek değildir; geri yükleme
-yoktur.</p>
+biçiminde dışa aktarabilirsin. Dosya tüm alışkanlık kayıtlarını (notlar dahil),
+hesap kimliğini ve kurulum yanıtlarını içerir ve şifrelenmez. Bu tam bir yedek
+değildir: JSON dosyasını aynı bölümde doğrulayıp eksik kayıtlarını hesabına
+ekleyebilirsin; alışkanlık kayıtların (tarihçe), odak oturumların ve
+webhook’ların geri yüklenemez. Uygulamayı açtığında günde en fazla bir kez,
+cihazında son 3 yerel yedek kopyası tutulur; hesabını sildiğinde bu kopyalar da
+silinir.</p>
+<p>Obsidian (Markdown) aktarımı seçtiğin içeriği (günlük ve notlar dahil
+olabilir) düz metin olarak cihazının panosuna kopyalar. Pano diğer uygulamalar
+ve klavye yöneticileri tarafından okunabilir; Aderyth panoyu 60 saniye sonra,
+başka bir şey kopyalamadıysan, otomatik temizlemeyi dener.</p>
 
 <h2>Hesabını silme</h2>
 <p>Ayarlar → Hesap → Hesabı Sil ile hesabını kalıcı olarak silebilirsin. Silme
-işlemi geri alınamaz. Ayrıntılar ve uygulamaya erişemediğin durumdaki yol için
-<a href="/delete-account">Hesap ve Veri Silme</a>.</p>
+işlemi geri alınamaz. Silme onaylandığında hesabın ve yukarıda sayılan tüm
+kişisel verilerin veritabanından kaldırılır, cihazındaki yerel veriler
+temizlenir ve oturumun kapatılır. Ayrıntılar ve uygulamaya erişemediğin
+durumdaki yol için <a href="/delete-account">Hesap ve Veri Silme</a>.</p>
 
 <h2>Çocukların gizliliği</h2>
 <p>Aderyth çocuklara yönelik değildir ve bilerek 13 yaşın altındaki

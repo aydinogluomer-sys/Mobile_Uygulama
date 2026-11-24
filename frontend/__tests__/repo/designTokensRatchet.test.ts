@@ -73,7 +73,7 @@ const literals = tsxFiles.flatMap((f) =>
 // Exact post-Shard-A..E measured ceilings (ratchet may only move down)
 export const CEILINGS = {
   QUOTED_HEX: 8,
-  RGBA_LITERAL: 7,
+  RGBA_LITERAL: 0,
   FONT_SIZE_LITERAL: 926,
   SPACING_LITERAL: 1366,
   RADIUS_LITERAL: 465,

@@ -4,7 +4,31 @@
 >
 > **Kritik Yasaklar (`supabase/migrations/README.md`):**
 > - Kanonik projeye karşı **ASLA `supabase db push`** veya **`supabase config push`** çalıştırmayın (canlı defter zaman damgası, yerel dosyalar `NNN_` sıra numarası kullanır; CLI tüm geçmişi yeniden oynatmaya çalışır).
-> - Tüm migration'lar **Supabase Dashboard SQL Editörü** üzerinden sırayla, tek tek uygulanır.
+> - Tüm migration'lar **Supabase Dashboard SQL Editörü** üzerinden sırayla, tek tek **veya** aşağıdaki fail-closed `tools/execute-owner-rollout.mjs` CLI aracıyla (`SUPABASE_ACCESS_TOKEN` ile Management API üzerinden) uygulanır.
+
+---
+
+## Tek Komutluk Otomatik Geçiş Yardımcısı (`tools/execute-owner-rollout.mjs`)
+
+Aşağıdaki manuel Dashboard adımlarının tamamı (ön kontrol, Faz A, Faz B, 4 Edge fonksiyonu, `pg_cron` ve `Y01` canlı kanıt paketi) kanonik proje kilidi ve `xp_drift() = 0` kapılarıyla otomatik olarak da çalıştırılabilir:
+
+```bash
+# 0) Çevrimdışı plan doğrulaması (ağ veya token gerektirmez):
+node tools/execute-owner-rollout.mjs --mode all --dry-run --confirm-no-legacy-clients
+
+# 1) Canlı geçiş (S1 tam yedek alındıktan sonra, aşama aşama):
+SUPABASE_ACCESS_TOKEN=<sbp_token> node tools/execute-owner-rollout.mjs --mode preflight
+SUPABASE_ACCESS_TOKEN=<sbp_token> node tools/execute-owner-rollout.mjs --mode phase-a
+# Yeni istemci mağazalarda yayına çıktıktan SONRA (Y02):
+SUPABASE_ACCESS_TOKEN=<sbp_token> node tools/execute-owner-rollout.mjs --mode phase-b
+SUPABASE_ACCESS_TOKEN=<sbp_token> node tools/execute-owner-rollout.mjs --mode edge
+SUPABASE_ACCESS_TOKEN=<sbp_token> node tools/execute-owner-rollout.mjs --mode cron
+SUPABASE_ACCESS_TOKEN=<sbp_token> node tools/execute-owner-rollout.mjs --mode verify-live --json --out y01-live-evidence.json
+
+# Not: Eski istemci trafiği tamamen bittiyse tüm zincir tek seferde koşulabilir
+# (--confirm-no-legacy-clients olmadan 039 güvenliği için reddedilir):
+SUPABASE_ACCESS_TOKEN=<sbp_token> node tools/execute-owner-rollout.mjs --mode all --confirm-no-legacy-clients --out y01-rollout-report.json
+```
 
 ---
 
