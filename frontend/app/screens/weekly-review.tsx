@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { alphaHex, hexA, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { EditorialBanner } from '../../components/ui';
@@ -15,6 +16,16 @@ import { useTaskStore, type Task } from '../../store/taskStore';
 import { useHabitStore } from '../../store/habitStore';
 // R07.06 — next week's change as a real action, kept with the week.
 import NextActionPicker from '../../components/NextActionPicker';
+import {
+  actionFor,
+  actionOutcome,
+  nextWeekMonday,
+  previousWeekKey,
+  reviewActionsKey,
+  taskTitleFrom,
+  upsertAction,
+  type NextAction,
+} from '../../lib/reviewActions';
 import { useJournalStore } from '../../store/journalStore';
 import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
 import { routineReport } from '../../lib/routineReport';
@@ -75,6 +86,8 @@ type AutoMetrics = {
    *  as "0 tamamlama", which claims the user achieved nothing. Same rule as
    *  `willpowerStore.score()` returning null instead of a fabricated 100. */
   totalCompletions: number | null;
+  /** Completed habit-log occurrences (done|partial) alone, or `null` when logs failed to load. */
+  completedLogCount: number | null;
   /** `null` when the week has no tasks to rate against (insufficient data, not a fabricated 0/0). */
   taskCompletionRate: number | null;
   /** `lib/behaviorIntelligence.recoverySuccessRate` over this week's recovery plans -- a genuine `Result`, rendered via `.reason` on `{ok:false}`. */
@@ -85,6 +98,7 @@ type AutoMetrics = {
 
 const EMPTY_AUTO_METRICS: AutoMetrics = {
   totalCompletions: null,
+  completedLogCount: null,
   taskCompletionRate: null,
   recoveryCompletion: { ok: false, reason: 'Henüz yüklenmedi' },
   overloadDays: 0,
@@ -158,6 +172,7 @@ export default function WeeklyReviewScreen() {
   const s = useThemedStyles(makeStyles);
   const tasks = useTaskStore((st) => st.tasks);
   const fetchTasks = useTaskStore((st) => st.fetchTasks);
+  const addTask = useTaskStore((st) => st.addTask);
   const habits = useHabitStore((st) => st.habits);
   const fetchHabits = useHabitStore((st) => st.fetchHabits);
   const appendEntry = useJournalStore((st) => st.appendEntry);
@@ -173,6 +188,16 @@ export default function WeeklyReviewScreen() {
   const [weekTime, setWeekTime] = useState<TimeDistribution | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  // U10 & REC-06 — persisted weekly adjustments & reversible undo state
+  const [reviewUserId, setReviewUserId] = useState<string | null>(null);
+  const [reviewActions, setReviewActions] = useState<NextAction[]>([]);
+  const [actionsSyncTick, setActionsSyncTick] = useState(0);
+  const [quickAdjustOpen, setQuickAdjustOpen] = useState(false);
+  const [quickAdjustDraft, setQuickAdjustDraft] = useState('');
+  const [quickAdjustError, setQuickAdjustError] = useState<string | null>(null);
+  const [savingQuickAdjust, setSavingQuickAdjust] = useState(false);
+  const [undoingAdjustment, setUndoingAdjustment] = useState(false);
+  const nextWeekInputRef = useRef<TextInput | null>(null);
 
   const targetDate = subWeeks(new Date(), weekOffset);
   const weekKey = getWeekKey(targetDate);
@@ -198,9 +223,20 @@ export default function WeeklyReviewScreen() {
   async function loadReview() {
     const user = await currentUser();
     if (!user) {
+      setReviewUserId(null);
+      setReviewActions([]);
       setAnswers({});
       setSavedAt(null);
       return;
+    }
+
+    setReviewUserId(user.id);
+    try {
+      const rawActions = await AsyncStorage.getItem(reviewActionsKey(user.id));
+      const parsed = rawActions ? (JSON.parse(rawActions) as unknown) : [];
+      setReviewActions(Array.isArray(parsed) ? (parsed as NextAction[]) : []);
+    } catch {
+      setReviewActions([]);
     }
 
     const res = await fetchWeeklyReview({ weekKey });
@@ -280,6 +316,7 @@ export default function WeeklyReviewScreen() {
 
     setAutoMetrics({
       totalCompletions: completedLogCount == null ? null : completedLogCount + completedTasks.length,
+      completedLogCount,
       taskCompletionRate,
       recoveryCompletion,
       overloadDays,
@@ -349,6 +386,109 @@ export default function WeeklyReviewScreen() {
       setSaving(false);
     }
   }
+
+  function handleJumpToAdjustment() {
+    const fromText = taskTitleFrom(answers.next_week ?? '');
+    const defaultSuggestion =
+      autoMetrics.overloadDays > 0
+        ? 'En yoğun günde bir görevi yarına taşıyarak kapasiteyi dengele'
+        : 'Pazartesi sabahına 10 dakikalık tek bir odak adımı ekle';
+    const draft = fromText.length > 0 ? fromText : defaultSuggestion;
+    setQuickAdjustDraft(draft);
+    setQuickAdjustError(null);
+    setQuickAdjustOpen(true);
+    if (!answers.next_week || answers.next_week.trim().length === 0) {
+      setAnswers((current) => ({ ...current, next_week: draft }));
+    }
+    nextWeekInputRef.current?.focus();
+  }
+
+  async function handleApplyQuickAdjustment() {
+    const cleanTitle = quickAdjustDraft.trim();
+    if (!cleanTitle) {
+      setQuickAdjustError('Küçük ayar için bir başlık yaz.');
+      return;
+    }
+    setSavingQuickAdjust(true);
+    setQuickAdjustError(null);
+    try {
+      const uid = reviewUserId ?? (await currentUser())?.id ?? null;
+      if (!uid) {
+        setQuickAdjustError('Oturum bulunamadı.');
+        return;
+      }
+      const created = await addTask({
+        title: cleanTitle,
+        due_date: nextWeekMonday(weekKey),
+        list_type: 'this_week',
+        priority: 'none',
+      });
+      if (!created) {
+        setQuickAdjustError('Küçük ayar görevi eklenemedi.');
+        return;
+      }
+      const nextEntry: NextAction = {
+        weekKey,
+        kind: 'task',
+        taskId: created.id,
+        label: cleanTitle,
+        createdAt: new Date().toISOString(),
+      };
+      const updatedList = upsertAction(reviewActions, nextEntry);
+      await AsyncStorage.setItem(reviewActionsKey(uid), JSON.stringify(updatedList));
+      setReviewUserId(uid);
+      setReviewActions(updatedList);
+      setQuickAdjustOpen(false);
+      setActionsSyncTick((n) => n + 1);
+    } finally {
+      setSavingQuickAdjust(false);
+    }
+  }
+
+  async function handleUndoAdjustment() {
+    const mine = actionFor(reviewActions, weekKey);
+    if (!mine) return;
+    setUndoingAdjustment(true);
+    try {
+      const uid = reviewUserId ?? (await currentUser())?.id ?? null;
+      const updatedList = reviewActions.filter((entry) => entry.weekKey !== weekKey);
+      if (uid) {
+        await AsyncStorage.setItem(reviewActionsKey(uid), JSON.stringify(updatedList));
+      }
+      if (mine.kind === 'task') {
+        const storeState = useTaskStore.getState() as ReturnType<typeof useTaskStore.getState> & {
+          deleteTask?: (id: string) => Promise<void>;
+        };
+        const linkedTask = storeState.tasks.find((t) => t.id === mine.taskId);
+        if (!linkedTask || !linkedTask.completed) {
+          if (typeof storeState.deleteTask === 'function') {
+            await storeState.deleteTask(mine.taskId);
+          } else {
+            await storeState.removeTask(mine.taskId);
+          }
+        }
+      }
+      setReviewActions(updatedList);
+      setActionsSyncTick((n) => n + 1);
+    } finally {
+      setUndoingAdjustment(false);
+    }
+  }
+
+  const observedSampleCount =
+    autoMetrics.completedLogCount == null
+      ? null
+      : autoMetrics.completedLogCount + completedTasks.length + (focusMinutes >= 10 ? 1 : 0);
+  const hasSufficientInsightData =
+    autoMetrics.totalCompletions !== null &&
+    observedSampleCount !== null &&
+    observedSampleCount >= 3;
+  const currentAdjustment = actionFor(reviewActions, weekKey);
+  const previousAdjustment = actionFor(reviewActions, previousWeekKey(weekKey));
+  const taskCompleted = (id: string) => {
+    const found = tasks.find((x) => x.id === id);
+    return found ? found.completed : undefined;
+  };
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -429,6 +569,134 @@ export default function WeeklyReviewScreen() {
           </View>
         )}
 
+        {/* U10 & REC-06 — BU HAFTA NE İŞLEDİ? & BİR KÜÇÜK AYAR */}
+        <View testID="weekly-insight-action-card" style={s.insightActionCard}>
+          <Text style={s.sectionTitle}>BU HAFTA NE İŞLEDİ? & BİR KÜÇÜK AYAR</Text>
+
+          <View style={s.insightBlock}>
+            <Text style={s.insightSubhead}>Bu hafta ne işledi?</Text>
+            {!hasSufficientInsightData ? (
+              <Text testID="weekly-insight-insufficient" style={s.insightInsufficientText}>
+                Henüz yeterli kayıt yok — az veriden kişisel örüntü iddiası üretilmez.
+              </Text>
+            ) : (
+              <>
+                <Text testID="weekly-insight-summary" style={s.insightBodyText}>
+                  Bu hafta {autoMetrics.completedLogCount} alışkanlık kaydı ve {completedTasks.length} görev tamamlandı
+                  {focusMinutes > 0 ? `, toplam ${focusMinutes} dk odaklanıldı` : ''}.
+                  {autoMetrics.overloadDays === 0
+                    ? ' Günlük yük hiçbir gün aşırı yük bandına çıkmadı.'
+                    : ` ${autoMetrics.overloadDays} gün kapasite aşırı yük bandında seyretti.`}
+                </Text>
+                <Text testID="weekly-insight-correlation-note" style={s.insightCorrelationText}>
+                  Not: Bu özet gözlenen birlikteliği gösterir; tek başına kesin neden-sonuç anlamına gelmez.
+                </Text>
+              </>
+            )}
+          </View>
+
+          <View style={s.insightDivider} />
+
+          <View style={s.insightBlock}>
+            <Text style={s.insightSubhead}>Bir küçük ayar</Text>
+            {previousAdjustment && (
+              <Text testID="weekly-previous-adjustment-outcome" style={s.insightPrevOutcome}>
+                Geçen haftanın ayarı: {actionOutcome(previousAdjustment, { taskCompleted })}
+              </Text>
+            )}
+
+            {currentAdjustment ? (
+              <View style={s.currentAdjustWrap}>
+                <Text testID="weekly-current-adjustment" style={s.insightChosenText}>
+                  Seçilen ayar:{' '}
+                  {currentAdjustment.kind === 'task'
+                    ? `"${currentAdjustment.label}" görevi gelecek hafta için eklendi`
+                    : currentAdjustment.label}
+                </Text>
+                <TouchableOpacity
+                  testID="weekly-undo-adjustment"
+                  style={s.undoAdjustBtn}
+                  onPress={() => {
+                    void handleUndoAdjustment();
+                  }}
+                  disabled={undoingAdjustment}
+                  accessibilityRole="button"
+                  accessibilityLabel="Öneriyi geri al"
+                  accessibilityState={{ disabled: undoingAdjustment, busy: undoingAdjustment }}
+                >
+                  <Ionicons name="arrow-undo-outline" size={15} color={colors.warning} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                  <Text style={s.undoAdjustBtnText}>
+                    {undoingAdjustment ? 'Geri alınıyor...' : 'Öneriyi geri al'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : isCurrentWeek ? (
+              quickAdjustOpen ? (
+                <View style={s.quickAdjustComposer}>
+                  <TextInput
+                    testID="weekly-adjustment-input"
+                    style={s.quickAdjustInput}
+                    value={quickAdjustDraft}
+                    onChangeText={(val) => {
+                      setQuickAdjustDraft(val);
+                      setQuickAdjustError(null);
+                    }}
+                    placeholder="Gelecek hafta için küçük bir ayar yaz..."
+                    placeholderTextColor={colors.textFaint}
+                    maxLength={120}
+                    accessibilityLabel="Gelecek hafta küçük ayar başlığı"
+                  />
+                  {quickAdjustError && (
+                    <Text style={s.quickAdjustErrorText}>{quickAdjustError}</Text>
+                  )}
+                  <View style={s.quickAdjustBtnRow}>
+                    <TouchableOpacity
+                      testID="weekly-cancel-adjustment"
+                      style={s.quickAdjustSecondaryBtn}
+                      onPress={() => {
+                        setQuickAdjustOpen(false);
+                        setQuickAdjustError(null);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Küçük ayar seçiminden vazgeç"
+                    >
+                      <Text style={s.quickAdjustSecondaryBtnText}>Vazgeç</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      testID="weekly-apply-adjustment"
+                      style={s.quickAdjustPrimaryBtn}
+                      onPress={() => {
+                        void handleApplyQuickAdjustment();
+                      }}
+                      disabled={savingQuickAdjust}
+                      accessibilityRole="button"
+                      accessibilityLabel="Küçük ayarı gelecek hafta için uygula"
+                      accessibilityState={{ disabled: savingQuickAdjust, busy: savingQuickAdjust }}
+                    >
+                      <Text style={s.quickAdjustPrimaryBtnText}>
+                        {savingQuickAdjust ? 'Ekleniyor...' : 'Ayarı uygula'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  testID="weekly-jump-to-adjustment"
+                  style={s.jumpAdjustBtn}
+                  onPress={handleJumpToAdjustment}
+                  accessibilityRole="button"
+                  accessibilityLabel="Gelecek hafta için küçük bir ayar belirle"
+                >
+                  <Ionicons name="options-outline" size={16} color={colors.teal} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                  <Text style={s.jumpAdjustBtnText}>Küçük bir ayar belirle</Text>
+                </TouchableOpacity>
+              )
+            ) : (
+              <Text style={s.insightPrevOutcome}>Bu hafta için seçilmiş bir küçük ayar yok.</Text>
+            )}
+          </View>
+        </View>
+
         {/* §12 -- Toplam tamamlama · Habit completion · Task completion · Focus duration · Recovery completion · Capacity overload days */}
         <View style={s.section}>
           <Text style={s.sectionTitle}>OTOMATİK METRİKLER</Text>
@@ -483,6 +751,7 @@ export default function WeeklyReviewScreen() {
             <View key={question.key} style={s.questionCard}>
               <Text style={s.questionLabel}>{question.label}</Text>
               <TextInput
+                ref={question.key === 'next_week' ? nextWeekInputRef : undefined}
                 style={s.questionInput}
                 placeholder={question.placeholder}
                 placeholderTextColor={colors.textFaint}
@@ -492,7 +761,7 @@ export default function WeeklyReviewScreen() {
                 editable={isCurrentWeek}
               />
               {question.key === 'next_week' && (
-                <NextActionPicker weekKey={weekKey} nextWeekText={answers.next_week ?? ''} editable={isCurrentWeek} />
+                <NextActionPicker weekKey={weekKey} nextWeekText={answers.next_week ?? ''} editable={isCurrentWeek} key={`${weekKey}-${actionsSyncTick}`} />
               )}
             </View>
           ))}
@@ -566,4 +835,44 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   saveBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
   savedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: alphaHex(colors.success, '10'), borderRadius: 12, padding: 12, borderWidth: 1, borderColor: alphaHex(colors.success, '30') },
   savedBadgeText: { fontSize: 13, color: colors.success },
+  insightActionCard: { backgroundColor: colors.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 24, gap: 10 },
+  insightBlock: { gap: 6 },
+  insightSubhead: { fontSize: 13, fontWeight: '700', color: colors.text },
+  insightInsufficientText: { fontSize: 13, color: colors.textDim, lineHeight: 19 },
+  insightBodyText: { fontSize: 13, color: colors.text, lineHeight: 19 },
+  insightCorrelationText: { fontSize: 11.5, color: colors.textFaint, lineHeight: 17 },
+  insightDivider: { height: 1, backgroundColor: colors.border, marginVertical: 2 },
+  insightPrevOutcome: { fontSize: 12, color: colors.textDim, lineHeight: 17 },
+  currentAdjustWrap: { gap: 8, marginTop: 2 },
+  insightChosenText: { fontSize: 13, color: colors.text, lineHeight: 18 },
+  undoAdjustBtn: {
+    minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, borderRadius: 10, backgroundColor: hexA(colors.warning, 0.12),
+    borderWidth: 1, borderColor: hexA(colors.warning, 0.35),
+  },
+  undoAdjustBtnText: { fontSize: 13, fontWeight: '600', color: colors.warning },
+  jumpAdjustBtn: {
+    minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, borderRadius: 10, backgroundColor: alphaHex(colors.teal, '18'),
+    borderWidth: 1, borderColor: alphaHex(colors.teal, '40'), marginTop: 2,
+  },
+  jumpAdjustBtnText: { fontSize: 13, fontWeight: '700', color: colors.teal },
+  quickAdjustComposer: { gap: 8, marginTop: 4 },
+  quickAdjustInput: {
+    minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.bgElevated, paddingHorizontal: 12, paddingVertical: 8,
+    fontSize: 13, color: colors.text,
+  },
+  quickAdjustErrorText: { fontSize: 12, color: colors.error },
+  quickAdjustBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  quickAdjustSecondaryBtn: {
+    minHeight: 44, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  quickAdjustSecondaryBtnText: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
+  quickAdjustPrimaryBtn: {
+    minHeight: 44, flex: 1, paddingHorizontal: 14, borderRadius: 10, backgroundColor: colors.teal,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  quickAdjustPrimaryBtnText: { fontSize: 13, color: colors.white, fontWeight: '700' },
 });

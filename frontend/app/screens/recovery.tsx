@@ -35,7 +35,32 @@ import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skele
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { GoldMendShimmer } from '../../components/motion';
 import { BENTO_ART, CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
-import { todayLocal } from '../../lib/date';
+import { todayLocal, type Ymd } from '../../lib/date';
+import { newOperationId } from '../../lib/outbox';
+import {
+  applyPreviewItemOverride,
+  buildDayPlanPreview,
+  evaluatePreviewFreshness,
+  formatMinutesToHm,
+  parseHmToMinutes,
+  previewItemKey,
+  resolveEffectivePlanningDay,
+  type DayPlanAction,
+  type DayPlanEntityKind,
+  type DayPlanPreview,
+  type DayPlanPreviewInput,
+  type FixedPlanBlock,
+  type ProtectedRef,
+} from '../../lib/dayPlanPreview';
+import type { Task } from '../../lib/taskTypes';
+import {
+  commitDayPlan,
+  retryFailedDayPlanItems,
+  undoDayPlanCommit,
+  type DayPlanCommitReceipt,
+  type DayPlanCommitResult,
+  type PlanMutationItem,
+} from '../../services/dayPlanCommitService';
 import { logsForHabitsSince as fetchHabitLogsForHabitsSince } from '../../services/habitService';
 import { completePlanWithMakeup, makeupNeedsValue, makeupSuggestedValue } from '../../services/recoveryService';
 // KD-12 — a measurable make-up asks for the amount instead of inventing one;
@@ -86,6 +111,147 @@ const getStrategyMeta = (
   skip: { label: 'Telafi Etme', desc: 'Bu sefer geç, yarına odaklan', icon: 'flash-outline', color: colors.info },
 });
 
+type ReplanStep = 'closed' | 'protect' | 'preview' | 'apply';
+
+function splitFixedBlockTasks(
+  allTasks: readonly Task[],
+  dayKey: Ymd,
+): { fixedBlocks: FixedPlanBlock[]; movableTasks: Task[] } {
+  const fixedBlocks: FixedPlanBlock[] = [];
+  const movableTasks: Task[] = [];
+  for (const task of allTasks) {
+    if (!task.completed && task.status !== 'cancelled' && task.due_date === dayKey) {
+      const startMin = parseHmToMinutes(task.time_block_start);
+      if (startMin !== null) {
+        const rawEnd = parseHmToMinutes(task.time_block_end);
+        const fallbackEnd = Math.min(1439, startMin + Math.max(15, task.estimated_minutes ?? 30));
+        const endMin = rawEnd !== null && rawEnd > startMin ? rawEnd : fallbackEnd;
+        if (endMin > startMin) {
+          fixedBlocks.push({
+            id: task.id,
+            user_id: task.user_id,
+            title: task.title,
+            local_day: dayKey,
+            start_time: formatMinutesToHm(startMin),
+            end_time: formatMinutesToHm(endMin),
+            locked: true,
+            source: 'internal_fixed',
+          });
+          continue;
+        }
+      }
+    }
+    movableTasks.push(task);
+  }
+  return { fixedBlocks, movableTasks };
+}
+
+function replanActionLabel(action: DayPlanAction): string {
+  switch (action) {
+    case 'keep':
+      return 'Bugünde tut';
+    case 'shrink':
+      return '5 dk ilk adıma küçült';
+    case 'postpone_tomorrow':
+      return 'Yarına taşı';
+    case 'release_someday':
+      return 'Bir Gün listesine bırak';
+    case 'skip_today':
+      return 'Bugünlük atla';
+    case 'do_not_recover':
+      return 'Telafi etme';
+  }
+}
+
+function buildMutationsFromPreview(preview: DayPlanPreview): PlanMutationItem[] {
+  const items: PlanMutationItem[] = [];
+  for (const ch of preview.changes) {
+    if (ch.action === 'keep') continue;
+    if (ch.sourceRef.entity === 'task') {
+      if (ch.action === 'postpone_tomorrow') {
+        items.push({
+          itemId: previewItemKey('task', ch.sourceRef.id),
+          entity: 'task',
+          targetId: ch.sourceRef.id,
+          title: ch.sourceRef.title,
+          expectedVersion: ch.expectedVersion,
+          action: 'postpone_tomorrow',
+          taskPatch: {
+            due_date: preview.tomorrowDayKey,
+            time_block_start: null,
+            time_block_end: null,
+          },
+        });
+      } else if (ch.action === 'release_someday') {
+        items.push({
+          itemId: previewItemKey('task', ch.sourceRef.id),
+          entity: 'task',
+          targetId: ch.sourceRef.id,
+          title: ch.sourceRef.title,
+          expectedVersion: ch.expectedVersion,
+          action: 'release_someday',
+          taskPatch: {
+            list_type: 'someday',
+            due_date: null,
+            time_block_start: null,
+            time_block_end: null,
+          },
+        });
+      } else if (ch.action === 'shrink') {
+        items.push({
+          itemId: previewItemKey('task', ch.sourceRef.id),
+          entity: 'task',
+          targetId: ch.sourceRef.id,
+          title: ch.sourceRef.title,
+          expectedVersion: ch.expectedVersion,
+          action: 'update_time_block',
+          taskPatch: {
+            due_date: preview.localDayKey,
+            time_block_start: null,
+            time_block_end: null,
+          },
+        });
+      }
+      continue;
+    }
+
+    if (ch.sourceRef.entity === 'habit') {
+      const hasPartialProgress =
+        ch.before.habitState === 'partial' ||
+        (ch.before.loggedValue !== null && ch.before.loggedValue > 0);
+      // P04: Prior partial progress is preserved intact without inventing or clobbering amounts.
+      if (hasPartialProgress) continue;
+      if (ch.action === 'skip_today' || ch.action === 'do_not_recover') {
+        items.push({
+          itemId: previewItemKey('habit', ch.sourceRef.id),
+          entity: 'habit',
+          targetId: ch.sourceRef.id,
+          title: ch.sourceRef.title,
+          expectedVersion: ch.before.habitState,
+          action: ch.action === 'do_not_recover' ? 'do_not_recover' : 'skip_today',
+          priorHabitLogState: ch.before.habitState,
+        });
+      }
+      continue;
+    }
+
+    if (
+      ch.sourceRef.entity === 'recovery_plan' &&
+      (ch.action === 'do_not_recover' || ch.action === 'postpone_tomorrow')
+    ) {
+      items.push({
+        itemId: previewItemKey('recovery_plan', ch.sourceRef.id),
+        entity: 'recovery_plan',
+        targetId: ch.sourceRef.id,
+        title: ch.sourceRef.title,
+        expectedVersion: ch.expectedVersion,
+        action: ch.action === 'postpone_tomorrow' ? 'postpone_tomorrow' : 'do_not_recover',
+      });
+    }
+  }
+  return items;
+}
+
 export default function RecoveryScreen() {
   const colors = useThemeColors();
   const s = useThemedStyles(makeStyles);
@@ -97,10 +263,29 @@ export default function RecoveryScreen() {
   const fetchHabits = useHabitStore((st) => st.fetchHabits);
   const fetchLogsForDate = useLogStore((st) => st.fetchLogsForDate);
   const logHabit = useLogStore((st) => st.logHabit);
+  const storeLogs = useLogStore((st) => st.logs);
+  const todayLogs = storeLogs ?? [];
   const { plans, fetchPlans, addPlan, skipPlan, deletePlan, planForHabit, recoveryOptionsFor } = useRecoveryStore(useShallow((st) => ({ plans: st.plans, fetchPlans: st.fetchPlans, addPlan: st.addPlan, skipPlan: st.skipPlan, deletePlan: st.deletePlan, planForHabit: st.planForHabit, recoveryOptionsFor: st.recoveryOptionsFor })));
   const caps = useTimeCapsules();
   const [capsuleLater, setCapsuleLater] = useState(false);
   const eligibleCapsuleItem = caps.eligible;
+  const [sessionUserId, setSessionUserId] = useState('local-user');
+  const [replanStep, setReplanStep] = useState<ReplanStep>('closed');
+  const [replanDayKey, setReplanDayKey] = useState<Ymd | null>(null);
+  const [replanProtectedRef, setReplanProtectedRef] = useState<ProtectedRef | null>(null);
+  const [replanPreviewState, setReplanPreviewState] = useState<{
+    input: DayPlanPreviewInput;
+    preview: DayPlanPreview;
+  } | null>(null);
+  const [replanOperationId, setReplanOperationId] = useState<string | null>(null);
+  const [replanStaleMessage, setReplanStaleMessage] = useState<string | null>(null);
+  const [replanCommitting, setReplanCommitting] = useState(false);
+  const [replanRetrying, setReplanRetrying] = useState(false);
+  const [replanUndoing, setReplanUndoing] = useState(false);
+  const [replanMutations, setReplanMutations] = useState<PlanMutationItem[]>([]);
+  const [replanCommitResult, setReplanCommitResult] = useState<DayPlanCommitResult | null>(null);
+  const [replanReceipt, setReplanReceipt] = useState<DayPlanCommitReceipt | null>(null);
+  const [replanUndoFeedback, setReplanUndoFeedback] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [streaks, setStreaks] = useState<StreakMap>({});
@@ -451,6 +636,238 @@ export default function RecoveryScreen() {
     setMakeupTarget(null);
   }
 
+  function buildFreshPreviewSnapshot(
+    protectedSelection: ProtectedRef | null,
+    overrides: Record<string, DayPlanAction>,
+    uid: string,
+  ): { input: DayPlanPreviewInput; preview: DayPlanPreview; dayKey: Ymd } {
+    const now = new Date();
+    const eff = resolveEffectivePlanningDay(now);
+    const liveTasks = useTaskStore.getState().tasks;
+    const liveHabits = useHabitStore.getState().habits;
+    const liveLogs = useLogStore.getState().logs ?? [];
+    const livePlans = useRecoveryStore.getState().plans;
+    const { fixedBlocks, movableTasks } = splitFixedBlockTasks(liveTasks, eff.effectiveDayKey);
+    const input: DayPlanPreviewInput = {
+      userId: uid,
+      localDayKey: eff.effectiveDayKey,
+      nowLocalMinutes: eff.nowLocalMinutes,
+      generatedAtIso: now.toISOString(),
+      protectedRef: protectedSelection,
+      fixedBlocks,
+      tasks: movableTasks,
+      habits: liveHabits,
+      todayLogs: liveLogs,
+      recoveryPlans: livePlans,
+      itemOverrides: overrides,
+    };
+    return {
+      input,
+      preview: buildDayPlanPreview(input),
+      dayKey: eff.effectiveDayKey,
+    };
+  }
+
+  function openReplanFlow() {
+    haptic.select();
+    const eff = resolveEffectivePlanningDay(new Date());
+    setReplanDayKey(eff.effectiveDayKey);
+    setReplanProtectedRef(null);
+    setReplanPreviewState(null);
+    setReplanOperationId(null);
+    setReplanStaleMessage(null);
+    setReplanCommitResult(null);
+    setReplanUndoFeedback(null);
+    setReplanStep('protect');
+    void currentUser().then((u) => {
+      if (mountedRef.current && u?.id) setSessionUserId(u.id);
+    });
+  }
+
+  function closeReplanFlow() {
+    haptic.light();
+    setReplanStep('closed');
+    setReplanStaleMessage(null);
+    setReplanOperationId(null);
+  }
+
+  function proceedToReplanPreview() {
+    haptic.select();
+    const snap = buildFreshPreviewSnapshot(replanProtectedRef, {}, sessionUserId);
+    setReplanDayKey(snap.dayKey);
+    setReplanPreviewState({ input: snap.input, preview: snap.preview });
+    setReplanOperationId(null);
+    setReplanStaleMessage(null);
+    setReplanStep('preview');
+  }
+
+  function refreshReplanPreview() {
+    haptic.select();
+    const existingOverrides = { ...(replanPreviewState?.input.itemOverrides ?? {}) };
+    const snap = buildFreshPreviewSnapshot(replanProtectedRef, existingOverrides, sessionUserId);
+    setReplanDayKey(snap.dayKey);
+    setReplanPreviewState({ input: snap.input, preview: snap.preview });
+    setReplanOperationId(null);
+    setReplanStaleMessage(null);
+  }
+
+  function handleReplanOverride(
+    previewInput: DayPlanPreviewInput,
+    entity: DayPlanEntityKind,
+    id: string,
+    action: DayPlanAction,
+  ) {
+    haptic.select();
+    const key = previewItemKey(entity, id);
+    const updatedPreview = applyPreviewItemOverride(previewInput, key, action);
+    const nextOverrides: Record<string, DayPlanAction> = {
+      ...(previewInput.itemOverrides ?? {}),
+      [key]: action,
+    };
+    setReplanPreviewState({
+      input: { ...previewInput, itemOverrides: nextOverrides },
+      preview: updatedPreview,
+    });
+    setReplanOperationId(null);
+    setReplanStaleMessage(null);
+  }
+
+  async function handleApplyReplan(previewToCommit: DayPlanPreview) {
+    const now = new Date();
+    const effNow = resolveEffectivePlanningDay(now);
+    const liveMovableTasks = splitFixedBlockTasks(
+      useTaskStore.getState().tasks,
+      effNow.effectiveDayKey,
+    ).movableTasks;
+    const freshness = evaluatePreviewFreshness(previewToCommit, {
+      nowIso: now.toISOString(),
+      currentLocalDayKey: effNow.effectiveDayKey,
+      tasks: liveMovableTasks,
+      habits: useHabitStore.getState().habits,
+      todayLogs: useLogStore.getState().logs ?? [],
+      recoveryPlans: useRecoveryStore.getState().plans,
+    });
+
+    if (!freshness.fresh) {
+      const reasonMsg =
+        freshness.reason === 'day_changed'
+          ? 'Planlama günü değişti. Güncel günü yenileyip tekrar onayla.'
+          : freshness.reason === 'expired'
+            ? 'Önizleme süresi doldu. Güncel durumu yenileyip tekrar onayla.'
+            : 'Bazı öğeler bu sırada değişti. Önizlemeyi yenileyip kontrol et.';
+      setReplanStaleMessage(reasonMsg);
+      return;
+    }
+
+    const opId = replanOperationId ?? newOperationId();
+    if (!replanOperationId) {
+      setReplanOperationId(opId);
+    }
+    const mutationItems = buildMutationsFromPreview(previewToCommit);
+
+    setReplanCommitting(true);
+    setReplanStaleMessage(null);
+    try {
+      const result = await commitDayPlan({
+        operationId: opId,
+        localDayKey: previewToCommit.localDayKey,
+        items: mutationItems,
+      });
+      if (!mountedRef.current) return;
+      setReplanMutations(mutationItems);
+      setReplanCommitResult(result);
+      setReplanReceipt(result.receipt);
+      setReplanUndoFeedback(null);
+      setReplanStep('apply');
+      if (result.overall === 'committed' || result.overall === 'pending') {
+        haptic.success();
+      }
+    } finally {
+      if (mountedRef.current) setReplanCommitting(false);
+    }
+  }
+
+  async function handleRetryFailedReplan() {
+    if (!replanCommitResult) return;
+    setReplanRetrying(true);
+    try {
+      const retried = await retryFailedDayPlanItems(replanCommitResult, replanMutations);
+      if (!mountedRef.current) return;
+      setReplanCommitResult(retried);
+      setReplanReceipt(retried.receipt);
+      if (retried.overall === 'committed' || retried.overall === 'pending') {
+        haptic.success();
+      }
+    } finally {
+      if (mountedRef.current) setReplanRetrying(false);
+    }
+  }
+
+  async function handleUndoReplan() {
+    if (!replanReceipt) return;
+    const hasUndoable = replanReceipt.items.some(
+      (it) => it.undoable && (it.status === 'committed' || it.status === 'pending'),
+    );
+    if (!hasUndoable) return;
+    setReplanUndoing(true);
+    try {
+      const undoRes = await undoDayPlanCommit(replanReceipt);
+      if (!mountedRef.current) return;
+      if (undoRes.failedItemIds.length === 0) {
+        setReplanReceipt(null);
+      }
+      if (undoRes.overall === 'undone') {
+        haptic.success();
+        setReplanUndoFeedback('Son gün planı değişiklikleri geri alındı.');
+      } else if (undoRes.overall === 'pending') {
+        setReplanUndoFeedback('Geri alma cihaza kaydedildi; bağlantı geldiğinde eşitlenecek.');
+      } else if (undoRes.overall === 'conflict' || undoRes.overall === 'partial') {
+        setReplanUndoFeedback('Sonradan değiştirilen maddeler korundu; uygun olanlar geri alındı.');
+      } else {
+        setReplanUndoFeedback('Geri alınacak uygulanmış değişiklik bulunmadı.');
+      }
+    } finally {
+      if (mountedRef.current) setReplanUndoing(false);
+    }
+  }
+
+  const effectiveReplanDay: Ymd = replanDayKey ?? (today as Ymd);
+  const { fixedBlocks: replanFixedBlocks, movableTasks: replanMovableTasks } = splitFixedBlockTasks(
+    tasks,
+    effectiveReplanDay,
+  );
+  const protectableTasks = replanMovableTasks.filter(
+    (t) =>
+      !t.completed &&
+      t.status !== 'completed' &&
+      t.status !== 'cancelled' &&
+      Boolean(t.due_date && t.due_date <= effectiveReplanDay),
+  );
+  const completedOrExcusedHabitIdsToday = new Set(
+    todayLogs
+      .filter(
+        (l) =>
+          typeof l.completed_at === 'string' &&
+          l.completed_at.slice(0, 10) === effectiveReplanDay &&
+          (l.state === 'done' || l.state === 'skip' || l.is_completed),
+      )
+      .map((l) => l.habit_id),
+  );
+  const protectableHabits = activeHabits.filter(
+    (h) =>
+      !completedOrExcusedHabitIdsToday.has(h.id) &&
+      h.behavior_type !== 'negative' &&
+      h.target_direction !== 'at_most',
+  );
+  const replanPreviewInput = replanPreviewState?.input ?? null;
+  const replanPreview = replanPreviewState?.preview ?? null;
+  const canUndoReplan =
+    replanReceipt !== null &&
+    Array.isArray(replanReceipt.items) &&
+    replanReceipt.items.some(
+      (it) => it.undoable && (it.status === 'committed' || it.status === 'pending'),
+    );
+
   const totalMissed = backlogEntries.filter((e) => e.kind === 'missed').length;
   const totalPartial = backlogEntries.filter((e) => e.kind === 'partial').length;
   const totalOverdue = overdueTasks.length;
@@ -519,6 +936,455 @@ export default function RecoveryScreen() {
             />
           </View>
         )}
+
+        {/* U05 & P04 — Bugün planım dağıldı · Günü toparla (Koru -> Gör -> Uygula) */}
+        <View testID="recovery-day-replan-card" style={s.replanCardWrap}>
+          <Card padding="md">
+            <View style={s.replanHeadRow}>
+              <IconCircle icon="compass-outline" color={colors.warning} size={38} radiusKey="sm" />
+              <View style={{ flex: 1 }}>
+                <Text style={s.replanEyebrow}>GÜN İÇİ DENGELEME</Text>
+                <Text style={s.replanTitle}>Bugün planım dağıldı · Günü toparla</Text>
+                <Text style={s.replanSub}>
+                  Tek bir odağı koru, kalan kapasiteye neyin sığacağını gör ve güvenle uygula.
+                </Text>
+              </View>
+            </View>
+
+            {replanStep === 'closed' && (
+              <View style={s.replanClosedActions}>
+                <TouchableOpacity
+                  testID="recovery-open-replan"
+                  style={s.replanPrimaryBtn}
+                  onPress={openReplanFlow}
+                  accessibilityRole="button"
+                  accessibilityLabel="Günü toparla akışını başlat"
+                >
+                  <Ionicons name="sparkles-outline" size={16} color={colors.bg} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                  <Text style={s.replanPrimaryBtnText}>Günü toparla</Text>
+                </TouchableOpacity>
+
+                {canUndoReplan && (
+                  <TouchableOpacity
+                    testID="recovery-replan-undo"
+                    style={s.replanSecondaryBtn}
+                    onPress={handleUndoReplan}
+                    disabled={replanUndoing}
+                    accessibilityRole="button"
+                    accessibilityLabel="Son gün planı değişikliğini geri al"
+                    accessibilityState={{ disabled: replanUndoing, busy: replanUndoing }}
+                  >
+                    <Ionicons name="arrow-undo-outline" size={16} color={colors.warning} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                    <Text style={[s.replanSecondaryBtnText, { color: colors.warning }]}>Geri al</Text>
+                  </TouchableOpacity>
+                )}
+
+                {replanUndoFeedback && (
+                  <Text testID="recovery-replan-undo-feedback" style={s.replanFeedbackText}>
+                    {replanUndoFeedback}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {replanStep === 'protect' && (
+              <View testID="recovery-replan-step-protect" style={s.replanStepBox}>
+                <Text style={s.replanStepLabel}>ADIM 1/3 · KORU</Text>
+                <Text style={s.replanStepHint}>
+                  Bugün mutlaka yerinde kalsın dediğin tek bir işi seç ya da Hiçbiri ile devam et.
+                </Text>
+                {replanFixedBlocks.length > 0 && (
+                  <Text style={s.replanLockedHint}>
+                    {replanFixedBlocks.length} sabit saat bloğu otomatik kilitlidir ve taşınmaz.
+                  </Text>
+                )}
+
+                <View accessibilityRole="radiogroup" accessibilityLabel="Bugün korunacak odak seçimi" style={s.replanOptionList}>
+                  <TouchableOpacity
+                    testID="recovery-replan-protect-none"
+                    style={[
+                      s.replanRadioRow,
+                      replanProtectedRef === null && {
+                        borderColor: colors.warning,
+                        backgroundColor: hexA(colors.warning, 0.1),
+                      },
+                    ]}
+                    onPress={() => {
+                      haptic.select();
+                      setReplanProtectedRef(null);
+                    }}
+                    accessibilityRole="radio"
+                    accessibilityLabel="Hiçbiri — tüm açık işleri kalan kapasiteye göre değerlendir"
+                    accessibilityState={{ checked: replanProtectedRef === null, selected: replanProtectedRef === null }}
+                  >
+                    <Ionicons
+                      name={replanProtectedRef === null ? 'radio-button-on' : 'radio-button-off'}
+                      size={18}
+                      color={replanProtectedRef === null ? colors.warning : colors.textDim}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    />
+                    <Text style={s.replanRadioTitle}>Hiçbiri (tümünü kapasiteye göre dengele)</Text>
+                  </TouchableOpacity>
+
+                  {protectableTasks.map((task) => {
+                    const selected =
+                      replanProtectedRef?.entity === 'task' && replanProtectedRef.id === task.id;
+                    return (
+                      <TouchableOpacity
+                        key={`task:${task.id}`}
+                        testID={`recovery-replan-protect-task-${task.id}`}
+                        style={[
+                          s.replanRadioRow,
+                          selected && {
+                            borderColor: colors.warning,
+                            backgroundColor: hexA(colors.warning, 0.1),
+                          },
+                        ]}
+                        onPress={() => {
+                          haptic.select();
+                          setReplanProtectedRef({ entity: 'task', id: task.id });
+                        }}
+                        accessibilityRole="radio"
+                        accessibilityLabel={`Görev koru: ${task.title}`}
+                        accessibilityState={{ checked: selected, selected }}
+                      >
+                        <Ionicons
+                          name={selected ? 'radio-button-on' : 'radio-button-off'}
+                          size={18}
+                          color={selected ? colors.warning : colors.textDim}
+                          accessibilityElementsHidden
+                          importantForAccessibility="no-hide-descendants"
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.replanRadioTitle} numberOfLines={1}>{task.title}</Text>
+                          <Text style={s.replanRadioMeta}>Görev</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  {protectableHabits.map((habit) => {
+                    const selected =
+                      replanProtectedRef?.entity === 'habit' && replanProtectedRef.id === habit.id;
+                    return (
+                      <TouchableOpacity
+                        key={`habit:${habit.id}`}
+                        testID={`recovery-replan-protect-habit-${habit.id}`}
+                        style={[
+                          s.replanRadioRow,
+                          selected && {
+                            borderColor: colors.warning,
+                            backgroundColor: hexA(colors.warning, 0.1),
+                          },
+                        ]}
+                        onPress={() => {
+                          haptic.select();
+                          setReplanProtectedRef({ entity: 'habit', id: habit.id });
+                        }}
+                        accessibilityRole="radio"
+                        accessibilityLabel={`Alışkanlık koru: ${habit.name}`}
+                        accessibilityState={{ checked: selected, selected }}
+                      >
+                        <Ionicons
+                          name={selected ? 'radio-button-on' : 'radio-button-off'}
+                          size={18}
+                          color={selected ? colors.warning : colors.textDim}
+                          accessibilityElementsHidden
+                          importantForAccessibility="no-hide-descendants"
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.replanRadioTitle} numberOfLines={1}>{habit.name}</Text>
+                          <Text style={s.replanRadioMeta}>Rutin</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View style={s.replanFooterRow}>
+                  <TouchableOpacity
+                    testID="recovery-replan-close"
+                    style={s.replanSecondaryBtn}
+                    onPress={closeReplanFlow}
+                    accessibilityRole="button"
+                    accessibilityLabel="Günü toparla akışını kapat"
+                  >
+                    <Text style={s.replanSecondaryBtnText}>Vazgeç</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="recovery-replan-to-preview"
+                    style={[s.replanPrimaryBtn, { flex: 1 }]}
+                    onPress={proceedToReplanPreview}
+                    accessibilityRole="button"
+                    accessibilityLabel="Önizleme adımına geç"
+                  >
+                    <Text style={s.replanPrimaryBtnText}>Gör →</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {replanStep === 'preview' && replanPreview && replanPreviewInput && (
+              <View testID="recovery-replan-step-preview" style={s.replanStepBox}>
+                <Text style={s.replanStepLabel}>ADIM 2/3 · GÖR — BUGÜN NE KADARI SIĞAR?</Text>
+
+                <View testID="recovery-replan-load-summary" style={s.replanSummaryBox}>
+                  <Text style={s.replanLoadValue}>
+                    Gün yükü: {replanPreview.loadBefore} {'->'} {replanPreview.loadAfter} / 100 · {bandLabel(replanPreview.bandAfter)}
+                  </Text>
+                  <Text style={s.replanLoadMeta}>
+                    Kalan odak kapasitesi: {replanPreview.capacitySummary.effectiveCapacityMinutes} dk · Planlanan kullanım: {replanPreview.capacitySummary.usedCapacityMinutes} dk
+                  </Text>
+                  {!replanPreview.capacitySummary.externalCalendarConnected && (
+                    <Text style={s.replanLoadNote}>
+                      Dış takvim bağlı değil; yalnızca uygulama içi sabit saat blokları dikkate alındı.
+                    </Text>
+                  )}
+                  {replanPreview.missingEstimateTaskIds.length > 0 && (
+                    <Text style={s.replanLoadNote}>
+                      {replanPreview.missingEstimateTaskIds.length} görevde kayıtlı süre tahmini yok; varsayılan tahminle değerlendirildi.
+                    </Text>
+                  )}
+                </View>
+
+                {replanPreview.lockedItems.length > 0 && (
+                  <View testID="recovery-replan-locked-list" style={s.replanGroupBox}>
+                    <Text style={s.replanGroupTitle}>KİLİTLİ SABİT BLOKLAR VE TAMAMLANANLAR</Text>
+                    {replanPreview.lockedItems.map((locked) => (
+                      <View key={`${locked.kind}:${locked.id}`} style={s.replanLockedItemRow}>
+                        <Ionicons name="lock-closed-outline" size={15} color={colors.textDim} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.replanItemTitle} numberOfLines={1}>
+                            {locked.title}
+                            {locked.timeBlock
+                              ? ` (${locked.timeBlock.start}${locked.timeBlock.end ? `–${locked.timeBlock.end}` : ''})`
+                              : ''}
+                          </Text>
+                          <Text style={s.replanItemReason}>{locked.displayReason}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                <View testID="recovery-replan-protected-summary" style={s.replanGroupBox}>
+                  <Text style={s.replanGroupTitle}>KORUNAN ODAK</Text>
+                  {replanPreview.protectedItems.length > 0 ? (
+                    replanPreview.protectedItems.map((prot) => (
+                      <View key={`${prot.sourceRef.entity}:${prot.sourceRef.id}`} style={s.replanLockedItemRow}>
+                        <Ionicons name="shield-checkmark-outline" size={16} color={colors.success} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.replanItemTitle} numberOfLines={1}>{prot.sourceRef.title}</Text>
+                          <Text style={s.replanItemReason}>{prot.displayReason}</Text>
+                        </View>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={s.replanItemReason}>Özel korunan tek iş seçilmedi (Hiçbiri).</Text>
+                  )}
+                </View>
+
+                <View testID="recovery-replan-changes-list" style={s.replanGroupBox}>
+                  <Text style={s.replanGroupTitle}>ESNEK ÖĞELER VE ÖNERİLEN KARARLAR</Text>
+                  {replanPreview.changes.length === 0 ? (
+                    <Text style={s.replanItemReason}>Taşınacak veya hafifletilecek ek açık öğe yok.</Text>
+                  ) : (
+                    replanPreview.changes.map((ch) => (
+                      <View key={ch.changeId} style={s.replanChangeCard}>
+                        <Text style={s.replanItemTitle}>{ch.sourceRef.title}</Text>
+                        <Text style={s.replanItemReason}>{ch.displayReason}</Text>
+                        {ch.action === 'do_not_recover' && (
+                          <Text
+                            testID={`recovery-replan-p04-note-${ch.sourceRef.id}`}
+                            style={s.replanP04Note}
+                          >
+                            Önceki kısmi ilerleme kaydı olduğu gibi korunur; uydurma miktar eklenmez.
+                          </Text>
+                        )}
+                        <View
+                          accessibilityRole="radiogroup"
+                          accessibilityLabel={`${ch.sourceRef.title} için karar seçimi`}
+                          style={s.replanActionPills}
+                        >
+                          {ch.availableActions.map((act) => {
+                            const active = ch.action === act;
+                            return (
+                              <TouchableOpacity
+                                key={act}
+                                testID={`recovery-replan-action-${ch.sourceRef.entity}-${ch.sourceRef.id}-${act}`}
+                                style={[
+                                  s.replanActionPill,
+                                  active && {
+                                    borderColor: colors.primaryBright,
+                                    backgroundColor: hexA(colors.primaryBright, 0.14),
+                                  },
+                                ]}
+                                onPress={() =>
+                                  handleReplanOverride(
+                                    replanPreviewInput,
+                                    ch.sourceRef.entity,
+                                    ch.sourceRef.id,
+                                    act,
+                                  )
+                                }
+                                accessibilityRole="radio"
+                                accessibilityLabel={`${ch.sourceRef.title}: ${replanActionLabel(act)}`}
+                                accessibilityState={{ checked: active, selected: active }}
+                              >
+                                <Text
+                                  style={[
+                                    s.replanActionPillText,
+                                    active && { color: colors.primaryBright, fontWeight: '700' },
+                                  ]}
+                                >
+                                  {replanActionLabel(act)}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+
+                {replanStaleMessage && (
+                  <View testID="recovery-replan-stale-banner" style={s.replanStaleBox}>
+                    <Text style={s.replanStaleText}>{replanStaleMessage}</Text>
+                    <TouchableOpacity
+                      testID="recovery-replan-refresh-preview"
+                      style={s.replanSecondaryBtn}
+                      onPress={refreshReplanPreview}
+                      accessibilityRole="button"
+                      accessibilityLabel="Güncel verilerle önizlemeyi yenile"
+                    >
+                      <Text style={s.replanSecondaryBtnText}>Önizlemeyi yenile</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <View style={s.replanFooterRow}>
+                  <TouchableOpacity
+                    testID="recovery-replan-back"
+                    style={s.replanSecondaryBtn}
+                    onPress={() => {
+                      haptic.light();
+                      setReplanStep('protect');
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Koru adımına geri dön"
+                  >
+                    <Text style={s.replanSecondaryBtnText}>Geri</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="recovery-replan-close"
+                    style={s.replanSecondaryBtn}
+                    onPress={closeReplanFlow}
+                    accessibilityRole="button"
+                    accessibilityLabel="Değişiklik yapmadan kapat"
+                  >
+                    <Text style={s.replanSecondaryBtnText}>Kapat</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="recovery-replan-confirm"
+                    style={[s.replanPrimaryBtn, { flex: 1 }]}
+                    onPress={() => {
+                      void handleApplyReplan(replanPreview);
+                    }}
+                    disabled={replanCommitting}
+                    accessibilityRole="button"
+                    accessibilityLabel="Seçilen gün planını uygula"
+                    accessibilityState={{ disabled: replanCommitting, busy: replanCommitting }}
+                  >
+                    <Text style={s.replanPrimaryBtnText}>
+                      {replanCommitting ? 'Uygulanıyor...' : 'Uygula'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {replanStep === 'apply' && replanCommitResult && (
+              <View testID="recovery-replan-step-apply" style={s.replanStepBox}>
+                <Text style={s.replanStepLabel}>ADIM 3/3 · UYGULA SONUCU</Text>
+                <View
+                  testID={`recovery-replan-status-${replanCommitResult.overall}`}
+                  style={s.replanSummaryBox}
+                >
+                  <Text style={s.replanLoadValue}>
+                    {replanCommitResult.overall === 'committed'
+                      ? 'Plan güncellendi ve kaydedildi.'
+                      : replanCommitResult.overall === 'pending'
+                        ? 'Değişiklikler cihaza kaydedildi; bağlantı geldiğinde eşitlenecek.'
+                        : replanCommitResult.overall === 'partial'
+                          ? 'Bazı maddeler uygulandı; tamamlanamayanları yeniden deneyebilirsin.'
+                          : replanCommitResult.overall === 'conflict'
+                            ? 'Çakışma algılandı; başka bir yerde güncellenen maddelerin üzerine yazılmadı.'
+                            : 'İşlem oturum veya gün değişimi nedeniyle durduruldu.'}
+                  </Text>
+                </View>
+
+                {(replanCommitResult.overall === 'partial' ||
+                  replanCommitResult.retryableItemIds.length > 0) && (
+                  <TouchableOpacity
+                    testID="recovery-replan-retry-failed"
+                    style={s.replanSecondaryBtn}
+                    onPress={() => {
+                      void handleRetryFailedReplan();
+                    }}
+                    disabled={replanRetrying}
+                    accessibilityRole="button"
+                    accessibilityLabel="Yalnızca başarısız maddeleri yeniden dene"
+                    accessibilityState={{ disabled: replanRetrying, busy: replanRetrying }}
+                  >
+                    <Ionicons name="refresh-outline" size={16} color={colors.primaryBright} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                    <Text style={[s.replanSecondaryBtnText, { color: colors.primaryBright }]}>
+                      {replanRetrying ? 'Yeniden deneniyor...' : 'Başarısızları yeniden dene'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {canUndoReplan && (
+                  <TouchableOpacity
+                    testID="recovery-replan-undo"
+                    style={s.replanSecondaryBtn}
+                    onPress={() => {
+                      void handleUndoReplan();
+                    }}
+                    disabled={replanUndoing}
+                    accessibilityRole="button"
+                    accessibilityLabel="Uygulanan gün planı değişikliklerini geri al"
+                    accessibilityState={{ disabled: replanUndoing, busy: replanUndoing }}
+                  >
+                    <Ionicons name="arrow-undo-outline" size={16} color={colors.warning} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                    <Text style={[s.replanSecondaryBtnText, { color: colors.warning }]}>
+                      {replanUndoing ? 'Geri alınıyor...' : 'Geri al'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {replanUndoFeedback && (
+                  <Text testID="recovery-replan-undo-feedback" style={s.replanFeedbackText}>
+                    {replanUndoFeedback}
+                  </Text>
+                )}
+
+                <View style={s.replanFooterRow}>
+                  <TouchableOpacity
+                    testID="recovery-replan-close"
+                    style={[s.replanSecondaryBtn, { flex: 1 }]}
+                    onPress={closeReplanFlow}
+                    accessibilityRole="button"
+                    accessibilityLabel="Günü toparla özetini kapat"
+                  >
+                    <Text style={s.replanSecondaryBtnText}>Tamam</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </Card>
+        </View>
 
         {/* Özet şerit */}
         <View style={s.summaryStrip}>
@@ -963,4 +1829,70 @@ const makeStyles = (colors: Palette) => StyleSheet.create({
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, backgroundColor: colors.bgElevated, borderRadius: radius.md, paddingHorizontal: space.md, height: 44, borderWidth: 1, borderColor: colors.border },
   timeInput: { flex: 1, color: colors.text, fontSize: 15 },
   timeHint: { fontSize: 11, color: colors.textFaint },
+
+  // U05 & P04 — Günü toparla kartı
+  replanCardWrap: { marginBottom: space.lg },
+  replanHeadRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
+  replanEyebrow: { ...font.overline, color: colors.warning, marginBottom: 2 },
+  replanTitle: { ...font.body, color: colors.text, fontWeight: '700' },
+  replanSub: { ...font.bodySm, color: colors.textDim, marginTop: 3, lineHeight: 18 },
+  replanClosedActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm, marginTop: space.md },
+  replanPrimaryBtn: {
+    minHeight: 44, paddingHorizontal: space.lg, borderRadius: radius.md,
+    backgroundColor: colors.warning, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs,
+  },
+  replanPrimaryBtnText: { ...font.bodySm, color: colors.bg, fontWeight: '700' },
+  replanSecondaryBtn: {
+    minHeight: 44, paddingHorizontal: space.md, borderRadius: radius.md,
+    backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.border,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs,
+  },
+  replanSecondaryBtnText: { ...font.bodySm, color: colors.textDim, fontWeight: '600' },
+  replanFeedbackText: { ...font.bodySm, color: colors.textDim, width: '100%', marginTop: space.xs },
+  replanStepBox: { marginTop: space.md, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.border, gap: space.md },
+  replanStepLabel: { ...font.overline, color: colors.textFaint },
+  replanStepHint: { ...font.bodySm, color: colors.textDim, lineHeight: 18 },
+  replanLockedHint: { fontSize: 12, color: colors.info, lineHeight: 17 },
+  replanOptionList: { gap: space.sm },
+  replanRadioRow: {
+    minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: space.sm,
+    paddingHorizontal: space.md, paddingVertical: space.sm,
+    borderRadius: radius.md, backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.border,
+  },
+  replanRadioTitle: { ...font.bodySm, color: colors.text, fontWeight: '600' },
+  replanRadioMeta: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
+  replanFooterRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
+  replanSummaryBox: {
+    padding: space.md, borderRadius: radius.md, backgroundColor: colors.bgElevated,
+    borderWidth: 1, borderColor: colors.border, gap: 4,
+  },
+  replanLoadValue: { ...font.body, color: colors.text, fontWeight: '700' },
+  replanLoadMeta: { ...font.bodySm, color: colors.textDim },
+  replanLoadNote: { fontSize: 11, color: colors.textFaint, lineHeight: 16 },
+  replanGroupBox: { gap: space.sm },
+  replanGroupTitle: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, color: colors.textFaint },
+  replanLockedItemRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: space.sm,
+    padding: space.sm, borderRadius: radius.sm, backgroundColor: colors.bgElevated,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  replanChangeCard: {
+    padding: space.md, borderRadius: radius.md, backgroundColor: colors.bgElevated,
+    borderWidth: 1, borderColor: colors.border, gap: 6,
+  },
+  replanItemTitle: { ...font.bodySm, color: colors.text, fontWeight: '600' },
+  replanItemReason: { fontSize: 12, color: colors.textDim, lineHeight: 17 },
+  replanP04Note: { fontSize: 11, color: colors.info, lineHeight: 16 },
+  replanActionPills: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs, marginTop: 4 },
+  replanActionPill: {
+    minHeight: 44, paddingHorizontal: space.md, borderRadius: radius.sm,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  replanActionPillText: { fontSize: 12, color: colors.textDim },
+  replanStaleBox: {
+    padding: space.md, borderRadius: radius.md, backgroundColor: hexA(colors.warning, 0.1),
+    borderWidth: 1, borderColor: hexA(colors.warning, 0.4), gap: space.sm,
+  },
+  replanStaleText: { ...font.bodySm, color: colors.warning, lineHeight: 18 },
 });
