@@ -155,6 +155,8 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   PERFORM aderyth_test.res(p_name, SQLSTATE = p_sqlstate, format('got %s: %s', SQLSTATE, SQLERRM));
 END $f$;
+
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA aderyth_test TO PUBLIC;
 SQL
 then
   echo "HARNESS ERROR: could not install the aderyth_test helper schema (is the database reachable and bootstrapped?)" >&2

@@ -29,7 +29,7 @@ CREATE POLICY ai_messages_insert_own ON public.ai_messages
     (SELECT auth.uid()) = user_id
     AND EXISTS (
       SELECT 1 FROM public.ai_conversations c
-       WHERE c.id = conversation_id AND c.user_id = (SELECT auth.uid())
+       WHERE c.id = ai_messages.conversation_id AND c.user_id = (SELECT auth.uid())
     )
   );
 

@@ -572,6 +572,11 @@ jobs:
                 echo "040 rollback ran a second time" >&2; exit 1
               fi
               grep -q "040 is not applied" "$err"
+            elif [ "${num}" = "042" ]; then
+              if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb" 2>"$err"; then
+                echo "042 rollback ran a second time" >&2; exit 1
+              fi
+              grep -q "042 is not applied" "$err"
             elif [ "${num}" = "043" ]; then
               if psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '${num}'" -f "$rb" 2>"$err"; then
                 echo "043 rollback ran a second time" >&2; exit 1
@@ -612,6 +617,8 @@ jobs:
           set -euo pipefail
           err="$RUNNER_TEMP/rollback_036_drift.err"
           uid='f2000000-0000-4000-8000-000000000001'
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '043'" -f supabase/rollbacks/043_profile_time_zone.rollback.sql
+          psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '042'" -f supabase/rollbacks/042_numeric_measures_and_willpower.rollback.sql
           psql -X -v ON_ERROR_STOP=1 -c "SET aderyth.rollback_confirm = '038'" -f supabase/rollbacks/038_xp_streak_integrity.rollback.sql
           test "$(psql -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regprocedure('public.fn_habit_log_guard()') IS NULL")" = "t"
           psql -X -v ON_ERROR_STOP=1 <<'SQL'
@@ -729,6 +736,8 @@ jobs:
           # forward again for the steps below
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/036_live_audit_hardening.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/038_xp_streak_integrity.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/042_numeric_measures_and_willpower.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/043_profile_time_zone.sql
           test "$(psql -X -At -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.xp_drift()')" = "0"
 
       # The no-data-loss contract of the coach CHECK rollbacks (032, 034, 035), on a real row. A row of

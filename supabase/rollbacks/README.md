@@ -118,6 +118,7 @@ uygulanmamış sayılır ve böyle bir veritabanına `TO PUBLIC` hakları vermem
 geri alması ödül tetikleyicisine 036'nın defter yazan gövdesini verir; 036 da geri alınmışsa bu gövde
 her log yazımını kırardı. **040 da ikinci çalıştırmada reddeder** (`040 is not applied`,
 `archive_040.acl_snapshot` yoksa): anlık görüntü olmadan ACL tahmini yapmaz.
+**042 de ikinci çalıştırmada reddeder** (`042 is not applied`, `habit_xp_value(uuid, text, numeric)` yoksa): 036 geri alınmışken taban veritabanında `habit_xp_value(uuid, text, integer)` üzerindeki `PUBLIC` hakkını daraltmamak ve gereksiz tablo yeniden yazımını önlemek için.
 **043 de ikinci çalıştırmada reddeder** (`043 is not applied`, `profiles.time_zone` yoksa): 038 ve 040
 geri alınmışken eski fonksiyon gövdelerini taban veritabanında yeniden yaratmamak için.
 
@@ -153,9 +154,9 @@ sıralı satırlar olarak yazar. CI sırayla:
    kontroller). Hatada durmayan bir istemci de (`ON_ERROR_STOP` yok) denenir: başarısız onay bloğu
    transaction'ı iptal durumunda bırakır, sonraki ifadeler reddedilir, `COMMIT` geri sarar. Reddedilen
    denemeler katalogu değiştirmez.
-4. 041'den 028'e, her betik kendi `SET aderyth.rollback_confirm` değeriyle geri alınır.
+4. 044'ten 028'e, her betik kendi `SET aderyth.rollback_confirm` değeriyle geri alınır.
 5. Geri alınmış katalog tabanla `diff -u` ile karşılaştırılır, `xp_drift()` 0 satır olmalıdır.
-6. İkinci geri alma turu hiçbir şeyi değiştirmez (036, 038 ve 040 reddeder).
+6. İkinci geri alma turu hiçbir şeyi değiştirmez (036, 038, 040, 042 ve 043 reddeder).
 7. Yeniden ileri uygulama; ikinci ileri parmak izi ilkine eşit olmalı, `run.sh` yeniden yeşil olmalıdır.
 8. Gerçek XP satırlarıyla 036 geri alması (DB2-07): önce 038 geri alınır; defterde `habit_logs`'tan
    fazla XP varken `xp_drift()` geri almadan sonra 0 satırdır; aynı XP zaten elle düzeltilmişse betik

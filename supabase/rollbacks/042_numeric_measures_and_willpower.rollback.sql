@@ -10,6 +10,14 @@ BEGIN
   END IF;
 END $guard$;
 
+DO $applied$
+BEGIN
+  IF to_regprocedure('public.habit_xp_value(uuid, text, numeric)') IS NULL THEN
+    RAISE EXCEPTION '042 is not applied (public.habit_xp_value(uuid, text, numeric) is absent); refusing rollback'
+      USING ERRCODE = 'P0001';
+  END IF;
+END $applied$;
+
 -- 1. The integer scorer back, exactly as live_schema.sql:1158-1230, ACL as 036 left it
 CREATE OR REPLACE FUNCTION public.habit_xp_value(p_habit_id uuid, p_state text, p_value integer)
  RETURNS integer
@@ -90,7 +98,9 @@ REVOKE EXECUTE ON FUNCTION public.habit_xp_value(uuid, text, integer) FROM PUBLI
 
 -- 2. Columns back (LOSSY)
 ALTER TABLE public.habit_logs ALTER COLUMN "value" TYPE integer USING round("value")::integer;
+ALTER TABLE public.habit_logs ALTER COLUMN "value" SET DEFAULT 1;
 ALTER TABLE public.habits ALTER COLUMN daily_goal TYPE integer USING round(daily_goal)::integer;
+ALTER TABLE public.habits ALTER COLUMN daily_goal SET DEFAULT 1;
 COMMENT ON COLUMN public.habit_logs."value" IS 'Numeric value for measurable habits (e.g. pages read)';
 COMMENT ON COLUMN public.habits.daily_goal IS 'Daily target value for completion';
 
