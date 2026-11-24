@@ -216,3 +216,112 @@ export function packIcons(pack: RoutinePack): Record<string, string> {
 export function findRoutinePack(key: string): RoutinePack | undefined {
   return ROUTINE_PACKS.find((p) => p.key === key);
 }
+
+// ---------------------------------------------------------------------------
+// P03 — Zorunlu kurulum gerektirmeden tek ilk adımla denenebilir kısa paketler
+// ---------------------------------------------------------------------------
+
+export type PackQuickStep = {
+  packKey: RoutinePackKey;
+  packTitle: string;
+  habitName: string;
+  firstStepTitle: string;
+  estimatedMinutes: number;
+  statedPackLoad: number;
+};
+
+/** Başlangıç akışında öne çıkan üç çekirdek kısa deneme paketi (`P03`). */
+export const STARTER_QUICK_PACK_KEYS: readonly RoutinePackKey[] = [
+  'morning-reset',
+  'deep-work',
+  'everyday-foundations',
+] as const;
+
+export const DEFAULT_STARTER_PACK_KEY: RoutinePackKey = 'everyday-foundations';
+
+type QuickStepSeed = {
+  readonly habitName: string;
+  readonly firstStepTitle: string;
+  readonly estimatedMinutes: number;
+};
+
+const QUICK_STEP_BY_PACK: Readonly<Record<RoutinePackKey, QuickStepSeed>> = {
+  'morning-reset': {
+    habitName: 'Bir bardak su iç',
+    firstStepTitle: 'Mutfağa git ve bir bardak su iç',
+    estimatedMinutes: 2,
+  },
+  'deep-work': {
+    habitName: 'Gün sonu değerlendirme',
+    firstStepTitle: 'Açık işlerine göz at ve sıradaki tek odağını bir satırda yaz',
+    estimatedMinutes: 5,
+  },
+  'sleep-reset': {
+    habitName: 'Sabit yatış saati',
+    firstStepTitle: 'Bu akşam için yatış saatini seç ve hatırlatıcı kur',
+    estimatedMinutes: 2,
+  },
+  'fitness-foundation': {
+    habitName: 'Su hedefi',
+    firstStepTitle: 'Bir bardak su doldur ve günün ilk bardağını iç',
+    estimatedMinutes: 5,
+  },
+  'everyday-foundations': {
+    habitName: 'Çalışma alanını topla',
+    firstStepTitle: 'Masadaki fazlalıkları tek kenara topla ve çalışma alanını aç',
+    estimatedMinutes: 5,
+  },
+};
+
+function pickLowestFrictionHabit(pack: RoutinePack): RoutinePackHabit {
+  let best = pack.habits[0];
+  for (let i = 1; i < pack.habits.length; i += 1) {
+    const candidate = pack.habits[i];
+    if (
+      candidate.difficulty < best.difficulty ||
+      (candidate.difficulty === best.difficulty &&
+        candidate.estimated_minutes < best.estimated_minutes)
+    ) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+function toPackQuickStep(pack: RoutinePack): PackQuickStep {
+  const configured = QUICK_STEP_BY_PACK[pack.key];
+  const matchedHabit = pack.habits.find((h) => h.name === configured.habitName);
+  const targetHabit = matchedHabit ?? pickLowestFrictionHabit(pack);
+  const clampedMinutes = Math.min(5, Math.max(2, configured.estimatedMinutes));
+
+  return {
+    packKey: pack.key,
+    packTitle: pack.title,
+    habitName: targetHabit.name,
+    firstStepTitle: configured.firstStepTitle,
+    estimatedMinutes: clampedMinutes,
+    statedPackLoad: pack.statedLoad,
+  };
+}
+
+/**
+ * Her paketten en düşük sürtünmeli tek ilk adımı (2–5 dk) ve beyan edilen paket yükünü listeler.
+ * Paketlerin tamamını kurmayı zorunlu kılmadan önizleme ve tek adımlık deneme sağlar (`P03`).
+ */
+export function listStarterQuickSteps(): PackQuickStep[] {
+  return ROUTINE_PACKS.map(toPackQuickStep);
+}
+
+/**
+ * Gün başlangıcı (`morning-reset`), derin çalışma (`deep-work`) ve günlük temeller
+ * (`everyday-foundations`) başta olmak üzere seçilen paketten zorunlu kurulum gerektirmeden
+ * tek bir 2–5 dakikalık somut eylem adımı döndürür (`P03`).
+ */
+export function pickStarterQuickStep(packKey?: RoutinePackKey): PackQuickStep {
+  const targetKey = packKey ?? DEFAULT_STARTER_PACK_KEY;
+  const pack =
+    ROUTINE_PACKS.find((p) => p.key === targetKey) ??
+    ROUTINE_PACKS.find((p) => p.key === DEFAULT_STARTER_PACK_KEY) ??
+    ROUTINE_PACKS[0];
+  return toPackQuickStep(pack);
+}
