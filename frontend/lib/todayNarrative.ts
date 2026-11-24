@@ -37,6 +37,13 @@ function timeSub(hour: number, focusSessions: number): string {
 
 export const OVERDUE_CALM_LIMIT = 5;
 
+/** U03 — Takılma anında klinik olmayan, sıcak başlangıç cümlesi üretir. */
+export function buildCalmStartPrompt(hasOpenWork: boolean): string {
+  return hasOpenWork
+    ? t('today.narrative.stuck.ready')
+    : t('today.narrative.stuck.empty');
+}
+
 /** Önceliklendirme: gecikmiş > bugünkü görev > kalan alışkanlık > tamamlandı. */
 export function buildTodayNarrative(input: NarrativeInput): TodayNarrative {
   const { hour, overdueCount, todayTaskCount, remainingHabits, totalHabits, focusSessions } = input;
