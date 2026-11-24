@@ -41,6 +41,7 @@ import NextUpStrip from '../../components/today/NextUpStrip';
 import HabitSection, { HolidayCard, SetAsideCard } from '../../components/today/HabitSection';
 import InlineComposer from '../../components/InlineComposer';
 import RecoveryRailCard from '../../components/today/RecoveryRailCard';
+import DayReplanSheet from '../../components/today/DayReplanSheet';
 import SmallStartSheet from '../../components/SmallStartSheet';
 import OutboxIssues from '../../components/OutboxIssues';
 import { useRoutineRunnerStore } from '../../store/routineRunnerStore';
@@ -54,7 +55,20 @@ import type { SmallStepParent } from '../../lib/smallStart';
 import TimeOffSheet from '../../components/TimeOffSheet';
 import ChecklistSheet from '../../components/ChecklistSheet';
 import { itemsOn } from '../../lib/habitChecklist';
-import { buildTodayNarrative } from '../../lib/todayNarrative';
+import {
+  cycleAlternativeSuggestion,
+  evaluateActionSuggestion,
+  shrinkActionSuggestion,
+  type ActionSuggestion,
+  type EvaluateSuggestionInput,
+} from '../../lib/actionSuggestion';
+import {
+  formatMinutesToHm,
+  parseHmToMinutes,
+  type FixedPlanBlock,
+} from '../../lib/dayPlanPreview';
+import { resolveTaskDuration } from '../../lib/taskDuration';
+import { buildCalmStartPrompt, buildTodayNarrative } from '../../lib/todayNarrative';
 import { space, radius, font, hexA, onColor, type Palette } from '../../lib/tokens';
 import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useDayClose } from '../../hooks/useDayClose';
@@ -166,6 +180,7 @@ export default function TodayScreen() {
       deadSyncCount: st.deadSyncCount,
     })),
   );
+  const allLogs = useLogStore((st) => st.logs);
   const { fetchTasks, toggleDone, addTask, sync: taskSync } = useTaskStore(
     useShallow((st) => ({
       fetchTasks: st.fetchTasks,
@@ -174,6 +189,7 @@ export default function TodayScreen() {
       sync: st.sync,
     })),
   );
+  const allTasks = useTaskStore((st) => st.tasks);
   const coreSync = useCoreOutboxSync();
   const rawProjects = useProjectStore((st) => st.projects);
   const quickProjects = useMemo(
@@ -204,6 +220,12 @@ export default function TodayScreen() {
   const [lightDayNote, setLightDayNote] = useState('');
   const [lightDayHintVisible, setLightDayHintVisible] = useState(false);
   const [smallStartFor, setSmallStartFor] = useState<SmallStepParent | null>(null);
+  const [prevSmallStartFor, setPrevSmallStartFor] = useState<SmallStepParent | null>(null);
+  const [quickCaptureMode, setQuickCaptureMode] = useState(false);
+  const [excludedSuggestionIds, setExcludedSuggestionIds] = useState<readonly string[]>([]);
+  const [shrunkSuggestion, setShrunkSuggestion] = useState<ActionSuggestion | null>(null);
+  const [replanOpen, setReplanOpen] = useState(false);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [lightDaySaving, setLightDaySaving] = useState(false);
   const [holidayOpen, setHolidayOpen] = useState(false);
 
@@ -251,9 +273,15 @@ export default function TodayScreen() {
   }, [lightDayOpen]);
 
   useEffect(() => {
+    let alive = true;
     void currentUser().then((u) => {
+      if (!alive) return;
+      setSessionUserId(u?.id ?? null);
       if (u) void useDisclosureStore.getState().hydrate(u, clock.today);
     });
+    return () => {
+      alive = false;
+    };
   }, [clock.today]);
 
   useEffect(() => {
@@ -348,6 +376,163 @@ export default function TodayScreen() {
   const habitPct = habitSummary.pct;
   const remainingHabits = habitSummary.remaining;
 
+  if (prevSmallStartFor !== smallStartFor) {
+    setPrevSmallStartFor(smallStartFor);
+    setShrunkSuggestion(null);
+    if (!smallStartFor) {
+      setQuickCaptureMode(false);
+      setExcludedSuggestionIds([]);
+    }
+  }
+
+  const suggestionEvalInput = useMemo<EvaluateSuggestionInput>(() => {
+    const doneIds = new Set(completedHabits.map((h) => h.id));
+    return {
+      localDayKey: today,
+      userId: sessionUserId,
+      surface: 'focus_entry',
+      lowEnergy: lowEnergyFilter,
+      recoveryToday: recoveryPlans
+        .filter((p) => p.status === 'planned' && p.target_date === today)
+        .map((p) => ({
+          id: p.id,
+          habitName: habits.find((h) => h.id === p.habit_id)?.name ?? p.id,
+        })),
+      overdueTasks: overdueList,
+      tasksToday: todayTasks.filter((tk) => !tk.completed),
+      habitsToDo: todayHabits
+        .filter((h) => !doneIds.has(h.id))
+        .map((h) => ({
+          id: h.id,
+          name: h.name,
+          status: h.status,
+          tracking_type: h.tracking_type,
+          daily_goal: h.daily_goal,
+          unit: h.unit,
+          estimated_minutes: h.estimated_minutes,
+        })),
+    };
+  }, [
+    completedHabits,
+    habits,
+    lowEnergyFilter,
+    overdueList,
+    recoveryPlans,
+    sessionUserId,
+    today,
+    todayHabits,
+    todayTasks,
+  ]);
+
+  const baseSmallSuggestion = useMemo<ActionSuggestion | null>(() => {
+    if (!smallStartFor) return null;
+    if (quickCaptureMode || excludedSuggestionIds.length > 0) {
+      return excludedSuggestionIds.length > 0
+        ? cycleAlternativeSuggestion(suggestionEvalInput, excludedSuggestionIds)
+        : evaluateActionSuggestion(suggestionEvalInput);
+    }
+    const matchedTask = (allTasks ?? []).find((tk) => tk.id === smallStartFor.id);
+    return evaluateActionSuggestion({
+      localDayKey: today,
+      userId: sessionUserId,
+      surface: 'focus_entry',
+      lowEnergy: lowEnergyFilter,
+      overdueTasks:
+        matchedTask && matchedTask.due_date && matchedTask.due_date < today ? [matchedTask] : [],
+      tasksToday:
+        matchedTask && (!matchedTask.due_date || matchedTask.due_date >= today)
+          ? [matchedTask]
+          : !matchedTask
+            ? [{ id: smallStartFor.id, title: smallStartFor.title, due_date: today }]
+            : [],
+    });
+  }, [
+    allTasks,
+    excludedSuggestionIds,
+    lowEnergyFilter,
+    quickCaptureMode,
+    sessionUserId,
+    smallStartFor,
+    suggestionEvalInput,
+    today,
+  ]);
+
+  const activeSmallSuggestion = shrunkSuggestion ?? baseSmallSuggestion;
+
+  const closeSmallStart = useCallback(() => {
+    setSmallStartFor(null);
+    setQuickCaptureMode(false);
+    setExcludedSuggestionIds([]);
+    setShrunkSuggestion(null);
+  }, []);
+
+  const handleShrinkSmallSuggestion = useCallback(() => {
+    setShrunkSuggestion((cur) => {
+      const target = cur ?? baseSmallSuggestion;
+      return target ? shrinkActionSuggestion(target) : null;
+    });
+  }, [baseSmallSuggestion]);
+
+  const handleSwapSmallSuggestion = useCallback(() => {
+    const currentId = activeSmallSuggestion?.sourceRef.id;
+    const nextExcluded = currentId
+      ? [...excludedSuggestionIds, currentId]
+      : [...excludedSuggestionIds];
+    const nextSug = cycleAlternativeSuggestion(suggestionEvalInput, nextExcluded);
+    setExcludedSuggestionIds(nextExcluded);
+    setShrunkSuggestion(null);
+    setSmallStartFor({
+      kind: 'task',
+      id: nextSug.sourceRef.entity === 'task' ? nextSug.sourceRef.id : 'draft',
+      title: nextSug.sourceRef.parentTitle ?? nextSug.title,
+    });
+  }, [activeSmallSuggestion, excludedSuggestionIds, suggestionEvalInput]);
+
+  const openStuckSheet = useCallback(() => {
+    const sug = evaluateActionSuggestion(suggestionEvalInput);
+    setQuickCaptureMode(true);
+    setExcludedSuggestionIds([]);
+    setShrunkSuggestion(null);
+    setSmallStartFor({
+      kind: 'task',
+      id: sug.sourceRef.entity === 'task' ? sug.sourceRef.id : 'draft',
+      title: sug.sourceRef.parentTitle ?? sug.title,
+    });
+  }, [suggestionEvalInput]);
+
+  const replanFixedBlocks = useMemo<FixedPlanBlock[]>(() => {
+    const out: FixedPlanBlock[] = [];
+    for (const tk of allTasks ?? []) {
+      if (tk.completed || tk.status === 'completed' || tk.status === 'cancelled') continue;
+      if (tk.due_date !== today) continue;
+      const startMin = parseHmToMinutes(tk.time_block_start);
+      if (startMin === null) continue;
+      const rawEndMin = parseHmToMinutes(tk.time_block_end);
+      const est = resolveTaskDuration(tk).minutes;
+      const endMin =
+        rawEndMin !== null && rawEndMin > startMin
+          ? rawEndMin
+          : Math.min(1439, startMin + Math.max(5, est));
+      if (endMin <= startMin) continue;
+      out.push({
+        id: tk.id,
+        user_id: tk.user_id,
+        title: tk.title,
+        local_day: today,
+        start_time: formatMinutesToHm(startMin),
+        end_time: formatMinutesToHm(endMin),
+        locked: true,
+        source: 'internal_fixed',
+      });
+    }
+    return out;
+  }, [allTasks, today]);
+
+  const calmStartPrompt = useMemo(
+    () => buildCalmStartPrompt(pendingTasks.length + remainingHabits > 0),
+    [pendingTasks.length, remainingHabits],
+  );
+
   const onHabitTap = useCallback(
     async function onHabitTap(h: typeof habits[number]) {
       if (itemsOn(checklistItems, h.id, today).length > 0) {
@@ -369,6 +554,8 @@ export default function TodayScreen() {
 
   const openMoreMenu = useCallback(async () => {
     const options: DialogOption[] = [
+      { id: 'stuck', label: t('today.more.stuck'), icon: 'sparkles-outline' },
+      { id: 'replan', label: t('today.more.replan'), icon: 'git-branch-outline' },
       ...(nowAction?.kind !== 'focus' ? [{ id: 'focus', label: t('today.more.focus'), icon: 'timer-outline' }] : []),
       { id: 'shutdown', label: t('today.more.dayClose'), icon: 'moon-outline' },
       { id: 'weekly', label: t('today.more.weeklyReview'), icon: 'calendar-outline' },
@@ -377,6 +564,14 @@ export default function TodayScreen() {
       { id: 'notes', label: t('today.more.notes'), icon: 'document-text-outline' },
     ];
     const picked = await actionSheet({ title: t('today.more.title'), options });
+    if (picked === 'stuck') {
+      openStuckSheet();
+      return;
+    }
+    if (picked === 'replan') {
+      setReplanOpen(true);
+      return;
+    }
     if (picked === 'shutdown') {
       setShutdownOpen(true);
       return;
@@ -385,7 +580,7 @@ export default function TodayScreen() {
     if (destId) {
       navigateTo(router, destId);
     }
-  }, [nowAction?.kind, router]);
+  }, [nowAction?.kind, openStuckSheet, router]);
 
   const openNowAction = useCallback(
     (a: NextAction) => {
@@ -726,6 +921,18 @@ export default function TodayScreen() {
                 accessibilityLabel={t('today.calm.lowEnergy.a11y')}
                 accessibilityHint={energySuggested && !lowEnergyFilter ? ENERGY_COPY.suggest : undefined}
                 style={[s.calmChip, energySuggested && !lowEnergyFilter && s.calmModeChipSuggested]}
+              />
+
+              <Chip
+                label={t('today.calm.replan')}
+                icon="git-branch-outline"
+                color={c.textDim}
+                onPress={() => {
+                  haptic.select();
+                  setReplanOpen(true);
+                }}
+                accessibilityLabel={t('today.calm.replan.a11y')}
+                style={s.calmChip}
               />
 
               {clock.hour >= 17 && (
@@ -1085,11 +1292,42 @@ export default function TodayScreen() {
 
       <SmallStartSheet
         parent={smallStartFor}
-        onClose={() => setSmallStartFor(null)}
+        suggestion={activeSmallSuggestion}
+        onShrink={handleShrinkSmallSuggestion}
+        onSwap={handleSwapSmallSuggestion}
+        allowQuickCapture={quickCaptureMode}
+        openTasks={allTasks ?? []}
+        userId={sessionUserId}
+        localDayKey={today}
+        calmNote={calmStartPrompt}
+        onClose={closeSmallStart}
         onStart={(parent, draft) => {
           const started = useFocusStore.getState().startSmallStep(parent, draft);
-          if (started) { setSmallStartFor(null); router.push('/tabs/focus'); }
+          if (started) { closeSmallStart(); router.push('/tabs/focus'); }
           return started;
+        }}
+      />
+
+      <DayReplanSheet
+        visible={replanOpen}
+        userId={sessionUserId ?? ''}
+        localDayKey={today}
+        nowLocalMinutes={clock.hour * 60}
+        tasks={allTasks ?? []}
+        habits={habits}
+        todayLogs={allLogs ?? []}
+        recoveryPlans={recoveryPlans}
+        fixedBlocks={replanFixedBlocks}
+        onClose={() => setReplanOpen(false)}
+        onApplied={() => {
+          void load({ force: true });
+        }}
+        onUndone={() => {
+          void load({ force: true });
+        }}
+        onStartSmallStep={(parent) => {
+          setQuickCaptureMode(false);
+          setSmallStartFor(parent);
         }}
       />
 
@@ -1241,6 +1479,23 @@ export default function TodayScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={s.shutdownOptionTitle}>{t('today.shutdown.journal.title')}</Text>
                     <Text style={s.shutdownOptionSub}>{t('today.shutdown.journal.sub')}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={s.shutdownOptionCard}
+                  onPress={() => {
+                    setShutdownOpen(false);
+                    setReplanOpen(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('today.shutdown.replan.a11y')}
+                >
+                  <Ionicons name="git-branch-outline" size={18} color={c.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.shutdownOptionTitle}>{t('today.shutdown.replan.title')}</Text>
+                    <Text style={s.shutdownOptionSub}>{t('today.shutdown.replan.sub')}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={c.textFaint} />
                 </TouchableOpacity>
