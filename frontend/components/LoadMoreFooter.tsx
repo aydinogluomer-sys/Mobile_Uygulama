@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { colors, space, radius, font } from '../lib/tokens';
+import { space, radius, font, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 
 /**
  * The visible half of pagination.
@@ -22,6 +23,8 @@ export default function LoadMoreFooter({
   onPress: () => void;
   label?: string;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   if (!hasMore) return null;
   return (
     <View style={s.wrap}>
@@ -41,15 +44,16 @@ export default function LoadMoreFooter({
   );
 }
 
-const s = StyleSheet.create({
-  wrap: { paddingVertical: space.lg, alignItems: 'center' },
-  btn: {
-    paddingHorizontal: 18,
-    paddingVertical: 9,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  text: { ...font.bodySm, color: colors.textDim },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    wrap: { paddingVertical: space.lg, alignItems: 'center' },
+    btn: {
+      paddingHorizontal: 18,
+      paddingVertical: 9,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    text: { ...font.bodySm, color: colors.textDim },
+  });

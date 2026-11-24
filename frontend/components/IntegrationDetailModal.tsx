@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ComponentProps } from 'react';
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity, TextInput,
   ScrollView, Switch,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, alphaHex, radius, space, font } from '../lib/tokens';
+import { alphaHex, hexA, radius, space, font, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { notify } from '../lib/dialog';
 import { haptic } from '../lib/haptics';
 import type { IntegrationItem } from '../constants/integrations';
@@ -21,8 +22,11 @@ export default function IntegrationDetailModal({
   item,
   visible,
   onClose,
-  accentColor = colors.primary,
+  accentColor: accentColorProp,
 }: IntegrationDetailModalProps) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const accentColor = accentColorProp ?? colors.primary;
   const [apiKey, setApiKey] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
   const [autoSync, setAutoSync] = useState(true);
@@ -111,7 +115,11 @@ export default function IntegrationDetailModal({
           <View style={s.header}>
             <View style={s.headerLeft}>
               <View style={[s.iconBox, { backgroundColor: alphaHex(accentColor, '20') }]}>
-                <Ionicons name={(item.iconName as any) || 'extension-puzzle-outline'} size={24} color={accentColor} />
+                <Ionicons
+                  name={(item.iconName as ComponentProps<typeof Ionicons>['name']) || 'extension-puzzle-outline'}
+                  size={24}
+                  color={accentColor}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -229,12 +237,13 @@ export default function IntegrationDetailModal({
   );
 }
 
-const s = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    justifyContent: 'flex-end',
-  },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: hexA(colors.black, 0.65),
+      justifyContent: 'flex-end',
+    },
   card: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: radius.xl,

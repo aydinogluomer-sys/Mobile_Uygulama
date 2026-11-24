@@ -1,18 +1,20 @@
-import { colors } from '../../lib/tokens';
+import { palettes, type Palette } from '../../lib/tokens';
 import type { Habit } from '../../lib/supabase';
 
 export type HabitFormData = Omit<Habit, 'id' | 'created_at' | 'user_id'>;
 
-export const COLORS = [
-  colors.accent,
-  colors.success,
+export const getHabitColors = (c: Palette): string[] => [
+  c.accent,
+  c.success,
   '#3b82f6',
-  colors.warning,
-  colors.error,
+  c.warning,
+  c.error,
   '#ec4899',
-  colors.teal,
+  c.teal,
   '#8b5cf6',
 ];
+
+export const COLORS = getHabitColors(palettes.dark);
 
 export const ICONS = [
   'fitness-outline',
@@ -38,7 +40,7 @@ export const PART_OF_DAY = [
 export const DEFAULT_FORM: HabitFormData = {
   name: '',
   icon: 'star-outline',
-  color: colors.accent,
+  color: palettes.dark.accent,
   behavior_type: 'positive',
   tracking_type: 'boolean',
   unit: null,

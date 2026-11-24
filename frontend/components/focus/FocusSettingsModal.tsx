@@ -8,7 +8,8 @@ import { useRouter } from 'expo-router';
 import { currentUser } from '../../lib/session';
 import { SPOTIFY_OAUTH_ENABLED } from '../../lib/featureGates';
 import { navigateTo } from '../../lib/destinations';
-import { colors } from '../../lib/tokens';
+import { type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
 import { IconButton } from '../ui';
 import {
@@ -49,10 +50,21 @@ type Props = {
 
 export default function FocusSettingsModal({ visible, onClose, settings: st, accent, onSave, onOpenTheme }: Props) {
   const router = useRouter();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [tab, setTab] = useState<Section>('general');
   const [email, setEmail] = useState<string>('');
   const [flash, setFlash] = useState<string>('');
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [prevVisible, setPrevVisible] = useState(visible);
+  if (prevVisible !== visible) {
+    setPrevVisible(visible);
+    if (visible) {
+      setTab('general');
+      setFlash('');
+    }
+  }
 
   function showFlash(msg: string) {
     setFlash(msg);
@@ -62,12 +74,15 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
 
   useEffect(() => {
     if (!visible) return;
-    setTab('general');
-    setFlash('');
-    currentUser().then((u) => setEmail(u?.email ?? ''));
+    void currentUser().then((u) => setEmail(u?.email ?? ''));
   }, [visible]);
 
-  useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
+  useEffect(
+    () => () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+    },
+    [],
+  );
 
   function openIntegrations() {
     onClose();
@@ -94,7 +109,7 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
         {
           name: t('focus.settings.sheet.settings'),
           headers: [t('focus.settings.sheet.key'), t('focus.settings.sheet.value')],
-          rows: Object.entries(st).map(([k, v]) => [k, v as any]),
+          rows: Object.entries(st).map(([k, v]): [string, string | number | boolean] => [k, v]),
         },
         {
           name: t('focus.settings.sheet.tasks'),
@@ -186,93 +201,106 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
 
           {/* Sağ içerik */}
           <ScrollView style={s.contentWrap} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-          {flash ? (
-            <View style={[s.flash, { borderColor: accent + '55', backgroundColor: accent + '18' }]}>
-              <Ionicons name="checkmark-circle" size={16} color={accent} />
-              <Text style={[s.flashText, { color: accent }]} numberOfLines={2}>{flash}</Text>
-            </View>
-          ) : null}
-          {tab === 'general' && (
-            <>
-              <NavRow label={t('focus.settings.theme.label')} hint={t('focus.settings.theme.hint')} onPress={onOpenTheme} />
-              <SegBlock label={t('focus.settings.hourFormat')} value={st.hourFormat} accent={accent}
-                options={[{ v: '24h', l: t('focus.settings.hour24') }, { v: '12h', l: t('focus.settings.hour12') }]}
-                onChange={(v) => onSave({ hourFormat: v as FocusSettings['hourFormat'] })} />
-              <Toggle label={t('focus.settings.notifyOnFinish')} value={st.notifyOnFinish} accent={accent} onToggle={() => { void toggleNotify(); }} />
-            </>
-          )}
+            {flash ? (
+              <View style={[s.flash, { borderColor: accent + '55', backgroundColor: accent + '18' }]}>
+                <Ionicons name="checkmark-circle" size={16} color={accent} />
+                <Text style={[s.flashText, { color: accent }]} numberOfLines={2}>{flash}</Text>
+              </View>
+            ) : null}
+            {tab === 'general' && (
+              <>
+                <NavRow label={t('focus.settings.theme.label')} hint={t('focus.settings.theme.hint')} onPress={onOpenTheme} />
+                <SegBlock
+                  label={t('focus.settings.hourFormat')}
+                  value={st.hourFormat}
+                  accent={accent}
+                  options={[{ v: '24h', l: t('focus.settings.hour24') }, { v: '12h', l: t('focus.settings.hour12') }]}
+                  onChange={(v) => onSave({ hourFormat: v as FocusSettings['hourFormat'] })}
+                />
+                <Toggle label={t('focus.settings.notifyOnFinish')} value={st.notifyOnFinish} accent={accent} onToggle={() => { void toggleNotify(); }} />
+              </>
+            )}
 
-          {tab === 'timer' && (
-            <>
-              <Stepper label={t('focus.settings.workMinutes')} value={st.workMinutes} min={FOCUS_SETTING_BOUNDS.workMinutes[0]} max={FOCUS_SETTING_BOUNDS.workMinutes[1]} step={5} accent={accent} onChange={(v) => onSave({ workMinutes: v })} />
-              <Stepper label={t('focus.settings.shortBreakMinutes')} value={st.shortBreakMinutes} min={FOCUS_SETTING_BOUNDS.shortBreakMinutes[0]} max={FOCUS_SETTING_BOUNDS.shortBreakMinutes[1]} step={1} accent={accent} onChange={(v) => onSave({ shortBreakMinutes: v })} />
-              <Stepper label={t('focus.settings.longBreakMinutes')} value={st.longBreakMinutes} min={FOCUS_SETTING_BOUNDS.longBreakMinutes[0]} max={FOCUS_SETTING_BOUNDS.longBreakMinutes[1]} step={1} accent={accent} onChange={(v) => onSave({ longBreakMinutes: v })} />
-              <Stepper label={t('focus.settings.longBreakInterval')} value={st.longBreakInterval} min={FOCUS_SETTING_BOUNDS.longBreakInterval[0]} max={FOCUS_SETTING_BOUNDS.longBreakInterval[1]} step={1} accent={accent} onChange={(v) => onSave({ longBreakInterval: v })} />
-              <Toggle label={t('focus.settings.autoStartBreaks')} value={st.autoStartBreaks} accent={accent} onToggle={() => onSave({ autoStartBreaks: !st.autoStartBreaks })} />
-              <Toggle label={t('focus.settings.autoStartPomodoros')} value={st.autoStartPomodoros} accent={accent} onToggle={() => onSave({ autoStartPomodoros: !st.autoStartPomodoros })} />
-              <Toggle
-                label={t('focus.settings.pauseBg.label')}
-                value={st.pauseInBackground}
-                accent={accent}
-                hint={t('focus.settings.pauseBg.hint')}
-                onToggle={() => onSave({ pauseInBackground: !st.pauseInBackground })}
-              />
-              <Toggle
-                label={t('focus.settings.intentPrompt.label')}
-                value={st.intentPrompt}
-                accent={accent}
-                hint={t('focus.settings.intentPrompt.hint')}
-                onToggle={() => onSave({ intentPrompt: !st.intentPrompt })}
-              />
-            </>
-          )}
+            {tab === 'timer' && (
+              <>
+                <Stepper label={t('focus.settings.workMinutes')} value={st.workMinutes} min={FOCUS_SETTING_BOUNDS.workMinutes[0]} max={FOCUS_SETTING_BOUNDS.workMinutes[1]} step={5} accent={accent} onChange={(v) => onSave({ workMinutes: v })} />
+                <Stepper label={t('focus.settings.shortBreakMinutes')} value={st.shortBreakMinutes} min={FOCUS_SETTING_BOUNDS.shortBreakMinutes[0]} max={FOCUS_SETTING_BOUNDS.shortBreakMinutes[1]} step={1} accent={accent} onChange={(v) => onSave({ shortBreakMinutes: v })} />
+                <Stepper label={t('focus.settings.longBreakMinutes')} value={st.longBreakMinutes} min={FOCUS_SETTING_BOUNDS.longBreakMinutes[0]} max={FOCUS_SETTING_BOUNDS.longBreakMinutes[1]} step={1} accent={accent} onChange={(v) => onSave({ longBreakMinutes: v })} />
+                <Stepper label={t('focus.settings.longBreakInterval')} value={st.longBreakInterval} min={FOCUS_SETTING_BOUNDS.longBreakInterval[0]} max={FOCUS_SETTING_BOUNDS.longBreakInterval[1]} step={1} accent={accent} onChange={(v) => onSave({ longBreakInterval: v })} />
+                <Toggle label={t('focus.settings.autoStartBreaks')} value={st.autoStartBreaks} accent={accent} onToggle={() => onSave({ autoStartBreaks: !st.autoStartBreaks })} />
+                <Toggle label={t('focus.settings.autoStartPomodoros')} value={st.autoStartPomodoros} accent={accent} onToggle={() => onSave({ autoStartPomodoros: !st.autoStartPomodoros })} />
+                <Toggle
+                  label={t('focus.settings.pauseBg.label')}
+                  value={st.pauseInBackground}
+                  accent={accent}
+                  hint={t('focus.settings.pauseBg.hint')}
+                  onToggle={() => onSave({ pauseInBackground: !st.pauseInBackground })}
+                />
+                <Toggle
+                  label={t('focus.settings.intentPrompt.label')}
+                  value={st.intentPrompt}
+                  accent={accent}
+                  hint={t('focus.settings.intentPrompt.hint')}
+                  onToggle={() => onSave({ intentPrompt: !st.intentPrompt })}
+                />
+              </>
+            )}
 
-          {tab === 'tasks' && (
-            <>
-              <Toggle label={t('focus.settings.requireTask.label')} value={st.requireTaskBeforeStart} accent={accent} hint={t('focus.settings.requireTask.hint')} onToggle={() => onSave({ requireTaskBeforeStart: !st.requireTaskBeforeStart })} />
-              <Toggle label={t('focus.settings.autoCheck.label')} value={st.autoCheckTasks} accent={accent} hint={t('focus.settings.autoCheck.hint')} onToggle={() => onSave({ autoCheckTasks: !st.autoCheckTasks })} />
-            </>
-          )}
+            {tab === 'tasks' && (
+              <>
+                <Toggle label={t('focus.settings.requireTask.label')} value={st.requireTaskBeforeStart} accent={accent} hint={t('focus.settings.requireTask.hint')} onToggle={() => onSave({ requireTaskBeforeStart: !st.requireTaskBeforeStart })} />
+                <Toggle label={t('focus.settings.autoCheck.label')} value={st.autoCheckTasks} accent={accent} hint={t('focus.settings.autoCheck.hint')} onToggle={() => onSave({ autoCheckTasks: !st.autoCheckTasks })} />
+              </>
+            )}
 
-          {tab === 'reports' && (
-            <>
-              <Toggle label={t('focus.settings.localReports')} value={st.enableLocalReports} accent={accent} onToggle={() => onSave({ enableLocalReports: !st.enableLocalReports })} />
-              <SegBlock label={t('focus.settings.defaultRange')} value={st.defaultReportRange} accent={accent}
-                options={[{ v: 'today', l: t('focus.range.today') }, { v: 'week', l: t('focus.range.week') }, { v: 'month', l: t('focus.range.month') }, { v: 'year', l: t('focus.range.year') }]}
-                onChange={(v) => onSave({ defaultReportRange: v as FocusSettings['defaultReportRange'] })} />
-              <Toggle label={t('focus.settings.showChart')} value={st.showFocusChart} accent={accent} onToggle={() => onSave({ showFocusChart: !st.showFocusChart })} />
-              <Toggle label={t('focus.settings.showRanking')} value={st.showRanking} accent={accent} onToggle={() => onSave({ showRanking: !st.showRanking })} />
-              <ConfirmRow label={t('focus.settings.clearReports.label')} confirmLabel={t('focus.settings.clearReports.confirm')} onConfirm={doClearReports} />
-            </>
-          )}
+            {tab === 'reports' && (
+              <>
+                <Toggle label={t('focus.settings.localReports')} value={st.enableLocalReports} accent={accent} onToggle={() => onSave({ enableLocalReports: !st.enableLocalReports })} />
+                <SegBlock
+                  label={t('focus.settings.defaultRange')}
+                  value={st.defaultReportRange}
+                  accent={accent}
+                  options={[
+                    { v: 'today', l: t('focus.range.today') },
+                    { v: 'week', l: t('focus.range.week') },
+                    { v: 'month', l: t('focus.range.month') },
+                    { v: 'year', l: t('focus.range.year') },
+                  ]}
+                  onChange={(v) => onSave({ defaultReportRange: v as FocusSettings['defaultReportRange'] })}
+                />
+                <Toggle label={t('focus.settings.showChart')} value={st.showFocusChart} accent={accent} onToggle={() => onSave({ showFocusChart: !st.showFocusChart })} />
+                <Toggle label={t('focus.settings.showRanking')} value={st.showRanking} accent={accent} onToggle={() => onSave({ showRanking: !st.showRanking })} />
+                <ConfirmRow label={t('focus.settings.clearReports.label')} confirmLabel={t('focus.settings.clearReports.confirm')} onConfirm={doClearReports} />
+              </>
+            )}
 
-          {tab === 'sounds' && (
-            <>
-              <Toggle label={t('focus.settings.soundOnFinish')} value={st.soundOnFinish} accent={accent} onToggle={() => onSave({ soundOnFinish: !st.soundOnFinish })} />
-              <Toggle label={t('focus.settings.notifyOnFinish')} value={st.notifyOnFinish} accent={accent} onToggle={() => { void toggleNotify(); }} />
-            </>
-          )}
+            {tab === 'sounds' && (
+              <>
+                <Toggle label={t('focus.settings.soundOnFinish')} value={st.soundOnFinish} accent={accent} onToggle={() => onSave({ soundOnFinish: !st.soundOnFinish })} />
+                <Toggle label={t('focus.settings.notifyOnFinish')} value={st.notifyOnFinish} accent={accent} onToggle={() => { void toggleNotify(); }} />
+              </>
+            )}
 
-          {tab === 'account' && (
-            <>
-              <Text style={s.note}>{t('focus.settings.account.note')}</Text>
-              <View style={s.row}><Text style={s.rowLabel}>{t('focus.settings.account.email')}</Text><Text style={s.rowValue} numberOfLines={1}>{email || '—'}</Text></View>
-            </>
-          )}
+            {tab === 'account' && (
+              <>
+                <Text style={s.note}>{t('focus.settings.account.note')}</Text>
+                <View style={s.row}><Text style={s.rowLabel}>{t('focus.settings.account.email')}</Text><Text style={s.rowValue} numberOfLines={1}>{email || '—'}</Text></View>
+              </>
+            )}
 
-          {tab === 'integrations' && SPOTIFY_OAUTH_ENABLED && (
-            <>
-              <Text style={s.note}>{t('focus.settings.integrations.note')}</Text>
-              <NavRow label={t('focus.settings.integrations.label')} hint={t('focus.settings.integrations.hint')} onPress={openIntegrations} />
-            </>
-          )}
+            {tab === 'integrations' && SPOTIFY_OAUTH_ENABLED && (
+              <>
+                <Text style={s.note}>{t('focus.settings.integrations.note')}</Text>
+                <NavRow label={t('focus.settings.integrations.label')} hint={t('focus.settings.integrations.hint')} onPress={openIntegrations} />
+              </>
+            )}
 
-          {tab === 'advanced' && (
-            <>
-              <ExportRow accent={accent} onExport={exportAll} />
-              <ConfirmRow label={t('focus.settings.reset.label')} confirmLabel={t('focus.settings.reset.confirm')} onConfirm={doReset} />
-            </>
-          )}
+            {tab === 'advanced' && (
+              <>
+                <ExportRow accent={accent} onExport={exportAll} />
+                <ConfirmRow label={t('focus.settings.reset.label')} confirmLabel={t('focus.settings.reset.confirm')} onConfirm={doReset} />
+              </>
+            )}
           </ScrollView>
         </View>
       </SafeAreaView>
@@ -281,6 +309,8 @@ export default function FocusSettingsModal({ visible, onClose, settings: st, acc
 }
 
 function NavRow({ label, hint, onPress }: { label: string; hint?: string; onPress: () => void }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   return (
     <TouchableOpacity
       style={s.row}
@@ -300,6 +330,8 @@ function NavRow({ label, hint, onPress }: { label: string; hint?: string; onPres
 
 // Modal içi iki-aşamalı onay (Alert native popup'ı Modal üstünde/web'de açılmaz).
 function ConfirmRow({ label, confirmLabel, onConfirm }: { label: string; confirmLabel: string; onConfirm: () => void }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [armed, setArmed] = useState(false);
   if (!armed) {
     return (
@@ -340,6 +372,7 @@ function ConfirmRow({ label, confirmLabel, onConfirm }: { label: string; confirm
 }
 
 function ExportRow({ accent, onExport }: { accent: string; onExport: (fmt: ExportFmt) => void }) {
+  const s = useThemedStyles(makeStyles);
   const opts: { v: ExportFmt; l: string }[] = [
     { v: 'json', l: 'JSON' },
     { v: 'csv', l: 'CSV' },
@@ -372,6 +405,8 @@ function ExportRow({ accent, onExport }: { accent: string; onExport: (fmt: Expor
 function Stepper({ label, value, min, max, step, accent, onChange }: {
   label: string; value: number; min: number; max: number; step: number; accent: string; onChange: (v: number) => void;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.row}>
       <Text style={s.rowLabel}>{label}</Text>
@@ -403,6 +438,8 @@ function Stepper({ label, value, min, max, step, accent, onChange }: {
 function Toggle({ label, value, accent, onToggle, hint }: {
   label: string; value: boolean; accent: string; onToggle: () => void; hint?: string;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.row}>
       <View style={{ flex: 1 }}>
@@ -428,6 +465,7 @@ function Toggle({ label, value, accent, onToggle, hint }: {
 function SegBlock({ label, value, options, accent, onChange }: {
   label: string; value: string; options: { v: string; l: string }[]; accent: string; onChange: (v: string) => void;
 }) {
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.block}>
       <Text style={s.rowLabel}>{label}</Text>
@@ -452,44 +490,45 @@ function SegBlock({ label, value, options, accent, onChange }: {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14 },
-  title: { fontSize: 20, fontWeight: '800', color: colors.text },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14 },
+    title: { fontSize: 20, fontWeight: '800', color: colors.text },
 
-  body: { flex: 1, flexDirection: 'row' },
-  sidebar: { width: 132, borderRightWidth: 1, borderRightColor: colors.borderSubtle },
-  sidebarContent: { padding: 8, gap: 2 },
-  sideTab: { paddingVertical: 11, paddingHorizontal: 10, borderRadius: 8 },
-  sideTabText: { fontSize: 13, fontWeight: '600', color: colors.textFaint },
-  contentWrap: { flex: 1 },
+    body: { flex: 1, flexDirection: 'row' },
+    sidebar: { width: 132, borderRightWidth: 1, borderRightColor: colors.borderSubtle },
+    sidebarContent: { padding: 8, gap: 2 },
+    sideTab: { paddingVertical: 11, paddingHorizontal: 10, borderRadius: 8 },
+    sideTabText: { fontSize: 13, fontWeight: '600', color: colors.textFaint },
+    contentWrap: { flex: 1 },
 
-  content: { padding: 16, paddingBottom: 40 },
+    content: { padding: 16, paddingBottom: 40 },
 
-  flash: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 },
-  flashText: { flex: 1, fontSize: 12.5, fontWeight: '600' },
+    flash: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 },
+    flashText: { flex: 1, fontSize: 12.5, fontWeight: '600' },
 
-  confirmBtns: { flexDirection: 'row', gap: 8 },
-  confirmCancel: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  confirmCancelText: { fontSize: 12.5, fontWeight: '700', color: colors.textDim },
-  confirmYes: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: colors.error },
-  confirmYesText: { fontSize: 12.5, fontWeight: '800', color: colors.white },
+    confirmBtns: { flexDirection: 'row', gap: 8 },
+    confirmCancel: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+    confirmCancelText: { fontSize: 12.5, fontWeight: '700', color: colors.textDim },
+    confirmYes: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: colors.error },
+    confirmYesText: { fontSize: 12.5, fontWeight: '800', color: colors.white },
 
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle },
-  rowLabel: { fontSize: 14, color: colors.textDim, flex: 1 },
-  rowHint: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
-  rowValue: { fontSize: 13, color: colors.textFaint, maxWidth: '60%' },
-  note: { fontSize: 12.5, color: colors.textFaint, lineHeight: 18, marginBottom: 6, paddingVertical: 8 },
+    row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle },
+    rowLabel: { fontSize: 14, color: colors.textDim, flex: 1 },
+    rowHint: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
+    rowValue: { fontSize: 13, color: colors.textFaint, maxWidth: '60%' },
+    note: { fontSize: 12.5, color: colors.textFaint, lineHeight: 18, marginBottom: 6, paddingVertical: 8 },
 
-  block: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, gap: 10 },
-  segRow: { flexDirection: 'row', gap: 8 },
-  segBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgElevated },
-  segText: { fontSize: 12, fontWeight: '700', color: colors.textFaint },
+    block: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle, gap: 10 },
+    segRow: { flexDirection: 'row', gap: 8 },
+    segBtn: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgElevated },
+    segText: { fontSize: 12, fontWeight: '700', color: colors.textFaint },
 
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  stepBtn: { width: 30, height: 30, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgElevated, alignItems: 'center', justifyContent: 'center' },
-  stepValue: { minWidth: 34, textAlign: 'center', fontSize: 15, fontWeight: '700' },
+    stepper: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    stepBtn: { width: 30, height: 30, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgElevated, alignItems: 'center', justifyContent: 'center' },
+    stepValue: { minWidth: 34, textAlign: 'center', fontSize: 15, fontWeight: '700' },
 
-  toggle: { width: 42, height: 24, borderRadius: 12, padding: 3, justifyContent: 'center' },
-  knob: { width: 18, height: 18, borderRadius: 9, backgroundColor: colors.white },
-});
+    toggle: { width: 42, height: 24, borderRadius: 12, padding: 3, justifyContent: 'center' },
+    knob: { width: 18, height: 18, borderRadius: 9, backgroundColor: colors.white },
+  });

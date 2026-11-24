@@ -7,10 +7,11 @@
  * results jump directly to the matched item (`habit-detail`, `journal-reader`,
  * `/tabs/plan?tab=tasks&focus=`, `/screens/notes?focus=`, `/tabs/plan?tab=projects&focus=`).
  */
-import { colors, alphaHex } from '../lib/tokens';
+import { alphaHex, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { EmbeddedFiligree } from './spatial';
 import { DECOR } from '../lib/visualAssets';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -43,7 +44,6 @@ import {
 } from '../lib/destinations';
 
 const RECENTS_KEY = 'app_cmd_recents';
-const AI_HUE = colors.accent;
 
 export type RecentEntry = {
   label: string;
@@ -87,6 +87,9 @@ type PaletteRow =
     };
 
 export default function CommandPalette() {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+  const aiHue = colors.accent;
   const [query, setQuery] = useState('');
   const [recents, setRecents] = useState<RecentEntry[]>([]);
   const { visible, close, requestIntent } = useCommandStore(
@@ -223,11 +226,11 @@ export default function CommandPalette() {
       id: 'ai-routine',
       label: 'AI Rutin oluştur',
       icon: 'sparkles-outline',
-      color: AI_HUE,
+      color: aiHue,
       keywords: ['ai rutin', 'yapay zeka', 'paket'],
       action: () => {
         requestIntent('ai-routine');
-        go(habitsHref, 'AI Rutin oluştur', 'sparkles-outline', AI_HUE);
+        go(habitsHref, 'AI Rutin oluştur', 'sparkles-outline', aiHue);
       },
     },
     {
@@ -254,31 +257,34 @@ export default function CommandPalette() {
           a.keywords.some((kw) => kw.toLowerCase().includes(q)),
       );
 
-  const local = useMemo(
-    () => ({
-      tasks: !q
-        ? []
-        : tasks.filter((t) => !t.completed && t.title.toLowerCase().includes(q)).slice(0, 5),
-      notes: !q ? [] : notes.filter((n) => n.title.toLowerCase().includes(q)).slice(0, 5),
-      projects: !q ? [] : projects.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 5),
-      habits: !q ? [] : habits.filter((h) => h.name.toLowerCase().includes(q)).slice(0, 5),
-    }),
-    [q, tasks, notes, projects, habits],
-  );
+  const local = {
+    tasks: !q
+      ? []
+      : tasks.filter((t) => !t.completed && t.title.toLowerCase().includes(q)).slice(0, 5),
+    notes: !q ? [] : notes.filter((n) => n.title.toLowerCase().includes(q)).slice(0, 5),
+    projects: !q ? [] : projects.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 5),
+    habits: !q ? [] : habits.filter((h) => h.name.toLowerCase().includes(q)).slice(0, 5),
+  };
 
   const [remote, setRemote] = useState<SearchResults | null>(null);
   const [searching, setSearching] = useState(false);
   const [failedSources, setFailedSources] = useState<string[]>([]);
 
-  useEffect(() => {
+  const [prevQ, setPrevQ] = useState(q);
+  if (prevQ !== q) {
+    setPrevQ(q);
     if (!q) {
       setRemote(null);
       setSearching(false);
       setFailedSources([]);
-      return;
+    } else {
+      setSearching(true);
     }
+  }
+
+  useEffect(() => {
+    if (!q) return;
     let alive = true;
-    setSearching(true);
     const timer = setTimeout(async () => {
       const found = await searchEverything(q, 5);
       if (!alive) return;
@@ -520,54 +526,55 @@ export default function CommandPalette() {
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFill },
-  container: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 80 : 60,
-    left: 16, right: 16,
-    backgroundColor: colors.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-    maxHeight: 520,
-  },
-  inputRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 16, paddingVertical: 14,
-  },
-  input: { flex: 1, fontSize: 16, color: colors.white },
-  divider: { height: 1, backgroundColor: colors.border },
-  list: { maxHeight: 380 },
-  sectionLabel: {
-    fontSize: 11, fontWeight: '700', color: colors.textFaint,
-    letterSpacing: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4,
-  },
-  emptyText: { fontSize: 14, color: colors.textFaint, textAlign: 'center', padding: 24 },
-  errorText: { fontSize: 14, color: colors.error, textAlign: 'center', padding: 24, lineHeight: 20 },
-  partialText: {
-    fontSize: 12, color: colors.warning, paddingHorizontal: 16, paddingVertical: 8, lineHeight: 17,
-  },
-  row: {
-    minHeight: 44,
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 12,
-  },
-  rowIcon: {
-    width: 34, height: 34, borderRadius: 8,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  rowLabel: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '500' },
-  closeRow: {
-    minHeight: 44,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    padding: 12, borderTopWidth: 1, borderTopColor: colors.border,
-  },
-  closeText: { fontSize: 13, color: colors.textFaint },
-  escBadge: {
-    backgroundColor: colors.border, borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
-  escText: { fontSize: 11, color: colors.textFaint, fontWeight: '700' },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    backdrop: { ...StyleSheet.absoluteFill },
+    container: {
+      position: 'absolute',
+      top: Platform.OS === 'ios' ? 80 : 60,
+      left: 16, right: 16,
+      backgroundColor: colors.surface,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+      maxHeight: 520,
+    },
+    inputRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      paddingHorizontal: 16, paddingVertical: 14,
+    },
+    input: { flex: 1, fontSize: 16, color: colors.white },
+    divider: { height: 1, backgroundColor: colors.border },
+    list: { maxHeight: 380 },
+    sectionLabel: {
+      fontSize: 11, fontWeight: '700', color: colors.textFaint,
+      letterSpacing: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4,
+    },
+    emptyText: { fontSize: 14, color: colors.textFaint, textAlign: 'center', padding: 24 },
+    errorText: { fontSize: 14, color: colors.error, textAlign: 'center', padding: 24, lineHeight: 20 },
+    partialText: {
+      fontSize: 12, color: colors.warning, paddingHorizontal: 16, paddingVertical: 8, lineHeight: 17,
+    },
+    row: {
+      minHeight: 44,
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      paddingHorizontal: 16, paddingVertical: 12,
+    },
+    rowIcon: {
+      width: 34, height: 34, borderRadius: 8,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    rowLabel: { flex: 1, fontSize: 15, color: colors.text, fontWeight: '500' },
+    closeRow: {
+      minHeight: 44,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      padding: 12, borderTopWidth: 1, borderTopColor: colors.border,
+    },
+    closeText: { fontSize: 13, color: colors.textFaint },
+    escBadge: {
+      backgroundColor: colors.border, borderRadius: 6,
+      paddingHorizontal: 6, paddingVertical: 2,
+    },
+    escText: { fontSize: 11, color: colors.textFaint, fontWeight: '700' },
+  });

@@ -1,18 +1,18 @@
-import React from 'react';
+import React, { type ComponentProps } from 'react';
 import { View, Text, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { format, addDays } from 'date-fns';
-import { colors } from '../../lib/tokens';
 import type { FrequencyConfig } from '../../lib/supabase';
 import { endConditionLabel } from '../../lib/triage';
 import { togglePartOfDay as togglePartOfDayPure } from '../../lib/frequencyForm';
 import FrequencyEditor from '../FrequencyEditor';
 import { PART_OF_DAY } from './constants';
-import { styles } from './styles';
 import type { StepProps } from './types';
 
+type IconName = ComponentProps<typeof Ionicons>['name'];
+
 export default function StepFrequency({ ctx }: StepProps) {
-  const { form, setForm, applyAndRecost, cueMode, setCueMode, existingHabits } = ctx;
+  const { form, setForm, applyAndRecost, cueMode, setCueMode, existingHabits, colors, styles } = ctx;
   const freq = form.frequency_config;
 
   function updateFreq(next: FrequencyConfig) {
@@ -41,16 +41,22 @@ export default function StepFrequency({ ctx }: StepProps) {
 
       <Text style={[styles.label, { marginTop: 20 }]}>Günün hangi bölümünde?</Text>
       <View style={styles.row}>
-        {PART_OF_DAY.map((p) => (
-          <TouchableOpacity
-            key={p.id}
-            style={[styles.partBtn, (freq.part_of_day ?? []).includes(p.id as any) && styles.partBtnSelected]}
-            onPress={() => togglePartOfDay(p.id)}
-          >
-            <Text style={styles.partEmoji}>{p.icon}</Text>
-            <Text style={styles.partLabel}>{p.label}</Text>
-          </TouchableOpacity>
-        ))}
+        {PART_OF_DAY.map((p) => {
+          const sel = (freq.part_of_day ?? []).some((x) => x === p.id);
+          return (
+            <TouchableOpacity
+              key={p.id}
+              style={[styles.partBtn, sel && styles.partBtnSelected]}
+              onPress={() => togglePartOfDay(p.id)}
+              accessibilityRole="button"
+              accessibilityLabel={p.label}
+              accessibilityState={{ selected: sel }}
+            >
+              <Text style={styles.partEmoji}>{p.icon}</Text>
+              <Text style={styles.partLabel}>{p.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {/* Bitiş Koşulu */}
@@ -71,8 +77,11 @@ export default function StepFrequency({ ctx }: StepProps) {
                 else if (opt.k === 'date') setEndDate(30);
                 else setForm((prev) => ({ ...prev, end_condition: { kind: 'amount', value: 30 } }));
               }}
+              accessibilityRole="button"
+              accessibilityLabel={opt.label}
+              accessibilityState={{ selected: sel }}
             >
-              <Ionicons name={opt.icon as any} size={18} color={sel ? colors.accent : colors.textDim} />
+              <Ionicons name={opt.icon as IconName} size={18} color={sel ? colors.accent : colors.textDim} />
               <Text style={[styles.endKindText, sel && { color: colors.accent }]}>{opt.label}</Text>
             </TouchableOpacity>
           );
@@ -90,15 +99,16 @@ export default function StepFrequency({ ctx }: StepProps) {
                   key={n}
                   style={[styles.dayBtn, sel && styles.dayBtnSelected]}
                   onPress={() => setEndDate(n)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${n} gün`}
+                  accessibilityState={{ selected: sel }}
                 >
                   <Text style={[styles.dayBtnText, sel && styles.dayBtnTextSelected]}>{n} gün</Text>
                 </TouchableOpacity>
               );
             })}
           </View>
-          {ec?.kind === 'date' && (
-            <Text style={styles.endHint}>Bitiş: {endConditionLabel(ec)}</Text>
-          )}
+          {ec?.kind === 'date' && <Text style={styles.endHint}>Bitiş: {endConditionLabel(ec)}</Text>}
         </>
       )}
 
@@ -135,6 +145,9 @@ export default function StepFrequency({ ctx }: StepProps) {
                 : { time: prev.reminders?.time || '08:00', enabled: true },
             }))
           }
+          accessibilityRole="switch"
+          accessibilityLabel="Hatırlatıcı"
+          accessibilityState={{ checked: Boolean(rem?.enabled) }}
         >
           <Ionicons name={rem?.enabled ? 'notifications' : 'notifications-off-outline'} size={14} color={rem?.enabled ? colors.white : colors.textDim} />
           <Text style={[styles.remToggleText, rem?.enabled && { color: colors.white }]}>{rem?.enabled ? 'Açık' : 'Kapalı'}</Text>
@@ -150,6 +163,9 @@ export default function StepFrequency({ ctx }: StepProps) {
                   key={t}
                   style={[styles.minsBtn, sel && styles.minsBtnSel]}
                   onPress={() => setForm((prev) => ({ ...prev, reminders: { time: t, enabled: true } }))}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Saat ${t}`}
+                  accessibilityState={{ selected: sel }}
                 >
                   <Text style={[styles.minsBtnText, sel && styles.minsBtnTextSel]}>{t}</Text>
                 </TouchableOpacity>
@@ -185,8 +201,11 @@ export default function StepFrequency({ ctx }: StepProps) {
                 else if (opt.k === 'habit') setForm((prev) => ({ ...prev, cue_note: null }));
                 else setForm((prev) => ({ ...prev, cue_habit_id: null, cue_note: prev.cue_note ?? '' }));
               }}
+              accessibilityRole="button"
+              accessibilityLabel={opt.label}
+              accessibilityState={{ selected: sel }}
             >
-              <Ionicons name={opt.icon as any} size={18} color={sel ? colors.accent : colors.textDim} />
+              <Ionicons name={opt.icon as IconName} size={18} color={sel ? colors.accent : colors.textDim} />
               <Text style={[styles.endKindText, sel && { color: colors.accent }]}>{opt.label}</Text>
             </TouchableOpacity>
           );
@@ -206,8 +225,11 @@ export default function StepFrequency({ ctx }: StepProps) {
                     key={h.id}
                     style={[styles.cueChip, sel && styles.cueChipSel]}
                     onPress={() => setForm((prev) => ({ ...prev, cue_habit_id: h.id, cue_note: null }))}
+                    accessibilityRole="button"
+                    accessibilityLabel={h.name}
+                    accessibilityState={{ selected: sel }}
                   >
-                    <Ionicons name={(h.icon ?? 'star-outline') as any} size={14} color={sel ? colors.accent : (h.color ?? colors.textDim)} />
+                    <Ionicons name={(h.icon ?? 'star-outline') as IconName} size={14} color={sel ? colors.accent : (h.color ?? colors.textDim)} />
                     <Text style={[styles.cueChipText, sel && { color: colors.accent }]} numberOfLines={1}>{h.name}</Text>
                   </TouchableOpacity>
                 );

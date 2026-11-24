@@ -84,6 +84,19 @@ export default function HabitDayNote(props: HabitDayNoteProps): JSX.Element {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showHint, setShowHint] = useState(false);
 
+  const resetKey = `${props.dayLabel}\0${props.initial ?? ''}`;
+  const [prevResetKey, setPrevResetKey] = useState(resetKey);
+  if (prevResetKey !== resetKey) {
+    setPrevResetKey(resetKey);
+    setDraft(props.initial ?? '');
+    setErrorMsg(null);
+  }
+
+  const offerActive = props.variant === 'offer' && Boolean(props.userId);
+  if (!offerActive && showHint) {
+    setShowHint(false);
+  }
+
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
 
@@ -95,16 +108,10 @@ export default function HabitDayNote(props: HabitDayNoteProps): JSX.Element {
   }, []);
 
   useEffect(() => {
-    setDraft(props.initial ?? '');
-    setErrorMsg(null);
-  }, [props.initial, props.dayLabel]);
-
-  useEffect(() => {
-    let cancelled = false;
     if (props.variant !== 'offer' || !props.userId) {
-      setShowHint(false);
       return;
     }
+    let cancelled = false;
     const uid = props.userId;
     void readNoteHintSeen(uid).then((seen) => {
       if (cancelled || !mountedRef.current) return;

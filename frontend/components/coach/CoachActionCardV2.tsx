@@ -7,8 +7,9 @@
  */
 import { useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
-import { colors, space, radius, hexA } from '../../lib/tokens';
+import { useRouter, type Href } from 'expo-router';
+import { space, radius, hexA, type Palette } from '../../lib/tokens';
+import { useThemedStyles } from '../../hooks/useThemeColors';
 import EmbeddedFiligree from '../spatial/EmbeddedFiligree';
 import { DECOR } from '../../lib/visualAssets';
 import { useHabitStore } from '../../store/habitStore';
@@ -28,8 +29,9 @@ import { isPausedOn } from '../../lib/habitPauses';
 
 export default function CoachActionCardV2({ action, onDone }: { action: CoachActionV2; onDone: (ok: boolean, message: string) => void }) {
   const router = useRouter();
-  const habits = useHabitStore((s) => s.habits);
-  const tasks = useTaskStore((s) => s.tasks);
+  const s = useThemedStyles(makeStyles);
+  const habits = useHabitStore((st) => st.habits);
+  const tasks = useTaskStore((st) => st.tasks);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
@@ -127,7 +129,7 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
         } else if (action.type === 'suggest_small_step') {
           const ok = useFocusStore.getState().startSmallStep({ kind: 'task', id: cur!.id, title: cur!.title }, { title: action.step, minutes: action.minutes });
           onDone(ok, ok ? `✓ "${action.step}" başladı (${action.minutes} dk).` : 'Devam eden bir odak oturumu var; adım başlatılmadı.');
-          if (ok) router.push('/tabs/focus' as never);
+          if (ok) router.push('/tabs/focus' as Href);
         }
         return;
       }
@@ -206,17 +208,18 @@ export default function CoachActionCardV2({ action, onDone }: { action: CoachAct
   );
 }
 
-const s = StyleSheet.create({
-  box: { padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, gap: space.sm, backgroundColor: hexA(colors.bgElevated, 0.94), overflow: 'hidden', position: 'relative' },
-  head: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint },
-  body: { fontSize: 14, color: colors.text, lineHeight: 20 },
-  note: { fontSize: 12, color: colors.warning },
-  row: { flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' },
-  chip: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
-  chipOn: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
-  chipText: { fontSize: 12, color: colors.textDim },
-  btn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
-  btnText: { color: colors.textDim },
-  primary: { backgroundColor: colors.accent, borderColor: colors.accent },
-  primaryText: { color: colors.bg, fontWeight: '700' },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    box: { padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, gap: space.sm, backgroundColor: hexA(colors.bgElevated, 0.94), overflow: 'hidden', position: 'relative' },
+    head: { fontSize: 10, letterSpacing: 1, fontWeight: '700', color: colors.textFaint },
+    body: { fontSize: 14, color: colors.text, lineHeight: 20 },
+    note: { fontSize: 12, color: colors.warning },
+    row: { flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' },
+    chip: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+    chipOn: { borderColor: colors.accent, backgroundColor: colors.surfaceAlt },
+    chipText: { fontSize: 12, color: colors.textDim },
+    btn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+    btnText: { color: colors.textDim },
+    primary: { backgroundColor: colors.accent, borderColor: colors.accent },
+    primaryText: { color: colors.bg, fontWeight: '700' },
+  });

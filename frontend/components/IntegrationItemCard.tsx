@@ -1,7 +1,8 @@
-import { colors } from '../lib/tokens';
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import type { IntegrationItem } from '../constants/integrations';
 import IntegrationStatusBadge from './IntegrationStatusBadge';
 
@@ -14,8 +15,11 @@ type IntegrationItemCardProps = {
 export default function IntegrationItemCard({
   item,
   onPress,
-  accentColor = colors.accent,
+  accentColor: accentColorProp,
 }: IntegrationItemCardProps) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
+  const accentColor = accentColorProp ?? colors.accent;
   const { title, description, status, iconName = 'ellipse-outline' } = item;
   const isPressable = Boolean(onPress);
   const showChevron = isPressable;
@@ -72,55 +76,56 @@ export default function IntegrationItemCard({
   );
 }
 
-const styles = StyleSheet.create({
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  settingItemDisabled: {
-    opacity: 0.85,
-  },
-  settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 8,
-  },
-  settingIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  settingInfo: {
-    flex: 1,
-  },
-  settingTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.white,
-    marginBottom: 4,
-  },
-  settingSubtitle: {
-    fontSize: 13,
-    color: colors.textDim,
-  },
-  settingRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  chevronPlaceholder: {
-    width: 20,
-    height: 20,
-  },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    settingItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    settingItemDisabled: {
+      opacity: 0.85,
+    },
+    settingLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      marginRight: 8,
+    },
+    settingIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    settingInfo: {
+      flex: 1,
+    },
+    settingTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 4,
+    },
+    settingSubtitle: {
+      fontSize: 13,
+      color: colors.textDim,
+    },
+    settingRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    chevronPlaceholder: {
+      width: 20,
+      height: 20,
+    },
+  });

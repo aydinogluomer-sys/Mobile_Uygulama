@@ -24,7 +24,8 @@
  */
 import { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
-import { colors, alphaHex, hexA } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import EmbeddedFiligree from '../spatial/EmbeddedFiligree';
 import { DECOR } from '../../lib/visualAssets';
 import type { Habit } from '../../lib/supabase';
@@ -129,6 +130,7 @@ export function describeFrequency(h: ProposalHabit): string {
 
 /** One habit's semantics, the way the preview must show them. */
 function HabitFacts({ habit, badge }: { habit: ProposalHabit; badge?: 'active' | 'queued' }) {
+  const s = useThemedStyles(makeStyles);
   const target = describeTarget(habit);
   return (
     <View style={s.habitBlock}>
@@ -150,6 +152,8 @@ function ClarifyBody({ habit, missing, onClarify }: {
   missing: MissingSemantic;
   onClarify?: (a: ClarifyAnswer) => void;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [customOpen, setCustomOpen] = useState(false);
   const [customValue, setCustomValue] = useState('');
   const [customUnit, setCustomUnit] = useState('dakika');
@@ -292,6 +296,8 @@ function ClarifyBody({ habit, missing, onClarify }: {
 }
 
 export default function CoachActionCard({ staged, busy, onConfirm, onCancel, onPickCandidate, onClarify, onAcceptPlan }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   if (staged.kind === 'planOffer') {
     return (
       <View style={s.card}>
@@ -496,7 +502,8 @@ export default function CoachActionCard({ staged, busy, onConfirm, onCancel, onP
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
   card: {
     alignSelf: 'stretch',
     backgroundColor: hexA(colors.surface, 0.94), overflow: 'hidden', position: 'relative',

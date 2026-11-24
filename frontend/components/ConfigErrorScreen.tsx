@@ -5,12 +5,13 @@
  * be an empty promise) and no blame; the missing variable NAMES are shown small for whoever reports
  * it. Values are never shown: the component only ever receives names.
  *
- * Deliberately depends on react-native and lib/tokens only — no safe-area provider, no icon font,
- * no store — because it renders exactly when the rest of the app could not start.
+ * Deliberately depends on react-native and theme tokens only — no safe-area provider, no icon font —
+ * because it renders when the rest of the app could not start.
  */
 import { useEffect } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../lib/tokens';
+import { type Palette } from '../lib/tokens';
+import { useThemedStyles } from '../hooks/useThemeColors';
 
 export type ConfigErrorScreenProps = {
   /** Eksik değişkenlerin ADLARI; değerler asla gösterilmez. */
@@ -22,6 +23,7 @@ export const CONFIG_ERROR_BODY =
   'Bu sürüm gerekli ayarlar olmadan oluşturulmuş. Uygulamayı güncellemeyi dene; sorun sürerse bize bildir.';
 
 export default function ConfigErrorScreen({ missing }: ConfigErrorScreenProps) {
+  const s = useThemedStyles(makeStyles);
   const names = missing.filter((n) => typeof n === 'string' && /^[A-Z0-9_]+$/.test(n)).join(', ');
 
   useEffect(() => {
@@ -42,11 +44,12 @@ export default function ConfigErrorScreen({ missing }: ConfigErrorScreenProps) {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
-  content: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 48 },
-  body: { width: '100%', maxWidth: 480, alignSelf: 'center', gap: 12 },
-  title: { fontSize: 22, lineHeight: 28, fontWeight: '600', color: colors.text },
-  lede: { fontSize: 16, lineHeight: 23, color: colors.textDim },
-  detail: { fontSize: 13, lineHeight: 19, color: colors.textDim, marginTop: 4 },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: colors.bg },
+    content: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 48 },
+    body: { width: '100%', maxWidth: 480, alignSelf: 'center', gap: 12 },
+    title: { fontSize: 22, lineHeight: 28, fontWeight: '600', color: colors.text },
+    lede: { fontSize: 16, lineHeight: 23, color: colors.textDim },
+    detail: { fontSize: 13, lineHeight: 19, color: colors.textDim, marginTop: 4 },
+  });

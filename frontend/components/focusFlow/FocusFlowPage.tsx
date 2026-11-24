@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator, Animated, Easing, Platform, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
@@ -69,7 +69,7 @@ function NativeYoutubeEmbed({ videoId, muted, bgColor }: { videoId: string; mute
 }
 
 function useBreathLoop(active: boolean): Animated.Value {
-  const breathAnim = useRef(new Animated.Value(0)).current;
+  const [breathAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     if (!active) {
@@ -246,7 +246,7 @@ export const FocusFlowPage = React.memo(function FocusFlowPage({
 
         <View style={p.reelTopMeta}>
           <View style={[p.kindBadge, { backgroundColor: hexA(feedItem.accentColor, 0.2), borderColor: hexA(feedItem.accentColor, 0.45) }]}>
-            <Ionicons name={feedItem.icon as any} size={12} color={feedItem.accentColor} />
+            <Ionicons name={feedItem.icon as ComponentProps<typeof Ionicons>['name']} size={12} color={feedItem.accentColor} />
             <Text style={[p.kindBadgeText, { color: feedItem.accentColor }]}>{feedItem.badge}</Text>
           </View>
 
@@ -300,6 +300,8 @@ export const FocusFlowPage = React.memo(function FocusFlowPage({
                         key={sIdx}
                         style={p.storySegmentHit}
                         onPress={() => { haptic.select(); setSlideIdx(sIdx); }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Slayt ${sIdx + 1}`}
                       >
                         <View style={[p.storySegmentBar, doneOrCurrent && { backgroundColor: feedItem.accentColor }]} />
                       </TouchableOpacity>
@@ -315,6 +317,8 @@ export const FocusFlowPage = React.memo(function FocusFlowPage({
                       haptic.light();
                       setSlideIdx((prev) => (prev + 1) % feedItem.kineticSlides.length);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Sonraki slayta geç, ${slideIdx + 1} / ${feedItem.kineticSlides.length}`}
                   >
                     <Text style={[p.slideEyebrow, { color: feedItem.accentColor }]}>{curSlide.eyebrow}</Text>
                     <EmbeddedFiligree source={DECOR.cornerAstrolabe} anchor="top-right" size={96} opacity={0.11} />

@@ -1,5 +1,6 @@
-import { colors, alphaHex } from '../lib/tokens';
-import { useEffect, useState } from 'react';
+import { alphaHex, hexA, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
+import { useEffect, useState, type ComponentProps } from 'react';
 import {
   View, Text, StyleSheet, Modal, TextInput,
   TouchableOpacity, ScrollView, ActivityIndicator,
@@ -7,6 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 import { useRoutineStore, type ProposalSource } from '../store/routineStore';
 import { useSubscriptionStore } from '../store/subscriptionStore';
 import { ACTION_COST } from '../lib/subscription';
@@ -15,6 +17,8 @@ import { MAX_ESTIMATED_MINUTES, type ProposalCompletion } from '../lib/routinePr
 import { DIFFICULTY_LEVELS } from '../lib/triage';
 import { Chip, EmblemMedallion, TexturedSurface } from './ui';
 import { SCREEN_BANNERS, TEXTURES } from '../lib/visualAssets';
+
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 interface Props {
   visible: boolean;
@@ -31,9 +35,13 @@ export function sourceLine(source: ProposalSource | null): string {
 }
 
 export default function AIRoutineModal({ visible, onClose }: Props) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const [prompt, setPrompt] = useState('');
-  const { focusPoints, fetch: fetchSub } = useSubscriptionStore();
+  const { focusPoints, fetch: fetchSub } = useSubscriptionStore(
+    useShallow((s) => ({ focusPoints: s.focusPoints, fetch: s.fetch })),
+  );
 
   const {
     generating,
@@ -51,7 +59,25 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
     installed,
     confirmInstall,
     proposalSource,
-  } = useRoutineStore();
+  } = useRoutineStore(
+    useShallow((s) => ({
+      generating: s.generating,
+      generateError: s.generateError,
+      generateRoutine: s.generateRoutine,
+      proposal: s.proposal,
+      proposalErrors: s.proposalErrors,
+      evaluation: s.evaluation,
+      pendingProposal: s.pendingProposal,
+      completeProposal: s.completeProposal,
+      loadPack: s.loadPack,
+      clearGenerated: s.clearGenerated,
+      installing: s.installing,
+      installError: s.installError,
+      installed: s.installed,
+      confirmInstall: s.confirmInstall,
+      proposalSource: s.proposalSource,
+    })),
+  );
 
   // Tamamlama formu -- yalnızca `pendingProposal` (AI'nın difficulty/
   // estimated_minutes vermediği eksik öneri) doluyken kullanılır. Habit
@@ -60,16 +86,18 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
   const [completions, setCompletions] = useState<Record<number, { difficulty?: 1 | 3 | 5; estimated_minutes?: number }>>({});
   const [minutesText, setMinutesText] = useState<Record<number, string>>({});
 
-  useEffect(() => { if (visible) fetchSub(); }, [visible, fetchSub]);
-
   // Yeni bir eksik öneri geldiğinde (yeni bir AI çağrısı) formu sıfırla --
   // ama başarısız bir "Devam Et" denemesinden sonra (pendingProposal AYNI
   // referans kalır, çünkü store başarısızlıkta onu temizlemez) kullanıcının
   // girdiği değerler KORUNUR.
-  useEffect(() => {
+  const [prevPendingProposal, setPrevPendingProposal] = useState(pendingProposal);
+  if (prevPendingProposal !== pendingProposal) {
+    setPrevPendingProposal(pendingProposal);
     setCompletions({});
     setMinutesText({});
-  }, [pendingProposal]);
+  }
+
+  useEffect(() => { if (visible) fetchSub(); }, [visible, fetchSub]);
 
   function handleClose() {
     setPrompt('');
@@ -139,7 +167,11 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                 <Text style={styles.betaText}>BETA</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={handleClose}>
+            <TouchableOpacity
+              onPress={handleClose}
+              accessibilityRole="button"
+              accessibilityLabel="Routine AI penceresini kapat"
+            >
               <Ionicons name="close" size={24} color={colors.textDim} />
             </TouchableOpacity>
           </View>
@@ -154,7 +186,12 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
               </View>
             ) : null}
             {generateError && /Focus Point/i.test(generateError) ? (
-              <TouchableOpacity style={styles.creditsRow} onPress={() => { onClose(); router.push('/screens/focus-points'); }}>
+              <TouchableOpacity
+                style={styles.creditsRow}
+                onPress={() => { onClose(); router.push('/screens/focus-points'); }}
+                accessibilityRole="button"
+                accessibilityLabel="Focus Point bakiyem"
+              >
                 <Ionicons name="flash-outline" size={14} color={colors.white} />
                 <Text style={styles.creditsRowText}>Focus Point bakiyem</Text>
               </TouchableOpacity>
@@ -173,7 +210,12 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                 {proposalErrors!.slice(0, 6).map((msg, i) => (
                   <Text key={i} style={styles.rejectItem}>• {msg}</Text>
                 ))}
-                <TouchableOpacity style={styles.retryBtnWide} onPress={() => clearGenerated()}>
+                <TouchableOpacity
+                  style={styles.retryBtnWide}
+                  onPress={() => clearGenerated()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Yeniden dene"
+                >
                   <Ionicons name="refresh-outline" size={16} color={colors.textDim} />
                   <Text style={styles.retryText}>Yeniden dene</Text>
                 </TouchableOpacity>
@@ -209,7 +251,7 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                             key={d.key}
                             label={d.label}
                             color={d.color}
-                            icon={d.icon as any}
+                            icon={d.icon as IoniconName}
                             selected={sel.difficulty === d.key}
                             onPress={() => setHabitDifficulty(i, d.key as 1 | 3 | 5)}
                           />
@@ -230,7 +272,12 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                 })}
 
                 <View style={styles.resultActions}>
-                  <TouchableOpacity style={styles.retryBtn} onPress={() => clearGenerated()}>
+                  <TouchableOpacity
+                    style={styles.retryBtn}
+                    onPress={() => clearGenerated()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Yeniden dene"
+                  >
                     <Ionicons name="refresh-outline" size={16} color={colors.textDim} />
                     <Text style={styles.retryText}>Yeniden dene</Text>
                   </TouchableOpacity>
@@ -238,6 +285,9 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                     style={[styles.addAllBtn, !allHabitsComplete && styles.generateBtnDisabled]}
                     onPress={handleCompleteProposal}
                     disabled={!allHabitsComplete}
+                    accessibilityRole="button"
+                    accessibilityLabel="Devam Et"
+                    accessibilityState={{ disabled: !allHabitsComplete }}
                   >
                     <Ionicons name="arrow-forward-circle" size={18} color={colors.white} />
                     <Text style={styles.addAllText}>Devam Et</Text>
@@ -280,6 +330,9 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                   ]}
                   onPress={handleGenerate}
                   disabled={prompt.trim().length < 3}
+                  accessibilityRole="button"
+                  accessibilityLabel="Rutin Oluştur"
+                  accessibilityState={{ disabled: prompt.trim().length < 3 }}
                 >
                   <Ionicons name="sparkles" size={18} color={colors.white} />
                   <Text style={styles.generateBtnText}>Rutin Oluştur</Text>
@@ -290,7 +343,13 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                   <Text style={styles.packsHeaderText}>ya da hazır bir paket seç</Text>
                 </View>
                 {ROUTINE_PACKS.map((pack: RoutinePack) => (
-                  <TouchableOpacity key={pack.key} style={styles.packCard} onPress={() => loadPack(pack.key)}>
+                  <TouchableOpacity
+                    key={pack.key}
+                    style={styles.packCard}
+                    onPress={() => loadPack(pack.key)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${pack.title} hazır paketini seç`}
+                  >
                     <View style={styles.packIcon}>
                       <Ionicons name="layers-outline" size={18} color={colors.accent} />
                     </View>
@@ -363,7 +422,14 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                 ) : null}
 
                 <View style={styles.resultActions}>
-                  <TouchableOpacity style={styles.retryBtn} onPress={() => clearGenerated()} disabled={installing}>
+                  <TouchableOpacity
+                    style={styles.retryBtn}
+                    onPress={() => clearGenerated()}
+                    disabled={installing}
+                    accessibilityRole="button"
+                    accessibilityLabel="Yeniden dene"
+                    accessibilityState={{ disabled: installing }}
+                  >
                     <Ionicons name="refresh-outline" size={16} color={colors.textDim} />
                     <Text style={styles.retryText}>Yeniden dene</Text>
                   </TouchableOpacity>
@@ -371,6 +437,9 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                     style={[styles.addAllBtn, installing && styles.generateBtnDisabled]}
                     onPress={handleConfirm}
                     disabled={installing}
+                    accessibilityRole="button"
+                    accessibilityLabel="Onayla ve Ekle"
+                    accessibilityState={{ disabled: installing, busy: installing }}
                   >
                     {installing ? (
                       <ActivityIndicator color={colors.white} />
@@ -391,7 +460,12 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
                 <Text style={styles.successText}>
                   Alışkanlıklar eklendi. Kapasiteye sığanlar aktif, kalanı Bekleme Odasında.
                 </Text>
-                <TouchableOpacity onPress={handleClose} style={styles.closeSuccessBtn}>
+                <TouchableOpacity
+                  onPress={handleClose}
+                  style={styles.closeSuccessBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Kapat"
+                >
                   <Text style={styles.closeSuccessText}>Kapat</Text>
                 </TouchableOpacity>
               </View>
@@ -404,144 +478,145 @@ export default function AIRoutineModal({ visible, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border,
-  },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  title: { fontSize: 18, fontWeight: '700', color: colors.white },
-  betaBadge: { backgroundColor: alphaHex(colors.accent, '30'), borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  betaText: { fontSize: 10, color: colors.accent, fontWeight: '700', letterSpacing: 1 },
-  body: { padding: 20 },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: hexA(colors.black, 0.85), justifyContent: 'flex-end' },
+    sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' },
+    header: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border,
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    title: { fontSize: 18, fontWeight: '700', color: colors.white },
+    betaBadge: { backgroundColor: alphaHex(colors.accent, '30'), borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+    betaText: { fontSize: 10, color: colors.accent, fontWeight: '700', letterSpacing: 1 },
+    body: { padding: 20 },
 
-  errorBox: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    backgroundColor: alphaHex(colors.error, '15'), borderWidth: 1, borderColor: alphaHex(colors.error, '30'),
-    borderRadius: 12, padding: 12, marginBottom: 16,
-  },
-  errorText: { flex: 1, fontSize: 13, color: colors.error, lineHeight: 18 },
-  creditsRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: colors.warning, borderRadius: 10, paddingVertical: 10, marginBottom: 16,
-  },
-  creditsRowText: { fontSize: 14, fontWeight: '700', color: colors.white },
-  fpHintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 10 },
-  fpHintText: { fontSize: 12, color: colors.textDim },
+    errorBox: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+      backgroundColor: alphaHex(colors.error, '15'), borderWidth: 1, borderColor: alphaHex(colors.error, '30'),
+      borderRadius: 12, padding: 12, marginBottom: 16,
+    },
+    errorText: { flex: 1, fontSize: 13, color: colors.error, lineHeight: 18 },
+    creditsRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      backgroundColor: colors.warning, borderRadius: 10, paddingVertical: 10, marginBottom: 16,
+    },
+    creditsRowText: { fontSize: 14, fontWeight: '700', color: colors.white },
+    fpHintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 10 },
+    fpHintText: { fontSize: 12, color: colors.textDim },
 
-  rejectBox: {
-    backgroundColor: alphaHex(colors.error, '10'), borderWidth: 1, borderColor: alphaHex(colors.error, '30'),
-    borderRadius: 14, padding: 16, marginBottom: 16,
-  },
-  rejectHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  rejectTitle: { fontSize: 15, fontWeight: '700', color: colors.error },
-  rejectSub: { fontSize: 12.5, color: colors.textDim, marginBottom: 8 },
-  rejectItem: { fontSize: 12, color: colors.textDim, lineHeight: 18, marginBottom: 2 },
-  retryBtnWide: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: colors.border, borderRadius: 12, paddingVertical: 10, marginTop: 10,
-  },
+    rejectBox: {
+      backgroundColor: alphaHex(colors.error, '10'), borderWidth: 1, borderColor: alphaHex(colors.error, '30'),
+      borderRadius: 14, padding: 16, marginBottom: 16,
+    },
+    rejectHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+    rejectTitle: { fontSize: 15, fontWeight: '700', color: colors.error },
+    rejectSub: { fontSize: 12.5, color: colors.textDim, marginBottom: 8 },
+    rejectItem: { fontSize: 12, color: colors.textDim, lineHeight: 18, marginBottom: 2 },
+    retryBtnWide: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      backgroundColor: colors.border, borderRadius: 12, paddingVertical: 10, marginTop: 10,
+    },
 
-  completionBox: {
-    backgroundColor: alphaHex(colors.warning, '10'), borderWidth: 1, borderColor: alphaHex(colors.warning, '30'),
-    borderRadius: 14, padding: 16, marginBottom: 16,
-  },
-  completionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  completionTitle: { fontSize: 15, fontWeight: '700', color: colors.warning },
-  completionSub: { fontSize: 12.5, color: colors.textDim, lineHeight: 18, marginBottom: 14 },
-  completionCard: {
-    backgroundColor: colors.surface, borderRadius: 12, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: colors.border,
-  },
-  completionHabitName: { fontSize: 14, fontWeight: '700', color: colors.white, marginBottom: 10 },
-  completionLabel: { fontSize: 11.5, color: colors.textFaint, fontWeight: '600', marginBottom: 6 },
-  completionRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  completionInput: {
-    backgroundColor: colors.bg, borderRadius: 10, padding: 10, fontSize: 14,
-    color: colors.white, borderWidth: 1, borderColor: colors.border,
-  },
+    completionBox: {
+      backgroundColor: alphaHex(colors.warning, '10'), borderWidth: 1, borderColor: alphaHex(colors.warning, '30'),
+      borderRadius: 14, padding: 16, marginBottom: 16,
+    },
+    completionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+    completionTitle: { fontSize: 15, fontWeight: '700', color: colors.warning },
+    completionSub: { fontSize: 12.5, color: colors.textDim, lineHeight: 18, marginBottom: 14 },
+    completionCard: {
+      backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+      marginBottom: 10, borderWidth: 1, borderColor: colors.border,
+    },
+    completionHabitName: { fontSize: 14, fontWeight: '700', color: colors.white, marginBottom: 10 },
+    completionLabel: { fontSize: 11.5, color: colors.textFaint, fontWeight: '600', marginBottom: 6 },
+    completionRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+    completionInput: {
+      backgroundColor: colors.bg, borderRadius: 10, padding: 10, fontSize: 14,
+      color: colors.white, borderWidth: 1, borderColor: colors.border,
+    },
 
-  tagline: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 8, lineHeight: 26 },
-  hint: { fontSize: 13, color: colors.textDim, marginBottom: 20, lineHeight: 19 },
-  inputWrap: { marginBottom: 16 },
-  textarea: {
-    backgroundColor: colors.surface, borderRadius: 14, padding: 14, fontSize: 15,
-    color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 100,
-  },
-  charCount: { fontSize: 11, color: colors.textFaint, textAlign: 'right', marginTop: 4 },
-  generateBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 15, marginBottom: 16,
-  },
-  generateBtnDisabled: { opacity: 0.4 },
-  generateBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
-  loadingMsg: { gap: 10, marginTop: 8, marginBottom: 16 },
-  skeletonLine: { height: 14, backgroundColor: colors.border, borderRadius: 7, width: '100%' },
+    tagline: { fontSize: 18, fontWeight: '700', color: colors.white, marginBottom: 8, lineHeight: 26 },
+    hint: { fontSize: 13, color: colors.textDim, marginBottom: 20, lineHeight: 19 },
+    inputWrap: { marginBottom: 16 },
+    textarea: {
+      backgroundColor: colors.surface, borderRadius: 14, padding: 14, fontSize: 15,
+      color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 100,
+    },
+    charCount: { fontSize: 11, color: colors.textFaint, textAlign: 'right', marginTop: 4 },
+    generateBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+      backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 15, marginBottom: 16,
+    },
+    generateBtnDisabled: { opacity: 0.4 },
+    generateBtnText: { fontSize: 16, fontWeight: '700', color: colors.white },
+    loadingMsg: { gap: 10, marginTop: 8, marginBottom: 16 },
+    skeletonLine: { height: 14, backgroundColor: colors.border, borderRadius: 7, width: '100%' },
 
-  packsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  packsHeaderText: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
-  packCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: colors.surface, borderRadius: 12, padding: 12,
-    marginBottom: 10, borderWidth: 1, borderColor: colors.border,
-  },
-  packIcon: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: alphaHex(colors.accent, '15'), alignItems: 'center', justifyContent: 'center',
-  },
-  packTitle: { fontSize: 14, fontWeight: '700', color: colors.white, marginBottom: 2 },
-  packGoal: { fontSize: 12, color: colors.textDim, marginBottom: 2 },
-  packMeta: { fontSize: 11, color: colors.textFaint },
+    packsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+    packsHeaderText: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
+    packCard: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      backgroundColor: colors.surface, borderRadius: 12, padding: 12,
+      marginBottom: 10, borderWidth: 1, borderColor: colors.border,
+    },
+    packIcon: {
+      width: 36, height: 36, borderRadius: 10,
+      backgroundColor: alphaHex(colors.accent, '15'), alignItems: 'center', justifyContent: 'center',
+    },
+    packTitle: { fontSize: 14, fontWeight: '700', color: colors.white, marginBottom: 2 },
+    packGoal: { fontSize: 12, color: colors.textDim, marginBottom: 2 },
+    packMeta: { fontSize: 11, color: colors.textFaint },
 
-  resultHeader: { marginBottom: 12 },
-  resultName: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 4 },
-  resultDesc: { fontSize: 13, color: colors.textDim, lineHeight: 18 },
+    resultHeader: { marginBottom: 12 },
+    resultName: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 4 },
+    resultDesc: { fontSize: 13, color: colors.textDim, lineHeight: 18 },
 
-  capacityBox: {
-    backgroundColor: alphaHex(colors.warning, '10'), borderWidth: 1, borderColor: alphaHex(colors.warning, '30'),
-    borderRadius: 12, padding: 12, marginBottom: 14,
-  },
-  capacityLine: { fontSize: 13, fontWeight: '700', color: colors.warning, marginBottom: 4 },
-  capacitySub: { fontSize: 12, color: colors.textDim, lineHeight: 17 },
+    capacityBox: {
+      backgroundColor: alphaHex(colors.warning, '10'), borderWidth: 1, borderColor: alphaHex(colors.warning, '30'),
+      borderRadius: 12, padding: 12, marginBottom: 14,
+    },
+    capacityLine: { fontSize: 13, fontWeight: '700', color: colors.warning, marginBottom: 4 },
+    capacitySub: { fontSize: 12, color: colors.textDim, lineHeight: 17 },
 
-  itemCard: {
-    backgroundColor: colors.surface, borderRadius: 12, padding: 14,
-    marginBottom: 10, borderWidth: 1, borderColor: colors.border,
-  },
-  itemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  itemIcon: {
-    width: 40, height: 40, borderRadius: 10,
-    backgroundColor: alphaHex(colors.success, '15'), alignItems: 'center', justifyContent: 'center',
-  },
-  itemIconQueued: { backgroundColor: alphaHex(colors.warning, '15') },
-  itemInfo: { flex: 1 },
-  itemName: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 4 },
-  itemStatus: { fontSize: 11.5, color: colors.success },
-  itemStatusQueued: { color: colors.warning },
+    itemCard: {
+      backgroundColor: colors.surface, borderRadius: 12, padding: 14,
+      marginBottom: 10, borderWidth: 1, borderColor: colors.border,
+    },
+    itemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    itemIcon: {
+      width: 40, height: 40, borderRadius: 10,
+      backgroundColor: alphaHex(colors.success, '15'), alignItems: 'center', justifyContent: 'center',
+    },
+    itemIconQueued: { backgroundColor: alphaHex(colors.warning, '15') },
+    itemInfo: { flex: 1 },
+    itemName: { fontSize: 15, fontWeight: '600', color: colors.white, marginBottom: 4 },
+    itemStatus: { fontSize: 11.5, color: colors.success },
+    itemStatusQueued: { color: colors.warning },
 
-  resultActions: { flexDirection: 'row', gap: 10, marginTop: 6, marginBottom: 32 },
-  retryBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: colors.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
-  },
-  retryText: { fontSize: 14, color: colors.textDim },
-  addAllBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: colors.success, borderRadius: 12, paddingVertical: 12,
-  },
-  addAllText: { fontSize: 15, fontWeight: '700', color: colors.white },
+    resultActions: { flexDirection: 'row', gap: 10, marginTop: 6, marginBottom: 32 },
+    retryBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      backgroundColor: colors.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
+    },
+    retryText: { fontSize: 14, color: colors.textDim },
+    addAllBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      backgroundColor: colors.success, borderRadius: 12, paddingVertical: 12,
+    },
+    addAllText: { fontSize: 15, fontWeight: '700', color: colors.white },
 
-  successMsg: {
-    alignItems: 'center', gap: 10,
-    backgroundColor: alphaHex(colors.success, '15'), borderRadius: 12, padding: 20,
-    marginTop: 16, marginBottom: 32,
-  },
-  successText: { fontSize: 13, color: colors.success, lineHeight: 19, textAlign: 'center' },
-  closeSuccessBtn: {
-    marginTop: 4, backgroundColor: alphaHex(colors.success, '30'), borderRadius: 10,
-    paddingHorizontal: 20, paddingVertical: 8,
-  },
-  closeSuccessText: { fontSize: 14, fontWeight: '600', color: colors.success },
-});
+    successMsg: {
+      alignItems: 'center', gap: 10,
+      backgroundColor: alphaHex(colors.success, '15'), borderRadius: 12, padding: 20,
+      marginTop: 16, marginBottom: 32,
+    },
+    successText: { fontSize: 13, color: colors.success, lineHeight: 19, textAlign: 'center' },
+    closeSuccessBtn: {
+      marginTop: 4, backgroundColor: alphaHex(colors.success, '30'), borderRadius: 10,
+      paddingHorizontal: 20, paddingVertical: 8,
+    },
+    closeSuccessText: { fontSize: 14, fontWeight: '600', color: colors.success },
+  });

@@ -13,7 +13,8 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, font, radius, space } from '../lib/tokens';
+import { font, radius, space, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { Button } from './ui';
 
 type Props =
@@ -21,6 +22,8 @@ type Props =
   | { variant: 'config'; detail: string };
 
 export default function BootGate(props: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const stalled = props.variant === 'stalled';
   return (
     <SafeAreaView style={s.safe}>
@@ -53,19 +56,20 @@ export default function BootGate(props: Props) {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  body: {
-    flex: 1, justifyContent: 'center', paddingHorizontal: space.h, gap: space.md,
-    maxWidth: 480, width: '100%', alignSelf: 'center',
-  },
-  mark: {
-    width: 56, height: 56, borderRadius: radius.lg,
-    backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center', marginBottom: space.sm,
-  },
-  title: { ...font.title, color: colors.text },
-  lede: { ...font.body, color: colors.textDim, lineHeight: 23 },
-  detail: { ...font.bodySm, color: colors.textDim, lineHeight: 20 },
-  action: { marginTop: space.lg },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    body: {
+      flex: 1, justifyContent: 'center', paddingHorizontal: space.h, gap: space.md,
+      maxWidth: 480, width: '100%', alignSelf: 'center',
+    },
+    mark: {
+      width: 56, height: 56, borderRadius: radius.lg,
+      backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border,
+      alignItems: 'center', justifyContent: 'center', marginBottom: space.sm,
+    },
+    title: { ...font.title, color: colors.text },
+    lede: { ...font.body, color: colors.textDim, lineHeight: 23 },
+    detail: { ...font.bodySm, color: colors.textDim, lineHeight: 20 },
+    action: { marginTop: space.lg },
+  });

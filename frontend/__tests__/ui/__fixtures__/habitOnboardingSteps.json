@@ -27,8 +27,34 @@
       "Hobiler",
       "Devam"
     ],
-    "accessibilityLabels": [],
-    "accessibilityRoles": [],
+    "accessibilityLabels": [
+      "Kapat",
+      "Pozitif davranış",
+      "Negatif davranış",
+      "Sağlık",
+      "Kariyer",
+      "Eğitim",
+      "Finans",
+      "Aile",
+      "Sosyal",
+      "Ruhsal",
+      "Hobiler",
+      "Devam"
+    ],
+    "accessibilityRoles": [
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button"
+    ],
     "pressableCount": 12
   },
   {
@@ -56,12 +82,18 @@
       "Devam"
     ],
     "accessibilityLabels": [
+      "Kapat",
       "Evet veya Hayır olarak takip et",
       "Sayısal miktar olarak takip et",
       "Süre olarak takip et",
-      "Kaçınma olarak takip et"
+      "Kaçınma olarak takip et",
+      "Geri",
+      "Devam"
     ],
     "accessibilityRoles": [
+      "button",
+      "button",
+      "button",
       "button",
       "button",
       "button",
@@ -118,6 +150,7 @@
       "Devam"
     ],
     "accessibilityLabels": [
+      "Kapat",
       "Sıklık türü",
       "Günlük",
       "Haftalık",
@@ -137,9 +170,22 @@
       "Bitiş: süresiz",
       "Bitiş: 7 gün boyunca",
       "Bitiş: 30 gün boyunca",
-      "Bitiş: 90 gün boyunca"
+      "Bitiş: 90 gün boyunca",
+      "Sabah",
+      "Öğle",
+      "Akşam",
+      "Süresiz",
+      "Tarihe kadar",
+      "Hedef sayıya",
+      "Hatırlatıcı",
+      "Yok",
+      "Alışkanlıktan sonra",
+      "Serbest not",
+      "Geri",
+      "Devam"
     ],
     "accessibilityRoles": [
+      "button",
       "radiogroup",
       "radio",
       "radio",
@@ -158,7 +204,19 @@
       "radio",
       "radio",
       "radio",
-      "radio"
+      "radio",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "switch",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button"
     ],
     "pressableCount": 28
   },
@@ -205,8 +263,28 @@
       "Geri",
       "Devam"
     ],
-    "accessibilityLabels": [],
-    "accessibilityRoles": [],
+    "accessibilityLabels": [
+      "Kapat",
+      "Kritik",
+      "Yüksek",
+      "Orta",
+      "Düşük",
+      "Acil",
+      "Acil Değil",
+      "Geri",
+      "Devam"
+    ],
+    "accessibilityRoles": [
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button"
+    ],
     "pressableCount": 9
   },
   {
@@ -256,8 +334,36 @@
       "Geri",
       "Devam"
     ],
-    "accessibilityLabels": [],
-    "accessibilityRoles": [],
+    "accessibilityLabels": [
+      "Kapat",
+      "Kolay",
+      "Orta",
+      "Zor",
+      "5 dakika",
+      "15 dakika",
+      "30 dakika",
+      "45 dakika",
+      "60 dakika",
+      "90 dakika",
+      "Süre belirtme",
+      "Geri",
+      "Devam"
+    ],
+    "accessibilityRoles": [
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button"
+    ],
     "pressableCount": 13
   },
   {
@@ -286,8 +392,76 @@
       "Geri",
       "Devam"
     ],
-    "accessibilityLabels": [],
-    "accessibilityRoles": [],
+    "accessibilityLabels": [
+      "Kapat",
+      "fitness ikonu",
+      "book ikonu",
+      "briefcase ikonu",
+      "water ikonu",
+      "bed ikonu",
+      "bicycle ikonu",
+      "leaf ikonu",
+      "heart ikonu",
+      "star ikonu",
+      "flame ikonu",
+      "musical-notes ikonu",
+      "code-slash ikonu",
+      "Renk seçeneği 1",
+      "Renk seçeneği 2",
+      "Renk seçeneği 3",
+      "Renk seçeneği 4",
+      "Renk seçeneği 5",
+      "Renk seçeneği 6",
+      "Renk seçeneği 7",
+      "Renk seçeneği 8",
+      "İrade maliyeti 1",
+      "İrade maliyeti 2",
+      "İrade maliyeti 3",
+      "İrade maliyeti 4",
+      "İrade maliyeti 5",
+      "İrade maliyeti 6",
+      "İrade maliyeti 7",
+      "İrade maliyeti 8",
+      "İrade maliyeti 9",
+      "İrade maliyeti 10",
+      "Geri",
+      "Devam"
+    ],
+    "accessibilityRoles": [
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button",
+      "button"
+    ],
     "pressableCount": 33
   },
   {
@@ -330,8 +504,16 @@
       "Geri",
       "Fikir Olarak Sakla"
     ],
-    "accessibilityLabels": [],
-    "accessibilityRoles": [],
+    "accessibilityLabels": [
+      "Kapat",
+      "Geri",
+      "Fikir Olarak Sakla"
+    ],
+    "accessibilityRoles": [
+      "button",
+      "button",
+      "button"
+    ],
     "pressableCount": 3
   }
 ]

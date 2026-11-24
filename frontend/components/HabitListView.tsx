@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ComponentProps } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
   LayoutAnimation, Platform, UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useShallow } from 'zustand/react/shallow';
 import { useHabitStore } from '../store/habitStore';
 import { useCommandStore } from '../store/commandStore';
@@ -16,20 +16,22 @@ import {
 import { LIFE_AREAS } from '../store/lifeAreasStore';
 import type { Habit } from '../lib/supabase';
 import { t } from '../lib/i18n';
-import { colors, space, radius, font, hexA, shadow, fontFamily } from '../lib/tokens';
+import { space, radius, font, hexA, shadow, fontFamily, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { useReducedMotion } from './seasonalMotion/useReducedMotion';
 import { haptic } from '../lib/haptics';
 import { Chip, Badge, IconCircle, EmptyState, LoadErrorState } from './ui';
 import { isMeasurableTracking } from '../lib/habitEngine';
 
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
 type StatusKey = 'active' | 'waiting' | 'idea' | 'completed';
 type SortKey = 'impact' | 'willpower' | 'name' | 'recent';
 
-const STATUS_META: Record<StatusKey, { label: () => string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  active: { label: () => t('habits.list.status.active'), color: colors.success, icon: 'rocket' },
-  waiting: { label: () => t('habits.list.status.waiting'), color: colors.warning, icon: 'hourglass-outline' },
-  idea: { label: () => t('habits.list.status.idea'), color: colors.textFaint, icon: 'bulb-outline' },
-  completed: { label: () => t('habits.list.status.completed'), color: colors.teal, icon: 'checkmark-done-circle-outline' },
+const STATUS_META: Record<StatusKey, { label: () => string; tone: 'success' | 'warning' | 'textFaint' | 'teal'; icon: keyof typeof Ionicons.glyphMap }> = {
+  active: { label: () => t('habits.list.status.active'), tone: 'success', icon: 'rocket' },
+  waiting: { label: () => t('habits.list.status.waiting'), tone: 'warning', icon: 'hourglass-outline' },
+  idea: { label: () => t('habits.list.status.idea'), tone: 'textFaint', icon: 'bulb-outline' },
+  completed: { label: () => t('habits.list.status.completed'), tone: 'teal', icon: 'checkmark-done-circle-outline' },
 };
 const STATUS_ORDER: StatusKey[] = ['active', 'waiting', 'idea', 'completed'];
 
@@ -58,6 +60,8 @@ export type HabitListViewProps = {
 // Tüm alışkanlıkların yönetim/genel-bakış görünümü (İstatistikler → Liste sekmesi).
 // Durum bazlı gruplama + filtre + sıralama: bir kontrol merkezi.
 export default function HabitListView({ onAdd }: HabitListViewProps) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const router = useRouter();
   const { habits, loading, error, fetchHabits } = useHabitStore(
     useShallow((st) => ({
@@ -162,14 +166,16 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
         key={habit.id}
         style={s.row}
         activeOpacity={0.75}
-        onPress={() => { haptic.light(); router.push({ pathname: '/screens/habit-detail', params: { id: habit.id } } as any); }}
+        accessibilityRole="button"
+        accessibilityLabel={`${habit.name} alışkanlık detayı`}
+        onPress={() => { haptic.light(); router.push({ pathname: '/screens/habit-detail', params: { id: habit.id } } as Href); }}
       >
         <View style={[s.accent, { backgroundColor: accent }]} />
-        <IconCircle icon={(habit.icon ?? 'star-outline') as any} color={habit.color ?? accent} size={40} radiusKey="sm" />
+        <IconCircle icon={(habit.icon ?? 'star-outline') as IoniconName} color={habit.color ?? accent} size={40} radiusKey="sm" />
         <View style={{ flex: 1 }}>
           <Text style={s.rowName} numberOfLines={1}>{habit.name}</Text>
           <View style={s.rowChips}>
-            <Chip label={tmeta.label} icon={tmeta.icon as any} color={tmeta.color} size="sm" />
+            <Chip label={tmeta.label} icon={tmeta.icon as IoniconName} color={tmeta.color} size="sm" />
             <Badge label={habit.willpower_cost} icon="flash" color={colors.warning} />
             {isMeasurableTracking(habit.tracking_type) && !!habit.unit && <Badge label={habit.unit} color={colors.primary} />}
             {habit.estimated_minutes > 0 && <Badge label={t('habits.minutesShort', { minutes: habit.estimated_minutes })} icon="timer-outline" color={colors.teal} />}
@@ -202,7 +208,12 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
             onChangeText={setSearch}
           />
           {q.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity
+              onPress={() => setSearch('')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Aramayı temizle"
+            >
               <Ionicons name="close-circle" size={16} color={colors.textFaint} />
             </TouchableOpacity>
           )}
@@ -210,6 +221,9 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
         <TouchableOpacity
           style={[s.panelBtn, (showPanel || impactFilter.size > 0) && s.panelBtnActive]}
           onPress={() => { haptic.select(); animate(); setShowPanel((v) => !v); }}
+          accessibilityRole="button"
+          accessibilityLabel="Sıralama ve filtre panelini aç veya kapat"
+          accessibilityState={{ expanded: showPanel }}
         >
           <Ionicons name="options-outline" size={18} color={showPanel || impactFilter.size > 0 ? colors.primaryBright : colors.textDim} />
           {impactFilter.size > 0 && <View style={s.panelDot} />}
@@ -220,18 +234,23 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.statusStrip} contentContainerStyle={s.statusStripContent}>
         {STATUS_ORDER.map((st) => {
           const m = STATUS_META[st];
+          const toneColor = colors[m.tone];
           const sel = statusFilter.has(st);
+          const pillLabel = m.label();
           return (
             <TouchableOpacity
               key={st}
               activeOpacity={0.75}
               onPress={() => toggleStatus(st)}
-              style={[s.statusPill, sel && { backgroundColor: hexA(m.color, 0.16), borderColor: m.color }]}
+              accessibilityRole="button"
+              accessibilityLabel={`${pillLabel}, ${counts[st]} alışkanlık`}
+              accessibilityState={{ selected: sel }}
+              style={[s.statusPill, sel && { backgroundColor: hexA(toneColor, 0.16), borderColor: toneColor }]}
             >
-              <Ionicons name={m.icon} size={13} color={m.color} />
-              <Text style={[s.statusPillLabel, sel && { color: m.color }]}>{m.label()}</Text>
-              <View style={[s.statusPillCount, sel && { backgroundColor: hexA(m.color, 0.22) }]}>
-                <Text style={[s.statusPillCountText, sel && { color: m.color }]}>{counts[st]}</Text>
+              <Ionicons name={m.icon} size={13} color={toneColor} />
+              <Text style={[s.statusPillLabel, sel && { color: toneColor }]}>{pillLabel}</Text>
+              <View style={[s.statusPillCount, sel && { backgroundColor: hexA(toneColor, 0.22) }]}>
+                <Text style={[s.statusPillCountText, sel && { color: toneColor }]}>{counts[st]}</Text>
               </View>
             </TouchableOpacity>
           );
@@ -268,7 +287,12 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
             ))}
           </View>
           {hasFilter && (
-            <TouchableOpacity style={s.clearBtn} onPress={clearAll}>
+            <TouchableOpacity
+              style={s.clearBtn}
+              onPress={clearAll}
+              accessibilityRole="button"
+              accessibilityLabel={t('habits.list.clearFilters')}
+            >
               <Ionicons name="close" size={14} color={colors.error} />
               <Text style={s.clearText}>{t('habits.list.clearFilters')}</Text>
             </TouchableOpacity>
@@ -310,19 +334,33 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
               })}
             </Text>
             {hasFilter && (
-              <TouchableOpacity onPress={clearAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity
+                onPress={clearAll}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={t('habits.list.clearFilters')}
+              >
                 <Text style={s.resultClear}>{t('habits.list.clearShort')}</Text>
               </TouchableOpacity>
             )}
           </View>
           {groups.map((g) => {
             const m = STATUS_META[g.status];
+            const toneColor = colors[m.tone];
             const isCollapsed = collapsed.has(g.status);
+            const groupLabel = m.label();
             return (
               <View key={g.status} style={s.group}>
-                <TouchableOpacity style={s.groupHead} activeOpacity={0.7} onPress={() => toggleCollapse(g.status)}>
-                  <Ionicons name={m.icon} size={16} color={m.color} />
-                  <Text style={[s.groupTitle, { color: m.color }]}>{m.label()}</Text>
+                <TouchableOpacity
+                  style={s.groupHead}
+                  activeOpacity={0.7}
+                  onPress={() => toggleCollapse(g.status)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${groupLabel} grubu, ${g.items.length} alışkanlık`}
+                  accessibilityState={{ expanded: !isCollapsed }}
+                >
+                  <Ionicons name={m.icon} size={16} color={toneColor} />
+                  <Text style={[s.groupTitle, { color: toneColor }]}>{groupLabel}</Text>
                   <View style={s.groupCount}><Text style={s.groupCountText}>{g.items.length}</Text></View>
                   <View style={{ flex: 1 }} />
                   <Ionicons name={isCollapsed ? 'chevron-down' : 'chevron-up'} size={16} color={colors.textFaint} />
@@ -347,70 +385,71 @@ export default function HabitListView({ onAdd }: HabitListViewProps) {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  toolbar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.sm },
-  searchWrap: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm,
-    backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: space.md, height: 42,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  searchInput: { flex: 1, fontSize: 14, color: colors.text },
-  panelBtn: {
-    width: 42, height: 42, borderRadius: radius.md, backgroundColor: colors.surface,
-    borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center',
-  },
-  panelBtnActive: { borderColor: colors.primary, backgroundColor: hexA(colors.primary, 0.1) },
-  panelDot: { position: 'absolute', top: 8, right: 8, width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primaryBright },
+    toolbar: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.sm },
+    searchWrap: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm,
+      backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: space.md, height: 42,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    searchInput: { flex: 1, fontSize: 14, color: colors.text },
+    panelBtn: {
+      width: 42, height: 42, borderRadius: radius.md, backgroundColor: colors.surface,
+      borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center',
+    },
+    panelBtnActive: { borderColor: colors.primary, backgroundColor: hexA(colors.primary, 0.1) },
+    panelDot: { position: 'absolute', top: 8, right: 8, width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primaryBright },
 
-  statusStrip: { maxHeight: 44 },
-  statusStripContent: { gap: space.sm, paddingHorizontal: space.lg, paddingVertical: 4 },
-  statusPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: colors.surface, borderRadius: radius.pill, paddingLeft: 10, paddingRight: 6, paddingVertical: 6,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  statusPillLabel: { fontSize: 12, fontWeight: '600', color: colors.textDim },
-  statusPillCount: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
-  statusPillCountText: { fontSize: 11, fontWeight: '700', color: colors.textFaint },
+    statusStrip: { maxHeight: 44 },
+    statusStripContent: { gap: space.sm, paddingHorizontal: space.lg, paddingVertical: 4 },
+    statusPill: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      backgroundColor: colors.surface, borderRadius: radius.pill, paddingLeft: 10, paddingRight: 6, paddingVertical: 6,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    statusPillLabel: { fontSize: 12, fontWeight: '600', color: colors.textDim },
+    statusPillCount: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+    statusPillCountText: { fontSize: 11, fontWeight: '700', color: colors.textFaint },
 
-  panel: {
-    marginHorizontal: space.lg, marginTop: space.sm, marginBottom: space.xs,
-    backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
-    padding: space.md,
-  },
-  panelLabel: { ...font.overline, color: colors.textFaint, marginBottom: space.sm },
-  panelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  clearBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', marginTop: space.md, paddingVertical: 4 },
-  clearText: { fontSize: 13, color: colors.error, fontWeight: '600' },
+    panel: {
+      marginHorizontal: space.lg, marginTop: space.sm, marginBottom: space.xs,
+      backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+      padding: space.md,
+    },
+    panelLabel: { ...font.overline, color: colors.textFaint, marginBottom: space.sm },
+    panelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+    clearBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', marginTop: space.md, paddingVertical: 4 },
+    clearText: { fontSize: 13, color: colors.error, fontWeight: '600' },
 
-  list: { flex: 1 },
-  resultBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, paddingBottom: space.sm },
-  resultText: { fontSize: 11, color: colors.textFaint },
-  resultClear: { fontSize: 12, color: colors.primaryBright, fontWeight: '600' },
-  group: { marginBottom: space.lg },
-  groupHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: 4, paddingVertical: space.sm },
-  groupTitle: { fontFamily: fontFamily.serif, fontSize: 16, fontWeight: '400', letterSpacing: -0.2 },
-  groupCount: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
-  groupCountText: { fontSize: 11, fontWeight: '700', color: colors.textDim },
+    list: { flex: 1 },
+    resultBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, paddingBottom: space.sm },
+    resultText: { fontSize: 11, color: colors.textFaint },
+    resultClear: { fontSize: 12, color: colors.primaryBright, fontWeight: '600' },
+    group: { marginBottom: space.lg },
+    groupHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: 4, paddingVertical: space.sm },
+    groupTitle: { fontFamily: fontFamily.serif, fontSize: 16, fontWeight: '400', letterSpacing: -0.2 },
+    groupCount: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+    groupCountText: { fontSize: 11, fontWeight: '700', color: colors.textDim },
 
-  row: {
-    flexDirection: 'row', alignItems: 'center', gap: space.md,
-    backgroundColor: colors.surface, borderRadius: radius.md, padding: space.md, marginBottom: space.sm,
-    borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
-  },
-  accent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 },
-  rowName: { ...font.body, color: colors.text, fontWeight: '600', marginBottom: 6 },
-  rowChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, alignItems: 'center' },
-  rowSubRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  rowSub: { fontSize: 11, color: colors.textFaint },
+    row: {
+      flexDirection: 'row', alignItems: 'center', gap: space.md,
+      backgroundColor: colors.surface, borderRadius: radius.md, padding: space.md, marginBottom: space.sm,
+      borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
+    },
+    accent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 },
+    rowName: { ...font.body, color: colors.text, fontWeight: '600', marginBottom: 6 },
+    rowChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, alignItems: 'center' },
+    rowSubRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+    rowSub: { fontSize: 11, color: colors.textFaint },
 
-  fab: {
-    position: 'absolute', right: space.lg, bottom: space.xxl,
-    width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-    ...shadow.glow(colors.primary),
-  },
-});
+    fab: {
+      position: 'absolute', right: space.lg, bottom: space.xxl,
+      width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary,
+      alignItems: 'center', justifyContent: 'center',
+      ...shadow.glow(colors.primary),
+    },
+  });

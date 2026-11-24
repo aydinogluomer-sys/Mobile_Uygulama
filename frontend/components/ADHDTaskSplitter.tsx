@@ -1,4 +1,5 @@
-import { colors, alphaHex, space, radius, font } from '../lib/tokens';
+import { alphaHex, hexA, space, radius, font, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { TexturedSurface } from './ui';
 import { EmbeddedFiligree } from './spatial';
 import { DECOR, TEXTURES } from '../lib/visualAssets';
@@ -39,6 +40,8 @@ export default function ADHDTaskSplitter({
   onClose,
   onSplit,
 }: ADHDTaskSplitterProps) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(makeStyles);
   const [phase, setPhase] = useState<Phase>('select');
   const [proposal, setProposal] = useState<SubtaskDecompositionProposal | null>(null);
   const [proposalError, setProposalError] = useState<string | null>(null);
@@ -128,7 +131,11 @@ export default function ADHDTaskSplitter({
               <Ionicons name="flash" size={24} color={colors.warning} />
               <Text style={styles.title}>ADHD Modu</Text>
             </View>
-            <TouchableOpacity onPress={handleClose}>
+            <TouchableOpacity
+              onPress={handleClose}
+              accessibilityRole="button"
+              accessibilityLabel="ADHD görev bölme penceresini kapat"
+            >
               <Ionicons name="close" size={28} color={colors.textDim} />
             </TouchableOpacity>
           </View>
@@ -159,6 +166,8 @@ export default function ADHDTaskSplitter({
               <TouchableOpacity
                 style={styles.optionButton}
                 onPress={() => handlePick(15)}
+                accessibilityRole="button"
+                accessibilityLabel="Kısa Sprint, 15 dakikalık bloklara böl"
               >
                 <Ionicons name="timer-outline" size={24} color={colors.success} />
                 <View style={styles.optionText}>
@@ -170,6 +179,8 @@ export default function ADHDTaskSplitter({
               <TouchableOpacity
                 style={styles.optionButton}
                 onPress={() => handlePick(25)}
+                accessibilityRole="button"
+                accessibilityLabel="Pomodoro, 25 dakikalık bloklara böl"
               >
                 <Ionicons name="time-outline" size={24} color={colors.accent} />
                 <View style={styles.optionText}>
@@ -181,6 +192,8 @@ export default function ADHDTaskSplitter({
               <TouchableOpacity
                 style={styles.optionButton}
                 onPress={() => handlePick(45)}
+                accessibilityRole="button"
+                accessibilityLabel="Derin Odaklanma, 45 dakikalık bloklara böl"
               >
                 <Ionicons name="hourglass-outline" size={24} color={colors.accent} />
                 <View style={styles.optionText}>
@@ -240,6 +253,9 @@ export default function ADHDTaskSplitter({
                   style={styles.backButton}
                   onPress={handleBackToSelect}
                   disabled={saving}
+                  accessibilityRole="button"
+                  accessibilityLabel="Vazgeç"
+                  accessibilityState={{ disabled: saving }}
                 >
                   <Text style={styles.backButtonText}>Vazgeç</Text>
                 </TouchableOpacity>
@@ -247,6 +263,9 @@ export default function ADHDTaskSplitter({
                   style={[styles.confirmButton, saving && styles.confirmButtonDisabled]}
                   onPress={handleConfirm}
                   disabled={saving}
+                  accessibilityRole="button"
+                  accessibilityLabel="Onayla ve Ekle"
+                  accessibilityState={{ disabled: saving, busy: saving }}
                 >
                   {saving ? (
                     <ActivityIndicator size="small" color={colors.white} />
@@ -276,7 +295,12 @@ export default function ADHDTaskSplitter({
                   </View>
                 ))}
               </ScrollView>
-              <TouchableOpacity style={styles.doneButton} onPress={handleClose}>
+              <TouchableOpacity
+                style={styles.doneButton}
+                onPress={handleClose}
+                accessibilityRole="button"
+                accessibilityLabel="Tamam"
+              >
                 <Text style={styles.doneButtonText}>Tamam</Text>
               </TouchableOpacity>
             </View>
@@ -287,241 +311,244 @@ export default function ADHDTaskSplitter({
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'flex-end',
-  },
-  content: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    minHeight: '70%',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.white,
-  },
-  description: {
-    fontSize: 15,
-    color: colors.textDim,
-    marginBottom: 20,
-    lineHeight: 22,
-  },
-  taskCard: { overflow: 'hidden', position: 'relative',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  taskTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.white,
-    marginBottom: 4,
-  },
-  taskDescription: {
-    fontSize: 14,
-    color: colors.textDim,
-  },
-  options: {
-    gap: 12,
-  },
-  optionsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.white,
-    marginBottom: 8,
-  },
-  optionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    gap: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  optionText: {
-    flex: 1,
-  },
-  optionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.white,
-    marginBottom: 4,
-  },
-  optionSubtitle: {
-    fontSize: 13,
-    color: colors.textDim,
-  },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    backgroundColor: alphaHex(colors.error, '15'),
-    borderColor: alphaHex(colors.error, '30'),
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 4,
-  },
-  errorText: {
-    flex: 1,
-    fontSize: 13,
-    color: colors.error,
-    lineHeight: 18,
-  },
-  subtasks: {
-    flex: 1,
-  },
-  previewTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.warning,
-    marginBottom: 14,
-    textAlign: 'center',
-  },
-  subtasksTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.success,
-    marginBottom: space.xs,
-    textAlign: 'center',
-  },
-  doneSubtitle: {
-    ...font.bodySm,
-    color: colors.textDim,
-    textAlign: 'center',
-    marginBottom: space.md,
-  },
-  subtasksList: {
-    maxHeight: 260,
-  },
-  subtaskCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  subtaskNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  subtaskNumberText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: colors.white,
-  },
-  subtaskTitle: {
-    fontSize: 15,
-    color: colors.white,
-    flex: 1,
-  },
-  subtaskDescription: {
-    fontSize: 12,
-    color: colors.textFaint,
-    marginTop: 2,
-  },
-  archiveRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.md,
-    minHeight: 44,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    marginTop: space.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  archiveTextCol: {
-    flex: 1,
-    gap: space.xs,
-  },
-  archiveLabel: {
-    ...font.bodySm,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  archiveHint: {
-    ...font.caption,
-    color: colors.textDim,
-  },
-  previewActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 16,
-  },
-  backButton: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  backButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textDim,
-  },
-  confirmButton: {
-    flex: 2,
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-  },
-  confirmButtonDisabled: {
-    opacity: 0.6,
-  },
-  confirmButtonText: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: colors.white,
-  },
-  doneButton: {
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  doneButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.white,
-  },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    overlay: {
+      flex: 1,
+      backgroundColor: hexA(colors.black, 0.8),
+      justifyContent: 'flex-end',
+    },
+    content: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 24,
+      minHeight: '70%',
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    headerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: colors.white,
+    },
+    description: {
+      fontSize: 15,
+      color: colors.textDim,
+      marginBottom: 20,
+      lineHeight: 22,
+    },
+    taskCard: {
+      overflow: 'hidden',
+      position: 'relative',
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    taskTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.white,
+      marginBottom: 4,
+    },
+    taskDescription: {
+      fontSize: 14,
+      color: colors.textDim,
+    },
+    options: {
+      gap: 12,
+    },
+    optionsTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.white,
+      marginBottom: 8,
+    },
+    optionButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      gap: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    optionText: {
+      flex: 1,
+    },
+    optionTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.white,
+      marginBottom: 4,
+    },
+    optionSubtitle: {
+      fontSize: 13,
+      color: colors.textDim,
+    },
+    errorBox: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      backgroundColor: alphaHex(colors.error, '15'),
+      borderColor: alphaHex(colors.error, '30'),
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 4,
+    },
+    errorText: {
+      flex: 1,
+      fontSize: 13,
+      color: colors.error,
+      lineHeight: 18,
+    },
+    subtasks: {
+      flex: 1,
+    },
+    previewTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.warning,
+      marginBottom: 14,
+      textAlign: 'center',
+    },
+    subtasksTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.success,
+      marginBottom: space.xs,
+      textAlign: 'center',
+    },
+    doneSubtitle: {
+      ...font.bodySm,
+      color: colors.textDim,
+      textAlign: 'center',
+      marginBottom: space.md,
+    },
+    subtasksList: {
+      maxHeight: 260,
+    },
+    subtaskCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+      gap: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    subtaskNumber: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    subtaskNumberText: {
+      fontSize: 14,
+      fontWeight: 'bold',
+      color: colors.white,
+    },
+    subtaskTitle: {
+      fontSize: 15,
+      color: colors.white,
+      flex: 1,
+    },
+    subtaskDescription: {
+      fontSize: 12,
+      color: colors.textFaint,
+      marginTop: 2,
+    },
+    archiveRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: space.md,
+      minHeight: 44,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+      marginTop: space.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    archiveTextCol: {
+      flex: 1,
+      gap: space.xs,
+    },
+    archiveLabel: {
+      ...font.bodySm,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    archiveHint: {
+      ...font.caption,
+      color: colors.textDim,
+    },
+    previewActions: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 16,
+    },
+    backButton: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    backButtonText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.textDim,
+    },
+    confirmButton: {
+      flex: 2,
+      backgroundColor: colors.accent,
+      borderRadius: 12,
+      padding: 16,
+      alignItems: 'center',
+    },
+    confirmButtonDisabled: {
+      opacity: 0.6,
+    },
+    confirmButtonText: {
+      fontSize: 15,
+      fontWeight: 'bold',
+      color: colors.white,
+    },
+    doneButton: {
+      backgroundColor: colors.accent,
+      borderRadius: 12,
+      padding: 16,
+      alignItems: 'center',
+      marginTop: 20,
+    },
+    doneButtonText: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: colors.white,
+    },
+  });

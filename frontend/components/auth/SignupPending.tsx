@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, space, radius, font, shadow, fontFamily, hexA } from '../../lib/tokens';
+import { space, radius, font, shadow, fontFamily, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { Button, EmblemMedallion } from '../ui';
 import { ONBOARDING_ART } from '../../lib/visualAssets';
 
@@ -78,6 +79,8 @@ const COPY = {
 export default function SignupPending({
   email, onResend, onChangeEmail, resendCooldown, resending, notice, error, variant = 'registered',
 }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const canResend = resendCooldown <= 0 && !resending;
   const copy = COPY[variant];
 
@@ -142,7 +145,12 @@ export default function SignupPending({
         }
       />
 
-      <TouchableOpacity onPress={onChangeEmail} style={s.linkBtn}>
+      <TouchableOpacity
+        onPress={onChangeEmail}
+        style={s.linkBtn}
+        accessibilityRole="button"
+        accessibilityLabel="E-posta adresini düzelt"
+      >
         <Text style={s.linkText}>
           Adresi yanlış mı yazdın? <Text style={s.linkHighlight}>Düzelt</Text>
         </Text>
@@ -152,6 +160,7 @@ export default function SignupPending({
 }
 
 function Step({ n, text }: { n: string; text: string }) {
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.step}>
       <View style={s.stepNum}><Text style={s.stepNumText}>{n}</Text></View>
@@ -160,7 +169,8 @@ function Step({ n, text }: { n: string; text: string }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
   wrap: { alignItems: 'center' },
 
   mark: {

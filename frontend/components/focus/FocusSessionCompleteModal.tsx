@@ -4,7 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { currentUser } from '../../lib/session';
-import { colors, font, fontFamily, hexA, radius, space } from '../../lib/tokens';
+import { font, fontFamily, hexA, radius, space, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { DECOR, FOCUS_COMPLETE_GONG } from '../../lib/visualAssets';
 import { EmbeddedFiligree } from '../spatial';
 import { Button } from '../ui';
@@ -26,30 +27,45 @@ type Props = {
 const CHART_H = 120;
 
 export default function FocusSessionCompleteModal({ visible, session, accent, onClose, onOpenReport }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const settings = useFocusStore((st) => st.settings);
   const [rows, setRows] = useState<FocusSessionRow[]>([]);
   const [answer, setAnswer] = useState<IntentAnswer | null>(null);
 
-  useEffect(() => {
+  const answerResetKey = `${visible}:${session?.sessionNumber ?? 'none'}`;
+  const [prevAnswerResetKey, setPrevAnswerResetKey] = useState(answerResetKey);
+  if (prevAnswerResetKey !== answerResetKey) {
+    setPrevAnswerResetKey(answerResetKey);
     setAnswer(null);
-  }, [session?.sessionNumber, visible]);
+  }
+
+  const [prevVisible, setPrevVisible] = useState(visible);
+  if (prevVisible !== visible) {
+    setPrevVisible(visible);
+    if (visible) {
+      setRows([]);
+    }
+  }
 
   const awayNote = interruptionSummary(session?.interruptions ?? 0);
 
   // Açılınca son 1 haftanın gerçek seanslarını çek (rapor mantığının aynısı)
   useEffect(() => {
     if (!visible) return;
-    setRows([]);
     let active = true;
-    (async () => {
+    void (async () => {
       const user = await currentUser();
       if (!user) return;
-      const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 8);
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 8);
       // focus_sessions okunur — bkz. repositories/focusSessionRepository.ts
       const res = await fetchFocusSessionsSince({ sinceIso: weekAgo.toISOString() });
       if (active) setRows(res.ok ? res.data : []);
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [visible]);
 
   const week = useMemo(() => inRange(rows, 'week'), [rows]);
@@ -77,7 +93,12 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
                 </Text>
                 {awayNote ? <Text style={s.awayNote}>{awayNote}</Text> : null}
               </View>
-              <TouchableOpacity onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('focus.complete.close.a11y')}>
+              <TouchableOpacity
+                onPress={onClose}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={t('focus.complete.close.a11y')}
+              >
                 <Ionicons name="close" size={22} color={colors.textFaint} />
               </TouchableOpacity>
             </View>
@@ -165,11 +186,21 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
 
           {/* Aksiyonlar */}
           <View style={s.foot}>
-            <TouchableOpacity style={[s.primaryBtn, { backgroundColor: accent }]} onPress={onOpenReport}>
+            <TouchableOpacity
+              style={[s.primaryBtn, { backgroundColor: accent }]}
+              onPress={onOpenReport}
+              accessibilityRole="button"
+              accessibilityLabel={t('focus.complete.openReport')}
+            >
               <Ionicons name="stats-chart-outline" size={18} color={colors.white} />
               <Text style={s.primaryText}>{t('focus.complete.openReport')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.secondaryBtn} onPress={onClose}>
+            <TouchableOpacity
+              style={s.secondaryBtn}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.close')}
+            >
               <Text style={s.secondaryText}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
@@ -180,6 +211,7 @@ export default function FocusSessionCompleteModal({ visible, session, accent, on
 }
 
 function Stat({ value, label }: { value: string; label: string }) {
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.stat}>
       <EmbeddedFiligree source={DECOR.guillocheWave} anchor="bottom-right" size={92} opacity={0.14} />
@@ -189,65 +221,66 @@ function Stat({ value, label }: { value: string; label: string }) {
   );
 }
 
-const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: colors.bgElevated, borderTopLeftRadius: 28, borderTopRightRadius: 28,
-    paddingHorizontal: 20, paddingTop: 18, maxHeight: '88%',
-    borderTopWidth: 1, borderColor: colors.border,
-  },
-  headBanner: {
-    borderRadius: 18,
-    overflow: 'hidden',
-    position: 'relative',
-    marginBottom: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  badge: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 19, fontWeight: '800', color: colors.text },
-  sub: { fontSize: 12.5, color: colors.textFaint, marginTop: 3 },
-  awayNote: { ...font.caption, color: colors.textDim, marginTop: space.xs },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    backdrop: { flex: 1, backgroundColor: hexA(colors.black, 0.7), justifyContent: 'flex-end' },
+    sheet: {
+      backgroundColor: colors.bgElevated, borderTopLeftRadius: 28, borderTopRightRadius: 28,
+      paddingHorizontal: 20, paddingTop: 18, maxHeight: '88%',
+      borderTopWidth: 1, borderColor: colors.border,
+    },
+    headBanner: {
+      borderRadius: 18,
+      overflow: 'hidden',
+      position: 'relative',
+      marginBottom: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    badge: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+    title: { fontSize: 19, fontWeight: '800', color: colors.text },
+    sub: { fontSize: 12.5, color: colors.textFaint, marginTop: 3 },
+    awayNote: { ...font.caption, color: colors.textDim, marginTop: space.xs },
 
-  intentBox: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: space.md,
-    marginBottom: space.lg,
-    gap: space.sm,
-  },
-  intentTitle: { ...font.overline, color: colors.textFaint },
-  intentQuote: { ...font.body, color: colors.text, fontWeight: '600' },
-  intentAsk: { ...font.bodySm, color: colors.textDim },
-  intentAnswersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  intentAck: { ...font.bodySm, color: colors.textDim },
+    intentBox: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: space.md,
+      marginBottom: space.lg,
+      gap: space.sm,
+    },
+    intentTitle: { ...font.overline, color: colors.textFaint },
+    intentQuote: { ...font.body, color: colors.text, fontWeight: '600' },
+    intentAsk: { ...font.bodySm, color: colors.textDim },
+    intentAnswersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+    intentAck: { ...font.bodySm, color: colors.textDim },
 
-  body: { paddingBottom: 16 },
-  statRow: { flexDirection: 'row', gap: 10, marginBottom: 22 },
-  stat: { flex: 1, overflow: 'hidden', position: 'relative', backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 14, alignItems: 'center' },
-  statValue: { fontFamily: fontFamily.mono, fontSize: 22, fontWeight: '800', color: colors.text },
-  statLabel: { fontSize: 10, color: colors.textFaint, marginTop: 4, letterSpacing: 0.4, textTransform: 'uppercase' },
+    body: { paddingBottom: 16 },
+    statRow: { flexDirection: 'row', gap: 10, marginBottom: 22 },
+    stat: { flex: 1, overflow: 'hidden', position: 'relative', backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 14, alignItems: 'center' },
+    statValue: { fontFamily: fontFamily.mono, fontSize: 22, fontWeight: '800', color: colors.text },
+    statLabel: { fontSize: 10, color: colors.textFaint, marginTop: 4, letterSpacing: 0.4, textTransform: 'uppercase' },
 
-  sectionTitle: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1, marginBottom: 12, marginTop: 4 },
-  chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginBottom: 22 },
-  chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 5 },
-  chartBar: { width: '70%', maxWidth: 22, borderRadius: 3, minHeight: 2 },
-  chartLabel: { fontSize: 9, color: colors.textFaint, fontFamily: fontFamily.mono },
+    sectionTitle: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1, marginBottom: 12, marginTop: 4 },
+    chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginBottom: 22 },
+    chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 5 },
+    chartBar: { width: '70%', maxWidth: 22, borderRadius: 3, minHeight: 2 },
+    chartLabel: { fontSize: 9, color: colors.textFaint, fontFamily: fontFamily.mono },
 
-  ttRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  ttName: { flex: 1.2, fontSize: 13, color: colors.textDim },
-  ttBar: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
-  ttBarFill: { height: '100%', borderRadius: 3 },
-  ttVal: { fontSize: 12, color: colors.textFaint, fontFamily: fontFamily.mono, minWidth: 48, textAlign: 'right' },
+    ttRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+    ttName: { flex: 1.2, fontSize: 13, color: colors.textDim },
+    ttBar: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
+    ttBarFill: { height: '100%', borderRadius: 3 },
+    ttVal: { fontSize: 12, color: colors.textFaint, fontFamily: fontFamily.mono, minWidth: 48, textAlign: 'right' },
 
-  foot: { paddingTop: 12, paddingBottom: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle },
-  primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: 14, marginBottom: 6 },
-  primaryText: { fontSize: 16, fontWeight: '700', color: colors.white },
-  secondaryBtn: { paddingVertical: 11, alignItems: 'center' },
-  secondaryText: { fontSize: 14, fontWeight: '600', color: colors.textFaint },
-});
+    foot: { paddingTop: 12, paddingBottom: 20, borderTopWidth: 1, borderTopColor: colors.borderSubtle },
+    primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: 14, marginBottom: 6 },
+    primaryText: { fontSize: 16, fontWeight: '700', color: colors.white },
+    secondaryBtn: { paddingVertical: 11, alignItems: 'center' },
+    secondaryText: { fontSize: 14, fontWeight: '600', color: colors.textFaint },
+  });

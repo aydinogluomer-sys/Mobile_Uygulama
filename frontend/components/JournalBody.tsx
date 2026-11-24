@@ -3,10 +3,12 @@
  * the habits those tags link to.
  */
 import { View, Text, StyleSheet, TouchableOpacity, type TextStyle } from 'react-native';
-import { colors, space, radius } from '../lib/tokens';
+import { space, radius, type Palette } from '../lib/tokens';
+import { useThemedStyles } from '../hooks/useThemeColors';
 import { parseBlocks, extractTags, linkedHabits, type Inline } from '../lib/journalText';
 
 function Line({ inline, style }: { inline: Inline[]; style: TextStyle }) {
+  const s = useThemedStyles(makeStyles);
   return (
     <Text style={style}>
       {inline.map((p, i) => (
@@ -23,6 +25,7 @@ export default function JournalBody({ content, habits = [], onOpenHabit, onTag, 
   onTag?: (tag: string) => void;
   bodyStyle?: TextStyle;
 }) {
+  const s = useThemedStyles(makeStyles);
   const blocks = parseBlocks(content);
   const tags = extractTags(content);
   const links = linkedHabits(content, habits);
@@ -61,14 +64,15 @@ export default function JournalBody({ content, habits = [], onOpenHabit, onTag, 
   );
 }
 
-const s = StyleSheet.create({
-  para: { fontSize: 15, lineHeight: 23, color: colors.text },
-  heading: { fontWeight: '700', fontSize: 17 },
-  bold: { fontWeight: '700' },
-  italic: { fontStyle: 'italic' },
-  itemRow: { flexDirection: 'row', gap: 8 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.md },
-  chip: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
-  chipHabit: { borderColor: colors.accent },
-  chipText: { fontSize: 12, color: colors.textDim },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    para: { fontSize: 15, lineHeight: 23, color: colors.text },
+    heading: { fontWeight: '700', fontSize: 17 },
+    bold: { fontWeight: '700' },
+    italic: { fontStyle: 'italic' },
+    itemRow: { flexDirection: 'row', gap: 8 },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.md },
+    chip: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
+    chipHabit: { borderColor: colors.accent },
+    chipText: { fontSize: 12, color: colors.textDim },
+  });

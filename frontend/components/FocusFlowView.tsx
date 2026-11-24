@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { LayoutChangeEvent, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useIsFocused, useRouter } from 'expo-router';
+import { useIsFocused, useRouter, type Href } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useShallow } from 'zustand/react/shallow';
 import { useFlowKeyboard } from '../hooks/useFlowKeyboard';
@@ -15,7 +15,8 @@ import {
   type FocusFeedEntry, type FocusFeedItem, type FocusFlowCategoryKey,
 } from '../lib/focusFlowCatalog';
 import { haptic } from '../lib/haptics';
-import { colors, font, hexA, radius, space } from '../lib/tokens';
+import { font, hexA, radius, space, type Palette } from '../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../hooks/useThemeColors';
 import { EMPTY_VIGNETTES } from '../lib/visualAssets';
 import { useFocusStore } from '../store/focusStore';
 import { useHabitStore } from '../store/habitStore';
@@ -24,6 +25,8 @@ import FlowClosurePage from './focusFlow/FlowClosurePage';
 import { FocusFlowPage, type FocusFlowPageContext } from './focusFlow/FocusFlowPage';
 import { FocusFlowPager, type FocusFlowPagerHandle } from './focusFlow/FocusFlowPager';
 import { useReducedMotion } from './seasonalMotion/useReducedMotion';
+
+type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
 export type FocusFlowViewProps = {
   initialItemId?: string | null;
@@ -40,6 +43,8 @@ export default function FocusFlowView({
   showExpandButton = false,
   onRequestExplorePacks,
 }: FocusFlowViewProps) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const router = useRouter();
   const isFocused = useIsFocused();
   const reduceMotion = useReducedMotion();
@@ -177,13 +182,13 @@ export default function FocusFlowView({
         { title, minutes },
       );
     }
-    router.push('/tabs/focus' as any);
+    router.push('/tabs/focus' as Href);
   }, [tasks, focusStatus, startSmallStep, router]);
 
   const handleBackToToday = useCallback(() => {
     haptic.select();
     Speech.stop();
-    router.push('/tabs/today' as any);
+    router.push('/tabs/today' as Href);
   }, [router]);
 
   const handleExecuteCta = useCallback(async (item: FocusFeedItem) => {
@@ -221,20 +226,20 @@ export default function FocusFlowView({
     if (cta.actionType === 'open_urge_shield') {
       haptic.select();
       Speech.stop();
-      router.push('/tabs/timeline' as any);
+      router.push('/tabs/timeline' as Href);
       return;
     }
     if (cta.actionType === 'open_explore_pack') {
       haptic.select();
       Speech.stop();
       if (onRequestExplorePacks) onRequestExplorePacks();
-      else router.push('/tabs/hub' as any);
+      else router.push('/tabs/hub' as Href);
       return;
     }
     if (cta.actionType === 'open_routine_runner') {
       haptic.select();
       Speech.stop();
-      router.push('/screens/routine-runner' as any);
+      router.push('/screens/routine-runner' as Href);
     }
   }, [feedExistingHabitNames, feedActiveHabits, addingHabitId, addHabit, showToast, launchFiveMinuteFocus, onRequestExplorePacks, router]);
 
@@ -292,7 +297,7 @@ export default function FocusFlowView({
                 haptic.select();
                 Speech.stop();
                 if (router.canGoBack()) router.back();
-                else router.push('/tabs/today' as any);
+                else router.push('/tabs/today' as Href);
               }}
               accessibilityRole="button"
               accessibilityLabel="Odak Akışından Çık"
@@ -321,7 +326,8 @@ export default function FocusFlowView({
                 haptic.select();
                 Speech.stop();
                 const currentId = activeEntry?.entryKind === 'item' ? activeEntry.item.id : '';
-                router.push((currentId ? `/screens/focus-flow?item=${currentId}` : '/screens/focus-flow') as any);
+                const targetHref = (currentId ? `/screens/focus-flow?item=${currentId}` : '/screens/focus-flow') as Href;
+                router.push(targetHref);
               }}
               accessibilityRole="button"
               accessibilityLabel="Tam Ekran Odak Akışını Aç"
@@ -342,7 +348,7 @@ export default function FocusFlowView({
                 accessibilityRole="button"
                 accessibilityLabel={`Akış kategorisi: ${cat.label}`}
               >
-                <Ionicons name={cat.icon as any} size={12} color={active ? colors.white : cat.color} />
+                <Ionicons name={cat.icon as IoniconName} size={12} color={active ? colors.white : cat.color} />
                 <Text style={[s.catChipText, active && s.catChipTextActive]}>
                   {cat.label}
                   {cat.key === 'saved' && feedSavedIds.size > 0 ? ` (${feedSavedIds.size})` : ''}
@@ -444,40 +450,41 @@ export default function FocusFlowView({
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bgSunk, position: 'relative' },
-  spacer: { flex: 1 },
-  topOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30, paddingTop: space.sm, paddingBottom: space.xs, backgroundColor: hexA(colors.bgSunk, 0.88), borderBottomWidth: 1, borderBottomColor: hexA(colors.white, 0.06) },
-  topHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.md, gap: space.sm, marginBottom: space.xs },
-  iconCircleBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: hexA(colors.white, 0.1), alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: hexA(colors.white, 0.12) },
-  brandPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full, backgroundColor: hexA(colors.primary, 0.14), borderWidth: 1, borderColor: hexA(colors.primary, 0.35) },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primary },
-  brandPillText: { color: colors.primaryBright, fontSize: 10, fontWeight: '700', letterSpacing: 0.7 },
-  counterPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: radius.full, backgroundColor: hexA(colors.white, 0.08) },
-  counterPillText: { color: colors.textDim, fontSize: 11, fontWeight: '600' },
-  catStrip: { paddingHorizontal: space.md, gap: 7, paddingVertical: 2 },
-  catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: radius.full, backgroundColor: hexA(colors.white, 0.06), borderWidth: 1, borderColor: hexA(colors.white, 0.1) },
-  catChipText: { color: colors.textDim, fontSize: 12, fontWeight: '500' },
-  catChipTextActive: { color: colors.white, fontWeight: '600' },
-  lowEnergyNote: { ...font.caption, color: colors.success, paddingHorizontal: space.md, paddingTop: space.xs },
-  toastWrap: { position: 'absolute', top: 94, left: space.md, right: space.md, zIndex: 45, backgroundColor: hexA(colors.success, 0.95), paddingHorizontal: space.md, paddingVertical: 10, borderRadius: radius.md, alignItems: 'center' },
-  toastText: { color: colors.white, fontSize: 13, fontWeight: '600', textAlign: 'center' },
-  emptyStateWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.xl, gap: space.md },
-  emptyArt: { width: 148, height: 110, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
-  emptyTitle: { color: colors.white, fontSize: 18, fontWeight: '700', textAlign: 'center' },
-  emptySub: { color: colors.textDim, fontSize: 13.5, lineHeight: 20, textAlign: 'center' },
-  emptyActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: colors.primary, paddingHorizontal: space.lg, paddingVertical: 12, borderRadius: radius.full },
-  emptyActionText: { color: colors.white, fontSize: 13.5, fontWeight: '700' },
-  modalBackdrop: { flex: 1, backgroundColor: hexA(colors.black, 0.72), justifyContent: 'flex-end' },
-  modalSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: space.lg, borderTopWidth: 1, borderColor: hexA(colors.white, 0.12) },
-  modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, marginBottom: space.md },
-  modalEyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 0.7, marginBottom: 4 },
-  modalTitle: { color: colors.white, fontSize: 17, fontWeight: '700', lineHeight: 23 },
-  takeawaysList: { gap: 12 },
-  takeawayRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  takeawayNumCircle: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  takeawayNumText: { fontSize: 12, fontWeight: '700' },
-  takeawayPointText: { flex: 1, color: colors.text, fontSize: 13.5, lineHeight: 20 },
-  modalCtaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingVertical: space.md, paddingHorizontal: space.md, borderRadius: radius.lg, borderWidth: 1, marginTop: space.md },
-  modalCtaText: { ...font.bodySm, color: colors.white, fontWeight: '700' },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: colors.bgSunk, position: 'relative' },
+    spacer: { flex: 1 },
+    topOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30, paddingTop: space.sm, paddingBottom: space.xs, backgroundColor: hexA(colors.bgSunk, 0.88), borderBottomWidth: 1, borderBottomColor: hexA(colors.white, 0.06) },
+    topHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.md, gap: space.sm, marginBottom: space.xs },
+    iconCircleBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: hexA(colors.white, 0.1), alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: hexA(colors.white, 0.12) },
+    brandPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full, backgroundColor: hexA(colors.primary, 0.14), borderWidth: 1, borderColor: hexA(colors.primary, 0.35) },
+    liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.primary },
+    brandPillText: { color: colors.primaryBright, fontSize: 10, fontWeight: '700', letterSpacing: 0.7 },
+    counterPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: radius.full, backgroundColor: hexA(colors.white, 0.08) },
+    counterPillText: { color: colors.textDim, fontSize: 11, fontWeight: '600' },
+    catStrip: { paddingHorizontal: space.md, gap: 7, paddingVertical: 2 },
+    catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: radius.full, backgroundColor: hexA(colors.white, 0.06), borderWidth: 1, borderColor: hexA(colors.white, 0.1) },
+    catChipText: { color: colors.textDim, fontSize: 12, fontWeight: '500' },
+    catChipTextActive: { color: colors.white, fontWeight: '600' },
+    lowEnergyNote: { ...font.caption, color: colors.success, paddingHorizontal: space.md, paddingTop: space.xs },
+    toastWrap: { position: 'absolute', top: 94, left: space.md, right: space.md, zIndex: 45, backgroundColor: hexA(colors.success, 0.95), paddingHorizontal: space.md, paddingVertical: 10, borderRadius: radius.md, alignItems: 'center' },
+    toastText: { color: colors.white, fontSize: 13, fontWeight: '600', textAlign: 'center' },
+    emptyStateWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.xl, gap: space.md },
+    emptyArt: { width: 148, height: 110, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
+    emptyTitle: { color: colors.white, fontSize: 18, fontWeight: '700', textAlign: 'center' },
+    emptySub: { color: colors.textDim, fontSize: 13.5, lineHeight: 20, textAlign: 'center' },
+    emptyActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: colors.primary, paddingHorizontal: space.lg, paddingVertical: 12, borderRadius: radius.full },
+    emptyActionText: { color: colors.white, fontSize: 13.5, fontWeight: '700' },
+    modalBackdrop: { flex: 1, backgroundColor: hexA(colors.black, 0.72), justifyContent: 'flex-end' },
+    modalSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: space.lg, borderTopWidth: 1, borderColor: hexA(colors.white, 0.12) },
+    modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, marginBottom: space.md },
+    modalEyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 0.7, marginBottom: 4 },
+    modalTitle: { color: colors.white, fontSize: 17, fontWeight: '700', lineHeight: 23 },
+    takeawaysList: { gap: 12 },
+    takeawayRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+    takeawayNumCircle: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+    takeawayNumText: { fontSize: 12, fontWeight: '700' },
+    takeawayPointText: { flex: 1, color: colors.text, fontSize: 13.5, lineHeight: 20 },
+    modalCtaBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingVertical: space.md, paddingHorizontal: space.md, borderRadius: radius.lg, borderWidth: 1, marginTop: space.md },
+    modalCtaText: { ...font.bodySm, color: colors.white, fontWeight: '700' },
+  });

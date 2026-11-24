@@ -4,10 +4,12 @@
  * from the R01 engine (lib/periodReport).
  */
 import { View, Text, StyleSheet } from 'react-native';
-import { colors } from '../lib/tokens';
+import { type Palette } from '../lib/tokens';
+import { useThemedStyles } from '../hooks/useThemeColors';
 import type { MeasuredRow } from '../lib/periodReport';
 
 export default function MeasuredReportSection({ rows }: { rows: readonly MeasuredRow[] }) {
+  const s = useThemedStyles(makeStyles);
   if (rows.length === 0) return null;
   return (
     <View style={s.section}>
@@ -22,10 +24,11 @@ export default function MeasuredReportSection({ rows }: { rows: readonly Measure
   );
 }
 
-const s = StyleSheet.create({
-  section: { marginBottom: 24 },
-  title: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
-  name: { flex: 1, fontSize: 14, color: colors.text },
-  line: { fontSize: 13, color: colors.textDim },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    section: { marginBottom: 24 },
+    title: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
+    row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
+    name: { flex: 1, fontSize: 14, color: colors.text },
+    line: { fontSize: 13, color: colors.textDim },
+  });

@@ -1,7 +1,8 @@
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { colors, hexA } from '../../lib/tokens';
+import { hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { FOCUS_PRESETS, OVERLAY_LEVELS } from '../../lib/focusThemes';
 import { getFocusSwatch } from '../../lib/visualAssets';
 
@@ -15,6 +16,9 @@ type Props = {
 };
 
 export default function FocusThemeModal({ visible, onClose, presetId, overlay, onSelectPreset, onSelectOverlay }: Props) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.overlay}>
@@ -89,26 +93,27 @@ export default function FocusThemeModal({ visible, onClose, presetId, overlay, o
   );
 }
 
-const s = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: hexA(colors.black, 0.8), justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.coolBlack800, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 36, borderWidth: 1, borderColor: colors.border },
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
-  title: { fontSize: 18, fontWeight: '700', color: colors.white },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: hexA(colors.black, 0.8), justifyContent: 'flex-end' },
+    sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 36, borderWidth: 1, borderColor: colors.border },
+    head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
+    title: { fontSize: 18, fontWeight: '700', color: colors.text },
 
-  sectionLabel: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1, marginBottom: 12, marginTop: 4 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
-  cell: { width: '30%', borderRadius: 12, borderWidth: 1.5, borderColor: colors.border, padding: 6, gap: 6, alignItems: 'center' },
-  swatch: { width: '100%', height: 64, borderRadius: 8, padding: 7, justifyContent: 'flex-end', position: 'relative', overflow: 'hidden' },
-  swatchCard: { height: 16, borderRadius: 5, opacity: 0.88 },
-  swatchDot: { position: 'absolute', top: 7, left: 7, width: 12, height: 12, borderRadius: 6 },
-  swatchCheck: { position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  cellLabel: { fontSize: 11, color: colors.textFaint, fontWeight: '600' },
+    sectionLabel: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1, marginBottom: 12, marginTop: 4 },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+    cell: { width: '30%', borderRadius: 12, borderWidth: 1.5, borderColor: colors.border, padding: 6, gap: 6, alignItems: 'center' },
+    swatch: { width: '100%', height: 64, borderRadius: 8, padding: 7, justifyContent: 'flex-end', position: 'relative', overflow: 'hidden' },
+    swatchCard: { height: 16, borderRadius: 5, opacity: 0.88 },
+    swatchDot: { position: 'absolute', top: 7, left: 7, width: 12, height: 12, borderRadius: 6 },
+    swatchCheck: { position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+    cellLabel: { fontSize: 11, color: colors.textFaint, fontWeight: '600' },
 
-  overlayRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  overlayBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgElevated },
-  overlayBtnActive: { borderColor: colors.primary, backgroundColor: hexA(colors.primary, 0.14) },
-  overlayBtnText: { fontSize: 12, fontWeight: '700', color: colors.textFaint },
+    overlayRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+    overlayBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgElevated },
+    overlayBtnActive: { borderColor: colors.primary, backgroundColor: hexA(colors.primary, 0.14) },
+    overlayBtnText: { fontSize: 12, fontWeight: '700', color: colors.textFaint },
 
-  doneBtn: { marginTop: 16, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center' },
-  doneText: { fontSize: 15, fontWeight: '700', color: colors.white },
-});
+    doneBtn: { marginTop: 16, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center' },
+    doneText: { fontSize: 15, fontWeight: '700', color: colors.white },
+  });
