@@ -271,7 +271,7 @@ RESET ROLE;
 -- ---------------------------------------------------------------------------
 INSERT INTO public.notion_integrations (user_id, access_token, workspace_id, workspace_name)
 VALUES ('08000000-0000-4000-8000-000000000001', 'secret-notion-tok', 'ws-1', 'Aderyth Notion');
-INSERT INTO public.google_calendar_integrations (user_id, access_token, refresh_token, token_expires_at)
+INSERT INTO public.google_calendar_integrations (user_id, access_token, refresh_token, expires_at)
 VALUES ('08000000-0000-4000-8000-000000000001', 'secret-gcal-tok', 'secret-gcal-ref', now() + interval '1 hour');
 INSERT INTO public.spotify_accounts (user_id, spotify_user_id, access_token, refresh_token, expires_at)
 VALUES ('08000000-0000-4000-8000-000000000001', 'sp-u1', 'secret-sp-tok', 'secret-sp-ref', now() + interval '1 hour');
@@ -344,7 +344,7 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
   BEGIN
-    UPDATE public.ai_calls SET endpoint = 'x';
+    UPDATE public.ai_calls SET called_at = now();
     v_bad := v_bad || 'ai_calls update succeeded; ';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
