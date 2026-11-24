@@ -23,9 +23,23 @@ export type SmallStep = {
   minutes: number;
   /** The work it belongs to. Read, never written, by the step. */
   parent: SmallStepParent;
+  /** F3 §6.1.6 (LEAF-04) — optional suggestion identity for idempotent focus start. */
+  suggestionId?: string | null;
 };
 
-export type SmallStepDraft = { title: string; minutes: number };
+export type SmallStepDraft = {
+  title: string;
+  minutes: number;
+  /** F3 §6.1.6 (LEAF-04) — optional suggestion identity for idempotent focus start. */
+  suggestionId?: string | null;
+};
+
+/** Normalises an optional suggestion id; blank strings collapse to `null`. */
+export function normalizeSuggestionId(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 /** The sheet's starting point: an empty step the user writes, 10 minutes. */
 export function draftFor(_parent: SmallStepParent): SmallStepDraft {
@@ -52,14 +66,28 @@ export function validateSmallStep(parent: SmallStepParent, draft: SmallStepDraft
   if (!Number.isInteger(draft.minutes) || draft.minutes < 1 || draft.minutes > MAX_SMALL_STEP_MINUTES) {
     return { ok: false, reason: `Süre 1 ile ${MAX_SMALL_STEP_MINUTES} dakika arasında olmalı.` };
   }
-  return { ok: true, step: { title, minutes: draft.minutes, parent: { ...parent } } };
+  const suggestionId = normalizeSuggestionId(draft.suggestionId);
+  return {
+    ok: true,
+    step: {
+      title,
+      minutes: draft.minutes,
+      parent: { ...parent },
+      ...(suggestionId !== null ? { suggestionId } : {}),
+    },
+  };
 }
 
 /** Shape check for a step read back from storage. */
 export function isSmallStep(x: unknown): x is SmallStep {
   const o = x as SmallStep | null;
-  return !!o
-    && typeof o.title === 'string' && o.title.trim().length > 0
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
+  const validSuggestionId =
+    o.suggestionId === undefined
+    || o.suggestionId === null
+    || (typeof o.suggestionId === 'string' && o.suggestionId.trim().length > 0);
+  return typeof o.title === 'string' && o.title.trim().length > 0
     && Number.isInteger(o.minutes) && o.minutes >= 1 && o.minutes <= MAX_SMALL_STEP_MINUTES
-    && !!o.parent && o.parent.kind === 'task' && typeof o.parent.id === 'string' && typeof o.parent.title === 'string';
+    && !!o.parent && o.parent.kind === 'task' && typeof o.parent.id === 'string' && typeof o.parent.title === 'string'
+    && validSuggestionId;
 }

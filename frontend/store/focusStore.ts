@@ -35,7 +35,13 @@ import {
   type TimerClock,
 } from '../lib/focusTimer';
 // R03.03 — a small step is a focus session of its own, separate from its task.
-import { validateSmallStep, type SmallStep, type SmallStepParent, type SmallStepDraft } from '../lib/smallStart';
+import {
+  normalizeSuggestionId,
+  validateSmallStep,
+  type SmallStep,
+  type SmallStepParent,
+  type SmallStepDraft,
+} from '../lib/smallStart';
 import {
   EMPTY_TALLY,
   classifyAway as classifyAwayTally,
@@ -597,9 +603,16 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   },
 
   startSmallStep: (parent, draft) => {
-    if (get().status !== 'idle') return false;
     const check = validateSmallStep(parent, draft);
     if (!check.ok) return false;
+    const active = get();
+    if (active.status !== 'idle') {
+      // F3 §6.1.6 (LEAF-04): repeat delivery of the same suggestionId while its
+      // session is already open succeeds idempotently with no second start or event.
+      const activeSuggestionId = normalizeSuggestionId(active.smallStep?.suggestionId);
+      const incomingSuggestionId = normalizeSuggestionId(check.step.suggestionId);
+      return activeSuggestionId !== null && activeSuggestionId === incomingSuggestionId;
+    }
     const now = Date.now();
     const plannedSeconds = check.step.minutes * 60;
     set({
