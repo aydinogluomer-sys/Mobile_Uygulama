@@ -11,6 +11,7 @@
  * time-up gives one haptic.
  */
 import { useEffect, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   AccessibilityInfo,
   AppState,
@@ -112,8 +113,35 @@ export default function RoutineRunnerScreen() {
   const router = useRouter();
   const c = useThemeColors();
   const x = useThemedStyles(makeStyles);
-  const st = useRoutineRunnerStore();
-  const { habits } = useHabitStore();
+  const st = useRoutineRunnerStore(
+    useShallow((state) => ({
+      session: state.session,
+      logged: state.logged,
+      staleDismissed: state.staleDismissed,
+      error: state.error,
+      history: state.history,
+      activeTemplateId: state.activeTemplateId,
+      hydrate: state.hydrate,
+      dismissStale: state.dismissStale,
+      allTemplates: state.allTemplates,
+      start: state.start,
+      setActive: state.setActive,
+      applyToTemplate: state.applyToTemplate,
+      discard: state.discard,
+      addStep: state.addStep,
+      setDuration: state.setDuration,
+      complete: state.complete,
+      back: state.back,
+      pause: state.pause,
+      resume: state.resume,
+      skip: state.skip,
+      mark: state.mark,
+      moveStep: state.moveStep,
+      removeStep: state.removeStep,
+      finish: state.finish,
+    })),
+  );
+  const habits = useHabitStore((state) => state.habits);
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftKind, setDraftKind] = useState<StepKind>('check');
@@ -130,7 +158,8 @@ export default function RoutineRunnerScreen() {
     fn();
   };
 
-  useEffect(() => { void st.hydrate(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const hydrate = st.hydrate;
+  useEffect(() => { void hydrate(); }, [hydrate]);
 
   const s = st.session;
   const running = s?.status === 'running';

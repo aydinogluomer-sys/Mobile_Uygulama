@@ -1,5 +1,7 @@
-import { colors, alphaHex, hexA } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   Platform,
@@ -17,7 +19,20 @@ const CUR_Q = Math.floor(now.getMonth() / 3) + 1;
 const CUR_Y = now.getFullYear();
 
 export default function OKRScreen() {
-  const { okrs, loading, loadOKRs, addObjective, addKeyResult, updateKRValue, removeObjective, removeKR } = useOKRStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const { okrs, loading, loadOKRs, addObjective, addKeyResult, updateKRValue, removeObjective, removeKR } = useOKRStore(
+    useShallow((st) => ({
+      okrs: st.okrs,
+      loading: st.loading,
+      loadOKRs: st.loadOKRs,
+      addObjective: st.addObjective,
+      addKeyResult: st.addKeyResult,
+      updateKRValue: st.updateKRValue,
+      removeObjective: st.removeObjective,
+      removeKR: st.removeKR,
+    })),
+  );
 
   const [objModal, setObjModal] = useState(false);
   const [objText, setObjText] = useState('');
@@ -137,7 +152,7 @@ export default function OKRScreen() {
 
                 <View style={s.objProgRow}>
                   <View style={s.objBarBg}>
-                    <View style={[s.objBarFill, { width: `${prog}%` as any }]} />
+                    <View style={[s.objBarFill, { width: `${prog}%` }]} />
                   </View>
                   <Text style={s.objProgVal}>{prog}%</Text>
                 </View>
@@ -158,7 +173,7 @@ export default function OKRScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={s.krTitle}>{k.title}</Text>
                         <View style={s.krBarBg}>
-                          <View style={[s.krBarFill, { width: `${p}%` as any }]} />
+                          <View style={[s.krBarFill, { width: `${p}%` }]} />
                         </View>
                       </View>
                       <View style={s.krRight}>
@@ -328,7 +343,7 @@ export default function OKRScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 90 },
@@ -342,7 +357,7 @@ const s = StyleSheet.create({
   objHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   qBadge: { backgroundColor: alphaHex(colors.accent, '20'), borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   qBadgeText: { fontSize: 11, color: colors.accent, fontWeight: '700' },
-  objText: { fontSize: 16, fontWeight: '700', color: colors.white, marginBottom: 12 },
+  objText: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12 },
   objProgRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   objBarBg: { flex: 1, height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden' },
   objBarFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 4 },
@@ -368,11 +383,11 @@ const s = StyleSheet.create({
 
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 24 },
   editSheet: { backgroundColor: colors.surface, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: colors.border },
-  sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.white, marginBottom: 14 },
+  sheetTitle: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 14 },
   editSub: { fontSize: 13, color: colors.textDim, marginBottom: 14 },
   editTarget: { fontSize: 12, color: colors.textFaint, textAlign: 'center', marginTop: 4, marginBottom: 4 },
   label: { fontSize: 13, fontWeight: '600', color: colors.textDim, marginBottom: 8, marginTop: 4 },
-  input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15, color: colors.white, borderWidth: 1, borderColor: colors.border, marginBottom: 14 },
+  input: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border, marginBottom: 14 },
   row: { flexDirection: 'row', gap: 10, marginBottom: 6 },
   chip: { flex: 1, alignItems: 'center', backgroundColor: colors.surface, borderRadius: 10, paddingVertical: 10, borderWidth: 1, borderColor: colors.border },
   chipSel: { backgroundColor: alphaHex(colors.accent, '20'), borderColor: colors.accent },

@@ -109,7 +109,7 @@ export async function fetchPlannedRecoveryPlans(limit = 200): Promise<RepoResult
     .order('target_date', { ascending: true })
     .limit(Math.max(1, Math.min(limit, 1000)));
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as RecoveryPlan[] };
+  return { ok: true, data: (data ?? []) as RecoveryPlan[] };
 }
 
 export type RecoveryPlanStateRow = {
@@ -208,5 +208,5 @@ export async function insertRecoveryPlan(input: {
     .select(PLAN_COLS)
     .single();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data as unknown as RecoveryPlan };
+  return { ok: true, data: data as RecoveryPlan };
 }

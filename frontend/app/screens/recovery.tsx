@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
   Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
@@ -26,7 +27,8 @@ import {
   returnNudgeMany,
   returnNudgeOne,
 } from '../../lib/metricCopy';
-import { colors, space, radius, font, hexA } from '../../lib/tokens';
+import { space, radius, font, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { haptic } from '../../lib/haptics';
 import { Image } from 'expo-image';
 import { Card, SectionHeader, EmptyState, IconCircle, Badge, Button, Chip, Skeleton, FormError, EditorialBanner } from '../../components/ui';
@@ -67,18 +69,35 @@ const STRATEGY_ART: Record<RecoveryStrategy, (typeof BENTO_ART)[keyof typeof BEN
   split_two_days: BENTO_ART.recoverySplit,
   skip: BENTO_ART.recoveryRelease,
 };
-export const STRATEGY_META: Record<RecoveryStrategy, { label: string; desc: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
+type IoniconName = keyof typeof Ionicons.glyphMap;
+
+function toIoniconName(icon: string | null | undefined, fallback: IoniconName = 'star-outline'): IoniconName {
+  return icon && Ionicons.glyphMap && Object.prototype.hasOwnProperty.call(Ionicons.glyphMap, icon)
+    ? (icon as IoniconName)
+    : fallback;
+}
+
+const getStrategyMeta = (
+  colors: Palette,
+): Record<RecoveryStrategy, { label: string; desc: string; icon: IoniconName; color: string }> => ({
   complete_today: { label: 'Bugün Tamamla', desc: 'Tamamını bugün yap', icon: 'refresh', color: colors.success },
   push_tomorrow: { label: 'Yarına Aktar', desc: 'İleri bir güne taşı', icon: 'calendar-outline', color: colors.primaryBright },
   split_two_days: { label: 'İkiye Böl', desc: 'İki güne dağıt', icon: 'contrast-outline', color: colors.warning },
   skip: { label: 'Telafi Etme', desc: 'Bu sefer geç, yarına odaklan', icon: 'flash-outline', color: colors.info },
-};
+});
 
 export default function RecoveryScreen() {
-  const { tasks, fetchTasks, toggleDone, moveToList } = useTaskStore();
-  const { habits, fetchHabits } = useHabitStore();
-  const { fetchLogsForDate, logHabit } = useLogStore();
-  const { plans, fetchPlans, addPlan, skipPlan, deletePlan, planForHabit, recoveryOptionsFor } = useRecoveryStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const STRATEGY_META = getStrategyMeta(colors);
+  const { tasks, fetchTasks, toggleDone, moveToList } = useTaskStore(
+    useShallow((st) => ({ tasks: st.tasks, fetchTasks: st.fetchTasks, toggleDone: st.toggleDone, moveToList: st.moveToList })),
+  );
+  const habits = useHabitStore((st) => st.habits);
+  const fetchHabits = useHabitStore((st) => st.fetchHabits);
+  const fetchLogsForDate = useLogStore((st) => st.fetchLogsForDate);
+  const logHabit = useLogStore((st) => st.logHabit);
+  const { plans, fetchPlans, addPlan, skipPlan, deletePlan, planForHabit, recoveryOptionsFor } = useRecoveryStore(useShallow((st) => ({ plans: st.plans, fetchPlans: st.fetchPlans, addPlan: st.addPlan, skipPlan: st.skipPlan, deletePlan: st.deletePlan, planForHabit: st.planForHabit, recoveryOptionsFor: st.recoveryOptionsFor })));
   const caps = useTimeCapsules();
   const [capsuleLater, setCapsuleLater] = useState(false);
   const eligibleCapsuleItem = caps.eligible;
@@ -203,11 +222,11 @@ export default function RecoveryScreen() {
     setValueMap(vals);
   }, []);
 
-  const load = useCallback(async () => {
-    await Promise.all([fetchTasks(), fetchHabits(), fetchLogsForDate(today), fetchPlans()]);
+  useEffect(() => {
+    void Promise.all([fetchTasks(), fetchHabits(), fetchLogsForDate(today), fetchPlans()]).finally(() => {
+      if (mountedRef.current) setLoading(false);
+    });
   }, [today, fetchTasks, fetchHabits, fetchLogsForDate, fetchPlans]);
-
-  useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
 
   useEffect(() => {
     const active = habits.filter((h) => h.status === 'active');
@@ -217,7 +236,7 @@ export default function RecoveryScreen() {
   async function onRefresh() {
     haptic.light();
     setRefreshing(true);
-    await load();
+    await Promise.all([fetchTasks(), fetchHabits(), fetchLogsForDate(today), fetchPlans()]);
     setRefreshing(false);
   }
 
@@ -546,7 +565,7 @@ export default function RecoveryScreen() {
                   <EmbeddedFiligree source={DECOR.cornerKintsugiSeam} size={108} opacity={0.18} />
                   <GoldMendShimmer triggerKey={totalPlans} />
                   <View style={s.habitRow}>
-                    <IconCircle icon={(h?.icon ?? 'star-outline') as any} color={h?.color ?? colors.primary} size={40} radiusKey="sm" />
+                    <IconCircle icon={toIoniconName(h?.icon)} color={h?.color ?? colors.primary} size={40} radiusKey="sm" />
                     <View style={{ flex: 1 }}>
                       <Text style={s.habitName} numberOfLines={1}>{h?.name ?? 'Alışkanlık'}</Text>
                       <View style={s.habitMeta}>
@@ -604,7 +623,7 @@ export default function RecoveryScreen() {
                 <Card key={key} padding="md" style={{ marginBottom: space.sm, overflow: 'hidden', position: 'relative' }}>
                   <EmbeddedFiligree source={DECOR.cornerKintsugiSeam} size={104} opacity={0.16} />
                   <View style={s.habitRow}>
-                    <IconCircle icon={(h.icon ?? 'star-outline') as any} color={h.color ?? colors.primary} size={40} radiusKey="sm" />
+                    <IconCircle icon={toIoniconName(h.icon)} color={h.color ?? colors.primary} size={40} radiusKey="sm" />
                     <View style={{ flex: 1 }}>
                       <Text style={s.habitName} numberOfLines={1}>{h.name}</Text>
                       <View style={s.habitMeta}>
@@ -855,7 +874,7 @@ export default function RecoveryScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { padding: space.xl, paddingBottom: space.hh },

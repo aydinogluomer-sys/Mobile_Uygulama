@@ -250,7 +250,7 @@ export function planReminders(params: {
       if (mine && isCountBasedSchedule(h)) {
         // Met before this day -> nothing left to remind about in this period.
         const before = mine.filter((l) => l.completed_at.slice(0, 10) < day);
-        if (periodStatus(h, before as never, date, { asOf: date }).status === 'satisfied') continue;
+        if (periodStatus(h, before, date, { asOf: date }).status === 'satisfied') continue;
       }
       for (const time of times) {
         const placed = shiftOutOfQuiet(time, settings);

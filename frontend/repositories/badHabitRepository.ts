@@ -64,7 +64,7 @@ export async function insertBadHabit(input: {
     .select(COLS)
     .single();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data as unknown as BadHabitRow };
+  return { ok: true, data };
 }
 
 export async function updateBadHabit(

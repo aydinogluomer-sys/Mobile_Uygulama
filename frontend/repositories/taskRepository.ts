@@ -89,7 +89,7 @@ export async function insertTask(input: Partial<Task>): Promise<RepoResult<Task>
     .select(TASK_COLS)
     .single();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data as unknown as Task };
+  return { ok: true, data: data as Task };
 }
 
 export async function updateTask(id: string, patch: Partial<Task>): Promise<RepoResult<Task>> {
@@ -130,7 +130,7 @@ export async function searchTasks(query: string, limit = 8): Promise<RepoResult<
     .order('created_at', { ascending: false })
     .limit(Math.min(limit, 25));
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as Task[] };
+  return { ok: true, data: (data ?? []) as Task[] };
 }
 
 // ---------------------------------------------------------------------------
@@ -161,7 +161,7 @@ export async function insertTaskRow(row: Partial<Task> & { id: string }, expecte
     .select(TASK_COLS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-  return { ok: true, data: data as unknown as Task };
+  return { ok: true, data: data as Task };
 }
 
 /** `row` null + `exists` true = the version moved on (conflict); `exists` false = deleted. */
@@ -177,7 +177,7 @@ export async function updateTaskVersioned(
   if (baseVersion !== null) q = q.eq('updated_at', baseVersion);
   const { data, error, status } = await q.select(TASK_COLS).maybeSingle();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-  if (data) return { ok: true, data: { row: data as unknown as Task, exists: true } };
+  if (data) return { ok: true, data: { row: data as Task, exists: true } };
   const probe = await supabase.from('tasks').select('id').eq('id', id).eq('user_id', u.userId).maybeSingle();
   if (probe.error) return { ok: false, error: probe.error.message, offline: isTransportFailure(probe.status, probe.error), status: probe.status, code: probe.error.code };
   return { ok: true, data: { row: null, exists: !!probe.data } };
@@ -189,7 +189,7 @@ export async function fetchTaskRow(id: string): Promise<RepoResult<Task | null>>
   if (!u.ok) return u;
   const { data, error, status } = await supabase.from('tasks').select(TASK_COLS).eq('id', id).eq('user_id', u.userId).maybeSingle();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-  return { ok: true, data: (data ?? null) as unknown as Task | null };
+  return { ok: true, data: (data ?? null) as Task | null };
 }
 
 export async function deleteTaskIfPresent(id: string, expectedUserId?: string): Promise<RepoResult<{ deleted: boolean }>> {

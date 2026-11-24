@@ -51,12 +51,23 @@ export type AccountStorageEntry = {
   keysFor: (userId: string) => readonly string[];
 };
 
-const scoped = new Map<string, AccountScopedEntry<never>>();
+type StoredAccountScope = {
+  name: string;
+  resetStore?: () => void;
+  onReset?: (reason: AccountResetReason) => void;
+};
+
+const scoped = new Map<string, StoredAccountScope>();
 const storage = new Map<string, AccountStorageEntry>();
 let epoch = 0;
 
 export function registerAccountScoped<T>(entry: AccountScopedEntry<T>): void {
-  scoped.set(entry.name, entry as unknown as AccountScopedEntry<never>);
+  const store = entry.store;
+  scoped.set(entry.name, {
+    name: entry.name,
+    resetStore: store ? () => { store.setState(store.getInitialState(), true); } : undefined,
+    onReset: entry.onReset,
+  });
 }
 
 export function registerAccountStorage(entry: AccountStorageEntry): void {
@@ -85,9 +96,9 @@ export function accountEpoch(): number {
 export function resetAccountMemory(reason: AccountResetReason): void {
   epoch += 1;
   for (const entry of scoped.values()) {
-    if (entry.store) {
+    if (entry.resetStore) {
       try {
-        entry.store.setState(entry.store.getInitialState(), true);
+        entry.resetStore();
       } catch {
         // one broken store must not keep the others holding the previous account
       }

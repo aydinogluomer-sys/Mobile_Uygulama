@@ -30,7 +30,8 @@
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
-import { alphaHex, colors } from '../../lib/tokens';
+import { alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { EditorialBanner, EmblemMedallion } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
@@ -167,6 +168,8 @@ const SECTIONS: Section[] = [
 ];
 
 export default function PrivacyScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
       <Stack.Screen options={{ title: 'Gizlilik Politikası' }} />
@@ -210,7 +213,7 @@ export default function PrivacyScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, paddingBottom: 48, gap: 14 },
   updated: { fontSize: 12, color: colors.textFaint },

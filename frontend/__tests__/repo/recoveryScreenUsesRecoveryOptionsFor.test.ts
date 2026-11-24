@@ -21,8 +21,8 @@ describe('W3 -- recovery.tsx reaches recoveryOptionsFor', () => {
     expect(src).toMatch(/\brecoveryOptionsFor\s*\(/);
   });
 
-  it('destructures recoveryOptionsFor from useRecoveryStore()', () => {
-    const line = src.split('\n').find((l) => l.includes('useRecoveryStore()'));
+  it('selects recoveryOptionsFor from useRecoveryStore', () => {
+    const line = src.split('\n').find((l) => l.includes('useRecoveryStore(') && l.includes('recoveryOptionsFor'));
     expect(line).toBeDefined();
     expect(line).toContain('recoveryOptionsFor');
   });

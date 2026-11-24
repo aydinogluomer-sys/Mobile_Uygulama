@@ -138,10 +138,12 @@ export function snapshotOf(params: {
  */
 export function parseSnapshot(raw: string | null): SessionSnapshot | null {
   if (!raw) return null;
-  let o: any;
-  try { o = JSON.parse(raw); } catch { return null; }
-  if (!o || o.v !== SESSION_SNAPSHOT_VERSION) return null;
-  if (!PHASES.includes(o.phase)) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return null; }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const o = parsed as Record<string, unknown>;
+  if (o.v !== SESSION_SNAPSHOT_VERSION) return null;
+  if (typeof o.phase !== 'string' || !PHASES.includes(o.phase as FocusPhase)) return null;
   if (typeof o.sessionStartedAt !== 'string') return null;
   if (!isNum(o.sessionsCompleted) || o.sessionsCompleted < 0) return null;
   if (!isNum(o.lastSeenAt)) return null;
@@ -153,7 +155,7 @@ export function parseSnapshot(raw: string | null): SessionSnapshot | null {
     ...(o.step !== undefined ? { step: o.step as SmallStep } : {}),
     ...(o.pausedAt !== undefined ? { pausedAt: o.pausedAt } : {}),
     v: SESSION_SNAPSHOT_VERSION,
-    phase: o.phase,
+    phase: o.phase as FocusPhase,
     clock: { plannedSeconds: c.plannedSeconds, accumulatedMs: c.accumulatedMs, runningSince: c.runningSince },
     sessionStartedAt: o.sessionStartedAt,
     sessionsCompleted: o.sessionsCompleted,

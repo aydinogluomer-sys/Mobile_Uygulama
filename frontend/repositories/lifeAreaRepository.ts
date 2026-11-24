@@ -23,7 +23,7 @@ export async function fetchRecentLifeAreaLogs(limit = 8): Promise<RepoResult<Lif
     .order('date', { ascending: false })
     .limit(Math.max(1, Math.min(limit, 200)));
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-  return { ok: true, data: (data ?? []) as unknown as LifeAreaLogRow[] };
+  return { ok: true, data: data ?? [] };
 }
 
 export async function upsertLifeAreaLogs(

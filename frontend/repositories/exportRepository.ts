@@ -53,7 +53,7 @@ export async function fetchOwnProfileForExport(): Promise<RepoResult<Record<stri
       offline: isTransportFailure(status, error),
     };
   }
-  return { ok: true, data: data ? [data as unknown as Record<string, unknown>] : [] };
+  return { ok: true, data: data ? [{ ...data }] : [] };
 }
 
 export async function fetchOwnOnboardingForExport(): Promise<RepoResult<Record<string, unknown>[]>> {
@@ -73,5 +73,5 @@ export async function fetchOwnOnboardingForExport(): Promise<RepoResult<Record<s
       offline: isTransportFailure(status, error),
     };
   }
-  return { ok: true, data: data ? [data as unknown as Record<string, unknown>] : [] };
+  return { ok: true, data: data ? [{ ...data }] : [] };
 }

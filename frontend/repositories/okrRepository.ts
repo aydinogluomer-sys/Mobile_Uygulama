@@ -70,7 +70,7 @@ export async function fetchOkrs(opts?: { quarters?: number }): Promise<
       code: okrRes.error.code,
     };
   }
-  const okrs = (okrRes.data ?? []) as unknown as OkrRow[];
+  const okrs: OkrRow[] = okrRes.data ?? [];
 
   if (okrs.length === 0) return { ok: true, data: { okrs: [], keyResults: [] } };
 
@@ -94,7 +94,7 @@ export async function fetchOkrs(opts?: { quarters?: number }): Promise<
 
   return {
     ok: true,
-    data: { okrs, keyResults: (krRes.data ?? []) as unknown as KeyResultRow[] },
+    data: { okrs, keyResults: krRes.data ?? [] },
   };
 }
 
@@ -111,7 +111,7 @@ export async function insertObjective(input: {
     .select(OKR_COLS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-  return { ok: true, data: data as unknown as OkrRow };
+  return { ok: true, data };
 }
 
 export async function insertKeyResult(input: {
@@ -139,7 +139,7 @@ export async function insertKeyResult(input: {
     .select(KR_COLS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-  return { ok: true, data: data as unknown as KeyResultRow };
+  return { ok: true, data };
 }
 
 export async function updateKeyResultValue(

@@ -26,7 +26,8 @@ import MeasuredReportSection from '../../components/MeasuredReportSection';
 import MonthBackground from '../../components/MonthBackground';
 import { useReducedMotion } from '../../components/seasonalMotion/useReducedMotion';
 import { MONTH_TAGLINES_TR } from '../../components/seasonalMotion/config';
-import { colors, hexA } from '../../lib/tokens';
+import { hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { buildArchiveReflection, calculateHabitCompletionRate, focusMinutesFromSessions, reportBadge, summarizeHabitProgress, type ReportBadge } from '../../lib/reportMetrics';
 import { ymdFromIso, ymd, parseLocalDate } from '../../lib/date';
 import { dailyLoad, type TaskLoadItem } from '../../lib/capacity';
@@ -146,10 +147,15 @@ function countOverloadDays(params: {
 export default function MonthlyReviewScreen() {
   const now = new Date();
   const isFocused = useIsFocused();
-  const { tasks, fetchTasks } = useTaskStore();
-  const { habits, fetchHabits } = useHabitStore();
-  const { appendEntry } = useJournalStore();
-  const { goals, loadGoals } = useGoalStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const tasks = useTaskStore((st) => st.tasks);
+  const fetchTasks = useTaskStore((st) => st.fetchTasks);
+  const habits = useHabitStore((st) => st.habits);
+  const fetchHabits = useHabitStore((st) => st.fetchHabits);
+  const appendEntry = useJournalStore((st) => st.appendEntry);
+  const goals = useGoalStore((st) => st.goals);
+  const loadGoals = useGoalStore((st) => st.loadGoals);
 
   const [monthOffset, setMonthOffset] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -165,12 +171,19 @@ export default function MonthlyReviewScreen() {
   const [unsavedDraft, setUnsavedDraft] = useState(false);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const reflectionLatest = useRef(createLatest()).current;
+  const [reflectionLatest] = useState(createLatest);
 
   // Defter sayfası animasyonu: girişte "açılma", ay değişiminde yön bazlı "sayfa çevirme" (bkz. calendar.tsx).
   const reduceMotion = useReducedMotion();
-  const pageAnim = useRef(new Animated.Value(1)).current;
+  const [pageAnim] = useState(() => new Animated.Value(1));
   const [flipDir, setFlipDir] = useState(0); // -1 önceki, 0 açılış, +1 sonraki
+  const [prevFocused, setPrevFocused] = useState(isFocused);
+  if (prevFocused !== isFocused) {
+    setPrevFocused(isFocused);
+    if (isFocused && flipDir !== 0) {
+      setFlipDir(0);
+    }
+  }
 
   function animatePage(dir: number) {
     setFlipDir(dir);
@@ -222,7 +235,9 @@ export default function MonthlyReviewScreen() {
   // A ref says exactly that: run when those change, and call whatever
   // version of the loaders exists at that moment.
   const loaders = useRef({ loadReflection, loadMonthMetrics });
-  loaders.current = { loadReflection, loadMonthMetrics };
+  useEffect(() => {
+    loaders.current = { loadReflection, loadMonthMetrics };
+  });
 
   useEffect(() => {
     void loaders.current.loadReflection();
@@ -230,7 +245,17 @@ export default function MonthlyReviewScreen() {
   }, [monthOffset, habits.length, tasks.length, goals.length]);
 
   // Ekran odağa gelince defter "açılır" (bkz. calendar.tsx)
-  useEffect(() => { if (isFocused) animatePage(0); }, [isFocused]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!isFocused) return;
+    if (reduceMotion) { pageAnim.setValue(1); return; }
+    pageAnim.setValue(0);
+    Animated.timing(pageAnim, {
+      toValue: 1,
+      duration: 480,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [isFocused, pageAnim, reduceMotion]);
 
   // Bulut kaynak, AsyncStorage yalnizca taslak. Sira ve gerekcesi
   // services/reviewService.loadMonthlyReflection icinde.
@@ -664,7 +689,7 @@ export default function MonthlyReviewScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   safe: { flex: 1, backgroundColor: 'transparent' },
   content: { padding: 20, paddingBottom: 40 },
@@ -686,18 +711,18 @@ const s = StyleSheet.create({
 
   hero: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
   heroIcon: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  heroTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
+  heroTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
   heroDates: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
   monthNav: { flexDirection: 'row', gap: 4 },
   navBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   navBtnDisabled: { opacity: 0.3 },
   metricsRow: { flexDirection: 'row', gap: 8, marginBottom: 18 },
   metric: { flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
-  metricValue: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 4 },
+  metricValue: { fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 4 },
   metricLabel: { fontSize: 10, color: colors.textFaint, textAlign: 'center', lineHeight: 14 },
   badgeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: hexA(colors.surface, 0.92), borderRadius: 12, padding: 12, borderWidth: 1, borderColor: hexA(colors.warning, 0.4), marginBottom: 24, overflow: 'hidden', position: 'relative' },
   badgeEmoji: { fontSize: 20 },
-  badgeTitle: { fontSize: 14, fontWeight: '700', color: colors.white },
+  badgeTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
   badgeDesc: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, marginBottom: 10 },
@@ -721,7 +746,7 @@ const s = StyleSheet.create({
   analysisValue: { fontSize: 12, color: colors.text, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
   questionCard: { marginBottom: 14 },
   questionLabel: { fontSize: 14, color: colors.text, fontWeight: '600', marginBottom: 8 },
-  questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.white, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },
+  questionInput: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, fontSize: 14, color: colors.text, borderWidth: 1, borderColor: colors.border, minHeight: 80, textAlignVertical: 'top' },
   charCounter: { fontSize: 11, color: colors.textFaint, textAlign: 'right', marginTop: 4 },
   cloudErrorBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

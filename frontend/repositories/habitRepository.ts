@@ -179,7 +179,7 @@ export async function fetchHabits(limit = 500): Promise<RepoResult<Habit[]>> {
     .order('created_at', { ascending: false })
     .limit(Math.max(1, Math.min(limit, SERVER_MAX_ROWS)));
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as Habit[] };
+  return { ok: true, data: (data ?? []) as Habit[] };
 }
 
 /** Creates one habit, attaching `user_id` here rather than from the caller. */
@@ -198,7 +198,7 @@ export async function insertHabit(
     .select(HABIT_COLUMNS)
     .single();
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: data as unknown as Habit };
+  return { ok: true, data: data as Habit };
 }
 
 /** Server-side name search — see `taskRepository.searchTasks` for why. */
@@ -216,7 +216,7 @@ export async function searchHabits(query: string, limit = 8): Promise<RepoResult
     .order('created_at', { ascending: false })
     .limit(Math.min(limit, 25));
   if (error) return { ok: false, error: error.message };
-  return { ok: true, data: (data ?? []) as unknown as Habit[] };
+  return { ok: true, data: (data ?? []) as Habit[] };
 }
 
 /**

@@ -72,7 +72,7 @@ export async function insertGoal(input: {
     .select(COLS)
     .single();
   if (error) return { ok: false, error: error.message, offline: isTransportFailure(status, error), status, code: error.code };
-  return { ok: true, data: data as unknown as GoalRow };
+  return { ok: true, data: data as GoalRow };
 }
 
 export async function updateGoalProgress(id: string, progress: number): Promise<RepoResult<GoalRow>> {
