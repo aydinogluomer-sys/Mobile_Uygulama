@@ -27,7 +27,11 @@ Ertelenen hiçbir özellik açılmadı; push/PR/merge yapılmadı (S9).
 
 ## Sıradaki (sahip)
 
-1. Yedek kontrolü → `SQL_FOR_OWNER.md` §0 ön kontroller → 028…035 sırayla + doğrulama → kapılar (§5).
+1. Yedek kontrolü → `SQL_FOR_OWNER.md` §0 ön kontroller → 028…045 sırayla + doğrulama → kapılar (§5).
 2. `generate-routine` deploy → `COACH_ACTIONS_V2_ENABLED`.
 3. S11 sorgu çıktısı (§3), KD-10/11 sayımları (§4).
 4. R11.02 turları (5–8 kullanıcı × 2) → CORE_QUALITY ölçümü.
+
+## Kanonik uygulama ve yayın kanıt defteri (Y08)
+
+24 Kasım 2026 tarihli 53 işlik uygulama planı, 15 rakip farkı kararı, sürüm bayrağı sahipleri ve faz bazlı `kod / CI / staging / cihaz / canlı` kanıt tablosu tek merkezde [`PLAYBOOK_EXECUTION_LEDGER.md`](./PLAYBOOK_EXECUTION_LEDGER.md) belgesinde tutulur. Kod veya CI başarısı canlı ortam, fiziksel cihaz veya mağaza onayı yerine yazılmaz.

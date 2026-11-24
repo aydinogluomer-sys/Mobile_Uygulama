@@ -43,3 +43,19 @@ etki sayısı. Eksik katılımcı/görev **N/R**; payda küçültülerek oran ş
 
 Gerçek kişisel veri yerine test hesabı; kayıtta ad yok (K1…K8); ekran kaydı katılımcının açık
 izniyle, tur sonunda silinir. Sağlık/klinik iddia yok.
+
+## Davranışsal kohortlar ve birincil ürün metrikleri (P02)
+
+Hedef kitle tıbbi/klinik etiketle değil, gözlemlenebilir kullanım davranışıyla seçilir. Katılımcılar iki davranış kohortu ve iki kurulum alt grubuyla etiketlenir (aynı yetişkinde iki davranış kohortu örtüşebilir):
+
+| Boyut | Kod | Tanım | Sentetik taban karşılığı |
+|---|---|---|---|
+| Davranış kohortu 1 | `start_blocked` | «Plan yapabiliyorum, başlayamıyorum» — görevi yazıp ilk eyleme geçmekte zorlanan yetişkin | `buildStartFixture` (`frontend/__tests__/helpers/playbookFixtures.ts`) |
+| Davranış kohortu 2 | `midday_derailed` | «Yarım kalan günümü bırakıyorum» — gün içi aksamada planı tamamen terk eden yetişkin | `buildRecoveryFixture` (`frontend/__tests__/helpers/playbookFixtures.ts`) |
+| Kurulum alt grubu A | `self_planner` | Kendi görev ve planını sıfırdan yazan kullanıcı | `setupSubgroup: 'self_planner'` |
+| Kurulum alt grubu B | `routine_starter` | Hazır rutin / başlangıç paketi üzerinden başlayan kullanıcı | `setupSubgroup: 'routine_starter'` |
+
+### İki ana ürün metriği (F0 / F6 dondurulmuş payda sözleşmesi)
+
+1. **İlk etkin eyleme kadar süre (`time_to_first_action_sec`):** Görev/ekran açılışından onaylı ilk odak veya rutin adımının başlamasına kadar geçen saniye. Raporlama: medyan ve P90 + düşük örneklemde (`n < 10`) ham katılımcı dağılımı ve açık pay/payda (`k/n`).
+2. **Aksama sonrası aynı gün yeniden eyleme geçme oranı (`same_day_recovery_return_rate`):** Önceden tanımlı gözlem penceresinde plan aksaması / Hafif Gün / Telafi akışına giren katılımcılar **payda**, aynı yerel gün (`04:00` sınırı öncesi) içinde en az bir onaylı eylem başlatanlar **pay** olarak raporlanır (`m/d`). D1/D7 tutundurma yardımcı metriktir; rakip özellik puanı pilot başarı oranı yerine kullanılmaz.
