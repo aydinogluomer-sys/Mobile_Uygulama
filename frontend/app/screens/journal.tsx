@@ -1,4 +1,5 @@
-import { colors, hexA, alphaHex } from '../../lib/tokens';
+import { hexA, alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -8,6 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 import { navigateTo } from '../../lib/destinations';
 import { useJournalStore } from '../../store/journalStore';
 import { MOODS } from '../../lib/journalMoods';
@@ -39,24 +41,45 @@ const PROMPTS = [
 const DAY_NAMES_TR = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 
 export default function JournalScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const router = useRouter();
   const today = todayLocal();
-  const { entries, fetchEntries, saveEntry, getByDate, conflicts, resolveConflict } = useJournalStore();
+  const [mountDate] = useState(() => new Date());
+  const { entries, fetchEntries, saveEntry, getByDate, conflicts, resolveConflict } = useJournalStore(
+    useShallow((st) => ({
+      entries: st.entries,
+      fetchEntries: st.fetchEntries,
+      saveEntry: st.saveEntry,
+      getByDate: st.getByDate,
+      conflicts: st.conflicts,
+      resolveConflict: st.resolveConflict,
+    })),
+  );
   // R02.05 — re-read on every outbox change, so a conflict appears the moment delivery reports it.
   useCoreOutboxSync();
   const [resolving, setResolving] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today);
-  const [content, setContent] = useState('');
-  const [mood, setMood] = useState<number | null>(null);
+  const [dayDraft, setDayDraft] = useState<{
+    date: string;
+    content: string;
+    mood: number | null;
+    restored: boolean;
+  } | null>(null);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [draftRestored, setDraftRestored] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const selection = useRef({ start: 0, end: 0 });
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const todayEntry = getByDate(selectedDate);
-  const randomPrompt = PROMPTS[new Date().getDay() % PROMPTS.length];
+  const activeDraft = dayDraft?.date === selectedDate ? dayDraft : null;
+  const content = activeDraft ? activeDraft.content : (todayEntry?.content ?? '');
+  const mood = activeDraft ? activeDraft.mood : (todayEntry?.mood ?? null);
+  const draftRestored = activeDraft?.restored ?? false;
+
+  const todayDate = parseLocalDate(today) ?? mountDate;
+  const randomPrompt = PROMPTS[todayDate.getDay() % PROMPTS.length];
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
   useEffect(() => { void currentUser().then((u) => setUserId(u?.id ?? null)); }, []);
@@ -64,35 +87,44 @@ export default function JournalScreen() {
   // The day's entry -- or, if what was typed was never confirmed saved (an
   // offline save, an app kill), the draft that holds it.
   useEffect(() => {
+    if (!userId) return;
     let alive = true;
-    const e = getByDate(selectedDate);
-    setContent(e?.content ?? '');
-    setMood(e?.mood ?? null);
-    setSaved(false);
-    setSaveError(null);
-    setDraftRestored(false);
-    if (userId) {
-      void AsyncStorage.getItem(draftKey(userId, selectedDate)).then((raw) => {
-        if (!alive || !raw) return;
-        try {
-          const d = JSON.parse(raw) as JournalDraft;
-          if (draftDiffers(d, e)) { setContent(d.content); setMood(d.mood); setDraftRestored(true); }
-        } catch { /* unreadable draft: leave it */ }
-      }).catch(() => undefined);
-    }
+    void AsyncStorage.getItem(draftKey(userId, selectedDate)).then((raw) => {
+      if (!alive || !raw) return;
+      try {
+        const d = JSON.parse(raw) as JournalDraft;
+        const currentEntry = getByDate(selectedDate);
+        if (draftDiffers(d, currentEntry)) {
+          setDayDraft({ date: selectedDate, content: d.content, mood: d.mood, restored: true });
+        }
+      } catch { /* unreadable draft: leave it */ }
+    }).catch(() => undefined);
     return () => { alive = false; };
   }, [selectedDate, entries, getByDate, userId]);
 
+  function selectDate(d: string) {
+    setSelectedDate(d);
+    setDayDraft(null);
+    setSaved(false);
+    setSaveError(null);
+  }
+
   /** Every edit is kept on the device until a save is confirmed. */
   function edit(nextContent: string, nextMood: number | null) {
-    setContent(nextContent);
-    setMood(nextMood);
+    setDayDraft((prev) => ({
+      date: selectedDate,
+      content: nextContent,
+      mood: nextMood,
+      restored: prev?.date === selectedDate ? prev.restored : false,
+    }));
     setSaved(false);
     if (!userId) return;
     if (draftTimer.current) clearTimeout(draftTimer.current);
     const key = draftKey(userId, selectedDate);
-    const draft: JournalDraft = { date: selectedDate, content: nextContent, mood: nextMood, savedAt: Date.now() };
-    draftTimer.current = setTimeout(() => { AsyncStorage.setItem(key, JSON.stringify(draft)).catch(() => undefined); }, 600);
+    draftTimer.current = setTimeout(() => {
+      const draft: JournalDraft = { date: selectedDate, content: nextContent, mood: nextMood, savedAt: Date.now() };
+      AsyncStorage.setItem(key, JSON.stringify(draft)).catch(() => undefined);
+    }, 600);
   }
 
   async function handleSave() {
@@ -103,7 +135,7 @@ export default function JournalScreen() {
       return;
     }
     setSaveError(null);
-    setDraftRestored(false);
+    setDayDraft({ date: selectedDate, content, mood, restored: false });
     if (draftTimer.current) clearTimeout(draftTimer.current);
     if (userId) AsyncStorage.removeItem(draftKey(userId, selectedDate)).catch(() => undefined);
     setSaved(true);
@@ -117,7 +149,7 @@ export default function JournalScreen() {
   }
 
   // Son 7 gün
-  const last7 = Array.from({ length: 7 }, (_, i) => ymd(addDaysLocal(new Date(), -i)));
+  const last7 = Array.from({ length: 7 }, (_, i) => ymd(addDaysLocal(todayDate, -i)));
 
   return (
     <SafeAreaView style={s.safe} edges={['bottom']}>
@@ -132,7 +164,7 @@ export default function JournalScreen() {
               accessibilityRole="link"
               accessibilityLabel="Günlük arşivini aç"
             >
-              <Ionicons name="library-outline" size={16} color="#ec4899" />
+              <Ionicons name="library-outline" size={16} color={colors.primary} />
               <Text style={s.archiveBtnText}>Arşiv</Text>
             </TouchableOpacity>
           ),
@@ -158,14 +190,14 @@ export default function JournalScreen() {
           {/* Tarih seçici */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.dateRow}>
             {last7.map((d) => {
-              const dt = parseLocalDate(d) ?? new Date();
+              const dt = parseLocalDate(d) ?? todayDate;
               const hasEntry = !!getByDate(d);
               const isSelected = d === selectedDate;
               return (
                 <TouchableOpacity
                   key={d}
                   style={[s.dateBtn, isSelected && s.dateBtnActive]}
-                  onPress={() => setSelectedDate(d)}
+                  onPress={() => selectDate(d)}
                   accessibilityRole="tab"
                   accessibilityLabel={
                     `${DAY_NAMES_TR[dt.getDay()]} ${dt.getDate()}` +
@@ -174,7 +206,7 @@ export default function JournalScreen() {
                   accessibilityState={{ selected: isSelected }}
                 >
                   <Text style={[s.dateDayName, isSelected && s.dateDayNameActive]}>
-                    {['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'][dt.getDay()]}
+                    {['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'][dt.getDay()]}
                   </Text>
                   <Text style={[s.dateDay, isSelected && s.dateDayActive]}>{dt.getDate()}</Text>
                   {hasEntry && <View style={[s.entryDot, isSelected && s.entryDotActive]} />}
@@ -192,7 +224,7 @@ export default function JournalScreen() {
               {MOODS.map((m) => (
                 <TouchableOpacity
                   key={m.value}
-                  style={[s.moodBtn, mood === m.value && { backgroundColor: m.color + '25', borderColor: m.color }]}
+                  style={[s.moodBtn, mood === m.value && { backgroundColor: alphaHex(m.color, '25'), borderColor: m.color }]}
                   onPress={() => edit(content, mood === m.value ? null : m.value)}
                   accessibilityRole="radio"
                   accessibilityLabel={`Ruh hali: ${m.label}`}
@@ -212,7 +244,7 @@ export default function JournalScreen() {
             <View style={s.parchmentMargin} pointerEvents="none" />
             {todayEntry?.ai_summary && (
               <View style={s.aiChip}>
-                <Ionicons name="sparkles" size={11} color="#ec4899" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                <Ionicons name="sparkles" size={11} color={colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 <Text style={s.aiChipText}>AI özeti içeriyor</Text>
               </View>
             )}
@@ -268,7 +300,7 @@ export default function JournalScreen() {
           {/* AI İçgörüleri — dönem butonları */}
           <View style={s.insightsCard}>
             <View style={s.insightsTop}>
-              <Ionicons name="bulb-outline" size={15} color="#8b5cf6" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+              <Ionicons name="bulb-outline" size={15} color={colors.accent} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
               <Text style={s.insightsTitle}>AI İÇGÖRÜLERİ</Text>
             </View>
             <Text style={s.insightsHint}>Yazdıklarından dönemsel içgörü al</Text>
@@ -301,7 +333,7 @@ export default function JournalScreen() {
                   accessibilityRole="link"
                   accessibilityLabel="Tüm günlük arşivini aç"
                 >
-                  <Ionicons name="library-outline" size={13} color="#ec4899" />
+                  <Ionicons name="library-outline" size={13} color={colors.primary} />
                   <Text style={s.archiveLinkText}>Tüm arşiv</Text>
                 </TouchableOpacity>
               </View>
@@ -309,7 +341,7 @@ export default function JournalScreen() {
                 <TouchableOpacity
                   key={e.id}
                   style={s.historyItem}
-                  onPress={() => setSelectedDate(e.date)}
+                  onPress={() => selectDate(e.date)}
                   accessibilityRole="button"
                   accessibilityLabel={`${e.date} kaydını aç`}
                   accessibilityHint="Bu günün girdisini düzenlemek için açar"
@@ -319,7 +351,7 @@ export default function JournalScreen() {
                       <Text style={s.historyDate}>{e.date}</Text>
                       {e.ai_summary && (
                         <View style={s.aiChipSm}>
-                          <Ionicons name="sparkles" size={9} color="#ec4899" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                          <Ionicons name="sparkles" size={9} color={colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                           <Text style={s.aiChipSmText}>AI</Text>
                         </View>
                       )}
@@ -339,7 +371,7 @@ export default function JournalScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
 
@@ -349,13 +381,13 @@ const s = StyleSheet.create({
     borderRadius: 14, borderWidth: 1, borderColor: colors.border,
     backgroundColor: colors.surface, marginRight: 8, minWidth: 52, gap: 2,
   },
-  dateBtnActive: { backgroundColor: '#ec489920', borderColor: '#ec4899' },
+  dateBtnActive: { backgroundColor: alphaHex(colors.primary, '20'), borderColor: colors.primary },
   dateDayName: { fontSize: 10, color: colors.textFaint, fontWeight: '600' },
-  dateDayNameActive: { color: '#ec4899' },
+  dateDayNameActive: { color: colors.primary },
   dateDay: { fontSize: 18, fontWeight: '700', color: colors.textDim },
   dateDayActive: { color: colors.white },
   entryDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.textGhost },
-  entryDotActive: { backgroundColor: '#ec4899' },
+  entryDotActive: { backgroundColor: colors.primary },
 
   moodSection: { marginBottom: 20 },
   // R07.01
@@ -381,40 +413,40 @@ const s = StyleSheet.create({
   writeCard: { backgroundColor: hexA(colors.paperSurface, 0.94), borderRadius: 16, padding: 16, paddingLeft: 28, borderWidth: 1, borderColor: colors.paperBorder, marginBottom: 16, overflow: 'hidden', position: 'relative' },
   aiChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start',
-    backgroundColor: '#ec489918', borderColor: '#ec489940', borderWidth: 1,
+    backgroundColor: alphaHex(colors.primary, '18'), borderColor: alphaHex(colors.primary, '40'), borderWidth: 1,
     borderRadius: 20, paddingHorizontal: 9, paddingVertical: 4, marginBottom: 10,
   },
-  aiChipText: { fontSize: 11, color: '#ec4899', fontWeight: '700' },
+  aiChipText: { fontSize: 11, color: colors.primary, fontWeight: '700' },
   promptText: { fontSize: 13, color: colors.textDim, fontStyle: 'italic', marginBottom: 12 },
   textArea: { fontSize: 15, color: colors.text, minHeight: 160, lineHeight: 22 },
 
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#ec4899', borderRadius: 14, paddingVertical: 14, marginBottom: 24 },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 14, marginBottom: 24 },
   saveBtnDone: { backgroundColor: colors.success },
   saveBtnDisabled: { opacity: 0.4 },
   saveBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },
 
   archiveBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4 },
-  archiveBtnText: { fontSize: 13, fontWeight: '700', color: '#ec4899' },
+  archiveBtnText: { fontSize: 13, fontWeight: '700', color: colors.primary },
 
   insightsCard: {
     backgroundColor: colors.surface, borderRadius: 16, padding: 16,
     borderWidth: 1, borderColor: colors.border, marginBottom: 16,
   },
   insightsTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  insightsTitle: { fontSize: 11, fontWeight: '800', color: '#a78bfa', letterSpacing: 1 },
+  insightsTitle: { fontSize: 11, fontWeight: '800', color: colors.accent, letterSpacing: 1 },
   insightsHint: { fontSize: 12, color: colors.textFaint, marginTop: 4, marginBottom: 12 },
   insightsRow: { flexDirection: 'row', gap: 8 },
   insightBtn: {
     flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12,
-    backgroundColor: '#8b5cf618', borderWidth: 1, borderColor: '#8b5cf640',
+    backgroundColor: alphaHex(colors.accent, '18'), borderWidth: 1, borderColor: alphaHex(colors.accent, '40'),
   },
-  insightBtnText: { fontSize: 13, fontWeight: '700', color: '#a78bfa' },
+  insightBtnText: { fontSize: 13, fontWeight: '700', color: colors.accent },
 
   historySection: { marginTop: 8 },
   historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   historyTitle: { fontSize: 11, fontWeight: '700', color: colors.textFaint, letterSpacing: 1 },
   archiveLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  archiveLinkText: { fontSize: 12, fontWeight: '700', color: '#ec4899' },
+  archiveLinkText: { fontSize: 12, fontWeight: '700', color: colors.primary },
   historyItem: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
     backgroundColor: colors.surface, borderRadius: 12, padding: 14,
@@ -425,10 +457,10 @@ const s = StyleSheet.create({
   historyDate: { fontSize: 11, color: colors.textFaint },
   aiChipSm: {
     flexDirection: 'row', alignItems: 'center', gap: 2,
-    backgroundColor: '#ec489918', borderColor: '#ec489940', borderWidth: 1,
+    backgroundColor: alphaHex(colors.primary, '18'), borderColor: alphaHex(colors.primary, '40'), borderWidth: 1,
     borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1,
   },
-  aiChipSmText: { fontSize: 9, color: '#ec4899', fontWeight: '800', letterSpacing: 0.3 },
+  aiChipSmText: { fontSize: 9, color: colors.primary, fontWeight: '800', letterSpacing: 0.3 },
   historyPreview: { fontSize: 13, color: colors.textDim, lineHeight: 18 },
   historyMood: { fontSize: 20 },
 });

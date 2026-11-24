@@ -31,18 +31,20 @@ import { withEdgeDeadline } from '../../lib/edgeCall';
 import { createLatest } from '../../lib/latestOnly';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { newRequestId } from '../../services/focusPointService';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subWeeks, eachDayOfInterval } from 'date-fns';
+import { useShallow } from 'zustand/react/shallow';
 
 import { useHabitStore } from '../../store/habitStore';
 import { useTaskStore, type Task } from '../../store/taskStore';
 import { supabase } from '../../lib/supabase';
-import type { Habit, RecoveryPlan } from '../../lib/supabase';
+import type { Habit } from '../../lib/supabase';
 import type { FocusSessionRow } from '../../lib/focusReport';
-import { colors, space, font, hexA } from '../../lib/tokens';
+import { space, font, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { Card, SectionHeader, EmptyState, IconCircle, Skeleton, SkeletonLines, EditorialBanner } from '../../components/ui';
 import { AtmosphericScreenCanvas, ChapterDivider, EmbeddedFiligree } from '../../components/spatial';
 import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
@@ -69,6 +71,8 @@ import { sessionsBetween } from '../../services/focusService';
 import { DOW_TR } from '../../lib/focusReport';
 
 const HISTORY_WEEKS = 14; // >= the 12-week trend + 8-week fragility windows behaviorIntelligence.ts uses, with a buffer
+
+type RecoveryPlanRowInput = Parameters<typeof planFromRow>[0];
 
 function trendLabel(direction: 'improving' | 'declining' | 'flat'): string {
   if (direction === 'improving') return 'Yükseliyor';
@@ -142,6 +146,8 @@ function InsightRow<T>({ icon, label, result, formatOk, kind }: {
   formatOk: (value: T) => string;
   kind?: InsufficientKind;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   return (
     <Card padding="md" style={s.insightCard}>
       <View style={s.insightHead}>
@@ -159,6 +165,8 @@ function InsightRow<T>({ icon, label, result, formatOk, kind }: {
 
 /** A plain (non-Result) metric row -- always a real, non-fabricated value. */
 function MetricRow({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   return (
     <Card padding="md" style={s.insightCard}>
       <View style={s.insightHead}>
@@ -201,6 +209,8 @@ function nameResult<T extends { habitId: string }>(
  * before this component's `ask()` is ever called.
  */
 function AiCommentaryPanel({ digest, label }: { digest: Digest; label: string }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reply, setReply] = useState<string | null>(null);
@@ -217,9 +227,9 @@ function AiCommentaryPanel({ digest, label }: { digest: Digest; label: string })
       const message = `${label} alışkanlık verilerimi analiz et, kısa bir yorum ve somut bir tavsiye ver. ${DIGEST_PREAMBLE}\n${formatDigestForPrompt(digest)}`;
       const { data, error: invokeError } = await withEdgeDeadline('AI analizi', (signal) =>
         supabase.functions.invoke('generate-routine', {
-        signal,
-        body: { message, mode: 'coach', request_id: requestId },
-      }));
+          signal,
+          body: { message, mode: 'coach', request_id: requestId },
+        }));
       if (invokeError) {
         const { msg } = await extractInvokeError(invokeError);
         setError(msg);
@@ -272,15 +282,21 @@ function AiCommentaryPanel({ digest, label }: { digest: Digest; label: string })
 }
 
 export default function InsightsScreen() {
-  const { habits, fetchHabits } = useHabitStore();
-  const { tasks, fetchTasks } = useTaskStore();
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const { habits, fetchHabits } = useHabitStore(
+    useShallow((st) => ({ habits: st.habits, fetchHabits: st.fetchHabits })),
+  );
+  const { tasks, fetchTasks } = useTaskStore(
+    useShallow((st) => ({ tasks: st.tasks, fetchTasks: st.fetchTasks })),
+  );
 
   const [logs, setLogs] = useState<ReviewLogRow[]>([]);
-  const [recoveryPlans, setRecoveryPlans] = useState<RecoveryPlan[]>([]);
+  const [recoveryPlans, setRecoveryPlans] = useState<RecoveryPlanRowInput[]>([]);
   const [focusSessions, setFocusSessions] = useState<FocusSessionRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const today = new Date();
+  const [today] = useState(() => new Date());
   const todayYmd = ymd(today);
   const since = format(subWeeks(today, HISTORY_WEEKS), 'yyyy-MM-dd');
 
@@ -289,34 +305,46 @@ export default function InsightsScreen() {
     fetchTasks();
   }, [fetchHabits, fetchTasks]);
 
-  const insightsLatest = useRef(createLatest()).current;
+  const [insightsLatest] = useState(() => createLatest());
 
-  const loadInsights = useCallback(async (opts: { silent: boolean }) => {
+  useEffect(() => {
     const run = insightsLatest.begin();
-    if (!opts.silent) setLoading(true);
-    try {
-      const [reviewRes, sessionsRes] = await Promise.all([
-        loadReviewData({ start: since, end: todayYmd }),
-        sessionsBetween({ startYmd: since, endYmd: todayYmd }),
-      ]);
-      if (!run.isCurrent()) return;
-      // Habit logs and recovery come from ONE service call: a review
-      // built from logs plus an empty recovery list (because that query
-      // failed) understates how much the user caught up.
-      setLogs(reviewRes.ok ? reviewRes.data.logs : []);
-      setRecoveryPlans(reviewRes.ok ? (reviewRes.data.recoveryPlans as never) : []);
-      setFocusSessions(sessionsRes.ok ? sessionsRes.data : []);
-    } finally {
-      run.done();
-      if (!opts.silent) setLoading(false);
-    }
+    void Promise.all([
+      loadReviewData({ start: since, end: todayYmd }),
+      sessionsBetween({ startYmd: since, endYmd: todayYmd }),
+    ])
+      .then(([reviewRes, sessionsRes]) => {
+        if (!run.isCurrent()) return;
+        // Habit logs and recovery come from ONE service call: a review
+        // built from logs plus an empty recovery list (because that query
+        // failed) understates how much the user caught up.
+        setLogs(reviewRes.ok ? reviewRes.data.logs : []);
+        setRecoveryPlans(reviewRes.ok ? reviewRes.data.recoveryPlans : []);
+        setFocusSessions(sessionsRes.ok ? sessionsRes.data : []);
+      })
+      .finally(() => {
+        run.done();
+        setLoading(false);
+      });
   }, [since, todayYmd, insightsLatest]);
 
-  useEffect(() => { void loadInsights({ silent: false }); }, [loadInsights]);
   useRefreshOnFocus(() => {
     void fetchHabits();
     void fetchTasks();
-    return loadInsights({ silent: true });
+    const run = insightsLatest.begin();
+    return Promise.all([
+      loadReviewData({ start: since, end: todayYmd }),
+      sessionsBetween({ startYmd: since, endYmd: todayYmd }),
+    ])
+      .then(([reviewRes, sessionsRes]) => {
+        if (!run.isCurrent()) return;
+        setLogs(reviewRes.ok ? reviewRes.data.logs : []);
+        setRecoveryPlans(reviewRes.ok ? reviewRes.data.recoveryPlans : []);
+        setFocusSessions(sessionsRes.ok ? sessionsRes.data : []);
+      })
+      .finally(() => {
+        run.done();
+      });
   });
 
   const activeHabits = habits.filter((h) => h.status === 'active');
@@ -413,7 +441,7 @@ export default function InsightsScreen() {
   if (loading) {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
-      <AtmosphericScreenCanvas source={CANVASES.observatoryStats} textureSource={TEXTURES.neural} scrim={0.64} tintColor={colors.primary} />
+        <AtmosphericScreenCanvas source={CANVASES.observatoryStats} textureSource={TEXTURES.neural} scrim={0.64} tintColor={colors.primary} />
         <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
           <Skeleton width={96} height={11} style={{ marginBottom: space.md }} />
           <Card padding="lg" style={s.heroCard}>
@@ -528,29 +556,30 @@ export default function InsightsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scroll: { padding: space.lg, paddingBottom: space.xxl },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    scroll: { padding: space.lg, paddingBottom: space.xxl },
 
-  eyebrow: { ...font.overline, color: colors.textFaint, marginBottom: space.md },
+    eyebrow: { ...font.overline, color: colors.textFaint, marginBottom: space.md },
 
-  heroCard: { marginBottom: space.md, overflow: 'hidden', position: 'relative', backgroundColor: hexA(colors.surface, 0.94) },
-  heroLabel: { ...font.overline, color: colors.textFaint, marginBottom: space.xs },
-  heroPercent: { ...font.display, fontSize: 40, color: colors.text, marginBottom: 2 },
-  heroDelta: { fontSize: 13, color: colors.textDim, fontWeight: '600', marginBottom: space.sm },
-  heroLine: { fontSize: 13, color: colors.textDim, marginTop: 2 },
-  heroWarning: { color: colors.warning },
+    heroCard: { marginBottom: space.md, overflow: 'hidden', position: 'relative', backgroundColor: hexA(colors.surface, 0.94) },
+    heroLabel: { ...font.overline, color: colors.textFaint, marginBottom: space.xs },
+    heroPercent: { ...font.display, fontSize: 40, color: colors.text, marginBottom: 2 },
+    heroDelta: { fontSize: 13, color: colors.textDim, fontWeight: '600', marginBottom: space.sm },
+    heroLine: { fontSize: 13, color: colors.textDim, marginTop: 2 },
+    heroWarning: { color: colors.warning },
 
-  insightCard: { gap: 4, marginBottom: space.sm },
-  insightHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  insightLabel: { fontSize: 13, color: colors.textDim, fontWeight: '600', flex: 1 },
-  insightValue: { fontSize: 15, color: colors.text, fontWeight: '700' },
-  insightReason: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+    insightCard: { gap: 4, marginBottom: space.sm },
+    insightHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+    insightLabel: { fontSize: 13, color: colors.textDim, fontWeight: '600', flex: 1 },
+    insightValue: { fontSize: 15, color: colors.text, fontWeight: '700' },
+    insightReason: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
 
-  aiCard: { gap: space.sm, marginTop: space.xs, marginBottom: space.sm },
-  aiButton: { alignSelf: 'flex-start', paddingVertical: 6 },
-  aiButtonText: { fontSize: 13, color: colors.primary, fontWeight: '700' },
-  aiReply: { fontSize: 13.5, color: colors.text, lineHeight: 19 },
-  aiError: { fontSize: 12, color: colors.error, lineHeight: 17 },
-});
+    aiCard: { gap: space.sm, marginTop: space.xs, marginBottom: space.sm },
+    aiButton: { alignSelf: 'flex-start', paddingVertical: 6 },
+    aiButtonText: { fontSize: 13, color: colors.primary, fontWeight: '700' },
+    aiReply: { fontSize: 13.5, color: colors.text, lineHeight: 19 },
+    aiError: { fontSize: 12, color: colors.error, lineHeight: 17 },
+  });

@@ -2,13 +2,15 @@ import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import FocusFlowView from '../../components/FocusFlowView';
-import { colors } from '../../lib/tokens';
+import { type Palette } from '../../lib/tokens';
+import { useThemedStyles } from '../../hooks/useThemeColors';
 import {
   FOCUS_FLOW_CATEGORIES,
   type FocusFlowCategoryKey,
 } from '../../lib/focusFlowCatalog';
 
 export default function FocusFlowScreen() {
+  const s = useThemedStyles(makeStyles);
   const params = useLocalSearchParams<{ item?: string; cat?: string }>();
 
   const validCategory: FocusFlowCategoryKey =
@@ -27,9 +29,10 @@ export default function FocusFlowScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.bgSunk,
-  },
-});
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.bgSunk,
+    },
+  });

@@ -1,11 +1,13 @@
-import { colors, alphaHex } from '../../lib/tokens';
+import { alphaHex, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, FlatList, useWindowDimensions, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 import { navigateTo } from '../../lib/destinations';
 // R07.01 — formatting, tags and habit links in the reader.
 import JournalBody from '../../components/JournalBody';
@@ -26,9 +28,16 @@ function parseDate(d: string): Date {
 }
 
 export default function JournalReaderScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const { width: W } = useWindowDimensions();
   const { date } = useLocalSearchParams<{ date?: string }>();
-  const { entries, fetchEntries } = useJournalStore();
+  const { entries, fetchEntries } = useJournalStore(
+    useShallow((st) => ({
+      entries: st.entries,
+      fetchEntries: st.fetchEntries,
+    })),
+  );
   const listRef = useRef<FlatList<JournalEntry>>(null);
   const positioned = useRef(false);
   const prevWidthRef = useRef(W);
@@ -39,8 +48,9 @@ export default function JournalReaderScreen() {
     () => Math.max(0, entries.findIndex((e) => e.date === date)),
     [entries, date],
   );
-  const [idx, setIdx] = useState(0);
-  useEffect(() => { setIdx(startIndex); }, [startIndex]);
+  const navKey = `${date ?? ''}|${startIndex}`;
+  const [pageOverride, setPageOverride] = useState<{ key: string; index: number } | null>(null);
+  const idx = pageOverride?.key === navKey ? pageOverride.index : startIndex;
 
   useEffect(() => {
     if (prevWidthRef.current === W) return;
@@ -64,13 +74,13 @@ export default function JournalReaderScreen() {
     const ni = Math.max(0, Math.min(entries.length - 1, idx + delta));
     if (ni === idx) return;
     listRef.current?.scrollToIndex({ index: ni, animated: true });
-    setIdx(ni);
+    setPageOverride({ key: navKey, index: ni });
   }
 
   if (entries.length === 0) {
     return (
       <SafeAreaView style={s.safe} edges={['bottom']}>
-      <AtmosphericScreenCanvas source={CANVASES.journalScriptorium} textureSource={TEXTURES.archivalPaper} scrim={0.6} tintColor={colors.warning} />
+        <AtmosphericScreenCanvas source={CANVASES.journalScriptorium} textureSource={TEXTURES.archivalPaper} scrim={0.6} tintColor={colors.warning} />
         <View style={s.empty}>
           {/* Defter tonuna uyan editöryel boş durum */}
           <EmptyState
@@ -100,7 +110,7 @@ export default function JournalReaderScreen() {
         onScrollToIndexFailed={({ index }) => {
           setTimeout(() => listRef.current?.scrollToIndex({ index, animated: false }), 80);
         }}
-        onMomentumScrollEnd={(e) => setIdx(Math.round(e.nativeEvent.contentOffset.x / W))}
+        onMomentumScrollEnd={(e) => setPageOverride({ key: navKey, index: Math.round(e.nativeEvent.contentOffset.x / W) })}
         renderItem={({ item }) => <Page entry={item} width={W} />}
       />
 
@@ -138,6 +148,8 @@ export default function JournalReaderScreen() {
 }
 
 function Page({ entry, width: W }: { entry: JournalEntry; width: number }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const router = useRouter();
   const habits = useHabitStore((st) => st.habits);
   const dt = parseDate(entry.date);
@@ -159,7 +171,7 @@ function Page({ entry, width: W }: { entry: JournalEntry; width: number }) {
 
           {entry.ai_summary && (
             <View style={s.aiChip}>
-              <Ionicons name="sparkles" size={11} color="#ec4899" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+              <Ionicons name="sparkles" size={11} color={colors.primary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
               <Text style={s.aiChipText}>AI&apos;dan özetlenmiştir</Text>
             </View>
           )}
@@ -169,7 +181,7 @@ function Page({ entry, width: W }: { entry: JournalEntry; width: number }) {
               content={entry.content}
               habits={habits}
               bodyStyle={s.body}
-              onOpenHabit={(id) => router.push(`/screens/habit-detail?id=${id}` as never)}
+              onOpenHabit={(id) => router.push(`/screens/habit-detail?id=${id}` as Href)}
               onTag={(t) => navigateTo(router, 'journal-archive', { tag: t })}
             />
           ) : (
@@ -181,7 +193,7 @@ function Page({ entry, width: W }: { entry: JournalEntry; width: number }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
 
   pageWrap: { paddingHorizontal: 16, paddingVertical: 14 },
@@ -203,10 +215,10 @@ const s = StyleSheet.create({
 
   aiChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
-    backgroundColor: '#ec489918', borderColor: '#ec489940', borderWidth: 1,
+    backgroundColor: alphaHex(colors.primary, '18'), borderColor: alphaHex(colors.primary, '40'), borderWidth: 1,
     borderRadius: 20, paddingHorizontal: 9, paddingVertical: 4, marginBottom: 14,
   },
-  aiChipText: { fontSize: 11, color: '#ec4899', fontWeight: '700' },
+  aiChipText: { fontSize: 11, color: colors.primary, fontWeight: '700' },
   body: { fontSize: 15, color: colors.paperText, lineHeight: 25 },
 
   navBar: {

@@ -1,4 +1,5 @@
-import { colors, alphaHex, hexA } from '../../lib/tokens';
+import { alphaHex, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { withEdgeDeadline } from '../../lib/edgeCall';
 import { newRequestId } from '../../services/focusPointService';
 import { useEffect, useMemo, useState } from 'react';
@@ -8,6 +9,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 import { supabase } from '../../lib/supabase';
 import { useJournalStore } from '../../store/journalStore';
 import { useInsightsStore } from '../../store/insightsStore';
@@ -38,22 +40,41 @@ const COST = ACTION_COST.insights;
 const insightAttempt = createAttemptKeeper(newRequestId);
 
 export default function JournalInsightsScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   const router = useRouter();
-  const { entries, fetchEntries, truncated } = useJournalStore();
+  const { entries, fetchEntries, truncated } = useJournalStore(
+    useShallow((st) => ({
+      entries: st.entries,
+      fetchEntries: st.fetchEntries,
+      truncated: st.truncated,
+    })),
+  );
   const checkins = useMoodStore((st) => st.checkins);
   const hydrateMoods = useMoodStore((st) => st.hydrate);
-  const { get: getCached, fetchInsight, saveInsight } = useInsightsStore();
-  const { focusPoints, fetch: fetchSub, setBalance } = useSubscriptionStore();
+  const { get: getCached, fetchInsight, saveInsight } = useInsightsStore(
+    useShallow((st) => ({
+      get: st.get,
+      fetchInsight: st.fetchInsight,
+      saveInsight: st.saveInsight,
+    })),
+  );
+  const { focusPoints, fetch: fetchSub, setBalance } = useSubscriptionStore(
+    useShallow((st) => ({
+      focusPoints: st.focusPoints,
+      fetch: st.fetch,
+      setBalance: st.setBalance,
+    })),
+  );
 
   const { period: periodParam } = useLocalSearchParams<{ period?: string }>();
   const initialPeriod: InsightPeriod =
     periodParam === 'monthly' || periodParam === 'yearly' ? periodParam : 'weekly';
   const [period, setPeriod] = useState<InsightPeriod>(initialPeriod);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lowCredits, setLowCredits] = useState(false);
 
   const win = useMemo(() => periodWindow(period), [period]);
+  const scopeKey = `${period}|${win.key}`;
   const periodEntries = useMemo(
     () => entries.filter((e) => win.match(e.date)),
     [entries, win],
@@ -62,8 +83,36 @@ export default function JournalInsightsScreen() {
   // R09.05 — the user decides which records go to the model (reset per period);
   // the prompt is built from what is in the journal NOW, so a deleted entry
   // cannot reach it.
-  const [excluded, setExcluded] = useState<Set<string>>(() => new Set());
-  useEffect(() => { setExcluded(new Set()); }, [period, win.key]);
+  const [excludedState, setExcludedState] = useState<{ key: string; dates: Set<string> }>(
+    () => ({ key: scopeKey, dates: new Set() }),
+  );
+  const excluded = useMemo(
+    () => (excludedState.key === scopeKey ? excludedState.dates : new Set<string>()),
+    [excludedState, scopeKey],
+  );
+  const [feedbackState, setFeedbackState] = useState<{
+    key: string;
+    error: string | null;
+    lowCredits: boolean;
+  }>(() => ({ key: scopeKey, error: null, lowCredits: false }));
+  const error = feedbackState.key === scopeKey ? feedbackState.error : null;
+  const lowCredits = feedbackState.key === scopeKey ? feedbackState.lowCredits : false;
+
+  const setError = (msg: string | null) => {
+    setFeedbackState((prev) => ({
+      key: scopeKey,
+      error: msg,
+      lowCredits: prev.key === scopeKey ? prev.lowCredits : false,
+    }));
+  };
+  const setLowCredits = (val: boolean) => {
+    setFeedbackState((prev) => ({
+      key: scopeKey,
+      error: prev.key === scopeKey ? prev.error : null,
+      lowCredits: val,
+    }));
+  };
+
   const prompt = useMemo(() => insightPrompt(periodEntries, excluded), [periodEntries, excluded]);
   const facts = useMemo(() => insightFacts(periodEntries, prompt.used), [periodEntries, prompt.used]);
   const basis = cached
@@ -75,7 +124,7 @@ export default function JournalInsightsScreen() {
 
   useEffect(() => { fetchEntries(); fetchSub(); }, [fetchEntries, fetchSub]);
   useEffect(() => { void hydrateMoods(); }, [hydrateMoods]);
-  useEffect(() => { fetchInsight(period, win.key); setError(null); setLowCredits(false); }, [period, win.key, fetchInsight]);
+  useEffect(() => { void fetchInsight(period, win.key); }, [period, win.key, fetchInsight]);
 
   const yearModel = useMemo(() => {
     if (period !== 'yearly') return null;
@@ -89,6 +138,16 @@ export default function JournalInsightsScreen() {
       todayYmd: todayLocal(),
     });
   }, [period, win.key, checkins, entries]);
+
+  function toggleExcluded(date: string) {
+    setExcludedState((prev) => {
+      const base = prev.key === scopeKey ? prev.dates : new Set<string>();
+      const next = new Set(base);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return { key: scopeKey, dates: next };
+    });
+  }
 
   async function generate() {
     if (loading || prompt.used.length === 0) return;
@@ -160,6 +219,7 @@ export default function JournalInsightsScreen() {
             style={[s.tab, period === p.key && s.tabActive]}
             onPress={() => setPeriod(p.key)}
             accessibilityRole="tab"
+            accessibilityLabel={`${p.label} içgörüler`}
             accessibilityState={{ selected: period === p.key }}
           >
             <Text style={[s.tabText, period === p.key && s.tabTextActive]}>{p.label}</Text>
@@ -196,7 +256,7 @@ export default function JournalInsightsScreen() {
             icon="bulb-outline"
             title="Bu dönemde günlük kaydın yok"
             hint="Birkaç gün yazdıktan sonra AI sana içgörü sunabilir."
-            color="#8b5cf6"
+            color={colors.accent}
           />
         ) : (
           <>
@@ -205,7 +265,7 @@ export default function JournalInsightsScreen() {
               <EmbeddedFiligree source={DECOR.cornerAstrolabe} size={114} opacity={0.16} />
               <View style={s.cardHead}>
                 <View style={s.cardTitleWrap}>
-                  <Ionicons name="sparkles" size={15} color="#8b5cf6" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+                  <Ionicons name="sparkles" size={15} color={colors.accent} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                   <Text style={s.cardTitle} accessibilityRole="header">AI İçgörüsü</Text>
                 </View>
                 {basis && (
@@ -221,7 +281,7 @@ export default function JournalInsightsScreen() {
 
               {loading ? (
                 <View style={s.loadingBox}>
-                  <ActivityIndicator color="#8b5cf6" />
+                  <ActivityIndicator color={colors.accent} />
                   <Text style={s.loadingText}>Kayıtların okunuyor...</Text>
                 </View>
               ) : cached ? (
@@ -247,7 +307,7 @@ export default function JournalInsightsScreen() {
                   const on = !excluded.has(e.date);
                   return (
                     <TouchableOpacity key={e.date} style={[s.srcChip, on && s.srcChipOn]}
-                      onPress={() => setExcluded((x) => { const n = new Set(x); if (n.has(e.date)) n.delete(e.date); else n.add(e.date); return n; })}
+                      onPress={() => toggleExcluded(e.date)}
                       accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={`${e.date} kaydı AI'ya gitsin`}>
                       <Text style={s.srcChipText}>{e.date.slice(5)}</Text>
                     </TouchableOpacity>
@@ -270,6 +330,7 @@ export default function JournalInsightsScreen() {
               onPress={generate}
               disabled={loading || prompt.used.length === 0}
               accessibilityRole="button"
+              accessibilityLabel={cached ? `İçgörüyü yenile, ${COST} Focus Point` : `İçgörü oluştur, ${COST} Focus Point`}
               accessibilityState={{ disabled: loading || prompt.used.length === 0 }}
               accessibilityHint={`${COST} odak puanı harcar`}
             >
@@ -285,7 +346,7 @@ export default function JournalInsightsScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: Palette) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
 
   fpBar: {
@@ -308,9 +369,9 @@ const s = StyleSheet.create({
     flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 12,
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
   },
-  tabActive: { backgroundColor: '#8b5cf620', borderColor: '#8b5cf6' },
+  tabActive: { backgroundColor: alphaHex(colors.accent, '20'), borderColor: colors.accent },
   tabText: { fontSize: 13, fontWeight: '700', color: colors.textFaint },
-  tabTextActive: { color: '#a78bfa' },
+  tabTextActive: { color: colors.accent },
 
   content: { padding: 16, paddingBottom: 40 },
   metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
@@ -344,7 +405,7 @@ const s = StyleSheet.create({
 
   genBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#8b5cf6', borderRadius: 14, paddingVertical: 14,
+    backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 14,
   },
   genBtnOff: { opacity: 0.5 },
   genBtnText: { fontSize: 15, fontWeight: '700', color: colors.white },

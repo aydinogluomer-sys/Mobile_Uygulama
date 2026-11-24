@@ -25,17 +25,19 @@
  * fit). Every tab/range below derives its view from that same in-memory log
  * array; switching ranges or tabs never re-fetches.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { confirm, notify } from '../../lib/dialog';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 
 import { currentUser } from '../../lib/session';
 import { useHabitStore } from '../../store/habitStore';
 import type { Habit, FrequencyConfig } from '../../lib/supabase';
-import { colors, space, radius, font, hexA } from '../../lib/tokens';
+import { space, radius, font, hexA, type Palette } from '../../lib/tokens';
+import { useThemeColors, useThemedStyles } from '../../hooks/useThemeColors';
 import { Card, SectionHeader, EmptyState, Chip, IconCircle, StatTile, Skeleton, SkeletonLines, EditorialBanner, Button } from '../../components/ui';
 import { AtmosphericScreenCanvas } from '../../components/spatial';
 import KintsugiYearGrid from '../../components/habits/KintsugiYearGrid';
@@ -43,7 +45,7 @@ import HabitDayNote from '../../components/habits/HabitDayNote';
 import HabitColorPicker from '../../components/habits/HabitColorPicker';
 import { CANVASES, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAssets';
 import { haptic } from '../../lib/haptics';
-import { addDaysLocal, parseLocalDate, ymd, type Ymd } from '../../lib/date';
+import { addDaysLocal, parseLocalDate, todayLocal, ymd, type Ymd } from '../../lib/date';
 import { habitCreatedDay } from '../../lib/habitCreatedDay';
 import { hueLabel } from '../../lib/habitColors';
 import { previewNote } from '../../lib/habitNote';
@@ -91,6 +93,8 @@ const useSafeFocusEffect: typeof useFocusEffect =
         useEffect(effect, [effect]);
       };
 
+const EMPTY_YMD_SET: ReadonlySet<Ymd> = new Set();
+
 // ---------------------------------------------------------------------------
 // tabs
 // ---------------------------------------------------------------------------
@@ -119,13 +123,13 @@ type CalendarDayState = 'full' | 'partial' | 'miss' | 'skip' | 'not_scheduled';
  * resolving each token against the real palette rather than trusting the
  * token names alone.
  */
-const CALENDAR_STATE_COLORS: Record<CalendarDayState, string> = {
+const CALENDAR_STATE_COLORS = (colors: Palette): Record<CalendarDayState, string> => ({
   full: colors.success,
   partial: colors.warning,
   miss: colors.textFaint,
   skip: colors.info,
   not_scheduled: colors.textGhost,
-};
+});
 
 const STATE_LABELS: Record<CalendarDayState, string> = {
   full: 'Tamamlandı',
@@ -136,8 +140,8 @@ const STATE_LABELS: Record<CalendarDayState, string> = {
 };
 
 /** A day after "today" has no verdict yet -- distinct from every real state, never one of the five. */
-function cellColor(state: CalendarDayState | 'future'): string {
-  return state === 'future' ? colors.borderSubtle : CALENDAR_STATE_COLORS[state];
+function cellColor(colors: Palette, state: CalendarDayState | 'future'): string {
+  return state === 'future' ? colors.borderSubtle : CALENDAR_STATE_COLORS(colors)[state];
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +253,7 @@ function CalNavBtn({
   label: string;
   onStep: () => void;
 }) {
+  const colors = useThemeColors();
   return (
     <TouchableOpacity
       onPress={onStep}
@@ -269,6 +274,8 @@ function InfoRow({ icon, label, value, colorDot, onEdit, editLabel, editIcon = '
   /** R01.05 — the button's glyph, when it is not an edit. */
   editIcon?: keyof typeof Ionicons.glyphMap;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   return (
     <View style={s.infoRow}>
       {/* süs ikonu — etiket/değer zaten okunuyor, ekran okuyucuda tekrar etmesin */}
@@ -312,6 +319,8 @@ function InsightRow<T>({ icon, label, result, formatOk, kind }: {
   formatOk: (value: T) => string;
   kind?: InsufficientKind;
 }) {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
   return (
     <Card padding="md" style={s.insightCard}>
       <View style={s.insightHead}>
@@ -332,20 +341,48 @@ function InsightRow<T>({ icon, label, result, formatOk, kind }: {
 // ---------------------------------------------------------------------------
 
 export default function HabitDetailScreen() {
+  const colors = useThemeColors();
+  const s = useThemedStyles(makeStyles);
+  const calendarStateColors = useMemo(() => CALENDAR_STATE_COLORS(colors), [colors]);
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { habits, fetchHabits, updateHabit, pauses, timeOffAvailable, addTimeOff, endTimeOff } = useHabitStore();
-  const habit = habits.find((h) => h.id === id) ?? null;
+  const {
+    habits,
+    loading: habitsLoading,
+    fetchHabits,
+    updateHabit,
+    pauses,
+    timeOffAvailable,
+    addTimeOff,
+    endTimeOff,
+  } = useHabitStore(
+    useShallow((st) => ({
+      habits: st.habits,
+      loading: st.loading,
+      fetchHabits: st.fetchHabits,
+      updateHabit: st.updateHabit,
+      pauses: st.pauses,
+      timeOffAvailable: st.timeOffAvailable,
+      addTimeOff: st.addTimeOff,
+      endTimeOff: st.endTimeOff,
+    })),
+  );
+  const habit = useMemo(() => habits.find((h) => h.id === id) ?? null, [habits, id]);
   // R01.05 — this habit's current or upcoming break, and any holiday today.
   const [timeOffOpen, setTimeOffOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
   const [notifAccess, setNotifAccess] = useState<NotificationAccess | null>(null);
   useEffect(() => { void notificationAccess().then(setNotifAccess); }, []);
 
-  const [logs, setLogs] = useState<HabitDetailLogRow[]>([]);
-  const [loadingLogs, setLoadingLogs] = useState(true);
-  const [logsError, setLogsError] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
-  const [repaired, setRepaired] = useState<ReadonlySet<Ymd>>(() => new Set());
+  const [logFetch, setLogFetch] = useState<{
+    key: string;
+    rows: HabitDetailLogRow[];
+    error: boolean;
+  } | null>(null);
+  const [repairedState, setRepairedState] = useState<{
+    habitId: string;
+    dates: ReadonlySet<Ymd>;
+  } | null>(null);
   const [selectedDay, setSelectedDay] = useState<Ymd | null>(null);
   const [noteEditing, setNoteEditing] = useState<Ymd | null>(null);
   const [historyVisible, setHistoryVisible] = useState<number>(14);
@@ -363,57 +400,66 @@ export default function HabitDetailScreen() {
     void currentUser().then((u) => setUserId(u?.id ?? null));
   }, []);
 
-  const today = new Date();
-  const todayYmd = ymd(today);
-  const [calYear, setCalYear] = useState(today.getFullYear());
-  const [calMonth, setCalMonth] = useState(today.getMonth());
+  const todayYmd = todayLocal();
+  const today = useMemo(() => parseLocalDate(todayYmd) ?? new Date(), [todayYmd]);
+  const [calYear, setCalYear] = useState(() => today.getFullYear());
+  const [calMonth, setCalMonth] = useState(() => today.getMonth());
 
+  const didFetchHabitsRef = useRef(false);
   useEffect(() => {
-    if (habits.length === 0) fetchHabits();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const sinceYmd: Ymd = (habit ? habitCreatedDay(habit) : null) ?? todayYmd;
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!habit) {
-      setLoadingLogs(false);
-      return;
-    }
-    setLoadingLogs(true);
-    setLogsError(false);
-    logsForHabit({ habitId: habit.id, start: sinceYmd, end: todayYmd }).then((res) => {
-      if (cancelled) return;
-      if (res.ok) {
-        setLogs(res.data);
-        setLogsError(false);
-      } else {
-        setLogs([]);
-        setLogsError(true);
-      }
-      setLoadingLogs(false);
-    });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [habit?.id, sinceYmd, todayYmd, retryTick]);
+    if (didFetchHabitsRef.current) return;
+    didFetchHabitsRef.current = true;
+    if (habits.length === 0) void fetchHabits();
+  }, [habits.length, fetchHabits]);
 
   const habitIdForFocus = habit?.id ?? null;
+  const sinceYmd: Ymd = useMemo(
+    () => (habit ? habitCreatedDay(habit) : null) ?? todayYmd,
+    [habit, todayYmd],
+  );
+  const fetchKey = habitIdForFocus ? `${habitIdForFocus}|${sinceYmd}|${todayYmd}|${retryTick}` : null;
+
+  useEffect(() => {
+    if (!habitIdForFocus || !fetchKey) return;
+    let cancelled = false;
+    void logsForHabit({ habitId: habitIdForFocus, start: sinceYmd, end: todayYmd }).then((res) => {
+      if (cancelled) return;
+      setLogFetch({
+        key: fetchKey,
+        rows: res.ok ? res.data : [],
+        error: !res.ok,
+      });
+    });
+    return () => { cancelled = true; };
+  }, [habitIdForFocus, sinceYmd, todayYmd, fetchKey]);
+
+  const loadingLogs = fetchKey !== null ? logFetch?.key !== fetchKey : habitsLoading;
+  const logsError = fetchKey !== null && logFetch?.key === fetchKey ? logFetch.error : false;
+  const logs = useMemo(
+    () => (fetchKey !== null && logFetch?.key === fetchKey ? logFetch.rows : []),
+    [fetchKey, logFetch],
+  );
+
   useSafeFocusEffect(
     useCallback(() => {
+      if (!habitIdForFocus) return undefined;
       let cancelled = false;
-      if (!habitIdForFocus) {
-        setRepaired(new Set());
-        return;
-      }
       void repairedSourceDates({ habitId: habitIdForFocus, since: sinceYmd }).then((res) => {
         if (cancelled) return;
-        setRepaired(res.ok ? res.data : new Set());
+        setRepairedState({
+          habitId: habitIdForFocus,
+          dates: res.ok ? res.data : EMPTY_YMD_SET,
+        });
       });
       return () => {
         cancelled = true;
       };
     }, [habitIdForFocus, sinceYmd]),
+  );
+
+  const repaired = useMemo(
+    () => (habitIdForFocus && repairedState?.habitId === habitIdForFocus ? repairedState.dates : EMPTY_YMD_SET),
+    [habitIdForFocus, repairedState],
   );
 
   const logIndex = useMemo(() => {
@@ -569,8 +615,13 @@ export default function HabitDetailScreen() {
     if (!habit) return { ok: false, error: 'Alışkanlık bulunamadı.' };
     const res = await saveLogNote({ habitId: habit.id, dateStr: day, note });
     if (res.ok) {
-      setLogs((prev) =>
-        prev.map((l) => (l.completed_at.slice(0, 10) === day ? { ...l, notes: res.notes } : l)),
+      setLogFetch((prev) =>
+        prev
+          ? {
+              ...prev,
+              rows: prev.rows.map((l) => (l.completed_at.slice(0, 10) === day ? { ...l, notes: res.notes } : l)),
+            }
+          : prev,
       );
       setNoteEditing(null);
       return { ok: true };
@@ -645,6 +696,7 @@ export default function HabitDetailScreen() {
                 style={[s.tabBtn, sel && s.tabBtnSel]}
                 onPress={() => { haptic.select(); setTab(t.key); }}
                 accessibilityRole="tab"
+                accessibilityLabel={`${t.label} sekmesi`}
                 accessibilityState={{ selected: sel }}
               >
                 <Ionicons name={t.icon} size={14} color={sel ? colors.primaryBright : colors.textFaint} />
@@ -822,7 +874,7 @@ export default function HabitDetailScreen() {
                   return (
                     <View key={d} style={s.historyCol}>
                       <View style={s.historyBarTrack}>
-                        <View style={[s.historyBarFill, { height: `${Math.round(ratio * 100)}%`, backgroundColor: cellColor(cell.state) }]} />
+                        <View style={[s.historyBarFill, { height: `${Math.round(ratio * 100)}%`, backgroundColor: cellColor(colors, cell.state) }]} />
                       </View>
                     </View>
                   );
@@ -917,7 +969,7 @@ export default function HabitDetailScreen() {
                   {cell && (
                     <>
                       <Text style={s.calDayNum}>{Number(cell.date.slice(8, 10))}</Text>
-                      <View style={[s.calDot, { backgroundColor: cellColor(cell.state) }]} />
+                      <View style={[s.calDot, { backgroundColor: cellColor(colors, cell.state) }]} />
                     </>
                   )}
                 </View>
@@ -927,7 +979,7 @@ export default function HabitDetailScreen() {
             <View style={s.legendRow}>
               {(Object.keys(STATE_LABELS) as CalendarDayState[]).map((k) => (
                 <View key={k} style={s.legendItem}>
-                  <View style={[s.legendDot, { backgroundColor: CALENDAR_STATE_COLORS[k] }]} />
+                  <View style={[s.legendDot, { backgroundColor: calendarStateColors[k] }]} />
                   <Text style={s.legendLabel}>{STATE_LABELS[k]}</Text>
                 </View>
               ))}
@@ -1081,134 +1133,135 @@ export default function HabitDetailScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  versionNote: { fontSize: 12, color: colors.textFaint, lineHeight: 17, marginBottom: space.sm },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl },
-  scroll: { padding: space.lg, paddingBottom: space.xxl },
+const makeStyles = (colors: Palette) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    versionNote: { fontSize: 12, color: colors.textFaint, lineHeight: 17, marginBottom: space.sm },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl },
+    scroll: { padding: space.lg, paddingBottom: space.xxl },
 
-  header: { marginBottom: space.lg },
-  habitName: { ...font.title, fontSize: 24, color: colors.text, marginBottom: space.xs },
-  headerMetrics: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
-  headerReason: { fontSize: 12, color: colors.textFaint, marginTop: 4, lineHeight: 17 },
+    header: { marginBottom: space.lg },
+    habitName: { ...font.title, fontSize: 24, color: colors.text, marginBottom: space.xs },
+    headerMetrics: { fontSize: 13, color: colors.textDim, fontWeight: '600' },
+    headerReason: { fontSize: 12, color: colors.textFaint, marginTop: 4, lineHeight: 17 },
 
-  tabRow: {
-    flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.md,
-    borderWidth: 1, borderColor: colors.border, padding: 4, marginBottom: space.lg,
-  },
-  tabBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    paddingVertical: 9, borderRadius: radius.sm,
-  },
-  tabBtnSel: { backgroundColor: hexA(colors.primary, 0.14) },
-  tabLabel: { ...font.overline, fontSize: 10, color: colors.textFaint },
-  tabLabelSel: { color: colors.primaryBright },
+    tabRow: {
+      flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.md,
+      borderWidth: 1, borderColor: colors.border, padding: 4, marginBottom: space.lg,
+    },
+    tabBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+      paddingVertical: 9, borderRadius: radius.sm,
+    },
+    tabBtnSel: { backgroundColor: hexA(colors.primary, 0.14) },
+    tabLabel: { ...font.overline, fontSize: 10, color: colors.textFaint },
+    tabLabelSel: { color: colors.primaryBright },
 
-  tabBody: { gap: space.md },
+    tabBody: { gap: space.md },
 
-  statGrid: { flexDirection: 'row', gap: space.md },
-  reasonHint: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+    statGrid: { flexDirection: 'row', gap: space.md },
+    reasonHint: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
 
-  infoRow: {
-    flexDirection: 'row', alignItems: 'center', gap: space.sm,
-    paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
-  },
-  infoLabel: { fontSize: 13, color: colors.textFaint, flex: 1 },
-  infoValue: { fontSize: 13, color: colors.text, fontWeight: '600', maxWidth: '55%' },
-  infoEdit: { marginLeft: space.sm, padding: 2 },
-  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
-    padding: space.lg, maxHeight: '85%',
-  },
-  sheetTitle: { ...font.title, fontSize: 18, color: colors.text, marginBottom: space.md },
-  sheetBody: { flexGrow: 0 },
-  sheetActions: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
-  sheetCancel: {
-    flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center',
-    borderWidth: 1, borderColor: colors.border,
-  },
-  sheetCancelText: { color: colors.textDim, fontWeight: '600' },
-  sheetSave: { flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', backgroundColor: colors.accent },
-  sheetSaveDisabled: { opacity: 0.4 },
-  sheetSaveText: { color: colors.white, fontWeight: '700' },
+    infoRow: {
+      flexDirection: 'row', alignItems: 'center', gap: space.sm,
+      paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.borderSubtle,
+    },
+    infoLabel: { fontSize: 13, color: colors.textFaint, flex: 1 },
+    infoValue: { fontSize: 13, color: colors.text, fontWeight: '600', maxWidth: '55%' },
+    infoEdit: { marginLeft: space.sm, padding: 2 },
+    sheetOverlay: { flex: 1, backgroundColor: hexA(colors.black, 0.6), justifyContent: 'flex-end' },
+    sheet: {
+      backgroundColor: colors.bgElevated, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
+      padding: space.lg, maxHeight: '85%',
+    },
+    sheetTitle: { ...font.title, fontSize: 18, color: colors.text, marginBottom: space.md },
+    sheetBody: { flexGrow: 0 },
+    sheetActions: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
+    sheetCancel: {
+      flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center',
+      borderWidth: 1, borderColor: colors.border,
+    },
+    sheetCancelText: { color: colors.textDim, fontWeight: '600' },
+    sheetSave: { flex: 1, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', backgroundColor: colors.accent },
+    sheetSaveDisabled: { opacity: 0.4 },
+    sheetSaveText: { color: colors.white, fontWeight: '700' },
 
-  rangeStripContent: { gap: space.sm, paddingBottom: space.xs },
-  rangeSummary: { fontSize: 13, color: colors.textDim, marginTop: space.sm, marginBottom: space.sm, lineHeight: 18 },
+    rangeStripContent: { gap: space.sm, paddingBottom: space.xs },
+    rangeSummary: { fontSize: 13, color: colors.textDim, marginTop: space.sm, marginBottom: space.sm, lineHeight: 18 },
 
-  historyStripContent: { alignItems: 'flex-end', gap: 3, paddingVertical: space.sm },
-  historyCol: { alignItems: 'center' },
-  historyBarTrack: {
-    width: 6, height: 64, borderRadius: 3, backgroundColor: hexA(colors.white, 0.06),
-    justifyContent: 'flex-end', overflow: 'hidden',
-  },
-  historyBarFill: { width: '100%', borderRadius: 3, minHeight: 2 },
+    historyStripContent: { alignItems: 'flex-end', gap: 3, paddingVertical: space.sm },
+    historyCol: { alignItems: 'center' },
+    historyBarTrack: {
+      width: 6, height: 64, borderRadius: 3, backgroundColor: hexA(colors.text, 0.08),
+      justifyContent: 'flex-end', overflow: 'hidden',
+    },
+    historyBarFill: { width: '100%', borderRadius: 3, minHeight: 2 },
 
-  calNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.sm },
-  calNavLabel: { ...font.h3, color: colors.text },
-  calDowRow: { flexDirection: 'row' },
-  calDow: { flex: 1, textAlign: 'center', fontSize: 11, color: colors.textFaint, fontWeight: '700', marginBottom: 4 },
-  calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  calCell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-  calDayNum: { fontSize: 12, color: colors.textDim, marginBottom: 3 },
-  calDot: { width: 8, height: 8, borderRadius: 4 },
+    calNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.sm },
+    calNavLabel: { ...font.h3, color: colors.text },
+    calDowRow: { flexDirection: 'row' },
+    calDow: { flex: 1, textAlign: 'center', fontSize: 11, color: colors.textFaint, fontWeight: '700', marginBottom: 4 },
+    calGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+    calCell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+    calDayNum: { fontSize: 12, color: colors.textDim, marginBottom: 3 },
+    calDot: { width: 8, height: 8, borderRadius: 4 },
 
-  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md, marginTop: space.md },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendLabel: { fontSize: 11, color: colors.textFaint },
+    legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md, marginTop: space.md },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    legendDot: { width: 8, height: 8, borderRadius: 4 },
+    legendLabel: { fontSize: 11, color: colors.textFaint },
 
-  insightCard: { gap: 4 },
-  insightHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  insightLabel: { fontSize: 13, color: colors.textDim, fontWeight: '600', flex: 1 },
-  insightValue: { fontSize: 15, color: colors.text, fontWeight: '700' },
-  insightReason: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
+    insightCard: { gap: 4 },
+    insightHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+    insightLabel: { fontSize: 13, color: colors.textDim, fontWeight: '600', flex: 1 },
+    insightValue: { fontSize: 15, color: colors.text, fontWeight: '700' },
+    insightReason: { fontSize: 12, color: colors.textFaint, lineHeight: 17 },
 
-  colorDot: {
-    width: space.md,
-    height: space.md,
-    borderRadius: radius.pill,
-  },
-  yearCard: {
-    gap: space.sm,
-  },
-  yearSummary: {
-    ...font.caption,
-    color: colors.textDim,
-  },
-  dayStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.sm,
-  },
-  historyItemWrap: {
-    gap: space.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
-    paddingBottom: space.xs,
-  },
-  historyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.sm,
-  },
-  historyRowMain: {
-    flex: 1,
-    gap: space.xs,
-  },
-  historyDateText: {
-    ...font.bodySm,
-    color: colors.text,
-  },
-  historyNote: {
-    ...font.caption,
-    color: colors.textDim,
-    flex: 1,
-  },
-  stepperBtn: {
-    minWidth: space.hh + space.xs,
-    minHeight: space.hh + space.xs,
-  },
-});
+    colorDot: {
+      width: space.md,
+      height: space.md,
+      borderRadius: radius.pill,
+    },
+    yearCard: {
+      gap: space.sm,
+    },
+    yearSummary: {
+      ...font.caption,
+      color: colors.textDim,
+    },
+    dayStrip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: space.sm,
+    },
+    historyItemWrap: {
+      gap: space.xs,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+      paddingBottom: space.xs,
+    },
+    historyRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: space.sm,
+    },
+    historyRowMain: {
+      flex: 1,
+      gap: space.xs,
+    },
+    historyDateText: {
+      ...font.bodySm,
+      color: colors.text,
+    },
+    historyNote: {
+      ...font.caption,
+      color: colors.textDim,
+      flex: 1,
+    },
+    stepperBtn: {
+      minWidth: space.hh + space.xs,
+      minHeight: space.hh + space.xs,
+    },
+  });
