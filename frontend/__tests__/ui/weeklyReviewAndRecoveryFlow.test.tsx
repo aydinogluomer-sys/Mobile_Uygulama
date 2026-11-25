@@ -113,6 +113,7 @@ import RecoveryScreen from '../../app/screens/recovery';
 import WeeklyReviewScreen from '../../app/screens/weekly-review';
 import { resetAccountMemory } from '../../lib/accountScope';
 import { todayLocal } from '../../lib/date';
+import { resolveEffectivePlanningDay } from '../../lib/dayPlanPreview';
 import { memoryOutboxStorage } from '../../lib/outboxStorage';
 import {
   actionFor,
@@ -390,7 +391,7 @@ describe('F4 UI Flows — WeeklyReviewScreen & RecoveryScreen', () => {
 
   describe('RecoveryScreen — U05, P04, REC-02, REC-03, and REC-04 Koru -> Gor -> Uygula replan flow', () => {
     it('(+) steps through Koru -> Gor -> Uygula, writes nothing on back/close, preserves fixed block & P04 partial log, retries failed items, and gates undo on undoable receipt', async () => {
-      const today = todayLocal();
+      const today = resolveEffectivePlanningDay(new Date()).effectiveDayKey;
       const fixedTask = makeTask('t-fixed-1600', 'Musteri toplantisi', {
         due_date: today,
         time_block_start: '16:00',
@@ -588,7 +589,7 @@ describe('F4 UI Flows — WeeklyReviewScreen & RecoveryScreen', () => {
     });
 
     it('(-) blocks stale preview via evaluatePreviewFreshness before calling commitDayPlan (REC-04)', async () => {
-      const today = todayLocal();
+      const today = resolveEffectivePlanningDay(new Date()).effectiveDayKey;
       const movableTask = makeTask('t-stale', 'Plan revizyonu', {
         due_date: today,
         updated_at: '2026-11-24T08:00:00.000Z',
