@@ -40,19 +40,21 @@ across other companies' apps/sites; **none** of these are.
 | Email address | Contact Info → Email Address | Yes | Yes | No | App Functionality (authentication) |
 | Username (optional) | User Content → Other / Identifiers | Yes | Yes | No | App Functionality, leaderboard display |
 | Account user id | Identifiers → User ID | Yes | Yes | No | App Functionality |
-| Habits, logs, tasks, projects, goals, OKRs, routines, recovery plans, focus & deep-work sessions, willpower/capacity, bad habits, reading list, life areas, events | User Content → Other User Content | Yes | Yes | No | App Functionality |
+| Time zone identifier (`profiles.time_zone`, `habit_logs.tz`, e.g. `Europe/Istanbul` — non-location IANA zone name) | Usage Data → Other Usage Data | Yes | Yes | No | App Functionality (local day/week boundaries) |
+| Habits, logs, tasks (`estimated_minutes`/`estimate_source` included), projects, goals, OKRs, routines, recovery plans, focus & deep-work sessions, willpower/capacity, bad habits, reading list, life areas, events | User Content → Other User Content | Yes | Yes | No | App Functionality |
 | Notes and journal entries (free text) | User Content → Other User Content | Yes | Yes | No | App Functionality |
-| AI Coach messages (user + assistant) | User Content → Other User Content | Yes | Yes | No | App Functionality |
+| AI Coach messages (user + assistant) & user-initiated Journal Insights selection | User Content → Other User Content | Yes | Yes | No | App Functionality |
 | Focus Point balance, tier, credit ledger | Purchases → Other / Usage Data | Yes | Yes | No | App Functionality |
-| AI request metadata (request id, mode, status, cost) | Usage Data → Product Interaction | Yes | Yes | No | App Functionality, abuse/replay protection |
-| XP, level, badges, pets, quests, streaks | Usage Data → Product Interaction | Yes | Yes | No | App Functionality |
+| AI request metadata (request id, mode, status, cost, one-way digest) | Usage Data → Product Interaction | Yes | Yes | No | App Functionality, abuse/replay protection |
+| XP, level, badges, streaks | Usage Data → Product Interaction | Yes | Yes | No | App Functionality |
 | Microphone audio | — | **No** | — | — | Transcribed by the OS; Aderyth stores no audio |
 | Diagnostics / crash data | Diagnostics → Crash Data | **Yes** | **No — not linked** | No | App Functionality (diagnosing crashes) |
 
-**Third-party processing to declare:** AI Coach content is sent to **Anthropic**
-for processing, and crash diagnostics are sent to **Sentry**. Apple treats both
-as collection by the app (collected, then processed by a service provider), not
-as tracking.
+**Third-party processing to declare:** AI Coach messages, AI Routine prompts, and
+user-initiated Journal Insights selections (max 8,000 chars for the user-selected
+period) are sent to **Anthropic** for processing, and crash diagnostics are sent
+to **Sentry**. Apple treats both as collection by the app (collected, then
+processed by a service provider), not as tracking.
 
 **Why Crash Data is "not linked".** Apple's "linked to the user" means tied to
 identity. Aderyth attaches none: `lib/sentryClient.ts` deletes `event.user`
@@ -80,10 +82,10 @@ Google's definitions used deliberately:
 | User id | Personal info → User IDs | Yes | No | Account management, app functionality | Required | Yes | Yes |
 | Username | Personal info → Name (optional) | Yes | No | App functionality, leaderboard | Optional | Yes | Yes |
 | Notes / journal free text | Personal info → Other personal info | Yes | No | App functionality | Optional | Yes | Yes |
-| AI Coach messages | Personal info → Other personal info | Yes | No¹ | App functionality | Optional | Yes | Yes |
-| Habits, logs, tasks, goals, routines, focus sessions, reviews | App activity → Other actions | Yes | No | App functionality | Required for the product to work | Yes | Yes |
+| AI Coach messages & user-initiated Journal Insights text | Personal info → Other personal info | Yes | No¹ | App functionality | Optional | Yes | Yes |
+| Habits, logs, tasks, goals, routines, focus sessions, reviews, IANA time zone name (`Europe/Istanbul`, non-location) | App activity → Other actions | Yes | No | App functionality | Required for the product to work | Yes | Yes |
 | Focus Point / subscription state | App activity → Other actions | Yes | No | App functionality | Required | Yes | Yes |
-| Gamification (XP, level, badges) | App activity → Other actions | Yes | No | App functionality | Required | Yes | Yes |
+| Gamification (XP, level, badges, streaks) | App activity → Other actions | Yes | No | App functionality | Required | Yes | Yes |
 | Microphone audio | Audio → Voice or sound recordings | **No** | No | — | — | — | — |
 | Crash logs | App info & performance → Crash logs | **Yes** | No² | Diagnostics / app functionality | Optional | Yes (HTTPS/TLS) | n/a — not linked to an account³ | — |
 

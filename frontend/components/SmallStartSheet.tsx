@@ -341,7 +341,7 @@ export default function SmallStartSheet({
 
             {showQuickCapture && (
               <View style={s.captureBlock} testID="small-start-capture-block">
-                <Text style={s.label}>HIZLI KONU VEYA GÖREV</Text>
+                <Text style={s.label}>HIZLI KONU VEYA GÖREV</Text> 
                 <View style={s.captureRow}>
                   <TextInput
                     testID="small-start-quick-capture"

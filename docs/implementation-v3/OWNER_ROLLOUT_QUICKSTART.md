@@ -28,6 +28,10 @@ SUPABASE_ACCESS_TOKEN=<sbp_token> node tools/execute-owner-rollout.mjs --mode ve
 # Not: Eski istemci trafiği tamamen bittiyse tüm zincir tek seferde koşulabilir
 # (--confirm-no-legacy-clients olmadan 039 güvenliği için reddedilir):
 SUPABASE_ACCESS_TOKEN=<sbp_token> node tools/execute-owner-rollout.mjs --mode all --confirm-no-legacy-clients --out y01-rollout-report.json
+
+# Alternatif (CLI token olmadan doğrudan Supabase Dashboard SQL Editörüne yapıştırmak için
+# 18 dosyayı 4 fail-closed SQL paketine derler — xp_drift() = 0 ve RLS kapıları gömülüdür):
+node tools/execute-owner-rollout.mjs --mode emit-sql-bundle --out supabase/.temp/dashboard-rollout
 ```
 
 ---

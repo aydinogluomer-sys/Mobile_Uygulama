@@ -29,15 +29,19 @@ enabled.
 
 ## Where the main features are
 
+The bottom tab bar has five primary tabs (**Bugün**, **Plan**, **Alışkanlıklar**,
+**İçgörüler**, **Profil**), plus the top-left navigation drawer (`☰`) and quick
+command search (`🔍`):
+
 | Feature | Path |
 |---|---|
-| Habits and daily logging | **Alışkanlıklar** tab |
-| Tasks / projects | **Görevler** tab |
-| Focus timer | **Odak** tab |
-| AI Coach | **Hub** → AI Koç |
-| Settings | **Ayarlar** tab |
-| Privacy policy | Ayarlar → Hesap → Gizlilik Politikası |
-| **Account deletion** | Ayarlar → Hesap → **Hesabı Sil** |
+| Today overview, "Nereden başlayacağımı bilmiyorum" (5-min micro-step start) & "Bugün planım dağıldı" (3-step **Koru → Gör → Uygula** day replan + Undo) | **Bugün** tab |
+| Tasks, Focus timer, Routine runner & Calendar time blocks | **Plan** tab (or `☰` Drawer → Planlama) |
+| Habits, measurable targets & daily logging | **Alışkanlıklar** tab |
+| Statistics, Weekly/Monthly Review, Journal & **AI Koç** | **İçgörüler** tab (or `☰` Drawer → Kişisel) |
+| Settings, Data export/import & Focus Points | **Profil** tab → Ayarlar (or `☰` Drawer → Sistem → Ayarlar) |
+| Privacy policy (in-app) | **Profil** → Ayarlar → Hesap → **Gizlilik Politikası** |
+| **Account deletion** | **Profil** → Ayarlar → Hesap → **Hesabı Sil** |
 
 ## AI Coach and Focus Points
 

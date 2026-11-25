@@ -2,7 +2,7 @@
  * Fail-closed owner rollout CLI & store web privacy parity tests
  * (`tools/execute-owner-rollout.mjs`, `docs/store/web/privacy.html`, `docs/store/web/godaddy/privacy.fragment.html`).
  */
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
 import { createRequire } from 'module';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -544,6 +544,32 @@ describe('Automated Owner Rollout CLI (`tools/execute-owner-rollout.mjs`)', () =
     expect(verifyRes.ok).toBe(true);
     expect(verifyRes.y01Evidence).not.toBeNull();
     expect(verifyRes.y01Evidence?.contract).toBe('Y01');
+  });
+
+  it('(+) emits 4 self-verifying Dashboard SQL bundle files in emit-sql-bundle mode without requiring a token', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'aderyth-sql-bundle-'));
+    try {
+      const res = await rollout.executeOwnerRollout({
+        mode: 'emit-sql-bundle',
+        outPath: tmpDir,
+        repoRoot: REPO_ROOT,
+      });
+      expect(res.ok).toBe(true);
+      expect(res.stageResults).toHaveLength(1);
+      expect(res.stageResults[0]?.stage).toBe('emit-sql-bundle');
+
+      const phaseAText = readFileSync(join(tmpDir, '02_phase_a_expand_028_to_045.sql'), 'utf8');
+      const phaseBText = readFileSync(join(tmpDir, '03_phase_b_tighten_039_to_044.sql'), 'utf8');
+      expect(phaseAText).toContain('028_habit_pauses_and_goal_versions.sql');
+      expect(phaseAText).toContain('042_numeric_measures_and_willpower.sql');
+      expect(phaseAText).toContain('045_task_estimated_minutes.sql');
+      expect(phaseAText).toContain('public.xp_drift()');
+      expect(phaseBText).toContain('039_focus_point_hardening.sql');
+      expect(phaseBText).toContain('044_ai_messages_and_retention.sql');
+      expect(phaseBText).toContain('RLS GATE FAILED');
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 
