@@ -28,10 +28,10 @@ nav a{margin-right:16px}
 </head>
 <body>
 <div class="wrap">
-<nav><a href="/">Aderyth</a><a href="/support">Destek</a><a href="/delete-account">Hesap Silme</a></nav>
+<nav><a href="/" target="_top">Aderyth</a><a href="/support" target="_top">Destek</a><a href="/delete-account" target="_top">Hesap Silme</a></nav>
 
 <h1>Gizlilik Politikası</h1>
-<p class="updated">Aderyth · Son güncelleme: 24 Kasım 2026</p>
+<p class="updated">Aderyth · Son güncelleme: 27 Kasım 2026</p>
 
 <h2>Kısaca</h2>
 <div class="card">
@@ -39,8 +39,8 @@ nav a{margin-right:16px}
   Bu verileri satmıyoruz, reklam için kullanmıyoruz ve üçüncü taraf
   reklam/izleme (tracking) SDK’sı içermiyoruz.</p>
   <p>Hesabını ve verilerini uygulama içinden kalıcı olarak silebilirsin:
-  <strong>Ayarlar → Hesap → Hesabı Sil</strong>. Ayrıntılar için
-  <a href="/delete-account">Hesap ve Veri Silme</a>.</p>
+  <strong>Profil → Ayarlar → Hesap → Hesabı Sil</strong>. Ayrıntılar için
+  <a href="/delete-account" target="_top">Hesap ve Veri Silme</a>.</p>
 </div>
 
 <h2>Hesap bilgileri</h2>
@@ -78,9 +78,11 @@ taşınmaz. Anthropic’in bu içeriği kendi tarafında ne kadar süre
 işlediği/sakladığı Aderyth’in kontrolünde değildir ve burada bir taahhüt
 olarak sunulmaz. Aderyth’in kendi tarafında sakladığı sohbetler, hesabını
 sildiğinde silinir.</p>
-<p>Ayrıca her AI isteği için teknik bir kayıt (istek kimliği, mod, durum,
-harcanan Focus Point) tutulur. Bu kayıt faturalandırma ve tekrar koruması
-içindir.</p>
+<p>Ayrıca her AI isteği için faturalandırma ve tekrar koruması amacıyla teknik
+bir kayıt (istek kimliği, mod, durum, harcanan Focus Point) tutulur. Bu teknik
+kayıtlardaki yanıt/hata ayrıntısı 30 gün sonra temizlenir, istek ve kredi
+hareket kayıtları 400 gün, hız sınırı kayıtları ise 7 gün sonunda silinir;
+hesabını sildiğinde tamamı beklemeden kaldırılır.</p>
 
 <h2>Günlük İçgörüsü</h2>
 <p>Günlük İçgörüsü’nü yalnızca sen başlattığında, seçtiğin dönemdeki günlük
@@ -91,7 +93,8 @@ günlerin metni gönderilmez.</p>
 karakter), dönem adı ve teknik bir istek kimliği.</p>
 <p>Aderyth gönderilen günlük metnini veritabanında ayrıca saklamaz; AI
 isteğinin teknik kaydında (istek kimliği, mod, durum, harcanan Focus Point)
-metnin yalnızca tek yönlü özeti tutulur. Üretilen içgörü hesabına bağlı
+metnin yalnızca tek yönlü özeti tutulur ve bu teknik kayıt yukarıdaki
+saklama sürelerine (30 / 400 / 7 gün) tabidir. Üretilen içgörü hesabına bağlı
 saklanır ve hesabını sildiğinde silinir.</p>
 <p>Anthropic’in bu metni kendi tarafında ne kadar süre işlediği/sakladığı
 Aderyth’in kontrolünde değildir ve burada bir taahhüt olarak sunulmaz. İçgörü
@@ -164,7 +167,7 @@ yerel olarak saklanır.</p>
 <p>Mobilde oturum anahtarın cihazın güvenli deposunda (Keychain / Keystore)
 saklanır; web’de tarayıcının yerel depolamasında (<code>localStorage</code>)
 tutulur. Ortak bir bilgisayarda işin bitince
-<strong>Ayarlar → Hesap → Oturumu Kapat</strong>’ı kullan.</p>
+<strong>Profil → Ayarlar → Hesap → Oturumu Kapat</strong>’ı kullan.</p>
 <p>Oturumu kapattığında bu cihazdaki önbellek temizlenir ve hatırlatıcıların
 iptal edilir; henüz sunucuya gitmemiş değişikliklerin cihazda güvende kalır ve
 aynı hesapla tekrar girdiğinde gönderilir.</p>
@@ -178,7 +181,7 @@ aynı hesapla tekrar girdiğinde gönderilir.</p>
 </ul>
 
 <h2>Verilerini dışa aktarma</h2>
-<p>Ayarlar → Veri ve Gizlilik bölümünden verilerini JSON, CSV veya Excel
+<p>Profil → Ayarlar → Veri ve Gizlilik bölümünden verilerini JSON, CSV veya Excel
 biçiminde dışa aktarabilirsin. Dosya tüm alışkanlık kayıtlarını (notlar dahil),
 hesap kimliğini ve kurulum yanıtlarını içerir ve şifrelenmez. Bu tam bir yedek
 değildir: JSON dosyasını aynı bölümde doğrulayıp eksik kayıtlarını hesabına
@@ -192,11 +195,11 @@ ve klavye yöneticileri tarafından okunabilir; Aderyth panoyu 60 saniye sonra,
 başka bir şey kopyalamadıysan, otomatik temizlemeyi dener.</p>
 
 <h2>Hesabını silme</h2>
-<p>Ayarlar → Hesap → Hesabı Sil ile hesabını kalıcı olarak silebilirsin. Silme
+<p>Profil → Ayarlar → Hesap → Hesabı Sil ile hesabını kalıcı olarak silebilirsin. Silme
 işlemi geri alınamaz. Silme onaylandığında hesabın ve yukarıda sayılan tüm
 kişisel verilerin veritabanından kaldırılır, cihazındaki yerel veriler
 temizlenir ve oturumun kapatılır. Ayrıntılar ve uygulamaya erişemediğin
-durumdaki yol için <a href="/delete-account">Hesap ve Veri Silme</a>.</p>
+durumdaki yol için <a href="/delete-account" target="_top">Hesap ve Veri Silme</a>.</p>
 
 <h2>Çocukların gizliliği</h2>
 <p>Aderyth çocuklara yönelik değildir ve bilerek 13 yaşın altındaki
@@ -206,7 +209,7 @@ kullanıcılardan veri toplamaz.</p>
 <p>Bu politika güncellendiğinde bu sayfadaki tarih değişir. Sorular ve veri
 talepleri için <a href="mailto:support@aderyth.com">support@aderyth.com</a>.</p>
 
-<footer>Ömer Aydınoğlu · <a href="/support">Destek</a> · <a href="/delete-account">Hesap Silme</a></footer>
+<footer>Ömer Aydınoğlu · <a href="/support" target="_top">Destek</a> · <a href="/delete-account" target="_top">Hesap Silme</a></footer>
 </div>
 </body>
 </html>

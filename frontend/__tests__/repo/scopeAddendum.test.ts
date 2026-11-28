@@ -116,8 +116,13 @@ describe('§6.2 — native surfaces are not started', () => {
 });
 
 describe('§6.3 — web/store work is a separate release phase', () => {
-  it('PUBLIC_SITE_URLS_LIVE is false', () => {
-    expect(PUBLIC_SITE_URLS_LIVE).toBe(false);
+  it('PUBLIC_SITE_URLS_LIVE is an explicit boolean and when true all 3 pages have zero placeholders', () => {
+    expect(typeof PUBLIC_SITE_URLS_LIVE).toBe('boolean');
+    if (PUBLIC_SITE_URLS_LIVE) {
+      for (const f of ['docs/store/web/privacy.html', 'docs/store/web/support.html', 'docs/store/web/delete-account.html']) {
+        expect(readFileSync(join(REPO, f), 'utf8')).not.toMatch(/\{\{[^}]+\}\}/);
+      }
+    }
   });
 
   it('the store docs and the page content are still present (deferred, not deleted)', () => {

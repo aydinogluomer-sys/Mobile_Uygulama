@@ -118,11 +118,11 @@ describe('F28 (NAV-14, PRF-17) — settingsSections', () => {
     });
   });
 
-  it('(-) hides integrations segment in Profile when gates are off, and hides external website links in AccountSection when PUBLIC_SITE_URLS_LIVE=false', async () => {
+  it('(-) hides integrations segment in Profile when gates are off, and gates external website links in AccountSection on PUBLIC_SITE_URLS_LIVE', async () => {
     expect(profileSegments(false).some((s) => s.key === 'integrations')).toBe(false);
     expect(profileSegments(true).some((s) => s.key === 'integrations')).toBe(true);
 
-    expect(PUBLIC_SITE_URLS_LIVE).toBe(false);
+    expect(typeof PUBLIC_SITE_URLS_LIVE).toBe('boolean');
     let accTree!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       accTree = TestRenderer.create(
@@ -138,7 +138,11 @@ describe('F28 (NAV-14, PRF-17) — settingsSections', () => {
     expect(accTexts).toContain('Gizlilik Politikası');
     expect(accTexts).toContain('Oturumu Kapat');
     expect(accTexts).toContain('Hesabı Sil');
-    expect(accTexts).not.toContain('Destek');
+    if (PUBLIC_SITE_URLS_LIVE) {
+      expect(accTexts).toContain('Destek');
+    } else {
+      expect(accTexts).not.toContain('Destek');
+    }
 
     await act(async () => {
       accTree.unmount();

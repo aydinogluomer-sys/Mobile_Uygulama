@@ -66,18 +66,19 @@ appears in the composer and is only sent if the user taps send.
 
 ## "Coming soon" integrations
 
-Ayarlar → Entegrasyonlar shows **Notion** and **Google Calendar** as *coming
-soon / temporarily unavailable*. They are intentionally disabled in this
-release; the cards are not tappable and no connection can be started. They are
-listed here so the state is not mistaken for a bug.
+Profil → Ayarlar → Bağlantılar (`Entegrasyonlar` ekranı) shows **Notion** and
+**Google Calendar** as *coming soon / temporarily unavailable*. They are
+intentionally disabled in this release; the cards are not tappable and no
+connection can be started. They are listed here so the state is not mistaken
+for a bug.
 
 ## Subscriptions
 
 This build contains **no in-app purchases**. There is nothing to buy, no
 subscription, no external payment link, and no payment information is
 collected. The AI features run on a free Focus Point balance that renews
-monthly; Ayarlar → menü → Focus Points shows the balance and what each action
-costs.
+monthly; ☰ Drawer → Focus Points (or Profil tab) shows the balance and what
+each action costs.
 
 The owner's decision is FREE MVP (`OWNER_DECISIONS.md` item 1), and the
 paywall screen was removed from the app rather than merely unlinked.

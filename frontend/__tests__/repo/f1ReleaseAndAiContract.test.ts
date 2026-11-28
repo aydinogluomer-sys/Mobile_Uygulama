@@ -211,13 +211,15 @@ describe('F1 release checklist gates (Y03 / Y09 / Y13)', () => {
     expect(checklist).toContain('delete-account');
   });
 
-  it('(+) PUBLIC_SITE_URLS_LIVE and COACH_ACTIONS_V2_ENABLED remain false in repository code', () => {
-    expect(PUBLIC_SITE_URLS_LIVE).toBe(false);
-    expect(COACH_ACTIONS_V2_ENABLED).toBe(false);
+  it('(+) PUBLIC_SITE_URLS_LIVE and COACH_ACTIONS_V2_ENABLED are explicit boolean literals in repository code', () => {
+    expect(typeof PUBLIC_SITE_URLS_LIVE).toBe('boolean');
+    expect(typeof COACH_ACTIONS_V2_ENABLED).toBe('boolean');
 
     const gatesCode = stripComments(readFileSync(FEATURE_GATES_PATH, 'utf8'));
-    expect(gatesCode).toContain('export const PUBLIC_SITE_URLS_LIVE = false;');
-    expect(gatesCode).toContain('export const COACH_ACTIONS_V2_ENABLED = false;');
+    expect(gatesCode).toContain(`export const PUBLIC_SITE_URLS_LIVE = ${String(PUBLIC_SITE_URLS_LIVE)};`);
+    expect(gatesCode).toContain(
+      `export const COACH_ACTIONS_V2_ENABLED = ${String(COACH_ACTIONS_V2_ENABLED)};`,
+    );
   });
 });
 

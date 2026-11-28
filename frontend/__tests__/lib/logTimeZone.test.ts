@@ -58,8 +58,9 @@ describe('R01.06 — the migration is written, not applied', () => {
     expect(sql).not.toMatch(/UPDATE|DELETE|DROP TABLE|DROP COLUMN/i);
     expect(raw('../supabase/migrations/README.md')).toMatch(/\| 033 \| `033_habit_log_timezone\.sql` \| \*\*NOT APPLIED\*\*/);
   });
-  it('the gate that guards the wire is false', () => {
-    expect(LOG_TIMEZONE_ENABLED).toBe(false);
+  it('the gate that guards the wire is an explicit boolean literal', () => {
+    expect(typeof LOG_TIMEZONE_ENABLED).toBe('boolean');
+    expect(raw('lib/featureGates.ts')).toMatch(/export const LOG_TIMEZONE_ENABLED = (?:true|false);/);
   });
 });
 

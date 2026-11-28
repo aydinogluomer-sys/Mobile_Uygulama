@@ -57,8 +57,7 @@ this repository. `[ ]` = still open, with who has to do it.
 - [ ] Publish `docs/store/web/delete-account.html` at
       `https://aderyth.com/delete-account` — **owner**, #4. Probed 2026-09-08:
       **404**.
-- [ ] Fill `{{DESTEK_EPOSTA}}`, `{{SILME_SURESI}}`, `{{YAYINCI}}` in those
-      three files — **owner**. `grep -o '{{[A-Z_]*}}' docs/store/web/*.html`
+- [x] Fill support@aderyth.com, 30 gün, Ömer Aydınoğlu in docs/store/web/*.html and godaddy/*.fragment.html — done (commit d225dfc).
 - [ ] After all three return 200: flip `PUBLIC_SITE_URLS_LIVE` to `true` in
       `frontend/lib/featureGates.ts` (this is what shows the in-app Destek row),
       then enter the URLs in both consoles. **The flag goes last.**

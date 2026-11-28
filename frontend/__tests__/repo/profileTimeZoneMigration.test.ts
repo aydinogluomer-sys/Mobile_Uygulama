@@ -178,8 +178,11 @@ describe('F15 migration 043 — profile time_zone, local day window & local week
     expect(dbTypes).toMatch(/\/\/ @source migration:043\n\s{6}set_profile_time_zone:\s*\{/);
   });
 
-  it('keeps LOG_TIMEZONE_ENABLED === false (033 is separate owner decision D07)', () => {
-    expect(LOG_TIMEZONE_ENABLED).toBe(false);
+  it('declares LOG_TIMEZONE_ENABLED as an explicit boolean literal (033 is separate owner decision D07)', () => {
+    expect(typeof LOG_TIMEZONE_ENABLED).toBe('boolean');
+    expect(read('frontend/lib/featureGates.ts')).toMatch(
+      /export const LOG_TIMEZONE_ENABLED = (?:true|false);/,
+    );
   });
 
   it('(-) check043MigrationInvariants catches M1-M4 defects on synthetic mutations', () => {

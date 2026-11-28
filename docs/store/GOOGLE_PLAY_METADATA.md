@@ -26,7 +26,7 @@ limit and contains no Apple-specific wording.
 | Field | Value |
 |---|---|
 | Privacy policy | `https://aderyth.com/privacy` — **NOT LIVE (404)** |
-| Support email | **EXTERNAL_OWNER_ACTION_REQUIRED** — no address has been provided; it is `{{DESTEK_EPOSTA}}` in `docs/store/web/` |
+| Support email | `support@aderyth.com` |
 | Account deletion URL | `https://aderyth.com/delete-account` — **NOT LIVE (404)**; see `ACCOUNT_DELETION_WEB_REQUIREMENTS.md` |
 
 All three probed 2026-09-08: the domain answers 200 at `/`, the three paths

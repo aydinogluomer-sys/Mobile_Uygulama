@@ -39,14 +39,14 @@ import { CANVASES, DECOR, SCREEN_BANNERS, TEXTURES } from '../../lib/visualAsset
 /** One heading plus its paragraphs. Keeps the body below readable as prose. */
 type Section = { title: string; body: string[] };
 
-const UPDATED = '22 Kasım 2026';
+const UPDATED = '27 Kasım 2026';
 
 const SECTIONS: Section[] = [
   {
     title: 'Kısaca',
     body: [
       'Aderyth, alışkanlıklarını ve odağını takip etmen için verilerini saklar. Bu verileri satmıyoruz, reklam için kullanmıyoruz ve üçüncü taraf reklam/izleme (tracking) SDK’sı içermiyoruz.',
-      'Hesabını ve verilerini uygulama içinden kalıcı olarak silebilirsin: Ayarlar → Hesap → Hesabı Sil.',
+      'Hesabını ve verilerini uygulama içinden kalıcı olarak silebilirsin: Profil → Ayarlar → Hesap → Hesabı Sil.',
     ],
   },
   {
@@ -72,7 +72,7 @@ const SECTIONS: Section[] = [
       'Bir mesaj gönderdiğinde sunucumuz, yalnızca o sohbetin son mesajlarından oluşan sınırlı bir bağlam (en fazla 16 mesaj ve 6000 karakter) ile birlikte mesajını yapay zekâ sağlayıcımız Anthropic’e iletir. Buna ek olarak uygulamanın kendi özeti gönderilir: aktif alışkanlık adların, alışkanlık ve bekleyen görev sayın, günlük irade kullanımın.',
       'Sağlayıcı anahtarı yalnızca sunucudadır; uygulamanın içinde bulunmaz. Bir sohbetin içeriği yalnızca o sohbet için gönderilir, başka bir sohbete taşınmaz.',
       'Anthropic’in bu içeriği kendi tarafında ne kadar süre işlediği/sakladığı, Aderyth’in kontrolünde değildir ve burada bir taahhüt olarak sunulmaz. Aderyth’in kendi tarafında sakladığı sohbetler, hesabını sildiğinde silinir.',
-      'Ayrıca her AI isteği için teknik bir kayıt (istek kimliği, mod, durum, harcanan Focus Point) tutulur. Bu kayıt faturalandırma ve tekrar koruması içindir.',
+      'Ayrıca her AI isteği için faturalandırma ve tekrar koruması amacıyla teknik bir kayıt (istek kimliği, mod, durum, harcanan Focus Point) tutulur. Bu teknik kayıtlardaki yanıt/hata ayrıntısı 30 gün sonra temizlenir, istek ve kredi hareket kayıtları 400 gün, hız sınırı kayıtları ise 7 gün sonunda silinir; hesabını sildiğinde tamamı beklemeden kaldırılır.',
     ],
   },
   {
@@ -80,7 +80,7 @@ const SECTIONS: Section[] = [
     body: [
       'Günlük İçgörüsü’nü yalnızca sen başlattığında, seçtiğin dönemdeki günlük kayıtlarının metni yapay zekâ sağlayıcımız Anthropic’e gönderilir. Hangi günlerin gideceğini ekranda kendin seçersin; çıkardığın günlerin metni gönderilmez.',
       'Gönderilen alanlar: seçili günlük kayıtlarının metni (en fazla 8000 karakter), dönem adı ve teknik bir istek kimliği.',
-      'Aderyth gönderilen günlük metnini veritabanında ayrıca saklamaz; AI isteğinin teknik kaydında (istek kimliği, mod, durum, harcanan Focus Point) metnin yalnızca tek yönlü özeti tutulur. Üretilen içgörü hesabına bağlı saklanır ve hesabını sildiğinde silinir.',
+      'Aderyth gönderilen günlük metnini veritabanında ayrıca saklamaz; AI isteğinin teknik kaydında (istek kimliği, mod, durum, harcanan Focus Point) metnin yalnızca tek yönlü özeti tutulur ve bu teknik kayıt yukarıdaki saklama sürelerine (30 / 400 / 7 gün) tabidir. Üretilen içgörü hesabına bağlı saklanır ve hesabını sildiğinde silinir.',
       'Anthropic’in bu metni kendi tarafında ne kadar süre işlediği/sakladığı Aderyth’in kontrolünde değildir ve burada bir taahhüt olarak sunulmaz. İçgörü oluşturmazsan hiçbir şey gönderilmez.',
     ],
   },
@@ -124,6 +124,7 @@ const SECTIONS: Section[] = [
     body: [
       'Reklam kimliği toplamıyoruz. Reklam ağı, analitik SDK’sı veya çapraz uygulama izleme (tracking) kullanmıyoruz.',
       'Konum verisi, kişiler, fotoğraflar veya cihaz depolamandaki dosyalar toplanmaz.',
+      'Ödeme bilgisi toplanmaz.',
       'Çökme raporlaması yalnızca teknik hata bilgisi gönderir; içeriklerini ya da kimliğini göndermez (bkz. "Çökme raporları").',
     ],
   },
@@ -132,7 +133,7 @@ const SECTIONS: Section[] = [
     body: [
       'Veriler Supabase üzerinde barındırılan bir PostgreSQL veritabanında saklanır. Uygulama ile sunucu arasındaki tüm trafik HTTPS/TLS ile şifrelenir.',
       'Cihazında ayrıca oturum bilgin, çevrimdışı kayıt kuyruğun ve bazı tercihlerin yerel olarak saklanır.',
-      'Mobilde oturum anahtarın cihazın güvenli deposunda (Keychain / Keystore) saklanır; web’de tarayıcının yerel depolamasında (localStorage) tutulur. Ortak bir bilgisayarda işin bitince Ayarlar > Hesap > Oturumu Kapat’ı kullan.',
+      'Mobilde oturum anahtarın cihazın güvenli deposunda (Keychain / Keystore) saklanır; web’de tarayıcının yerel depolamasında (localStorage) tutulur. Ortak bir bilgisayarda işin bitince Profil → Ayarlar → Hesap → Oturumu Kapat’ı kullan.',
       'Oturumu kapattığında bu cihazdaki önbellek temizlenir ve hatırlatıcıların iptal edilir; henüz sunucuya gitmemiş değişikliklerin cihazda güvende kalır ve aynı hesapla tekrar girdiğinde gönderilir.',
     ],
   },
@@ -147,22 +148,28 @@ const SECTIONS: Section[] = [
   {
     title: 'Verilerini dışa aktarma',
     body: [
-      'Ayarlar → Veri ve Gizlilik bölümünden verilerini JSON, CSV veya Excel biçiminde dışa aktarabilirsin. Dosya tüm alışkanlık kayıtlarını (notlar dahil), hesap kimliğini ve kurulum yanıtlarını içerir ve şifrelenmez. Bu tam bir yedek değildir: JSON dosyasını aynı bölümde doğrulayıp eksik kayıtlarını hesabına ekleyebilirsin; alışkanlık kayıtların (tarihçe), odak oturumların ve webhook’ların geri yüklenemez. Uygulamayı açtığında günde en fazla bir kez, cihazında son 3 yerel yedek kopyası tutulur; hesabını sildiğinde bu kopyalar da silinir.',
+      'Profil → Ayarlar → Veri ve Gizlilik bölümünden verilerini JSON, CSV veya Excel biçiminde dışa aktarabilirsin. Dosya tüm alışkanlık kayıtlarını (notlar dahil), hesap kimliğini ve kurulum yanıtlarını içerir ve şifrelenmez. Bu tam bir yedek değildir: JSON dosyasını aynı bölümde doğrulayıp eksik kayıtlarını hesabına ekleyebilirsin; alışkanlık kayıtların (tarihçe), odak oturumların ve webhook’ların geri yüklenemez. Uygulamayı açtığında günde en fazla bir kez, cihazında son 3 yerel yedek kopyası tutulur; hesabını sildiğinde bu kopyalar da silinir.',
       'Obsidian (Markdown) aktarımı seçtiğin içeriği (günlük ve notlar dahil olabilir) düz metin olarak cihazının panosuna kopyalar. Pano diğer uygulamalar ve klavye yöneticileri tarafından okunabilir; Aderyth panoyu 60 saniye sonra, başka bir şey kopyalamadıysan, otomatik temizlemeyi dener.',
     ],
   },
   {
     title: 'Hesabını silme',
     body: [
-      'Ayarlar → Hesap → Hesabı Sil ile hesabını kalıcı olarak silebilirsin. Silme işlemi geri alınamaz.',
+      'Profil → Ayarlar → Hesap → Hesabı Sil ile hesabını kalıcı olarak silebilirsin. Silme işlemi geri alınamaz.',
       'Silme onaylandığında hesabın ve yukarıda sayılan tüm kişisel verilerin veritabanından kaldırılır, cihazındaki yerel veriler temizlenir ve oturumun kapatılır.',
+    ],
+  },
+  {
+    title: 'Çocukların gizliliği',
+    body: [
+      'Aderyth çocuklara yönelik değildir ve bilerek 13 yaşın altındaki kullanıcılardan veri toplamaz.',
     ],
   },
   {
     title: 'Değişiklikler ve iletişim',
     body: [
       'Bu politika güncellendiğinde bu ekrandaki tarih değişir.',
-      'Sorular ve veri talepleri için destek adresimizden bize ulaşabilirsin.',
+      'Sorular ve veri talepleri için support@aderyth.com adresinden bize ulaşabilirsin.',
     ],
   },
 ];

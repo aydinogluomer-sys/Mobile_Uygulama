@@ -55,10 +55,10 @@ export const SCOPE_FEATURE_GATES = Object.freeze([
   'NOTION_INTEGRATION_ENABLED',
   'GOOGLE_CALENDAR_INTEGRATION_ENABLED',
   'PAID_SUBSCRIPTIONS_ENABLED',
-  'PUBLIC_SITE_URLS_LIVE',
 ]);
 
 export const POST_ROLLOUT_FEATURE_GATES = Object.freeze([
+  'PUBLIC_SITE_URLS_LIVE',
   'COACH_ACTIONS_V2_ENABLED',
   'LOG_TIMEZONE_ENABLED',
   'LIGHT_THEME_ENABLED',
@@ -74,6 +74,11 @@ export const ALL_FEATURE_GATES = Object.freeze([
  * post-rollout engineering flags is flipped to `true`.
  */
 export const POST_ROLLOUT_PREREQUISITES = Object.freeze({
+  PUBLIC_SITE_URLS_LIVE: Object.freeze([
+    'Publish docs/store/web/godaddy/{privacy,support,delete-account}.fragment.html on https://aderyth.com/{privacy,support,delete-account}.',
+    'Confirm all three HTTPS URLs return HTTP 200 with zero {{...}} placeholders and valid mailto:support@aderyth.com.',
+    'Enter the verified URLs in Google Play Console (Privacy policy & Data safety deletion URL) and App Store Connect.',
+  ]),
   LOG_TIMEZONE_ENABLED: Object.freeze([
     'Apply migration 033_habit_log_timezone.sql on canonical project kbcuolhjjnmhjaarxxmu.',
     'Run SQL_FOR_OWNER.md §2.6 read-only check: public.habit_logs.tz nullable text column and habit_logs_tz_check constraint exist.',

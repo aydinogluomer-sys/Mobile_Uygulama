@@ -84,6 +84,8 @@ type VerifierModule = {
   CANONICAL_PROJECT_REF: string;
   EXPECTED_PENDING_MIGRATION_NUMBERS: readonly string[];
   EXPECTED_DEPLOYED_EDGE_FUNCTIONS: readonly string[];
+  SCOPE_FEATURE_GATES: readonly string[];
+  POST_ROLLOUT_FEATURE_GATES: readonly string[];
   ALL_FEATURE_GATES: readonly string[];
   POST_ROLLOUT_PREREQUISITES: Readonly<Record<string, readonly string[]>>;
   checkMigrationRollbackParity: (options?: {
@@ -192,13 +194,34 @@ function withTempDir(prefix: string, fn: (dir: string) => void): void {
 describe('Owner Rollout Readiness Preflight (`tools/verify-owner-rollout-readiness.mjs`)', () => {
   describe('(+) live repository passes all owner rollout readiness checks (exit 0)', () => {
     it('passes all four readiness domains in-process with zero violations', () => {
-      const report = verifier.verifyOwnerRolloutReadiness({ repoRoot: REPO_ROOT });
+      const preCheck = verifier.checkFeatureGatesFence({
+        repoRoot: REPO_ROOT,
+        allowPostRolloutFlips: true,
+      });
+      const anyPostRolloutLive = verifier.POST_ROLLOUT_FEATURE_GATES.some(
+        (gate) => preCheck.values[gate] === true,
+      );
+
+      if (anyPostRolloutLive) {
+        const blockedWithoutFlag = verifier.verifyOwnerRolloutReadiness({
+          repoRoot: REPO_ROOT,
+          allowPostRolloutFlips: false,
+        });
+        expect(blockedWithoutFlag.ok).toBe(false);
+      }
+
+      const report = verifier.verifyOwnerRolloutReadiness({
+        repoRoot: REPO_ROOT,
+        allowPostRolloutFlips: anyPostRolloutLive,
+      });
 
       expect(report.ok).toBe(true);
       expect(report.canonicalProjectRef).toBe('kbcuolhjjnmhjaarxxmu');
-      expect(report.mode).toBe('pre-rollout');
+      expect(report.mode).toBe(anyPostRolloutLive ? 'post-rollout' : 'pre-rollout');
       expect(report.problems).toEqual([]);
-      expect(report.prerequisiteChecklists).toEqual([]);
+      if (!anyPostRolloutLive) {
+        expect(report.prerequisiteChecklists).toEqual([]);
+      }
 
       expect(report.checks.migrationRollbackParity.ok).toBe(true);
       expect(report.checks.migrationRollbackParity.checkedMigrations).toBe(18);
@@ -217,24 +240,38 @@ describe('Owner Rollout Readiness Preflight (`tools/verify-owner-rollout-readine
       ]);
 
       expect(report.checks.featureGates.ok).toBe(true);
-      for (const gate of verifier.ALL_FEATURE_GATES) {
+      for (const gate of verifier.SCOPE_FEATURE_GATES) {
         expect(report.checks.featureGates.values[gate]).toBe(false);
+      }
+      for (const gate of verifier.ALL_FEATURE_GATES) {
+        expect(typeof report.checks.featureGates.values[gate]).toBe('boolean');
       }
       const strippedGates = stripComments(
         readFileSync(join(REPO_ROOT, 'frontend', 'lib', 'featureGates.ts'), 'utf8'),
       );
-      expect(strippedGates).not.toMatch(/=\s*true\s*;/);
+      if (!anyPostRolloutLive) {
+        expect(strippedGates).not.toMatch(/=\s*true\s*;/);
+      }
     });
 
     it('executes as a Node ESM CLI in both human and --json modes with exit code 0', () => {
-      const humanOut = execFileSync(process.execPath, [SCRIPT_PATH], {
+      const preCheck = verifier.checkFeatureGatesFence({
+        repoRoot: REPO_ROOT,
+        allowPostRolloutFlips: true,
+      });
+      const anyPostRolloutLive = verifier.POST_ROLLOUT_FEATURE_GATES.some(
+        (gate) => preCheck.values[gate] === true,
+      );
+      const modeArgs = anyPostRolloutLive ? ['--post-rollout'] : [];
+
+      const humanOut = execFileSync(process.execPath, [SCRIPT_PATH, ...modeArgs], {
         cwd: REPO_ROOT,
         encoding: 'utf8',
       });
       expect(humanOut).toContain('Result: READY (exit 0)');
       expect(humanOut).toContain('kbcuolhjjnmhjaarxxmu');
 
-      const jsonRaw = execFileSync(process.execPath, [SCRIPT_PATH, '--json'], {
+      const jsonRaw = execFileSync(process.execPath, [SCRIPT_PATH, '--json', ...modeArgs], {
         cwd: REPO_ROOT,
         encoding: 'utf8',
       });
@@ -464,11 +501,15 @@ describe('Owner Rollout Readiness Preflight (`tools/verify-owner-rollout-readine
     });
 
     it('catches non-boolean feature gate expressions and prints server prerequisites when post-rollout flags flip', () => {
-      const realGates = readFileSync(join(REPO_ROOT, 'frontend', 'lib', 'featureGates.ts'), 'utf8');
+      const rawGates = readFileSync(join(REPO_ROOT, 'frontend', 'lib', 'featureGates.ts'), 'utf8');
+      const baseGates = rawGates.replace(
+        /\bexport\s+const\s+([A-Z0-9_]+)\s*=\s*true\s*;/g,
+        'export const $1 = false;',
+      );
 
       // Non-boolean runtime expression is rejected
       const dynamicGate = verifier.checkFeatureGatesFence({
-        featureGatesSource: realGates.replace(
+        featureGatesSource: baseGates.replace(
           'export const LOG_TIMEZONE_ENABLED = false;',
           'export const LOG_TIMEZONE_ENABLED = Boolean(process.env.EXPO_PUBLIC_TZ);',
         ),
@@ -480,8 +521,9 @@ describe('Owner Rollout Readiness Preflight (`tools/verify-owner-rollout-readine
         ]),
       );
 
-      // Flipping COACH_ACTIONS_V2_ENABLED + LOG_TIMEZONE_ENABLED + LIGHT_THEME_ENABLED pre-rollout fails closed AND emits checklists
-      const flippedSource = realGates
+      // Flipping all 4 post-rollout gates pre-rollout fails closed AND emits checklists
+      const flippedSource = baseGates
+        .replace('export const PUBLIC_SITE_URLS_LIVE = false;', 'export const PUBLIC_SITE_URLS_LIVE = true;')
         .replace('export const COACH_ACTIONS_V2_ENABLED = false;', 'export const COACH_ACTIONS_V2_ENABLED = true;')
         .replace('export const LOG_TIMEZONE_ENABLED = false;', 'export const LOG_TIMEZONE_ENABLED = true;')
         .replace('export const LIGHT_THEME_ENABLED = false;', 'export const LIGHT_THEME_ENABLED = true;');
@@ -492,6 +534,7 @@ describe('Owner Rollout Readiness Preflight (`tools/verify-owner-rollout-readine
       });
       expect(preRolloutFlip.ok).toBe(false);
       expect(preRolloutFlip.prerequisiteChecklists.map((c) => c.gate)).toEqual([
+        'PUBLIC_SITE_URLS_LIVE',
         'COACH_ACTIONS_V2_ENABLED',
         'LOG_TIMEZONE_ENABLED',
         'LIGHT_THEME_ENABLED',
@@ -506,16 +549,16 @@ describe('Owner Rollout Readiness Preflight (`tools/verify-owner-rollout-readine
         ]),
       );
 
-      // In --post-rollout mode, those 3 flags pass while still printing checklists, whereas scope gates STILL fail closed
+      // In --post-rollout mode, those 4 flags pass while still printing checklists, whereas scope gates STILL fail closed
       const postRolloutFlip = verifier.checkFeatureGatesFence({
         featureGatesSource: flippedSource,
         allowPostRolloutFlips: true,
       });
       expect(postRolloutFlip.ok).toBe(true);
-      expect(postRolloutFlip.prerequisiteChecklists).toHaveLength(3);
+      expect(postRolloutFlip.prerequisiteChecklists).toHaveLength(4);
 
       const scopeFlip = verifier.checkFeatureGatesFence({
-        featureGatesSource: realGates.replace(
+        featureGatesSource: baseGates.replace(
           'export const SPOTIFY_OAUTH_ENABLED = false;',
           'export const SPOTIFY_OAUTH_ENABLED = true;',
         ),

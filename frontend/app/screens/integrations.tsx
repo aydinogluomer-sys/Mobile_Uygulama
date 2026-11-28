@@ -209,9 +209,27 @@ export default function IntegrationsScreen() {
             <View style={s.featureBody}>
               <View style={s.featureRow}>
                 <Text style={s.featureTitle}>Notion</Text>
-                <View style={[s.badge, isConnected ? s.badgeConnected : s.badgeAvailable]}>
-                  <Text style={[s.badgeText, isConnected ? s.badgeTextConnected : s.badgeTextAvailable]}>
-                    {isConnected ? '● Bağlı' : 'Hazır'}
+                <View
+                  style={[
+                    s.badge,
+                    isConnected
+                      ? s.badgeConnected
+                      : NOTION_INTEGRATION_ENABLED
+                        ? s.badgeAvailable
+                        : s.badgeUnavailable,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      s.badgeText,
+                      isConnected
+                        ? s.badgeTextConnected
+                        : NOTION_INTEGRATION_ENABLED
+                          ? s.badgeTextAvailable
+                          : s.badgeTextUnavailable,
+                    ]}
+                  >
+                    {isConnected ? '● Bağlı' : NOTION_INTEGRATION_ENABLED ? 'Hazır' : 'Bu sürümde kapalı'}
                   </Text>
                 </View>
               </View>
@@ -244,14 +262,32 @@ export default function IntegrationsScreen() {
             <View style={s.featureBody}>
               <View style={s.featureRow}>
                 <Text style={s.featureTitle}>Takvim</Text>
-                <View style={[s.badge, isGoogleConnected ? s.badgeConnected : s.badgeAvailable]}>
-                  <Text style={[s.badgeText, isGoogleConnected ? s.badgeTextConnected : s.badgeTextAvailable]}>
-                    {isGoogleConnected ? '● Bağlı' : 'Hazır'}
+                <View
+                  style={[
+                    s.badge,
+                    isGoogleConnected
+                      ? s.badgeConnected
+                      : GOOGLE_CALENDAR_INTEGRATION_ENABLED
+                        ? s.badgeAvailable
+                        : s.badgeUnavailable,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      s.badgeText,
+                      isGoogleConnected
+                        ? s.badgeTextConnected
+                        : GOOGLE_CALENDAR_INTEGRATION_ENABLED
+                          ? s.badgeTextAvailable
+                          : s.badgeTextUnavailable,
+                    ]}
+                  >
+                    {isGoogleConnected ? '● Bağlı' : GOOGLE_CALENDAR_INTEGRATION_ENABLED ? 'Hazır' : 'Bu sürümde kapalı'}
                   </Text>
                 </View>
               </View>
               <Text style={s.featureDesc}>
-                {isGoogleConnected ? `${googleConnection?.calendarName}` : 'Google Calendar hesabınızı bağlayın'}
+                {isGoogleConnected ? `${googleConnection?.calendarName}` : GOOGLE_CALENDAR_INTEGRATION_ENABLED ? 'Google Calendar hesabınızı bağlayın' : INTEGRATION_UNAVAILABLE_REASON}
               </Text>
             </View>
           </View>
@@ -583,9 +619,11 @@ const makeStyles = (colors: Palette) =>
     badge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
     badgeAvailable: { backgroundColor: alphaHex(colors.success, '18') },
     badgeConnected: { backgroundColor: alphaHex(colors.success, '20') },
+    badgeUnavailable: { backgroundColor: colors.borderSubtle },
     badgeText: { fontSize: 10, fontWeight: '700' },
     badgeTextAvailable: { color: colors.success },
     badgeTextConnected: { color: colors.success },
+    badgeTextUnavailable: { color: colors.textFaint },
 
     hint: {
       flexDirection: 'row', gap: 8, alignItems: 'flex-start',

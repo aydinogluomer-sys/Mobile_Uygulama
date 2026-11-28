@@ -40,14 +40,23 @@
  *         and the coordinator timer (plus its network-success signal), still
  *         without an interval and without a network-state library
  */
-import { execSync } from 'child_process';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 // `stripComments`/`at` are shared rather than copied — that duplication is
 // what let a CRLF defect survive in two of the four gates. See the helper.
 import { stripComments, at } from '../helpers/sourceText';
 
 const ROOT = join(__dirname, '..', '..');
+
+function findDirectEmitters(dir: string): string[] {
+  const hits: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) hits.push(...findDirectEmitters(full));
+    else if (entry.endsWith('.tsx') && /buildEvent|emitEvent/.test(readFileSync(full, 'utf8'))) hits.push(full);
+  }
+  return hits;
+}
 
 const read = (p: string) => stripComments(readFileSync(join(ROOT, p), 'utf8'));
 
@@ -261,11 +270,11 @@ describe('AC-W07 — the §22 event is emitted from logHabit and nowhere else', 
   });
 
   it('no screen emits directly — a screen can be bypassed', () => {
-    const out = execSync(
-      'grep -rl "buildEvent\\|emitEvent" app components --include=*.tsx || true',
-      { cwd: ROOT, encoding: 'utf8' },
-    );
-    expect(out.trim()).toBe('');
+    const hits = [
+      ...findDirectEmitters(join(ROOT, 'app')),
+      ...findDirectEmitters(join(ROOT, 'components')),
+    ];
+    expect(hits).toEqual([]);
   });
 });
 

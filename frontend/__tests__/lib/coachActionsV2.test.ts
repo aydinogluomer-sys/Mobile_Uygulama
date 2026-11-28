@@ -13,11 +13,14 @@ const NOW = new Date(2026, 9, 7, 10);
 const TODAY = '2026-10-07';
 
 describe('the gate', () => {
-  it('is off, and off means these types are refused like any unknown type', () => {
-    expect(COACH_ACTIONS_V2_ENABLED).toBe(false);
-    const r = validateCoachActions([{ type: 'move_task', task_query: 'Rapor', date: 'today' }]);
+  it('is an explicit boolean, and when v2 is off these types are refused like any unknown type', () => {
+    expect(typeof COACH_ACTIONS_V2_ENABLED).toBe('boolean');
+    const r = validateCoachActions([{ type: 'move_task', task_query: 'Rapor', date: 'today' }], { v2: false });
     expect(r.actions).toEqual([]);
     expect(r.rejected[0].reason).toBe('unknown action type');
+
+    const def = validateCoachActions([{ type: 'move_task', task_query: 'Rapor', date: '2026-10-09' }]);
+    expect(def.actions).toHaveLength(COACH_ACTIONS_V2_ENABLED ? 1 : 0);
   });
   it('on, a valid action passes; authority keys are still refused first', () => {
     expect(validateCoachActions([{ type: 'move_task', task_query: 'Rapor', date: '2026-10-09' }], { v2: true }).actions)

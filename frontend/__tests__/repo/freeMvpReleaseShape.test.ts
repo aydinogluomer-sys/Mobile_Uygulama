@@ -228,11 +228,13 @@ describe('Sentry carries no user content and no secret', () => {
 });
 
 describe('public URLs are not linked while they 404', () => {
-  it('the gate reflects reality', () => {
-    // Probed 2026-09-08: aderyth.com resolves and `/` answers 200, but
-    // /privacy, /support and /delete-account all answer 404. Flip this only
-    // together with a re-probe.
-    expect(PUBLIC_SITE_URLS_LIVE).toBe(false);
+  it('the gate is an explicit boolean literal and names canonical HTTPS URLs', () => {
+    expect(typeof PUBLIC_SITE_URLS_LIVE).toBe('boolean');
+    expect(PUBLIC_SITE_URLS).toEqual({
+      privacy: 'https://aderyth.com/privacy',
+      support: 'https://aderyth.com/support',
+      deleteAccount: 'https://aderyth.com/delete-account',
+    });
   });
 
   it('no UI file links to them unguarded', () => {

@@ -47,10 +47,12 @@ describe('four places, one list', () => {
   it('the repository row type names them', () => {
     expect(repo).toMatch(/action_type: 'propose_habit' \| 'propose_habit_plan' \| 'log_habit' \| V2ActionType;/);
   });
-  it('the gate is a new, false gate; existing gates untouched', () => {
+  it('the post-rollout gates are explicit booleans; deferred MVP scope gates stay false', () => {
     const g = code('lib/featureGates.ts');
-    expect(g).toMatch(/export const COACH_ACTIONS_V2_ENABLED = false;/);
-    for (const n of ['SPOTIFY_OAUTH_ENABLED', 'NOTION_INTEGRATION_ENABLED', 'GOOGLE_CALENDAR_INTEGRATION_ENABLED', 'PAID_SUBSCRIPTIONS_ENABLED', 'PUBLIC_SITE_URLS_LIVE']) {
+    for (const n of ['COACH_ACTIONS_V2_ENABLED', 'PUBLIC_SITE_URLS_LIVE', 'LOG_TIMEZONE_ENABLED']) {
+      expect(g).toMatch(new RegExp(`export const ${n} = (?:true|false);`));
+    }
+    for (const n of ['SPOTIFY_OAUTH_ENABLED', 'NOTION_INTEGRATION_ENABLED', 'GOOGLE_CALENDAR_INTEGRATION_ENABLED', 'PAID_SUBSCRIPTIONS_ENABLED']) {
       expect(g).toMatch(new RegExp(`export const ${n} = false;`));
     }
   });

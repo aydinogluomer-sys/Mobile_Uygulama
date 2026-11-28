@@ -14,12 +14,21 @@
  * Regexes are anchored to real lines: a previous coder's assertion false-passed
  * because a comment merely contained the matched text.
  */
-import { execSync } from 'child_process';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
 const root = join(__dirname, '..', '..');
 const read = (p: string) => readFileSync(join(root, p), 'utf8');
+
+function findTsxMatches(dir: string, needle: RegExp): string[] {
+  const hits: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) hits.push(...findTsxMatches(full, needle));
+    else if (entry.endsWith('.tsx') && needle.test(readFileSync(full, 'utf8'))) hits.push(full);
+  }
+  return hits;
+}
 
 describe('§24 Phase 4 — skeleton states', () => {
   it('the primitive exists', () => {
@@ -58,11 +67,8 @@ describe('§24 Phase 4 — skeleton states', () => {
   });
 
   it('is actually consumed by at least one screen', () => {
-    const out = execSync(
-      'grep -rl "Skeleton" app --include=*.tsx || true',
-      { cwd: root, encoding: 'utf8' },
-    );
-    expect(out.trim().length).toBeGreaterThan(0);
+    const hits = findTsxMatches(join(root, 'app'), /Skeleton/);
+    expect(hits.length).toBeGreaterThan(0);
   });
 
   it('scanner sanity — the barrel regex needs a real export line, not a mention', () => {

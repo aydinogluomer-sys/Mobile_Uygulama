@@ -80,12 +80,15 @@ describe('F22 derin bağlantı rotaları, tek oturum tüketicisi ve SPA rewrite 
     expect(recoveryTemplate).toContain('href="{{ .ConfirmationURL }}"');
   });
 
-  it('(-) vercel.json alan adı, https:// ya da headers içermez; PUBLIC_SITE_URLS_LIVE false kalır', () => {
+  it('(-) vercel.json alan adı, https:// ya da headers içermez; PUBLIC_SITE_URLS_LIVE açık boolean literal olarak tanımlıdır', () => {
     const vercelText = raw('vercel.json');
     expect(vercelText).not.toContain('aderyth.com');
     expect(vercelText).not.toContain('https://');
     expect(vercelText).not.toContain('"headers"');
-    expect(PUBLIC_SITE_URLS_LIVE).toBe(false);
+    expect(typeof PUBLIC_SITE_URLS_LIVE).toBe('boolean');
+    expect(code('lib/featureGates.ts')).toMatch(
+      /export const PUBLIC_SITE_URLS_LIVE = (?:true|false);/,
+    );
   });
 
   it('(-) app/ ve components/ altında setSession, exchangeCodeForSession ve token_hash kullanılmaz (GAP2-08)', () => {

@@ -7,15 +7,17 @@ page is at **`docs/store/web/delete-account.html`** — self-contained HTML,
 ready to drop onto any static host. Probed 2026-09-08 the URL answers **404**,
 so it is not yet usable in Play Console.
 
-Two placeholders in that file must be filled first: `{{DESTEK_EPOSTA}}` and
-`{{SILME_SURESI}}`. Neither was invented.
+Owner-confirmed contact, SLA and publisher values (`support@aderyth.com`,
+`30 gün`, `Ömer Aydınoğlu`) have been applied to
+**`docs/store/web/delete-account.html`** and
+**`docs/store/web/godaddy/delete-account.fragment.html`**.
 
-The draft copy below is what that page now says, kept here for review.
+The draft copy below reflects what that page says, kept here for review.
 
 Google Play requires a **publicly reachable web page** where a user can request
 account deletion, reachable *without* installing or signing into the app. The
-in-app path (Settings → Hesap → Hesabı Sil) satisfies the in-product half; it
-does not satisfy the web half.
+in-app path (Profil → Ayarlar → Hesap → Hesabı Sil) satisfies the in-product
+half; it does not satisfy the web half.
 
 ## What the page must do
 
@@ -38,12 +40,12 @@ does not satisfy the web half.
 
 > **Aderyth — Hesap ve Veri Silme**
 >
-> Hesabını uygulama içinden silebilirsin: **Ayarlar → Hesap → Hesabı Sil**.
+> Hesabını uygulama içinden silebilirsin: **Profil → Ayarlar → Hesap → Hesabı Sil**.
 > Silme işlemi anında uygulanır ve geri alınamaz.
 >
-> Uygulamaya erişemiyorsan, kayıtlı e-posta adresinden `<DESTEK_EPOSTA>`
+> Uygulamaya erişemiyorsan, kayıtlı e-posta adresinden `support@aderyth.com`
 > adresine "Hesap silme talebi" konulu bir e-posta gönder. Talebini
-> `<SÜRE>` içinde sonuçlandırırız.
+> `30 gün` içinde sonuçlandırırız.
 >
 > Silme işlemiyle birlikte şunlar kalıcı olarak kaldırılır: hesabın ve
 > e-posta adresin, alışkanlıkların ve kayıtların, görevlerin, projelerin,
@@ -54,9 +56,10 @@ does not satisfy the web half.
 >
 > Silme sonrasında Aderyth sunucularında sana ait kişisel veri saklanmaz.
 
-`<DESTEK_EPOSTA>` and `<SÜRE>` are owner values. They are placeholders on
-purpose — inventing a support address would put an unreachable contact in a
-store listing.
+`support@aderyth.com`, `30 gün` and publisher `Ömer Aydınoğlu` are
+owner-confirmed values applied in `docs/store/web/delete-account.html` and
+`docs/store/web/godaddy/delete-account.fragment.html` (no unresolved
+placeholders remain).
 
 ## Where the URL goes once it exists
 

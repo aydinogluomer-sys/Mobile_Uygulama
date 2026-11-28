@@ -6,7 +6,19 @@ import { mkdtempSync, readFileSync, rmSync } from 'fs';
 import { createRequire } from 'module';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import {
+  COACH_ACTIONS_V2_ENABLED,
+  LIGHT_THEME_ENABLED,
+  LOG_TIMEZONE_ENABLED,
+  PUBLIC_SITE_URLS_LIVE,
+} from '../../lib/featureGates';
 import { readSource, stripComments } from '../helpers/sourceText';
+
+const POST_ROLLOUT_GATES_LIVE =
+  PUBLIC_SITE_URLS_LIVE ||
+  COACH_ACTIONS_V2_ENABLED ||
+  LOG_TIMEZONE_ENABLED ||
+  LIGHT_THEME_ENABLED;
 
 type EdgePlanItem = {
   slug: string;
@@ -99,6 +111,7 @@ type RolloutModule = {
     mode: string;
     dryRun?: boolean;
     confirmNoLegacyClients?: boolean;
+    allowPostRolloutFlips?: boolean;
     projectRef?: string;
     apiBase?: string;
     accessToken?: string;
@@ -115,6 +128,7 @@ type RolloutModule = {
     argv?: readonly string[],
     options?: {
       repoRoot?: string;
+      allowPostRolloutFlips?: boolean;
       accessToken?: string;
       projectRef?: string;
       apiBase?: string;
@@ -221,6 +235,7 @@ describe('Automated Owner Rollout CLI (`tools/execute-owner-rollout.mjs`)', () =
         mode: 'all',
         dryRun: true,
         confirmNoLegacyClients: true,
+        allowPostRolloutFlips: POST_ROLLOUT_GATES_LIVE,
         accessToken: '',
         repoRoot: REPO_ROOT,
         outPath,
@@ -351,6 +366,7 @@ describe('Automated Owner Rollout CLI (`tools/execute-owner-rollout.mjs`)', () =
     const preflightRes = await rollout.executeOwnerRollout({
       mode: 'preflight',
       dryRun: false,
+      allowPostRolloutFlips: POST_ROLLOUT_GATES_LIVE,
       accessToken: secretToken,
       repoRoot: REPO_ROOT,
       fetchImpl: cleanFetch,
@@ -576,22 +592,33 @@ describe('Automated Owner Rollout CLI (`tools/execute-owner-rollout.mjs`)', () =
 describe('Store web privacy HTML & GoDaddy fragment synchronization', () => {
   it('(+) syncs privacy.html and privacy.fragment.html with privacy.tsx disclosures and keeps zero placeholders', () => {
     const inAppPrivacy = stripComments(readSource('app', 'screens', 'privacy.tsx'));
-    const canonicalHtml = readSource('..', 'docs', 'store', 'web', 'privacy.html');
-    const godaddyFragment = readSource(
-      '..',
-      'docs',
-      'store',
-      'web',
-      'godaddy',
-      'privacy.fragment.html',
+    const canonicalHtml = readFileSync(
+      join(REPO_ROOT, 'docs', 'store', 'web', 'privacy.html'),
+      'utf8',
+    );
+    const godaddyFragment = readFileSync(
+      join(REPO_ROOT, 'docs', 'store', 'web', 'godaddy', 'privacy.fragment.html'),
+      'utf8',
     );
 
-    expect(inAppPrivacy).toContain('Europe/Istanbul');
+    for (const requiredInAppText of [
+      '27 Kasım 2026',
+      'Europe/Istanbul',
+      'Profil → Ayarlar → Hesap → Hesabı Sil',
+      '30 gün',
+      '400 gün',
+      '7 gün',
+      'Çocukların gizliliği',
+      'support@aderyth.com',
+    ]) {
+      expect(inAppPrivacy).toContain(requiredInAppText);
+    }
 
     for (const html of [canonicalHtml, godaddyFragment]) {
-      expect(html).not.toMatch(/\{\{[^}]+\}\}/);
-      expect(html).toContain('24 ');
-      expect(html).toContain('2026');
+      expect(html).not.toContain('\r');
+      expect(html).not.toMatch(/\{\{[\s\S]*?\}\}/);
+      expect(html).not.toContain('{{');
+      expect(html).toContain('27 Kasım 2026');
       expect(html).toContain('Europe/Istanbul');
       expect(html).toContain('8000');
       expect(html).toContain('Anthropic');
@@ -601,28 +628,93 @@ describe('Store web privacy HTML & GoDaddy fragment synchronization', () => {
       expect(html).toContain('Excel');
       expect(html).toContain('Obsidian (Markdown)');
       expect(html).toContain('60 ');
+      expect(html).toContain('30 gün');
+      expect(html).toContain('400 gün');
+      expect(html).toContain('7 gün');
+      expect(html).toContain('Profil → Ayarlar → Hesap → Hesabı Sil');
       expect(html).toContain('<a href="mailto:support@aderyth.com">support@aderyth.com</a>');
-      expect(html).toContain('href="/"');
-      expect(html).toContain('href="/support"');
-      expect(html).toContain('href="/delete-account"');
+      expect(html).toContain('<a href="/" target="_top">');
+      expect(html).toContain('<a href="/support" target="_top">');
+      expect(html).toContain('<a href="/delete-account" target="_top">');
     }
-
-    // Inner body markup of canonical wrap and GoDaddy #aderyth-privacy-page wrapper must match 1:1
-    const wrapStart = canonicalHtml.indexOf('<div class="wrap">\n');
-    const wrapEnd = canonicalHtml.lastIndexOf('\n</div>\n</body>');
-    const fragStart = godaddyFragment.indexOf(
-      '<div id="aderyth-privacy-page" class="aderyth-public-page">\n',
-    );
-    const fragEnd = godaddyFragment.lastIndexOf('\n</div>');
-
-    expect(wrapStart).toBeGreaterThan(-1);
-    expect(fragStart).toBeGreaterThan(-1);
-
-    const canonicalInner = canonicalHtml.slice(wrapStart + '<div class="wrap">\n'.length, wrapEnd);
-    const fragmentInner = godaddyFragment.slice(
-      fragStart + '<div id="aderyth-privacy-page" class="aderyth-public-page">\n'.length,
-      fragEnd,
-    );
-    expect(fragmentInner).toBe(canonicalInner);
   });
+
+  const storeWebPagePairs: {
+    slug: 'privacy' | 'support' | 'delete-account';
+    wrapperId: 'aderyth-privacy-page' | 'aderyth-support-page' | 'aderyth-delete-page';
+    expectedInternalHrefs: string[];
+  }[] = [
+    {
+      slug: 'privacy',
+      wrapperId: 'aderyth-privacy-page',
+      expectedInternalHrefs: ['/', '/support', '/delete-account'],
+    },
+    {
+      slug: 'support',
+      wrapperId: 'aderyth-support-page',
+      expectedInternalHrefs: ['/', '/privacy', '/delete-account'],
+    },
+    {
+      slug: 'delete-account',
+      wrapperId: 'aderyth-delete-page',
+      expectedInternalHrefs: ['/', '/privacy', '/support'],
+    },
+  ];
+
+  it.each(storeWebPagePairs)(
+    '(+) enforces LF endings, zero placeholders, target="_top" internal links, and 1:1 inner body parity for $slug <-> #$wrapperId',
+    ({ slug, wrapperId, expectedInternalHrefs }) => {
+      const canonicalHtml = readFileSync(
+        join(REPO_ROOT, 'docs', 'store', 'web', `${slug}.html`),
+        'utf8',
+      );
+      const godaddyFragment = readFileSync(
+        join(REPO_ROOT, 'docs', 'store', 'web', 'godaddy', `${slug}.fragment.html`),
+        'utf8',
+      );
+
+      for (const doc of [canonicalHtml, godaddyFragment]) {
+        expect(doc).not.toContain('\r');
+        expect(doc).not.toMatch(/\{\{[\s\S]*?\}\}/);
+        expect(doc).not.toContain('{{');
+        expect(doc).toContain('27 Kasım 2026');
+        expect(doc).toContain('Profil → Ayarlar → Hesap → Hesabı Sil');
+        expect(doc).toContain('mailto:support@aderyth.com');
+        expect(doc).toContain('<a href="mailto:support@aderyth.com">support@aderyth.com</a>');
+
+        for (const href of expectedInternalHrefs) {
+          expect(doc).toContain(`<a href="${href}" target="_top">`);
+        }
+
+        const internalAnchorTags =
+          doc.match(/<a\b[^>]*\bhref="\/(?:|privacy|support|delete-account)"[^>]*>/g) ?? [];
+        expect(internalAnchorTags.length).toBeGreaterThanOrEqual(expectedInternalHrefs.length);
+        for (const anchorTag of internalAnchorTags) {
+          expect(anchorTag).toContain('target="_top"');
+        }
+      }
+
+      const wrapOpen = '<div class="wrap">\n';
+      const wrapClose = '\n</div>\n</body>';
+      const fragOpen = `<div id="${wrapperId}" class="aderyth-public-page">\n`;
+      const fragClose = '\n</div>';
+
+      const wrapStart = canonicalHtml.indexOf(wrapOpen);
+      const wrapEnd = canonicalHtml.lastIndexOf(wrapClose);
+      const fragStart = godaddyFragment.indexOf(fragOpen);
+      const fragEnd = godaddyFragment.lastIndexOf(fragClose);
+
+      expect(wrapStart).toBeGreaterThan(-1);
+      expect(wrapEnd).toBeGreaterThan(wrapStart);
+      expect(fragStart).toBeGreaterThan(-1);
+      expect(fragEnd).toBeGreaterThan(fragStart);
+
+      const canonicalInner = canonicalHtml.slice(wrapStart + wrapOpen.length, wrapEnd);
+      const fragmentInner = godaddyFragment.slice(fragStart + fragOpen.length, fragEnd);
+
+      expect(canonicalInner.length).toBeGreaterThan(0);
+      expect(fragmentInner === canonicalInner).toBe(true);
+      expect(fragmentInner).toBe(canonicalInner);
+    },
+  );
 });

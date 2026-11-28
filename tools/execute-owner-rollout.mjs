@@ -390,13 +390,14 @@ export function redactSecrets(text, secretToken = '') {
  * @param {readonly string[]} argv
  */
 export function parseCliArgs(argv) {
-  /** @type {{ mode: string | null; dryRun: boolean; json: boolean; outPath: string | null; confirmNoLegacyClients: boolean; projectRef: string | null; apiBase: string | null }} */
+  /** @type {{ mode: string | null; dryRun: boolean; json: boolean; outPath: string | null; confirmNoLegacyClients: boolean; postRollout: boolean; projectRef: string | null; apiBase: string | null }} */
   const parsed = {
     mode: null,
     dryRun: false,
     json: false,
     outPath: null,
     confirmNoLegacyClients: false,
+    postRollout: false,
     projectRef: null,
     apiBase: null,
   };
@@ -413,6 +414,10 @@ export function parseCliArgs(argv) {
     }
     if (arg === '--confirm-no-legacy-clients') {
       parsed.confirmNoLegacyClients = true;
+      continue;
+    }
+    if (arg === '--post-rollout') {
+      parsed.postRollout = true;
       continue;
     }
     if (arg === '--mode') {
@@ -452,7 +457,7 @@ export function parseCliArgs(argv) {
       continue;
     }
     throw new Error(
-      `Unknown CLI argument "${arg}". Supported flags: --mode, --dry-run, --confirm-no-legacy-clients, --json, --out, --project-ref, --api-url`,
+      `Unknown CLI argument "${arg}". Supported flags: --mode, --dry-run, --confirm-no-legacy-clients, --post-rollout, --json, --out, --project-ref, --api-url`,
     );
   }
 
@@ -916,6 +921,7 @@ export function buildDryRunPlan(params) {
 async function executePreflightStage(ctx) {
   const readiness = runOwnerRolloutReadiness({
     repoRoot: ctx.repoRoot,
+    allowPostRolloutFlips: Boolean(ctx.allowPostRolloutFlips),
     runBashProbes: ctx.runBashProbes,
   });
   if (!readiness.ok) {
@@ -1608,6 +1614,7 @@ export function emitDashboardSqlBundle(options = {}) {
     `-- Aderyth Read-Only Preflight Checks (SQL_FOR_OWNER.md §0 & §3) — Target: ${projectRef}`,
     SQL_QUERIES.preflight01LatestMigrations,
     SQL_QUERIES.preflight03HabitLogsTz,
+    SQL_QUERIES.xpDriftCount,
     SQL_QUERIES.preflight06DependentViews,
     SQL_QUERIES.preflight07TaskEstimateColumns,
     SQL_QUERIES.preflightDb111UsernameRepairs,
@@ -1684,6 +1691,7 @@ export async function executeOwnerRollout(options) {
   const mode = options?.mode ?? '';
   const dryRun = Boolean(options?.dryRun);
   const confirmNoLegacyClients = Boolean(options?.confirmNoLegacyClients);
+  const allowPostRolloutFlips = Boolean(options?.allowPostRolloutFlips);
   const repoRoot = options?.repoRoot ?? DEFAULT_REPO_ROOT;
   const apiBase = options?.apiBase ?? process.env.SUPABASE_API_URL ?? DEFAULT_API_BASE;
   const rawProjectRef =
@@ -1751,6 +1759,7 @@ export async function executeOwnerRollout(options) {
     const ctx = {
       mode,
       dryRun,
+      allowPostRolloutFlips,
       repoRoot,
       projectRef,
       apiBase,
@@ -1919,6 +1928,7 @@ export async function runCli(argv = process.argv.slice(2), options = {}) {
     mode: parsed.mode ?? '',
     dryRun: parsed.dryRun,
     confirmNoLegacyClients: parsed.confirmNoLegacyClients,
+    allowPostRolloutFlips: parsed.postRollout || Boolean(options.allowPostRolloutFlips),
     outPath: parsed.outPath,
     projectRef:
       parsed.projectRef !== null
