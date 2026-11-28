@@ -614,28 +614,34 @@ describe('Store web privacy HTML & GoDaddy fragment synchronization', () => {
       expect(inAppPrivacy).toContain(requiredInAppText);
     }
 
+    const requiredHtmlTokens = [
+      '27 Kasım 2026',
+      'Europe/Istanbul',
+      '8000',
+      'Anthropic',
+      'Keychain / Keystore',
+      'localStorage',
+      'JSON, CSV',
+      'Excel',
+      'Obsidian (Markdown)',
+      '60 ',
+      '30 gün',
+      '400 gün',
+      '7 gün',
+      'Profil → Ayarlar → Hesap → Hesabı Sil',
+      '<a href="mailto:support@aderyth.com">support@aderyth.com</a>',
+      '<a href="/" target="_top">',
+      '<a href="/support" target="_top">',
+      '<a href="/delete-account" target="_top">',
+    ];
+
     for (const html of [canonicalHtml, godaddyFragment]) {
       expect(html).not.toContain('\r');
       expect(html).not.toMatch(/\{\{[\s\S]*?\}\}/);
       expect(html).not.toContain('{{');
-      expect(html).toContain('27 Kasım 2026');
-      expect(html).toContain('Europe/Istanbul');
-      expect(html).toContain('8000');
-      expect(html).toContain('Anthropic');
-      expect(html).toContain('Keychain / Keystore');
-      expect(html).toContain('localStorage');
-      expect(html).toContain('JSON, CSV');
-      expect(html).toContain('Excel');
-      expect(html).toContain('Obsidian (Markdown)');
-      expect(html).toContain('60 ');
-      expect(html).toContain('30 gün');
-      expect(html).toContain('400 gün');
-      expect(html).toContain('7 gün');
-      expect(html).toContain('Profil → Ayarlar → Hesap → Hesabı Sil');
-      expect(html).toContain('<a href="mailto:support@aderyth.com">support@aderyth.com</a>');
-      expect(html).toContain('<a href="/" target="_top">');
-      expect(html).toContain('<a href="/support" target="_top">');
-      expect(html).toContain('<a href="/delete-account" target="_top">');
+      for (const requiredToken of requiredHtmlTokens) {
+        expect(html).toContain(requiredToken);
+      }
     }
   });
 
@@ -673,14 +679,20 @@ describe('Store web privacy HTML & GoDaddy fragment synchronization', () => {
         'utf8',
       );
 
+      const sharedRequiredTokens = [
+        '27 Kasım 2026',
+        'Profil → Ayarlar → Hesap → Hesabı Sil',
+        'mailto:support@aderyth.com',
+        '<a href="mailto:support@aderyth.com">support@aderyth.com</a>',
+      ];
+
       for (const doc of [canonicalHtml, godaddyFragment]) {
         expect(doc).not.toContain('\r');
         expect(doc).not.toMatch(/\{\{[\s\S]*?\}\}/);
         expect(doc).not.toContain('{{');
-        expect(doc).toContain('27 Kasım 2026');
-        expect(doc).toContain('Profil → Ayarlar → Hesap → Hesabı Sil');
-        expect(doc).toContain('mailto:support@aderyth.com');
-        expect(doc).toContain('<a href="mailto:support@aderyth.com">support@aderyth.com</a>');
+        for (const token of sharedRequiredTokens) {
+          expect(doc).toContain(token);
+        }
 
         for (const href of expectedInternalHrefs) {
           expect(doc).toContain(`<a href="${href}" target="_top">`);
